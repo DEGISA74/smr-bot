@@ -1,9 +1,10 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import time  # <--- YENİ EKLENDİ: Zaman ayarı için
 from ta.trend import EMAIndicator, MACD, ADXIndicator
 from ta.volatility import AverageTrueRange
-from datetime import time 
+from datetime import time as dt_time # İsim çakışmasını önlemek için değiştirdik
 
 class MultiDayBacktester:
     def __init__(self, ticker, capital=20000, risk_per_trade=0.01):
@@ -24,22 +25,29 @@ class MultiDayBacktester:
         print(f"Veri İndiriliyor (Son 7 Gün): {self.ticker}...")
         try:
             # v14.1 orijinal ayarı: 7 Gün, 1 Dakika + Auto Adjust Kapalı
+            # Hata yakalama için multi=False ekleyebiliriz ama şimdilik sleep ile çözeceğiz
             df = yf.download(self.ticker, period="7d", interval="1m", progress=False, auto_adjust=False)
         except Exception as e:
-            print(f"Hata: {e}")
+            print(f"Hata oluştu: {e}")
             return None
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-        if df.empty: return None
+            
+        if df.empty: 
+            # Boş gelirse sessizce geç
+            return None
 
         # GÖSTERGELER
-        df["EMA_200"] = EMAIndicator(close=df["Close"], window=200).ema_indicator()
-        df["ADX"] = ADXIndicator(high=df["High"], low=df["Low"], close=df["Close"], window=14).adx()
-        macd = MACD(close=df["Close"], window_slow=26, window_fast=12, window_sign=9)
-        df["MACD"] = macd.macd()
-        df["MACD_Signal"] = macd.macd_signal()
-        df["ATR"] = AverageTrueRange(high=df["High"], low=df["Low"], close=df["Close"], window=14).average_true_range()
+        try:
+            df["EMA_200"] = EMAIndicator(close=df["Close"], window=200).ema_indicator()
+            df["ADX"] = ADXIndicator(high=df["High"], low=df["Low"], close=df["Close"], window=14).adx()
+            macd = MACD(close=df["Close"], window_slow=26, window_fast=12, window_sign=9)
+            df["MACD"] = macd.macd()
+            df["MACD_Signal"] = macd.macd_signal()
+            df["ATR"] = AverageTrueRange(high=df["High"], low=df["Low"], close=df["Close"], window=14).average_true_range()
+        except Exception as e:
+            return None
 
         return df.dropna()
 
@@ -103,7 +111,7 @@ class MultiDayBacktester:
                 exit_price = 0.0
                 
                 # 1. SAAT KONTROLÜ (17:58 ÇIKIŞ)
-                if curr_time >= time(17, 58):
+                if curr_time >= dt_time(17, 58):
                     exit_signal = True; reason = "17:58 Kapanış"; exit_price = curr['Close']
                 
                 # 2. NORMAL HEDEF VE STOP KONTROLLERİ
@@ -120,7 +128,7 @@ class MultiDayBacktester:
 
             # --- SİNYAL ARAMA ---
             elif trading_active_today:
-                if curr_time < time(17, 50): 
+                if curr_time < dt_time(17, 50): 
                     if curr['Close'] > curr['EMA_200']:
                         if curr['ADX'] > 20:
                             if (curr['MACD'] > curr['MACD_Signal']) and (prev['MACD'] < prev['MACD_Signal']):
@@ -161,19 +169,27 @@ class MultiDayBacktester:
         print(f"Robot: %{total_growth:.2f} | Piyasa: %{market_return:.2f} | Fark: %{fark:.2f}")
         print(f"Başarı: %{win_rate:.2f} | İşlem: {len(self.trades)}")
 
-# --- GENİŞLETİLMİŞ VIOP & BIST 30 LİSTESİ ---
-# Eski listeye ek olarak yüksek hacimli VIOP hisseleri eklendi
-bist_viop = [
-    "AKBNK.IS", "ALARK.IS", "ARCLK.IS", "ASELS.IS", "ASTOR.IS", "BIMAS.IS", 
-    "EKGYO.IS", "ENKAI.IS", "EREGL.IS", "FROTO.IS", "GARAN.IS", "HALKB.IS", 
-    "HEKTS.IS", "ISCTR.IS", "KCHOL.IS", "KOZAL.IS", "KRDMD.IS", "MGROS.IS", 
-    "ODAS.IS", "PETKM.IS", "PGSUS.IS", "SAHOL.IS", "SASA.IS", "SISE.IS", 
-    "TAVHL.IS", "TCELL.IS", "THYAO.IS", "TOASO.IS", "TUPRS.IS", "VAKBN.IS", "YKBNK.IS"
+# --- BIST 100 DEV LİSTE ---
+bist100_full = [
+    "AEFES.IS", "AGHOL.IS", "AGROT.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKFYE.IS", "AKSA.IS", "AKSEN.IS", 
+    "ALARK.IS", "ALBRK.IS", "ALFAS.IS", "ARCLK.IS", "ASELS.IS", "ASTOR.IS", "ASUZU.IS", "AYDEM.IS", "BAGFS.IS", "BERA.IS", 
+    "BFREN.IS", "BIENY.IS", "BIMAS.IS", "BIOEN.IS", "BOBET.IS", "BRSAN.IS", "BRYAT.IS", "BUCIM.IS", "CANTE.IS", "CCOLA.IS", 
+    "CEMTS.IS", "CIMSA.IS", "CWENE.IS", "DOAS.IS", "DOHOL.IS", "ECILC.IS", "ECZYT.IS", "EGEEN.IS", "EKGYO.IS", "ENJSA.IS", 
+    "ENKAI.IS", "EREGL.IS", "EUPWR.IS", "EUREN.IS", "FROTO.IS", "GARAN.IS", "GENIL.IS", "GESAN.IS", "GLYHO.IS", "GSDHO.IS", 
+    "GUBRF.IS", "GWIND.IS", "HALKB.IS", "HEKTS.IS", "IMASM.IS", "IPEKE.IS", "ISCTR.IS", "ISDMR.IS", "ISGYO.IS", "ISMEN.IS", 
+    "IZMDC.IS", "KARSN.IS", "KAYSE.IS", "KCAER.IS", "KCHOL.IS", "KONTR.IS", "KONYA.IS", "KORDS.IS", 
+    "KRDMD.IS", "KZBGY.IS", "LOGO.IS", "MAVI.IS", "MGROS.IS", "MIATK.IS", "ODAS.IS", "OTKAR.IS", "OYAKC.IS", "PENTA.IS", 
+    "PETKM.IS", "PGSUS.IS", "PSGYO.IS", "QUAGR.IS", "REEDR.IS", "SAHOL.IS", "SASA.IS", "SMRTG.IS", "SKBNK.IS", "SELEC.IS", 
+    "SISE.IS", "SOKM.IS", "TABGD.IS", "TAVHL.IS", "TCELL.IS", "THYAO.IS", "TKFEN.IS", "TOASO.IS", "TRALT.IS", "TSKB.IS", "TTKOM.IS", 
+    "TTRAK.IS", "TUKAS.IS", "TUPRS.IS", "TURSG.IS", "ULKER.IS", "VAKBN.IS", "VESBE.IS", "VESTL.IS", "YEOTK.IS", "YKBNK.IS", 
+    "YYLGD.IS", "ZOREN.IS"
 ]
 
-print(f"GENİŞLETİLMİŞ VIOP TARAMASI (ROBOT vs PİYASA) BAŞLIYOR...")
-print(f"Toplam {len(bist_viop)} hisse taranacak...")
+print(f"v14.1 (SABİT HEDEF) TARAMASI BAŞLIYOR (Güvenli Mod: Beklemeli)...")
+print(f"Toplam {len(bist100_full)} hisse taranacak...")
 
-for s in bist_viop:
+for s in bist100_full:
     tester = MultiDayBacktester(s, capital=20000)
     tester.run_backtest()
+    # BURASI ÇOK ÖNEMLİ: Her hisse sonrası 1 saniye bekle ki Yahoo banlamasın
+    time.sleep(1)
