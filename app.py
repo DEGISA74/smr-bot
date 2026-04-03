@@ -15,6 +15,11 @@ import re
 import altair as alt
 import random
 import os
+import io
+import base64
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 CACHE_DIR = r"C:\Users\LENOVO\OneDrive\Desktop\Patron Terminal\veriler"
 if not os.path.exists(CACHE_DIR):
@@ -235,7 +240,7 @@ def remove_watchlist_db(symbol):
 init_db()
 
 # --- VARLIK LİSTELERİ ---
-priority_sp = ["^GSPC", "^DJI", "^NDX", "^IXIC","QQQI", "SPYI", "TSPY", "ARCC", "JEPI"]
+priority_sp = ["^GSPC", "^DJI", "^NDX", "^IXIC", "^RUT", "QQQI", "SPYI", "TSPY", "ARCC", "JEPI"]
 
 # S&P 500'ün Tamamı (503 Hisse - Güncel)
 raw_sp500_rest = [
@@ -367,6 +372,34 @@ ASSET_GROUPS = {
     "EMTİALAR": commodities_list
 }
 INITIAL_CATEGORY = "BIST 500 "
+
+# --- GÖRÜNTÜ ADI SÖZLÜĞÜ ---
+# Yahoo ticker kodu → Kullanıcıya gösterilecek isim
+TICKER_DISPLAY_NAMES = {
+    "GC=F":    "ONS ALTIN",
+    "SI=F":    "GÜMÜŞ",
+    "CL=F":    "HAM PETROL",
+    "NG=F":    "DOĞAL GAZ",
+    "HG=F":    "BAKIR",
+    "ZW=F":    "BUĞDAY",
+    "ZC=F":    "MISIR",
+    "BTC-USD": "BITCOIN",
+    "ETH-USD": "ETHEREUM",
+    "BNB-USD": "BNB",
+    "SOL-USD": "SOLANA",
+    "XRP-USD": "XRP",
+    "DOGE-USD":"DOGECOIN",
+    "AVAX-USD":"AVALANCHE",
+    "^GSPC":   "S&P 500",
+    "^IXIC":   "NASDAQ",
+    "^DJI":    "DOW JONES",
+}
+
+def get_display_name(ticker):
+    """Ticker kodunu görüntü adına çevirir. Bilinmiyorsa temiz kodu döner."""
+    if ticker in TICKER_DISPLAY_NAMES:
+        return TICKER_DISPLAY_NAMES[ticker]
+    return ticker.split('.')[0].replace("=F", "").replace("-USD", "")
 
 # --- STATE YÖNETİMİ ---
 if 'category' not in st.session_state: st.session_state.category = INITIAL_CATEGORY
@@ -573,7 +606,7 @@ def get_batch_data_cached(asset_list, period="1y"):
     return pd.DataFrame()
 
 # --- SINGLE STOCK CACHE (DETAY SAYFASI İÇİN) ---
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=900)
 def get_safe_historical_data(ticker, period="1y", interval="1d"):
     try:
         clean_ticker = ticker.replace(".IS", "")
@@ -1345,6 +1378,7 @@ def scan_chart_patterns(asset_list):
             pattern_name  = ""
             desc          = ""
             base_score    = 0
+            chart_d       = None   # mini grafik verisi (sadece Fincan-Kulp / TOBO)
 
             # ---------------------------------------------------------------
             # ZIGZAG İSKELETİ — %4 eşikli (insan gözüne yakın)
@@ -1369,6 +1403,13 @@ def scan_chart_patterns(asset_list):
                         and retrace < 0.50
                         and curr_price >= flag_l * 0.99
                         and curr_price >= flag_h * 0.98):
+                    chart_d = {
+                        "type": "flag",
+                        "date_start": str(close.index[max(0, bar_total - 22)].date()),
+                        "flag_h": float(flag_h),
+                        "flag_l": float(flag_l),
+                        "pole_end_date": str(close.index[bar_total - 6].date()),
+                    }
                     pattern_found = True
                     pattern_name  = "🚩 BOĞA BAYRAĞI"
                     base_score    = 85
@@ -1423,10 +1464,19 @@ def scan_chart_patterns(asset_list):
                             base_score = 78
                         else:
                             days_since = bar_total - p3_i
+                            if days_since > 3: continue  # Sadece son 3 günde kırılan formasyon
                             status_txt = f"Tamamlandı ({days_since} gün önce)"
                             p_name = f"☕ FİNCAN KULP ({dur_months} Ay) — {status_txt}"
                             base_score = 80
                         p_desc = f"Sol Rim: {rim_l:.2f} | Dip: {cup_b:.2f} | Sağ Rim: {rim_r:.2f} | Kulp: {handle_l:.2f}"
+                        chart_d = {
+                            "pivot_dates":  [str(close.index[p1_i].date()), str(close.index[p2_i].date()),
+                                             str(close.index[p3_i].date()), str(close.index[p4_i].date())],
+                            "pivot_prices": [p1_v, p2_v, p3_v, p4_v],
+                            "pivot_types":  ["H", "L", "H", "L"],
+                            "neck":  float(rim_r),
+                            "type":  "cup",
+                        }
                         pattern_found = True
                         pattern_name = p_name; desc = p_desc
                         break
@@ -1494,11 +1544,21 @@ def scan_chart_patterns(asset_list):
                         base_score = 72
                     else:
                         days_since = bar_total - p5_i
+                        if days_since > 3: continue  # Sadece son 3 günde kırılan formasyon
                         status_txt = f"Tamamlandı ({days_since} gün önce)"
                         p_name = f"🧛 TOBO ({dur_months} Ay) — {status_txt}"
                         base_score = 80
 
                     p_desc = f"Boyun: {neck:.2f} | Baş: {head_p:.2f} | Sol/Sağ Omuz: {ls_p:.2f}/{rs_p:.2f} | Geri Alım: %{recovery*100:.0f}"
+                    chart_d = {
+                        "pivot_dates":  [str(close.index[p1_i].date()), str(close.index[p2_i].date()),
+                                         str(close.index[p3_i].date()), str(close.index[p4_i].date()),
+                                         str(close.index[p5_i].date())],
+                        "pivot_prices": [p1_v, p2_v, p3_v, p4_v, p5_v],
+                        "pivot_types":  ["L", "H", "L", "H", "L"],
+                        "neck":  float(neck),
+                        "type":  "tobo",
+                    }
                     pattern_found = True
                     pattern_name = p_name; desc = p_desc
                     base_score_final = base_score
@@ -1523,6 +1583,14 @@ def scan_chart_patterns(asset_list):
                         breaking   = curr_price >= avg_res * 0.99 and curr_price <= avg_res * 1.04
                         approaching = curr_price >= avg_res * 0.94 and not breaking
                         if breaking or approaching:
+                            chart_d = {
+                                "type": "triangle",
+                                "date_start": str(close.index[max(0, recent[0][0] - 3)].date()),
+                                "resistance": float(avg_res),
+                                "pivot_dates":  [str(close.index[i].date()) for i, p, t in recent],
+                                "pivot_prices": [float(p) for i, p, t in recent],
+                                "pivot_types":  [t for i, p, t in recent],
+                            }
                             pattern_found = True
                             p_name = f"📐 YÜKS. ÜÇGEN ({dur_bars} Gün)" if breaking else f"⏳ OLUŞAN ÜÇGEN ({dur_bars} Gün)"
                             p_desc = f"Direnç: {avg_res:.2f} | Yükselen Dip: {len(r_lows)} pivot"
@@ -1543,6 +1611,12 @@ def scan_chart_patterns(asset_list):
                         breaking_up = curr_price >= period_max * 0.98 and curr_price <= period_max * 1.04
                         bouncing_up = curr_price >= period_min * 0.98 and curr_price <= period_min * 1.04
                         if breaking_up or bouncing_up:
+                            chart_d = {
+                                "type": "range",
+                                "date_start": str(close.index[max(0, bar_total - rng_window)].date()),
+                                "resistance": float(period_max),
+                                "support":    float(period_min),
+                            }
                             pattern_found = True
                             p_name = f"🧱 RANGE DİRENCİ ({rng_window} Gün)" if breaking_up else f"🧱 RANGE DESTEĞİ ({rng_window} Gün)"
                             p_desc = (f"{rng_window} gündür süren yatay kanal direnci kırılıyor!" if breaking_up
@@ -1569,6 +1643,13 @@ def scan_chart_patterns(asset_list):
                             and (curr_price - cup_bottom) / cup_bottom > 0.08
                             and right_high >= left_high * 0.60
                             and curr_price >= right_high * 0.98):
+                        chart_d = {
+                            "type": "saucer",
+                            "date_start": str(close.index[max(0, bar_total - lb)].date()),
+                            "left_high":  float(left_high),
+                            "cup_bottom": float(cup_bottom),
+                            "right_high": float(right_high),
+                        }
                         pattern_found = True
                         pattern_name  = "🥣 ÇANAK (Dipten Dönüş)"
                         base_score    = 88
@@ -1595,6 +1676,14 @@ def scan_chart_patterns(asset_list):
                         hh_idx, hh_p = hh_list[0]
                         if (ll_p < l_left_p * 0.98 and hh_p > h_mid_p * 1.01
                                 and curr_price >= l_left_p * 0.95 and curr_price <= l_left_p * 1.05):
+                            chart_d = {
+                                "type": "qml",
+                                "date_start": str(close.index[max(0, l_left_idx - 3)].date()),
+                                "pivot_dates":  [str(close.index[i].date()) for i in [l_left_idx, h_mid_idx, ll_idx, hh_idx]],
+                                "pivot_prices": [float(l_left_p), float(h_mid_p), float(ll_p), float(hh_p)],
+                                "pivot_types":  ["L", "H", "L", "H"],
+                                "qml_line": float(l_left_p),
+                            }
                             pattern_found = True
                             pattern_name  = "🧲 QUASIMODO (QML)"
                             base_score    = 92
@@ -1610,6 +1699,12 @@ def scan_chart_patterns(asset_list):
                     drop1 = d1 - d2; drop2 = d2 - d3
                     if drop1 > 0 and abs(drop1 - drop2) / drop1 < 0.25:
                         if curr_price > d3 * 1.015 and curr_price < d2:
+                            chart_d = {
+                                "type": "three_drive",
+                                "date_start": str(close.index[max(0, d1_i - 3)].date()),
+                                "pivot_dates":  [str(close.index[i].date()) for i in [d1_i, d2_i, d3_i]],
+                                "pivot_prices": [float(d1), float(d2), float(d3)],
+                            }
                             pattern_found = True
                             pattern_name  = "🎢 3 DRIVE (DİP)"
                             base_score    = 85
@@ -1622,6 +1717,12 @@ def scan_chart_patterns(asset_list):
                 sr_levels = find_smart_sr_levels(df, window=5, cluster_tolerance=0.015, min_touches=3)
                 for level in sorted(sr_levels, key=lambda x: abs(x - curr_price)):
                     if abs(curr_price - level) / level <= 0.015:
+                        chart_d = {
+                            "type": "sr_level",
+                            "date_start": str(close.index[max(0, bar_total - 60)].date()),
+                            "level":      float(level),
+                            "is_support": curr_price >= level,
+                        }
                         pattern_found = True
                         if curr_price >= level:
                             pattern_name = "🧱 GÜÇLÜ DESTEK TESTİ"
@@ -1666,7 +1767,8 @@ def scan_chart_patterns(asset_list):
                     "Formasyon": pattern_name,
                     "Detay":     desc,
                     "Skor":      int(q_score),
-                    "Hacim":     float(volume.iloc[-1])
+                    "Hacim":     float(volume.iloc[-1]),
+                    "ChartData": chart_d,
                 }
 
         except Exception:
@@ -1868,6 +1970,7 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         base_score = 90
                     elif breaking:  # start_offset > 0 → tarihsel formasyon
                         days_since = len(close) - p3_i
+                        if days_since > 3: continue  # Sadece son 3 günde kırılan formasyon
                         p_name = f"☕ FİNCAN KULP ({dur_months} Ay) — Tamamlandı ({days_since} gün önce)"
                         base_score = 80
                     else:  # forming
@@ -1916,6 +2019,7 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         base_score = 92
                     elif is_breakout:  # start_offset > 0 → tarihsel formasyon
                         days_since = len(close) - p5_i
+                        if days_since > 3: continue  # Sadece son 3 günde kırılan formasyon
                         p_name = f"🧛 TOBO ({dur_months} Ay) — Tamamlandı ({days_since} gün önce)"
                         base_score = 80
                     else:  # forming
@@ -6445,46 +6549,179 @@ def scan_grandmaster_batch(asset_list):
 # ==============================================================================
 # 4. GÖRSELLEŞTİRME FONKSİYONLARI (EKSİK OLAN KISIM)
 # ==============================================================================
+@st.cache_data(ttl=900, show_spinner=False)
+def _gauge_chart_b64(score, dark_mode):
+    from matplotlib.patches import Wedge, Circle
+    score = max(0, min(100, int(score)))
+
+    bg = '#0b0f19' if dark_mode else '#f8fafc'
+    fg = '#e2e8f0' if dark_mode else '#1e293b'
+
+    # Arc zone colors (visible on both dark/light as fills)
+    zones = [
+        (0,  20,  "#b71c1c", "AŞIRI ZAYIF"),   # koyu kırmızı
+        (20, 40,  "#ff7043", "ZAYIF"),
+        (40, 60,  "#ffd600", "NÖTR"),
+        (60, 80,  "#66bb6a", "GÜÇLÜ"),
+        (80, 100, "#2e7d32", "AŞIRI GÜÇLÜ"),   # koyu yeşil
+    ]
+
+    # Light-mode text uses darker shades for legibility
+    light_text = {
+        "#b71c1c": "#b71c1c",
+        "#ff7043": "#c2390f",
+        "#ffd600": "#9a6c00",
+        "#66bb6a": "#2e7d32",
+        "#2e7d32": "#1b5e20",
+    }
+
+    cur_label = "NÖTR"
+    cur_color = "#ffd600"
+    for zs, ze, zc, zl in zones:
+        if zs <= score <= ze:
+            cur_label = zl
+            cur_color = zc
+            break
+
+    score_text_color = cur_color if dark_mode else light_text.get(cur_color, cur_color)
+
+    needle_color = '#1e3a8a'   # koyu lacivert ibre, her modda
+
+    fig, ax = plt.subplots(figsize=(4.5, 2.8))
+    fig.patch.set_facecolor(bg)
+    ax.set_facecolor(bg)
+    ax.set_xlim(-1.45, 1.45)
+    ax.set_ylim(-0.52, 1.3)
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    outer_r = 1.0
+    inner_r = 0.55
+
+    # Zone arcs
+    for zs, ze, zc, _ in zones:
+        t1 = 180 - (ze / 100) * 180
+        t2 = 180 - (zs / 100) * 180
+        ax.add_patch(Wedge((0, 0), outer_r, t1, t2,
+                           width=outer_r - inner_r,
+                           facecolor=zc, edgecolor=bg, linewidth=2.5))
+
+    # Tick marks + boundary labels at 0, 20, 40, 60, 80, 100
+    for v in [0, 20, 40, 60, 80, 100]:
+        ang = np.radians(180 - (v / 100) * 180)
+        cx, cy = np.cos(ang), np.sin(ang)
+        ax.plot([1.02 * cx, 1.14 * cx], [1.02 * cy, 1.14 * cy],
+                color=fg, lw=1.0, alpha=0.55)
+        ax.text(1.24 * cx, 1.24 * cy, str(v),
+                ha='center', va='center', fontsize=7,
+                color=fg, alpha=0.7, fontfamily='monospace')
+
+    # Needle — koyu lacivert
+    ang_rad = np.radians(180 - (score / 100) * 180)
+    nx = 0.79 * np.cos(ang_rad)
+    ny = 0.79 * np.sin(ang_rad)
+    ax.plot([0, nx], [0, ny], color=needle_color, linewidth=2.5, zorder=8,
+            solid_capstyle='round')
+    ax.add_patch(Circle((0, 0), 0.062, facecolor=needle_color, zorder=9))
+
+    # Score + zone label below center
+    ax.text(0, -0.16, str(score),
+            ha='center', va='center',
+            fontsize=26, fontweight='bold',
+            color=score_text_color, fontfamily='monospace')
+    ax.text(0, -0.36, cur_label,
+            ha='center', va='center',
+            fontsize=10, fontweight='bold',
+            color=fg, alpha=0.92)
+
+    plt.tight_layout(pad=0)
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor=bg)
+    plt.close(fig)
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode()
+
+
 def render_gauge_chart(score):
-    score = int(score)
-    if st.session_state.dark_mode:
-        color = "#ef4444" 
-        if score >= 50: color = "#f59e0b" 
-        if score >= 70: color = "#10b981" 
-        if score >= 85: color = "#059669" 
-        
-        source = pd.DataFrame({"category": ["Skor", "Kalan"], "value": [score, 100-score]})
-        base = alt.Chart(source).encode(theta=alt.Theta("value", stack=True))
-        pie = base.mark_arc(outerRadius=55, innerRadius=40).encode(
-            color=alt.Color("category", scale=alt.Scale(domain=["Skor", "Kalan"], range=[color, "rgba(255,255,255,0.05)"]), legend=None),
-            order=alt.Order("category", sort="descending"), tooltip=["value"]
+    b64 = _gauge_chart_b64(int(score), st.session_state.dark_mode)
+    if b64:
+        st.markdown(
+            f"<img src='data:image/png;base64,{b64}' "
+            f"style='width:100%;display:block;margin:0 auto;'/>",
+            unsafe_allow_html=True
         )
-        text = base.mark_text(radius=0, size=28, color=color, fontWeight="bold", dy=-5).encode(text=alt.value(f"{score}"))
-        label = base.mark_text(radius=0, size=11, color="#38bdf8", fontWeight="bold", dy=20).encode(text=alt.value("GENEL SAĞLIK"))
-        
-        chart = (pie + text + label).properties(height=130).configure(background='transparent').configure_view(strokeWidth=0) 
-        st.altair_chart(chart, use_container_width=True, theme=None)
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _sparkline_b64(symbol, dark_mode):
+    """5-bar kapanış fiyatı sparkline — scan result kartları için."""
+    try:
+        df = get_safe_historical_data(symbol)
+        if df is None or len(df) < 5:
+            return None
+        closes = df['Close'].iloc[-5:].values.astype(float)
+
+        bg    = '#0b0f19' if dark_mode else '#f8fafc'
+        up    = closes[-1] >= closes[0]
+        color = '#26a69a' if up else '#ef5350'
+
+        fig, ax = plt.subplots(figsize=(1.8, 0.55))
+        fig.patch.set_facecolor(bg)
+        ax.set_facecolor(bg)
+        ax.axis('off')
+
+        x = list(range(5))
+        ax.plot(x, closes, color=color, linewidth=2.0,
+                solid_capstyle='round', solid_joinstyle='round')
+        ax.fill_between(x, closes, closes.min() * 0.998,
+                        alpha=0.18, color=color)
+        # Son nokta belirgin
+        ax.scatter([4], [closes[-1]], color=color, s=18, zorder=5)
+
+        plt.tight_layout(pad=0.1)
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=90,
+                    bbox_inches='tight', facecolor=bg)
+        plt.close(fig)
+        buf.seek(0)
+        return base64.b64encode(buf.read()).decode()
+    except Exception:
+        return None
+
+def _rsi_bar_html(rsi_val):
+    """Yatay RSI progress bar (30=kırmızı, 50=yeşil, 70=sarı)."""
+    try:
+        rsi = float(rsi_val)
+    except:
+        return ""
+    if rsi <= 30:
+        bar_color, zone = '#ef5350', 'AŞIRI SATIŞ'
+    elif rsi <= 55:
+        bar_color, zone = '#66bb6a', 'SAĞLIKLI'
+    elif rsi <= 70:
+        bar_color, zone = '#ffd600', 'ISINIYOR'
     else:
-        color = "#b91c1c" 
-        if score >= 50: color = "#d97706" 
-        if score >= 70: color = "#16a34a" 
-        if score >= 85: color = "#15803d" 
-        
-        source = pd.DataFrame({"category": ["Skor", "Kalan"], "value": [score, 100-score]})
-        base = alt.Chart(source).encode(theta=alt.Theta("value", stack=True))
-        pie = base.mark_arc(outerRadius=55, innerRadius=40).encode(
-            color=alt.Color("category", scale=alt.Scale(domain=["Skor", "Kalan"], range=[color, "#e2e8f0"]), legend=None),
-            order=alt.Order("category", sort="descending"), tooltip=["value"]
-        )
-        text = base.mark_text(radius=0, size=28, color=color, fontWeight="bold", dy=-5).encode(text=alt.value(f"{score}"))
-        label = base.mark_text(radius=0, size=11, color="#1e3a8a", fontWeight="bold", dy=20).encode(text=alt.value("GENEL SAĞLIK"))
-        
-        chart = (pie + text + label).properties(height=130) 
-        st.altair_chart(chart, use_container_width=True)
+        bar_color, zone = '#ff7043', 'AŞIRI ALIM'
+    pct = min(max(rsi, 0), 100)
+    return (
+        f"<div style='margin:6px 0 2px 0;'>"
+        f"<div style='display:flex;justify-content:space-between;font-size:0.65rem;color:#64748b;font-family:monospace;margin-bottom:2px;'>"
+        f"<span>RSI <b style='color:{bar_color};'>{rsi:.0f}</b></span>"
+        f"<span style='color:{bar_color};font-weight:700;'>{zone}</span>"
+        f"</div>"
+        f"<div style='background:#e2e8f0;border-radius:4px;height:6px;width:100%;'>"
+        f"<div style='background:{bar_color};width:{pct}%;height:6px;border-radius:4px;'></div>"
+        f"</div>"
+        f"<div style='display:flex;justify-content:space-between;font-size:0.6rem;color:#94a3b8;margin-top:1px;'>"
+        f"<span>0</span><span>30</span><span>50</span><span>70</span><span>100</span>"
+        f"</div>"
+        f"</div>"
+    )
+
 
 def render_sentiment_card(sent):
     if not sent: return
-    display_ticker = st.session_state.ticker.replace(".IS", "").replace("=F", "")
+    display_ticker = get_display_name(st.session_state.ticker)
     
     score = sent['total']
     # Renk ve İkon Belirleme
@@ -6523,7 +6760,9 @@ def render_sentiment_card(sent):
     cards_html += make_card("1", "YAPI", p_label, sent['str'], "Market Yapısı- Son 20 günün %97-100 zirvesinde (12). Son 5 günün en düşük seviyesi, önceki 20 günün en düşük seviyesinden yukarıdaysa: HL (8)", "🏗️")
     cards_html += make_card("2", "TREND", p_label, sent['tr'], "Ortalamalara bakar. Hisse fiyatı SMA200 üstünde (8). EMA20 üstünde (8). Kısa vadeli ortalama, orta vadeli ortalamanın üzerinde, yani EMA20 > SMA50 (4)", "📈")
     cards_html += make_card("3", "HACİM", p_label, sent['vol'], "Hacmin 20G ortalamaya oranını ve On-Balance Volume (OBV) denetler. Bugünün hacmi son 20G ort.üstünde (12) Para girişi var: 10G ortalamanın üstünde (8)", "🌊")
-    cards_html += make_card("4", "MOMENTUM", "15p", sent['mom'], "RSI ve MACD ile itki gücünü ölçer. 50 üstü RSI (5) RSI ivmesi artıyor (5). MACD sinyal çizgisi üstünde (5)", "🚀")
+    _rsi_raw = sent.get('raw_rsi', 50)
+    _rsi_bar = _rsi_bar_html(_rsi_raw)
+    cards_html += make_card("4", "MOMENTUM", "15p", sent['mom'], f"RSI ve MACD ile itki gücünü ölçer. 50 üstü RSI (5) RSI ivmesi artıyor (5). MACD sinyal çizgisi üstünde (5){_rsi_bar}", "🚀")
     cards_html += make_card("5", "SIKIŞMA", "10p", sent['vola'], "Bollinger Bant genişliğini inceler. Bant genişliği son 20G ortalamasından dar (10)", "📐")
     cards_html += make_card("6", "GÜÇ", rs_label, sent['rs'], "Hissenin Endekse göre relatif gücünü (RS) ölçer. Mansfield RS göstergesi 0'ın üzerinde (5). RS trendi son 5 güne göre yükselişte (5). Endeks düşerken hisse artıda (Alpha) (5)", "💪")
 
@@ -6547,7 +6786,7 @@ def render_sentiment_card(sent):
 def render_deep_xray_card(xray):
     if not xray: return
     
-    display_ticker = st.session_state.ticker.replace(".IS", "").replace("=F", "")
+    display_ticker = get_display_name(st.session_state.ticker)
     
     html_icerik = f"""
     <div class="info-card">
@@ -6606,7 +6845,7 @@ def render_detail_card_advanced(ticker):
         "ADX Durumu": "💪 ADX Trend Gücü"
     }
 
-    display_ticker = ticker.replace(".IS", "").replace("=F", "")
+    display_ticker = get_display_name(ticker)
     dt = get_tech_card_data(ticker)
     info = fetch_stock_info(ticker)
     
@@ -6710,7 +6949,7 @@ def render_detail_card_advanced(ticker):
 
 def render_synthetic_sentiment_panel(data):
     if data is None or data.empty: return
-    display_ticker = st.session_state.ticker.replace(".IS", "").replace("=F", "")
+    display_ticker = get_display_name(st.session_state.ticker)
     
     info = fetch_stock_info(st.session_state.ticker)
     current_price = info.get('price', 0) if info else 0
@@ -6796,28 +7035,41 @@ def render_price_action_panel(ticker):
         # Sadece seçili hisse için formasyon taraması yapıyoruz
         pat_df = scan_chart_patterns([ticker])
         if not pat_df.empty:
-            pattern_name = pat_df.iloc[0]['Formasyon']
-            pattern_desc = pat_df.iloc[0]['Detay']
+            pattern_name  = pat_df.iloc[0]['Formasyon']
+            pattern_desc  = pat_df.iloc[0]['Detay']
             pattern_score = pat_df.iloc[0]['Skor']
+            pattern_chart = pat_df.iloc[0].get('ChartData', None)
         else:
-            pattern_name = ""
-            pattern_desc = ""
+            pattern_name  = ""
+            pattern_desc  = ""
             pattern_score = 0
+            pattern_chart = None
     except:
-        pattern_name = ""
-        pattern_desc = ""
+        pattern_name  = ""
+        pattern_desc  = ""
         pattern_score = 0
+        pattern_chart = None
 
     # Mevcut mum başlığını ve açıklamasını alıyoruz
     pa_candle_title = pa['candle']['title']
     pa_candle_desc = pa['candle']['desc']
-    
+
     # Eğer formasyon bulunduysa, mevcut mum verisinin yanına ekliyoruz
     if pattern_name:
         pa_candle_title = f"{pa_candle_title} | 📐 {pattern_name} (Skor: {pattern_score})"
-        pa_candle_desc = f"{pa_candle_desc}<br><br><div style='background:rgba(56,189,248,0.08); border-left:3px solid #38bdf8; border-radius:0 4px 4px 0; padding:6px 10px; margin-top:4px;'><span style='color:#38bdf8; font-weight:800; font-size:0.85rem;'>📐 {pattern_name}</span><br><span style='color:#94a3b8; font-size:0.78rem;'>{pattern_desc}</span></div>"
+        _chart_img = ""
+        if pattern_chart and isinstance(pattern_chart, dict):
+            _b64 = _mini_pattern_chart_b64(ticker, pattern_chart, st.session_state.get('dark_mode', False))
+            if _b64:
+                _chart_img = f"<img src='data:image/png;base64,{_b64}' style='width:100%;border-radius:4px;margin-top:6px;display:block;'/>"
+        pa_candle_desc = (f"{pa_candle_desc}<br><br>"
+                          f"<div style='background:rgba(56,189,248,0.08); border-left:3px solid #38bdf8; "
+                          f"border-radius:0 4px 4px 0; padding:6px 10px; margin-top:4px;'>"
+                          f"<span style='color:#38bdf8; font-weight:800; font-size:0.85rem;'>📐 {pattern_name}</span><br>"
+                          f"<span style='color:#94a3b8; font-size:0.78rem;'>{pattern_desc}</span>"
+                          f"{_chart_img}</div>")
     # =========================================================
-    display_ticker = ticker.replace(".IS", "").replace("=F", "")
+    display_ticker = get_display_name(ticker)
     div_data = pa.get('div', {'type': 'neutral', 'title': '-', 'desc': '-'})
     vwap_data = pa.get('vwap', {'val': 0, 'diff': 0})
     rs_data = pa.get('rs', {'alpha': 0})
@@ -7287,9 +7539,10 @@ def render_ict_deep_panel(ticker):
         struct_target_desc  = ("Geçmişte büyük fonların yoğun alım yaptığı kritik bir dip bölgesi. "
                                "Düşüş devam ederse fiyatın orta-uzun vadede test edeceği seviye.")
                                    
-    display_ticker = ticker.replace(".IS", "").replace("=F", "")
+    display_ticker = get_display_name(ticker)
     info = fetch_stock_info(ticker)
-    current_price_str = f"{info.get('price', 0):.2f}" if info else "0.00"
+    _cp_raw = info.get('price', 0) if info else 0
+    current_price_str = (f"{int(_cp_raw)}" if _cp_raw >= 1000 else f"{_cp_raw:.2f}") if info else "0.00"
 
     # --- MODEL SKORU GÖRSEL DEĞİŞKENLERİ ---
     model_score  = data.get('model_score', 0)
@@ -7485,7 +7738,7 @@ def render_ict_deep_panel(ticker):
         bg = "#f0fdf4" if "bullish" in data['bias'] else "#fef2f2" if "bearish" in data['bias'] else "#f5f3ff"
         st.markdown(f"""
         <div class="info-card" style="border-top: 4px solid {mc}; margin-bottom:10px; border-radius: 8px;">
-            <div class="info-header" style="color:#1e3a8a; display:flex; justify-content:space-between; align-items:center; padding: 3px 12px;"><span style="font-size:1.15rem; font-weight: 800;">🧠 ICT Smart Money Analizi: {display_ticker}</span><span title="{_checks_tip}" style="cursor:default; font-family:monospace; color:{_sc}; font-size:0.88rem; font-weight:700; letter-spacing:2px; background:#f8fafc; padding:3px 10px; border-radius:6px; border:2px solid {_sc};">{_blocks} &nbsp;{model_score}/5 · {_slabel}</span><span style="font-family:'JetBrains Mono'; font-weight:800; color:#0f172a; font-size:1.1rem; background: #f1f5f9; padding: 2px 8px; border-radius: 6px;">{current_price_str}</span></div>
+            <div class="info-header" style="color:#1e3a8a; display:flex; justify-content:space-between; align-items:center; padding: 3px 12px;"><span style="font-size:1.15rem; font-weight: 800;">🧠 ICT Smart Money Analizi: {display_ticker}</span><span title="{_checks_tip}" style="cursor:default; font-family:monospace; color:{_sc}; font-size:0.88rem; font-weight:700; letter-spacing:2px; background:#f8fafc; padding:3px 10px; border-radius:6px; border:2px solid {_sc};">{_blocks} &nbsp;{model_score}/5 · {_slabel}</span><span style="background:rgba(30,58,138,0.12); color:#1e3a8a; padding:2px 10px; border-radius:4px; font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.9rem; border:1px solid rgba(30,58,138,0.2);">{display_ticker} <span style="opacity:0.6; margin:0 4px; font-weight:400;">—</span> <span style="color:#1e3a8a;">{current_price_str}</span></span></div>
         </div>""", unsafe_allow_html=True)
         
         c1, c2 = st.columns([1.4, 1])
@@ -7533,9 +7786,10 @@ def render_ict_deep_panel(ticker):
 def render_levels_card(ticker):
     data = get_advanced_levels_data(ticker)
     if not data: return
-    display_ticker = ticker.replace(".IS", "").replace("=F", "").replace("-USD", "")
+    display_ticker = get_display_name(ticker)
     info = fetch_stock_info(ticker)
-    current_price_str = f"{info.get('price', 0):.2f}" if info else "0.00"
+    _cp_raw = info.get('price', 0) if info else 0
+    current_price_str = (f"{int(_cp_raw)}" if _cp_raw >= 1000 else f"{_cp_raw:.2f}") if info else "0.00"
     
     is_bullish = data['st_dir'] == 1
     st_color = "#10b981" if is_bullish else "#ef4444" if st.session_state.dark_mode else "#16a34a" if is_bullish else "#dc2626"
@@ -7719,7 +7973,7 @@ def render_minervini_panel_v2(ticker):
     if not data: return 
 
     # --- HİSSE ADINI HAZIRLA ---
-    display_ticker = ticker.replace(".IS", "").replace("=F", "")
+    display_ticker = get_display_name(ticker)
 
     # 2. Görsel öğeleri hazırla
     trend_icon = "✅" if data['trend_ok'] else "❌"
@@ -7786,6 +8040,196 @@ def render_minervini_panel_v2(ticker):
 """
     
     st.markdown(html_content, unsafe_allow_html=True)
+
+# --- MİNİ FORMASYON GRAFİĞİ (tüm pattern tipleri) ---
+@st.cache_data(ttl=900, show_spinner=False)
+def _mini_pattern_chart_b64(symbol, chart_data, dark_mode):
+    """Her formasyon tipine göre mum grafik çizer. Döndürür: base64 PNG string."""
+    try:
+        from matplotlib.patches import Rectangle
+        df = get_safe_historical_data(symbol, period="2y")
+        if df is None or df.empty:
+            return ""
+
+        close     = df['Close']
+        opens_s   = df['Open']
+        highs_s   = df['High']
+        lows_s    = df['Low']
+        date_strs = [str(d.date()) for d in df.index]
+        bar_total = len(df)
+        pat_type  = chart_data['type']
+
+        def date_to_bar(d_str):
+            try:
+                return date_strs.index(d_str)
+            except ValueError:
+                from datetime import date as _date
+                tgt = _date.fromisoformat(d_str)
+                return min(range(bar_total), key=lambda i: abs((df.index[i].date() - tgt).days))
+
+        # --- Her zaman son 60 bar ---
+        bar_start = max(0, bar_total - 60)
+        bar_end   = bar_total - 1
+        n         = bar_end - bar_start + 1
+
+        sl_open  = list(opens_s.iloc[bar_start:bar_end + 1].values)
+        sl_high  = list(highs_s.iloc[bar_start:bar_end + 1].values)
+        sl_low   = list(lows_s.iloc[bar_start:bar_end + 1].values)
+        sl_close = list(close.iloc[bar_start:bar_end + 1].values)
+
+        y_all   = sl_high + sl_low
+        y_range = (max(y_all) - min(y_all)) or 1
+
+        def d2x(d_str):
+            return date_to_bar(d_str) - bar_start
+
+        # --- Renkler ---
+        bg_c      = "#0d1117" if dark_mode else "#f0f4f8"
+        axis_c    = "#334155" if dark_mode else "#94a3b8"
+        up_c      = "#26a69a"   # yeşil mum
+        dn_c      = "#ef5350"   # kırmızı mum
+
+        fig, ax = plt.subplots(figsize=(5.4, 2.8), facecolor=bg_c)
+        ax.set_facecolor(bg_c)
+
+        # --- Mum grafiği ---
+        cw = 0.55  # mum gövde genişliği
+        for i, (o, h, l, c_) in enumerate(zip(sl_open, sl_high, sl_low, sl_close)):
+            color = up_c if c_ >= o else dn_c
+            ax.plot([i, i], [l, h], color=color, linewidth=0.7, zorder=3)
+            body_bot = min(o, c_)
+            body_h   = abs(c_ - o) or y_range * 0.002
+            rect = Rectangle((i - cw / 2, body_bot), cw, body_h,
+                              facecolor=color, edgecolor=color, linewidth=0, zorder=4, alpha=0.9)
+            ax.add_patch(rect)
+
+        def _lbl(px, py, txt, color, is_high):
+            if not (0 <= px < n):
+                return
+            dy = -y_range * 0.06 if is_high else y_range * 0.06
+            ax.text(px, py + dy, txt, color=bg_c, fontsize=6,
+                    ha='center', va='top' if is_high else 'bottom', fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.15', facecolor=color, alpha=0.92, edgecolor='none'))
+
+        def _hline(price, color, label="", ls='--', lw=1.3):
+            ax.hlines(price, xmin=0, xmax=n - 1, colors=color, linewidths=lw, linestyles=ls, alpha=0.9)
+            if label:
+                ax.text(n - 2, price, f" {label}", color=color, fontsize=6,
+                        va='bottom', ha='right', fontweight='bold')
+
+        # --- Formasyon overlay'leri ---
+        if pat_type == "cup":
+            piv_x = [d2x(d) for d in chart_data['pivot_dates']]
+            piv_y = chart_data['pivot_prices']
+            piv_t = chart_data['pivot_types']
+            cup_c, hnd_c = "#38bdf8", "#a78bfa"
+            ax.plot(piv_x[:3], piv_y[:3], color=cup_c, lw=2.2, marker='o', ms=5, zorder=5)
+            if len(piv_x) >= 4:
+                ax.plot(piv_x[2:4], piv_y[2:4], color=hnd_c, lw=1.8, marker='o', ms=5, ls='--', zorder=5)
+            _hline(chart_data['neck'], "#f59e0b", f"{chart_data['neck']:.2f}")
+            for px, py, pt in zip(piv_x, piv_y, piv_t):
+                _lbl(px, py, pt, cup_c, pt == 'H')
+
+        elif pat_type == "tobo":
+            piv_x = [d2x(d) for d in chart_data['pivot_dates']]
+            piv_y = chart_data['pivot_prices']
+            piv_t = chart_data['pivot_types']
+            col   = "#fb923c"
+            ax.plot(piv_x, piv_y, color=col, lw=2.2, marker='o', ms=5, zorder=5)
+            _hline(chart_data['neck'], "#f59e0b", f"{chart_data['neck']:.2f}")
+            for px, py, pt in zip(piv_x, piv_y, piv_t):
+                _lbl(px, py, pt, col, pt == 'H')
+
+        elif pat_type == "flag":
+            fh, fl = chart_data['flag_h'], chart_data['flag_l']
+            pe_x   = d2x(chart_data['pole_end_date'])
+            ax.axhspan(fl, fh, alpha=0.07, color='#f59e0b')
+            _hline(fh, "#ef4444", f"{fh:.2f}")
+            _hline(fl, "#10b981", f"{fl:.2f}", ls='-.')
+            if 0 <= pe_x < n:
+                ax.axvline(x=pe_x, color='#f59e0b', lw=1, ls=':', alpha=0.7)
+
+        elif pat_type == "triangle":
+            _hline(chart_data['resistance'], "#ef4444", f"{chart_data['resistance']:.2f}", lw=1.8)
+            piv_dates  = chart_data.get('pivot_dates', [])
+            piv_prices = chart_data.get('pivot_prices', [])
+            piv_types  = chart_data.get('pivot_types', [])
+            if piv_dates:
+                lows_x = [d2x(d) for d, p, t in zip(piv_dates, piv_prices, piv_types) if t == 'L']
+                lows_y = [float(p) for d, p, t in zip(piv_dates, piv_prices, piv_types) if t == 'L']
+                if len(lows_x) >= 2:
+                    ax.plot(lows_x, lows_y, color="#38bdf8", lw=1.8, marker='o', ms=4, zorder=5)
+                    ax.plot([lows_x[0], lows_x[-1]], [lows_y[0], lows_y[-1]],
+                            color="#38bdf8", lw=1, ls='--', alpha=0.5)
+
+        elif pat_type == "range":
+            res, sup = chart_data['resistance'], chart_data['support']
+            ax.axhspan(sup, res, alpha=0.05, color='#94a3b8')
+            _hline(res, "#ef4444", f"{res:.2f}", lw=1.5)
+            _hline(sup, "#10b981", f"{sup:.2f}", lw=1.5, ls='-.')
+
+        elif pat_type == "saucer":
+            _hline(chart_data['right_high'], "#a78bfa", f"{chart_data['right_high']:.2f}", lw=1.5)
+            _hline(chart_data['cup_bottom'],  "#38bdf8", f"{chart_data['cup_bottom']:.2f}",  lw=1, ls=':')
+            _hline(chart_data['left_high'],   "#64748b", ls=':', lw=0.8)
+
+        elif pat_type == "qml":
+            piv_x = [d2x(d) for d in chart_data['pivot_dates']]
+            piv_y = chart_data['pivot_prices']
+            piv_t = chart_data['pivot_types']
+            col   = "#38bdf8"
+            ax.plot(piv_x, piv_y, color=col, lw=2, marker='o', ms=5, zorder=5)
+            _hline(chart_data['qml_line'], "#f59e0b", f"QML {chart_data['qml_line']:.2f}", lw=1.5)
+            for px, py, pt in zip(piv_x, piv_y, piv_t):
+                _lbl(px, py, pt, col, pt == 'H')
+
+        elif pat_type == "three_drive":
+            piv_x = [d2x(d) for d in chart_data['pivot_dates']]
+            piv_y = chart_data['pivot_prices']
+            col   = "#fb923c"
+            ax.plot(piv_x, piv_y, color=col, lw=2, marker='v', ms=7, zorder=5)
+            if len(piv_x) >= 2:
+                ax.plot([piv_x[0], piv_x[-1]], [piv_y[0], piv_y[-1]],
+                        color=col, lw=1, ls='--', alpha=0.5)
+            for i, (px, py) in enumerate(zip(piv_x, piv_y)):
+                if 0 <= px < n:
+                    ax.text(px, py - y_range * 0.07, f"D{i+1}", color=col,
+                            fontsize=6, ha='center', va='top', fontweight='bold')
+
+        elif pat_type == "sr_level":
+            lvl = chart_data['level']
+            col = "#10b981" if chart_data['is_support'] else "#ef4444"
+            lbl = "Destek" if chart_data['is_support'] else "Direnç"
+            ax.axhspan(lvl * 0.992, lvl * 1.008, alpha=0.12, color=col)
+            _hline(lvl, col, f"{lvl:.2f} ({lbl})", lw=2)
+
+        # --- Tarih ekseni: 4 tick (sol uç, 2 ara, sağ uç) ---
+        tick_pos = [0, n // 3, 2 * n // 3, n - 1]
+        tick_lbl = []
+        for tp in tick_pos:
+            actual = bar_start + tp
+            actual = min(actual, bar_total - 1)
+            tick_lbl.append(df.index[actual].strftime("%d %b '%y"))
+        ax.set_xticks(tick_pos)
+        ax.set_xticklabels(tick_lbl, fontsize=6.5, color=axis_c)
+
+        # --- Eksen stili ---
+        for sp in ['top', 'left', 'right']:
+            ax.spines[sp].set_visible(False)
+        ax.spines['bottom'].set_color(axis_c)
+        ax.spines['bottom'].set_linewidth(0.5)
+        ax.tick_params(left=False, right=False, labelleft=False, labelright=False,
+                       bottom=False, labelbottom=True, pad=3)
+        ax.set_xlim(-0.5, n - 0.5)
+
+        plt.tight_layout(pad=0.15)
+        buf_io = io.BytesIO()
+        fig.savefig(buf_io, format='png', dpi=120, bbox_inches='tight', pad_inches=0.06, facecolor=bg_c)
+        plt.close(fig)
+        buf_io.seek(0)
+        return base64.b64encode(buf_io.read()).decode()
+    except Exception:
+        return ""
 
 # --- 8 MADDELİK HİBRİT (PA + QUANT) TEKNİK YOL HARİTASI ---
 @st.cache_data(ttl=600)
@@ -7856,9 +8300,14 @@ def calculate_8_point_roadmap(ticker):
         except: pass
         
         if not pat_df.empty:
-            pat_name = pat_df.iloc[0]['Formasyon']
-            m2 = f"<b>Mevcut Formasyon:</b> {pat_name}<br><b>Ana Yapı:</b> {'İtki (Trend)' if cp > sma50 else 'Düzeltme (Pullback)'}"
+            pat_name  = pat_df.iloc[0]['Formasyon']
+            chart_dat = pat_df.iloc[0].get('ChartData', None)
+            _hint = ('<br><span style="color:#1e3a8a;font-weight:600;font-size:11px;">'
+                     '🔍 Detaylı grafik ve kilit seviyeleri için aşağıdaki butona tıklayın</span>') if chart_dat else ""
+            m2 = (f"<b>Mevcut Formasyon:</b> {pat_name}<br>"
+                  f"<b>Ana Yapı:</b> {'İtki (Trend)' if cp > sma50 else 'Düzeltme (Pullback)'}{_hint}")
         else:
+            chart_dat = None
             m2 = f"<b>Mevcut Formasyon:</b> Kitabi bir yapı görünmüyor.<br><b>Ana Yapı:</b> {'İtki (Trend)' if cp > sma50 else 'Düzeltme Fazı'}"
 
         # --- 3. EFOR VS SONUÇ (VSA) ---
@@ -7992,16 +8441,153 @@ def calculate_8_point_roadmap(ticker):
         m8 = f"<b>Piyasa Sentezi:</b> {ozet_metin}"
 
         return {
-            "M1": m1, "M2": m2, "M3": m3, "M4": m4, "M5": m5, "M6": m6, "M7": m7, "M8": m8
+            "M1": m1, "M2": m2, "M3": m3, "M4": m4, "M5": m5, "M6": m6, "M7": m7, "M8": m8,
+            "M2_chart_data": chart_dat,
         }
     except Exception as e:
         return None
+
+def _pattern_side_info_html(chart_data, curr_price, dark_mode):
+    """Formasyon tipi için sağ panel açıklama + kilit seviyeler HTML'i."""
+    pat_type = chart_data.get('type', '')
+    bg     = "rgba(13,17,23,0.0)"
+    txt_c  = "#f1f5f9" if dark_mode else "#0f172a"
+    sub_c  = "#cbd5e1" if dark_mode else "#334155"
+    lbl_c  = "#94a3b8" if dark_mode else "#64748b"
+    brd_c  = "rgba(255,255,255,0.10)" if dark_mode else "rgba(0,0,0,0.10)"
+
+    _LABELS = {
+        "cup":         ("☕", "Fincan-Kulp"),
+        "tobo":        ("📐", "TOBO"),
+        "flag":        ("🚩", "Boğa Bayrağı"),
+        "triangle":    ("📈", "Yükselen Üçgen"),
+        "range":       ("↔️", "Range"),
+        "saucer":      ("🥣", "Çanak"),
+        "qml":         ("🎯", "Quasimodo"),
+        "three_drive": ("3️⃣", "3 Drive"),
+        "sr_level":    ("🧱", "Destek/Direnç"),
+    }
+    emoji, name = _LABELS.get(pat_type, ("📊", "Formasyon"))
+
+    desc   = ""
+    levels = []  # (label, price, color)
+    target = None
+    invalid = None
+
+    if pat_type == "cup":
+        neck   = chart_data['neck']
+        bottom = chart_data['pivot_prices'][1]
+        desc   = "Fiyat büyük bir düşüş sonrası <b>U şeklinde</b> toparlandı. Boyun çizgisi kırılırsa yükseliş ivme kazanır."
+        levels = [("Boyun Çizgisi", neck, "#f59e0b"), ("Kupa Dibi", bottom, "#38bdf8")]
+        target = neck + (neck - bottom)
+        invalid = bottom
+    elif pat_type == "tobo":
+        neck   = chart_data['neck']
+        bottom = chart_data['pivot_prices'][2]
+        desc   = "Üç dip oluştu, orta dip en düşük — <b>ters omuz-baş-omuz</b>. Boyun kırılırsa trend tersine döner."
+        levels = [("Boyun Çizgisi", neck, "#f59e0b"), ("Orta Dip", bottom, "#38bdf8")]
+        target = neck + (neck - bottom)
+        invalid = bottom
+    elif pat_type == "flag":
+        fh, fl = chart_data['flag_h'], chart_data['flag_l']
+        desc   = "Güçlü yükseliş sonrası fiyat <b>daralan bir kanalda</b> sıkıştı. Üst sınır kırılırsa hareket hız kazanır."
+        levels = [("Üst Sınır (Kırılım)", fh, "#ef4444"), ("Alt Sınır", fl, "#10b981")]
+        target = fh + (fh - fl)
+        invalid = fl
+    elif pat_type == "triangle":
+        res  = chart_data['resistance']
+        desc = "Fiyat <b>giderek yükselen dipler</b> yaparken dirençte takılı. Direnç kırılırsa sert yükseliş gelebilir."
+        levels  = [("Direnç (Kırılım)", res, "#ef4444")]
+        invalid = res * 0.97
+    elif pat_type == "range":
+        res, sup = chart_data['resistance'], chart_data['support']
+        desc = "Fiyat belirli bir <b>bant içinde</b> gidip geliyor. Üst bant kırılırsa bant genişliği kadar yükseliş beklenir."
+        levels  = [("Üst Bant (Kırılım)", res, "#ef4444"), ("Alt Bant", sup, "#10b981")]
+        target  = res + (res - sup)
+        invalid = sup
+    elif pat_type == "saucer":
+        boyun  = chart_data['right_high']
+        bottom = chart_data['cup_bottom']
+        desc   = "Fiyat uzun süre yatay seyredip dip oluşturduktan sonra toparlanıyor. <b>Boyun kırılırsa</b> yükseliş hızlanır."
+        levels  = [("Boyun Çizgisi", boyun, "#a78bfa"), ("Çanak Dibi", bottom, "#38bdf8")]
+        target  = boyun + (boyun - bottom)
+        invalid = bottom
+    elif pat_type == "qml":
+        qml  = chart_data['qml_line']
+        desc = "Fiyat eski düşük seviyeyi <b>test edip geri döndü</b>. QML üstünde tutunursa güçlü toparlanma gelebilir."
+        levels  = [("QML Çizgisi", qml, "#f59e0b")]
+        invalid = qml
+    elif pat_type == "three_drive":
+        pivots = chart_data['pivot_prices']
+        desc   = "Her biri öncekinden yüksek <b>üç dip noktası</b> oluştu. Alıcılar giderek daha yüksek fiyattan giriyor."
+        levels  = [(f"D{i+1}", float(p), "#fb923c") for i, p in enumerate(pivots)]
+        invalid = float(pivots[0]) if pivots else None
+    elif pat_type == "sr_level":
+        lvl    = chart_data['level']
+        is_sup = chart_data['is_support']
+        lbl_t  = "destek" if is_sup else "direnç"
+        col    = "#10b981" if is_sup else "#ef4444"
+        desc   = f"Fiyat geçmişte defalarca test edilen <b>güçlü bir {lbl_t}</b> bölgesinde. Bölge tutunursa güçlü hareket beklenir."
+        levels = [(("Destek" if is_sup else "Direnç") + " Bölgesi", lvl, col)]
+
+    def fp(v): return f"{v:,.2f}" if v < 1000 else f"{int(v):,}"
+
+    lvl_rows = ""
+    for lbl, price, color in levels:
+        arrow   = "&#9650;" if curr_price > price else "&#9660;"
+        arrow_c = "#10b981" if curr_price > price else "#ef4444"
+        lvl_rows += (f'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid {brd_c};">'
+                     f'<span style="color:{sub_c};font-size:12px;">{lbl}</span>'
+                     f'<span style="color:{color};font-weight:800;font-size:13px;font-family:monospace;">'
+                     f'{fp(price)}<span style="color:{arrow_c};font-size:10px;"> {arrow}</span></span></div>')
+
+    target_row = ""
+    if target:
+        target_row = (f'<div style="margin-top:8px;padding:6px 8px;border-radius:5px;background:rgba(16,185,129,0.12);border-left:3px solid #10b981;">'
+                      f'<div style="color:{lbl_c};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Tahmini Hedef</div>'
+                      f'<div style="color:#10b981;font-weight:800;font-size:17px;font-family:monospace;">{fp(target)}</div></div>')
+
+    invalid_row = ""
+    if invalid:
+        invalid_row = (f'<div style="margin-top:5px;padding:6px 8px;border-radius:5px;background:rgba(239,68,68,0.10);border-left:3px solid #ef4444;">'
+                       f'<div style="color:{lbl_c};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Gecersizlik</div>'
+                       f'<div style="color:#ef4444;font-weight:700;font-size:13px;font-family:monospace;">{fp(invalid)} alti</div></div>')
+
+    return (f'<div style="display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:7px;border:1px solid {brd_c};">'
+            f'<div style="font-size:15px;font-weight:800;color:{txt_c};margin-bottom:2px;">{emoji} {name}</div>'
+            f'<div style="font-size:15px;color:{sub_c};line-height:1.55;margin-bottom:6px;">{desc}</div>'
+            f'<div style="font-size:10px;font-weight:700;color:{lbl_c};text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px;">Kilit Seviyeler</div>'
+            f'{lvl_rows}{target_row}{invalid_row}</div>')
+
+
+@st.dialog("📊 Formasyon Grafiği", width="large")
+def _formasyon_dialog(ticker, chart_data, current_price, display_ticker, pat_label, is_dark):
+    st.markdown(
+        f"<div style='font-size:16px;font-weight:800;color:#1e3a8a;margin-bottom:10px;'>"
+        f"🔍 {display_ticker} için Oluşan {pat_label} Formasyon Grafiği</div>",
+        unsafe_allow_html=True
+    )
+    _b64 = _mini_pattern_chart_b64(ticker, chart_data, is_dark)
+    if _b64:
+        _col_chart, _col_info = st.columns([58, 40], gap="small")
+        with _col_chart:
+            st.markdown(
+                f"<img src='data:image/png;base64,{_b64}' "
+                f"style='width:100%;border-radius:6px;display:block;margin:0;'/>",
+                unsafe_allow_html=True
+            )
+        with _col_info:
+            _info_html = _pattern_side_info_html(chart_data, current_price, is_dark)
+            st.markdown(_info_html, unsafe_allow_html=True)
+    else:
+        st.warning("Grafik oluşturulamadı.")
+
 
 def render_roadmap_8_panel(ticker):
     data = calculate_8_point_roadmap(ticker)
     if not data: return
 
-    display_ticker = ticker.split('.')[0].replace("=F", "").replace("-USD", "")
+    display_ticker = get_display_name(ticker)
     
     # --- 1. YENİ EKLENEN: FİYAT ÇEKME VE KÜSURAT AYARI ---
     info = fetch_stock_info(ticker)
@@ -8069,7 +8655,23 @@ def render_roadmap_8_panel(ticker):
     """
     st.markdown(html_content.replace('\n', ''), unsafe_allow_html=True)
 
-#         
+    # --- Formasyon mini grafiği — popup dialog ---
+    _m2_chart = data.get('M2_chart_data')
+    if _m2_chart and isinstance(_m2_chart, dict):
+        _type_labels = {
+            "cup": "Fincan-Kulp", "tobo": "TOBO", "flag": "Boğa Bayrağı",
+            "triangle": "Yükselen Üçgen", "range": "Range", "saucer": "Çanak",
+            "qml": "Quasimodo", "three_drive": "3 Drive", "sr_level": "Destek/Direnç"
+        }
+        _pat_label = _type_labels.get(_m2_chart.get('type', ''), "Formasyon")
+        _is_dark   = st.session_state.get('dark_mode', False)
+        if st.button(
+            f"🔍 {display_ticker} için Oluşan {_pat_label} Formasyon Grafiğini Görüntüle",
+            type="primary", use_container_width=False, key="btn_formasyon_dialog"
+        ):
+            _formasyon_dialog(ticker, _m2_chart, current_price, display_ticker, _pat_label, _is_dark)
+
+#
 # ==============================================================================
 # 5. SIDEBAR UI
 # ==============================================================================
@@ -8347,8 +8949,14 @@ with st.sidebar:
 
             items_html = ""
             for icon, text, color in alert_items:
-                # padding:0px; ve line-height:1.1; eklenerek satırın dikey yüksekliği tamamen daraltıldı
-                items_html += f"<div style='display:flex;align-items:center;gap:6px;padding:1px;border-bottom:1px solid {border_panel};'><span style='font-size:0.85rem;line-height:1;'>{icon}</span><span style='font-size:0.72rem;color:{color};font-weight:600;line-height:1.2;'>{text}</span></div>"
+                c_lo = color.lower()
+                if any(c in c_lo for c in ['10b981','15803d','22c55e','4ade80','059669','16a34a','34d399']):
+                    arr = "<span style='font-size:0.75rem;font-weight:900;color:#10b981;margin-left:auto;'>↑</span>"
+                elif any(c in c_lo for c in ['ef4444','dc2626','f87171','b91c1c','991b1b','e11d48']):
+                    arr = "<span style='font-size:0.75rem;font-weight:900;color:#ef4444;margin-left:auto;'>↓</span>"
+                else:
+                    arr = "<span style='font-size:0.75rem;font-weight:700;color:#94a3b8;margin-left:auto;'>→</span>"
+                items_html += f"<div style='display:flex;align-items:center;gap:5px;padding:1px;border-bottom:1px solid {border_panel};'><span style='font-size:0.85rem;line-height:1;'>{icon}</span><span style='font-size:0.72rem;color:{color};font-weight:600;line-height:1.2;flex:1;'>{text}</span>{arr}</div>"
             if not items_html:
                 items_html = f"<div style='font-size:0.72rem;color:#64748b;padding:4px 0;'>Aktif sinyal yok.</div>"
 
@@ -8622,194 +9230,194 @@ with st.sidebar:
     # -----------------------------------------------------------------------------
     # 🏆 ALTIN FIRSAT & ♠️ ROYAL FLUSH (SÜPER TARAMA MOTORU)
     # -----------------------------------------------------------------------------
-    def get_golden_trio_batch_scan(ticker_list):
-        # Gerekli tüm kütüphaneleri burada çağırıyoruz
-        import yfinance as yf
-        import pandas as pd
-        import time
+def get_golden_trio_batch_scan(ticker_list):
+    # Gerekli tüm kütüphaneleri burada çağırıyoruz
+    import yfinance as yf
+    import pandas as pd
+    import time
 
-        # --- YARDIMCI RSI HESAPLAMA FONKSİYONU ---
-        def calc_rsi_manual(series, period=14):
-            delta = series.diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-            rs = gain / loss
-            return 100 - (100 / (1 + rs))
+    # --- YARDIMCI RSI HESAPLAMA FONKSİYONU ---
+    def calc_rsi_manual(series, period=14):
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
 
-        golden_candidates = []
-        royal_candidates = [] # YENİ: Royal Flush adayları
+    golden_candidates = []
+    royal_candidates = [] # YENİ: Royal Flush adayları
 
-        # 1. BİLGİLENDİRME & HAZIRLIK
-        st.toast("Veri Ambari İndiriliyor (1 Yıllık Derinlik)...", icon="⏳")
-        progress_text = "📡 Tüm Piyasa Verisi Tek Pakette İndiriliyor (Ban Korumalı Mod)..."
-        my_bar = st.progress(10, text=progress_text)
+    # 1. BİLGİLENDİRME & HAZIRLIK
+    st.toast("Veri Ambari İndiriliyor (1 Yıllık Derinlik)...", icon="⏳")
+    progress_text = "📡 Tüm Piyasa Verisi Tek Pakette İndiriliyor (Ban Korumalı Mod)..."
+    my_bar = st.progress(10, text=progress_text)
 
-        # 2. ENDEKS VERİSİNİ AL (Hafızadan Çeker)
-        index_close = fetch_index_data_cached()
+    # 2. ENDEKS VERİSİNİ AL (Hafızadan Çeker)
+    index_close = fetch_index_data_cached()
 
-        # 3. TOPLU İNDİRME (Hafızadan Çeker - BAN Korumalı)
+    # 3. TOPLU İNDİRME (Hafızadan Çeker - BAN Korumalı)
+    try:
+        data = fetch_market_data_cached(tuple(ticker_list))
+    except Exception as e:
+        st.error(f"Veri çekme hatası: {e}")
+        return pd.DataFrame(), pd.DataFrame()
+
+    my_bar.progress(40, text="⚡ Hafızadaki Veriler İşleniyor (Çift Katmanlı Analiz)...")
+
+    # 4. HIZLI ANALİZ DÖNGÜSÜ
+    if isinstance(data.columns, pd.MultiIndex):
+        valid_tickers = [t for t in ticker_list if t in data.columns.levels[0]]
+    else:
+        valid_tickers = ticker_list if not data.empty else []
+
+    total_tickers = len(valid_tickers)
+
+    for i, ticker in enumerate(valid_tickers):
         try:
-            data = fetch_market_data_cached(tuple(ticker_list))
-        except Exception as e:
-            st.error(f"Veri çekme hatası: {e}")
-            return pd.DataFrame(), pd.DataFrame()
+            # Veriyi al
+            if isinstance(data.columns, pd.MultiIndex):
+                df = data[ticker].copy()
+            else:
+                df = data.copy()
 
-        my_bar.progress(40, text="⚡ Hafızadaki Veriler İşleniyor (Çift Katmanlı Analiz)...")
+            # Veri yetersizse atla (SMA200 için en az 200 bar lazım)
+            if df.empty or len(df) < 200: continue
 
-        # 4. HIZLI ANALİZ DÖNGÜSÜ
-        if isinstance(data.columns, pd.MultiIndex):
-            valid_tickers = [t for t in ticker_list if t in data.columns.levels[0]]
-        else:
-            valid_tickers = ticker_list if not data.empty else []
+            # --- YENİ: DÜŞEN BIÇAK VE TUZAK KALKANI (5 KURAL) ---
+            today_c = df['Close'].iloc[-1]
+            today_o = df['Open'].iloc[-1]
+            today_h = df['High'].iloc[-1]
+            today_l = df['Low'].iloc[-1]
+            yest_c = df['Close'].iloc[-2]
+            yest_o = df['Open'].iloc[-2]
+            day2_c = df['Close'].iloc[-3]
 
-        total_tickers = len(valid_tickers)
+            # 1. Kırmızı Mum İptali (Bugün Kapanış < Açılış ise direkt ele)
+            if today_c < today_o:
+                continue
 
-        for i, ticker in enumerate(valid_tickers):
-            try:
-                # Veriyi al
-                if isinstance(data.columns, pd.MultiIndex):
-                    df = data[ticker].copy()
-                else:
-                    df = data.copy()
+            # 2. Son 2 Günlük Mikro RS Kalkanı (Dün kırmızı, bugün yeşilse)
+            if yest_c < yest_o and today_c >= today_o:
+                if index_close is not None and len(index_close) > 3:
+                    stock_2d_ret = (today_c / day2_c) - 1
+                    index_2d_ret = (index_close.iloc[-1] / index_close.iloc[-3]) - 1
+                    if stock_2d_ret < index_2d_ret:
+                        continue # Ölü kedi sıçraması, endeksi yenemedi, ele.
 
-                # Veri yetersizse atla (SMA200 için en az 200 bar lazım)
-                if df.empty or len(df) < 200: continue
+            # 3. %4 Çöküş Koruması
+            crash_2d = (today_c - day2_c) / day2_c
+            if crash_2d < -0.04:
+                continue # 2 günde %4'ten fazla düştüyse şelaledir, ele.
 
-                # --- YENİ: DÜŞEN BIÇAK VE TUZAK KALKANI (5 KURAL) ---
-                today_c = df['Close'].iloc[-1]
-                today_o = df['Open'].iloc[-1]
-                today_h = df['High'].iloc[-1]
-                today_l = df['Low'].iloc[-1]
-                yest_c = df['Close'].iloc[-2]
-                yest_o = df['Open'].iloc[-2]
-                day2_c = df['Close'].iloc[-3]
+            # UYARI BAYRAKLARI (Shooting Star & Doji)
+            has_warning = False
+            body = abs(today_c - today_o)
+            rng = today_h - today_l
+            upper_shadow = today_h - max(today_c, today_o)
+            lower_shadow = min(today_c, today_o) - today_l
 
-                # 1. Kırmızı Mum İptali (Bugün Kapanış < Açılış ise direkt ele)
-                if today_c < today_o:
-                    continue
+            # 4. Shooting Star (Kayan Yıldız) Uyarısı
+            if upper_shadow >= 2 * body and lower_shadow <= body and body > 0:
+                has_warning = True
 
-                # 2. Son 2 Günlük Mikro RS Kalkanı (Dün kırmızı, bugün yeşilse)
-                if yest_c < yest_o and today_c >= today_o:
-                    if index_close is not None and len(index_close) > 3:
-                        stock_2d_ret = (today_c / day2_c) - 1
-                        index_2d_ret = (index_close.iloc[-1] / index_close.iloc[-3]) - 1
-                        if stock_2d_ret < index_2d_ret:
-                            continue # Ölü kedi sıçraması, endeksi yenemedi, ele.
+            # 5. Doji Uyarısı
+            if rng > 0 and body <= rng * 0.1:
+                has_warning = True
 
-                # 3. %4 Çöküş Koruması
-                crash_2d = (today_c - day2_c) / day2_c
-                if crash_2d < -0.04:
-                    continue # 2 günde %4'ten fazla düştüyse şelaledir, ele.
+            current_price = today_c
+            
+            # --- KRİTER 1: GÜÇ (RS) - GÜNCELLENDİ (10 GÜN) ---
+            is_powerful = False
+            # DİKKAT: 20 yerine 10 yaptık. TRHOL gibi yeni uyananları yakalar.
+            prev_price_rs = df['Close'].iloc[-10] 
 
-                # UYARI BAYRAKLARI (Shooting Star & Doji)
-                has_warning = False
-                body = abs(today_c - today_o)
-                rng = today_h - today_l
-                upper_shadow = today_h - max(today_c, today_o)
-                lower_shadow = min(today_c, today_o) - today_l
+            if index_close is not None and len(index_close) > 10:
+                stock_ret = (current_price / prev_price_rs) - 1
+                index_ret = (index_close.iloc[-1] / index_close.iloc[-10]) - 1
+                if stock_ret > index_ret: is_powerful = True
+            else:
+                # Endeks yoksa RSI > 55 (Biraz gevşettik)
+                rsi_val = calc_rsi_manual(df['Close']).iloc[-1]
+                if rsi_val > 55: is_powerful = True
 
-                # 4. Shooting Star (Kayan Yıldız) Uyarısı
-                if upper_shadow >= 2 * body and lower_shadow <= body and body > 0:
-                    has_warning = True
-
-                # 5. Doji Uyarısı
-                if rng > 0 and body <= rng * 0.1:
-                    has_warning = True
-
-                current_price = today_c
+            # --- KRİTER 2: KONUM (3 AYLIK DÜZELTME) ---
+            high_60 = df['High'].rolling(60).max().iloc[-1]
+            low_60 = df['Low'].rolling(60).min().iloc[-1]
+            range_diff = high_60 - low_60
+            
+            is_discount = False
+            if range_diff > 0:
+                # Fiyat 3 aylık bandın neresinde?
+                loc_ratio = (current_price - low_60) / range_diff
                 
-                # --- KRİTER 1: GÜÇ (RS) - GÜNCELLENDİ (10 GÜN) ---
-                is_powerful = False
-                # DİKKAT: 20 yerine 10 yaptık. TRHOL gibi yeni uyananları yakalar.
-                prev_price_rs = df['Close'].iloc[-10] 
+                # 3 aylık bandın alt %50'sindeyse kabul et
+                if loc_ratio < 0.5: 
+                    is_discount = True
 
-                if index_close is not None and len(index_close) > 10:
-                    stock_ret = (current_price / prev_price_rs) - 1
-                    index_ret = (index_close.iloc[-1] / index_close.iloc[-10]) - 1
-                    if stock_ret > index_ret: is_powerful = True
-                else:
-                    # Endeks yoksa RSI > 55 (Biraz gevşettik)
-                    rsi_val = calc_rsi_manual(df['Close']).iloc[-1]
-                    if rsi_val > 55: is_powerful = True
+            # --- KRİTER 3: ENERJİ (HACİM / MOMENTUM) - GÜNCELLENDİ ---
+            vol_sma20 = df['Volume'].rolling(20).mean().iloc[-1]
+            current_vol = df['Volume'].iloc[-1]
+            rsi_now = calc_rsi_manual(df['Close']).iloc[-1]
+            
+            # Hacim barajını %10'dan %5'e çektik (1.1 -> 1.05)
+            is_energy = (current_vol > vol_sma20 * 1.05) or (rsi_now > 55)
 
-                # --- KRİTER 2: KONUM (3 AYLIK DÜZELTME) ---
-                high_60 = df['High'].rolling(60).max().iloc[-1]
-                low_60 = df['Low'].rolling(60).min().iloc[-1]
-                range_diff = high_60 - low_60
+            # === ANA FİLTRE: ALTIN FIRSAT ===
+            if is_powerful and is_discount and is_energy:
                 
-                is_discount = False
-                if range_diff > 0:
-                    # Fiyat 3 aylık bandın neresinde?
-                    loc_ratio = (current_price - low_60) / range_diff
-                    
-                    # 3 aylık bandın alt %50'sindeyse kabul et
-                    if loc_ratio < 0.5: 
-                        is_discount = True
+                # Piyasa Değeri
+                try:
+                    info = yf.Ticker(ticker).info
+                    mcap = info.get('marketCap', 0)
+                except:
+                    mcap = 0
 
-                # --- KRİTER 3: ENERJİ (HACİM / MOMENTUM) - GÜNCELLENDİ ---
-                vol_sma20 = df['Volume'].rolling(20).mean().iloc[-1]
-                current_vol = df['Volume'].iloc[-1]
-                rsi_now = calc_rsi_manual(df['Close']).iloc[-1]
-                
-                # Hacim barajını %10'dan %5'e çektik (1.1 -> 1.05)
-                is_energy = (current_vol > vol_sma20 * 1.05) or (rsi_now > 55)
+                # 1. ALTIN LİSTEYE EKLE
+                golden_candidates.append({
+                    "Hisse": ticker,
+                    "Fiyat": current_price,
+                    "M.Cap": mcap,
+                    "Onay": "🏆 RS Gücü + Ucuz Konum + Güçlü Enerji",
+                    "Warning": has_warning
+                })
 
-                # === ANA FİLTRE: ALTIN FIRSAT ===
-                if is_powerful and is_discount and is_energy:
-                    
-                    # Piyasa Değeri
-                    try:
-                        info = yf.Ticker(ticker).info
-                        mcap = info.get('marketCap', 0)
-                    except:
-                        mcap = 0
+                # === İKİNCİ FİLTRE: ROYAL FLUSH (ELİT) KONTROLÜ ===
+                # Sadece Altın olanlara bakıyoruz
 
-                    # 1. ALTIN LİSTEYE EKLE
-                    golden_candidates.append({
+                # Royal Şart 1: Uzun Vade Trend (SMA200 Üzerinde mi?)
+                sma200 = df['Close'].rolling(200).mean().iloc[-1]
+                is_bull_trend = current_price > sma200
+
+                # Royal Şart 2: Maliyet/Trend (SMA50 Üzerinde mi?)
+                sma50 = df['Close'].rolling(50).mean().iloc[-1]
+                is_structure_solid = current_price > sma50
+
+                # Royal Şart 3: RSI Güvenli Bölge (Aşırı şişmemiş)
+                is_safe_entry = rsi_now < 70
+
+                if is_bull_trend and is_structure_solid and is_safe_entry:
+                    # 2. ROYAL LİSTEYE DE EKLE
+                    royal_candidates.append({
                         "Hisse": ticker,
                         "Fiyat": current_price,
                         "M.Cap": mcap,
-                        "Onay": "🏆 RS Gücü + Ucuz Konum + Güçlü Enerji",
+                        "Onay": "♠️ 4/4 KRALİYET: Trend(200) + Yapı(50) + RS + Enerji",
                         "Warning": has_warning
                     })
 
-                    # === İKİNCİ FİLTRE: ROYAL FLUSH (ELİT) KONTROLÜ ===
-                    # Sadece Altın olanlara bakıyoruz
+        except:
+            continue
 
-                    # Royal Şart 1: Uzun Vade Trend (SMA200 Üzerinde mi?)
-                    sma200 = df['Close'].rolling(200).mean().iloc[-1]
-                    is_bull_trend = current_price > sma200
+        if i % 10 == 0 and total_tickers > 0:
+            prog = int((i / total_tickers) * 100)
+            my_bar.progress(40 + int(prog/2), text=f"⚡ Analiz: {ticker}...")
 
-                    # Royal Şart 2: Maliyet/Trend (SMA50 Üzerinde mi?)
-                    sma50 = df['Close'].rolling(50).mean().iloc[-1]
-                    is_structure_solid = current_price > sma50
+    my_bar.progress(100, text="✅ Tarama Tamamlandı! Listeleniyor...")
+    time.sleep(0.3)
+    my_bar.empty()
 
-                    # Royal Şart 3: RSI Güvenli Bölge (Aşırı şişmemiş)
-                    is_safe_entry = rsi_now < 70
+    return pd.DataFrame(golden_candidates), pd.DataFrame(royal_candidates)
 
-                    if is_bull_trend and is_structure_solid and is_safe_entry:
-                        # 2. ROYAL LİSTEYE DE EKLE
-                        royal_candidates.append({
-                            "Hisse": ticker,
-                            "Fiyat": current_price,
-                            "M.Cap": mcap,
-                            "Onay": "♠️ 4/4 KRALİYET: Trend(200) + Yapı(50) + RS + Enerji",
-                            "Warning": has_warning
-                        })
-
-            except:
-                continue
-
-            if i % 10 == 0 and total_tickers > 0:
-                prog = int((i / total_tickers) * 100)
-                my_bar.progress(40 + int(prog/2), text=f"⚡ Analiz: {ticker}...")
-
-        my_bar.progress(100, text="✅ Tarama Tamamlandı! Listeleniyor...")
-        time.sleep(0.3)
-        my_bar.empty()
-
-        return pd.DataFrame(golden_candidates), pd.DataFrame(royal_candidates)
-    
 # ==============================================================================
 # 6. ANA SAYFA (MAIN UI) - GÜNCELLENMİŞ MASTER SCAN VERSİYONU
 # ==============================================================================
@@ -8840,7 +9448,7 @@ with col_ass:
     else:
         try: asset_idx = current_opts.index(active_ticker)
         except ValueError: asset_idx = 0
-    st.selectbox("Varlık Listesi", current_opts, index=asset_idx, key="selected_asset_key", on_change=on_asset_change, label_visibility="collapsed", format_func=lambda x: x.replace(".IS", ""))
+    st.selectbox("Varlık Listesi", current_opts, index=asset_idx, key="selected_asset_key", on_change=on_asset_change, label_visibility="collapsed", format_func=get_display_name)
 
 # 4. MASTER SCAN BUTONU (Eski arama kutusu yerine geldi)
 with col_btn:
@@ -9930,19 +10538,19 @@ Birinci görevinde yapmış olduğun o analizin en vurucu yerlerinin Twitter iç
 Yukarıdaki saf matematiksel verileri (Özellikle "Algoritmik 8 Maddelik Laboratuvar Verisi" bölümünü) kullanarak ve grafiği okuyarak aşağıdaki 8 maddelik şablonu EKSİKSİZ doldur. Her madde alt başlıklardan oluşmalı ve okuması keyifli, profesyonel bir tonda olmalıdır. Başlık "SMART MONEY RADAR #{clean_ticker} ANALİZİ - {fiyat_str} 👇📸" olmalıdır.
 Formatın TAM OLARAK şu şekilde olmalıdır (Alt başlıkları aynen kullan):
 TEKNİK KART:
-1) Fiyat Davranışı ve Yapı
+1🔹) Fiyat Davranışı ve Yapı
 - Mum Yapısı: (Gövde ve fitillere göre görsel okuma + algoritmik veri)
 - Formasyon Durumu: (İkili, üçlü mum yapıları, PA sinyali)
-2) Formasyon Tespiti
+2🔹) Formasyon Tespiti
 - Mevcut Formasyon: (Grafikte gördüğün OBO, TOBO, Bayrak vs. formasyon)
 - Ana Yapı: (İtki mi Düzeltme mi?)
 3) Efor vs Sonuç (VSA)
 - Hacim/Fiyat Uyumu: (Hacmin fiyat hareketini destekleyip desteklemediği, 'Churning' olup olmadığı)
-4) Trend Skoru ve Enerji
+4🔹) Trend Skoru ve Enerji
 - Enerji Puanı: (Algoritmadan gelen Skoru yaz ve grafikteki sıkışmayı yorumla)
 5) Hacim ve Akıllı Para İzi
 - Kurumsal Emilim (Absorption) / Agresif Akış: (Grafikteki fitillere ve algoritmaya göre)
-6) Yön Beklentisi ve Momentum
+6🔹) Yön Beklentisi ve Momentum
 - Boğa / Ayı İhtimali: (Hesaplanmış yön beklentisini yaz)
 - Momentum Durumu: (Kısa vadedeki baskı)
 7) Yol Haritası (Senaryolar)
@@ -9961,8 +10569,6 @@ Teknik Görünüm: (Fiyat davranışı, formasyonlar ve genel trend durumunun 2-
 Smart Money İzi: (Hacim, OBV, ICT analizleri ve para akışı verilerindeki kurumsal ayak izlerinin 2-3 cümlelik özeti.)
 SONUÇ: Buraya Birinci Görevindeki SONUÇ kısmını kopyalayarak yapıştır. (3-4 cümlelik özet)
 UYARI: Buraya Birinci Görevindeki UYARI kısmını kopyalayarak yapıştır. (3-4 cümlelik özet)
-TEKNİK KART: yaz ve alt satıra geç.
-Alt satıra  Üçüncü Görevdeki TEKNİK KART kısmında olan 1-2-4-6'ı kopyalayarak yapıştır. Ama burada maddeleri 1-2-4-6 şeklinde sıralama. Her maddenin başına "🔹" işareti koy.
 Analizin sonuna geldin. Alt satıra geç, daima büyük ve kalın harflerle "YATIRIM TAVSİYESİ DEĞİLDİR  " ve onun da altındaki satıra geç ve yan yana " #SmartMoneyRadar #BIST100 " yaz.
 
 *****GÖREVLERİN SUNUŞ SIRALAMASI (DİNAMİK)*****
@@ -10044,7 +10650,7 @@ with col_left:
                     if price > ma_value: return f"🟢 <b>{val_str}</b>"
                     else: return f"🔴 <b>{val_str}</b>"
 
-                clean_ticker = st.session_state.ticker.split('.')[0].upper()
+                clean_ticker = get_display_name(st.session_state.ticker)
                 
                 # Fiyat formatlaması (Endeks ise EMA'lar gibi küsuratsız)
                 if is_index:
@@ -10250,10 +10856,18 @@ with col_left:
                     mf_v   = row.get('Mansfield', '-')
                     hk_v   = row.get('Hacim_Kat', '-')
                     mf_icon = "📈" if (isinstance(mf_v, float) and mf_v > 0) else "📉"
-                    btn_label = f"🚀 {sym.replace('.IS', '')} | Skor: {score} | RSI:{rsi_v} | RS:{mf_icon}{mf_v} | Hacim:{hk_v}x\n{detail}"
-                    if st.button(btn_label, key=f"golden_btn_{sym}_{i}", use_container_width=True):
-                        on_scan_result_click(sym)
-                        st.rerun()
+                    btn_label = f"🚀 {sym.replace('.IS', '')} | Skor: {score} | RS:{mf_icon}{mf_v} | Hacim:{hk_v}x\n{detail}"
+                    _gc1, _gc2 = st.columns([7, 3])
+                    with _gc1:
+                        if st.button(btn_label, key=f"golden_btn_{sym}_{i}", use_container_width=True):
+                            on_scan_result_click(sym)
+                            st.rerun()
+                    with _gc2:
+                        _sp = _sparkline_b64(sym, st.session_state.dark_mode)
+                        _rb = _rsi_bar_html(rsi_v)
+                        if _sp:
+                            st.markdown(f"<img src='data:image/png;base64,{_sp}' style='width:100%;border-radius:3px;display:block;margin-bottom:2px;'/>", unsafe_allow_html=True)
+                        st.markdown(_rb, unsafe_allow_html=True)
             else:
                 st.caption("Şu an için Fincan-Kulp, TOBO veya Direnç Kırılımı yapan Altın Fırsat bulunamadı.")
 
@@ -10270,10 +10884,18 @@ with col_left:
                     mf_v  = row.get('Mansfield', '-')
                     hk_v  = row.get('Hacim_Kat', '-')
                     mf_icon = "📈" if (isinstance(mf_v, float) and mf_v > 0) else "📉"
-                    btn_label = f"{durum} {sym.replace('.IS', '')} | RSI:{rsi_v} | RS:{mf_icon}{mf_v} | Hacim:{hk_v}x"
-                    if st.button(btn_label, key=f"hazirlik_btn_{sym}_{i}", use_container_width=True):
-                        on_scan_result_click(sym)
-                        st.rerun()
+                    btn_label = f"{durum} {sym.replace('.IS', '')} | RS:{mf_icon}{mf_v} | Hacim:{hk_v}x"
+                    _hc1, _hc2 = st.columns([7, 3])
+                    with _hc1:
+                        if st.button(btn_label, key=f"hazirlik_btn_{sym}_{i}", use_container_width=True):
+                            on_scan_result_click(sym)
+                            st.rerun()
+                    with _hc2:
+                        _sp = _sparkline_b64(sym, st.session_state.dark_mode)
+                        _rb = _rsi_bar_html(rsi_v)
+                        if _sp:
+                            st.markdown(f"<img src='data:image/png;base64,{_sp}' style='width:100%;border-radius:3px;display:block;margin-bottom:2px;'/>", unsafe_allow_html=True)
+                        st.markdown(_rb, unsafe_allow_html=True)
 
     # ==============================================================================
     # 🎯 KESİN DÖNÜŞ SİNYALLERİ PANELİ (YENİ EKLENDİ)
@@ -10325,26 +10947,23 @@ with col_left:
             # st.success(f"🏆 Endeksi yenen {count} adet şampiyon bulundu!")
             with st.container(height=250, border=True):
                 for i, row in st.session_state.rs_leaders_data.iterrows():
-                    # Verileri Satırdan Çekiyoruz (Fonksiyondan gelen yeni sütunlar)
-                    sym = row['Sembol']
-                    alpha_5 = row['Alpha_5D']
-                    alpha_1 = row.get('Alpha_1D', 0) # Hata olmasın diye .get kullanıyoruz
+                    sym       = row['Sembol']
+                    alpha_5   = row['Alpha_5D']
+                    alpha_1   = row.get('Alpha_1D', 0)
                     degisim_1 = row.get('Degisim_1D', 0)
-                    vol = row['Hacim_Kat']
-                    
-                    # Renkler ve İkon (5 Günlük performansa göre ana rengi belirle)
-                    icon = "🔥" if alpha_5 > 5.0 else "💪"
-                    
-                    # Bugünün Durumu (Metin)
+                    vol       = row['Hacim_Kat']
+                    icon      = "🔥" if alpha_5 > 5.0 else "💪"
                     today_status = "LİDER" if alpha_1 > 0.5 else "ZAYIF" if alpha_1 < -0.5 else "NÖTR"
-                    
-                    # YENİ BUTON METNİ: ||| Çizgili Format
-                    # Örn: 🔥 BURVA.IS (684.00) | Alpha(5G): +%42.7 | Vol: 0.9x ||| Bugün: +%5.2 (LİDER)
-                    label = f"{icon} {sym.replace('.IS', '')} ({row['Fiyat']:.2f}) | Alpha(5G): +%{alpha_5:.1f} | Vol: {vol:.1f}x ||| Bugün: %{degisim_1:.1f} ({today_status})"
-                    
-                    if st.button(label, key=f"rs_lead_{sym}_{i}", use_container_width=True):
-                        on_scan_result_click(sym)
-                        st.rerun()
+                    label = f"{icon} {sym.replace('.IS', '')} ({row['Fiyat']:.2f}) | Alpha: +%{alpha_5:.1f} | Vol: {vol:.1f}x | Bugün: %{degisim_1:.1f} ({today_status})"
+                    _rl1, _rl2 = st.columns([7, 3])
+                    with _rl1:
+                        if st.button(label, key=f"rs_lead_{sym}_{i}", use_container_width=True):
+                            on_scan_result_click(sym)
+                            st.rerun()
+                    with _rl2:
+                        _sp = _sparkline_b64(sym, st.session_state.dark_mode)
+                        if _sp:
+                            st.markdown(f"<img src='data:image/png;base64,{_sp}' style='width:100%;border-radius:3px;display:block;'/>", unsafe_allow_html=True)
         else:
             st.info("Şu an endekse belirgin fark atan (%2+) hisse bulunamadı.")
 
@@ -10466,16 +11085,17 @@ with col_left:
                     df_left = st.session_state.breakout_left.head(20)
                     for i, (index, row) in enumerate(df_left.iterrows()):
                         sym_raw = row.get("Sembol_Raw", row.get("Sembol", "UNK"))
-                        
-                        # HTML etiketlerini temizle (Sadece oranı al: %98 gibi)
                         prox_clean = str(row['Zirveye Yakınlık']).split('<')[0].strip()
-                        
-                        # Buton Metni: 🔥 AAPL (150.20) | %98
-                        btn_label = f"🔥 {sym_raw} ({row['Fiyat']}) | {prox_clean}"
-                        
-                        if st.button(btn_label, key=f"L_btn_new_{sym_raw}_{i}", use_container_width=True):
-                            on_scan_result_click(sym_raw)
-                            st.rerun()
+                        btn_label = f"🔥 {sym_raw.replace('.IS','')} ({row['Fiyat']}) | {prox_clean}"
+                        _bl1, _bl2 = st.columns([7, 3])
+                        with _bl1:
+                            if st.button(btn_label, key=f"L_btn_new_{sym_raw}_{i}", use_container_width=True):
+                                on_scan_result_click(sym_raw)
+                                st.rerun()
+                        with _bl2:
+                            _sp = _sparkline_b64(sym_raw, st.session_state.dark_mode)
+                            if _sp:
+                                st.markdown(f"<img src='data:image/png;base64,{_sp}' style='width:100%;border-radius:3px;display:block;'/>", unsafe_allow_html=True)
                 else:
                     st.info("Isınan hisse bulunamadı.")
     
@@ -10488,13 +11108,16 @@ with col_left:
                     df_right = st.session_state.breakout_right.head(20)
                     for i, (index, row) in enumerate(df_right.iterrows()):
                         sym = row['Sembol']
-                        
-                        # Buton Metni: 🚀 TSLA (200.50) | Hacim: 2.5x
-                        btn_label = f"🚀 {sym} ({row['Fiyat']}) | Hacim: {row['Hacim_Kati']}"
-                        
-                        if st.button(btn_label, key=f"R_btn_new_{sym}_{i}", use_container_width=True):
-                            on_scan_result_click(sym)
-                            st.rerun()
+                        btn_label = f"🚀 {sym.replace('.IS','')} ({row['Fiyat']}) | Hacim: {row['Hacim_Kati']}"
+                        _br1, _br2 = st.columns([7, 3])
+                        with _br1:
+                            if st.button(btn_label, key=f"R_btn_new_{sym}_{i}", use_container_width=True):
+                                on_scan_result_click(sym)
+                                st.rerun()
+                        with _br2:
+                            _sp = _sparkline_b64(sym, st.session_state.dark_mode)
+                            if _sp:
+                                st.markdown(f"<img src='data:image/png;base64,{_sp}' style='width:100%;border-radius:3px;display:block;'/>", unsafe_allow_html=True)
                 else:
                     st.info("Kırılım yapan hisse bulunamadı.")
     # ---------------------------------------------------------
@@ -10628,7 +11251,7 @@ with col_right:
     
     # 1. Fiyat (YENİ TERMİNAL GÖRÜNÜMÜ)
     if info and info.get('price'):
-        display_ticker = st.session_state.ticker.replace(".IS", "").replace("=F", "")
+        display_ticker = get_display_name(st.session_state.ticker)
         price_val = info.get('price', 0)
         change_val = info.get('change_pct', 0)
 
@@ -10668,6 +11291,7 @@ with col_right:
     
     # 1. VERİYİ ÇEK (Tek Sefer)
     df_live = get_safe_historical_data(active_t)
+
     pa_data = None
     bt_live = None
     mini_live = None
@@ -10920,7 +11544,7 @@ with col_right:
     # --- HTML ÇIKTISI RENDER ---
     if found_any:
         star_title = " ⭐" if is_star_candidate else ""
-        display_ticker_safe = active_t.replace(".IS", "").replace("=F", "")
+        display_ticker_safe = get_display_name(active_t)
         
         # Tema Renkleri
         bg_panel = "rgba(17, 24, 39, 0.6)" if is_dark else "#f8fafc"
@@ -11141,7 +11765,7 @@ with col_right:
                 _dark_e = st.session_state.get('dark_mode', False)
                 for index, row in st.session_state.royal_results.head(6).iterrows():
                     raw_symbol = row['Hisse']
-                    display_symbol = raw_symbol.replace(".IS", "")
+                    display_symbol = get_display_name(raw_symbol)
                     fiyat_val = row['Fiyat']
                     fiyat_str = f"{int(fiyat_val)}" if fiyat_val >= 1000 else f"{fiyat_val:.2f}"
                     warn_icon = "🟠 " if row.get('Warning', False) else ""
@@ -11174,7 +11798,7 @@ with col_right:
                 cols_gold = st.columns(3)
                 for index, row in st.session_state.golden_results.head(12).iterrows():
                     raw_symbol = row['Hisse']
-                    display_symbol = raw_symbol.replace(".IS", "")
+                    display_symbol = get_display_name(raw_symbol)
                     fiyat_str = f"🟠 {row['Fiyat']:.2f}" if row.get('Warning', False) else f"{row['Fiyat']:.2f}"
                     if cols_gold[index % 3].button(f"🦁 {display_symbol}\n{fiyat_str}", key=f"btn_gold_{index}", use_container_width=True):
                         on_scan_result_click(raw_symbol)
