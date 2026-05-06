@@ -347,8 +347,7 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     tier     = TIER_NAME[chat_id]
     tier_key = tier.lower()  # "free", "pro", "elite"
-    used_now = _usage_get(chat_id, user_id, today)
-    log.info(f"[{tier}] #{raw_ticker} — user={user_id} ({used_now}/{limit})")
+    log.info(f"[{tier}] #{raw_ticker} — user={user_id}")
 
     # Bekleme mesajı + "fotoğraf gönderiliyor..." indikatörü
     if tier_key == "elite" and GEMINI_OK:
