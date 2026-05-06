@@ -349,12 +349,15 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     limit   = DAILY_LIMITS[chat_id]
 
     # Admin kontrolü — limitsiz kullanıcılar (user_id VEYA username ile tanınır)
-    # Kanal postları (from_user=None): sadece admin yazabilir → otomatik limitsiz
-    is_unlimited = (
-        user_id in UNLIMITED_USERS
-        or username in UNLIMITED_USERNAMES
-        or (update.channel_post and not msg.from_user)  # kanal admin postu
-    )
+    # Kanal postları: sadece admin yazabilir → her zaman limitsiz
+    # Grup mesajı: user_id veya username kontrolü
+    if update.channel_post:
+        is_unlimited = True
+    else:
+        is_unlimited = (
+            user_id in UNLIMITED_USERS
+            or (username and username.lower() in {u.lower() for u in UNLIMITED_USERNAMES})
+        )
     log.info(f"[LIMIT DEBUG] chat={chat_id} user={user_id} uname={username!r} unlimited={is_unlimited} channel_post={bool(update.channel_post)} from_user={bool(msg.from_user)}")
 
     # ── Abonelik kontrolü (grup mesajlarında from_user varsa) ─────────────────
@@ -654,6 +657,22 @@ async def cmd_listusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/myid — kullanıcı ID'sini göster (debug için)"""
+    msg = update.message
+    if not msg or not msg.from_user:
+        return
+    uid  = msg.from_user.id
+    uname = msg.from_user.username or "(yok)"
+    await msg.reply_text(
+        f"👤 *Telegram Bilgilerin*\n"
+        f"User ID: `{uid}`\n"
+        f"Username: @{uname}",
+        parse_mode="Markdown"
+    )
+    log.info(f"[MYID] user_id={uid} username={uname!r}")
+
+
 async def cmd_durum(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/durum — kullanıcı kendi aboneliğini sorgular"""
     msg = update.message
@@ -856,6 +875,7 @@ def main():
     app.add_handler(CommandHandler("removeuser", cmd_removeuser))
     app.add_handler(CommandHandler("listusers",  cmd_listusers))
     app.add_handler(CommandHandler("durum",      cmd_durum))
+    app.add_handler(CommandHandler("myid",       cmd_myid))
 
     # handle_ticker group=1'de çalışmalı — group=0'daki delete_non_ticker'dan SONRA
     # PTB v20: her group sırayla işlenir; aynı grup içinde ilk eşleşen kazanır
