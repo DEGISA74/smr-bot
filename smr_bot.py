@@ -355,6 +355,7 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         or username in UNLIMITED_USERNAMES
         or (update.channel_post and not msg.from_user)  # kanal admin postu
     )
+    log.info(f"[LIMIT DEBUG] chat={chat_id} user={user_id} uname={username!r} unlimited={is_unlimited} channel_post={bool(update.channel_post)} from_user={bool(msg.from_user)}")
 
     # ── Abonelik kontrolü (grup mesajlarında from_user varsa) ─────────────────
     if not is_unlimited and msg.from_user and chat_id != FREE_ID:
