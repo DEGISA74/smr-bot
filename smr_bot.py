@@ -857,11 +857,14 @@ def main():
     app.add_handler(CommandHandler("listusers",  cmd_listusers))
     app.add_handler(CommandHandler("durum",      cmd_durum))
 
+    # handle_ticker group=1'de çalışmalı — group=0'daki delete_non_ticker'dan SONRA
+    # PTB v20: her group sırayla işlenir; aynı grup içinde ilk eşleşen kazanır
     app.add_handler(
         MessageHandler(
             (filters.TEXT & ~filters.COMMAND) | filters.UpdateType.CHANNEL_POST,
             handle_ticker
-        )
+        ),
+        group=1
     )
 
     tz_istanbul = pytz.timezone("Europe/Istanbul")
