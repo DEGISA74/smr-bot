@@ -4,3 +4,7 @@ pandas
 feedparser
 textblob
 google-generativeai
+ta
+matplotlib
+pyarrow
+plotly

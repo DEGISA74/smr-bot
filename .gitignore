@@ -1,0 +1,41 @@
+# Hassas dosyalar — asla GitHub'a gitmesin
+telegram_config.json
+*.db
+usage_tracker.json
+smr_bot.pid
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Veriler (büyük dosyalar)
+veriler/
+*.parquet
+*.csv
+
+# Log dosyaları
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test/yedek dosyalar
+*yedek*
+*test*
+bot_test.py
