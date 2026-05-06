@@ -347,7 +347,27 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     tier     = TIER_NAME[chat_id]
     tier_key = tier.lower()  # "free", "pro", "elite"
-    log.info(f"[{tier}] #{raw_ticker} — user={user_id}")
+
+    # ── Limit kontrolü ──────────────────────────────────────────────────────
+    is_unlimited = (
+        update.channel_post  # kanal postu = sadece admin yazabilir
+        or user_id in UNLIMITED_USERS
+        or (username and username.lower() in {u.lower() for u in UNLIMITED_USERNAMES})
+    )
+    if not is_unlimited:
+        today = datetime.now().date().isoformat()
+        limit = DAILY_LIMITS[chat_id]
+        used  = _usage_get(chat_id, user_id, today)
+        if used >= limit:
+            upgrade = "\n\n💎 Günde 3 sorgu için PRO üyelik: [yakında]" if chat_id == FREE_ID else ""
+            await msg.reply_text(
+                f"⚠️ Günlük limitine ulaştın ({limit}/{limit}).\nYarın tekrar dene.{upgrade}"
+            )
+            return
+        _usage_inc(chat_id, user_id, today)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    log.info(f"[{tier}] #{raw_ticker} — user={user_id} unlimited={is_unlimited}")
 
     # Bekleme mesajı + "fotoğraf gönderiliyor..." indikatörü
     if tier_key == "elite" and GEMINI_OK:
