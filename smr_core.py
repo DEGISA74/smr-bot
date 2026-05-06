@@ -1324,6 +1324,134 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     return data_block, clean, fiyat_str
 
 
+def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
+    """
+    5. Kutu — Teknik Özet (Piyasa Sentezi).
+    App.py'deki calculate_8_point_roadmap M8 mantığının Telegram uyumlu versiyonu.
+    HTML yok, Streamlit yok. Düz metin döner.
+    """
+    try:
+        import pandas as pd
+        if df is None:
+            df, _ = get_data(ticker)
+        if df is None or len(df) < 60:
+            return ""
+
+        c = df['Close']; h = df['High']; l = df['Low']
+        o = df['Open'];  v = df['Volume']
+        cp = float(c.iloc[-1])
+
+        def fmt(val):
+            return f"{int(val):,}" if val >= 1000 else f"{val:.2f}"
+
+        # ── Temel istatistikler ──────────────────────────────────────────────
+        n = len(c)
+        sma200  = float(c.rolling(min(200, n - 1)).mean().iloc[-1])
+        sma50   = float(c.rolling(min(50,  n - 1)).mean().iloc[-1])
+        atr     = float((h - l).rolling(14).mean().iloc[-1])
+        std_20  = float(c.rolling(20).std().iloc[-1])
+        res_20  = float(h.tail(20).max())
+        sup_20  = float(l.tail(20).min())
+        alt_fitil = float(min(o.iloc[-1], c.iloc[-1])) - float(l.iloc[-1])
+        govde   = abs(float(c.iloc[-1]) - float(o.iloc[-1]))
+        z_score = (cp - float(c.rolling(20).mean().iloc[-1])) / std_20 if std_20 > 0 else 0.0
+
+        # RSI 14
+        delta   = c.diff()
+        gain    = delta.where(delta > 0, 0).rolling(14).mean()
+        loss    = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        _rsi_s  = 100 - (100 / (1 + gain / loss))
+        rsi_val = float(_rsi_s.iloc[-1]) if not pd.isna(_rsi_s.iloc[-1]) else 50.0
+
+        # Hacim
+        curr_vol  = float(v.iloc[-1])
+        if curr_vol <= 100 and n > 1:
+            curr_vol = float(v.iloc[-2])
+        avg_vol   = float(v.rolling(20).mean().iloc[-1])
+        vol_ratio = curr_vol / avg_vol if avg_vol > 0 else 1.0
+
+        # VSA
+        if vol_ratio > 1.5 and govde < atr * 0.4:
+            vsa = "Churning"
+        elif vol_ratio > 1.1 and govde > atr * 0.8:
+            vsa = "Sağlıklı İtki"
+        elif vol_ratio < 0.75:
+            vsa = "Sığ Piyasa"
+        else:
+            vsa = "Standart Akış"
+
+        # Mum rengi
+        if float(c.iloc[-1]) < float(o.iloc[-1]) and govde > atr * 0.5:
+            m1_mum = "Kırmızı"
+        elif float(c.iloc[-1]) > float(o.iloc[-1]) and govde > atr * 0.5:
+            m1_mum = "Yeşil"
+        else:
+            m1_mum = "Nötr"
+
+        # Enerji skoru
+        sq_puan      = 8 if std_20 < atr else 4
+        vol_puan     = 7 if vol_ratio < 0.8 else 4
+        ema_puan     = 8 if abs(cp - sma50) / sma50 < 0.02 else 5
+        enerji_skor  = (sq_puan + vol_puan + ema_puan) / 23 * 8
+
+        # Boğa ağırlığı
+        boga_w = 50 + (rsi_val - 50) * 0.5 + (15 if cp > sma50 else -15)
+        _ema12 = c.ewm(span=12, adjust=False).mean()
+        _ema26 = c.ewm(span=26, adjust=False).mean()
+        _macd  = _ema12 - _ema26
+        _macd_s = _macd.ewm(span=9, adjust=False).mean()
+        boga_w += 5 if _macd.iloc[-1] > _macd_s.iloc[-1] else -5
+        _obv    = (v * c.diff().fillna(0).apply(
+                    lambda x: 1 if x > 0 else (-1 if x < 0 else 0))).cumsum()
+        boga_w += 5 if _obv.iloc[-1] > _obv.rolling(20).mean().iloc[-1] else -5
+        boga_w  = max(5, min(95, boga_w))
+
+        # ── M8 Sentez Metni ──────────────────────────────────────────────────
+        is_macro_bull   = cp > sma200
+        is_micro_bull   = cp > sma50
+        is_overheated   = (z_score >= 1.5) or (rsi_val > 75)
+        is_oversold     = (z_score <= -1.5) or (rsi_val < 30)
+        is_churning     = "Churning" in vsa
+        is_accumulation = (alt_fitil > atr * 0.5) or ("Yeşil" in m1_mum and z_score < -1)
+
+        if is_macro_bull and is_micro_bull:
+            if is_overheated or is_churning:
+                ozet = (f"Makro yapı güçlü ancak kısa vadede aşırı ısınma emareleri var. "
+                        f"Hacim: {vsa}. "
+                        f"Yeni alımlar riskli — {fmt(sup_20)} ana stop hattı.")
+            elif enerji_skor > 6.5:
+                ozet = (f"Güçlü yükseliş ivmesi. Fiyat {fmt(sma50)} üzerinde taşınıyor (Boğa %{boga_w:.0f}). "
+                        f"{fmt(res_20)} direnci hacimle aşılırsa yeni fiyat keşfi başlar.")
+            else:
+                ozet = (f"Ana trend yukarı (Boğa %{boga_w:.0f}), momentum yatay seyrediyor. "
+                        f"{fmt(res_20)} üzerinde taze hacim bekleniyor. "
+                        f"{fmt(sup_20)} korunduğu sürece trend sağlam.")
+        elif not is_macro_bull:
+            if is_oversold or is_accumulation:
+                ozet = (f"Fiyat makro ortalamaların altında, ancak aşırı satım bölgesinden tepkiler dikkat çekiyor. "
+                        f"Gizli birikim ihtimali mevcut. "
+                        f"{fmt(res_20)} direncinin alınması trendi tersine çevirebilir.")
+            elif enerji_skor > 6.5:
+                ozet = (f"Satıcılar hakimiyetini sürdürüyor. "
+                        f"{fmt(sup_20)} desteği kırılırsa sert satış dalgası gelebilir.")
+            else:
+                ozet = (f"Zayıf ve baskılı yapı. "
+                        f"{fmt(res_20)} hacimle geri alınmadan güvenli bölge yok.")
+        else:
+            if is_oversold:
+                ozet = (f"Uzun vade pozitif (SMA200 üstü), kısa vadede sert düzeltme yaşandı. "
+                        f"{fmt(sup_20)} desteğinden dönüş fırsat sunabilir.")
+            else:
+                ozet = (f"Fiyat {fmt(sup_20)}–{fmt(res_20)} arasında sıkışmış. "
+                        f"Kırılım yönüne göre pozisyon almak en güvenli strateji.")
+
+        return f"📊 *Teknik Özet:* {ozet}"
+
+    except Exception as e:
+        log.warning(f"build_teknik_ozet hatası [{ticker}]: {e}")
+        return ""
+
+
 def build_ai_prompt(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str:
     """
     Görev 3 — TEKNİK KART (PRO tier).

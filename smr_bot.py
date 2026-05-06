@@ -197,10 +197,12 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
                 log.warning(f"[{ticker}] Yetersiz veri — analiz iptal")
                 return None, "", ""
 
-            # ICT bottom_line — ELITE için gösterilmez (Görev 1 zaten kapsar)
+            # Teknik Özet — FREE ve PRO için (ELITE'te Görev 1 zaten kapsar)
             ict_text = ""
-            if tier != "elite" and ict.get("status") == "OK":
-                ict_text = ict.get("bottom_line", "")
+            if tier != "elite":
+                ict_text = await loop.run_in_executor(
+                    None, lambda: smr_core.build_teknik_ozet(ticker, df)
+                )
 
             # AI analiz: ELITE → Görev 1, PRO → Görev 3 (Teknik Kart)
             ai_text = ""
@@ -435,7 +437,7 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ICT Bottomline blok
     ict_block = ""
     if ict_text:
-        ict_block = f"\n\n🖥️ *ICT BOTTOM LINE*\n`{ict_text[:600]}`"
+        ict_block = f"\n\n{ict_text[:600]}"
 
     # Caption
     if chat_id == FREE_ID:
@@ -734,7 +736,7 @@ async def _send_bulletin_to_channel(
 
         ict_block = ""
         if ict_text:
-            ict_block = f"\n\n🖥️ *ICT BOTTOM LINE*\n`{ict_text[:500]}`"
+            ict_block = f"\n\n{ict_text[:500]}"
 
         if is_sunday:
             header = f"📅 *SMR Pazar Hatırlatması — {now_str}*\n_↩️ Cuma analizinin tekrarı_"
