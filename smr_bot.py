@@ -345,60 +345,6 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         return  # Grup içinde anonim admin — yanıtlama
 
-    today   = datetime.now().date().isoformat()
-    limit   = DAILY_LIMITS[chat_id]
-
-    # Admin kontrolü — limitsiz kullanıcılar (user_id VEYA username ile tanınır)
-    # Kanal postları: sadece admin yazabilir → her zaman limitsiz
-    # Grup mesajı: user_id veya username kontrolü
-    if update.channel_post:
-        is_unlimited = True
-    else:
-        is_unlimited = (
-            user_id in UNLIMITED_USERS
-            or (username and username.lower() in {u.lower() for u in UNLIMITED_USERNAMES})
-        )
-    log.info(f"[LIMIT DEBUG] chat={chat_id} user={user_id} uname={username!r} unlimited={is_unlimited} channel_post={bool(update.channel_post)} from_user={bool(msg.from_user)}")
-
-    # ── Abonelik kontrolü (grup mesajlarında from_user varsa) ─────────────────
-    if not is_unlimited and msg.from_user and chat_id != FREE_ID:
-        sub_active, sub_tier = smr_core.sub_is_active(user_id)
-        # username ile de dene (user_id eşleşmemiş olabilir)
-        if not sub_active and username:
-            rec = smr_core.sub_get_by_username(username)
-            if rec:
-                from datetime import date as _date
-                sub_active = rec["expiry_date"] >= _date.today().isoformat()
-                sub_tier   = rec["tier"]
-                # Artık user_id'yi güncelle
-                if sub_active:
-                    smr_core.sub_add(user_id, username, sub_tier,
-                        (_date.fromisoformat(rec["expiry_date"]) - _date.today()).days)
-        if not sub_active:
-            # Süresi dolmuş mu yoksa hiç kayıt yok mu?
-            rec2 = smr_core.sub_get(user_id) or (smr_core.sub_get_by_username(username) if username else None)
-            if rec2:
-                await msg.reply_text(
-                    "⏰ Aboneliğin sona erdi.\n"
-                    "Yenilemek için @SmartMoneyRadar26 ile iletişime geç."
-                )
-            else:
-                await msg.reply_text(
-                    "🔒 Bu kanal PRO/ELİTE abonelere özeldir.\n"
-                    "Abone olmak için @SmartMoneyRadar26 ile iletişime geç."
-                )
-            return
-    # ─────────────────────────────────────────────────────────────────────────
-
-    if not is_unlimited:
-        used = _usage_get(chat_id, user_id, today)
-        if used >= limit:
-            upgrade = "\n\n💎 Günde 3 sorgu için PRO üyelik: [yakında]" if chat_id == FREE_ID else ""
-            await msg.reply_text(
-                f"⚠️ Günlük limitine ulaştın ({limit}/{limit}).\nYarın tekrar dene.{upgrade}"
-            )
-            return
-        _usage_inc(chat_id, user_id, today)
     tier     = TIER_NAME[chat_id]
     tier_key = tier.lower()  # "free", "pro", "elite"
     used_now = _usage_get(chat_id, user_id, today)
