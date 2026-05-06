@@ -35,6 +35,7 @@ GEMINI_API_KEY = CFG.get("gemini_api_key", "")
 FREE_ID   = int(CFG["channels"]["free"]["chat_id"])
 PRO_ID    = int(CFG["channels"]["pro"]["chat_id"])
 ELITE_ID  = int(CFG["channels"]["elite"]["chat_id"])
+CHAT_ID   = int(CFG["chat"]["chat_id"])
 
 DAILY_LIMITS = {FREE_ID: 1, PRO_ID: 3, ELITE_ID: 10}
 TIER_NAME    = {FREE_ID: "FREE", PRO_ID: "PRO", ELITE_ID: "ELITE"}
@@ -515,6 +516,102 @@ async def delete_non_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.warning(f"Mesaj silinemedi (chat={chat_id}): {e}")
 
 
+# ─── SOHBET GRUBU MODERASYONU ────────────────────────────────────────────────
+CHAT_RULES = (
+    "👋 *SMR Sohbet Grubuna Hoş Geldin!*\n\n"
+    "📌 *Kurallar:*\n"
+    "• Reklam ve tanıtım yasaktır\n"
+    "• Hisse/kripto pump paylaşımı yasaktır\n"
+    "• PRO/ELİTE kanal içeriğini buraya iletmek yasaktır\n"
+    "• Hakaret ve küfür yasaktır\n"
+    "• Analiz için: @SMR_Free_Kanal\n\n"
+    "⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
+)
+
+async def handle_chat_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sohbet grubu moderasyonu."""
+    msg = update.message
+    if not msg or msg.chat_id != CHAT_ID:
+        return
+
+    # Bot mesajlarına dokunma
+    if msg.from_user and msg.from_user.is_bot:
+        return
+
+    # Admin mesajlarına dokunma
+    uid   = msg.from_user.id if msg.from_user else 0
+    uname = (msg.from_user.username or "") if msg.from_user else ""
+    if _is_admin(uid, uname):
+        return
+
+    text = (msg.text or "").strip()
+
+    # # ile başlayan mesaj → sil, FREE kanalına yönlendir
+    if text.startswith("#"):
+        try:
+            await msg.delete()
+            warn = await context.bot.send_message(
+                chat_id=CHAT_ID,
+                text="📊 Analiz için FREE kanalımıza gidin: @SMRFreeKanal\nBu grupta hisse kodu ile analiz yapılmaz.",
+            )
+            await asyncio.sleep(8)
+            await warn.delete()
+        except Exception as e:
+            log.warning(f"Sohbet grubu silme hatası: {e}")
+        return
+
+    # PRO/ELITE kanalından forward → sil
+    if msg.forward_from_chat and msg.forward_from_chat.id in (PRO_ID, ELITE_ID):
+        try:
+            await msg.delete()
+            warn = await context.bot.send_message(
+                chat_id=CHAT_ID,
+                text="🚫 PRO/ELİTE kanal içeriğini buraya iletmek yasaktır.",
+            )
+            await asyncio.sleep(8)
+            await warn.delete()
+        except Exception as e:
+            log.warning(f"Forward silme hatası: {e}")
+        return
+
+    # Reklam/link filtresi (t.me linkleri — kendi kanallar hariç)
+    if msg.entities:
+        for ent in msg.entities:
+            if ent.type in ("url", "text_link"):
+                url = text[ent.offset:ent.offset + ent.length] if ent.type == "url" else (ent.url or "")
+                # Kendi bot/kanallar hariç dış t.me linkleri sil
+                if "t.me" in url and "SMR" not in url.upper():
+                    try:
+                        await msg.delete()
+                        warn = await context.bot.send_message(
+                            chat_id=CHAT_ID,
+                            text="🚫 Reklam ve dış grup linkleri bu grupta yasaktır.",
+                        )
+                        await asyncio.sleep(8)
+                        await warn.delete()
+                    except Exception as e:
+                        log.warning(f"Link silme hatası: {e}")
+                    return
+
+
+async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gruba yeni katılan üyeye hoş geldin mesajı."""
+    if not update.message or update.message.chat_id != CHAT_ID:
+        return
+    for member in (update.message.new_chat_members or []):
+        if member.is_bot:
+            continue
+        name = member.first_name or member.username or "Yeni Üye"
+        try:
+            await context.bot.send_message(
+                chat_id=CHAT_ID,
+                text=f"👋 Hoş geldin *{name}*!\n\n{CHAT_RULES}",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            log.warning(f"Hoş geldin mesajı gönderilemedi: {e}")
+
+
 # ─── ADMİN KOMUTLARI ─────────────────────────────────────────────────────────
 def _is_admin(user_id: int, username: str = "") -> bool:
     return user_id in UNLIMITED_USERS or username in UNLIMITED_USERNAMES
@@ -841,6 +938,10 @@ def main():
     app.add_handler(CommandHandler("listusers",  cmd_listusers))
     app.add_handler(CommandHandler("durum",      cmd_durum))
     app.add_handler(CommandHandler("myid",       cmd_myid))
+
+    # Sohbet grubu moderasyonu
+    app.add_handler(MessageHandler(filters.Chat(CHAT_ID) & filters.TEXT, handle_chat_group), group=0)
+    app.add_handler(MessageHandler(filters.Chat(CHAT_ID) & filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
 
     # handle_ticker group=1'de çalışmalı — group=0'daki delete_non_ticker'dan SONRA
     # PTB v20: her group sırayla işlenir; aynı grup içinde ilk eşleşen kazanır
