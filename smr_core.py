@@ -1327,8 +1327,9 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
     """
     5. Kutu — Teknik Özet (Piyasa Sentezi).
-    App.py'deki calculate_8_point_roadmap M8 mantığının Telegram uyumlu versiyonu.
-    HTML yok, Streamlit yok. Düz metin döner.
+    Smart Money Score (4 kriter) + Destek/Direnç + Pazar Rejimi + M8 sentez metni.
+    app.py calculate_smart_money_score() mantığından uyarlandı.
+    HTML yok, Streamlit yok. Telegram Markdown döner.
     """
     try:
         import pandas as pd
@@ -1340,37 +1341,41 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
         c = df['Close']; h = df['High']; l = df['Low']
         o = df['Open'];  v = df['Volume']
         cp = float(c.iloc[-1])
+        n  = len(c)
 
         def fmt(val):
             return f"{int(val):,}" if val >= 1000 else f"{val:.2f}"
 
-        # ── Temel istatistikler ──────────────────────────────────────────────
-        n = len(c)
-        sma200  = float(c.rolling(min(200, n - 1)).mean().iloc[-1])
-        sma50   = float(c.rolling(min(50,  n - 1)).mean().iloc[-1])
-        atr     = float((h - l).rolling(14).mean().iloc[-1])
-        std_20  = float(c.rolling(20).std().iloc[-1])
-        res_20  = float(h.tail(20).max())
-        sup_20  = float(l.tail(20).min())
+        def _b(val):
+            return 1.0 if val is True else 0.0
+
+        # ── TEMEL GÖSTERGELer ────────────────────────────────────────────────
+        sma200   = float(c.rolling(min(200, n - 1)).mean().iloc[-1])
+        sma50    = float(c.rolling(min(50,  n - 1)).mean().iloc[-1])
+        atr      = float((h - l).rolling(14).mean().iloc[-1])
+        std_20   = float(c.rolling(20).std().iloc[-1])
+        mean_20  = float(c.rolling(20).mean().iloc[-1])
+        res_20   = float(h.tail(20).max())
+        sup_20   = float(l.tail(20).min())
+        z_score  = (cp - mean_20) / std_20 if std_20 > 0 else 0.0
         alt_fitil = float(min(o.iloc[-1], c.iloc[-1])) - float(l.iloc[-1])
-        govde   = abs(float(c.iloc[-1]) - float(o.iloc[-1]))
-        z_score = (cp - float(c.rolling(20).mean().iloc[-1])) / std_20 if std_20 > 0 else 0.0
+        govde    = abs(float(c.iloc[-1]) - float(o.iloc[-1]))
 
         # RSI 14
-        delta   = c.diff()
-        gain    = delta.where(delta > 0, 0).rolling(14).mean()
-        loss    = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        _rsi_s  = 100 - (100 / (1 + gain / loss))
-        rsi_val = float(_rsi_s.iloc[-1]) if not pd.isna(_rsi_s.iloc[-1]) else 50.0
+        _delta  = c.diff()
+        _gain   = _delta.where(_delta > 0, 0).rolling(14).mean()
+        _loss   = (-_delta.where(_delta < 0, 0)).rolling(14).mean().replace(0, 0.00001)
+        rsi_val = float((100 - (100 / (1 + _gain / _loss))).iloc[-1])
+        if pd.isna(rsi_val):
+            rsi_val = 50.0
 
-        # Hacim
-        curr_vol  = float(v.iloc[-1])
+        # Hacim & VSA
+        curr_vol = float(v.iloc[-1])
         if curr_vol <= 100 and n > 1:
             curr_vol = float(v.iloc[-2])
         avg_vol   = float(v.rolling(20).mean().iloc[-1])
         vol_ratio = curr_vol / avg_vol if avg_vol > 0 else 1.0
 
-        # VSA
         if vol_ratio > 1.5 and govde < atr * 0.4:
             vsa = "Churning"
         elif vol_ratio > 1.1 and govde > atr * 0.8:
@@ -1380,7 +1385,11 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
         else:
             vsa = "Standart Akış"
 
-        # Mum rengi
+        # OBV
+        _dir = c.diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+        obv  = (v * _dir).cumsum()
+
+        # Mum
         if float(c.iloc[-1]) < float(o.iloc[-1]) and govde > atr * 0.5:
             m1_mum = "Kırmızı"
         elif float(c.iloc[-1]) > float(o.iloc[-1]) and govde > atr * 0.5:
@@ -1388,31 +1397,194 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
         else:
             m1_mum = "Nötr"
 
-        # Enerji skoru
-        sq_puan      = 8 if std_20 < atr else 4
-        vol_puan     = 7 if vol_ratio < 0.8 else 4
-        ema_puan     = 8 if abs(cp - sma50) / sma50 < 0.02 else 5
-        enerji_skor  = (sq_puan + vol_puan + ema_puan) / 23 * 8
-
-        # Boğa ağırlığı
-        boga_w = 50 + (rsi_val - 50) * 0.5 + (15 if cp > sma50 else -15)
-        _ema12 = c.ewm(span=12, adjust=False).mean()
-        _ema26 = c.ewm(span=26, adjust=False).mean()
-        _macd  = _ema12 - _ema26
-        _macd_s = _macd.ewm(span=9, adjust=False).mean()
-        boga_w += 5 if _macd.iloc[-1] > _macd_s.iloc[-1] else -5
-        _obv    = (v * c.diff().fillna(0).apply(
-                    lambda x: 1 if x > 0 else (-1 if x < 0 else 0))).cumsum()
-        boga_w += 5 if _obv.iloc[-1] > _obv.rolling(20).mean().iloc[-1] else -5
-        boga_w  = max(5, min(95, boga_w))
-
-        # ── M8 Sentez Metni ──────────────────────────────────────────────────
+        # ── PAZAR REJİMİ ─────────────────────────────────────────────────────
         is_macro_bull   = cp > sma200
         is_micro_bull   = cp > sma50
         is_overheated   = (z_score >= 1.5) or (rsi_val > 75)
         is_oversold     = (z_score <= -1.5) or (rsi_val < 30)
         is_churning     = "Churning" in vsa
         is_accumulation = (alt_fitil > atr * 0.5) or ("Yeşil" in m1_mum and z_score < -1)
+
+        if is_macro_bull and is_micro_bull:
+            rejim_label = "⚠️ Aşırı Isınmış" if (is_overheated or is_churning) else "🟢 Boğa Trendi"
+        elif not is_macro_bull:
+            rejim_label = "🔄 Potansiyel Dönüş" if (is_oversold or is_accumulation) else "🔴 Ayı Trendi"
+        else:
+            rejim_label = "🟡 Düzeltme (Uzun Vade Yukarı)" if is_oversold else "🟡 Sıkışma"
+
+        # ── SMART MONEY SCORE — KRİTER 1: TREND ZEMİNİ ──────────────────────
+        sma50_s     = c.rolling(min(50, n - 1)).mean()
+        above_sma50 = cp > float(sma50_s.iloc[-1])
+        sma50_up    = (float(sma50_s.iloc[-1]) > float(sma50_s.iloc[-6])) if n > 6 else above_sma50
+        trend_pass  = above_sma50 and sma50_up
+
+        trend_days = 0
+        if trend_pass:
+            for _i in range(1, min(60, n - 1)):
+                try:
+                    cond_above = float(c.iloc[-_i-1]) > float(sma50_s.iloc[-_i-1])
+                    cond_up    = (float(sma50_s.iloc[-_i-1]) > float(sma50_s.iloc[-_i-7])) if (_i + 7) < n else True
+                    if cond_above and cond_up:
+                        trend_days += 1
+                    else:
+                        break
+                except:
+                    break
+        trend_days = max(1, trend_days) if trend_pass else 0
+        trend_ico  = "✅" if trend_pass else "❌"
+        trend_desc = (f"{trend_days}g 50MA üstünde" if trend_pass
+                      else ("50MA altında" if not above_sma50 else "50MA yönü aşağı"))
+
+        # ── KRİTER 2: OBV BİRİKİM ────────────────────────────────────────────
+        obv_sma10  = obv.rolling(10).mean()
+        obv_above  = bool(obv.iloc[-1] > obv_sma10.iloc[-1])
+        obv_rising = bool(obv.iloc[-1] > obv.iloc[-3]) if n > 3 else False
+        accum_pass = obv_above and obv_rising
+
+        accum_days = 0
+        if accum_pass:
+            for _i in range(1, min(30, n - 10)):
+                try:
+                    if obv.iloc[-_i-1] > obv_sma10.iloc[-_i-1]:
+                        accum_days += 1
+                    else:
+                        break
+                except:
+                    break
+        accum_days = max(1, accum_days) if accum_pass else 0
+        price_flat = (abs(float(c.iloc[-1] / c.iloc[-6] - 1)) < 0.02) if n > 6 else False
+        accum_ico  = "✅" if accum_pass else "❌"
+        accum_desc = (f"{accum_days}g OBV↑ fiyat sabit (gizli birikim)" if (accum_pass and price_flat)
+                      else f"{accum_days}g OBV aktif alım" if accum_pass
+                      else "Net birikim yok")
+
+        # ── KRİTER 3: BB SIKIŞMASI ───────────────────────────────────────────
+        # BB genişliği < Keltner genişliği ≈ std_20 < ATR (basit yaklaşım)
+        bb_width      = 2.0 * std_20
+        keltner_width = 1.5 * atr
+        squeeze_pass  = bb_width < keltner_width
+
+        squeeze_days = 0
+        if squeeze_pass:
+            for _i in range(1, min(20, n - 20)):
+                try:
+                    _std = float(c.iloc[:-_i].rolling(20).std().iloc[-1])
+                    _atr = float((h.iloc[:-_i] - l.iloc[:-_i]).rolling(14).mean().iloc[-1])
+                    if (2.0 * _std) < (1.5 * _atr):
+                        squeeze_days += 1
+                    else:
+                        break
+                except:
+                    break
+        squeeze_days = max(1, squeeze_days) if squeeze_pass else 0
+        squeeze_ico  = "✅" if squeeze_pass else "❌"
+        squeeze_desc = (f"{squeeze_days}g BB sıkışması — enerji birikimi" if squeeze_pass
+                        else "Aktif sıkışma yok")
+
+        # ── KRİTER 4: TETİKLEYİCİ ────────────────────────────────────────────
+        vol_sma20 = v.rolling(20).mean()
+        high20    = float(c.iloc[-21:-1].max()) if n >= 21 else float(c.max())
+        _rsi_ok   = 35 <= rsi_val <= 73
+        _low5     = float(l.iloc[-5:].min())
+        _risk     = max(cp - _low5, 0.001)
+        _reward   = max(high20 - cp, 0)
+        _rr       = _reward / _risk if _risk > 0 else 0
+        _sma50_dist  = ((cp / sma50) - 1) * 100 if sma50 > 0 else 0
+        _overextended = _sma50_dist > 25
+
+        trigger_pass     = False
+        trigger_days_ago = 1
+        for _i in range(1, 4):
+            try:
+                day_cl  = float(c.iloc[-_i])
+                prev_cl = float(c.iloc[-_i - 1])
+                day_vol = float(v.iloc[-_i])
+                avg_v   = float(vol_sma20.iloc[-_i])
+                vol_high = day_vol > avg_v * 1.5
+                is_green = day_cl > prev_cl
+                breakout = day_cl > high20 and vol_high
+                if ((is_green and vol_high) or breakout) and _rsi_ok:
+                    trigger_pass     = True
+                    trigger_days_ago = _i
+                    break
+            except:
+                continue
+
+        trigger_ico  = "✅" if trigger_pass else "❌"
+        _rr_txt = f" | R/R {_rr:.1f}:1" if _rr > 0.1 else ""
+        if trigger_pass:
+            trigger_desc = (f"Bugün kırılım{_rr_txt} | RSI {rsi_val:.0f}"
+                            if trigger_days_ago == 1
+                            else f"{trigger_days_ago}g önce kırılım{_rr_txt} | RSI {rsi_val:.0f}")
+        elif rsi_val > 73:
+            trigger_desc = f"RSI {rsi_val:.0f} — aşırı alım, giriş riskli"
+        elif rsi_val < 35:
+            trigger_desc = f"RSI {rsi_val:.0f} — aşırı satım, dönüş yakın"
+        else:
+            trigger_desc = f"Tetik atılmadı | RSI {rsi_val:.0f}"
+        if _overextended:
+            trigger_desc += f" | ⚠️ SMA50+%{_sma50_dist:.0f}"
+
+        # ── SKOR HESABI ──────────────────────────────────────────────────────
+        # Ağırlıklar: trend=1.0, accum=1.7, trigger=1.2  (RS atlandı, 3 kriter)
+        # squeeze ZORUNLU KRİTER DEĞİL → +8 bonus
+        w3    = {"trend": 1.0, "accum": 1.7, "trigger": 1.2}
+        max_w = sum(w3.values())   # 3.9
+        raw   = (_b(trend_pass) * w3["trend"] +
+                 _b(accum_pass) * w3["accum"] +
+                 _b(trigger_pass) * w3["trigger"])
+        score = round((raw / max_w) * 100)
+
+        # Bonuslar / ceza
+        _obv_div = accum_pass and price_flat
+        if squeeze_pass:   score = min(100, score + 8)
+        if _obv_div:       score = min(100, score + 5)
+        if _overextended:  score = max(0,   score - 7)
+
+        # Durum etiketi
+        pre_launch = trend_pass and accum_pass and not trigger_pass
+        if pre_launch:
+            sms_status = "🎯 FİTİL ÇEKİLİYOR"
+        elif score >= 85:
+            sms_status = "🔥 Harekete geç"
+        elif score >= 65:
+            sms_status = "⚡ LONG İÇİN HAZIR"
+        elif score >= 45:
+            sms_status = "🏕 Henüz değil, takipte"
+        elif score >= 25:
+            sms_status = "🌱 Çok erken"
+        else:
+            sms_status = "😴 Boşver"
+
+        # Senaryo etiketi
+        if trigger_pass and not squeeze_pass:
+            scenario = "Trend Devamı"
+        elif squeeze_pass and not trigger_pass:
+            scenario = "Kırılım Öncesi"
+        elif squeeze_pass and trigger_pass:
+            scenario = "Güçlü Kurulum"
+        elif pre_launch:
+            scenario = "Pre-Launch"
+        else:
+            scenario = ""
+        if scenario:
+            sms_status += f" · {scenario}"
+
+        # ── M8 SENTEZ METNİ ──────────────────────────────────────────────────
+        boga_w  = 50 + (rsi_val - 50) * 0.5 + (15 if is_micro_bull else -15)
+        _ema12  = c.ewm(span=12, adjust=False).mean()
+        _ema26  = c.ewm(span=26, adjust=False).mean()
+        _macd   = _ema12 - _ema26
+        _macd_s = _macd.ewm(span=9, adjust=False).mean()
+        boga_w += 5 if _macd.iloc[-1] > _macd_s.iloc[-1] else -5
+        boga_w += 5 if obv.iloc[-1] > obv.rolling(20).mean().iloc[-1] else -5
+        boga_w  = max(5, min(95, boga_w))
+
+        enerji_skor = (
+            (8 if std_20 < atr else 4) +
+            (7 if vol_ratio < 0.8 else 4) +
+            (8 if abs(cp - sma50) / sma50 < 0.02 else 5)
+        ) / 23 * 8
 
         if is_macro_bull and is_micro_bull:
             if is_overheated or is_churning:
@@ -1445,7 +1617,24 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
                 ozet = (f"Fiyat {fmt(sup_20)}–{fmt(res_20)} arasında sıkışmış. "
                         f"Kırılım yönüne göre pozisyon almak en güvenli strateji.")
 
-        return f"📊 *Teknik Özet:* {ozet}"
+        # ── ÇIKTI ────────────────────────────────────────────────────────────
+        lines = [
+            "📊 *TEKNİK ÖZET*",
+            "",
+            f"📍 *Rejim:* {rejim_label}",
+            f"🛡 *Destek:* `{fmt(sup_20)}` | 🎯 *Direnç:* `{fmt(res_20)}`",
+            "",
+            f"⚡ *Akıllı Para Skoru: {score}/100*",
+            f"└ {sms_status}",
+            "",
+            f"{trend_ico} *Trend* — {trend_desc}",
+            f"{accum_ico} *OBV Birikim* — {accum_desc}",
+            f"{squeeze_ico} *BB Sıkışma* — {squeeze_desc}",
+            f"{trigger_ico} *Tetikleyici* — {trigger_desc}",
+            "",
+            f"💬 _{ozet}_",
+        ]
+        return "\n".join(lines)
 
     except Exception as e:
         log.warning(f"build_teknik_ozet hatası [{ticker}]: {e}")
