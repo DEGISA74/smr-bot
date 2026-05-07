@@ -1397,7 +1397,7 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
         else:
             m1_mum = "Nötr"
 
-        # ── PAZAR REJİMİ ─────────────────────────────────────────────────────
+        # ── BÜYÜK ANA TREND & KISA VADE GÖRÜNÜM ─────────────────────────────
         is_macro_bull   = cp > sma200
         is_micro_bull   = cp > sma50
         is_overheated   = (z_score >= 1.5) or (rsi_val > 75)
@@ -1405,12 +1405,92 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
         is_churning     = "Churning" in vsa
         is_accumulation = (alt_fitil > atr * 0.5) or ("Yeşil" in m1_mum and z_score < -1)
 
+        # Büyük Ana Trend (makro + orta vade sentezi)
         if is_macro_bull and is_micro_bull:
-            rejim_label = "⚠️ Aşırı Isınmış" if (is_overheated or is_churning) else "🟢 Boğa Trendi"
+            ana_trend_label = "⚠️ Aşırı Isınmış" if (is_overheated or is_churning) else "🟢 YUKARI"
         elif not is_macro_bull:
-            rejim_label = "🔄 Potansiyel Dönüş" if (is_oversold or is_accumulation) else "🔴 Ayı Trendi"
+            ana_trend_label = "🔄 Potansiyel Dönüş" if (is_oversold or is_accumulation) else "🔴 AŞAĞI"
         else:
-            rejim_label = "🟡 Düzeltme (Uzun Vade Yukarı)" if is_oversold else "🟡 Sıkışma"
+            ana_trend_label = "🟡 DÜZELTME" if is_oversold else "🟡 SIKIŞMA"
+
+        # SMA50 süresi (kaç gündür üstünde)
+        _sma50_days = 0
+        if is_micro_bull:
+            for _i in range(1, min(60, n - 1)):
+                try:
+                    if float(c.iloc[-_i - 1]) > float(sma50_s.iloc[-_i - 1]):
+                        _sma50_days += 1
+                    else:
+                        break
+                except:
+                    break
+        _sma50_days = max(1, _sma50_days) if is_micro_bull else 0
+        _trend_detail = (f"SMA50 üstünde · {_sma50_days}g" if is_micro_bull
+                         else f"SMA200 üstünde, SMA50 altında" if is_macro_bull
+                         else "SMA200 altında")
+
+        # Kısa Vade Görünüm (4 sinyal, bugün–bu hafta)
+        _kv_signals = []
+        # S1: Son mum yönü
+        _kv_signals.append(1 if float(c.iloc[-1]) > float(c.iloc[-2]) else -1)
+        # S2: RSI 3 günlük yön
+        try:
+            _rsi_3g = float((100 - (100 / (1 + _gain / _loss))).iloc[-4])
+            _kv_signals.append(1 if rsi_val > _rsi_3g else -1)
+        except:
+            _kv_signals.append(0)
+        # S3: MACD histogram yönü
+        _ema12_kv = c.ewm(span=12, adjust=False).mean()
+        _ema26_kv = c.ewm(span=26, adjust=False).mean()
+        _macd_kv  = _ema12_kv - _ema26_kv
+        _macd_s_kv = _macd_kv.ewm(span=9, adjust=False).mean()
+        _kv_signals.append(1 if float(_macd_kv.iloc[-1]) > float(_macd_s_kv.iloc[-1]) else -1)
+        # S4: Fiyat vs EMA8
+        _ema8 = c.ewm(span=8, adjust=False).mean()
+        _kv_signals.append(1 if cp > float(_ema8.iloc[-1]) else -1)
+
+        _kv_bull = sum(1 for s in _kv_signals if s > 0)
+        _kv_bear = sum(1 for s in _kv_signals if s < 0)
+
+        if _kv_bull >= 3:
+            kisa_vade_label = "🟢 YUKARI ↑"
+        elif _kv_bear >= 3:
+            kisa_vade_label = "🔴 AŞAĞI ↓"
+        else:
+            kisa_vade_label = "🟡 KARARSIZ →"
+        _kv_detail = f"Kısa vade (bugün–bu hafta) · {_kv_bull}/4 sinyal yukarı yönde"
+
+        # ── DESTEK / DİRENÇ (pivot bazlı, makul mesafe) ─────────────────────
+        # Son 25 barda en yakın pivot düşük ve pivot yüksek
+        _sup_val = None
+        _res_val = None
+        _la = 2  # lookaround
+        for _pi in range(_la + 1, min(25, n - _la)):
+            _lv = float(l.iloc[-_pi])
+            _hv = float(h.iloc[-_pi])
+            # Pivot low: komşulardan küçük mü?
+            if _sup_val is None and _lv < cp:
+                try:
+                    if all(float(l.iloc[-_pi]) <= float(l.iloc[-_pi + _j])
+                           for _j in range(-_la, _la + 1) if _j != 0):
+                        _sup_val = _lv
+                except:
+                    pass
+            # Pivot high: komşulardan büyük mü?
+            if _res_val is None and _hv > cp:
+                try:
+                    if all(float(h.iloc[-_pi]) >= float(h.iloc[-_pi + _j])
+                           for _j in range(-_la, _la + 1) if _j != 0):
+                        _res_val = _hv
+                except:
+                    pass
+            if _sup_val is not None and _res_val is not None:
+                break
+        # ATR tabanlı fallback — 3*ATR'dan uzaksa veya bulunamadıysa
+        if _sup_val is None or (cp - _sup_val) > 3 * atr:
+            _sup_val = cp - 1.5 * atr
+        if _res_val is None or (_res_val - cp) > 3 * atr:
+            _res_val = cp + 1.5 * atr
 
         # ── SMART MONEY SCORE — KRİTER 1: TREND ZEMİNİ ──────────────────────
         sma50_s     = c.rolling(min(50, n - 1)).mean()
@@ -1621,8 +1701,11 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
         lines = [
             "📊 *TEKNİK ÖZET*",
             "",
-            f"📍 *Rejim:* {rejim_label}",
-            f"🛡 *Destek:* `{fmt(sup_20)}` | 🎯 *Direnç:* `{fmt(res_20)}`",
+            f"📍 *Büyük Ana Trend:* {ana_trend_label}",
+            f"└ _{_trend_detail}_",
+            f"🔭 *Kısa Vade Görünüm:* {kisa_vade_label}",
+            f"└ _{_kv_detail}_",
+            f"🛡 *Destek:* `{fmt(_sup_val)}` | 🎯 *Direnç:* `{fmt(_res_val)}`",
             "",
             f"⚡ *Akıllı Para Skoru: {score}/100*",
             f"└ {sms_status}",

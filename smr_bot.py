@@ -420,12 +420,12 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ICT Bottomline blok
     ict_block = ""
     if ict_text:
-        ict_block = f"\n\n{ict_text[:600]}"
+        ict_block = f"\n\n{ict_text[:900]}"
 
     # Caption
     if chat_id == FREE_ID:
         caption = (
-            f"📊 *#{raw_ticker}* — SMR Analiz\n"
+            f"📊 *#{raw_ticker}* — Smart Money Radar Kısa Analizi\n"
             f"━━━━━━━━━━━━━━━━━━━"
             f"{ict_block}\n\n"
             f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
@@ -434,7 +434,7 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif chat_id == PRO_ID:
         caption = (
-            f"📊 *#{raw_ticker}* — SMR Analiz\n"
+            f"📊 *#{raw_ticker}* — Smart Money Radar Kısa Analizi\n"
             f"━━━━━━━━━━━━━━━━━━━"
             f"{ict_block}\n\n"
             f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
@@ -443,7 +443,7 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         caption = (
-            f"📊 *#{raw_ticker}* — SMR Analiz\n"
+            f"📊 *#{raw_ticker}* — Smart Money Radar Kısa Analizi\n"
             f"━━━━━━━━━━━━━━━━━━━"
             f"{ict_block}\n\n"
             f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
