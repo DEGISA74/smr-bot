@@ -10,8 +10,11 @@ import os
 import signal
 import atexit
 import asyncio
+import hashlib
 from datetime import datetime
 from collections import defaultdict
+
+from aiohttp import web
 
 import google.generativeai as genai
 
@@ -38,6 +41,14 @@ ELITE_ID  = int(CFG["channels"]["elite"]["chat_id"])
 CHAT_ID   = int(CFG["chat"]["chat_id"])
 
 DAILY_LIMITS = {FREE_ID: 1, PRO_ID: 3, ELITE_ID: 10}
+
+# Shopier OSB kimlik bilgileri (telegram_config.json'dan)
+OSB_USER = CFG.get("shopier_osb_user", "")
+OSB_PASS = CFG.get("shopier_osb_pass", "")
+ADMIN_ID = 1034525990  # Bildirimler buraya gidecek
+
+# Global bot referansı (webhook handler için)
+_bot_app = None
 TIER_NAME    = {FREE_ID: "FREE", PRO_ID: "PRO", ELITE_ID: "ELITE"}
 
 # Limitsiz kullanıcılar (admin/sahip) — user_id VE username ile tanınır
@@ -901,6 +912,79 @@ async def send_daily_bulletin(context: ContextTypes.DEFAULT_TYPE):
     await _send_bulletin_to_channel(context, ELITE_ID, tier="elite", now_str=now_str, is_sunday=is_sunday)
 
 
+# ─── SHOPİER OSB WEBHOOK ─────────────────────────────────────────────────────
+async def shopier_osb(request: web.Request) -> web.Response:
+    """
+    Shopier Otomatik Sipariş Bildirimi (OSB) endpoint'i.
+    Shopier ödeme tamamlanınca bu URL'ye POST atar.
+    Admin'e Telegram bildirimi gönderir.
+    """
+    try:
+        data = await request.post()
+
+        # Sipariş bilgileri
+        siparis_id  = data.get("id", "?")
+        urun        = data.get("urun_adi", "?")
+        tutar       = data.get("toplam_tutar", "?")
+        musteri     = data.get("musteri_adi_soyadi", "?")
+        email       = data.get("musteri_email", "?")
+
+        # Telegram kullanıcı adı — özel alan adı Shopier'da ne yazıldıysa
+        tg_user = (
+            data.get("Telegram Kullanıcı Adı")
+            or data.get("telegram_kullanici_adi")
+            or data.get("telegram")
+            or "?"
+        ).strip().lstrip("@")
+
+        # Tier tespiti
+        urun_upper = urun.upper()
+        if "ELITE" in urun_upper or "ELİTE" in urun_upper:
+            tier = "ELITE"
+            days = 30
+        elif "PRO" in urun_upper:
+            tier = "PRO"
+            days = 30
+        else:
+            tier = "?"
+            days = 30
+
+        if tg_user != "?" and tier != "?":
+            cmd = f"`/adduser @{tg_user} {tier} {days} shopier`"
+        else:
+            cmd = "⚠️ Kullanıcı adı veya tier belirlenemedi — manuel ekle"
+
+        msg = (
+            f"💰 *YENİ SİPARİŞ!*\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"📦 Ürün: {urun}\n"
+            f"💎 Tier: {tier}\n"
+            f"👤 Müşteri: {musteri}\n"
+            f"📧 E-posta: {email}\n"
+            f"📱 Telegram: @{tg_user}\n"
+            f"💵 Tutar: {tutar}₺\n"
+            f"🔖 Sipariş No: {siparis_id}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"Eklemek için kopyala:\n{cmd}"
+        )
+
+        if _bot_app:
+            await _bot_app.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=msg,
+                parse_mode="Markdown"
+            )
+            log.info(f"[OSB] Sipariş bildirimi gönderildi — {urun} | @{tg_user}")
+        else:
+            log.error("[OSB] Bot henüz hazır değil — bildirim gönderilemedi")
+
+    except Exception as e:
+        log.error(f"[OSB] Hata: {e}", exc_info=True)
+
+    # Shopier her zaman 200 bekler
+    return web.Response(text="OK", status=200)
+
+
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 def main():
     import pytz
@@ -922,9 +1006,12 @@ def main():
         .read_timeout(20)
         .write_timeout(20)
         .get_updates_connect_timeout(10)
-        .get_updates_read_timeout(10)   # Long-poll süresi kısa → restart sonrası 409 en fazla 10sn sürer
+        .get_updates_read_timeout(10)
         .build()
     )
+
+    global _bot_app
+    _bot_app = app
 
     # Hata handler — 409 / ağ hatalarını sessizce yutar
     app.add_error_handler(error_handler)
@@ -970,12 +1057,38 @@ def main():
     )
 
     log.info("✅ Bot aktif. Bülten: 19:00 | Sıfırlama: 00:00")
-    app.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
-        poll_interval=2.0,
-        timeout=5,          # getUpdates long-poll süresi — kısa tut, GCP TCP kopuklarını önler
-    )
+
+    # aiohttp — Shopier OSB endpoint
+    web_app = web.Application()
+    web_app.router.add_post("/shopier", shopier_osb)
+
+    async def run_all():
+        # Telegram bot başlat
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            poll_interval=2.0,
+            timeout=5,
+        )
+        # Web server başlat (port 8080)
+        runner = web.AppRunner(web_app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", 8080)
+        await site.start()
+        log.info("✅ Shopier OSB endpoint aktif: port 8080/shopier")
+
+        # Sonsuza kadar çalış
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
+            await runner.cleanup()
+
+    asyncio.run(run_all())
 
 
 if __name__ == "__main__":
