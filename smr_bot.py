@@ -936,7 +936,7 @@ async def check_shopier_orders(context=None):
             async with session.get(
                 "https://api.shopier.com/v1/orders?sort=-id&per_page=5",
                 headers=headers,
-                timeout=_aiohttp.ClientTimeout(total=15)
+                timeout=_aiohttp.ClientTimeout(total=30)
             ) as resp:
                 if resp.status != 200:
                     log.warning(f"[Shopier] API yanıt: {resp.status}")
