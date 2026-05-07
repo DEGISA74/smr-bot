@@ -42,13 +42,15 @@ CHAT_ID   = int(CFG["chat"]["chat_id"])
 
 DAILY_LIMITS = {FREE_ID: 1, PRO_ID: 3, ELITE_ID: 10}
 
-# Shopier OSB kimlik bilgileri (telegram_config.json'dan)
-OSB_USER = CFG.get("shopier_osb_user", "")
-OSB_PASS = CFG.get("shopier_osb_pass", "")
-ADMIN_ID = 1034525990  # Bildirimler buraya gidecek
+# Shopier API
+SHOPIER_API_KEY = CFG.get("shopier_api_key", "")
+ADMIN_ID        = 1034525990  # Bildirimler buraya gidecek
 
-# Global bot referansı (webhook handler için)
+# Global bot referansı
 _bot_app = None
+
+# Son kontrol edilen sipariş ID'si (tekrar bildirim önlenir)
+_last_order_id: int = 0
 TIER_NAME    = {FREE_ID: "FREE", PRO_ID: "PRO", ELITE_ID: "ELITE"}
 
 # Limitsiz kullanıcılar (admin/sahip) — user_id VE username ile tanınır
@@ -912,7 +914,113 @@ async def send_daily_bulletin(context: ContextTypes.DEFAULT_TYPE):
     await _send_bulletin_to_channel(context, ELITE_ID, tier="elite", now_str=now_str, is_sunday=is_sunday)
 
 
-# ─── SHOPİER OSB WEBHOOK ─────────────────────────────────────────────────────
+# ─── SHOPİER API — PERİYODİK SİPARİŞ KONTROLÜ ───────────────────────────────
+async def check_shopier_orders(context=None):
+    """
+    Her 5 dakikada bir Shopier API'den yeni siparişleri çeker.
+    Yeni sipariş varsa admin'e Telegram bildirimi gönderir.
+    """
+    global _last_order_id
+    if not SHOPIER_API_KEY:
+        return
+
+    import aiohttp as _aiohttp
+
+    headers = {
+        "Authorization": f"Bearer {SHOPIER_API_KEY}",
+        "Accept": "application/json",
+    }
+
+    try:
+        async with _aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://api.shopier.com/v1/orders?sort=-id&per_page=5",
+                headers=headers,
+                timeout=_aiohttp.ClientTimeout(total=15)
+            ) as resp:
+                if resp.status != 200:
+                    log.warning(f"[Shopier] API yanıt: {resp.status}")
+                    return
+                data = await resp.json()
+
+        orders = data.get("data", [])
+        if not orders:
+            return
+
+        new_orders = []
+        for order in orders:
+            oid = int(order.get("id", 0))
+            if oid > _last_order_id:
+                new_orders.append(order)
+
+        if not new_orders:
+            return
+
+        # En yüksek ID'yi kaydet
+        _last_order_id = max(int(o.get("id", 0)) for o in new_orders)
+
+        bot = _bot_app.bot if _bot_app else None
+        if not bot:
+            return
+
+        for order in reversed(new_orders):
+            oid      = order.get("id", "?")
+            tutar    = order.get("total_price", "?")
+            musteri  = f"{order.get('customer', {}).get('name', '')} {order.get('customer', {}).get('surname', '')}".strip()
+            email    = order.get("customer", {}).get("email", "?")
+
+            # Ürün adı
+            items    = order.get("items", [])
+            urun     = items[0].get("name", "?") if items else "?"
+
+            # Telegram kullanıcı adı — özel alan
+            custom   = order.get("custom_fields", {}) or {}
+            tg_user  = (
+                custom.get("Telegram Kullanıcı Adı")
+                or custom.get("telegram_kullanici_adi")
+                or custom.get("telegram")
+                or "?"
+            ).strip().lstrip("@")
+
+            # Tier tespiti
+            urun_up = urun.upper()
+            if "ELITE" in urun_up or "ELİTE" in urun_up:
+                tier, days = "ELITE", 30
+            elif "PRO" in urun_up:
+                tier, days = "PRO", 30
+            else:
+                tier, days = "?", 30
+
+            if tg_user != "?" and tier != "?":
+                cmd = f"`/adduser @{tg_user} {tier} {days} shopier`"
+            else:
+                cmd = "⚠️ Kullanıcı adı/tier belirlenemedi — manuel ekle"
+
+            msg = (
+                f"💰 *YENİ SİPARİŞ!*\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"📦 Ürün: {urun}\n"
+                f"💎 Tier: {tier}\n"
+                f"👤 Müşteri: {musteri}\n"
+                f"📧 E-posta: {email}\n"
+                f"📱 Telegram: @{tg_user}\n"
+                f"💵 Tutar: {tutar}₺\n"
+                f"🔖 Sipariş No: {oid}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"Eklemek için:\n{cmd}"
+            )
+            await bot.send_message(
+                chat_id=ADMIN_ID,
+                text=msg,
+                parse_mode="Markdown"
+            )
+            log.info(f"[Shopier] Yeni sipariş bildirimi: #{oid} | {urun} | @{tg_user}")
+
+    except Exception as e:
+        log.error(f"[Shopier] API hatası: {e}", exc_info=True)
+
+
+# ─── SHOPİER OSB WEBHOOK (eski — pasif) ──────────────────────────────────────
 async def shopier_osb(request: web.Request) -> web.Response:
     """
     Shopier Otomatik Sipariş Bildirimi (OSB) endpoint'i.
@@ -1055,6 +1163,16 @@ def main():
         time=datetime.strptime("19:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
         name="daily_bulletin"
     )
+
+    # Her 5 dakikada Shopier sipariş kontrolü
+    if SHOPIER_API_KEY:
+        app.job_queue.run_repeating(
+            check_shopier_orders,
+            interval=300,  # 5 dakika
+            first=30,      # Başlangıçtan 30sn sonra ilk kontrol
+            name="shopier_check"
+        )
+        log.info("✅ Shopier sipariş kontrolü aktif (5dk)")
 
     log.info("✅ Bot aktif. Bülten: 19:00 | Sıfırlama: 00:00")
 
