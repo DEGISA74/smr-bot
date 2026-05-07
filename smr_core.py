@@ -911,15 +911,15 @@ def generate_chart(ticker: str, df: pd.DataFrame, ict: dict | None = None) -> by
     buf = io.BytesIO()
     try:
         # ── Figure kurulumu ────────────────────────────────────────────────────
-        fig = plt.figure(figsize=(14, 7.5), facecolor=BG)
+        fig = plt.figure(figsize=(16, 7), facecolor=BG)
         gs  = gridspec.GridSpec(
             2, 2,
             figure=fig,
-            height_ratios=[0.08, 1],
-            hspace=0.08,
+            height_ratios=[0.07, 1],
+            hspace=0.07,
             wspace=0.06,
             left=0.05, right=0.97,
-            top=0.95,  bottom=0.10,
+            top=0.95,  bottom=0.09,
         )
 
         # ── Başlık satırı (üst yatay şerit) ───────────────────────────────────
