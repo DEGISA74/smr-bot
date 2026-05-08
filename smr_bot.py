@@ -211,12 +211,11 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
                 log.warning(f"[{ticker}] Yetersiz veri — analiz iptal")
                 return None, "", ""
 
-            # Teknik Özet — FREE ve PRO için (ELITE'te Görev 1 zaten kapsar)
+            # Teknik Özet — FREE, PRO ve ELITE için
             ict_text = ""
-            if tier != "elite":
-                ict_text = await loop.run_in_executor(
-                    None, lambda: smr_core.build_teknik_ozet(ticker, df)
-                )
+            ict_text = await loop.run_in_executor(
+                None, lambda: smr_core.build_teknik_ozet(ticker, df)
+            )
 
             # AI analiz: ELITE → Görev 1, PRO → Görev 3 (Teknik Kart)
             ai_text = ""
