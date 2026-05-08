@@ -848,13 +848,23 @@ async def _send_bulletin_to_channel(
             caption = caption[:1020] + "…"
 
         if img_bytes:
-            await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=img_bytes,
-                caption=caption,
-                parse_mode="Markdown"
-            )
-            log.info(f"[{tier_label}] Bülten fotoğrafı gönderildi ✅")
+            try:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=img_bytes,
+                    caption=caption,
+                    parse_mode="Markdown"
+                )
+                log.info(f"[{tier_label}] Bülten fotoğrafı gönderildi ✅")
+            except Exception as md_err:
+                log.warning(f"[{tier_label}] Markdown hatası, düz metin deneniyor: {md_err}")
+                plain = caption.replace("*", "").replace("_", "").replace("`", "")
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=img_bytes,
+                    caption=plain
+                )
+                log.info(f"[{tier_label}] Bülten düz metin olarak gönderildi ✅")
         else:
             await context.bot.send_message(
                 chat_id=chat_id,
