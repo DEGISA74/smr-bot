@@ -2151,7 +2151,7 @@ Veri yoksa maddeyi atla. Alt başlıkları aynen kullan. Her madde 2-3 cümle.
 5⃣🔹) Sonuç ve Psikoloji
 - Özet: (3-4 cümle — en kritik bulguyu öne çıkar, rakam ver)
 - Risk Uyarısı: (Varsa kritik uyarı — düşük hacim, aşırı alım, yıpranmış OB vb.)
-
+--------------------------------------------------------------------------------------------------------
 SMR-PRO aboneleri için Algoritmamın TEKNİK KART çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #SmartMoneyRadar #{clean_ticker}
 """
@@ -2438,7 +2438,8 @@ Tezin İptal Noktası: Somut seviye ve kapanış koşulu.
 (3-4 cümle — en kritik bulguyu, somut seviyeleri ve net olasılığı öne çıkar. Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik bir özeti olsun.)
 
 ### UYARI: (Varsa — küçük harf, insan diliyle. HARSI kırmızıysa, RVOL düşükse, OBV ayrışıyorsa mutlaka yaz. Eğer RSI uyumsuzluğu, hacim düşüklüğü, stopping volume, trend tersliği, ayı/boğa tuzağı veya gizli satış işaretleri varsa insan diliyle yaz)
-Analizin sonuna şu notu ekle (hashtag olmadan):
+Analizin sonuna şu notu ekle:
+-----------------------------------------------------------------------------------------------
 SMR-ELITE aboneleri için Detaylı Özel Analizdir. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #SmartMoneyRadar #{clean_ticker}
 """
