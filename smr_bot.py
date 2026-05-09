@@ -968,13 +968,14 @@ async def check_shopier_orders(context=None):
         new_orders = []
         for order in orders:
             oid = int(order.get("id", 0))
-            if oid > _last_order_id:
+            # DB'de işlenmiş mi kontrol et (restart güvenli)
+            if not smr_core.shopier_order_seen(oid):
                 new_orders.append(order)
 
         if not new_orders:
             return
 
-        # En yüksek ID'yi kaydet
+        # En yüksek ID'yi memory'de de tut (hızlı erişim için)
         _last_order_id = max(int(o.get("id", 0)) for o in new_orders)
 
         bot = _bot_app.bot if _bot_app else None
@@ -982,7 +983,7 @@ async def check_shopier_orders(context=None):
             return
 
         for order in reversed(new_orders):
-            oid      = order.get("id", "?")
+            oid      = int(order.get("id", 0))
             tutar    = order.get("total_price", "?")
             musteri  = f"{order.get('customer', {}).get('name', '')} {order.get('customer', {}).get('surname', '')}".strip()
             email    = order.get("customer", {}).get("email", "?")
@@ -1009,10 +1010,34 @@ async def check_shopier_orders(context=None):
             else:
                 tier, days = "?", 30
 
+            # ── Otomatik abonelik ekleme ──────────────────────────────────────
+            auto_status = ""
+            mark_status = "manual_required"
+            new_expiry  = ""
+
             if tg_user != "?" and tier != "?":
-                cmd = f"`/adduser @{tg_user} {tier} {days} shopier`"
+                try:
+                    new_expiry  = smr_core.sub_add_by_username(
+                        tg_user, tier, days,
+                        note=f"shopier-auto order:{oid}"
+                    )
+                    auto_status = f"✅ Otomatik eklendi: @{tg_user} — {tier} — Bitiş: {new_expiry}"
+                    mark_status = "auto_added"
+                    log.info(f"[Shopier] Otomatik eklendi: @{tg_user} → {tier} bitiş:{new_expiry}")
+                except Exception as e:
+                    auto_status = f"⚠️ Otomatik eklenemedi — manuel ekle\n`/adduser @{tg_user} {tier} {days} shopier`"
+                    mark_status = "error"
+                    log.error(f"[Shopier] Otomatik abonelik eklenemedi #{oid}: {e}", exc_info=True)
             else:
-                cmd = "⚠️ Kullanıcı adı/tier belirlenemedi — manuel ekle"
+                auto_status = f"⚠️ Otomatik eklenemedi — Telegram kullanıcı adı/tier eksik\n`/adduser @{tg_user} {tier} {days} shopier`"
+
+            # Siparişi DB'ye işlenmiş olarak kaydet (her iki durumda da)
+            smr_core.shopier_order_mark(
+                oid, tg_user, tier, days,
+                status=mark_status,
+                expiry_date=new_expiry,
+                note=f"order:{oid}"
+            )
 
             msg = (
                 f"💰 *YENİ SİPARİŞ!*\n"
@@ -1025,14 +1050,14 @@ async def check_shopier_orders(context=None):
                 f"💵 Tutar: {tutar}₺\n"
                 f"🔖 Sipariş No: {oid}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"Eklemek için:\n{cmd}"
+                f"{auto_status}"
             )
             await bot.send_message(
                 chat_id=ADMIN_ID,
                 text=msg,
                 parse_mode="Markdown"
             )
-            log.info(f"[Shopier] Yeni sipariş bildirimi: #{oid} | {urun} | @{tg_user}")
+            log.info(f"[Shopier] Sipariş işlendi: #{oid} | {urun} | @{tg_user} | {mark_status}")
 
     except Exception as e:
         log.error(f"[Shopier] API hatası: {e}", exc_info=True)
