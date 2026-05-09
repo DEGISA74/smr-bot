@@ -1799,7 +1799,7 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
 
         # ── ÇIKTI ────────────────────────────────────────────────────────────
         lines = [
-            "📊 *TEKNİK ÖZET*",
+            f"📊 *#{ticker.replace('.IS','').replace('-USD','').replace('=F','')} — TEKNİK ÖZET — {fmt(cp)}*",
             "",
             f"📍 *Büyük Ana Trend:* {ana_trend_label}",
             f"└ _{_trend_detail}_",
