@@ -1865,7 +1865,8 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             f"{squeeze_ico} *BB Sıkışma* — {squeeze_desc}",
             f"{trigger_ico} *Tetikleyici* — {trigger_desc}",
             "",
-            f"💬 _{ozet}_",
+            f"💬 {ozet}",
+            "━━━━━━━━━━━━━━━━━━━",
         ]
         return "\n".join(lines)
 

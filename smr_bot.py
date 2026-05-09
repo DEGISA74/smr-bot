@@ -434,7 +434,6 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"━━━━━━━━━━━━━━━━━━━"
             f"{ict_block}\n\n"
             f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
-            f"_ _\n"
             f"_— PRO üyeler bu hisse dahil 3 hissenin Detaylı Teknik Kartını da okudu. Daha fazla sorgu ve daha fazla analiz. Sen de ister misin?_"
         )
     elif chat_id == PRO_ID:
@@ -443,7 +442,6 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"━━━━━━━━━━━━━━━━━━━"
             f"{ict_block}\n\n"
             f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
-            f"_ _\n"
             f"_— ELİTE üyeler bu hisse dahil 10 hisse için tam uzman analizini aldı. Farkı görmek ister misin?_"
         )
     else:
