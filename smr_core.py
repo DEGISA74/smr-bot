@@ -1465,7 +1465,7 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         # Katman 1: ICT — OB / FVG  (en güçlü, kurumsal)
         # Katman 2: Swing High/Low   (5 barlık pivot, son 60 bar)
         # Katman 3: SMA50 / SMA200   (kurumsal referans, ±%8)
-        # Katman 4: ATR bazlı        (tahmini, son çare)
+        # Katman 4: ATR bazlı        (teknik fallback, son çare)
         # Kural: iki seviye arasında en az %2 fark zorunlu
 
         _MIN_GAP = 0.02  # %2 minimum aralık
@@ -1561,14 +1561,17 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
                 if len(picked) == 2:
                     break
             # ATR fallback — eksik olanları doldur
-            fallback_labels = ["tahmini", "tahmini (2)"]
             _fi = 0
             while len(picked) < 2:
                 if direction == "sup":
                     _fb = cp - atr_val * (1.5 + _fi)
                 else:
                     _fb = cp + atr_val * (1.5 + _fi)
-                picked.append((_fb, fallback_labels[_fi]))
+                if direction == "sup":
+                    _lbl = "ATR Destek" if _fi == 0 else "ATR Destek 2"
+                else:
+                    _lbl = "ATR Direnç" if _fi == 0 else "ATR Direnç 2"
+                picked.append((_fb, _lbl))
                 _fi += 1
             return picked
 
