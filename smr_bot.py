@@ -16,7 +16,8 @@ from collections import defaultdict
 
 from aiohttp import web
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
@@ -95,9 +96,10 @@ ANALYSIS_SEMAPHORE = asyncio.Semaphore(2)
 
 # Gemini yapılandırma
 if GEMINI_API_KEY and GEMINI_API_KEY != "BURAYA_GEMINI_API_KEY_YAZ":
-    genai.configure(api_key=GEMINI_API_KEY)
+    _genai_client = genai.Client(api_key=GEMINI_API_KEY)
     GEMINI_OK = True
 else:
+    _genai_client = None
     GEMINI_OK = False
 
 logging.basicConfig(
@@ -148,18 +150,21 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
     429 kota hatası gelirse 60 sn bekleyip 3 kez tekrar dener.
     Hata veya API key yoksa boş string döner.
     """
-    if not GEMINI_OK:
+    if not GEMINI_OK or _genai_client is None:
         log.warning("Gemini API key ayarlanmamış — AI atlanıyor")
         return ""
 
-    model = genai.GenerativeModel("models/gemini-flash-lite-latest")
     max_retries = 3
 
     for attempt in range(1, max_retries + 1):
         try:
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: model.generate_content(gorev3_prompt)
+                lambda: _genai_client.models.generate_content(
+                    model="gemini-2.0-flash-lite",
+                    contents=gorev3_prompt,
+                    config=genai_types.GenerateContentConfig(max_output_tokens=1000)
+                )
             )
             text = response.text.strip() if response.text else ""
             log.info(f"AI üretildi: {len(text)} karakter (deneme {attempt})")
@@ -215,7 +220,7 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
             ict_text = ""
             if tier != "elite":
                 ict_text = await loop.run_in_executor(
-                    None, lambda: smr_core.build_teknik_ozet(ticker, df, ict=ict)
+                    None, lambda: smr_core.build_teknik_ozet(ticker, df)
                 )
 
             # AI analiz: ELITE → Görev 1, PRO → Görev 3 (Teknik Kart)
