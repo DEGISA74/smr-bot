@@ -161,7 +161,7 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: _genai_client.models.generate_content(
-                    model="gemini-2.0-flash-lite",
+                    model="gemini-2.5-flash-lite",
                     contents=gorev3_prompt,
                     config=genai_types.GenerateContentConfig(max_output_tokens=1000)
                 )
