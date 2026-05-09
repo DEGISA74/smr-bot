@@ -1549,31 +1549,78 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             return cands
 
         def _pick_two(cands, cp, direction, atr_val):
-            """Adaylardan %2 arayla 2 farklı seviye seç. Bulamazsa ATR fallback."""
+            """
+            Yakın ve mantıklı 2 seviye seç.
+            - Çok uzak swingleri ele
+            - ATR fallback'i de aday havuzuna kat
+            - En sonda mutlaka fiyata yakınlığa göre sırala
+            """
             picked = []
-            for val, label in cands:
-                if not picked:
-                    picked.append((val, label))
+            pool = []
+
+            _MAX_DIST = 0.12  # fiyatın en fazla %12 uzağındaki seviyeleri kabul et
+
+            def _valid_level(v):
+                try:
+                    v = float(v)
+                except Exception:
+                    return False
+                if cp <= 0 or v <= 0:
+                    return False
+
+                dist = abs(v - cp) / cp
+                if dist > _MAX_DIST:
+                    return False
+
+                if direction == "sup":
+                    return v < cp * 0.999
                 else:
-                    gap = abs(val - picked[-1][0]) / cp
-                    if gap >= _MIN_GAP:
-                        picked.append((val, label))
+                    return v > cp * 1.001
+
+            def _can_add(v):
+                return all(abs(v - old[0]) / cp >= _MIN_GAP for old in picked)
+
+            # 1) Gerçek teknik adaylar: OB / FVG / Swing / SMA
+            for val, label in cands:
+                if _valid_level(val):
+                    pool.append((float(val), label))
+
+            # 2) ATR fallback adayları: yakın seviyelerden uzağa doğru
+            atr_mults = [0.8, 1.2, 1.6, 2.0]
+            for idx, mult in enumerate(atr_mults):
+                if direction == "sup":
+                    _fb = cp - atr_val * mult
+                    _lbl = "ATR Destek" if idx == 0 else f"ATR Destek {idx + 1}"
+                else:
+                    _fb = cp + atr_val * mult
+                    _lbl = "ATR Direnç" if idx == 0 else f"ATR Direnç {idx + 1}"
+
+                if _valid_level(_fb):
+                    pool.append((float(_fb), _lbl))
+
+            # 3) Fiyata en yakından uzağa sırala
+            pool = sorted(pool, key=lambda x: abs(cp - x[0]))
+
+            for val, label in pool:
+                if _can_add(val):
+                    picked.append((val, label))
                 if len(picked) == 2:
                     break
-            # ATR fallback — eksik olanları doldur
-            _fi = 0
-            while len(picked) < 2:
-                if direction == "sup":
-                    _fb = cp - atr_val * (1.5 + _fi)
-                else:
-                    _fb = cp + atr_val * (1.5 + _fi)
-                if direction == "sup":
-                    _lbl = "ATR Destek" if _fi == 0 else "ATR Destek 2"
-                else:
-                    _lbl = "ATR Direnç" if _fi == 0 else "ATR Direnç 2"
-                picked.append((_fb, _lbl))
-                _fi += 1
-            return picked
+
+            # 4) Nadir durumda hâlâ 2 seviye yoksa güvenli yakın fallback üret
+            hard_fallbacks = (
+                [(cp * 0.98, "Yakın Destek"), (cp * 0.95, "Yakın Destek 2")]
+                if direction == "sup"
+                else [(cp * 1.02, "Yakın Direnç"), (cp * 1.05, "Yakın Direnç 2")]
+            )
+
+            for val, label in hard_fallbacks:
+                if len(picked) == 2:
+                    break
+                if _can_add(val):
+                    picked.append((float(val), label))
+
+            return sorted(picked, key=lambda x: abs(cp - x[0]))[:2]
 
         # ICT değerlerini al (varsa)
         _ob_l  = float(ict.get("ob_low_num",  0)) if ict else 0
