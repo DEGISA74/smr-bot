@@ -1486,12 +1486,12 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             # Katman 1 — ICT stop
             if ict_stop and 0 < ict_stop < cp * 0.999:
                 cands.append((float(ict_stop), "ICT Stop"))
-            # Katman 2 — Swing low (5 barlık pivot, son 60 bar)
+            # Katman 2 — Swing low (5 barlık pivot, son 60 bar, max %25 uzakta)
             _la2 = 5
             for _pi in range(_la2 + 1, min(60, n - _la2)):
                 try:
                     _lv = float(l.iloc[-_pi])
-                    if _lv < cp * 0.999:
+                    if _lv < cp * 0.999 and _lv > cp * 0.75:  # max %25 uzakta
                         if all(float(l.iloc[-_pi]) <= float(l.iloc[-_pi + _j])
                                for _j in range(-_la2, _la2 + 1) if _j != 0):
                             cands.append((_lv, "Swing Dibi"))
@@ -1525,13 +1525,13 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             # Katman 1 — ICT hedef
             if ict_target and ict_target > cp * 1.001:
                 cands.append((float(ict_target), "ICT Hedef"))
-            # Katman 2 — Swing high (5 barlık pivot, son 60 bar)
+            # Katman 2 — Swing high (5 barlık pivot, son 60 bar, max %25 uzakta)
             _la2 = 5
             for _pi in range(_la2 + 1, min(60, n - _la2)):
                 try:
                     _hv = float(h.iloc[-_pi])
-                    if _hv > cp * 1.001:
-                        if all(float(h.iloc[-_pi]) >= float(h.iloc[-_pi + _j])
+                    if _hv > cp * 1.001 and _hv < cp * 1.25:  # max %25 uzakta
+                        if all(float(h.iloc[-_pi]) >= float(h.iloc[-_pi + _j])\
                                for _j in range(-_la2, _la2 + 1) if _j != 0):
                             cands.append((_hv, "Swing Tepe"))
                             break
