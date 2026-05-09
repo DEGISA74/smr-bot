@@ -1324,7 +1324,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     return data_block, clean, fiyat_str
 
 
-def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
+def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict = None) -> str:
     """
     5. Kutu — Teknik Özet (Piyasa Sentezi).
     Smart Money Score (4 kriter) + Destek/Direnç + Pazar Rejimi + M8 sentez metni.
@@ -1460,37 +1460,137 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
             kisa_vade_label = "🟡 KARARSIZ →"
         _kv_detail = f"Kısa vade (bugün–bu hafta) · {_kv_bull}/4 sinyal yukarı yönde"
 
-        # ── DESTEK / DİRENÇ (pivot bazlı, makul mesafe) ─────────────────────
-        # Son 25 barda en yakın pivot düşük ve pivot yüksek
-        _sup_val = None
-        _res_val = None
-        _la = 2  # lookaround
-        for _pi in range(_la + 1, min(25, n - _la)):
-            _lv = float(l.iloc[-_pi])
-            _hv = float(h.iloc[-_pi])
-            # Pivot low: komşulardan küçük mü?
-            if _sup_val is None and _lv < cp:
+        # ── DESTEK / DİRENÇ — Katmanlı Fallback Sistemi ─────────────────────
+        # Her seviye için (değer, etiket) tuple döner
+        # Katman 1: ICT — OB / FVG  (en güçlü, kurumsal)
+        # Katman 2: Swing High/Low   (5 barlık pivot, son 60 bar)
+        # Katman 3: SMA50 / SMA200   (kurumsal referans, ±%8)
+        # Katman 4: ATR bazlı        (tahmini, son çare)
+        # Kural: iki seviye arasında en az %2 fark zorunlu
+
+        _MIN_GAP = 0.02  # %2 minimum aralık
+
+        def _candidates_support(ob_l, ob_h, fvg_l, fvg_h, ict_stop):
+            """Fiyatın altındaki destek adayları, güçten zayıfa sıralı."""
+            cands = []
+            # Katman 1 — OB talep bölgesi
+            if ob_l and ob_l < cp * 0.999:
+                cands.append((float(ob_l), "OB Talep"))
+            if ob_h and ob_h < cp * 0.999 and ob_h != ob_l:
+                cands.append((float(ob_h), "OB Üst"))
+            # Katman 1 — FVG
+            if fvg_l and fvg_l < cp * 0.999:
+                cands.append((float(fvg_l), "FVG Alt"))
+            if fvg_h and fvg_h < cp * 0.999 and fvg_h != fvg_l:
+                cands.append((float(fvg_h), "FVG Üst"))
+            # Katman 1 — ICT stop
+            if ict_stop and 0 < ict_stop < cp * 0.999:
+                cands.append((float(ict_stop), "ICT Stop"))
+            # Katman 2 — Swing low (5 barlık pivot, son 60 bar)
+            _la2 = 5
+            for _pi in range(_la2 + 1, min(60, n - _la2)):
                 try:
-                    if all(float(l.iloc[-_pi]) <= float(l.iloc[-_pi + _j])
-                           for _j in range(-_la, _la + 1) if _j != 0):
-                        _sup_val = _lv
+                    _lv = float(l.iloc[-_pi])
+                    if _lv < cp * 0.999:
+                        if all(float(l.iloc[-_pi]) <= float(l.iloc[-_pi + _j])
+                               for _j in range(-_la2, _la2 + 1) if _j != 0):
+                            cands.append((_lv, "Swing Dibi"))
+                            break
                 except:
                     pass
-            # Pivot high: komşulardan büyük mü?
-            if _res_val is None and _hv > cp:
+            # Katman 3 — SMA50 / SMA200
+            _s50 = float(c.rolling(min(50, n-1)).mean().iloc[-1])
+            _s200 = float(c.rolling(min(200, n-1)).mean().iloc[-1])
+            if _s50 < cp * 0.999 and abs(cp - _s50) / cp < 0.08:
+                cands.append((_s50, "SMA50"))
+            if _s200 < cp * 0.999 and abs(cp - _s200) / cp < 0.08:
+                cands.append((_s200, "SMA200"))
+            # En yakından uzağa sırala
+            cands = sorted(cands, key=lambda x: abs(cp - x[0]))
+            return cands
+
+        def _candidates_resist(ob_l, ob_h, fvg_l, fvg_h, ict_target, ict_stop_loss_high):
+            """Fiyatın üstündeki direnç adayları, yakından uzağa sıralı."""
+            cands = []
+            # Katman 1 — FVG direnç
+            if fvg_h and fvg_h > cp * 1.001:
+                cands.append((float(fvg_h), "FVG Direnç"))
+            if fvg_l and fvg_l > cp * 1.001 and fvg_l != fvg_h:
+                cands.append((float(fvg_l), "FVG Alt"))
+            # Katman 1 — OB arz bölgesi
+            if ob_h and ob_h > cp * 1.001:
+                cands.append((float(ob_h), "OB Arz"))
+            if ob_l and ob_l > cp * 1.001 and ob_l != ob_h:
+                cands.append((float(ob_l), "OB Alt"))
+            # Katman 1 — ICT hedef
+            if ict_target and ict_target > cp * 1.001:
+                cands.append((float(ict_target), "ICT Hedef"))
+            # Katman 2 — Swing high (5 barlık pivot, son 60 bar)
+            _la2 = 5
+            for _pi in range(_la2 + 1, min(60, n - _la2)):
                 try:
-                    if all(float(h.iloc[-_pi]) >= float(h.iloc[-_pi + _j])
-                           for _j in range(-_la, _la + 1) if _j != 0):
-                        _res_val = _hv
+                    _hv = float(h.iloc[-_pi])
+                    if _hv > cp * 1.001:
+                        if all(float(h.iloc[-_pi]) >= float(h.iloc[-_pi + _j])
+                               for _j in range(-_la2, _la2 + 1) if _j != 0):
+                            cands.append((_hv, "Swing Tepe"))
+                            break
                 except:
                     pass
-            if _sup_val is not None and _res_val is not None:
-                break
-        # ATR tabanlı fallback — 3*ATR'dan uzaksa veya bulunamadıysa
-        if _sup_val is None or (cp - _sup_val) > 3 * atr:
-            _sup_val = cp - 1.5 * atr
-        if _res_val is None or (_res_val - cp) > 3 * atr:
-            _res_val = cp + 1.5 * atr
+            # Katman 3 — SMA50 / SMA200 (fiyat altındaysa bunlar direnç)
+            _s50 = float(c.rolling(min(50, n-1)).mean().iloc[-1])
+            _s200 = float(c.rolling(min(200, n-1)).mean().iloc[-1])
+            if _s50 > cp * 1.001 and abs(_s50 - cp) / cp < 0.08:
+                cands.append((_s50, "SMA50"))
+            if _s200 > cp * 1.001 and abs(_s200 - cp) / cp < 0.08:
+                cands.append((_s200, "SMA200"))
+            # En yakından uzağa sırala
+            cands = sorted(cands, key=lambda x: abs(cp - x[0]))
+            return cands
+
+        def _pick_two(cands, cp, direction, atr_val):
+            """Adaylardan %2 arayla 2 farklı seviye seç. Bulamazsa ATR fallback."""
+            picked = []
+            for val, label in cands:
+                if not picked:
+                    picked.append((val, label))
+                else:
+                    gap = abs(val - picked[-1][0]) / cp
+                    if gap >= _MIN_GAP:
+                        picked.append((val, label))
+                if len(picked) == 2:
+                    break
+            # ATR fallback — eksik olanları doldur
+            fallback_labels = ["tahmini", "tahmini (2)"]
+            _fi = 0
+            while len(picked) < 2:
+                if direction == "sup":
+                    _fb = cp - atr_val * (1.5 + _fi)
+                else:
+                    _fb = cp + atr_val * (1.5 + _fi)
+                picked.append((_fb, fallback_labels[_fi]))
+                _fi += 1
+            return picked
+
+        # ICT değerlerini al (varsa)
+        _ob_l  = float(ict.get("ob_low_num",  0)) if ict else 0
+        _ob_h  = float(ict.get("ob_high_num", 0)) if ict else 0
+        _fvg_l = float(ict.get("fvg_low_num", 0)) if ict else 0
+        _fvg_h = float(ict.get("fvg_high_num",0)) if ict else 0
+        _ict_stop   = float(ict.get("stop",   0)) if ict else 0
+        _ict_target = float(ict.get("target", 0)) if ict else 0
+
+        _sup_cands = _candidates_support(_ob_l, _ob_h, _fvg_l, _fvg_h, _ict_stop)
+        _res_cands = _candidates_resist(_ob_l, _ob_h, _fvg_l, _fvg_h, _ict_target, 0)
+
+        _sup_two = _pick_two(_sup_cands, cp, "sup", atr)
+        _res_two = _pick_two(_res_cands, cp, "res", atr)
+
+        # Kart için format
+        _sup1_val, _sup1_lbl = _sup_two[0]
+        _sup2_val, _sup2_lbl = _sup_two[1]
+        _res1_val, _res1_lbl = _res_two[0]
+        _res2_val, _res2_lbl = _res_two[1]
 
         # ── SMART MONEY SCORE — KRİTER 1: TREND ZEMİNİ ──────────────────────
         sma50_s     = c.rolling(min(50, n - 1)).mean()
@@ -1705,7 +1805,11 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None) -> str:
             f"└ _{_trend_detail}_",
             f"🔭 *Kısa Vade Görünüm:* {kisa_vade_label}",
             f"└ _{_kv_detail}_",
-            f"🛡 *Destek:* `{fmt(_sup_val)}` | 🎯 *Direnç:* `{fmt(_res_val)}`",
+            "",
+            f"🛡 *Destek 1:* `{fmt(_sup1_val)}` — _{_sup1_lbl}_",
+            f"🛡 *Destek 2:* `{fmt(_sup2_val)}` — _{_sup2_lbl}_",
+            f"🎯 *Direnç 1:* `{fmt(_res1_val)}` — _{_res1_lbl}_",
+            f"🎯 *Direnç 2:* `{fmt(_res2_val)}` — _{_res2_lbl}_",
             "",
             f"{accum_ico} *OBV Birikim* — {accum_desc}",
             f"{squeeze_ico} *BB Sıkışma* — {squeeze_desc}",
