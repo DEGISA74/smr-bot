@@ -211,11 +211,12 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
                 log.warning(f"[{ticker}] Yetersiz veri — analiz iptal")
                 return None, "", ""
 
-            # Teknik Özet — FREE, PRO ve ELITE için
+            # Teknik Özet — FREE ve PRO için (ELITE'te Görev 1 zaten kapsar)
             ict_text = ""
-            ict_text = await loop.run_in_executor(
-                None, lambda: smr_core.build_teknik_ozet(ticker, df)
-            )
+            if tier != "elite":
+                ict_text = await loop.run_in_executor(
+                    None, lambda: smr_core.build_teknik_ozet(ticker, df, ict=ict)
+                )
 
             # AI analiz: ELITE → Görev 1, PRO → Görev 3 (Teknik Kart)
             ai_text = ""
@@ -848,23 +849,13 @@ async def _send_bulletin_to_channel(
             caption = caption[:1020] + "…"
 
         if img_bytes:
-            try:
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=img_bytes,
-                    caption=caption,
-                    parse_mode="Markdown"
-                )
-                log.info(f"[{tier_label}] Bülten fotoğrafı gönderildi ✅")
-            except Exception as md_err:
-                log.warning(f"[{tier_label}] Markdown hatası, düz metin deneniyor: {md_err}")
-                plain = caption.replace("*", "").replace("_", "").replace("`", "")
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=img_bytes,
-                    caption=plain
-                )
-                log.info(f"[{tier_label}] Bülten düz metin olarak gönderildi ✅")
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=img_bytes,
+                caption=caption,
+                parse_mode="Markdown"
+            )
+            log.info(f"[{tier_label}] Bülten fotoğrafı gönderildi ✅")
         else:
             await context.bot.send_message(
                 chat_id=chat_id,
