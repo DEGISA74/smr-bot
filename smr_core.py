@@ -47,6 +47,18 @@ def _init_db():
             note        TEXT
         )
     """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS shopier_processed_orders (
+            order_id     INTEGER PRIMARY KEY,
+            processed_at TEXT NOT NULL,
+            username     TEXT,
+            tier         TEXT,
+            days         INTEGER,
+            status       TEXT,
+            expiry_date  TEXT,
+            note         TEXT
+        )
+    """)
     con.commit(); con.close()
 
 _init_db()
@@ -148,6 +160,89 @@ def sub_list_expired() -> list[dict]:
     ).fetchall()
     con.close()
     return [{"user_id": r[0], "username": r[1], "tier": r[2], "expiry_date": r[3]} for r in rows]
+
+def shopier_order_seen(order_id: int) -> bool:
+    """Bu sipariş daha önce işlendi mi? Döndürür: True=işlendi, False=yeni."""
+    con = sqlite3.connect(_SIGNALS_DB)
+    row = con.execute(
+        "SELECT order_id FROM shopier_processed_orders WHERE order_id=?",
+        (int(order_id),)
+    ).fetchone()
+    con.close()
+    return row is not None
+
+
+def shopier_order_mark(order_id: int, username: str, tier: str, days: int,
+                       status: str, expiry_date: str = "", note: str = ""):
+    """
+    Shopier siparişini işlenmiş olarak işaretle.
+    status: 'auto_added' | 'manual_required' | 'error'
+    Her iki durumda da kaydedilir — bot restart'ta tekrar işlenmez.
+    """
+    from datetime import datetime
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    con = sqlite3.connect(_SIGNALS_DB)
+    con.execute("""
+        INSERT OR IGNORE INTO shopier_processed_orders
+            (order_id, processed_at, username, tier, days, status, expiry_date, note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (int(order_id), now, username, tier, days, status, expiry_date, note))
+    con.commit(); con.close()
+
+
+def sub_add_by_username(username: str, tier: str, days: int, note: str = "") -> str:
+    """
+    Kullanıcı adıyla güvenli abone ekle / uzat.
+
+    - @ kaldırılır, lowercase normalize edilir
+    - Mevcut kayıt varsa: bitiş tarihi max(bugün, mevcut_bitiş) + days olur
+    - Mevcut kayıt yoksa: username'den deterministik negatif pseudo user_id üretilir
+    - Döndürür: yeni bitiş tarihi string (ISO format)
+    """
+    import hashlib
+    from datetime import date, timedelta
+
+    uname = username.lstrip("@").lower().strip()
+    tier  = tier.lower()
+    today = date.today()
+
+    # Mevcut kaydı ara
+    con = sqlite3.connect(_SIGNALS_DB)
+    row = con.execute(
+        "SELECT user_id, expiry_date FROM subscribers WHERE LOWER(username)=?",
+        (uname,)
+    ).fetchone()
+
+    if row:
+        # Mevcut kayıt var — bitişi uzat
+        uid = row[0]
+        try:
+            existing_expiry = date.fromisoformat(row[1])
+        except Exception:
+            existing_expiry = today
+        base_date = max(today, existing_expiry)
+        new_expiry = (base_date + timedelta(days=days)).isoformat()
+        con.execute("""
+            UPDATE subscribers
+            SET tier=?, expiry_date=?, added_date=?, note=?
+            WHERE user_id=?
+        """, (tier, new_expiry, today.isoformat(), note, uid))
+    else:
+        # Yeni kayıt — username'den deterministik negatif pseudo user_id
+        pseudo_uid = -int(hashlib.sha256(uname.encode()).hexdigest()[:12], 16)
+        new_expiry = (today + timedelta(days=days)).isoformat()
+        con.execute("""
+            INSERT INTO subscribers (user_id, username, tier, expiry_date, added_date, note)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username=excluded.username, tier=excluded.tier,
+                expiry_date=excluded.expiry_date, added_date=excluded.added_date,
+                note=excluded.note
+        """, (pseudo_uid, uname, tier, new_expiry, today.isoformat(), note))
+
+    con.commit(); con.close()
+    return new_expiry
+
 
 def log_scan_signal(symbol: str, scan_type: str, ict: dict, category: str = ""):
     """
