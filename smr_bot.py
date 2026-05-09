@@ -163,7 +163,7 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
                 lambda: _genai_client.models.generate_content(
                     model="gemini-2.5-flash-lite",
                     contents=gorev3_prompt,
-                    config=genai_types.GenerateContentConfig(max_output_tokens=1000)
+                    config=genai_types.GenerateContentConfig(max_output_tokens=3000)
                 )
             )
             text = response.text.strip() if response.text else ""
