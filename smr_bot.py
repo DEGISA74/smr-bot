@@ -216,25 +216,40 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
                 log.warning(f"[{ticker}] Yetersiz veri — analiz iptal")
                 return None, "", ""
 
-            # Teknik Özet — FREE ve PRO için (ELITE'te Görev 1 zaten kapsar)
-            ict_text = ""
-            if tier != "elite":
-                ict_text = await loop.run_in_executor(
-                    None, lambda: smr_core.build_teknik_ozet(ticker, df)
-                )
+            # Teknik Özet — FREE / PRO / ELITE için aynı kısa kart
+            ict_text = await loop.run_in_executor(
+                None, lambda: smr_core.build_teknik_ozet(ticker, df, ict)
+            )
 
-            # AI analiz: ELITE → Görev 1, PRO → Görev 3 (Teknik Kart)
+            # AI analiz: PRO / ELITE
+            # Kritik: Gemini timeout/hata verirse kısa kartı bozma; fallback metni göster.
             ai_text = ""
+
+            ai_fallback_text = (
+                "🔬 Kapsamlı AI analiz modülü şu an yoğunluk nedeniyle yetişemedi. "
+                "Ama kısa teknik kart hazır: trend, destek/direnç ve risk sinyalleri yukarıda. "
+                "Biraz sonra tekrar denersen derin uzman yorumu da gelsin. 🚀"
+            )
+
             if tier in ("pro", "elite") and GEMINI_OK:
-                if tier == "elite":
-                    prompt = smr_core.build_ai_prompt_gorev1(ticker, ict, info, df)
-                else:
-                    prompt = smr_core.build_ai_prompt(ticker, ict, info, df)
-                if prompt:
-                    log.info(f"[{ticker}] Gemini'ye gönderiliyor tier={tier} ({len(prompt)} kr)")
-                    ai_text = await asyncio.wait_for(
-                        call_gemini_gorev3(prompt, ticker), timeout=120
-                    )
+                try:
+                    if tier == "elite":
+                        prompt = smr_core.build_ai_prompt_gorev1(ticker, ict, info, df)
+                    else:
+                        prompt = smr_core.build_ai_prompt(ticker, ict, info, df)
+
+                    if prompt:
+                        log.info(f"[{ticker}] Gemini'ye gönderiliyor tier={tier} ({len(prompt)} kr)")
+                        ai_text = await asyncio.wait_for(
+                            call_gemini_gorev3(prompt, ticker), timeout=120
+                        )
+
+                except asyncio.TimeoutError:
+                    log.error(f"[{ticker}] Gemini timeout — fallback AI metni gönderilecek")
+                    ai_text = ai_fallback_text
+                except Exception as e:
+                    log.error(f"[{ticker}] Gemini/AI hatası — fallback AI metni gönderilecek: {e}", exc_info=True)
+                    ai_text = ai_fallback_text
 
             log.info(
                 f"[{ticker}] Analiz tamamlandı — "
