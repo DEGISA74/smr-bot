@@ -1873,12 +1873,12 @@ def get_obv_divergence_status(ticker):
         # 4. Karar Mekanizması
         if price_trend == "AŞAĞI" and obv_trend_raw == "YUKARI":
             if is_obv_strong:
-                return ("🔥 GÜÇLÜ GİZLİ GİRİŞ", "#16a34a", "Son 10 günde fiyat düşmesine rağmen, gerçek hacim (OBV) 20 günlük ortalamasını yukarı kesti. Bu uyumsuzluk tarihsel olarak kurumsal birikim dönemlerinde görülen bir örüntüdür.")
+                return ("🔥 GÜÇLÜ GİZLİ GİRİŞ", "#16a34a", "Son 10 günde fiyat düşmesine rağmen, gerçek hacim (OBV) 20 günlük ortalamasını yukarı kesti. Akıllı para gizlice mal topluyor olabilir!")
             else:
                 return ("👀 Olası Toplama (Zayıf)", "#d97706", "Son 10 günde fiyat düşerken OBV hafifçe yükseliyor, ancak henüz 20 günlük ortalamasını aşacak kadar güçlü bir para girişi yok.")
                 
         elif price_trend == "YUKARI" and obv_trend_raw == "AŞAĞI":
-            return ("⚠️ GİZLİ ÇIKIŞ (Dağıtım)", "#f87171", "Son 10 günde fiyat yükselmesine rağmen kümülatif hacim (OBV) düşüyor. Fiyat-hacim ayrışması gözlemleniyor; bu örüntü tarihsel olarak dağıtım fazlarında görülür.")
+            return ("⚠️ GİZLİ ÇIKIŞ (Dağıtım)", "#f87171", "Son 10 günde fiyat yükselmesine rağmen kümülatif hacim (OBV) düşüyor. Yükseliş sahte olabilir, büyük oyuncular çıkış yapıyor olabilir.")
             
         elif is_obv_strong:
             # DÜZELTME: Trende değil, BUGÜNKÜ mumun rengine bakıyoruz.
@@ -1886,7 +1886,7 @@ def get_obv_divergence_status(ticker):
             p_yesterday = df['Close'].iloc[-2]
             
             if p_now < p_yesterday: # Bugün Fiyat Düşüyorsa (Kırmızı Mum)
-                return ("🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "#d97706", "Bugün fiyat düşüş eğiliminde olsa da kümülatif hacim (OBV) hala 20 günlük ortalamasının üzerinde gücünü koruyor. Fiyat gerilemesine rağmen hacim dayanıklılığı korunuyor — bu yapı tarihsel olarak emilim dönemlerinde görülür.")
+                return ("🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "#d97706", "Bugün fiyat düşüş eğiliminde olsa da kümülatif hacim (OBV) hala 20 günlük ortalamasının üzerinde gücünü koruyor. Panik satışları büyük oyuncular tarafından karşılanıyor olabilir.")
             else:
                 return ("✅ SAĞLIKLI TREND (Hacim Onaylı)", "#15803d", "Fiyattaki yükseliş, gerçek hacim (OBV) tarafından net bir şekilde destekleniyor. Trendin arkasında akıllı paranın itici gücü var.")
             
@@ -5444,7 +5444,7 @@ def fetch_technical_engine_data(ticker, sources_list):
 
     # 2. BÜYÜME PATLAMASI (En Güçlü Alım Fırsatı - Ağırlık: 90)
     if (has_min or has_rfc) and has_break and (has_sent or has_rs):
-        gecerli_senaryolar.append((90, "🌪️ Büyüme Patlaması: Fiyat daralma fazını tamamladı, arz baskısı azaldı ve hacim/rölatif güç onayıyla teknik direnç seviyesi yukarı geçildi."))
+        gecerli_senaryolar.append((90, "🌪️ Büyüme Patlaması: Kusursuz ralli! Fiyat daralmayı tamamladı, arz kurudu ve kurumsal hacim/güç onayıyla direnci paramparça etti."))
 
     # 3. KURUMSAL LİKİDİTE AVI (Dipten Dönüş - Ağırlık: 85)
     if (has_ict or has_dip) and (has_div or has_sent):
@@ -7511,17 +7511,17 @@ def calculate_price_action_dna(ticker):
         if va_pos == "ÜSTÜNDE":
             if cum_delta_5 > 0:
                 main_title = f"🚀 POC ALANI {_poc_range} ÜSTÜNDE — Güçlü Kırılım"
-                simple_text = "Büyük oyuncuların yoğun işlem yaptığı POC alanının üstüne çıkıldı ve son 5 günde alım hacmi bunu destekliyor. Fiyat-hacim uyumu gözlemleniyor — POC üstünde tutunulması durumunda yapı güçlü kalmaya devam edebilir."
+                simple_text = "Büyük oyuncuların yoğun işlem yaptığı POC alanının üstüne çıkıldı ve son 5 günde alım hacmi bunu destekliyor. Trend güçlü görünüyor."
             else:
                 main_title = f"⚠️ POC ALANI {_poc_range} ÜSTÜNDE — Ama Satış Var"
-                simple_text = "Fiyat POC üstünde konumlanmış ancak son 5 günde satış hacmi ağırlık kazanıyor. Bu uyumsuzluk tarihsel olarak fiyat-hacim ayrışması öncesinde görülen bir örüntüdür — hacim sürekliliği takip edilmeli."
+                simple_text = "Fiyat yukarıda görünüyor ama son 5 günde büyük oyuncular sessizce mal veriyor olabilir. Boğa tuzağı riski taşıyor olabilir."
         elif va_pos == "ALTINDA":
             if cum_delta_5 > 0:
                 main_title = f"🟢 POC ALANI {_poc_range} ALTINDA — Gizli Alım"
-                simple_text = "Fiyat POC altında (istatistiksel ucuz bölge) ve son 5 günde alım hacmi artış eğiliminde. Bu örüntü tarihsel olarak birikim fazlarında gözlemlenir — POC üstüne çıkış ve tutunma yapıyı güçlendirir."
+                simple_text = "Fiyat ucuz bölgede ama son 5 günde alım hacmi artıyor. Akıllı para sessizce topluyor olabilir."
             else:
                 main_title = f"🔴 POC ALANI {_poc_range} ALTINDA — Baskı Devam"
-                simple_text = "Fiyat POC altında ve son 5 günde satış hacmi ağırlığını koruyor. Aşağı yönlü baskı gözlemleniyor — POC altında kalınması durumunda yapı kırılgan kalmaya devam edebilir."
+                simple_text = "Fiyat adil değerin altında ve son 5 günde satış baskısı sürüyor. Kırılım onaylanmış gibi görünüyor."
         else:  # İÇİNDE
             if cum_delta_5 > 0:
                 main_title = f"⚖️ POC ALANINDA {_poc_range} — Alım Baskısı Var"
@@ -11899,9 +11899,9 @@ def render_ict_deep_panel(ticker):
     ruler_html = _price_ruler_html(data, True)
 
     # --- BASİT AÇIKLAMALAR (yeni başlayanlar için, sol sütun) ---
-    zone_simple = ("Fiyat şu an istatistiksel 'pahalı bölge'de (Premium). Bu bölgede tarihsel olarak satış baskısı ve kâr realizasyonu örüntüleri daha sık gözlemlenir."
+    zone_simple = ("Fiyat şu an 'pahalı bölge'de. Büyük oyuncular bu seviyelerde satış yapmayı veya kâr almayı tercih eder."
                    if "PREMIUM" in data['zone'] else
-                   "Fiyat şu an istatistiksel 'ucuz bölge'de (Discount). Bu bölgede tarihsel olarak alım ilgisinin arttığı dönemler görülmüştür.")
+                   "Fiyat şu an 'ucuz bölge'de. Büyük oyuncular bu seviyelerden alım yapmayı sever.")
     if _ob_none:
         ob_simple = "Yakınlarda net bir kurum bloğu tespit edilemedi — fiyat belirsiz bir alanda."
     elif _ob_worn:
@@ -18069,7 +18069,7 @@ with col_left:
             desc="Güçlü trendde, henüz fırlamamış, 3 kapıdan 2'si açık hisseler"
         ), unsafe_allow_html=True)
         if st.button("💎 ELİT TARAMA (Platin + Altın)", use_container_width=True, key="btn_elit_tara_main",
-                     help="Piyasanın en kaliteli hisselerini iki kategoride listeler.\n\n💎 Platin Fırsat: Fiyat hem 200 hem 50 günlük ortalamanın üstünde, RS endeksten güçlü, Discount bölgede ve hacim artıyor — tüm kriterler aynı anda sağlanmalı.\n\n🦁 Altın Fırsat: Son 10 günde endeksi geçmiş, son 60 güne göre hâlâ istatistiksel ucuz bölgede, enerji/hacim yükseliyor. Teknik eşiklere yakın, henüz güçlü yükseliş başlamamış hisseler."):
+                     help="Piyasanın en kaliteli hisselerini iki kategoride listeler.\n\n💎 Platin Fırsat: Fiyat hem 200 hem 50 günlük ortalamanın üstünde, RS endeksten güçlü, Discount bölgede ve hacim artıyor — tüm kriterler aynı anda sağlanmalı.\n\n🦁 Altın Fırsat: Son 10 günde endeksi geçmiş, son 60 güne göre hâlâ ucuz, enerji/hacim yükseliyor. Büyük oyunculara yakın ama henüz fazla yükselmemiş hisseler."):
             with st.spinner("Elit hisseler aranıyor..."):
                 _scan_list = ASSET_GROUPS.get(st.session_state.category, [])
                 if _scan_list:
