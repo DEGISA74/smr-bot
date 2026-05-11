@@ -3370,6 +3370,116 @@ def analyze_market_intelligence(asset_list, category="S&P 500"):
 
     return pd.DataFrame(signals).sort_values(by="Skor", ascending=False) if signals else pd.DataFrame()
 
+def detect_darvas_box(df):
+    """
+    Swing-point bazlı Darvas kutu tespiti.
+    2 sağ + 2 sol komşudan büyük pivot high → kutu tavanı.
+    Kalite skoru: genişlik(25) + yaş(25) + hacim kontraksiyon(25) + pozisyon(25).
+    Returns dict or None.
+    """
+    try:
+        if df is None or len(df) < 60:
+            return None
+        close = df['Close']
+        high  = df['High']
+        low   = df['Low']
+        vol   = df['Volume']
+        cp    = float(close.iloc[-1])
+
+        # Son 60 bar içinde pivot high bul (2 sol, 2 sağ komşudan büyük)
+        n     = min(60, len(df))
+        h_arr = high.iloc[-n:].values
+        pivot_highs = []
+        for _i in range(2, len(h_arr) - 2):
+            if (h_arr[_i] > h_arr[_i-1] and h_arr[_i] > h_arr[_i-2] and
+                    h_arr[_i] > h_arr[_i+1] and h_arr[_i] > h_arr[_i+2]):
+                pivot_highs.append((_i, h_arr[_i]))
+
+        if not pivot_highs:
+            return None
+
+        # Son pivot high → kutu tavanı
+        last_ph_idx, box_top_val = pivot_highs[-1]
+        bars_since = (len(h_arr) - 1) - last_ph_idx  # pivot'tan bu yana kaç bar
+
+        if bars_since < 5:   # Kutu henüz oluşmadı
+            return None
+
+        # Kutu içi slice
+        box_low_s = low.iloc[-bars_since:]
+        box_vol_s = vol.iloc[-bars_since:]
+
+        box_top    = float(box_top_val)
+        box_bottom = float(box_low_s.min())
+        box_age    = bars_since
+
+        # Kutu tabanı kırıldıysa geçersiz kutu
+        if cp < box_bottom * 0.97:
+            return None
+
+        # Durum
+        status = 'breakout' if cp > box_top * 1.01 else 'forming'
+
+        # ── Kalite Skoru (0–100) ──────────────────────────────
+        quality = 0
+
+        # 1. Kutu genişliği (dar = sıkışmış enerji = iyi)
+        bw = (box_top - box_bottom) / box_bottom if box_bottom > 0 else 1.0
+        if   bw < 0.05: quality += 25
+        elif bw < 0.08: quality += 20
+        elif bw < 0.12: quality += 10
+
+        # 2. Kutu yaşı (uzun konsolidasyon = büyük kırılım potansiyeli)
+        if   box_age >= 15: quality += 25
+        elif box_age >= 10: quality += 20
+        elif box_age >= 7:  quality += 12
+        elif box_age >= 5:  quality += 5
+
+        # 3. Hacim kontraksiyon (VCP imzası — gizli birikim)
+        vol_sma20   = float(vol.rolling(20).mean().iloc[-1])
+        avg_box_vol = float(box_vol_s.mean()) if len(box_vol_s) > 0 else vol_sma20
+        if vol_sma20 > 0:
+            vr = avg_box_vol / vol_sma20
+            if   vr < 0.70: quality += 25
+            elif vr < 0.85: quality += 18
+            elif vr < 0.95: quality += 10
+
+        # 4. Pozisyon kalitesi (SMA200 üstü + SMA50 eğimi + RSI sağlıklı)
+        sma50  = float(close.rolling(50).mean().iloc[-1])
+        sma200 = float(close.rolling(200).mean().iloc[-1])
+        _d     = close.diff()
+        _g     = _d.where(_d > 0, 0).rolling(14).mean()
+        _l     = (-_d.where(_d < 0, 0)).rolling(14).mean()
+        _lv    = float(_l.iloc[-1])
+        rsi_v  = float((100 - 100 / (1 + _g / _l)).iloc[-1]) if _lv != 0 else 50.0
+        if not np.isnan(sma200) and cp > sma200:    quality += 8
+        if not np.isnan(sma50)  and sma50 > sma200: quality += 8
+        if 40 <= rsi_v <= 65:                        quality += 9
+        quality = min(100, quality)
+
+        # ── Kırılım kalitesi (3 kapı) ─────────────────────────
+        breakout_class = None
+        if status == 'breakout':
+            gate1 = cp > box_top
+            gate2 = float(vol.iloc[-1]) > vol_sma20 * 1.5
+            gate3 = 45 <= rsi_v <= 73
+            gates = sum([gate1, gate2, gate3])
+            if   gates == 3: breakout_class = 'A'
+            elif gates >= 2: breakout_class = 'B'
+
+        return {
+            'box_top':        round(box_top, 2),
+            'box_bottom':     round(box_bottom, 2),
+            'box_age':        box_age,
+            'quality':        quality,
+            'status':         status,
+            'breakout_class': breakout_class,
+            'vol_ratio':      round(avg_box_vol / vol_sma20, 2) if vol_sma20 > 0 else 1.0,
+        }
+    except:
+        return None
+
+
 def process_single_radar2(symbol, df, idx, min_price, max_price, min_avg_vol_m):
     try:
         if df.empty or 'Close' not in df.columns: return None
@@ -3476,7 +3586,23 @@ def process_single_radar2(symbol, df, idx, min_price, max_price, min_avg_vol_m):
         # Setup varsa ekstra güvenilirdir.
         if setup != "-": score += 1
         
-        return { "Sembol": symbol, "Fiyat": round(curr_c, 2), "Trend": trend, "Setup": setup, "Skor": score, "RS": round(rs_score * 100, 1), "Etiketler": " | ".join(tags), "Detaylar": details }
+        # ── Darvas Kutu ───────────────────────────────────────────
+        _dbox = detect_darvas_box(df)
+        _d_quality = _dbox['quality']        if _dbox else None
+        _d_status  = _dbox['status']         if _dbox else None
+        _d_top     = _dbox['box_top']        if _dbox else None
+        _d_bottom  = _dbox['box_bottom']     if _dbox else None
+        _d_age     = _dbox['box_age']        if _dbox else None
+        _d_class   = _dbox['breakout_class'] if _dbox else None
+
+        return {
+            "Sembol": symbol, "Fiyat": round(curr_c, 2), "Trend": trend,
+            "Setup": setup, "Skor": score, "RS": round(rs_score * 100, 1),
+            "Etiketler": " | ".join(tags), "Detaylar": details,
+            "Darvas_Quality": _d_quality, "Darvas_Status": _d_status,
+            "Darvas_Top": _d_top, "Darvas_Bottom": _d_bottom,
+            "Darvas_Age": _d_age, "Darvas_Class": _d_class,
+        }
     except: return None
 
 # ==============================================================================
@@ -15220,15 +15346,34 @@ def get_golden_trio_batch_scan(ticker_list):
                         _t_rs = ((current_price / df['Close'].iloc[-10] - 1) -
                                  (index_close.iloc[-1] / index_close.iloc[-10] - 1)) * 100
                     _t_skor = round(rsi_now + (_t_vr * 15) + _t_rs + (20 if _t_is_platin else 0), 2)
+                    # ── Darvas kutu check ──────────────────────────────
+                    _t_dq = _t_ds = _t_dt = _t_db = _t_da = _t_dc = None
+                    try:
+                        _t_dbox = detect_darvas_box(df)
+                        if _t_dbox is not None:
+                            _t_dq = _t_dbox['quality']
+                            _t_ds = _t_dbox['status']
+                            _t_dt = _t_dbox['box_top']
+                            _t_db = _t_dbox['box_bottom']
+                            _t_da = _t_dbox['box_age']
+                            _t_dc = _t_dbox['breakout_class']
+                    except:
+                        pass
                     tekli_altin_candidates.append({
-                        "Hisse":        ticker,
-                        "Fiyat":        round(current_price, 2),
-                        "Teknik_Skor":  _t_skor,
-                        "is_platin":    _t_is_platin,
-                        "Discount_Pct": _t_disc_pct,
-                        "RSI":          round(rsi_now, 1),
-                        "Warning":      has_warning,
-                        "RedCandle":    has_red_candle,
+                        "Hisse":          ticker,
+                        "Fiyat":          round(current_price, 2),
+                        "Teknik_Skor":    _t_skor,
+                        "is_platin":      _t_is_platin,
+                        "Discount_Pct":   _t_disc_pct,
+                        "RSI":            round(rsi_now, 1),
+                        "Warning":        has_warning,
+                        "RedCandle":      has_red_candle,
+                        "Darvas_Quality": _t_dq,
+                        "Darvas_Status":  _t_ds,
+                        "Darvas_Top":     _t_dt,
+                        "Darvas_Bottom":  _t_db,
+                        "Darvas_Age":     _t_da,
+                        "Darvas_Class":   _t_dc,
                     })
             except:
                 pass
@@ -17935,8 +18080,32 @@ with col_left:
                             _tdisc = _tr.get('Discount_Pct', 0)
                             _trsi  = _tr.get('RSI', 0)
                             _tdbl  = _tsym in _double_hit_syms
-                            _tlbl  = f"{'💎 Platin' if _tisp else '🏆 Altın'} · {_td_} ({_tfs})" + (" 🟠" if _tred else "") + (" 🚀" if _tdbl else "")
-                            _ttip  = f"{'💎 Platin' if _tisp else '🏆 Altın'} · Discount %{_tdisc} · RSI {_trsi}" + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _tdbl else "")
+                            # ── Darvas badge (yıldızlı pekiyi) ─────────────
+                            _tdq  = _tr.get('Darvas_Quality', None)
+                            _tds  = _tr.get('Darvas_Status',  None)
+                            _tdc  = _tr.get('Darvas_Class',   None)
+                            _tda  = _tr.get('Darvas_Age',     None)
+                            _tdt  = _tr.get('Darvas_Top',     None)
+                            _tdb  = _tr.get('Darvas_Bottom',  None)
+                            _darvas_lbl = ""
+                            _darvas_tip = ""
+                            if _tdq is not None and _tdq >= 75:
+                                if _tds == 'breakout' and _tdc == 'A':
+                                    _darvas_lbl = " ⭐📦"
+                                    _darvas_tip = (f" | ⭐ DARVAS A-SINYAL — {_tda} günlük kutu kırıldı!"
+                                                   f" ({_tdt}→{_tdb}) · 3/3 Kapı · Kalite:{_tdq}/100")
+                                elif _tds == 'breakout':
+                                    _darvas_lbl = " 📦"
+                                    _darvas_tip = (f" | 📦 Darvas Kırılım — {_tda}g kutu"
+                                                   f" ({_tdt}) · Kalite:{_tdq}/100")
+                                else:
+                                    _darvas_lbl = " 🟦"
+                                    _darvas_tip = (f" | 🟦 Darvas Kutu Oluşuyor — {_tda}g"
+                                                   f" ({_tdt}→{_tdb}) · Kalite:{_tdq}/100")
+                            _tlbl  = f"{'💎 Platin' if _tisp else '🏆 Altın'} · {_td_} ({_tfs}){_darvas_lbl}" + (" 🟠" if _tred else "") + (" 🚀" if _tdbl else "")
+                            _ttip  = (f"{'💎 Platin' if _tisp else '🏆 Altın'} · Discount %{_tdisc} · RSI {_trsi}"
+                                      + _darvas_tip
+                                      + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _tdbl else ""))
                             if st.button(_tlbl, key=f"elit_tekli_{_ti}", use_container_width=True, help=_ttip):
                                 on_scan_result_click(_tsym); st.rerun()
                     else:
@@ -18542,9 +18711,27 @@ with col_right:
             if df2 is not None and not df2.empty:
                 cols_r2 = st.columns(3)
                 for i, row in df2.head(15).iterrows():
-                    sym = row["Sembol"]
+                    sym   = row["Sembol"]
                     setup = row['Setup'] if row['Setup'] != "-" else "Trend"
-                    if cols_r2[i % 3].button(f"🚀 {int(row['Skor'])}/7\n{sym.replace('.IS','')}", key=f"r2_tab_{sym}_{i}", use_container_width=True, help=f"Setup: {setup}"):
+                    _dq   = row['Darvas_Quality'] if 'Darvas_Quality' in row.index and row['Darvas_Quality'] is not None else None
+                    _ds   = row['Darvas_Status']  if 'Darvas_Status'  in row.index else None
+                    _dc   = row['Darvas_Class']   if 'Darvas_Class'   in row.index else None
+                    _da   = row['Darvas_Age']      if 'Darvas_Age'     in row.index else None
+                    # Darvas badge — sadece kalite ≥ 75 ise göster
+                    _dbadge = ""
+                    _dtip   = ""
+                    if _dq is not None and _dq >= 75:
+                        if _ds == 'breakout' and _dc == 'A':
+                            _dbadge = " ⭐📦"
+                            _dtip   = f" · ⭐ DARVAS A-SINYAL: {_da}g kutu kırıldı, 3/3 kapı açık (Kalite:{_dq}/100)"
+                        elif _ds == 'breakout':
+                            _dbadge = " 📦"
+                            _dtip   = f" · 📦 Darvas Kırılım: {_da}g kutu (Kalite:{_dq}/100)"
+                        else:
+                            _dbadge = " 🟦"
+                            _dtip   = f" · 🟦 Darvas Kutu Oluşuyor: {_da}g (Kalite:{_dq}/100)"
+                    _help = f"Setup: {setup}{_dtip}"
+                    if cols_r2[i % 3].button(f"🚀 {int(row['Skor'])}/7\n{sym.replace('.IS','')}{_dbadge}", key=f"r2_tab_{sym}_{i}", use_container_width=True, help=_help):
                         on_scan_result_click(sym); st.rerun()
             else: st.caption("Veri yok.")
 
