@@ -7623,7 +7623,7 @@ def render_golden_trio_banner(ict_data, sent_data, ticker=None):
 <div style="display:flex; align-items:center; gap:10px;">
 <span style="font-size:1.6rem;">🏆</span>
 <div style="line-height:1.2;">
-<div style="font-weight:800; color:{txt}; font-size:1rem; letter-spacing:0.5px;">ALTIN FIRSAT (GOLDEN TRIO){red_note}</div>
+<div style="font-weight:800; color:{txt}; font-size:1rem; letter-spacing:0.5px;">ALTIN SET-UP (GOLDEN TRIO){red_note}</div>
 <div style="font-size:0.75rem; color:{txt}; opacity:0.95;">RS Gücü + Ucuz Konum + Güçlü Enerji (ICT): Mükemmel Uyum.</div>
 </div>
 </div>
@@ -7679,8 +7679,8 @@ def render_platin_live_banner(ticker, ict_data, sent_data):
 <div style="display:flex; align-items:center; gap:10px;">
 <span style="font-size:1.6rem;">💎</span>
 <div style="line-height:1.2;">
-<div style="font-weight:800; color:#ffffff; font-size:1rem; letter-spacing:0.5px;">💎 PLATİN FIRSAT{_red_note_p}</div>
-<div style="font-size:0.75rem; color:#ffffff; opacity:0.95;">Altın Fırsat (3/3) + SMA200 üstü + SMA50 üstü + RSI &lt; 70</div>
+<div style="font-weight:800; color:#ffffff; font-size:1rem; letter-spacing:0.5px;">💎 PLATİN SET-UP{_red_note_p}</div>
+<div style="font-size:0.75rem; color:#ffffff; opacity:0.95;">Altın Set-Up (3/3) + SMA200 üstü + SMA50 üstü + RSI &lt; 70</div>
 </div>
 </div>
 <div style="font-family:'JetBrains Mono'; font-weight:800; font-size:1.2rem; color:#ffffff; background:rgba(255,255,255,0.25); padding:4px 10px; border-radius:6px;">6/6</div>
@@ -8432,7 +8432,7 @@ def render_nadir_firsat_banner(ict_data, sent_data, ticker):
 <div style="display:flex; align-items:center; gap:10px;">
 <span style="font-size:1.6rem;">♠️</span>
 <div style="line-height:1.2;">
-<div style="font-weight:800; color:{txt}; font-size:1rem; letter-spacing:0.5px;">ROYAL FLUSH NADİR FIRSAT</div>
+<div style="font-weight:800; color:{txt}; font-size:1rem; letter-spacing:0.5px;">ROYAL FLUSH NADİR SET-UP</div>
 <div style="font-size:0.75rem; color:{txt}; opacity:0.95;">ICT Yapı + RS Liderliği + VWAP Uyumu + Hacim Canlanması: En Yüksek Olasılık.</div>
 </div>
 </div>
@@ -18266,7 +18266,7 @@ with col_left:
         with _rf_sub:
             st.markdown("<div style='text-align:center;color:#7c3aed;font-weight:800;font-size:0.7rem;"
                         "padding:2px;border-radius:4px;border:1px solid #c4b5fd;margin-bottom:4px;'>"
-                        "♠️ ROYAL FLUSH NADİR FIRSAT</div>", unsafe_allow_html=True)
+                        "♠️ ROYAL FLUSH NADİR SET-UP</div>", unsafe_allow_html=True)
             if st.button(f"♠️ ROYAL FLUSH TARA ({st.session_state.category})", type="secondary",
                          use_container_width=True, key="btn_scan_nadir_firsat",
                          help="4 kriter aynı anda sağlanmalı:\n\n"
@@ -18456,7 +18456,7 @@ with col_left:
             "RS güçlü + Discount + Hacim + Formasyon", "#16a34a",
             desc="Güçlü ama henüz pahalılaşmamış — büyük oyuncuya yakın erken konum"
         ), unsafe_allow_html=True)
-        if st.button(f"💎 ALTIN FIRSAT & VIP FORMASYON TARA ({st.session_state.category})", type="secondary", use_container_width=True, key="btn_scan_golden_vip",
+        if st.button(f"💎 ALTIN SET-UP & VIP FORMASYON TARA ({st.session_state.category})", type="secondary", use_container_width=True, key="btn_scan_golden_vip",
                      help="İki aşamalı eleme: önce Altın Fırsat kriterleri (RS güçlü + Discount + Hacim), sonra formasyon (Fincan-Kulp, TOBO, Üçgen, Range). Formasyon bulunamazsa Hazırlık listesine girer."):
             with st.spinner("Fincan-Kulp, TOBO ve Üçgenlerde Altın Fırsat aranıyor..."):
                 current_assets = ASSET_GROUPS.get(st.session_state.category, [])
@@ -18695,7 +18695,7 @@ with col_right:
                     _gp_lnadir = _gp_lrow.get('is_nadir', False)
                     _gp_border = "#7c3aed" if _gp_lnadir else "#16a34a"
                     _gp_bg     = "rgba(124,58,237,0.08)" if _gp_lnadir else "rgba(22,163,74,0.08)"
-                    _gp_ikon   = "♠️ PLATİN VIP FORMASYON" if _gp_lnadir else "💎 ALTIN FIRSAT + VIP FORMASYON"
+                    _gp_ikon   = "♠️ PLATİN VIP FORMASYON" if _gp_lnadir else "💎 ALTIN SET-UP + VIP FORMASYON"
                     st.markdown(
                         f"<div style='border:2px solid {_gp_border};border-radius:10px;"
                         f"padding:10px 14px;background:{_gp_bg};margin-bottom:8px;'>"
@@ -18804,7 +18804,7 @@ with col_right:
         df2 = st.session_state.get('radar2_data')
 
         # ORTAK FIRSATLAR KISMI
-        st.markdown(f"<div style='font-size:0.9rem;font-weight:bold; margin-bottom:8px; color:#38bdf8; background-color:rgba(30, 64, 175, 0.05); padding:5px; border-radius:5px; border:1px solid #1e40af; text-align:center;'>🎯 Ortak Fırsatlar (R1 + R2 Kesişim)</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:0.9rem;font-weight:bold; margin-bottom:8px; color:#38bdf8; background-color:rgba(30, 64, 175, 0.05); padding:5px; border-radius:5px; border:1px solid #1e40af; text-align:center;'>🎯 Ortak Set-Up'lar (R1 + R2 Kesişim)</div>", unsafe_allow_html=True)
         if df1 is not None and df2 is not None and not df1.empty and not df2.empty:
             commons = []
             symbols = set(df1["Sembol"]).intersection(set(df2["Sembol"]))
