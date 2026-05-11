@@ -15824,9 +15824,9 @@ if st.session_state.generate_prompt:
 
     # A. ELİT KURULUMLAR (Sistemin En Tepesi)
     if is_nadir != "HAYIR": 
-        scan_box_txt.append("👑 ELİT KURULUM: ROYAL FLUSH NADİR FIRSAT (4/4 Onay. Algoritmik kusursuzluk! Kurumsal fonların en sevdiği, başarı ihtimali en yüksek asimetrik risk/ödül noktası olabilir.)")
+        scan_box_txt.append("👑 ELİT KURULUM: ROYAL FLUSH NADİR SET-UP (4/4 Kriter Karşılandı. Algoritmik olarak nadir görülen yapı — dört teknik kriterin aynı anda kesişimi.)")
     elif is_golden != "HAYIR": 
-        scan_box_txt.append("🏆 ALTIN FIRSAT: Golden Trio Onaylandı (Fiyat ucuz, trend güçlü, hacim destekliyor. Büyük bir hareketin arifesinde olabilir.)")
+        scan_box_txt.append("🏆 ALTIN SET-UP: Golden Trio Onaylandı (Fiyat istatistiksel ucuz bölgede, trend ve hacim kriterleri eş zamanlı karşılandı.)")
 
     # B. ICT & MARKET YAPISI VE MAKRO YÖN (Kurumsal Ayak İzleri)
     if ict_data and ict_data.get('status') != 'Error':
@@ -15871,8 +15871,8 @@ if st.session_state.generate_prompt:
                     _gp_nadir = _gp_row.iloc[0].get('is_nadir', False)
                     _gp_pfx   = "♠️ PLATİN" if _gp_nadir else "💎 VIP"
                     scan_box_txt.insert(1,
-                        f"{_gp_pfx} ALTIN FIRSAT + FORMASYON: Skor {_gp_puan}/100 — {_gp_detay} "
-                        f"(Güç + Ucuzluk + Enerji + Geometrik yapı — dört kriter birlikte çakıştı. "
+                        f"{_gp_pfx} ALTIN SET-UP + FORMASYON: Skor {_gp_puan}/100 — {_gp_detay} "
+                        f"(Güç + Ucuzluk + Enerji + Geometrik yapı — dört kriter aynı anda sağlandı. "
                         f"Batch tarama sonucu: bu hisse en seçkin listede.)"
                     )
     except:
@@ -16952,8 +16952,8 @@ Bu çelişkiler varsa tek bir paragrafta "yükseliş devam ederken şunu da göz
 - GÜNLÜK DEĞİŞİM: {degisim_str}
 - GENEL SAĞLIK: {master_txt} (Algoritmik Puan)
 - Temel Artılar: {pros_txt}
-- ALTIN FIRSAT (GOLDEN TRIO) DURUMU: {is_golden}
-- ROYAL FLUSH NADİR FIRSAT: {is_nadir}
+- ALTIN SET-UP (GOLDEN TRIO) DURUMU: {is_golden}
+- ROYAL FLUSH NADİR SET-UP: {is_nadir}
 
 *** 🚨 ALGORİTMİK DURUM RAPORU VE GÖRSEL ÇAPRAZ SORGU (CROSS-EXAMINATION) TALEBİ: {ai_scenario_title} ***
 Mevcut Özet: {ai_mood_instruction}
@@ -17140,8 +17140,8 @@ Referans ton — YASAK: "Söz konusu teknik tablo incelendiğinde, momentumun za
    Okuyucu her maddeyi okuyunca bir sonrakini okumak zorunda hissetmeli. Analizin bir hikayesi olsun — başı, gerilimi ve çözümü.
    Ayrıca, yorumları bir robot gibi değil, tecrübeli ve sezgileri kuvvetli bir stratejist gibi yap.
      a) Listenin en başına; "Kırılım (Breakout)", "Akıllı Para (Smart Money)", "Trend Dönüşü" veya "BOS" içeren EN GÜÇLÜ sinyalleri koy ve bunlara (8/10) ile (10/10) arasında puan ver.
-        - Eğer ALTIN FIRSAT durumu ‘EVET’ ise, bu hissenin piyasadan pozitif ayrıştığını (RS Gücü), kurumsal toplama bölgesinde olduğunu (ICT) ve ivme kazandığını vurgula. Analizinde bu 3/3 onayın neden kritik bir ‘alım penceresi’ sunduğunu belirt.
-        - Eğer ROYAL FLUSH NADİR FIRSAT durumu ‘EVET’ ise, bu nadir görülen 4/4’lük onayı analizin en başında vurgula ve bu kurulumun neden en yüksek kazanma oranına sahip olduğunu finansal gerekçeleriyle açıkla.
+        - Eğer ALTIN SET-UP durumu ‘EVET’ ise, bu hissenin piyasadan pozitif ayrıştığını (RS Gücü), istatistiksel ucuz bölgede olduğunu (ICT) ve ivme kazandığını vurgula. Analizinde bu 3/3 onayın teknik kriterleri eş zamanlı karşıladığını ve tarihsel olarak düşük frekanslı bir yapı olduğunu belirt.
+        - Eğer ROYAL FLUSH NADİR SET-UP durumu ‘EVET’ ise, bu nadir görülen 4/4’lük onayı analizin en başında vurgula ve bu kurulumun dört kriterin kesişimi nedeniyle algoritmik olarak nadir görüldüğünü ve olası senaryoları dengeli biçimde değerlendir.
      b) Listenin devamına; trendi destekleyen ama daha zayıf olan yan sinyalleri (örneğin: "Hareketli ortalama üzerinde", "RSI 50 üstü" vb.) ekle. Ancak bunlara DÜRÜSTÇE (1/10) ile (7/10) arasında puan ver.
    - NOT: Listeyi 6 maddeye tamamlamak için zayıf sinyallere asla yapay olarak yüksek puan (8+) verme! Sinyal gücü neyse onu yaz.
 2. SENARYO A: ELİNDE OLANLAR İÇİN

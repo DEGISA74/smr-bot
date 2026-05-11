@@ -2104,7 +2104,7 @@ Aksi tüm durumlarda: Scan kutusunda 🚨 Z-Score uyarısı görsen bile bunu an
 
 PRE-LAUNCH / FİTİL ÇEKİLİYOR durumu: Eğer KALKIŞ RADARI "FİTİL ÇEKİLİYOR" veya "⚡ LONG İÇİN HAZIR" statüsündeyse, bu analizin birincil hikayesi olmalıdır. Z-Score ne olursa olsun, birikim süreci tamamlanmış ve tetik bekleniyor demektir — bu bulguyu analizin en başına koy, Z-Score yorumunu ise ancak risk yönetimi notunda kısaca kullan.
 
-ALTIN FIRSAT (Golden Trio) + Yüksek Z-Score bir arada: Bu durum "tehlike" değil "güçlü momentum + uzama" kombinasyonudur. Analizin tonu olumlu kalmalı; Z-Score'u "stop seviyesini yukarı taşı" notu olarak kullan, "dikkat et, çöküş gelebilir" panikâr diline çevirme.
+ALTIN SET-UP (Golden Trio) + Yüksek Z-Score bir arada: Bu durum "tehlike" değil "güçlü momentum + uzama" kombinasyonudur. Analizin tonu olumlu kalmalı; Z-Score'u "stop seviyesini yukarı taşı" notu olarak kullan, "dikkat et, çöküş gelebilir" panikâr diline çevirme.
 
 *** POC / VWAP BAĞLAM REHBERİ (ZORUNLU OKUMA — Z-SCORE İLE AYNI MANTIK) ***
 POC ve VWAP "fair value" (adil değer) DEĞİLDİR. Geçmiş hacim merkezi ve kurumsal execution ortalamasıdır. Tek başına alım/satım sinyali olarak ASLA kullanılmaz.
@@ -2423,7 +2423,7 @@ Aksi tüm durumlarda: Scan kutusunda 🚨 Z-Score uyarısı görsen bile bunu an
 
 PRE-LAUNCH / FİTİL ÇEKİLİYOR durumu: Eğer KALKIŞ RADARI "FİTİL ÇEKİLİYOR" veya "⚡ LONG İÇİN HAZIR" statüsündeyse, bu analizin birincil hikayesi olmalıdır. Z-Score ne olursa olsun, birikim süreci tamamlanmış ve tetik bekleniyor demektir — bu bulguyu analizin en başına koy, Z-Score yorumunu ise ancak risk yönetimi notunda kısaca kullan.
 
-ALTIN FIRSAT (Golden Trio) + Yüksek Z-Score bir arada: Bu durum "tehlike" değil "güçlü momentum + uzama" kombinasyonudur. Analizin tonu olumlu kalmalı; Z-Score'u "stop seviyesini yukarı taşı" notu olarak kullan, "dikkat et, çöküş gelebilir" panikâr diline çevirme.
+ALTIN SET-UP (Golden Trio) + Yüksek Z-Score bir arada: Bu durum "tehlike" değil "güçlü momentum + uzama" kombinasyonudur. Analizin tonu olumlu kalmalı; Z-Score'u "stop seviyesini yukarı taşı" notu olarak kullan, "dikkat et, çöküş gelebilir" panikâr diline çevirme.
 
 *** POC / VWAP BAĞLAM REHBERİ (ZORUNLU OKUMA — Z-SCORE İLE AYNI MANTIK) ***
 POC ve VWAP "fair value" (adil değer) DEĞİLDİR. Geçmiş hacim merkezi ve kurumsal execution ortalamasıdır. Tek başına alım/satım sinyali olarak ASLA kullanılmaz.
@@ -2508,8 +2508,8 @@ Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu e
    Okuyucu her maddeyi okuyunca bir sonrakini okumak zorunda hissetmeli. Analizin bir hikayesi olsun — başı, gerilimi ve çözümü.
    Ayrıca, yorumları bir robot gibi değil, tecrübeli ve sezgileri kuvvetli bir stratejist gibi yap.
      a) Listenin en başına; "Kırılım (Breakout)", "Akıllı Para (Smart Money)", "Trend Dönüşü" veya "BOS" içeren EN GÜÇLÜ sinyalleri koy ve bunlara (8/10) ile (10/10) arasında puan ver.
-        - Eğer ALTIN FIRSAT durumu ‘EVET’ ise, bu hissenin piyasadan pozitif ayrıştığını (RS Gücü), kurumsal toplama bölgesinde olduğunu (ICT) ve ivme kazandığını vurgula. Analizinde bu 3/3 onayın neden kritik bir ‘alım penceresi’ sunduğunu belirt.
-        - Eğer ROYAL FLUSH NADİR FIRSAT durumu ‘EVET’ ise, bu nadir görülen 4/4’lük onayı analizin en başında vurgula ve bu kurulumun neden en yüksek kazanma oranına sahip olduğunu finansal gerekçeleriyle açıkla.
+        - Eğer ALTIN SET-UP durumu ‘EVET’ ise, bu hissenin piyasadan pozitif ayrıştığını (RS Gücü), istatistiksel ucuz bölgede olduğunu (ICT) ve ivme kazandığını vurgula. Analizinde bu 3/3 onayın teknik kriterleri eş zamanlı karşıladığını ve tarihsel olarak düşük frekanslı bir yapı olduğunu belirt.
+        - Eğer ROYAL FLUSH NADİR SET-UP durumu ‘EVET’ ise, bu nadir görülen 4/4’lük onayı analizin en başında vurgula ve bu kurulumun dört kriterin kesişimi nedeniyle algoritmik olarak nadir görüldüğünü ve olası senaryoları dengeli biçimde değerlendir.
      b) Listenin devamına; trendi destekleyen ama daha zayıf olan yan sinyalleri (örneğin: "Hareketli ortalama üzerinde", "RSI 50 üstü" vb.) ekle. Ancak bunlara DÜRÜSTÇE (1/10) ile (7/10) arasında puan ver.
    - NOT: Listeyi 6 maddeye tamamlamak için zayıf sinyallere asla yapay olarak yüksek puan (8+) verme! Sinyal gücü neyse onu yaz.
 (5-6 madde — önce güçlü taraflar ✅, sonra riskler 📍)
