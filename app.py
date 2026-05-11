@@ -5493,7 +5493,7 @@ def compile_top_20_summary():
     def add_candidates(df, source_name, limit=5):
         if df is not None and not df.empty:
             for i, row in df.head(limit).iterrows():
-                sym = row.get('Sembol', row.get('Sembol_Raw', None))
+                sym = row.get('Sembol', row.get('Sembol_Raw', row.get('Hisse', None)))
                 if not sym: continue
                 fiyat = row.get('Fiyat', row.get('Güncel_Fiyat', 0))
                 if sym not in candidates:
@@ -5513,6 +5513,11 @@ def compile_top_20_summary():
     add_candidates(st.session_state.get('radar2_data'), '⭐ Yıldız Adayı', limit=10)
     add_candidates(st.session_state.get('scan_data'), '📡 1-5 Günlük Yükseliş', limit=10)
     add_candidates(st.session_state.get('harmonic_confluence_data'), '⚡ Harmonik Confluence (3\'lü Teyit)', limit=5)
+    add_candidates(st.session_state.get('golden_results'), '🏆 Altın Fırsat', limit=10)
+    # golden_pattern_data dict formatı: {"formations": df, "hazirlik": df}
+    _gp_top20 = st.session_state.get('golden_pattern_data')
+    if isinstance(_gp_top20, dict):
+        add_candidates(_gp_top20.get('formations', pd.DataFrame()), '💎 VIP Formasyon', limit=5)
 
     candidate_list = [{'Sembol': k, **v} for k, v in candidates.items()]
     
@@ -5548,7 +5553,7 @@ def compile_confluence_hits():
         if df is None or (hasattr(df, 'empty') and df.empty): return
         groups[g_key]['scanned'] = True
         for _, row in df.head(limit).iterrows():
-            sym = row.get('Sembol') or row.get('Sembol_Raw')
+            sym = row.get('Sembol') or row.get('Sembol_Raw') or row.get('Hisse')
             if not sym: continue
             price = row.get('Fiyat') or row.get('Güncel_Fiyat') or 0
             if sym not in groups[g_key]['sources']:
@@ -5570,6 +5575,10 @@ def compile_confluence_hits():
 
     # --- GRUP 3: FORMASYON/DEĞER ---
     add_to_group('formasyon', st.session_state.get('accum_data'),     'Gizli Birikim')
+    add_to_group('formasyon', st.session_state.get('golden_results'), 'Altın Fırsat')
+    _gp_conf = st.session_state.get('golden_pattern_data')
+    if isinstance(_gp_conf, dict):
+        add_to_group('formasyon', _gp_conf.get('formations', pd.DataFrame()), 'VIP Formasyon')
     # Harmonik Confluence = 3 bağımsız metodoloji (Harmonik + ICT + RSI) → her 3 gruba ekle
     _hconf_df = st.session_state.get('harmonic_confluence_data')
     if _hconf_df is not None and not (hasattr(_hconf_df, 'empty') and _hconf_df.empty):
@@ -15499,6 +15508,10 @@ with col_btn:
             my_bar.progress(96, text="🚀 Pre-Launch BOS (Squeeze + Kırılım) Taranıyor...%96")
             st.session_state.prelaunch_bos_data = scan_prelaunch_bos(scan_list)
 
+            # 15. ALTIN FIRSAT + VIP FORMASYON AJANI - %97
+            my_bar.progress(97, text="💎 Altın Fırsat + VIP Formasyon (Fincan-Kulp/TOBO/Üçgen) Taranıyor...%97")
+            st.session_state.golden_pattern_data = scan_golden_pattern_agent(scan_list, _cat)
+
             # --- TOP 20 + CONFLUENCE - %99
             my_bar.progress(99, text="🏆 TOP 20 & Confluence Hesaplanıyor...%99")
             st.session_state.top_20_summary  = compile_top_20_summary()
@@ -15521,6 +15534,7 @@ with col_btn:
                 "prelaunch_bos_data":       st.session_state.prelaunch_bos_data,
                 "top_20_summary":           st.session_state.top_20_summary,
                 "confluence_hits":          st.session_state.confluence_hits,
+                "golden_pattern_data":      st.session_state.golden_pattern_data,
             }
             # Önce tüm snapshot'ı bir arada dene
             _save_ok = False
@@ -15843,6 +15857,60 @@ if st.session_state.generate_prompt:
             scan_box_txt.append(f"📈 STP MOMENTUM: Pozitif Trend ({stp_res['data'].get('Gun','?')} Gündür trend alıcıların kontrolünde görünüyor.)")
         elif stp_res['type'] == 'trend_down': 
             scan_box_txt.append(f"📉 STP MOMENTUM: Negatif Trend ({stp_res['data'].get('Gun','?')} Gündür ayılar tahtayı baskılıyor)")
+
+    # D2. ALTIN FIRSAT + VIP FORMASYON (batch scan sonucu — bu hisse tarama listesindeyse)
+    try:
+        _gp_ai = st.session_state.get('golden_pattern_data')
+        if isinstance(_gp_ai, dict):
+            _gp_forms = _gp_ai.get('formations', pd.DataFrame())
+            if not _gp_forms.empty and 'Sembol' in _gp_forms.columns:
+                _gp_row = _gp_forms[_gp_forms['Sembol'] == t]
+                if not _gp_row.empty:
+                    _gp_detay = _gp_row.iloc[0].get('Detay', '')
+                    _gp_puan  = _gp_row.iloc[0].get('Puan', 0)
+                    _gp_nadir = _gp_row.iloc[0].get('is_nadir', False)
+                    _gp_pfx   = "♠️ PLATİN" if _gp_nadir else "💎 VIP"
+                    scan_box_txt.insert(1,
+                        f"{_gp_pfx} ALTIN FIRSAT + FORMASYON: Skor {_gp_puan}/100 — {_gp_detay} "
+                        f"(Güç + Ucuzluk + Enerji + Geometrik yapı — dört kriter birlikte çakıştı. "
+                        f"Batch tarama sonucu: bu hisse en seçkin listede.)"
+                    )
+    except:
+        pass
+
+    # D3. DARVAS BOX (Swing-point bazlı kutu + kalite skoru)
+    try:
+        if df_hist is not None and len(df_hist) >= 60:
+            _dbox_ai = detect_darvas_box(df_hist)
+            if _dbox_ai and _dbox_ai['quality'] >= 75:
+                _d_st  = _dbox_ai['status']
+                _d_q   = _dbox_ai['quality']
+                _d_age = _dbox_ai['box_age']
+                _d_top = _dbox_ai['box_top']
+                _d_bot = _dbox_ai['box_bottom']
+                _d_cls = _dbox_ai.get('breakout_class')
+                _d_vr  = _dbox_ai.get('vol_ratio', 1.0)
+                if _d_st == 'breakout' and _d_cls == 'A':
+                    scan_box_txt.append(
+                        f"⭐📦 DARVAS A-SINYAL: {_d_age} günlük birikim kutusu 3/3 kapıyla kırıldı! "
+                        f"Tavan:{_d_top} → Taban:{_d_bot} · Hacim oranı:{_d_vr:.1f}x · Kalite:{_d_q}/100 "
+                        f"(Swing-point bazlı konsolidasyon + hacim patlaması — VCP imzası. "
+                        f"Bu kombinasyon tarihsel olarak büyük hareketlerin öncesinde görülür.)"
+                    )
+                elif _d_st == 'breakout':
+                    scan_box_txt.append(
+                        f"📦 DARVAS KIRILIM (Kısmi Onay): {_d_age} günlük kutu kırıldı. "
+                        f"Tavan:{_d_top} · Kalite:{_d_q}/100 · Hacim:{_d_vr:.1f}x "
+                        f"(Fiyat kırılımı var, hacim veya RSI teyidi eksik — izlemede tut.)"
+                    )
+                else:
+                    scan_box_txt.append(
+                        f"🟦 DARVAS KUTU OLUŞUYOR: {_d_age} günlük konsolidasyon. "
+                        f"Tavan:{_d_top} → Taban:{_d_bot} · Hacim kontraksiyon:{_d_vr:.1f}x · Kalite:{_d_q}/100 "
+                        f"(Enerji biriyor, yay gerildi — {_d_top} üstü kapanış kırılım tetikler.)"
+                    )
+    except:
+        pass
 
     # E. FORMASYON (Geometrik Yapılar)
     if not pat_df.empty:
@@ -17848,7 +17916,8 @@ with col_left:
     # Session state başlatmaları
     for _k in ['ict_scan_data','nadir_firsat_scan_data','guclu_donus_data',
                 'harmonic_confluence_data','accum_data','minervini_data',
-                'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data']:
+                'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data',
+                'golden_pattern_data']:
         if _k not in st.session_state: st.session_state[_k] = None
 
     # ── STARTUP CACHE RESTORE (piyasa dışı saatlerde otomatik yükle) ─────────
@@ -18611,6 +18680,72 @@ with col_right:
 
     # Harmonik Confluence (3'lü teyit) — varsa Royal Flush Nadir Fırsat/Altın Fırsat seviyesinde rozet
     render_harmonic_confluence_banner(st.session_state.ticker)
+
+    # 💎 VIP FORMASYON — Altın Fırsat + Geometrik Yapı batch tarama sonucu
+    try:
+        _gp_live = st.session_state.get('golden_pattern_data')
+        if isinstance(_gp_live, dict):
+            _gp_lf = _gp_live.get('formations', pd.DataFrame())
+            if not _gp_lf.empty and 'Sembol' in _gp_lf.columns:
+                _gp_lr = _gp_lf[_gp_lf['Sembol'] == st.session_state.ticker]
+                if not _gp_lr.empty:
+                    _gp_lrow   = _gp_lr.iloc[0]
+                    _gp_ldetay = _gp_lrow.get('Detay', '')
+                    _gp_lpuan  = _gp_lrow.get('Puan', 0)
+                    _gp_lnadir = _gp_lrow.get('is_nadir', False)
+                    _gp_border = "#7c3aed" if _gp_lnadir else "#16a34a"
+                    _gp_bg     = "rgba(124,58,237,0.08)" if _gp_lnadir else "rgba(22,163,74,0.08)"
+                    _gp_ikon   = "♠️ PLATİN VIP FORMASYON" if _gp_lnadir else "💎 ALTIN FIRSAT + VIP FORMASYON"
+                    st.markdown(
+                        f"<div style='border:2px solid {_gp_border};border-radius:10px;"
+                        f"padding:10px 14px;background:{_gp_bg};margin-bottom:8px;'>"
+                        f"<div style='font-size:0.8rem;font-weight:800;color:{_gp_border};"
+                        f"margin-bottom:4px;'>{_gp_ikon} — Skor: {_gp_lpuan}/100</div>"
+                        f"<div style='font-size:0.78rem;color:#cbd5e1;line-height:1.4;'>{_gp_ldetay}</div>"
+                        f"<div style='font-size:0.68rem;color:#94a3b8;margin-top:4px;'>"
+                        f"Güç + Ucuzluk + Enerji + Geometrik yapı — dört kriter aynı anda çakıştı</div>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+    except:
+        pass
+
+    # 📦 DARVAS BOX — Bireysel hisse banner'ı (kalite ≥ 75 ise göster)
+    try:
+        _df_darvas_live = get_safe_historical_data(st.session_state.ticker, period="6mo")
+        if _df_darvas_live is not None and len(_df_darvas_live) >= 60:
+            _dbox_live = detect_darvas_box(_df_darvas_live)
+            if _dbox_live and _dbox_live['quality'] >= 75:
+                _dl_st  = _dbox_live['status']
+                _dl_q   = _dbox_live['quality']
+                _dl_age = _dbox_live['box_age']
+                _dl_top = _dbox_live['box_top']
+                _dl_bot = _dbox_live['box_bottom']
+                _dl_cls = _dbox_live.get('breakout_class')
+                _dl_vr  = _dbox_live.get('vol_ratio', 1.0)
+                if _dl_st == 'breakout' and _dl_cls == 'A':
+                    _dl_border = "#f59e0b"; _dl_bg = "rgba(245,158,11,0.08)"
+                    _dl_title  = "⭐📦 DARVAS A-SINYAL — 3/3 Kapı Açık"
+                    _dl_desc   = f"{_dl_age} günlük birikim kutusu hacimle kırıldı · Tavan:{_dl_top} → Taban:{_dl_bot} · Hacim:{_dl_vr:.1f}x"
+                elif _dl_st == 'breakout':
+                    _dl_border = "#38bdf8"; _dl_bg = "rgba(56,189,248,0.07)"
+                    _dl_title  = "📦 Darvas Kırılım (Kısmi Onay)"
+                    _dl_desc   = f"{_dl_age} günlük kutu kırıldı · Tavan:{_dl_top} · Hacim teyidi eksik"
+                else:
+                    _dl_border = "#6366f1"; _dl_bg = "rgba(99,102,241,0.07)"
+                    _dl_title  = "🟦 Darvas Kutu Oluşuyor"
+                    _dl_desc   = f"{_dl_age} günlük konsolidasyon · Tavan:{_dl_top} → Taban:{_dl_bot} · {_dl_top} üstü kapanış kırılım tetikler"
+                st.markdown(
+                    f"<div style='border:2px solid {_dl_border};border-radius:10px;"
+                    f"padding:10px 14px;background:{_dl_bg};margin-bottom:8px;'>"
+                    f"<div style='font-size:0.8rem;font-weight:800;color:{_dl_border};"
+                    f"margin-bottom:4px;'>{_dl_title} · Kalite: {_dl_q}/100</div>"
+                    f"<div style='font-size:0.78rem;color:#cbd5e1;line-height:1.4;'>{_dl_desc}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+    except:
+        pass
 
     st.markdown("<hr style='margin-top:15px; margin-bottom:10px;'>", unsafe_allow_html=True)
 
