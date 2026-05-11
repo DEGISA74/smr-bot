@@ -14975,6 +14975,7 @@ def get_golden_trio_batch_scan(ticker_list):
 
     golden_candidates = []
     platin_candidates = [] # YENİ: Platin Fırsat adayları
+    tekli_altin_candidates = [] # Tekli hisse kriterleri (Altın %65 Discount + Platin bayrağı)
 
     # 1. BİLGİLENDİRME & HAZIRLIK
     st.toast("Veri Ambari İndiriliyor (1 Yıllık Derinlik)...", icon="⏳")
@@ -14989,7 +14990,7 @@ def get_golden_trio_batch_scan(ticker_list):
         data = fetch_market_data_cached(tuple(ticker_list))
     except Exception as e:
         st.error(f"Veri çekme hatası: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     my_bar.progress(40, text="⚡ Hafızadaki Veriler İşleniyor (Çift Katmanlı Analiz)...")
 
@@ -15132,65 +15133,105 @@ def get_golden_trio_batch_scan(ticker_list):
                     "RedCandle": has_red_candle,
                 })
 
-        # === PLATİN HAZIR — Bağımsız Filtre ===
-        # is_discount şartı YOK. Güçlü Yapı + Uçmamış + 3 Kapıdan 2'si.
-        try:
-            _c = df['Close']; _v = df['Volume']
-            _s200  = float(_c.rolling(200).mean().iloc[-1])
-            _s50   = float(_c.rolling(50).mean().iloc[-1])
-            _s50_5 = float(_c.rolling(50).mean().iloc[-5])
-            _dist  = (current_price / _s50 - 1) * 100 if _s50 > 0 else 999
-            _g20   = (current_price / float(_c.iloc[-20]) - 1) * 100 if len(_c) >= 20 else 999
+            # === PLATİN HAZIR — Bağımsız Filtre ===
+            # is_discount şartı YOK. Güçlü Yapı + Uçmamış + 3 Kapıdan 2'si.
+            try:
+                _c = df['Close']; _v = df['Volume']
+                _s200  = float(_c.rolling(200).mean().iloc[-1])
+                _s50   = float(_c.rolling(50).mean().iloc[-1])
+                _s50_5 = float(_c.rolling(50).mean().iloc[-5])
+                _dist  = (current_price / _s50 - 1) * 100 if _s50 > 0 else 999
+                _g20   = (current_price / float(_c.iloc[-20]) - 1) * 100 if len(_c) >= 20 else 999
 
-            if (current_price > _s200 and current_price > _s50 and
-                    _s50 > _s50_5 and 35 <= rsi_now <= 73 and
-                    _dist <= 15 and _g20 <= 20):
+                if (current_price > _s200 and current_price > _s50 and
+                        _s50 > _s50_5 and 35 <= rsi_now <= 73 and
+                        _dist <= 15 and _g20 <= 20):
 
-                _kapi = 0; _kapi_list = []
+                    _kapi = 0; _kapi_list = []
 
-                # Kapı 1: Hacim Kuruması (son 5g < 20g ort. %80)
-                _v5  = float(_v.iloc[-5:].mean())
-                _v20 = float(_v.rolling(20).mean().iloc[-1])
-                if _v20 > 0 and _v5 < _v20 * 0.80:
-                    _kapi += 1; _kapi_list.append("Hacim Kurudu")
+                    # Kapı 1: Hacim Kuruması (son 5g < 20g ort. %80)
+                    _v5  = float(_v.iloc[-5:].mean())
+                    _v20 = float(_v.rolling(20).mean().iloc[-1])
+                    if _v20 > 0 and _v5 < _v20 * 0.80:
+                        _kapi += 1; _kapi_list.append("Hacim Kurudu")
 
-                # Kapı 2: Endeksten Güçlü (son 10g)
-                if index_close is not None and len(index_close) >= 10:
-                    _sr = float(_c.iloc[-1]) / float(_c.iloc[-10]) - 1
-                    _ir = float(index_close.iloc[-1]) / float(index_close.iloc[-10]) - 1
-                    if _sr > _ir:
-                        _kapi += 1; _kapi_list.append("Endeksten Güçlü")
-
-                # Kapı 3: 10 Gün Sıkışma (bant ≤ %8)
-                _h10 = float(df['High'].tail(10).max())
-                _l10 = float(df['Low'].tail(10).min())
-                if _l10 > 0 and (_h10 - _l10) / _l10 * 100 <= 8:
-                    _kapi += 1; _kapi_list.append("10g Sıkışma")
-
-                if _kapi >= 2:
-                    _vr  = float(_v.iloc[-1]) / _v20 if _v20 > 0 else 1
-                    _rs  = 0.0
+                    # Kapı 2: Endeksten Güçlü (son 10g)
                     if index_close is not None and len(index_close) >= 10:
-                        _rs = ((float(_c.iloc[-1]) / float(_c.iloc[-10]) - 1) -
-                               (float(index_close.iloc[-1]) / float(index_close.iloc[-10]) - 1)) * 100
-                    _skor = round(rsi_now + (_vr * 15) + _rs + (_kapi * 5), 2)
-                    try:
-                        _mcap_p = yf.Ticker(ticker).fast_info.get('marketCap', 0)
-                    except:
-                        _mcap_p = 0
-                    platin_candidates.append({
-                        "Hisse":       ticker,
-                        "Fiyat":       round(current_price, 2),
-                        "M.Cap":       _mcap_p,
-                        "Teknik_Skor": _skor,
-                        "Hazırlık":    f"{_kapi}/3",
-                        "Kurulum":     " + ".join(_kapi_list),
-                        "Onay":        "💎 PLATİN HAZIR: " + " + ".join(_kapi_list),
-                        "Warning":     has_warning,
-                        "RedCandle":   has_red_candle,
+                        _sr = float(_c.iloc[-1]) / float(_c.iloc[-10]) - 1
+                        _ir = float(index_close.iloc[-1]) / float(index_close.iloc[-10]) - 1
+                        if _sr > _ir:
+                            _kapi += 1; _kapi_list.append("Endeksten Güçlü")
+
+                    # Kapı 3: 10 Gün Sıkışma (bant ≤ %8)
+                    _h10 = float(df['High'].tail(10).max())
+                    _l10 = float(df['Low'].tail(10).min())
+                    if _l10 > 0 and (_h10 - _l10) / _l10 * 100 <= 8:
+                        _kapi += 1; _kapi_list.append("10g Sıkışma")
+
+                    if _kapi >= 2:
+                        _vr  = float(_v.iloc[-1]) / _v20 if _v20 > 0 else 1
+                        _rs  = 0.0
+                        if index_close is not None and len(index_close) >= 10:
+                            _rs = ((float(_c.iloc[-1]) / float(_c.iloc[-10]) - 1) -
+                                   (float(index_close.iloc[-1]) / float(index_close.iloc[-10]) - 1)) * 100
+                        _skor = round(rsi_now + (_vr * 15) + _rs + (_kapi * 5), 2)
+                        try:
+                            _mcap_p = yf.Ticker(ticker).fast_info.get('marketCap', 0)
+                        except:
+                            _mcap_p = 0
+                        platin_candidates.append({
+                            "Hisse":       ticker,
+                            "Fiyat":       round(current_price, 2),
+                            "M.Cap":       _mcap_p,
+                            "Teknik_Skor": _skor,
+                            "Hazırlık":    f"{_kapi}/3",
+                            "Kurulum":     " + ".join(_kapi_list),
+                            "Onay":        "💎 PLATİN HAZIR: " + " + ".join(_kapi_list),
+                            "Warning":     has_warning,
+                            "RedCandle":   has_red_candle,
+                        })
+            except:
+                pass
+
+            # === TEKLİ KRİTER TARAMA (Altın %65 Discount + Platin bayrağı) ===
+            try:
+                _t_loc = (current_price - low_60) / range_diff if range_diff > 0 else 1.0
+                _t_is_discount = _t_loc < 0.65
+                _t_is_powerful = False
+                if index_close is not None and len(index_close) > 10:
+                    _t_sr = (current_price / df['Close'].iloc[-10]) - 1
+                    _t_ir = (index_close.iloc[-1] / index_close.iloc[-10]) - 1
+                    if _t_sr > _t_ir or rsi_now > 45:
+                        _t_is_powerful = True
+                else:
+                    if rsi_now > 45:
+                        _t_is_powerful = True
+                _t_vol_sma20 = float(df['Volume'].rolling(20).mean().iloc[-1])
+                _t_cur_vol   = float(df['Volume'].iloc[-1])
+                _t_is_energy = (_t_cur_vol > _t_vol_sma20 * 1.05) or (rsi_now > 45)
+                if _t_is_powerful and _t_is_discount and _t_is_energy:
+                    _t_sma200    = float(df['Close'].rolling(200).mean().iloc[-1])
+                    _t_sma50     = float(df['Close'].rolling(50).mean().iloc[-1])
+                    _t_is_platin = (current_price > _t_sma200 and current_price > _t_sma50 and rsi_now < 70)
+                    _t_disc_pct  = round(_t_loc * 100, 1)
+                    _t_vr        = (_t_cur_vol / _t_vol_sma20) if _t_vol_sma20 > 0 else 1
+                    _t_rs        = 0.0
+                    if index_close is not None and len(index_close) > 10:
+                        _t_rs = ((current_price / df['Close'].iloc[-10] - 1) -
+                                 (index_close.iloc[-1] / index_close.iloc[-10] - 1)) * 100
+                    _t_skor = round(rsi_now + (_t_vr * 15) + _t_rs + (20 if _t_is_platin else 0), 2)
+                    tekli_altin_candidates.append({
+                        "Hisse":        ticker,
+                        "Fiyat":        round(current_price, 2),
+                        "Teknik_Skor":  _t_skor,
+                        "is_platin":    _t_is_platin,
+                        "Discount_Pct": _t_disc_pct,
+                        "RSI":          round(rsi_now, 1),
+                        "Warning":      has_warning,
+                        "RedCandle":    has_red_candle,
                     })
-        except:
-            pass
+            except:
+                pass
 
         except:
             continue
@@ -15203,7 +15244,7 @@ def get_golden_trio_batch_scan(ticker_list):
     time.sleep(0.3)
     my_bar.empty()
 
-    return pd.DataFrame(golden_candidates), pd.DataFrame(platin_candidates)
+    return pd.DataFrame(golden_candidates), pd.DataFrame(platin_candidates), pd.DataFrame(tekli_altin_candidates)
 
 # ==============================================================================
 # BÖLÜM 34 — ANA SAYFA PANEL UI (TARAMA SONUÇLARI VE ARAYÜZ)
@@ -15274,7 +15315,7 @@ with col_btn:
 
             # 4. ELİTLER (Altın Fırsat + Platin Fırsat) - %30
             my_bar.progress(30, text="💎 ELİTLER Taranıyor (Platin + Altın Fırsat)...%30")
-            df_golden, df_nadir = get_golden_trio_batch_scan(scan_list)
+            df_golden, df_nadir, df_tekli = get_golden_trio_batch_scan(scan_list)
             st.session_state.golden_results = (
                 df_golden.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True)
                 if not df_golden.empty else pd.DataFrame()
@@ -15282,6 +15323,10 @@ with col_btn:
             st.session_state.platin_results = (
                 df_nadir.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True)
                 if not df_nadir.empty else pd.DataFrame()
+            )
+            st.session_state.tekli_altin_results = (
+                df_tekli.sort_values(by=["is_platin", "Teknik_Skor"], ascending=[False, False]).reset_index(drop=True)
+                if not df_tekli.empty else pd.DataFrame()
             )
 
             # 6. SENTIMENT (AKILLI PARA) AJANI - %40
@@ -15321,6 +15366,7 @@ with col_btn:
                 "nadir_firsat_scan_data":   st.session_state.nadir_firsat_scan_data,
                 "golden_results":           st.session_state.golden_results,
                 "platin_results":           st.session_state.platin_results,
+                "tekli_altin_results":      st.session_state.tekli_altin_results,
                 "accum_data":               st.session_state.accum_data,
                 "scan_data":                st.session_state.scan_data,
                 "radar2_data":              st.session_state.radar2_data,
@@ -17657,7 +17703,7 @@ with col_left:
     # Session state başlatmaları
     for _k in ['ict_scan_data','nadir_firsat_scan_data','guclu_donus_data',
                 'harmonic_confluence_data','accum_data','minervini_data',
-                'golden_results','platin_results','prelaunch_bos_data']:
+                'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data']:
         if _k not in st.session_state: st.session_state[_k] = None
 
     # ── STARTUP CACHE RESTORE (piyasa dışı saatlerde otomatik yükle) ─────────
@@ -17814,72 +17860,91 @@ with col_left:
                 _scan_list = ASSET_GROUPS.get(st.session_state.category, [])
                 if _scan_list:
                     st.session_state.radar2_data = radar2_scan(_scan_list)
-                    _df_g, _df_r = get_golden_trio_batch_scan(_scan_list)
+                    _df_g, _df_r, _df_t = get_golden_trio_batch_scan(_scan_list)
                     st.session_state.golden_results = _df_g.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True) if not _df_g.empty else pd.DataFrame()
                     st.session_state.platin_results  = _df_r.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True) if not _df_r.empty else pd.DataFrame()
+                    st.session_state.tekli_altin_results = _df_t.sort_values(by=["is_platin", "Teknik_Skor"], ascending=[False, False]).reset_index(drop=True) if not _df_t.empty else pd.DataFrame()
                     st.rerun()
-        _has_elite = (st.session_state.platin_results is not None and not st.session_state.platin_results.empty) or \
-                     (st.session_state.golden_results is not None and not st.session_state.golden_results.empty)
+        _has_elite = (
+            (st.session_state.platin_results is not None and not st.session_state.platin_results.empty) or
+            (st.session_state.golden_results is not None and not st.session_state.golden_results.empty) or
+            (st.session_state.tekli_altin_results is not None and not st.session_state.tekli_altin_results.empty)
+        )
         # Tarama çalıştı ama 0 sonuç döndü mü? (boş DataFrame, None değil)
         _scan_ran_empty = (
             (isinstance(st.session_state.platin_results, pd.DataFrame) and st.session_state.platin_results.empty) and
-            (isinstance(st.session_state.golden_results, pd.DataFrame) and st.session_state.golden_results.empty)
+            (isinstance(st.session_state.golden_results, pd.DataFrame) and st.session_state.golden_results.empty) and
+            (isinstance(st.session_state.tekli_altin_results, pd.DataFrame) and st.session_state.tekli_altin_results.empty)
         )
         if _has_elite:
             _platin = st.session_state.platin_results
-            _gold   = st.session_state.golden_results
-            # Tek kompakt kutu — Platin (💎) ve Altın (🦁) sonuçları birlikte
-            _platin_syms = set()
-            with st.container(height=160, border=True):
-                # Platin sonuçları
-                if _platin is not None and not _platin.empty:
-                    for _ri, _rr in _platin.head(5).iterrows():
-                        _rsym = _rr['Hisse']; _platin_syms.add(_rsym)
-                        _rd   = get_display_name(_rsym)
-                        _rfv  = _rr['Fiyat']; _rfs = f"{int(_rfv)}" if _rfv >= 1000 else f"{_rfv:.2f}"
-                        _rred = _rr.get('RedCandle', False)
-                        _is_double = _rsym in _double_hit_syms
-                        _rlbl = f"{'💎🚀' if _is_double else '💎'} {_rd} ({_rfs})" + (" 🟠" if _rred else "")
-                        _kurulum = _rr.get('Kurulum', '')
-                        _hazirlik = _rr.get('Hazırlık', '')
-                        _rtip = ("⚠️ Son gün kırmızı + " if _rred else "") + ("🚀 Pre-Launch BOS'ta da var — ÇİFT TEYİT!" if _is_double else f"💎 Platin Hazır | {_hazirlik} · {_kurulum}")
-                        if st.button(_rlbl, key=f"elit_platin_{_ri}", use_container_width=True, help=_rtip):
-                            on_scan_result_click(_rsym); st.rerun()
-                        if _is_double:
-                            st.markdown("<div style='font-size:0.68rem;color:#818cf8;font-weight:700;"
-                                        "margin:-6px 0 4px 4px;'>🚀 Pre-Launch BOS'ta da var</div>",
-                                        unsafe_allow_html=True)
-                # Altın sonuçları
-                if _gold is not None and not _gold.empty:
-                    _gold_top15_syms = set(_gold.head(15)['Hisse'].tolist())
-                    _forced = [r for _, r in _gold.iterrows() if r['Hisse'] in _platin_syms and r['Hisse'] not in _gold_top15_syms]
-                    _gold_display = list(_gold.head(10).iterrows())
-                    _shown_syms = set()
-                    for _gr in _forced:
-                        _gsym = _gr['Hisse']; _shown_syms.add(_gsym)
-                        _gd   = get_display_name(_gsym)
-                        _gfv  = _gr['Fiyat']; _gfs = f"{int(_gfv)}" if _gfv >= 1000 else f"{_gfv:.2f}"
-                        _gred = _gr.get('RedCandle', False)
-                        _glbl = f"🦁 {_gd} ({_gfs}) 🔹" + (" 🟠" if _gred else "")
-                        _gtip = ("⚠️ Son gün kırmızı + " if _gred else "") + "Küçük piyasa değeri — Platin listesinde"
-                        if st.button(_glbl, key=f"elit_gold_forced_{_gsym}", use_container_width=True, help=_gtip):
-                            on_scan_result_click(_gsym); st.rerun()
-                    for _gi, _gr in _gold_display:
-                        _gsym = _gr['Hisse']
-                        if _gsym in _shown_syms: continue
-                        _shown_syms.add(_gsym)
-                        _gd   = get_display_name(_gsym)
-                        _gfv  = _gr['Fiyat']; _gfs = f"{int(_gfv)}" if _gfv >= 1000 else f"{_gfv:.2f}"
-                        _gred = _gr.get('RedCandle', False)
-                        _gis_double = _gsym in _double_hit_syms
-                        _glbl = f"{'🦁🚀' if _gis_double else '🦁'} {_gd} ({_gfs})" + (" 🟠" if _gred else "")
-                        _gtip = ("⚠️ Son gün kırmızı + " if _gred else "") + ("🚀 Pre-Launch BOS'ta da var — ÇİFT TEYİT!" if _gis_double else "Altın Fırsat: RS güçlü + discount + enerji")
-                        if st.button(_glbl, key=f"elit_gold_{_gi}", use_container_width=True, help=_gtip):
-                            on_scan_result_click(_gsym); st.rerun()
-                        if _gis_double:
-                            st.markdown("<div style='font-size:0.68rem;color:#818cf8;font-weight:700;"
-                                        "margin:-6px 0 4px 4px;'>🚀 Pre-Launch BOS'ta da var</div>",
-                                        unsafe_allow_html=True)
+            _tekli  = st.session_state.tekli_altin_results
+
+            # ── İKİ SÜTUN ────────────────────────────────────────────
+            _col_l, _col_r = st.columns(2)
+
+            # ── SOL: HAREKETE HAZIR (3-kapı Platin tarama) ──────────
+            with _col_l:
+                st.markdown(
+                    "<div style='font-size:0.72rem;font-weight:700;color:#a78bfa;"
+                    "margin-bottom:4px;'>⚡ HAREKETE HAZIR</div>",
+                    unsafe_allow_html=True
+                )
+                with st.container(height=145, border=True):
+                    if _platin is not None and not _platin.empty:
+                        # 3/3 kapı açık olanları önce göster, sonra Teknik_Skor
+                        _plt_s = _platin.copy()
+                        _plt_s['_gate_n'] = _plt_s['Hazırlık'].apply(
+                            lambda x: int(str(x).split('/')[0]) if '/' in str(x) else 0)
+                        _plt_s = _plt_s.sort_values(by=['_gate_n', 'Teknik_Skor'], ascending=[False, False])
+                        for _pi, _pr in _plt_s.head(8).iterrows():
+                            _psym = _pr['Hisse']
+                            _pd_  = get_display_name(_psym)
+                            _pfv  = _pr['Fiyat']; _pfs = f"{int(_pfv)}" if _pfv >= 1000 else f"{_pfv:.2f}"
+                            _pred = _pr.get('RedCandle', False)
+                            _pkur = _pr.get('Kurulum', '')
+                            _phaz = _pr.get('Hazırlık', '')
+                            _pg_n = int(str(_phaz).split('/')[0]) if '/' in str(_phaz) else 0
+                            _pdbl = _psym in _double_hit_syms
+                            _plbl = f"{'🔥' if _pg_n == 3 else '💎'} {_pd_} ({_pfs}) {_phaz}" + (" 🟠" if _pred else "") + (" 🚀" if _pdbl else "")
+                            _ptip = f"Kurulum: {_pkur} · {_phaz} kapı açık" + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _pdbl else "")
+                            if st.button(_plbl, key=f"elit_plt2_{_pi}", use_container_width=True, help=_ptip):
+                                on_scan_result_click(_psym); st.rerun()
+                    else:
+                        st.markdown(
+                            "<div style='color:#64748b;font-size:0.72rem;text-align:center;"
+                            "padding-top:22px;'>Bu kategoride Platin bulunamadı</div>",
+                            unsafe_allow_html=True
+                        )
+
+            # ── SAĞ: ALTIN & PLATİN (tekli hisse kriterleri) ────────
+            with _col_r:
+                st.markdown(
+                    "<div style='font-size:0.72rem;font-weight:700;color:#f59e0b;"
+                    "margin-bottom:4px;'>💎 ALTIN & PLATİN</div>",
+                    unsafe_allow_html=True
+                )
+                with st.container(height=145, border=True):
+                    if _tekli is not None and not _tekli.empty:
+                        for _ti, _tr in _tekli.head(12).iterrows():
+                            _tsym  = _tr['Hisse']
+                            _td_   = get_display_name(_tsym)
+                            _tfv   = _tr['Fiyat']; _tfs = f"{int(_tfv)}" if _tfv >= 1000 else f"{_tfv:.2f}"
+                            _tred  = _tr.get('RedCandle', False)
+                            _tisp  = _tr.get('is_platin', False)
+                            _tdisc = _tr.get('Discount_Pct', 0)
+                            _trsi  = _tr.get('RSI', 0)
+                            _tdbl  = _tsym in _double_hit_syms
+                            _tlbl  = f"{'💎 Platin' if _tisp else '🏆 Altın'} · {_td_} ({_tfs})" + (" 🟠" if _tred else "") + (" 🚀" if _tdbl else "")
+                            _ttip  = f"{'💎 Platin' if _tisp else '🏆 Altın'} · Discount %{_tdisc} · RSI {_trsi}" + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _tdbl else "")
+                            if st.button(_tlbl, key=f"elit_tekli_{_ti}", use_container_width=True, help=_ttip):
+                                on_scan_result_click(_tsym); st.rerun()
+                    else:
+                        st.markdown(
+                            "<div style='color:#64748b;font-size:0.72rem;text-align:center;"
+                            "padding-top:22px;'>Bu kategoride Altın/Platin bulunamadı</div>",
+                            unsafe_allow_html=True
+                        )
         elif _scan_ran_empty:
             # Master Scan çalıştı ama bu kategoride ELİT yok
             st.markdown(
