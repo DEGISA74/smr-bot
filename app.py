@@ -7528,7 +7528,7 @@ def calculate_price_action_dna(ticker):
                 simple_text = "Fiyat en yoğun hacim bölgesinde (POC). Son 5 günde alım ağırlıklı işlem akışı görülüyor — POC üstünde tutunursa yapı güçlü kalır, altına iner ve kalırsa baskı sürebilir."
             elif cum_delta_5 < 0:
                 main_title = f"⚖️ POC ALANINDA {_poc_range} — Satış Baskısı Var"
-                simple_text = "Fiyat en yoğun hacim bölgesinde (POC). Son 5 günde satış ağırlıklı işlem akışı görülüyor — POC altında kalınırsa yapı kırılgan kalır, üstüne çıkar ve tutunursa yapı güçlenir."
+                simple_text = "Piyasa büyük oyuncuların en çok işlem yaptığı POC alanında. Son 5 günde satış ağır basıyor, aşağı kırılım riski var."
             else:
                 main_title = f"⚖️ POC ALANINDA {_poc_range} — Yön Bekleniyor"
                 simple_text = "Fiyat en yoğun hacim bölgesinde (POC). Alıcı ve satıcı dengede — POC'un hangi yönde kalıcı olarak terk edileceği sonraki yapıyı belirler."
@@ -12659,7 +12659,7 @@ def calculate_8_point_roadmap(ticker):
             elif enerji_skor > 6.5:
                 ozet_metin = f"Satıcıların mutlak hakimiyeti sürüyor ve aşağı yönlü tehlikeli bir enerji birikimi ({enerji_skor:.1f}/10) mevcut. {fmt(sup_20)} desteği çökerse panik satışları şelaleye dönüşebilir. Mevcut yapıda uzun (Long) yönlü denemeler 'Düşen bıçağı tutmak' anlamına gelir."
             else:
-                ozet_metin = f"Baskılı piyasa yapısı sürüyor, belirgin bir hacim efor artışı görülmüyor. {fmt(res_20)} seviyesi kısa vadeli teknik eşik olarak öne çıkıyor — bu seviyenin hacimle yukarı geçilmesi yapıyı güçlendirir, geçilememesi durumunda baskı sürebilir."
+                ozet_metin = f"Baskılı piyasa yapısı sürüyor, belirgin bir hacim efor artışı görülmüyor. {fmt(res_20)} seviyesi kısa vadeli teknik eşik olarak öne çıkıyor — bu seviyenin hacimle yukarı geçilmesi yapıyı güçlendirir, geçilememesi durumunda zayıflama devam edebilir."
                 
         else: # Karmaşık durum
             if is_oversold:
@@ -15933,7 +15933,7 @@ if st.session_state.generate_prompt:
     # G. BREAKOUT (Kırılım Ajanı)
     if bo_res:
         if "TETİKLENDİ" in bo_res['Zirveye Yakınlık']:
-            scan_box_txt.append("🔨 TEKNİK YAPI: Kısa Vadeli Direnç Aşıldı (60 günlük fiyat bandının üstüne hacimli kapanış geldi. Tarihsel olarak bu yapı volatilite artışı öncesinde görülür — yön teyidi için hacim sürekliliği takip edilmeli.)")
+            scan_box_txt.append("🔨 TEKNİK YAPI: breakout geldi (yön teyidi için hacim sürekliliği takip edilmeli)")
         elif "Sıkışma" in bo_res['Zirveye Yakınlık']:
             scan_box_txt.append("💣 VOLATİLİTE DARALMASI: Bir Sıkışma (Squeeze) var. (Enerji birikti, yay gerildi. Her an sert bir yön patlaması gelebilir.)")
 
@@ -16004,7 +16004,7 @@ if st.session_state.generate_prompt:
         _fi_price_dist = abs(_fi_price_now - _fi_ma10) / _fi_ma10 * 100
         _fi_band_tight = (_fi_band / _fi_price_now * 100) < 6  # Bant < %6 dar
         if _fi_pos_days >= 7 and _fi_price_dist <= 3.0 and _fi_band_tight:
-            scan_box_txt.append(f"💧 HACİM ANOMALİSİ: Son 10 günün {int(_fi_pos_days)}'inde para akış göstergesi pozitif seyrederken fiyat {_fi_price_dist:.1f}% yatay kaldı. Bu uyumsuzluk tarihsel olarak volatilite öncesi görülen bir örüntüdür.")
+            scan_box_txt.append(f"💧 AKILLI PARA BİRİKİMİ: Son 10 günün {int(_fi_pos_days)}'inde para akışı pozitif, fiyat ise yatay ({_fi_price_dist:.1f}% değişim). Bu, kurumsal alımın sessizce sürdüğüne ve bir kırılım hazırlığına işaret edebilir.")
     except: pass
 
     # I. GİZLİ YALANLAR: RSI Uyumsuzluk ve Smart Volume Anomalileri
