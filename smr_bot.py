@@ -643,6 +643,37 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
             log.warning(f"Hoş geldin mesajı gönderilemedi: {e}")
 
 
+# ─── SOHBET GRUBU MEDYA ENGELİ ───────────────────────────────────────────────
+async def handle_chat_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Sohbet grubunda fotoğraf / video / dosya / sticker / ses / animasyon gönderilirse sil.
+    Amaç: PRO/ELITE analiz görsellerinin kaydedilip buraya yüklenmesini önlemek.
+    Admin mesajlarına dokunulmaz.
+    """
+    msg = update.message
+    if not msg or msg.chat_id != CHAT_ID:
+        return
+
+    if msg.from_user and msg.from_user.is_bot:
+        return
+
+    uid   = msg.from_user.id if msg.from_user else 0
+    uname = (msg.from_user.username or "") if msg.from_user else ""
+    if _is_admin(uid, uname):
+        return
+
+    try:
+        await msg.delete()
+        warn = await context.bot.send_message(
+            chat_id=CHAT_ID,
+            text="🚫 Bu grupta görsel, video veya dosya paylaşımı yasaktır.",
+        )
+        await asyncio.sleep(5)
+        await warn.delete()
+    except Exception as e:
+        log.warning(f"Medya silme hatası (chat={CHAT_ID}): {e}")
+
+
 # ─── ADMİN KOMUTLARI ─────────────────────────────────────────────────────────
 def _is_admin(user_id: int, username: str = "") -> bool:
     return user_id in UNLIMITED_USERS or username in UNLIMITED_USERNAMES
@@ -1179,6 +1210,14 @@ def main():
 
     # Sohbet grubu moderasyonu
     app.add_handler(MessageHandler(filters.Chat(CHAT_ID) & filters.TEXT, handle_chat_group), group=0)
+    app.add_handler(MessageHandler(
+        filters.Chat(CHAT_ID) & (
+            filters.PHOTO | filters.VIDEO | filters.Document.ALL |
+            filters.AUDIO | filters.ANIMATION | filters.Sticker.ALL |
+            filters.VOICE | filters.VIDEO_NOTE
+        ),
+        handle_chat_media
+    ), group=0)
     app.add_handler(MessageHandler(filters.Chat(CHAT_ID) & filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
 
     # handle_ticker group=1'de çalışmalı — group=0'daki delete_non_ticker'dan SONRA
