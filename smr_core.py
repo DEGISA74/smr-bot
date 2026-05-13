@@ -2510,17 +2510,6 @@ Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu e
 
 Öncelik sırası: ICT yapısı → Piyasa Fazı → HARSI momentum → OBV/Delta/Hacim Kalitesi → VWAP konumu → RS vs XU100 → MA dizilimi → Bollinger Band → PDH/PDL → ATR/volatilite → RVOL
 
-### 2. SENARYO A — ELİNDE OLANLAR İÇİN
-Yöntem: [KAR ALINABİLİR / TUTULABİLİR / EKLENEBİLİR]
-Strateji: Somut stop seviyesi (rakam ver). Hangi koşulda pozisyon azaltılır?
-İzsüren stop: Nereye yükseltilir? (Rakam ver)
-
-### 3. SENARYO B — ELİNDE OLMAYANLAR İÇİN
-Yöntem: [GERİ ÇEKİLME BEKLENEBİLİR / UZAK DURULMASI İYİ OLUR]
-Risk/Ödül Analizi: RVOL ve HARSI onayı olmadan neden erken giriş riskli?
-İdeal Giriş: Somut fiyat bölgesi (OB/FVG/SMA seviyesi). Tahmini süre (kaç iş günü)?
-Tezin İptal Noktası: Somut seviye ve kapanış koşulu.
-
 ### SONUÇ:
 (3-4 cümle — en kritik bulguyu, somut seviyeleri ve net olasılığı öne çıkar. Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik bir özeti olsun.)
 
