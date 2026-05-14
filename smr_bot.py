@@ -218,7 +218,7 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
 
             # Teknik Özet — FREE / PRO / ELITE için aynı kısa kart
             ict_text = await loop.run_in_executor(
-                None, lambda: smr_core.build_teknik_ozet(ticker, df, ict)
+                None, lambda: smr_core.build_teknik_ozet(ticker, df, ict, info)
             )
 
             # AI analiz: PRO / ELITE
@@ -437,48 +437,55 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ICT Bottomline blok
-    ict_block = ""
-    if ict_text:
-        ict_block = f"\n\n{ict_text[:900]}"
-
-    # Caption
+    # Caption: kısa başlık + disclaimer (Teknik Özet ayrı mesaj olarak gelecek)
     if chat_id == FREE_ID:
         caption = (
-            f"📊 *#{raw_ticker}* — Smart Money Radar Kısa Analizi\n"
-            f"━━━━━━━━━━━━━━━━━━━"
-            f"{ict_block}\n\n"
+            f"📊 *#{raw_ticker}* — Smart Money Radar Analizi\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
             f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
-            f"_— PRO üyeler bu hisse dahil 3 hissenin Detaylı Teknik Kartını da okudu. Daha fazla sorgu ve daha fazla analiz. Sen de ister misin?_"
+            f"_— PRO üyeler bu hisse için Detaylı Teknik Kartı da okudu. Sen de ister misin?_"
         )
     elif chat_id == PRO_ID:
         caption = (
-            f"📊 *#{raw_ticker}* — Smart Money Radar Kısa Analizi\n"
-            f"━━━━━━━━━━━━━━━━━━━"
-            f"{ict_block}\n\n"
+            f"📊 *#{raw_ticker}* — Smart Money Radar Analizi\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
             f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
-            f"_— ELİTE üyeler bu hisse dahil 10 hisse için tam uzman analizini aldı. Farkı görmek ister misin?_"
+            f"_— ELİTE üyeler tam uzman analizini de aldı. Farkı görmek ister misin?_"
         )
     else:
         caption = (
-            f"📊 *#{raw_ticker}* — Smart Money Radar Kısa Analizi\n"
-            f"━━━━━━━━━━━━━━━━━━━"
-            f"{ict_block}\n\n"
+            f"📊 *#{raw_ticker}* — Smart Money Radar Analizi\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
             f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
         )
 
-    if len(caption) > 1020:
-        caption = caption[:1020] + "…"
-
     await context.bot.delete_message(chat_id=chat_id, message_id=wait_msg.message_id)
 
-    # Screenshot + ICT gönder
+    # Grafik gönder
     await context.bot.send_photo(
         chat_id=chat_id,
         photo=img_bytes,
         caption=caption,
         parse_mode="Markdown"
     )
+
+    # Teknik Özet — ayrı mesaj (tüm tierlar, limit yok)
+    if ict_text:
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=ict_text,
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            log.warning(f"Teknik özet Markdown hatası: {e}")
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=ict_text.replace("*", "").replace("`", "").replace("_", "")
+                )
+            except Exception as e2:
+                log.error(f"Teknik özet düz metin de başarısız: {e2}")
 
     # PRO / ELİTE: AI analiz ayrı mesaj olarak gönder
     if tier_key in ("pro", "elite") and teknik_kart:
@@ -878,10 +885,6 @@ async def _send_bulletin_to_channel(
             f"ICT: {len(ict_text)} kr | AI: {len(ai_text)} kr"
         )
 
-        ict_block = ""
-        if ict_text:
-            ict_block = f"\n\n{ict_text[:500]}"
-
         if is_sunday:
             header = f"📅 *SMR Pazar Hatırlatması — {now_str}*\n_↩️ Cuma analizinin tekrarı_"
         else:
@@ -890,12 +893,9 @@ async def _send_bulletin_to_channel(
         caption = (
             f"{header}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 *XU100 Genel Görünüm*"
-            f"{ict_block}\n\n"
+            f"📊 *XU100 Genel Görünüm*\n\n"
             f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
         )
-        if len(caption) > 1020:
-            caption = caption[:1020] + "…"
 
         if img_bytes:
             await context.bot.send_photo(
@@ -912,6 +912,20 @@ async def _send_bulletin_to_channel(
                 parse_mode="Markdown"
             )
             log.warning(f"[{tier_label}] Görsel yok — text-only mesaj gönderildi")
+
+        # Teknik Özet — ayrı mesaj (limit yok)
+        if ict_text:
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=ict_text,
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=ict_text.replace("*", "").replace("`", "").replace("_", "")
+                )
 
         # AI analizi de gönder (PRO → Teknik Kart, ELITE → Uzman Analiz)
         if ai_text:

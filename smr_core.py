@@ -1419,7 +1419,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     return data_block, clean, fiyat_str
 
 
-def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict = None) -> str:
+def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict = None, info: dict = None) -> str:
     """
     5. Kutu — Teknik Özet (Piyasa Sentezi).
     Smart Money Score (4 kriter) + Destek/Direnç + Pazar Rejimi + M8 sentez metni.
@@ -1437,6 +1437,14 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         o = df['Open'];  v = df['Volume']
         cp = float(c.iloc[-1])
         n  = len(c)
+
+        # Günlük değişim
+        if info and "day_change_pct" in info:
+            chg = float(info.get("day_change_pct") or 0)
+        else:
+            chg = ((float(c.iloc[-1]) / float(c.iloc[-2])) - 1) * 100 if n > 1 else 0.0
+        chg_sign = "+" if chg >= 0 else ""
+        chg_str  = f" {chg_sign}{chg:.2f}%"
 
         def fmt(val):
             return f"{int(val):,}" if val >= 1000 else f"{val:.2f}"
@@ -1942,9 +1950,25 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
                 ozet = (f"Fiyat {fmt(sup_20)}–{fmt(res_20)} arasında sıkışmış. "
                         f"Kırılım yönüne göre pozisyon almak en güvenli strateji.")
 
+        # ── RS GÜCÜ vs XU100 (sadece BIST hisseleri) ─────────────────────────
+        rs_guc_line = ""
+        try:
+            if ticker.endswith(".IS") and not ticker.startswith("XU"):
+                _xu = yf.download("XU100.IS", period="2mo", interval="1d",
+                                  progress=False, auto_adjust=True)
+                if _xu is not None and len(_xu) >= 20:
+                    _xu_ret = float(_xu["Close"].iloc[-1]) / float(_xu["Close"].iloc[-20]) - 1
+                    _st_ret = float(c.iloc[-1]) / float(c.iloc[-20]) - 1
+                    _denom  = 1 + _xu_ret
+                    _rs     = (1 + _st_ret) / _denom if _denom != 0 else 1.0
+                    rs_guc_line = f"📊 *RS Gücü:* `{_rs:.2f}x`"
+        except Exception:
+            pass
+
         # ── ÇIKTI ────────────────────────────────────────────────────────────
+        clean = ticker.replace('.IS', '').replace('-USD', '').replace('=F', '')
         lines = [
-            f"📊 *#{ticker.replace('.IS','').replace('-USD','').replace('=F','')} — TEKNİK ÖZET — {fmt(cp)}*",
+            f"📊 *#{clean} — {fmt(cp)}{chg_str}*",
             "",
             f"📍 *Büyük Ana Trend:* {ana_trend_label}",
             f"└ _{_trend_detail}_",
@@ -1959,6 +1983,10 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             f"{accum_ico} *OBV Birikim* — {accum_desc}",
             f"{squeeze_ico} *BB Sıkışma* — {squeeze_desc}",
             f"{trigger_ico} *Tetikleyici* — {trigger_desc}",
+            f"✦ *Aktif Kriter:* `{sum([trend_pass, accum_pass, trigger_pass, squeeze_pass])}/4`",
+            "",
+            f"📈 *RSI(14):* `{rsi_val:.1f}`",
+            *([ rs_guc_line ] if rs_guc_line else []),
             "",
             f"💬 {ozet}",
             "━━━━━━━━━━━━━━━━━━━",
