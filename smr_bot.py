@@ -437,55 +437,37 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Caption: kısa başlık + disclaimer (Teknik Özet ayrı mesaj olarak gelecek)
-    if chat_id == FREE_ID:
-        caption = (
-            f"📊 *#{raw_ticker}* — Smart Money Radar Analizi\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
-            f"_— PRO üyeler bu hisse için Detaylı Teknik Kartı da okudu. Sen de ister misin?_"
-        )
-    elif chat_id == PRO_ID:
-        caption = (
-            f"📊 *#{raw_ticker}* — Smart Money Radar Analizi\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
-            f"_— ELİTE üyeler tam uzman analizini de aldı. Farkı görmek ister misin?_"
-        )
+    # Caption = teknik özet + disclaimer EN ALTTA (tek mesaj)
+    if ict_text:
+        if chat_id == FREE_ID:
+            caption = (
+                ict_text + "\n"
+                "⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
+                "_— PRO üyeler bu hisse için Detaylı Teknik Kartı da okudu. Sen de ister misin?_"
+            )
+        elif chat_id == PRO_ID:
+            caption = (
+                ict_text + "\n"
+                "⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._\n"
+                "_— ELİTE üyeler tam uzman analizini de aldı. Farkı görmek ister misin?_"
+            )
+        else:
+            caption = ict_text + "\n⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
     else:
-        caption = (
-            f"📊 *#{raw_ticker}* — Smart Money Radar Analizi\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
-        )
+        caption = f"📊 *#{raw_ticker}*\n⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
+
+    if len(caption) > 1020:
+        caption = caption[:1020] + "…"
 
     await context.bot.delete_message(chat_id=chat_id, message_id=wait_msg.message_id)
 
-    # Grafik gönder
+    # Grafik + tam teknik özet tek mesajda
     await context.bot.send_photo(
         chat_id=chat_id,
         photo=img_bytes,
         caption=caption,
         parse_mode="Markdown"
     )
-
-    # Teknik Özet — ayrı mesaj (tüm tierlar, limit yok)
-    if ict_text:
-        try:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=ict_text,
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            log.warning(f"Teknik özet Markdown hatası: {e}")
-            try:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=ict_text.replace("*", "").replace("`", "").replace("_", "")
-                )
-            except Exception as e2:
-                log.error(f"Teknik özet düz metin de başarısız: {e2}")
 
     # PRO / ELİTE: AI analiz ayrı mesaj olarak gönder
     if tier_key in ("pro", "elite") and teknik_kart:
@@ -890,12 +872,22 @@ async def _send_bulletin_to_channel(
         else:
             header = f"📅 *SMR Günlük Bülten — {now_str}*"
 
-        caption = (
-            f"{header}\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 *XU100 Genel Görünüm*\n\n"
-            f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
-        )
+        if ict_text:
+            caption = (
+                f"{header}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                + ict_text +
+                "\n⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
+            )
+        else:
+            caption = (
+                f"{header}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 *XU100 Genel Görünüm*\n\n"
+                f"⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
+            )
+        if len(caption) > 1020:
+            caption = caption[:1020] + "…"
 
         if img_bytes:
             await context.bot.send_photo(
@@ -912,20 +904,6 @@ async def _send_bulletin_to_channel(
                 parse_mode="Markdown"
             )
             log.warning(f"[{tier_label}] Görsel yok — text-only mesaj gönderildi")
-
-        # Teknik Özet — ayrı mesaj (limit yok)
-        if ict_text:
-            try:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=ict_text,
-                    parse_mode="Markdown"
-                )
-            except Exception:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=ict_text.replace("*", "").replace("`", "").replace("_", "")
-                )
 
         # AI analizi de gönder (PRO → Teknik Kart, ELITE → Uzman Analiz)
         if ai_text:

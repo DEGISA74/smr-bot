@@ -1985,7 +1985,7 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             f"{trigger_ico} *Tetikleyici* — {trigger_desc}",
             f"✦ *Aktif Kriter:* `{sum([trend_pass, accum_pass, trigger_pass, squeeze_pass])}/4`",
             "",
-            f"📈 *RSI(14):* `{rsi_val:.1f}`",
+            f"📈 *RSI:* `{rsi_val:.1f}`",
             *([ rs_guc_line ] if rs_guc_line else []),
             "",
             f"💬 {ozet}",
