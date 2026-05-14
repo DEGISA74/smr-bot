@@ -326,8 +326,18 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
     """
     yf_sym = _yf_ticker(ticker)
     try:
-        df = yf.download(yf_sym, period=period, interval="1d",
-                         auto_adjust=True, progress=False, timeout=15)
+        df = None
+        for _attempt in range(3):
+            try:
+                df = yf.download(yf_sym, period=period, interval="1d",
+                                 auto_adjust=True, progress=False, timeout=15)
+                if df is not None and not df.empty:
+                    break
+                log.warning(f"get_data: {yf_sym} boş veri (deneme {_attempt+1}/3)")
+            except Exception as _e:
+                log.warning(f"get_data: {yf_sym} hata (deneme {_attempt+1}/3): {_e}")
+            if _attempt < 2:
+                import time; time.sleep(2)
         if df is None or df.empty:
             log.warning(f"get_data: {yf_sym} boş veri döndü")
             return None
