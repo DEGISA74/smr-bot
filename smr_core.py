@@ -1852,7 +1852,7 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         elif rsi_val > 73:
             trigger_desc = f"RSI {rsi_val:.0f} — aşırı alım, giriş riskli"
         elif rsi_val < 35:
-            trigger_desc = f"RSI {rsi_val:.0f} — aşırı satım, dönüş yakın"
+            trigger_desc = f"RSI {rsi_val:.0f} — aşırı satım, dönüş sinyalleri gözlemleniyor"
         else:
             trigger_desc = f"Tetik atılmadı | RSI {rsi_val:.0f}"
         if _overextended:
@@ -1877,11 +1877,11 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         # Durum etiketi
         pre_launch = trend_pass and accum_pass and not trigger_pass
         if pre_launch:
-            sms_status = "🎯 FİTİL ÇEKİLİYOR"
+            sms_status = "🎯 BİRİKİM TAMAMLANDI"
         elif score >= 85:
             sms_status = "🔥 Harekete geç"
         elif score >= 65:
-            sms_status = "⚡ LONG İÇİN HAZIR"
+            sms_status = "⚡ YÜKSELİŞ KRİTERLERİ KARŞILANDI"
         elif score >= 45:
             sms_status = "🏕 Henüz değil, takipte"
         elif score >= 25:
@@ -1948,7 +1948,7 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
                         f"{fmt(sup_20)} desteğinden dönüş fırsat sunabilir.")
             else:
                 ozet = (f"Fiyat {fmt(sup_20)}–{fmt(res_20)} arasında sıkışmış. "
-                        f"Kırılım yönüne göre pozisyon almak en güvenli strateji.")
+                        f"Kırılım yönü teknik olarak belirleyici olacaktır.")
 
         # ── RS GÜCÜ vs XU100 (sadece BIST hisseleri) ─────────────────────────
         rs_guc_line = ""
@@ -2130,7 +2130,7 @@ Z-Score'u SADECE şu iki koşulda öne al:
 
 Aksi tüm durumlarda: Scan kutusunda 🚨 Z-Score uyarısı görsen bile bunu analizinin ana teması yapma. Sadece "uzaklık verisi" olarak son paragrafa göm. Analizin hikayesi akıllı para, senaryo ve price action üzerine kurulu kalsın.
 
-PRE-LAUNCH / FİTİL ÇEKİLİYOR durumu: Eğer KALKIŞ RADARI "FİTİL ÇEKİLİYOR" veya "⚡ LONG İÇİN HAZIR" statüsündeyse, bu analizin birincil hikayesi olmalıdır. Z-Score ne olursa olsun, birikim süreci tamamlanmış ve tetik bekleniyor demektir — bu bulguyu analizin en başına koy, Z-Score yorumunu ise ancak risk yönetimi notunda kısaca kullan.
+PRE-LAUNCH / BİRİKİM TAMAMLANDI durumu: Eğer KALKIŞ RADARI "BİRİKİM TAMAMLANDI" veya "⚡ YÜKSELİŞ KRİTERLERİ KARŞILANDI" statüsündeyse, bu analizin birincil hikayesi olmalıdır. Z-Score ne olursa olsun, birikim süreci tamamlanmış ve tetik bekleniyor demektir — bu bulguyu analizin en başına koy, Z-Score yorumunu ise ancak risk yönetimi notunda kısaca kullan.
 
 ALTIN SET-UP (Golden Trio) + Yüksek Z-Score bir arada: Bu durum "tehlike" değil "güçlü momentum + uzama" kombinasyonudur. Analizin tonu olumlu kalmalı; Z-Score'u "stop seviyesini yukarı taşı" notu olarak kullan, "dikkat et, çöküş gelebilir" panikâr diline çevirme.
 
@@ -2396,7 +2396,7 @@ Z-Score'u SADECE şu iki koşulda öne al:
 
 Aksi tüm durumlarda: Scan kutusunda 🚨 Z-Score uyarısı görsen bile bunu analizinin ana teması yapma. Sadece "uzaklık verisi" olarak son paragrafa göm. Analizin hikayesi akıllı para, senaryo ve price action üzerine kurulu kalsın.
 
-PRE-LAUNCH / FİTİL ÇEKİLİYOR durumu: Eğer KALKIŞ RADARI "FİTİL ÇEKİLİYOR" veya "⚡ LONG İÇİN HAZIR" statüsündeyse, bu analizin birincil hikayesi olmalıdır. Z-Score ne olursa olsun, birikim süreci tamamlanmış ve tetik bekleniyor demektir — bu bulguyu analizin en başına koy, Z-Score yorumunu ise ancak risk yönetimi notunda kısaca kullan.
+PRE-LAUNCH / BİRİKİM TAMAMLANDI durumu: Eğer KALKIŞ RADARI "BİRİKİM TAMAMLANDI" veya "⚡ YÜKSELİŞ KRİTERLERİ KARŞILANDI" statüsündeyse, bu analizin birincil hikayesi olmalıdır. Z-Score ne olursa olsun, birikim süreci tamamlanmış ve tetik bekleniyor demektir — bu bulguyu analizin en başına koy, Z-Score yorumunu ise ancak risk yönetimi notunda kısaca kullan.
 
 ALTIN SET-UP (Golden Trio) + Yüksek Z-Score bir arada: Bu durum "tehlike" değil "güçlü momentum + uzama" kombinasyonudur. Analizin tonu olumlu kalmalı; Z-Score'u "stop seviyesini yukarı taşı" notu olarak kullan, "dikkat et, çöküş gelebilir" panikâr diline çevirme.
 
