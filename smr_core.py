@@ -190,6 +190,19 @@ def shopier_order_mark(order_id: int, username: str, tier: str, days: int,
     con.commit(); con.close()
 
 
+def sub_link_user_id(username: str, user_id: int) -> bool:
+    """username'e ait kaydın user_id'sini günceller (Shopier sonrası /start ile eşleştirme).
+    Döndürür: güncellendi mi."""
+    uname = username.lstrip("@").lower().strip()
+    con = sqlite3.connect(_SIGNALS_DB)
+    cur = con.execute(
+        "UPDATE subscribers SET user_id=? WHERE LOWER(username)=? AND user_id <= 0",
+        (user_id, uname)
+    )
+    con.commit(); con.close()
+    return cur.rowcount > 0
+
+
 def sub_add_by_username(username: str, tier: str, days: int, note: str = "") -> str:
     """
     Kullanıcı adıyla güvenli abone ekle / uzat.

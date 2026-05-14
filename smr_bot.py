@@ -717,6 +717,68 @@ async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[ADMIN] adduser: @{uname} → {tier} ({days}g) bitiş:{expiry}")
 
 
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/start — kullanıcıyı karşılar, Shopier aboneliğini eşleştirir."""
+    msg = update.message
+    if not msg:
+        return
+    user  = msg.from_user
+    uid   = user.id
+    uname = (user.username or "").lower().strip()
+
+    # user_id ile ara, bulamazsa username ile ara (Shopier'den eklenmiş olabilir)
+    sub = smr_core.sub_get(uid)
+    if not sub and uname:
+        sub = smr_core.sub_get_by_username(uname)
+        if sub and sub["user_id"] != uid:
+            smr_core.sub_link_user_id(uname, uid)
+            sub["user_id"] = uid
+
+    if sub:
+        from datetime import date
+        tier   = sub["tier"].upper()
+        expiry = sub["expiry_date"]
+        active = expiry >= date.today().isoformat()
+        emoji  = {"FREE": "🆓", "PRO": "💎", "ELITE": "👑"}.get(tier, "✅")
+        if active:
+            # Tier'a göre tek kullanımlık davet linki oluştur
+            tier_channel = {"FREE": FREE_ID, "PRO": PRO_ID, "ELITE": ELITE_ID}.get(tier)
+            invite_text = ""
+            if tier_channel:
+                try:
+                    from datetime import timedelta
+                    expire_ts = int((datetime.now() + timedelta(hours=48)).timestamp())
+                    inv = await context.bot.create_chat_invite_link(
+                        chat_id=tier_channel, member_limit=1, expire_date=expire_ts
+                    )
+                    invite_text = f"\n\n📨 Kanala katılmak için (48 saat geçerli):\n{inv.invite_link}"
+                except Exception:
+                    invite_text = "\n\n📨 Kanal linki için admin'e yaz."
+            await msg.reply_text(
+                f"{emoji} *Aboneliğin aktif!*\n"
+                f"Tier: *{tier}* | Bitiş: `{expiry}`"
+                f"{invite_text}",
+                parse_mode="Markdown"
+            )
+        else:
+            await msg.reply_text(
+                f"⚠️ *{tier}* aboneliğin `{expiry}` tarihinde sona erdi.\n"
+                f"Yenilemek için ödeme sayfasını ziyaret et.",
+                parse_mode="Markdown"
+            )
+    else:
+        await msg.reply_text(
+            "👋 Merhaba! *Smart Money Radar*'a hoş geldin.\n\n"
+            "📊 *PRO* — Günde 3 analiz\n"
+            "👑 *ELITE* — Günde 10 analiz + derin AI raporu\n\n"
+            "Abone olmak için ödeme sayfasını ziyaret et.\n\n"
+            "💡 _Ödeme yaptıysan ve hesabın aktifleşmediyse:_\n"
+            "Shopier formuna girdiğin Telegram kullanıcı adını kontrol et. "
+            "Sorun devam ederse admin'e yaz.",
+            parse_mode="Markdown"
+        )
+
+
 async def cmd_removeuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/removeuser @ahmet"""
     msg = update.message or update.channel_post
@@ -1192,6 +1254,9 @@ def main():
 
     # Kanal temizleyici — # ile başlamayan mesajları sil (önce çalışmalı)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_non_ticker), group=0)
+
+    # Kullanıcı komutları
+    app.add_handler(CommandHandler("start", cmd_start))
 
     # Admin komutları
     app.add_handler(CommandHandler("adduser",    cmd_adduser))
