@@ -1995,16 +1995,21 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         rs_guc_line = ""
         try:
             if ticker.endswith(".IS") and not ticker.startswith("XU"):
-                _xu = yf.download("XU100.IS", period="2mo", interval="1d",
-                                  progress=False, auto_adjust=True)
-                if _xu is not None and len(_xu) >= 20:
-                    _xu_ret = float(_xu["Close"].iloc[-1]) / float(_xu["Close"].iloc[-20]) - 1
-                    _st_ret = float(c.iloc[-1]) / float(c.iloc[-20]) - 1
-                    _denom  = 1 + _xu_ret
-                    _rs     = (1 + _st_ret) / _denom if _denom != 0 else 1.0
-                    rs_guc_line = f"📊 *RS Gücü:* `{_rs:.2f}x`"
-        except Exception:
-            pass
+                # Önce ict dict'inden dene (zaten hesaplanmış olabilir)
+                _rs_val = (ict or {}).get("rs_guc")
+                if _rs_val is None:
+                    _xu = yf.download("XU100.IS", period="2mo", interval="1d",
+                                      progress=False, auto_adjust=True, timeout=10)
+                    if _xu is not None and len(_xu) >= 20:
+                        _xu_c   = _xu["Close"] if "Close" in _xu.columns else _xu.iloc[:, 0]
+                        _xu_ret = float(_xu_c.iloc[-1]) / float(_xu_c.iloc[-20]) - 1
+                        _st_ret = float(c.iloc[-1]) / float(c.iloc[-20]) - 1
+                        _denom  = 1 + _xu_ret
+                        _rs_val = (1 + _st_ret) / _denom if _denom != 0 else 1.0
+                if _rs_val is not None:
+                    rs_guc_line = f"📊 *RS Gücü:* `{_rs_val:.2f}x`"
+        except Exception as _e:
+            log.debug(f"RS Gücü hesaplanamadı [{ticker}]: {_e}")
 
         # ── ÇIKTI ────────────────────────────────────────────────────────────
         clean = ticker.replace('.IS', '').replace('-USD', '').replace('=F', '')
@@ -2026,8 +2031,7 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             f"{trigger_ico} *Tetikleyici* — {trigger_desc}",
             f"✦ *Aktif Kriter:* `{sum([trend_pass, accum_pass, trigger_pass, squeeze_pass])}/4`",
             "",
-            f"📈 *RSI:* `{rsi_val:.1f}`",
-            *([ rs_guc_line ] if rs_guc_line else []),
+            *([ rs_guc_line ] if rs_guc_line else [ f"📈 *RSI:* `{rsi_val:.1f}`" ]),
             "",
             f"💬 {ozet}",
             "━━━━━━━━━━━━━━━━━━━",
