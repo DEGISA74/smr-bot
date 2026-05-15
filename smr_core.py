@@ -1951,44 +1951,44 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             if is_overheated or is_churning:
                 ozet = (f"Ana trend güçlü (Boğa %{boga_w:.0f}), ancak RSI {rsi_val:.0f} ve {vsa} aşırı ısınma sinyali veriyor. "
                         f"{_macd_txt}, {_obv_txt} — olası kâr realizasyonu ihtimaline dikkat. "
-                        f"{fmt(sup_20)} kritik destek hattı; bu seviyenin altına inilmesi momentum bozulmasına işaret eder. "
+                        f"{fmt(_sup1_val)} kritik destek hattı; bu seviyenin altına inilmesi momentum bozulmasına işaret eder. "
                         f"Yeni alım açmak yerine mevcut pozisyonlarda stop yükseltme daha sağlıklı.")
             elif enerji_skor > 6.5:
                 ozet = (f"Güçlü yükseliş ivmesi — fiyat {fmt(sma50)} SMA50 üzerinde taşınıyor (Boğa %{boga_w:.0f}). "
                         f"RSI {rsi_val:.0f}, {_obv_txt} — kurumsal alım baskısı devam ediyor. "
-                        f"{fmt(res_20)} direnci hacimli bir kapanışla geçilirse yeni fiyat keşfi başlayabilir. "
-                        f"Stop referansı: {fmt(sup_20)} altı.")
+                        f"{fmt(_res1_val)} direnci hacimli bir kapanışla geçilirse yeni fiyat keşfi başlayabilir. "
+                        f"Stop referansı: {fmt(_sup1_val)} altı.")
             else:
                 ozet = (f"Ana trend yukarı (Boğa %{boga_w:.0f}), kısa vadede momentum yatay seyrediyor. "
                         f"RSI {rsi_val:.0f} nötr bölgede; {_macd_txt}, {_obv_txt}. "
-                        f"{fmt(res_20)} üzerinde taze hacim görülmesi hareketi ivmelendirebilir. "
-                        f"{fmt(sup_20)} korunduğu sürece trend bütünlüğü sağlam.")
+                        f"{fmt(_res1_val)} üzerinde taze hacim görülmesi hareketi ivmelendirebilir. "
+                        f"{fmt(_sup1_val)} korunduğu sürece trend bütünlüğü sağlam.")
         elif not is_macro_bull:
             if is_oversold or is_accumulation:
                 ozet = (f"Fiyat makro ortalamaların altında baskı altında, ancak RSI {rsi_val:.0f} aşırı satım bölgesini işaret ediyor. "
                         f"{_obv_txt} — gizli birikim ihtimali göz ardı edilmemeli. "
-                        f"{fmt(res_20)} direncinin hacimle aşılması trendi tersine çevirebilir. "
-                        f"Pozisyon açmadan önce {fmt(sup_20)} desteğinin güçlü tutulmasını izle.")
+                        f"{fmt(_res1_val)} direncinin hacimle aşılması trendi tersine çevirebilir. "
+                        f"Pozisyon açmadan önce {fmt(_sup1_val)} desteğinin güçlü tutulmasını izle.")
             elif enerji_skor > 6.5:
                 ozet = (f"Satıcılar hakimiyetini sürdürüyor — RSI {rsi_val:.0f}, {_macd_txt}. "
                         f"Hacim durumu: {vsa}. "
-                        f"{fmt(sup_20)} desteği kırılırsa sert satış dalgası gelebilir. "
-                        f"Toparlanma için önce {fmt(res_20)} direncinin geri alınması gerekiyor.")
+                        f"{fmt(_sup1_val)} desteği kırılırsa sert satış dalgası gelebilir. "
+                        f"Toparlanma için önce {fmt(_res1_val)} direncinin geri alınması gerekiyor.")
             else:
                 ozet = (f"Zayıf ve baskılı yapı — hem makro hem kısa vade aşağı yönlü. "
                         f"RSI {rsi_val:.0f} nötr bölgede; {_macd_txt}, {_obv_txt}. "
-                        f"{fmt(sup_20)} son savunma hattı — kırılırsa yeni dip arayışı başlayabilir. "
-                        f"{fmt(res_20)} hacimle geri alınmadan alım pozisyonu riski yüksek.")
+                        f"{fmt(_sup1_val)} son savunma hattı — kırılırsa yeni dip arayışı başlayabilir. "
+                        f"{fmt(_res1_val)} hacimle geri alınmadan alım pozisyonu riski yüksek.")
         else:
             if is_oversold:
                 ozet = (f"Uzun vade pozitif (SMA200 üstü) ancak kısa vadede sert düzeltme yaşandı. "
                         f"RSI {rsi_val:.0f} aşırı satım bölgesine yaklaşıyor; {_obv_txt}. "
-                        f"{fmt(sup_20)} desteğinden teknik dönüş fırsatı sunabilir. "
-                        f"Ani toparlanmada {fmt(res_20)} ilk direnç noktası olarak izlenmeli.")
+                        f"{fmt(_sup1_val)} desteğinden teknik dönüş fırsatı sunabilir. "
+                        f"Ani toparlanmada {fmt(_res1_val)} ilk direnç noktası olarak izlenmeli.")
             else:
                 ozet = (f"Uzun vadeli yapı pozitif, kısa vadede momentum zayıflıyor. "
-                        f"Fiyat {fmt(sup_20)}–{fmt(res_20)} arasında sıkışmış; RSI {rsi_val:.0f}, {_macd_txt}. "
-                        f"Yükseliş için {fmt(res_20)} üzerinde kapanış, düşüş için {fmt(sup_20)} kırılımı izlenmeli. "
+                        f"Fiyat {fmt(_sup1_val)}–{fmt(_res1_val)} arasında sıkışmış; RSI {rsi_val:.0f}, {_macd_txt}. "
+                        f"Yükseliş için {fmt(_res1_val)} üzerinde kapanış, düşüş için {fmt(_sup1_val)} kırılımı izlenmeli. "
                         f"{_obv_txt} — kırılım yönü için hacim onayını bekle.")
 
         # ── RS GÜCÜ vs XU100 (sadece BIST hisseleri) ─────────────────────────
