@@ -2307,20 +2307,31 @@ Veri yoksa maddeyi atla. Alt başlıkları aynen kullan. Her madde 2-3 cümle.
 - Trend Yönü: (Bias + Structure'dan dominant yön. Son swing tepesi/dibi somut seviyeleriyle yaz.)
 - Bölge Uyumu: (DISCOUNT/PREMIUM konumu. Kurumsal alım/satım için ne anlama gelir?)
 
-2⃣🔹) Fiyat Davranışı ve Kurumsal İzler
+2⃣🔹) Yapı & Fiyat Davranışı
+- Trend Yapısı: (Makro ve mikro trend yönü; HH/HL mi yoksa LH/LL mi baskın? Son swing dönüşü var mı? Kısa vadeli yapı bozulumu teyitli mi?)
+- Mum & Fitil: (Gövde/fitil oranı; tepe bölgesinde üst fitil artışı var mı? Düzeltme mumları impuls mumlarına kıyasla nasıl? Alıcı/satıcı baskısı ne yönde?)
 - OB/FVG Durumu: (Aktif Order Block veya FVG somut seviyeleriyle. Taze mi, yıpranmış mı?)
 - EQH/EQL & Sweep: (Eşit tepe/dip varsa seviyesini yaz. Likidite avı tuzak mı, gerçek kırılım mı?)
 
-3⃣🔹) Teknik Göstergeler
-- MA & EMA Dizilimi: (SMA20/50/100/200 ve EMA8/13/21 konumu — boğa/ayı dizilimi var mı?)
-- Momentum (RSI + HARSI): (RSI seviyesi ve HARSI rengi/yönü ile momentum değerlendirmesi)
-- Hacim & Para Akışı: (RVOL, 5 günlük delta, Hacim Kalitesi ve OBV ayrışması birlikte yorumla)
-- Fiyat Davranışı: (VWAP konumu + Bollinger Band pozisyonu + PDH/PDL seviyesi + Piyasa Fazı)
+3⃣🔹) Momentum & Vade Uyumu
+- RSI & MACD: (RSI seviyesi ve yönü; MACD histogram davranışı — genişliyor mu daralıyor mu? HARSI rengi/yönü)
+- Uyumsuzluk: (Fiyat yeni tepe/dip denerken momentum aynı güçte genişliyor mu? Divergence var mı?)
+- MTF Momentum: (Kısa/orta/uzun vade momentum uyumu; hangi periyotta zayıflama başladı?)
 
-4⃣🔹) Trend Skoru ve Enerji
+4⃣🔹) Hacim, Efor ve Akıllı Para İzi
+- MA & EMA Dizilimi: (SMA20/50/100/200 ve EMA8/13/21 konumu — boğa/ayı dizilimi var mı?)
+- Hacim & Para Akışı: (RVOL, 5 günlük delta, Hacim Kalitesi ve OBV ayrışması; absorption veya climax ihtimali)
+- Kurumsal Akış: (VWAP konumu + Bollinger Band pozisyonu + PDH/PDL seviyesi + Piyasa Fazı; emilim veya agresif çıkış)
+
+5⃣🔹) Likidite & Kritik Bantlar
+- Üst Havuz: (Fiyatın üstündeki en yakın likidite / stop kümesi seviyesi ve niteliği)
+- Alt Havuz: (Fiyatın altındaki en yakın destek / stop kümesi seviyesi ve niteliği)
+- Karar Bandı: (Fiyatın şu anki konumu; bant içinde mi, kırılım eşiğinde mi?)
+
+6⃣🔹) Trend Skoru ve Enerji
 - Enerji Puanı: (Algoritmadan gelen Skoru yaz ve grafikteki sıkışmayı/momentumu yorumla)
 
-5⃣🔹) Teknik Okuma Özeti
+7⃣🔹) Teknik Okuma Özeti
 - Özet: (3-4 cümle — en kritik bulguyu öne çıkar, rakam ver)
 - Risk Uyarısı: (Varsa kritik uyarı — düşük hacim, aşırı alım, yıpranmış OB vb.)
 --------------------------------------------------------------------------------------------------------
