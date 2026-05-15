@@ -1999,12 +1999,12 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
                 _rs_val = (ict or {}).get("rs_guc")
                 if _rs_val is None:
                     _xu = yf.download("XU100.IS", period="2mo", interval="1d",
-                                      progress=False, auto_adjust=True, timeout=10)
+                                      progress=False, auto_adjust=True)
                     if _xu is not None and len(_xu) >= 20:
-                        # yfinance MultiIndex uyumluluğu: Close bir DataFrame gelebilir
+                        # yfinance MultiIndex uyumluluğu
                         _xu_c = _xu["Close"]
-                        if hasattr(_xu_c, "iloc") and hasattr(_xu_c.iloc[0], "__len__"):
-                            _xu_c = _xu_c.iloc[:, 0]  # MultiIndex: ilk sütunu al
+                        if isinstance(_xu_c, pd.DataFrame):
+                            _xu_c = _xu_c.iloc[:, 0]
                         _xu_ret = float(_xu_c.iloc[-1]) / float(_xu_c.iloc[-20]) - 1
                         _st_ret = float(c.iloc[-1]) / float(c.iloc[-20]) - 1
                         _denom  = 1 + _xu_ret
