@@ -1994,7 +1994,9 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         # ── RS GÜCÜ vs XU100 (sadece BIST hisseleri) ─────────────────────────
         rs_guc_line = ""
         try:
-            if ticker.endswith(".IS") and not ticker.startswith("XU"):
+            _tk_clean = ticker.replace(".IS", "").upper()
+            _is_bist  = (ticker.endswith(".IS") or _tk_clean in _BIST_SET) and not ticker.startswith("XU")
+            if _is_bist:
                 # Önce ict dict'inden dene (zaten hesaplanmış olabilir)
                 _rs_val = (ict or {}).get("rs_guc")
                 if _rs_val is None:
