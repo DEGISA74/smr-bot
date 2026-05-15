@@ -2001,7 +2001,10 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
                     _xu = yf.download("XU100.IS", period="2mo", interval="1d",
                                       progress=False, auto_adjust=True, timeout=10)
                     if _xu is not None and len(_xu) >= 20:
-                        _xu_c   = _xu["Close"] if "Close" in _xu.columns else _xu.iloc[:, 0]
+                        # yfinance MultiIndex uyumluluğu: Close bir DataFrame gelebilir
+                        _xu_c = _xu["Close"]
+                        if hasattr(_xu_c, "iloc") and hasattr(_xu_c.iloc[0], "__len__"):
+                            _xu_c = _xu_c.iloc[:, 0]  # MultiIndex: ilk sütunu al
                         _xu_ret = float(_xu_c.iloc[-1]) / float(_xu_c.iloc[-20]) - 1
                         _st_ret = float(c.iloc[-1]) / float(c.iloc[-20]) - 1
                         _denom  = 1 + _xu_ret
