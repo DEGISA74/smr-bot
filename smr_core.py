@@ -1947,49 +1947,103 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         _macd_txt = "MACD pozitif" if _macd_ok else "MACD negatif eğilimde"
         _obv_txt  = "OBV yukarı" if _obv_ok else "OBV zayıf"
 
+        # ── YAPI TESPİTİ (HH+HL, LH+LL, Megafon, Üçgen, Yatay, Yarı, Karışık) ──
+        _yapi_tip = "karisik"
+        try:
+            if n >= 6:
+                _hs_o = h.values; _ls_o = l.values
+                _h1o, _h2o, _h3o = _hs_o[-1], _hs_o[-2], _hs_o[-3]
+                _l1o, _l2o, _l3o = _ls_o[-1], _ls_o[-2], _ls_o[-3]
+                _avg_o = max(1e-9, (max(_hs_o[-6:]) - min(_ls_o[-6:])) / 5)
+                _tol_o = _avg_o * 0.15
+                _hh_o = _h1o > _h2o > _h3o; _hl_o = _l1o > _l2o > _l3o
+                _lh_o = _h1o < _h2o < _h3o; _ll_o = _l1o < _l2o < _l3o
+                if _hh_o and _hl_o:                                                  _yapi_tip = "hh_hl"
+                elif _lh_o and _ll_o:                                                _yapi_tip = "lh_ll"
+                elif _hh_o and _ll_o:                                                _yapi_tip = "megafon"
+                elif _lh_o and _hl_o:                                                _yapi_tip = "ucgen"
+                elif abs(_h1o-_h3o) < _tol_o and abs(_l1o-_l3o) < _tol_o:            _yapi_tip = "yatay"
+                elif _hh_o or _hl_o:                                                 _yapi_tip = "yari_yukari"
+                elif _lh_o or _ll_o:                                                 _yapi_tip = "yari_asagi"
+        except Exception:
+            pass
+
         if is_macro_bull and is_micro_bull:
             if is_overheated or is_churning:
-                ozet = (f"Ana trend güçlü (Boğa %{boga_w:.0f}), ancak RSI {rsi_val:.0f} ve {vsa} aşırı ısınma sinyali veriyor. "
-                        f"{_macd_txt}, {_obv_txt} — olası kâr realizasyonu ihtimaline dikkat. "
-                        f"{fmt(_sup1_val)} kritik destek hattı; bu seviyenin altına inilmesi momentum bozulmasına işaret eder. "
-                        f"Yeni alım açmak yerine mevcut pozisyonlarda stop yükseltme daha sağlıklı.")
+                ozet = random.choice([
+                    f"Ana trend güçlü (Boğa %{boga_w:.0f}), ancak RSI {rsi_val:.0f} ve {vsa} aşırı ısınma sinyali veriyor. {_macd_txt}, {_obv_txt} — olası kâr realizasyonu ihtimaline dikkat. {fmt(_sup1_val)} kritik destek hattı; bu seviyenin altına inilmesi momentum bozulmasına işaret eder. Yeni alım açmak yerine mevcut pozisyonlarda stop yükseltme daha sağlıklı.",
+                    f"Yükseliş trendi sürüyor (Boğa %{boga_w:.0f}) ama RSI {rsi_val:.0f} ile {vsa} ısınma bölgesini işaret ediyor. {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} ilk savunma; altı bozulursa momentum zayıflayabilir. Bu noktada agresif giriş yerine kâr realizasyonu izlenmesi daha temkinli.",
+                    f"Trend hâlâ alıcı tarafta (Boğa %{boga_w:.0f}) fakat RSI {rsi_val:.0f} ve {vsa} aşırı uzama emaresi gösteriyor. {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} altı, ralli yorgunluğunun teyidi olabilir. Mevcut pozisyonda stop yukarı taşımak, yeni alımdan daha mantıklı görünüyor."
+                ])
             elif enerji_skor > 6.5:
-                ozet = (f"Güçlü yükseliş ivmesi — fiyat {fmt(sma50)} SMA50 üzerinde taşınıyor (Boğa %{boga_w:.0f}). "
-                        f"RSI {rsi_val:.0f}, {_obv_txt} — kurumsal alım baskısı devam ediyor. "
-                        f"{fmt(_res1_val)} direnci hacimli bir kapanışla geçilirse yeni fiyat keşfi başlayabilir. "
-                        f"Stop referansı: {fmt(_sup1_val)} altı.")
+                ozet = random.choice([
+                    f"Güçlü yükseliş ivmesi — fiyat {fmt(sma50)} SMA50 üzerinde taşınıyor (Boğa %{boga_w:.0f}). RSI {rsi_val:.0f}, {_obv_txt} — kurumsal alım baskısı devam ediyor. {fmt(_res1_val)} direnci hacimli bir kapanışla geçilirse yeni fiyat keşfi başlayabilir. Stop referansı: {fmt(_sup1_val)} altı.",
+                    f"Aktif yükseliş dalgası — SMA50 ({fmt(sma50)}) üstünde tutunma sürüyor (Boğa %{boga_w:.0f}). RSI {rsi_val:.0f} ve {_obv_txt}, kurumsal iştahın canlı olduğunu gösteriyor. {fmt(_res1_val)} üzerinde hacimli geçiş yeni yön açabilir. Yapı bozulması için referans: {fmt(_sup1_val)} altı.",
+                    f"Trend ivmesi taze (Boğa %{boga_w:.0f}) — fiyat SMA50 ({fmt(sma50)}) üzerinde dirayetli. RSI {rsi_val:.0f}; {_obv_txt}. {fmt(_res1_val)} hacimle aşılırsa atak hızlanır. {fmt(_sup1_val)} altına sarkma trend yapısının ilk uyarısı olur."
+                ])
             else:
-                ozet = (f"Ana trend yukarı (Boğa %{boga_w:.0f}), kısa vadede momentum yatay seyrediyor. "
-                        f"RSI {rsi_val:.0f} nötr bölgede; {_macd_txt}, {_obv_txt}. "
-                        f"{fmt(_res1_val)} üzerinde taze hacim görülmesi hareketi ivmelendirebilir. "
-                        f"{fmt(_sup1_val)} korunduğu sürece trend bütünlüğü sağlam.")
+                ozet = random.choice([
+                    f"Ana trend yukarı (Boğa %{boga_w:.0f}), kısa vadede momentum yatay seyrediyor. RSI {rsi_val:.0f} nötr bölgede; {_macd_txt}, {_obv_txt}. {fmt(_res1_val)} üzerinde taze hacim görülmesi hareketi ivmelendirebilir. {fmt(_sup1_val)} korunduğu sürece trend bütünlüğü sağlam.",
+                    f"Makro yön yukarı (Boğa %{boga_w:.0f}) ama kısa vadede sıkışma var. RSI {rsi_val:.0f} nötr; {_macd_txt}, {_obv_txt}. {fmt(_res1_val)} kırılımı hacimle desteklenirse momentum geri gelebilir. {fmt(_sup1_val)} altına sarkmadıkça trend bozulmuş sayılmaz.",
+                    f"Yukarı yönlü yapı korunuyor (Boğa %{boga_w:.0f}) — kısa vadede ise bir nefes bekleniyor. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_res1_val)} hacimle geçilirse ivme yenilenebilir. {fmt(_sup1_val)} altı yapısal soru işareti doğurur."
+                ])
         elif not is_macro_bull:
             if is_oversold or is_accumulation:
-                ozet = (f"Fiyat makro ortalamaların altında baskı altında, ancak RSI {rsi_val:.0f} aşırı satım bölgesini işaret ediyor. "
-                        f"{_obv_txt} — gizli birikim ihtimali göz ardı edilmemeli. "
-                        f"{fmt(_res1_val)} direncinin hacimle aşılması trendi tersine çevirebilir. "
-                        f"Pozisyon açmadan önce {fmt(_sup1_val)} desteğinin güçlü tutulmasını izle.")
+                ozet = random.choice([
+                    f"Fiyat makro ortalamaların altında baskı altında, ancak RSI {rsi_val:.0f} aşırı satım bölgesini işaret ediyor. {_obv_txt} — gizli birikim ihtimali göz ardı edilmemeli. {fmt(_res1_val)} direncinin hacimle aşılması trendi tersine çevirebilir. Pozisyon açmadan önce {fmt(_sup1_val)} desteğinin güçlü tutulmasını izle.",
+                    f"Düşüş trendi sürüyor ama RSI {rsi_val:.0f} ile aşırı satım/birikim emaresi var. {_obv_txt} — kurumsal alım sessizce gelmiş olabilir. {fmt(_res1_val)} direncinin hacimli aşılması yapısal bir dönüş tetikleyebilir. Önce {fmt(_sup1_val)} desteğinin tutması beklenmeli.",
+                    f"Makro baskı sürmesine karşın RSI {rsi_val:.0f} dipte. {_obv_txt} — birikim sinyali zayıf da olsa masada. {fmt(_res1_val)} hacimle aşılırsa yapıda tersine dönüş başlayabilir. {fmt(_sup1_val)} desteğinin tutması ilk şart."
+                ])
             elif enerji_skor > 6.5:
-                ozet = (f"Satıcılar hakimiyetini sürdürüyor — RSI {rsi_val:.0f}, {_macd_txt}. "
-                        f"Hacim durumu: {vsa}. "
-                        f"{fmt(_sup1_val)} desteği kırılırsa sert satış dalgası gelebilir. "
-                        f"Toparlanma için önce {fmt(_res1_val)} direncinin geri alınması gerekiyor.")
-            else:
-                ozet = (f"Zayıf ve baskılı yapı — hem makro hem kısa vade aşağı yönlü. "
-                        f"RSI {rsi_val:.0f} nötr bölgede; {_macd_txt}, {_obv_txt}. "
-                        f"{fmt(_sup1_val)} son savunma hattı — kırılırsa yeni dip arayışı başlayabilir. "
-                        f"{fmt(_res1_val)} hacimle geri alınmadan alım pozisyonu riski yüksek.")
+                ozet = random.choice([
+                    f"Satıcılar hakimiyetini sürdürüyor — RSI {rsi_val:.0f}, {_macd_txt}. Hacim durumu: {vsa}. {fmt(_sup1_val)} desteği kırılırsa sert satış dalgası gelebilir. Toparlanma için önce {fmt(_res1_val)} direncinin geri alınması gerekiyor.",
+                    f"Düşüş ivmesi aktif — RSI {rsi_val:.0f}, {_macd_txt}, hacim: {vsa}. {fmt(_sup1_val)} altı satış baskısını artırabilir. Yön değişimi için {fmt(_res1_val)} üzerinde tutunma şart.",
+                    f"Aşağı yönde aktif baskı var — RSI {rsi_val:.0f}; {_macd_txt}; hacim: {vsa}. {fmt(_sup1_val)} eşiğinin kırılması yeni dip aramayı tetikleyebilir. Yön değişimi için {fmt(_res1_val)} hacimle geri alınmalı."
+                ])
+            elif _yapi_tip == "lh_ll":
+                ozet = random.choice([
+                    f"Klasik düşüş yapısı — alçalan tepe ve alçalan dipler birlikte. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} son destek hattı, kırılırsa yapı daha da bozulur. Yön değişimi için önce {fmt(_res1_val)} üzerinde kapanış gerekiyor.",
+                    f"Yapı bearish — LH+LL serisi sürüyor. RSI {rsi_val:.0f} aşağı yönü destekliyor; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} korunmazsa yeni dip arayışı başlar. Toparlanma için {fmt(_res1_val)} direnci ilk eşik."
+                ])
+            elif _yapi_tip == "megafon":
+                ozet = random.choice([
+                    f"Genişleyen megafon yapı — yüksekler yükseliyor, dipler düşüyor; volatilite artışı sağlıksız. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)}–{fmt(_res1_val)} bandı dışına kırılan yön baskın olabilir.",
+                    f"Megafon formasyonu aktif — fiyat hem üst hem alt sınırı zorluyor, piyasa kararsız. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} altı veya {fmt(_res1_val)} üstü kırılım yönü belirleyebilir."
+                ])
+            elif _yapi_tip == "ucgen":
+                ozet = random.choice([
+                    f"Daralan üçgen yapı — yüksekler düşüyor, dipler yükseliyor; kırılım yakın. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} altı veya {fmt(_res1_val)} üstü hangisi kırılırsa o yön baskın olabilir.",
+                    f"Sıkışan üçgen — fiyat dar bantta tutuluyor. Makro aşağı olsa da kısa vadede tetik bekleniyor. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. Kırılım yönü için hacim onayı şart."
+                ])
+            elif _yapi_tip == "yatay":
+                ozet = random.choice([
+                    f"Yatay konsolidasyon — eşit yüksek ve dipler. Makro aşağı eğilimde olsa da kısa vade yön arıyor. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)}–{fmt(_res1_val)} bandının kırılımı yönü belirleyecek.",
+                    f"Range içinde sıkışma sürüyor — net trend yok. Makro yön aşağı olsa da kısa vade kararsız. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} altı düşüşü genişletebilir, {fmt(_res1_val)} üstü trend değişimi tetikleyebilir."
+                ])
+            elif _yapi_tip == "yari_asagi":
+                ozet = random.choice([
+                    f"Tek taraflı yapı bozulması — yapı tam kırılmadı ama zayıflama sürüyor. RSI {rsi_val:.0f} nötr; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} destek olarak kritik. {fmt(_res1_val)} üzerinde tutunma yapıyı yeniden kurabilir.",
+                    f"Yapı tek taraftan zayıflıyor — net trend yok ama makro aşağı yön baskın. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} altına sarkma yapı bozulmasını tamamlar. Toparlanma için {fmt(_res1_val)} eşiği."
+                ])
+            else:  # karışık (default)
+                ozet = random.choice([
+                    f"Yön net değil — makro aşağıyı zorluyor ama yapı tam oturmadı. RSI {rsi_val:.0f} nötr bölgede; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} son savunma hattı — kırılırsa yeni dip arayışı başlayabilir. {fmt(_res1_val)} hacimle geri alınmadan alım pozisyonu riski yüksek.",
+                    f"Yapı karışık, baskı sürüyor — net swing yok ama trend aşağı meyilli. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} altı yeni satış dalgasını tetikleyebilir. Toparlanma için {fmt(_res1_val)} hacimle alınmalı.",
+                    f"Net bir swing görünmüyor — makro yön aşağıyı destekliyor. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} altı yapısal zayıflığı derinleştirebilir. Yön değişimi için {fmt(_res1_val)} hacimle aşılmalı."
+                ])
         else:
             if is_oversold:
-                ozet = (f"Uzun vade pozitif (SMA200 üstü) ancak kısa vadede sert düzeltme yaşandı. "
-                        f"RSI {rsi_val:.0f} aşırı satım bölgesine yaklaşıyor; {_obv_txt}. "
-                        f"{fmt(_sup1_val)} desteğinden teknik dönüş fırsatı sunabilir. "
-                        f"Ani toparlanmada {fmt(_res1_val)} ilk direnç noktası olarak izlenmeli.")
+                ozet = random.choice([
+                    f"Uzun vade pozitif (SMA200 üstü) ancak kısa vadede sert düzeltme yaşandı. RSI {rsi_val:.0f} aşırı satım bölgesine yaklaşıyor; {_obv_txt}. {fmt(_sup1_val)} desteğinden teknik dönüş fırsatı sunabilir. Ani toparlanmada {fmt(_res1_val)} ilk direnç noktası olarak izlenmeli.",
+                    f"Ana trend yukarı ama kısa vadeli düzeltme derinleşti. RSI {rsi_val:.0f} aşırı satıma yaklaşıyor; {_obv_txt}. {fmt(_sup1_val)} desteği tutarsa teknik tepki gelebilir. {fmt(_res1_val)} kısa vadeli ilk eşik.",
+                    f"Makro pozitif yapı korunuyor ama kısa vade yorgun. RSI {rsi_val:.0f} aşırı satıma yaklaşıyor; {_obv_txt}. {fmt(_sup1_val)} destek olarak izlenmeli; {fmt(_res1_val)} ilk tepki eşiği olabilir."
+                ])
             else:
-                ozet = (f"Uzun vadeli yapı pozitif, kısa vadede momentum zayıflıyor. "
-                        f"Fiyat {fmt(_sup1_val)}–{fmt(_res1_val)} arasında sıkışmış; RSI {rsi_val:.0f}, {_macd_txt}. "
-                        f"Yükseliş için {fmt(_res1_val)} üzerinde kapanış, düşüş için {fmt(_sup1_val)} kırılımı izlenmeli. "
-                        f"{_obv_txt} — kırılım yönü için hacim onayını bekle.")
+                ozet = random.choice([
+                    f"Uzun vadeli yapı pozitif, kısa vadede momentum zayıflıyor. Fiyat {fmt(_sup1_val)}–{fmt(_res1_val)} arasında sıkışmış; RSI {rsi_val:.0f}, {_macd_txt}. Yükseliş için {fmt(_res1_val)} üzerinde kapanış, düşüş için {fmt(_sup1_val)} kırılımı izlenmeli. {_obv_txt} — kırılım yönü için hacim onayını bekle.",
+                    f"Makro pozitif ama mikro yorgun — fiyat {fmt(_sup1_val)}–{fmt(_res1_val)} arasında nefes alıyor. RSI {rsi_val:.0f}; {_macd_txt}. Yön için {fmt(_res1_val)} üstü veya {fmt(_sup1_val)} altı tetik olur. {_obv_txt} — hacim taraf değiştirene kadar bekleyiş baskın.",
+                    f"Uzun vade trend yukarı, kısa vade kararsız — fiyat {fmt(_sup1_val)}–{fmt(_res1_val)} bandında. RSI {rsi_val:.0f}; {_macd_txt}. {fmt(_res1_val)} hacimle aşılırsa ana trend yeniden devreye girer; {fmt(_sup1_val)} kırılırsa yapı sorgulanmaya başlar. {_obv_txt}."
+                ])
 
         # ── RS GÜCÜ vs XU100 (sadece BIST hisseleri) ─────────────────────────
         rs_guc_line = ""
