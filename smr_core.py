@@ -2308,25 +2308,25 @@ Veri yoksa maddeyi atla. Alt başlıkları aynen kullan. Her madde 2-3 cümle.
 - Bölge Uyumu: (DISCOUNT/PREMIUM konumu. Kurumsal alım/satım için ne anlama gelir?)
 
 2⃣🔹) Yapı & Fiyat Davranışı
-- Trend Yapısı: (Makro ve mikro trend yönü; HH/HL mi yoksa LH/LL mi baskın? Son swing dönüşü var mı? Kısa vadeli yapı bozulumu teyitli mi?)
-- Mum & Fitil: (Gövde/fitil oranı; tepe bölgesinde üst fitil artışı var mı? Düzeltme mumları impuls mumlarına kıyasla nasıl? Alıcı/satıcı baskısı ne yönde?)
+- Trend Yapısı: (8 yapı durumundan hangisi aktif? HH+HL (klasik yükseliş) / LH+LL (klasik düşüş) / CHoCH up (dönüş yukarı ⤴) / CHoCH down (dönüş aşağı ⤵) / Megafon (genişleyen, sağlıksız) / Üçgen sıkışma (kırılım yakın) / Yatay range / Yarı yapı. CHoCH varsa "dönüş başlıyor", megafon varsa "sağlıksız volatilite", üçgen varsa "kırılım yakın" vurgusu yap.)
+- Mum & Fitil (Kapanış Konumu): (Son 5g gövde/fitil oranı + kapanışların günlük aralıkta ortalama konumu. %75+ = alıcı baskın, %25- = satıcı baskın. Önceki 5g ile karşılaştır — Güçlü tutunma ★ / V-bottom ⤴ / Alıcı geldi ↑ / Yorgun alıcı ⚠ / Sert çöküş ⤵ / Alıcı çekiliyor ↘ / Çöküş sürüyor gibi geçişler kim kontrol ediyor sorusunun objektif cevabıdır.)
 - OB/FVG Durumu: (Aktif Order Block veya FVG somut seviyeleriyle. Taze mi, yıpranmış mı?)
 - EQH/EQL & Sweep: (Eşit tepe/dip varsa seviyesini yaz. Likidite avı tuzak mı, gerçek kırılım mı?)
 
 3⃣🔹) Momentum & Vade Uyumu
-- RSI & MACD: (RSI seviyesi ve yönü; MACD histogram davranışı — genişliyor mu daralıyor mu? HARSI rengi/yönü)
-- Uyumsuzluk: (Fiyat yeni tepe/dip denerken momentum aynı güçte genişliyor mu? Divergence var mı?)
+- RSI Slope & MACD: (RSI seviyesi DEĞİL, 5g'lik DEĞİŞİM HIZI önemli. Sert dönüş ↗↗ / Toparlanma ↗ / Trend hızlanıyor ↑ / Yatay → / Yavaşlıyor ↘ / Aşağı ivme ↓↓ / Tepe geri çekilme ⤵ — bunlardan hangisi aktif? "Alım bölgesi", "nötr bölge" gibi vague seviye etiketlerini KULLANMA. Seviye gerekirse: aşırı satım/zayıf/nötr/güçlü/aşırı alım. MACD histogram genişliyor mu daralıyor mu? HARSI rengi/yönü.)
+- Uyumsuzluk (RSI Divergence): (5 tip ayrımı kritik — Regular Bull ✓ (fiyat yeni dip, RSI dip yok → dönüş yakın yukarı), Regular Bear ✗ (fiyat yeni tepe, RSI tepe yok → dönüş yakın aşağı), Hidden Bull ↗ (yükseliş trendinde sağlıklı geri çekilme → trend devam), Hidden Bear ↘ (düşüş trendinde sağlıklı sıçrama → trend devam), Yok. Regular = tükenme/dönüş sinyali, Hidden = trend devamı — karıştırma.)
 - MTF Momentum: (Kısa/orta/uzun vade momentum uyumu; hangi periyotta zayıflama başladı?)
 
-4⃣🔹) Hacim, Efor ve Akıllı Para İzi
+4⃣🔹) Hacim, Efor ve Akıllı Para İzi (VSA)
 - MA & EMA Dizilimi: (SMA20/50/100/200 ve EMA8/13/21 konumu — boğa/ayı dizilimi var mı?)
-- Hacim & Para Akışı: (RVOL, 5 günlük delta, Hacim Kalitesi ve OBV ayrışması; absorption veya climax ihtimali)
-- Kurumsal Akış: (VWAP konumu + Bollinger Band pozisyonu + PDH/PDL seviyesi + Piyasa Fazı; emilim veya agresif çıkış)
+- Hacim/Mum Uyumu (VSA): (Hacim × mum anatomisi 9 senaryosu — Alım onayı ★ (yüksek hacim + güçlü yeşil), Satım onayı ★ (yüksek hacim + güçlü kırmızı), Climax ⚠⚠ (yüksek hacim + doji → dönüş yakın), Üst rejekti ⤵ (yüksek hacim + üst fitil → dağıtım), Alt rejekti ⤴ (yüksek hacim + alt fitil → toplama), Sahte alım ⚠ (düşük hacim + yeşil → no demand), Sahte satım ⚠ (düşük hacim + kırmızı → no supply), Ölü piyasa, Normal. RVOL, 5 günlük delta ve OBV ayrışmasını da entegre et.)
+- Kurumsal Akış: (VWAP konumu + Bollinger Band pozisyonu + PDH/PDL seviyesi + Piyasa Fazı; emilim mi agresif çıkış mı?)
 
 5⃣🔹) Likidite & Kritik Bantlar
-- Üst Havuz: (Fiyatın üstündeki en yakın likidite / stop kümesi seviyesi ve niteliği)
-- Alt Havuz: (Fiyatın altındaki en yakın destek / stop kümesi seviyesi ve niteliği)
-- Karar Bandı: (Fiyatın şu anki konumu; bant içinde mi, kırılım eşiğinde mi?)
+- Üst Havuz: (Fiyatın üstündeki en yakın likidite / kritik seviye)
+- Alt Havuz: (Fiyatın altındaki en yakın destek / kritik seviye)
+- Karar Bandı (Range Konumu): (Fiyatın son 20g aralığın neresinde ve 5g önce neredeydi? 9 senaryo — Dipte tutunma / Sert düşüş ⤵ (U-top) / Discount (ucuz) / Tepede tıkalı ⚠ (dağıtım riski) / V-bottom ⤴ (sert dönüş) / Premium tutunma ★ (sağlıklı yükseliş) / Premium (pahalı) / Toparlanma ↗ (discount'tan çıkış) / Premium kaybı ↘ / Orta-yatay. Konum × değişim birlikte okunmalı.)
 
 6⃣🔹) Trend Skoru ve Enerji
 - Enerji Puanı: (Algoritmadan gelen Skoru yaz ve grafikteki sıkışmayı/momentumu yorumla)
@@ -2575,8 +2575,8 @@ Bu çelişkiler varsa tek bir paragrafta "yükseliş devam ederken şunu da göz
 * Görevin (DERİN ANALİZ — ELİTE):
 
 AÇILIŞ (4-5 cümle, etiket koyma):
-Bugünün EN BASKIN bulgusunu öne çıkar — OBV/Delta/HARSI + ICT yapısı + Hacim Kalitesi + Piyasa Fazı arasındaki uyum veya varsa çelişki.
-Kurumsal niyet (para akışı verisi, VWAP konumu, Hacim Kalitesi) ile küçük yatırımcı psikolojisi arasındaki farkı ortaya koy.
+Bugünün EN BASKIN bulgusunu öne çıkar — Yapı sinyali (HH+HL / LH+LL / CHoCH up/down / Megafon / Üçgen sıkışma) + RSI Divergence (Regular Bull/Bear: dönüş yakın, Hidden Bull/Bear: trend devam) + VSA (Climax / Üst rejekti / Alt rejekti / Sahte alım-satım) + CP (Kapanış Konumu trendi: Güçlü tutunma / V-bottom / Alıcı çekiliyor vb.) + OBV/Delta/HARSI + ICT yapısı + Hacim Kalitesi + Piyasa Fazı arasındaki UYUM ya da ÇELİŞKİ. Birden fazla güçlü senaryo çakışıyorsa (örn: CHoCH up + Regular Bull Div + V-bottom + Alt rejekti) bunu "tüm sinyaller hizalı" hikayesinin merkezine al.
+Kurumsal niyet (para akışı verisi, VWAP konumu, Hacim Kalitesi, VSA) ile küçük yatırımcı psikolojisi arasındaki farkı ortaya koy.
 Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu entegre et.
 
 ### 1. GENEL ANALİZ
@@ -2588,7 +2588,14 @@ Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu e
      · 3. cümle: Köprü kur — ya bir soru bırak ("Peki bunu teyit eden var mı?"), ya bir sonraki maddenin cevabını ima et ("Cevap bir sonraki sinyalde gizli."), ya da önceki maddeyle bağlantı kur ("Bu da BOS sinyalini güçlendiriyor.").
    Okuyucu her maddeyi okuyunca bir sonrakini okumak zorunda hissetmeli. Analizin bir hikayesi olsun — başı, gerilimi ve çözümü.
    Ayrıca, yorumları bir robot gibi değil, tecrübeli ve sezgileri kuvvetli bir stratejist gibi yap.
-     a) Listenin en başına; "Kırılım (Breakout)", "Akıllı Para (Smart Money)", "Trend Dönüşü" veya "BOS" içeren EN GÜÇLÜ sinyalleri koy ve bunlara (8/10) ile (10/10) arasında puan ver.
+     a) Listenin en başına EN GÜÇLÜ sinyalleri koy ve bunlara (8/10) ile (10/10) arasında puan ver. Yüksek puan hak eden sinyaller:
+        - Klasik güçlü sinyaller: "Kırılım (Breakout)", "Akıllı Para (Smart Money)", "Trend Dönüşü", "BOS"
+        - YAPI senaryoları: CHoCH up/down (yapı kırılımı — dönüş başlıyor), Megafon (sağlıksız volatilite uyarısı), Üçgen sıkışma (kırılım yakın)
+        - RSI DIVERGENCE: Regular Bull/Bear (tükenme — dönüş yakın). Hidden Bull/Bear ise UYARI değil, "trend devamı" olarak ÇERÇEVELE.
+        - VSA: Climax ⚠⚠ (dönüş yakın), Üst rejekti ⤵ (dağıtım), Alt rejekti ⤴ (toplama)
+        - CP (Kapanış Konumu): V-bottom ⤴ (dipten dönüş), Sert çöküş ⤵ (üstten ani çöküş), Alıcı çekiliyor ↘ (dağıtım sinyali)
+        - RANGE: V-bottom (discount→premium geçişi), Tepede tıkalı ⚠ (dağıtım riski), Premium tutunma ★ (sağlıklı yükseliş)
+        NOT: "RSI 65 güçlü" gibi sıradan veriye 8+/10 verme. Yüksek puan ancak yukarıdaki KATEGORİK sinyaller veya bunların ÇAKIŞMASI varsa hak edilir (örn: Regular Bull Div + V-bottom çakışırsa 9/10).
         - Eğer ALTIN SET-UP durumu ‘EVET’ ise, bu hissenin piyasadan pozitif ayrıştığını (RS Gücü), istatistiksel ucuz bölgede olduğunu (ICT) ve ivme kazandığını vurgula. Analizinde bu 3/3 onayın teknik kriterleri eş zamanlı karşıladığını ve tarihsel olarak düşük frekanslı bir yapı olduğunu belirt.
         - Eğer ROYAL FLUSH NADİR SET-UP durumu ‘EVET’ ise, bu nadir görülen 4/4’lük onayı analizin en başında vurgula ve bu kurulumun dört kriterin kesişimi nedeniyle algoritmik olarak nadir görüldüğünü ve olası senaryoları dengeli biçimde değerlendir.
      b) Listenin devamına; trendi destekleyen ama daha zayıf olan yan sinyalleri (örneğin: "Hareketli ortalama üzerinde", "RSI 50 üstü" vb.) ekle. Ancak bunlara DÜRÜSTÇE (1/10) ile (7/10) arasında puan ver.
@@ -2597,12 +2604,21 @@ Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu e
 ✅ (X/10) [Başlık — somut gösterge adı]:
 📍 (X/10) [Başlık — somut gösterge adı]:
 
-Öncelik sırası: ICT yapısı → Piyasa Fazı → HARSI momentum → OBV/Delta/Hacim Kalitesi → VWAP konumu → RS vs XU100 → MA dizilimi → Bollinger Band → PDH/PDL → ATR/volatilite → RVOL
+Öncelik sırası: Yapı senaryosu (HH+HL/LH+LL/CHoCH/Megafon/Üçgen) → RSI Divergence (Regular Bull/Bear: dönüş; Hidden Bull/Bear: trend devamı) → VSA (mum × hacim 9 senaryosu) → CP (Kapanış Konumu 5g trendi) → Range Konumu (20g × 5g değişim) → ICT yapısı → Piyasa Fazı → RSI Slope (5g eğim — seviye DEĞİL) → HARSI momentum → OBV/Delta/Hacim Kalitesi → VWAP konumu → RS vs XU100 → MA dizilimi → Bollinger Band → PDH/PDL → ATR/volatilite → RVOL
 
 ### SONUÇ:
 (3-4 cümle — en kritik bulguyu, somut seviyeleri ve net olasılığı öne çıkar. Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik bir özeti olsun.)
 
-### UYARI: (Varsa — küçük harf, insan diliyle. HARSI kırmızıysa, RVOL düşükse, OBV ayrışıyorsa mutlaka yaz. Eğer RSI uyumsuzluğu, hacim düşüklüğü, stopping volume, trend tersliği, ayı/boğa tuzağı veya gizli satış işaretleri varsa insan diliyle yaz)
+### UYARI: (Varsa — küçük harf, insan diliyle. Şunlardan biri varsa MUTLAKA yaz:
+   - Regular Bear Div (yükselişte alıcı tükeniyor) veya Regular Bull Div (düşüşte satıcı tükeniyor)
+   - VSA Sahte alım ⚠ (no demand — düşük hacimli yeşil mum) veya Sahte satım ⚠ (no supply)
+   - VSA Climax ⚠⚠ (yüksek hacim + doji — dönüş yakın)
+   - VSA Üst rejekti ⤵ (yüksek hacim + üst fitil — dağıtım)
+   - CP "Alıcı çekiliyor" ↘ veya "Yorgun alıcı" ⚠ (dağıtım sinyali)
+   - Range "Tepede tıkalı" ⚠ (premium tutunma değil — dağıtım riski)
+   - Yapı: Megafon (sağlıksız volatilite) veya CHoCH down (yapı bozuldu)
+   - HARSI kırmızı, RVOL düşük, OBV ayrışıyor, stopping volume, trend tersliği, gizli satış
+   ÖNEMLİ NOT: Hidden Bull/Bear divergence UYARI DEĞİLDİR — "trend devamı" sinyalidir, GENEL ANALİZ'e olumlu çerçevede yaz, UYARI'ya KOYMA.)
 Analizin sonuna şu notu ekle:
 -----------------------------------------------------------------------------------------------
 SMR-ELITE aboneleri için Detaylı Özel Analizdir. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
