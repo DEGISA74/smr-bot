@@ -11699,9 +11699,9 @@ def render_erken_radar_panel(ticker):
     else:
         s_color = "#64748b"      # zayıf gri
 
-    # Kart renkleri
+    # Kart renkleri — çerçeve: metalik açık mavi, ICT Bottom Line ile aynı 3px kalınlık
     card_bg     = "#060d1a"
-    card_border = "#1e3a5f"
+    card_border = "#7dd3fc"
     head_bg     = "#0d1829"
     text_main   = "#f1f5f9"
     text_muted  = "#94a3b8"
@@ -11813,7 +11813,7 @@ def render_erken_radar_panel(ticker):
 
     # Final HTML
     html = (
-        f'<div style="background:{card_bg};border:2px solid {card_border};border-radius:12px;'
+        f'<div style="background:{card_bg};border:3px solid {card_border};border-radius:12px;'
         f'overflow:hidden;margin-bottom:10px;font-family:Inter,sans-serif;'
         f'box-shadow:0 4px 16px rgba(0,0,0,0.12);">'
         # Başlık
@@ -12577,118 +12577,118 @@ def _er_build_context(df, bench_df=None):
 ERKEN_RADAR_SCENARIOS = {
     # === A. GERİ DÖNÜŞ FIRSATLARI (9) ===
     'A1': {'name': 'Dipte Sessizlik', 'category': 'A', 'stars': 5,
-           'description': 'Hisse uzun süredir düşüyor ama satıcı bitiyor, alıcı görünmeye başladı',
+           'description': 'Hisse uzun süredir düşüşte ama son günlerde satıcı baskısı azaldı. Aynı zamanda fiyat dipler yapsa da iç güç (momentum) artıyor — bu klasik bir dipten dönüş zemini.',
            'detect': lambda c: c['rsi_30_45'] and c['strong_bull_div'] and c['vol_dried'] and c['fall_stopped'] and c['recent_fall_15']},
     'A2': {'name': 'Hacimli Tepki', 'category': 'A', 'stars': 4,
-           'description': 'Düşüşten sonra ilk büyük alım günü geldi',
+           'description': 'Hisse düşüşten sonra bugün son 10 günün en büyük satış gününden bile yüksek hacimle yeşil kapattı. Büyük alıcılar devreye girmiş olabilir.',
            'detect': lambda c: c['rsi_35_50'] and c['pocket_pivot'] and c['recent_fall_15']},
     'A3': {'name': 'Çift Dip / İkinci Test', 'category': 'A', 'stars': 4,
-           'description': 'Aynı dibe ikinci kez geldi, bu sefer satıcı daha az',
+           'description': 'Hisse aynı dip seviyesini ikinci kez test etti ama bu sefer satıcı baskısı belirgin şekilde daha düşük. Çift dip, klasik dönüş örüntülerinden biri.',
            'detect': lambda c: c['double_bottom'] and c['rsi_30_50'] and c['vol_dried']},
     'A4': {'name': 'Yön Değiştiriyor', 'category': 'A', 'stars': 4,
-           'description': 'Piyasa düşerken bu hisse direnç gösteriyor, akıllı para alıyor',
+           'description': 'BIST endeksi düşerken bu hisse direnç gösteriyor ve endeksten daha iyi performans göstermeye başladı. Akıllı para sessizce sahipleniyor olabilir.',
            'detect': lambda c: c['index_falling'] and c['rs_turning'] and c['rsi_35_50']},
     'A5': {'name': 'Toparlanma Başlıyor', 'category': 'A', 'stars': 3,
-           'description': 'Düşüş yavaşladı, küçük alımlar var ama henüz teyit yok',
+           'description': 'Hisse düşüş hızını kaybetti, yatayda durdu ve hafif alım sinyalleri var. Henüz güçlü teyit yok ama ilk pozitif işaretler beliriyor.',
            'detect': lambda c: c['rsi_35_50'] and c['fall_stopped'] and c['pos_60_lower_50'] and (c['weak_bull_div'] or c['vol_rising_slow'])},
     'A6': {'name': 'Dipte Sıkışma', 'category': 'A', 'stars': 4,
-           'description': 'Aşağıda sıkışıyor, yakında yön belirleyecek',
+           'description': 'Hisse dipte sıkışmış, volatilitesi düşmüş. Düşüş tükendi gibi ama yön henüz belli değil — yakında bir taraf belirleyecek.',
            'detect': lambda c: c['rsi_30_45'] and c['bb_squeeze'] and c['pos_60_lower_30'] and c['fall_stopped']},
     'A7': {'name': 'Hacimli Toparlanma', 'category': 'A', 'stars': 4,
-           'description': 'Alıcıların hacmi satıcılardan fazla, denge alıcıya kayıyor',
+           'description': 'Son 20 günde yeşil mum günlerinin toplam hacmi kırmızı mum günlerinden belirgin fazla. Alıcı baskısı satıcıdan ağır basıyor.',
            'detect': lambda c: c['rsi_35_50'] and c['updown_ratio_bullish'] and c['pos_60_lower_50']},
     'A8': {'name': 'Ucuz + Hacimli Atak', 'category': 'A', 'stars': 5,
-           'description': 'Düşmüş hissede tek günde büyük alım, kurumsal ilgi başladı',
+           'description': 'Hisse düşüş bölgesinde (RSI 30-45) iken bugün son 10 günün en büyük satış gününden yüksek hacimle yeşil kapattı. Düşüşten sonra net kurumsal alım sinyali.',
            'detect': lambda c: c['rsi_30_45'] and c['pocket_pivot'] and c['recent_fall_15']},
     'A9': {'name': 'Ucuz Bölgede Bekleyiş', 'category': 'A', 'stars': 3,
-           'description': 'Hisse ucuz, satıcı bitiyor ama net dönüş sinyali yok',
+           'description': 'Hisse aşırı satım bölgesinde ve hacim kurudu (satıcı kalmadı). Henüz dönüş tetiği yok ama zemin oluşmuş — sabırlı izleme aşaması.',
            'detect': lambda c: (c['rsi_25_35'] or c['rsi_30_45']) and c['vol_dried'] and not c['strong_bull_div'] and not c['medium_bull_div']},
 
     # === B. SIKIŞMA FIRSATLARI (11) ===
     'B1': {'name': 'Mükemmel Sıkışma', 'category': 'B', 'stars': 5,
-           'description': 'Yay gibi geriliyor, patlama yakın',
+           'description': 'Fiyatın hareket bandı 5+ gündür belirgin daraldı, hacim azaldı, RSI nötr ve hisse endeksten güçlü. Tüm kriterler aynı anda "yay gibi geriliyor" diyor — sert hareket pencereye yakın.',
            'detect': lambda c: c['rsi_45_55'] and c['bb_squeeze'] and c['bb_squeeze_days'] >= 5 and c['vol_dried'] and c['rs_20d_pct'] > 0},
     'B2': {'name': 'Sessiz Birikim', 'category': 'B', 'stars': 5,
-           'description': 'Fiyat hareketsiz ama hacim artıyor, alıcılar pozisyon alıyor',
+           'description': 'Fiyat 20 gündür yatay seyrediyor ama hacim sessizce artıyor ve hisse endekse karşı güç kazanıyor. Klasik "kalabalık fark etmeden büyük alıcılar pozisyon alıyor" örüntüsü.',
            'detect': lambda c: c['lateral_20'] and c['vol_rising_slow'] and (c['rs_turning'] or c['rs_crossover'] or c['rs_persistent_positive'])},
     'B3': {'name': 'Klasik Sıkışma', 'category': 'B', 'stars': 4,
-           'description': 'Hacim ve volatilite azalıyor, kırılım için ideal zemin',
+           'description': 'Fiyat 20+ gündür dar bantta, hacim azalmış, volatilite düşmüş. Kırılım için klasik baz zemini — yön hangi tarafa kırılırsa hızlı gidebilir.',
            'detect': lambda c: c['lateral_20'] and c['vol_dried'] and c['atr_contracting']},
     'B4': {'name': 'Yatayda Hacim Patlaması', 'category': 'B', 'stars': 5,
-           'description': 'Yatay seyirde tek günde kurumsal alım, hareket başlamak üzere',
+           'description': 'Hisse yatay seyrediyordu ama bugün son 10 günün en büyük satış gününden bile yüksek hacimle yeşil kapattı. Yatay seyrin sonu — büyük alıcı belirdi.',
            'detect': lambda c: c['lateral_20'] and c['pocket_pivot']},
     'B5': {'name': 'Üçgen Daralma', 'category': 'B', 'stars': 4,
-           'description': 'Hisse üçgen içinde sıkışıyor, kırılım yaklaşıyor',
+           'description': 'Tepe seviyeleri alçalırken dip seviyeleri yükseliyor — fiyat üçgen içinde sıkışıyor. Üçgenler genellikle kırılımla sonuçlanır, yön yakında belli olacak.',
            'detect': lambda c: c['triangle'] and c['vol_dried']},
     'B6': {'name': 'Yatay + Endekse Direnç', 'category': 'B', 'stars': 4,
-           'description': 'Endeks düşerken bu hisse yatay duruyor, çok güçlü',
+           'description': 'BIST endeksi düşerken bu hisse yatay duruyor ve endeksten net daha iyi performans gösteriyor. Piyasa baskısına direnç = güçlü hisse işareti.',
            'detect': lambda c: c['lateral_20'] and c['index_falling'] and c['rs_20d_pct'] > 0},
     'B7': {'name': 'Yatay + Hafif Pullback', 'category': 'B', 'stars': 3,
-           'description': 'Sıkışma içinde hafif geri çekildi, alım fırsatı olabilir',
+           'description': 'Hisse genel yatay seyrinde son birkaç günde hafif geri çekildi. Yapı bozulmamış, sadece soluklanıyor — küçük pullback alım fırsatı olabilir.',
            'detect': lambda c: c['lateral_20'] and c['pullback_3_8'] and c['rsi_45_55']},
     'B8': {'name': 'Sıkışma Sonu', 'category': 'B', 'stars': 4,
-           'description': 'Sıkışma çok uzadı, hacim canlanıyor, patlama yakın',
+           'description': 'Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı. Sıkışma uzadıkça enerji birikiyor — patlama yakın olabilir.',
            'detect': lambda c: c['bb_squeeze_days'] >= 10 and c['vol_rising_slow']},
     'B9': {'name': 'Alt Sınır Testi', 'category': 'B', 'stars': 3,
-           'description': 'Sıkışma alt sınırını test etti ve toparlandı',
+           'description': 'Yatay seyirde fiyat alt sınıra dokundu ve oradan toparlandı. Alıcılar bu seviyeyi savundu — destek teyit edildi.',
            'detect': lambda c: c['lateral_20'] and c['pos_60_mid'] and c['fall_stopped'] and c['updown_ratio_bullish']},
     'B10': {'name': 'Yatay + Momentum Çelişkisi', 'category': 'B', 'stars': 5,
-            'description': 'Sıkışma içinde gizli güç birikiyor, dönüş yakın',
+            'description': 'Fiyat 20 gündür yatay ama momentum (RSI) içeride güçleniyor. Görünen sakinliğe rağmen iç güç birikiyor — dönüş yakın olabilir.',
             'detect': lambda c: c['lateral_20'] and (c['strong_bull_div'] or c['medium_bull_div']) and c['vol_dried']},
     'B11': {'name': 'Tepe Yakını Sıkışma', 'category': 'B', 'stars': 4,
-            'description': 'Tepe yakınında sıkışıyor, yukarı kırılım olası',
+            'description': 'Hisse 60 günlük zirvesinin yakınında sıkışıyor ve endekse karşı güçlü. Tepe yakını sıkışmalar genellikle yukarı kırılımla sonuçlanır.',
             'detect': lambda c: c['pos_60_upper_80'] and c['bb_squeeze'] and c['rs_20d_pct'] > 0},
 
     # === C. TREND DEVAMI FIRSATLARI (11) ===
     'C1': {'name': 'İdeal Pullback', 'category': 'C', 'stars': 5,
-           'description': 'Yukarı trendde sağlıklı geri çekilme — klasik alım noktası',
+           'description': 'Hisse yukarı trendde devam ediyor (50 günlük ortalama yukarı eğimli, fiyat üstünde). Şu an %3-7 arası sağlıklı bir düzeltme yaşıyor ve hacim düşük. Trend devamı için klasik alım fırsatı.',
            'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['rsi_50_60'] and c['pullback_3_8'] and c['vol_dried']},
     'C2': {'name': 'Ortalama Testi', 'category': 'C', 'stars': 4,
-           'description': 'Yukarı trendde 20 veya 50 günlük ortalamadan tepki aldı',
+           'description': 'Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı. Bu ortalamalar genellikle alıcıların devreye girdiği yerler — trend muhtemelen devam eder.',
            'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and (c['pullback_to_sma20'] or c['pullback_to_sma50']) and c['rsi_45_60']},
     'C3': {'name': 'Pullback + Hacimli Alım', 'category': 'C', 'stars': 5,
-           'description': 'Geri çekilme sonrası kurumsal alım günü, klasik devam sinyali',
+           'description': 'Hisse yukarı trendde, son günlerde geri çekildi ama bugün son 10 günün en büyük satış gününden yüksek hacimle yeşil kapattı. Düzeltme bitti, kurumsal alım geri döndü — klasik devam sinyali.',
            'detect': lambda c: c['above_sma50'] and c['pullback_3_8'] and c['pocket_pivot']},
     'C4': {'name': 'Soluklanma', 'category': 'C', 'stars': 4,
-           'description': 'Trend devam ediyor, kısa süreli dinlenme',
+           'description': 'Trend yukarı, fiyat 50 günlük ortalama üstünde ve ortalama yukarı eğimli. Son 3-5 gün yatay seyrediyor — kısa süreli dinlenme, trend devam ediyor.',
            'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['lateral_10'] and c['rsi_50_65']},
     'C5': {'name': 'Bayrak Formasyonu', 'category': 'C', 'stars': 4,
-           'description': 'Hızlı yükselişten sonra düz konsolidasyon, devam beklentisi',
+           'description': 'Hisse son 10 günde sert yükseldi (%10+), ardından son 5 günde dar bir konsolidasyona girdi. Bayrak formasyonu — devam beklentisi yüksek.',
            'detect': lambda c: c['above_sma50'] and c['flag_pattern'] and c['rsi_45_65']},
     'C6': {'name': 'Piyasa Lideri', 'category': 'C', 'stars': 5,
-           'description': 'Endekste lider konumda, hafif geri çekildi',
+           'description': 'Hisse endekse karşı son 20 günün zirvesinde — piyasada lider konumda. Şu an hafif sağlıklı bir geri çekilme yaşıyor — yeniden ivme kazanabilir.',
            'detect': lambda c: c['above_sma50'] and c['rs_new_high'] and c['rs_healthy_pullback']},
     'C7': {'name': 'Sağlam Trend Yapısı', 'category': 'C', 'stars': 4,
-           'description': 'Tüm ortalamalar düzgün hizalı, çok temiz görünüm',
+           'description': 'Tüm hareketli ortalamalar düzgün hizalı (fiyat > 20 > 50 günlük) ve tüm zaman dilimlerinde hisse endeksi yeniyor. Çok temiz, profesyonel trend görünümü.',
            'detect': lambda c: c['above_sma20'] and c['above_sma50'] and c['sma50_rising'] and c['rs_persistent_positive'] and c['rsi_45_65']},
     'C8': {'name': 'Yukarı Kanal Testi', 'category': 'C', 'stars': 4,
-           'description': 'Yukarı kanalın alt sınırını test etti',
+           'description': 'Hisse yukarı trendde, fiyat 20 günlük ortalamaya kadar geri çekildi ve oradan toparlandı. Kanal içinde sağlıklı düzeltme — yukarı devam beklenebilir.',
            'detect': lambda c: c['above_sma50'] and c['pullback_to_sma20'] and c['rsi_45_55'] and c['vol_dried']},
     'C9': {'name': 'Pullback Başlıyor', 'category': 'C', 'stars': 3,
-           'description': 'Geri çekilme yeni başladı, henüz tam test yok',
+           'description': 'Yukarı trend var ama henüz net bir geri çekilme testi olmadı. Pullback yeni başlıyor — pozisyon almak için biraz sabır gerekebilir.',
            'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['rsi_45_60'] and not c['pullback_to_sma20'] and not c['pullback_to_sma50']},
     'C10': {'name': 'Trendde Sıkışma', 'category': 'C', 'stars': 4,
-            'description': 'Yukarı trendde ara konsolidasyon',
+            'description': 'Yukarı trendde fiyat 10+ gündür dar bantta sıkışıyor. Trend bozulmadı, sadece nefes alıyor — kırılım yukarı yönde olma olasılığı yüksek.',
             'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['bb_squeeze'] and c['lateral_10']},
     'C11': {'name': 'Trendde Momentum Sağlam', 'category': 'C', 'stars': 4,
-            'description': "Pullback'te momentum bozulmadı, devam sinyali",
+            'description': "Yukarı trendde geri çekilmede iç momentum (RSI) düşmedi — yapı sağlam. Trend devam etme olasılığı yüksek.",
             'detect': lambda c: c['above_sma50'] and c['pullback_3_8'] and (c['strong_bull_div'] or c['medium_bull_div'])},
 
     # === D. UYARILAR (5) ===
     'D1': {'name': 'Tek Güçlü Sinyal', 'category': 'D', 'stars': 3,
-           'description': 'Tek günlük güçlü alım, ama diğer kriterler zayıf',
+           'description': 'Bugün hacimli bir alım günü oldu ama hisse 50 günlük ortalama altında ve diğer kriterler desteklemiyor. Tek başına güçlü sinyal ama riskli — temkinli yaklaş.',
            'detect': lambda c: c['pocket_pivot'] and not c['above_sma50'] and not c['vol_dried']},
     'D2': {'name': 'Karışık Sinyal', 'category': 'D', 'stars': 2,
-           'description': 'Belirsiz tablo, bazı pozitif sinyaller var ama çelişkiler de',
+           'description': 'Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli.',
            'detect': lambda c: (c['weak_bull_div'] or c['vol_rising_slow']) and c['bearish_div']},
     'D3': {'name': 'Erken Aşama', 'category': 'D', 'stars': 2,
-           'description': 'Birikim sinyalleri yeni başlıyor, beklemeli',
+           'description': 'Hisse ucuz bölgede ve hacim kurudu, ama henüz dönüş için yeterli teyit yok. Sabırlı izleme aşaması — beklemeli.',
            'detect': lambda c: c['rsi_30_50'] and not c['pos_60_upper_80'] and c['vol_dried'] and not c['strong_bull_div'] and not c['medium_bull_div'] and not c['weak_bull_div'] and not c['pocket_pivot'] and not c['bb_squeeze']},
     'D4': {'name': 'Kurumsal Satış Riski', 'category': 'D', 'stars': 'KIRMIZI',
-           'description': 'Son günlerde kurumsal satış işaretleri, dikkatli ol',
+           'description': 'Son 5 günde 2+ defa yüksek hacimli kırmızı kapanış gördük. Bu, kurumların pozisyon küçülttüğüne işaret eder — alımdan kaçın, mevcut pozisyonda dikkatli ol.',
            'detect': lambda c: c['distribution_count_5d'] >= 2},
     'D5': {'name': 'Trend Bozuldu', 'category': 'D', 'stars': 'KIRMIZI',
-           'description': 'Yapı bozuldu, alım için uygun değil',
+           'description': 'Fiyat 50 günlük ortalama altına düştü, bugün yüksek hacimli kırmızı kapanış var ve hisse endekse karşı uzun süredir zayıf. Yapı bozulmuş — alım için uygun değil.',
            'detect': lambda c: not c['above_sma50'] and c['distribution_day'] and c['rs_negative_60']},
 }
 
@@ -19270,23 +19270,27 @@ Bugünkü en baskın sinyale göre aşağıdaki hook tiplerinden birini seç —
 
 TİP A — Zıtlık/Gerilim (kurumsal iz varken fiyat zayıfsa veya tam tersi):
 Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [SENARYO]: [GERİLİM CÜMLESİ — max 8 kelime] 👇📸
-Kural: "ama", "ancak", "oysa" — biri cümlede olmalı.
+Kural: "ama", "ancak", "oysa" — biri cümlede olmalı. [SENARYO] yerine Erken Radar ana senaryo ismini büyük harfle kullanabilirsin (örn. MÜKEMMEL SIKIŞMA, İDEAL PULLBACK).
 Örnek: ⚡ #SASA 2.60 (-%0.76) | TEPEDEN RET: Kurumsal sinyaller güçlü ancak tepeden sert ret var 👇📸
+Örnek: 🎯 #SISE 56.50 (-0.4%) | İDEAL PULLBACK: Trend güçlü, hisse soluklanıyor 👇📸
 
 TİP B — Soru (okuyucuyu meraklandır, cevabı içeride bırak):
 Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [tek cümlelik soru — max 10 kelime] 👇📸
-Kural: Sorunun cevabı hook'ta olmasın, analizi oku diye çeksin.
+Kural: Sorunun cevabı hook'ta olmasın, analizi oku diye çeksin. Soru, Erken Radar senaryosunu ima edebilir.
 Örnek: 🐳 #THYAO 327.50 (-1.2%) | Kurumlar 3 gündür topluyor — kimse fark etmedi mi? 👇📸
+Örnek: 🌪 #ISGYO 21.08 (+0.2%) | Sessiz birikim mi, tuzak mı? 👇📸
 
 TİP C — Rakam/Tespit (çarpıcı bir veriyi direkt söyle):
 Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [çarpıcı veri — max 8 kelime] 👇📸
-Kural: Somut sayı veya sinyal adı geçsin, jenerik olmasın.
+Kural: Somut sayı veya sinyal adı geçsin, jenerik olmasın. Erken Radar yıldız sayısı veya çoklu teyit varsa ön plana çıkar.
 Örnek: 🎯 #EREGL 140.00 (+0.5%) | OBV 5 gündür yukarı, fiyat hâlâ yatay. 👇📸
+Örnek: ⭐ #JANTS 18.74 (+2.1%) | 5⭐ Pullback + hacimli alım, klasik devam. 👇📸
 
 TİP D — İddia (net bir tespiti cesurca söyle):
 Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [cesur ama temkinli iddia — max 8 kelime] 👇📸
-Kural: "olabilir", "görünüyor" gibi ihtiyatlı kelimelerle sar.
+Kural: "olabilir", "görünüyor" gibi ihtiyatlı kelimelerle sar. Erken Radar senaryo ismi iddianı somutlaştırır.
 Örnek: 🔥 #KONTR 10.85 (+9.93%) | Kurumlar içeri girmiş gibi görünüyor — ama ralli sorgulanabilir. 👇📸
+Örnek: 🧨 #FRIGO 3.26 (+0.6%) | Sıkışma sonu — patlama yakın olabilir. 👇📸
 
 Kapanış: Uyarı baskınsa "SONUÇ ve UYARI kısmına dikkat👇", değilse "UYARI kısmına dikkat👇"
 
