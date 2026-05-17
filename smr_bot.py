@@ -510,16 +510,23 @@ async def delete_non_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id not in (FREE_ID, PRO_ID, ELITE_ID):
         return
 
+    # Kanal postu = sadece admin gönderebilir (Telegram kuralı) → bypass
+    # Bu kontrol "kanal adıyla post atan admin" senaryosunu yakalar
+    # (msg.from_user None gelir, ama sender_chat = kanalın kendisi)
+    if update.channel_post or (msg.sender_chat and msg.sender_chat.id == chat_id):
+        return
+
     # Bot mesajlarına dokunma
     if msg.from_user and msg.from_user.is_bot:
         return
 
-    # Admin mesajlarına dokunma
+    # Admin mesajlarına dokunma (kişisel hesapla post atan admin)
     uname = (msg.from_user.username or "") if msg.from_user else ""
     if msg.from_user and (msg.from_user.id in UNLIMITED_USERS or uname in UNLIMITED_USERNAMES):
         return
 
-    text = (msg.text or "").strip()
+    text = (msg.text or "") if msg.text else (msg.caption or "")
+    text = text.strip()
     if text.startswith("#"):
         return  # Geçerli mesaj — handle_ticker işleyecek
 
