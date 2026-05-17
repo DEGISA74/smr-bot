@@ -223,9 +223,10 @@ def is_yahoo_update_needed(ticker, local_last_date):
 # 1. AYARLAR VE STİL
 # ==============================================================================
 st.set_page_config(
-    page_title="SMART MONEY RADAR", 
+    page_title="SMART MONEY RADAR",
     layout="wide",
-    page_icon="💸"
+    page_icon="💸",
+    initial_sidebar_state="collapsed",
 )
 
 if 'theme' not in st.session_state:
@@ -1863,42 +1864,64 @@ def get_obv_divergence_status(ticker):
         change = df['Close'].diff()
         direction = np.sign(change).fillna(0)
         obv = (direction * df['Volume']).cumsum()
-        obv_sma = obv.rolling(20).mean() # Profesyonel Filtre
-        
-        # 2. Son 10 Günlük Trend Kıyaslaması
-        p_now = df['Close'].iloc[-1]; p_old = df['Close'].iloc[-11]
-        obv_now = obv.iloc[-1]; obv_old = obv.iloc[-11]
-        obv_sma_now = obv_sma.iloc[-1]
-        
-        price_trend = "YUKARI" if p_now > p_old else "AŞAĞI"
-        # Klasik OBV trendi (Eski usul)
-        obv_trend_raw = "YUKARI" if obv_now > obv_old else "AŞAĞI"
-        
-        # 3. GÜÇ FİLTRESİ: OBV şu an ortalamasının üzerinde mi?
+        obv_sma = obv.rolling(20).mean()  # Güç filtresi
+
+        # 2. Dual-Window: 5g (kısa ivme) + 14g (RSI uyumlu orta vade)
+        p_now     = float(df['Close'].iloc[-1])
+        p_5       = float(df['Close'].iloc[-6])
+        p_14      = float(df['Close'].iloc[-15])
+        obv_now   = float(obv.iloc[-1])
+        obv_5     = float(obv.iloc[-6])
+        obv_14    = float(obv.iloc[-15])
+        obv_sma_now = float(obv_sma.iloc[-1])
+
+        obv_5g_up  = obv_now > obv_5    # Kısa vadeli ivme
+        obv_14g_up = obv_now > obv_14   # Orta vadeli yön
+        price_5g_up  = p_now > p_5
+        price_14g_up = p_now > p_14
         is_obv_strong = obv_now > obv_sma_now
-        
-        # 4. Karar Mekanizması
-        if price_trend == "AŞAĞI" and obv_trend_raw == "YUKARI":
+
+        # 3. Karar Mekanizması — dual window çakışma mantığı
+        # ── Kafa çevirme tespiti ──────────────────────────────────────────
+        if obv_5g_up and not obv_14g_up:
+            return ("🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)", "#38bdf8",
+                    "5 günlük OBV yönünü yukarı çevirdi ancak 14 günlük eğim hâlâ negatif. "
+                    "Kısa vadeli alım baskısı başlamış, orta vade henüz teyit vermedi — erken toparlanma sinyali.")
+        if not obv_5g_up and obv_14g_up:
+            return ("🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)", "#f59e0b",
+                    "14 günlük OBV trendi hâlâ yukarı ama 5 günlük eğim aşağıya döndü. "
+                    "Kısa vadede para çıkışı başlamış, orta vade bozulmadan önce erken uyarı.")
+
+        # ── Güçlü sinyal: her iki pencere aynı yönde ─────────────────────
+        if not price_5g_up and obv_5g_up and obv_14g_up:
             if is_obv_strong:
-                return ("🔥 GÜÇLÜ GİZLİ GİRİŞ", "#16a34a", "Son 10 günde fiyat düşmesine rağmen, gerçek hacim (OBV) 20 günlük ortalamasını yukarı kesti. Akıllı para gizlice mal topluyor olabilir!")
+                return ("🔥 GÜÇLÜ GİZLİ GİRİŞ", "#16a34a",
+                        "Hem 5 hem 14 günlük OBV yukarı — fiyat düşerken akıllı para iki periyotta da "
+                        "birikimi sürdürüyor. OBV 20 günlük ortalamasını da aştı: güçlü akümülasyon sinyali.")
             else:
-                return ("👀 Olası Toplama (Zayıf)", "#d97706", "Son 10 günde fiyat düşerken OBV hafifçe yükseliyor, ancak henüz 20 günlük ortalamasını aşacak kadar güçlü bir para girişi yok.")
-                
-        elif price_trend == "YUKARI" and obv_trend_raw == "AŞAĞI":
-            return ("⚠️ GİZLİ ÇIKIŞ (Dağıtım)", "#f87171", "Son 10 günde fiyat yükselmesine rağmen kümülatif hacim (OBV) düşüyor. Yükseliş sahte olabilir, büyük oyuncular çıkış yapıyor olabilir.")
-            
-        elif is_obv_strong:
-            # DÜZELTME: Trende değil, BUGÜNKÜ mumun rengine bakıyoruz.
-            # 10 günlük trend yukarı olsa bile, bugün fiyat düşüyorsa "Yükseliş" deme.
-            p_yesterday = df['Close'].iloc[-2]
-            
-            if p_now < p_yesterday: # Bugün Fiyat Düşüyorsa (Kırmızı Mum)
-                return ("🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "#d97706", "Bugün fiyat düşüş eğiliminde olsa da kümülatif hacim (OBV) hala 20 günlük ortalamasının üzerinde gücünü koruyor. Panik satışları büyük oyuncular tarafından karşılanıyor olabilir.")
+                return ("👀 Olası Toplama (Zayıf)", "#d97706",
+                        "5 ve 14 günlük OBV fiyat düşüşüne rağmen yükseliyor, ancak henüz 20 günlük "
+                        "ortalamasını kesmedi. Birikim var ama büyük oyuncu onayı eksik.")
+
+        if price_5g_up and not obv_5g_up and not obv_14g_up:
+            return ("⚠️ GİZLİ ÇIKIŞ (Dağıtım)", "#f87171",
+                    "Hem 5 hem 14 günlük OBV fiyat yükselişini onaylamıyor. "
+                    "İki periyotta da para çıkışı sürüyor — yükseliş hacimsiz, dağıtım baskısı teyitli.")
+
+        if is_obv_strong and obv_5g_up and obv_14g_up:
+            p_yesterday = float(df['Close'].iloc[-2])
+            if p_now < p_yesterday:
+                return ("🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "#d97706",
+                        "Bugün fiyat geri çekilse de hem 5 hem 14 günlük OBV yukarı ve 20 günlük "
+                        "ortalamanın üzerinde. Panik satışları kurumsal alımla karşılanıyor.")
             else:
-                return ("✅ SAĞLIKLI TREND (Hacim Onaylı)", "#15803d", "Fiyattaki yükseliş, gerçek hacim (OBV) tarafından net bir şekilde destekleniyor. Trendin arkasında akıllı paranın itici gücü var.")
-            
-        else:
-            return ("⚖️ ZAYIF İVME (Hacimsiz Bölge)", "#64748B", "Kümülatif hacim akışı (OBV) 20 günlük ortalamasının altında süzülüyor. Fiyat hareketlerini destekleyecek net ve iştahlı bir para girişi görünmüyor.")
+                return ("✅ SAĞLIKLI TREND (Hacim Onaylı)", "#15803d",
+                        "5 ve 14 günlük OBV fiyat yükselişini iki periyotta da teyit ediyor. "
+                        "Trendin arkasında tutarlı akıllı para desteği var.")
+
+        return ("⚖️ ZAYIF İVME (Hacimsiz Bölge)", "#64748B",
+                "OBV 20 günlük ortalamasının altında; 5 ve 14 günlük pencerede net yön yok. "
+                "Fiyat hareketini destekleyecek kararlı bir para akışı görünmüyor.")
             
     except: return ("Hesaplanamadı", "#64748B", "-")
 
@@ -7338,33 +7361,41 @@ def calculate_price_action_dna(ticker):
         # Profesyonel Filtre: OBV'nin 20 günlük ortalaması
         obv_sma = obv.rolling(20).mean()
         
-        # B. Kıyaslamalar
-        p_now = c.iloc[-1]; p_old = c.iloc[-11]
-        obv_now = obv.iloc[-1]; obv_old = obv.iloc[-11]
+        # B. Dual-Window Kıyaslamalar (5g kısa ivme + 14g orta vade)
+        p_now = c.iloc[-1]; p_old = c.iloc[-6]
+        obv_now    = obv.iloc[-1]
+        obv_5      = obv.iloc[-6]   # 5 gün önceki OBV
+        obv_14     = obv.iloc[-15]  # 14 gün önceki OBV
         obv_sma_now = obv_sma.iloc[-1]
-        
-        p_tr = "YUKARI" if p_now > p_old else "AŞAĞI"
-        o_tr_raw = "YUKARI" if obv_now > obv_old else "AŞAĞI"
-        
-        # Güç Filtresi: OBV şu an ortalamasının üzerinde mi?
+
+        obv_5g_up  = obv_now > obv_5
+        obv_14g_up = obv_now > obv_14
+        p_tr       = "YUKARI" if p_now > p_old else "AŞAĞI"
         is_obv_strong = obv_now > obv_sma_now
 
-        obv_data = {"title": "Nötr / Zayıf", "desc": "Hacim akışı ortalamanın altında.", "color": "#64748B"}
-        
+        obv_data = {"title": "⚖️ ZAYIF İVME (Hacimsiz Bölge)", "desc": "Hacim akışı ortalamanın altında.", "color": "#64748B"}
+
+        # Kafa çevirme: iki pencere zıt yön
+        if obv_5g_up and not obv_14g_up:
+            obv_data = {"title": "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)", "desc": "5g OBV yukarı ama 14g hâlâ baskılı — erken toparlanma sinyali.", "color": "#38bdf8"}
+        elif not obv_5g_up and obv_14g_up:
+            obv_data = {"title": "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)", "desc": "5g OBV aşağı ama 14g hâlâ pozitif — kısa vadeli zayıflama.", "color": "#f59e0b"}
         # Senaryo 1: GİZLİ GİRİŞ (Fiyat Düşerken Mal Toplama)
-        if p_tr == "AŞAĞI" and o_tr_raw == "YUKARI":
+        elif p_tr == "AŞAĞI" and obv_5g_up and obv_14g_up:
             if is_obv_strong:
-                obv_data = {"title": "🔥 GÜÇLÜ GİZLİ GİRİŞ", "desc": "Fiyat düşerken OBV ortalamasını kırdı (Smart Money).", "color": "#16a34a"}
+                obv_data = {"title": "🔥 GÜÇLÜ GİZLİ GİRİŞ", "desc": "Fiyat düşerken her iki OBV penceresi yukarı & ort. üstünde (Smart Money).", "color": "#16a34a"}
             else:
                 obv_data = {"title": "👀 Olası Toplama (Zayıf)", "desc": "OBV artıyor ama henüz ortalamayı geçemedi.", "color": "#d97706"}
-                
-        # Senaryo 2: GİZLİ ÇIKIŞ (Fiyat Çıkarken Mal Çakma)
-        elif p_tr == "YUKARI" and o_tr_raw == "AŞAĞI":
-            obv_data = {"title": "⚠️ GİZLİ ÇIKIŞ", "desc": "Fiyat çıkarken OBV düşüyor.", "color": "#f87171"}
-            
+        # Senaryo 2: GİZLİ ÇIKIŞ
+        elif p_tr == "YUKARI" and not obv_5g_up and not obv_14g_up:
+            obv_data = {"title": "⚠️ GİZLİ ÇIKIŞ (Dağıtım)", "desc": "Fiyat çıkarken her iki OBV penceresi de düşüyor.", "color": "#f87171"}
         # Senaryo 3: TREND DESTEĞİ
-        elif is_obv_strong:
-            obv_data = {"title": "✅ Hacim Destekli Trend", "desc": "OBV ortalamasının üzerinde.", "color": "#15803d"}
+        elif is_obv_strong and obv_5g_up and obv_14g_up:
+            _p_yest = c.iloc[-2]
+            if p_now < _p_yest:
+                obv_data = {"title": "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "desc": "Bugün fiyat kırmızı ama OBV her iki pencerede güçlü.", "color": "#0ea5e9"}
+            else:
+                obv_data = {"title": "✅ SAĞLIKLI TREND (Hacim Onaylı)", "desc": "OBV her iki pencerede de ortalamasının üzerinde.", "color": "#15803d"}
 
         # ======================================================
         # 6. RSI UYUMSUZLUK (DIVERGENCE) - GÜNCELLENMİŞ HASSASİYET
@@ -7548,11 +7579,15 @@ def calculate_price_action_dna(ticker):
             n_pct = abs(closest - fiyat) / (fiyat + 1e-9) * 100
             naked_txt = f"{closest:.2f} (fiyattan %{n_pct:.1f} {direction})"
 
-        # OBV direction sayısal flag (GENEL ÖZET voting için — string matching yok)
-        if p_tr == "AŞAĞI" and o_tr_raw == "YUKARI":
-            _obv_direction = +1
-        elif p_tr == "YUKARI" and o_tr_raw == "AŞAĞI":
-            _obv_direction = -1
+        # OBV direction sayısal flag (GENEL ÖZET voting için — dual-window)
+        if p_tr == "AŞAĞI" and obv_5g_up and obv_14g_up:
+            _obv_direction = +1   # Gizli giriş (akümülasyon)
+        elif p_tr == "YUKARI" and not obv_5g_up and not obv_14g_up:
+            _obv_direction = -1   # Gizli çıkış (dağıtım)
+        elif obv_5g_up and not obv_14g_up:
+            _obv_direction = +1   # Kafa çeviriyor toparlanma — hafif pozitif
+        elif not obv_5g_up and obv_14g_up:
+            _obv_direction = 0    # Kafa çeviriyor zayıflama — nötr
         elif is_obv_strong:
             _obv_direction = +1
         else:
@@ -9557,10 +9592,16 @@ def _main_price_chart_plotly(symbol, dark_mode):
 
         smc = _compute_smc_elements(highs, lows, opens, closes, n_pivot=5)
 
-        bg   = '#ffffff'
-        fg   = '#1e293b'
-        grid = 'rgba(0,0,0,0.06)'
-        paper_bg = '#ffffff'
+        if dark_mode:
+            bg       = '#0e1628'
+            paper_bg = '#0e1628'
+            fg       = '#94a3b8'
+            grid     = 'rgba(255,255,255,0.04)'
+        else:
+            bg       = '#ffffff'
+            paper_bg = '#ffffff'
+            fg       = '#1e293b'
+            grid     = 'rgba(0,0,0,0.06)'
 
         fig = make_subplots(
             rows=2, cols=1,
@@ -9855,7 +9896,8 @@ def _main_price_chart_plotly(symbol, dark_mode):
             height=480,
             title=dict(
                 text=(
-                    f"<b>{disp}</b>  ·  SMC  ·  Son {n} Gün"
+                    f"<b style='color:{'#e2e8f0' if dark_mode else '#1e293b'}'>{disp}</b>"
+                    f"  ·  SMC  ·  Son {n} Gün"
                     f"    <span style='color:#38bdf8; font-size:11px;'>▬ Fiyat</span>"
                     f"  <span style='color:#ef5350; font-size:12px;'>— {_l50}</span>"
                     f"  <span style='color:#38bdf8; font-size:12px;'>— {_l100}</span>"
@@ -11162,25 +11204,33 @@ def calculate_smart_money_score(ticker):
             price_chg  = close.diff()
             direction  = price_chg.apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
             obv        = (volume * direction).cumsum()
-            obv_sma10  = obv.rolling(10).mean()
-            obv_above  = bool(obv.iloc[-1] > obv_sma10.iloc[-1])
-            obv_rising = bool(obv.iloc[-1] > obv.iloc[-3])
-            accum_pass = obv_above and obv_rising
+            obv_sma20  = obv.rolling(20).mean()
+            obv_5g_up  = bool(obv.iloc[-1] > obv.iloc[-6])   # kısa ivme
+            obv_14g_up = bool(obv.iloc[-1] > obv.iloc[-15])  # orta vade (RSI uyumlu)
+            obv_above  = bool(obv.iloc[-1] > obv_sma20.iloc[-1])
+            accum_pass = obv_5g_up and obv_14g_up and obv_above
             accum_days = 0
             if accum_pass:
-                for i in range(1, min(30, len(df) - 10)):
-                    if obv.iloc[-i-1] > obv_sma10.iloc[-i-1]:
+                for i in range(1, min(30, len(df) - 20)):
+                    if obv.iloc[-i-1] > obv_sma20.iloc[-i-1]:
                         accum_days += 1
                     else:
                         break
             accum_days = max(1, accum_days) if accum_pass else 0
             price_flat = abs(float(close.iloc[-1] / close.iloc[-6] - 1)) < 0.02
-            accum_desc = (f"{accum_days} gündür OBV yükseliyor, fiyat hareketsiz (diverjans)" if (accum_pass and price_flat)
-                          else f"{accum_days} gündür OBV 10G ort. üstünde — aktif alım" if accum_pass
-                          else "Net birikim sinyali yok")
-            accum_edu  = ("OBV (On-Balance Volume) para akışını izler. 10 günlük pencerede OBV "
-                          "ortalaması üstündeyse ve son 3 günde yükseliyorsa swing trade için "
-                          "aktif kurumsal alım baskısı var demektir.")
+            if obv_5g_up and not obv_14g_up:
+                accum_desc = "OBV kafa çeviriyor (toparlanma) — 5g yukarı ama 14g hâlâ baskılı"
+            elif not obv_5g_up and obv_14g_up:
+                accum_desc = "OBV kafa çeviriyor (zayıflama) — 5g aşağı, 14g hâlâ pozitif"
+            elif accum_pass and price_flat:
+                accum_desc = f"{accum_days} gündür OBV yükseliyor, fiyat hareketsiz (gizli birikim diverjansı)"
+            elif accum_pass:
+                accum_desc = f"{accum_days} gündür OBV 5g+14g pencerelerinde yükseliyor — aktif kurumsal alım"
+            else:
+                accum_desc = "Net birikim sinyali yok"
+            accum_edu  = ("OBV (On-Balance Volume) para akışını izler. 5 günlük (kısa ivme) ve "
+                          "14 günlük (RSI uyumlu orta vade) çift pencere ile değerlendirilir. "
+                          "Her ikisi de yükseliyorsa aktif kurumsal alım baskısı var demektir.")
 
         # ── KRİTER 4: ENERJİ/YAPI ────────────────────────────────────
         # Hisseler: BB Squeeze (kırılım enerjisi) | Endeksler: EMA20>EMA50 + aşırı uzama yok
@@ -11690,6 +11740,30 @@ def render_ict_certification_card(ticker):
     </div>
     """
     st.markdown(html_content.replace("\n", " "), unsafe_allow_html=True)
+
+def scan_long_radar_batch(asset_list, min_score=70):
+    """Long Radar (Akıllı Para) skoru >= min_score olan hisseleri batch tarar, loglama için DataFrame döner."""
+    import pandas as pd
+    results = []
+    for ticker in asset_list:
+        try:
+            data = calculate_smart_money_score(ticker)
+            if data is None:
+                continue
+            score = data.get('score', 0) or 0
+            if score < min_score:
+                continue
+            df_hist = get_safe_historical_data(ticker)
+            price = float(df_hist['Close'].iloc[-1]) if df_hist is not None and not df_hist.empty else 0.0
+            results.append({
+                'Sembol': ticker.replace('.IS', ''),
+                'Fiyat':  round(price, 2),
+                'Skor':   score,
+                'Durum':  data.get('status', ''),
+            })
+        except Exception:
+            continue
+    return pd.DataFrame(results) if results else pd.DataFrame()
 
 def render_ict_deep_panel(ticker):
     data = calculate_ict_deep_analysis(ticker)
@@ -13983,6 +14057,8 @@ def render_unified_signals_panel(ticker):
             _obv_t, _, _ = get_obv_divergence_status(ticker)
             if any(k in _obv_t.upper() for k in ["DAĞITIM","ÇIKIŞ","NEGATİF","DÜŞÜŞ","ZAYIF SATIŞ"]):
                 _kv_warnings.append("OBV Dağıtım")
+            elif "KAFA ÇEVİRİYOR (ZAYIFLAMA)" in _obv_t.upper():
+                _kv_warnings.append("OBV Zayıflıyor")
         except: pass
         try:
             _zd_kv = _z_score_details(df)
@@ -14071,21 +14147,30 @@ def render_unified_signals_panel(ticker):
         # ── 4. OBV ──────────────────────────────────────────────────
         try:
             obv_title, obv_color, _ = get_obv_divergence_status(ticker)
-            if "ZAYIF" not in obv_title and "Veri Yok" not in obv_title and "Hesaplanamadı" not in obv_title:
-                is_obv_pos = any(k in obv_title.upper() for k in ["GİRİŞ","GÜÇLÜ","POZİTİF","ALIŞ","DİRENÇ","EMİLİM","BİRİKİM","SAĞLIKLI","TOPLAMA"])
-                if is_obv_pos:
+            if "ZAYIF İVME" not in obv_title and "Veri Yok" not in obv_title and "Hesaplanamadı" not in obv_title:
+                if "KAFA ÇEVİRİYOR" in obv_title.upper():
+                    _obv_is_recovery = "TOPARLANMA" in obv_title.upper()
                     _obv_edu = (
-                        f"OBV yukarı trendde ve fiyatla uyumlu hareket ediyor. "
-                        f"Kurumsal para fiyat düşüşlerinde bile birikim yapmaya devam ediyor — "
-                        f"bu güçlü bir akümülasyon sinyali. Mevcut durum: {obv_title}."
+                        f"OBV'nin 5 günlük (kısa ivme) ve 14 günlük (orta vade) pencereleri zıt yönde hareket ediyor. "
+                        f"{'5g OBV yukarı döndü ama 14g hâlâ baskılı — erken toparlanma sinyali.' if _obv_is_recovery else '5g OBV zayıfladı ama 14g hâlâ pozitif — kısa vadeli yavaşlama.'} "
+                        f"Mevcut durum: {obv_title}."
                     )
+                    signals.append(("📊", f"OBV: {obv_title}", obv_color, _obv_edu, _obv_is_recovery))
                 else:
-                    _obv_edu = (
-                        f"OBV aşağı trendde — fiyat yükselirken hacim desteği zayıflıyor. "
-                        f"Kurumsal para sessizce çıkış yapıyor olabilir (dağıtım). "
-                        f"Yükseliş sorgulanabilir. Mevcut durum: {obv_title}."
-                    )
-                signals.append(("📊",f"OBV: {obv_title}",obv_color,_obv_edu,is_obv_pos))
+                    is_obv_pos = any(k in obv_title.upper() for k in ["GİRİŞ","GÜÇLÜ","POZİTİF","ALIŞ","DİRENÇ","EMİLİM","BİRİKİM","SAĞLIKLI","TOPLAMA"])
+                    if is_obv_pos:
+                        _obv_edu = (
+                            f"OBV yukarı trendde ve fiyatla uyumlu hareket ediyor. "
+                            f"Kurumsal para fiyat düşüşlerinde bile birikim yapmaya devam ediyor — "
+                            f"bu güçlü bir akümülasyon sinyali. Mevcut durum: {obv_title}."
+                        )
+                    else:
+                        _obv_edu = (
+                            f"OBV aşağı trendde — fiyat yükselirken hacim desteği zayıflıyor. "
+                            f"Kurumsal para sessizce çıkış yapıyor olabilir (dağıtım). "
+                            f"Yükseliş sorgulanabilir. Mevcut durum: {obv_title}."
+                        )
+                    signals.append(("📊", f"OBV: {obv_title}", obv_color, _obv_edu, is_obv_pos))
         except: pass
 
         # ── 5. ICT Sniper ───────────────────────────────────────────
@@ -14733,11 +14818,14 @@ def _render_genel_ozet_panel():
                 _gs_up = sum(1 for s in (_sig_hacim, _sig_obv, _sig_yapi, _sig_rsi) if s > 0)
                 _gs_dn = sum(1 for s in (_sig_hacim, _sig_obv, _sig_yapi, _sig_rsi) if s < 0)
 
-                if   _gs_up >= 3:                  _gs_net_clr = "#4ade80"; _gs_net_txt = "YUKARI"
-                elif _gs_dn >= 3:                  _gs_net_clr = "#f87171"; _gs_net_txt = "AŞAĞI"
-                elif _gs_up >= 2 and _gs_dn < 2:  _gs_net_clr = "#86efac"; _gs_net_txt = "HAFİF YUKARI"
-                elif _gs_dn >= 2 and _gs_up < 2:  _gs_net_clr = "#fca5a5"; _gs_net_txt = "HAFİF AŞAĞI"
-                else:                              _gs_net_clr = "#fbbf24"; _gs_net_txt = "KARARSIZ"
+                if   _gs_up == 4:                              _gs_net_clr = "#22c55e"; _gs_net_txt = "YUKARI ★"
+                elif _gs_dn == 4:                              _gs_net_clr = "#dc2626"; _gs_net_txt = "AŞAĞI ★"
+                elif _gs_up >= 3:                              _gs_net_clr = "#4ade80"; _gs_net_txt = "YUKARI"
+                elif _gs_dn >= 3:                              _gs_net_clr = "#f87171"; _gs_net_txt = "AŞAĞI"
+                elif _gs_up == 2 and _gs_dn == 2:              _gs_net_clr = "#fb923c"; _gs_net_txt = "ÇELİŞKİLİ"
+                elif _gs_up >= 2 and _gs_dn < 2:               _gs_net_clr = "#86efac"; _gs_net_txt = "HAFİF YUKARI"
+                elif _gs_dn >= 2 and _gs_up < 2:               _gs_net_clr = "#fca5a5"; _gs_net_txt = "HAFİF AŞAĞI"
+                else:                                          _gs_net_clr = "#fbbf24"; _gs_net_txt = "KARARSIZ"
 
                 # ── TEMA RENKLERİ (SMR Dark) ──────────────────────────────────
                 _gs_txt      = "#cbd5e1"
@@ -14762,29 +14850,60 @@ def _render_genel_ozet_panel():
                     if sig < 0: return _gs_dn_clr
                     return _gs_neu
 
+                # Hex → "r,g,b" string (chip background için)
+                def _hex_to_rgb(hx):
+                    try:
+                        h = hx.lstrip('#')
+                        if len(h) == 3:
+                            h = ''.join(c*2 for c in h)
+                        return f"{int(h[0:2],16)},{int(h[2:4],16)},{int(h[4:6],16)}"
+                    except Exception:
+                        return "148,163,184"
+
+                # Bölüm ikonları
+                _sec_icons = {
+                    "Yapı & Konum": "🏗️",
+                    "Yön":          "🧭",
+                    "Para akışı":   "💰",
+                    "Momentum":     "⚡",
+                }
+
                 def _gs_section(title):
-                    return (f"<div style='margin-top:8px;padding-top:5px;"
+                    _ic = _sec_icons.get(title, "•")
+                    return (f"<div style='margin-top:10px;padding-top:7px;"
                             f"border-top:1px solid {_gs_line};"
-                            f"font-size:0.6rem;font-weight:800;letter-spacing:0.09em;"
-                            f"color:{_gs_lbl_col};text-transform:uppercase;margin-bottom:1px;'>"
-                            f"{title}</div>")
+                            f"font-size:0.72rem;font-weight:800;letter-spacing:0.08em;"
+                            f"color:{_gs_lbl_col};text-transform:uppercase;margin-bottom:3px;"
+                            f"display:flex;align-items:center;gap:6px;'>"
+                            f"<span style='font-size:0.88rem;line-height:1;'>{_ic}</span>"
+                            f"<span>{title}</span></div>")
 
                 def _gs_explain(text):
                     return (f"<div style='font-size:0.69rem;color:{_gs_expl_col};"
-                            f"margin-top:1px;line-height:1.35;'>↳ {text}</div>")
+                            f"margin-top:3px;line-height:1.4;padding-left:11px;"
+                            f"font-style:italic;opacity:0.78;'>{text}</div>")
 
-                def _gs_row(label, value_html, explain=None, stop=False, lc=None):
-                    """Etiket sol (lc=label color) — değer sağa hizalı monospace — açıklama altta."""
+                def _gs_row(label, value_html, explain=None, stop=False, lc=None, pulse=False):
+                    """Etiket sol — severity left-border + chip değer — italic açıklama altta."""
                     pfx = "⛔ " if stop else ""
+                    sev_clr = lc if lc else _gs_neu
                     lbl_col = lc if lc else _gs_txt
                     lbl_weight = "700" if lc else "400"
+                    _rgb = _hex_to_rgb(sev_clr)
+                    pulse_style = (f"animation:gs-pulse-warn 2s ease-in-out infinite;"
+                                   if pulse else "")
+                    chip_bg = f"rgba({_rgb},0.10)" if lc else "rgba(148,163,184,0.05)"
+                    chip_bd = f"1px solid rgba({_rgb},0.25)" if lc else "1px solid rgba(148,163,184,0.12)"
                     return (
-                        f"<div style='padding:4px 0;'>"
-                        f"<div style='display:flex;align-items:center;gap:4px;'>"
+                        f"<div style='padding:6px 8px 6px 9px;margin:3px 0;"
+                        f"border-left:3px solid {sev_clr};border-radius:0 5px 5px 0;"
+                        f"background:rgba(56,189,248,0.025);{pulse_style}'>"
+                        f"<div style='display:flex;align-items:center;gap:6px;'>"
                         f"<span style='font-size:0.8rem;color:{lbl_col};"
                         f"font-weight:{lbl_weight};flex:1;'>{pfx}{label}</span>"
                         f"<span style='font-family:\"JetBrains Mono\",ui-monospace,Consolas,monospace;"
-                        f"font-size:0.81rem;font-weight:700;white-space:nowrap;text-align:right;'>"
+                        f"font-size:0.78rem;font-weight:700;white-space:nowrap;text-align:right;"
+                        f"padding:3px 8px;border-radius:5px;background:{chip_bg};border:{chip_bd};'>"
                         f"{value_html}</span>"
                         f"</div>"
                         f"{_gs_explain(explain) if explain else ''}"
@@ -14793,9 +14912,19 @@ def _render_genel_ozet_panel():
 
                 # ── VERDICT BANDI ─────────────────────────────────────────────
                 _dom_n      = max(_gs_up, _gs_dn)
-                _lr_vhtml   = (f"<span style='color:{_lr_clr};font-size:0.72rem;'>{_lr_score}/100</span>"
-                               if _lr_score is not None
-                               else f"<span style='color:{_gs_neu};font-size:0.72rem;'>—</span>")
+                # LONG radar — mini progress bar + skor
+                if _lr_score is not None:
+                    _lr_bar_html = (
+                        f"<span style='display:inline-block;width:42px;height:5px;background:#1e293b;"
+                        f"border-radius:3px;position:relative;margin-right:5px;vertical-align:middle;'>"
+                        f"<span style='position:absolute;left:0;top:0;width:{min(_lr_score,100):.0f}%;"
+                        f"height:100%;background:{_lr_clr};border-radius:3px;box-shadow:0 0 4px {_lr_clr};'></span>"
+                        f"</span>"
+                    )
+                    _lr_vhtml = (f"{_lr_bar_html}"
+                                 f"<span style='color:{_lr_clr};font-size:0.72rem;'>{_lr_score}/100</span>")
+                else:
+                    _lr_vhtml = f"<span style='color:{_gs_neu};font-size:0.72rem;'>—</span>"
                 _sig_bd     = (f"Hacim {_arrow(_sig_hacim)} · OBV {_arrow(_sig_obv)} · "
                                f"Yapı {_arrow(_sig_yapi)} · RSI {_arrow(_sig_rsi)}")
                 _mono_s     = '"JetBrains Mono",ui-monospace,Consolas,monospace'
@@ -14833,16 +14962,228 @@ def _render_genel_ozet_panel():
                     f"<div style='background:rgba(56,189,248,0.07);"
                     f"border:1px solid {_gs_line};border-radius:6px;"
                     f"padding:8px 10px;margin-bottom:2px;'>"
-                    f"<div style='display:flex;align-items:center;"
-                    f"font-family:{_mono_s};font-weight:800;gap:0;'>"
-                    f"<span style='color:{_gs_net_clr};flex:1;font-size:0.83rem;'>{_gs_net_txt} "
+                    f"<div style='display:flex;align-items:center;flex-wrap:wrap;row-gap:4px;"
+                    f"font-family:{_mono_s};font-weight:800;'>"
+                    f"<span style='color:{_gs_net_clr};font-size:0.83rem;white-space:nowrap;'>{_gs_net_txt} "
                     f"<span style='opacity:0.6;font-size:0.65rem;font-weight:600;'>{_dom_n}/4</span></span>"
-                    f"<span style='color:{_gs_neu};padding:0 6px;font-weight:400;font-size:0.72rem;'>|</span>"
+                    f"<span style='display:inline-flex;align-items:center;white-space:nowrap;margin-left:auto;'>"
+                    f"<span style='color:{_gs_neu};padding:0 8px;font-weight:400;font-size:0.72rem;'>|</span>"
                     f"<span style='color:{_gs_neu};font-size:0.62rem;font-weight:600;letter-spacing:0.04em;margin-right:3px;'>LONG</span>{_lr_vhtml}"
-                    f"<span style='color:{_gs_neu};padding:0 6px;font-weight:400;font-size:0.72rem;'>|</span>"
-                    f"<span style='color:{_gs_neu};font-size:0.62rem;font-weight:600;letter-spacing:0.04em;margin-right:3px;'>{_lvl_label}</span>{_lvl_vhtml}"
+                    f"</span>"
                     f"</div>"
                     f"</div>"
+                )
+
+                # ── GRUP 0: YAPI & KONUM ─────────────────────────────────────
+                _gs_items_html += _gs_section("Yapı & Konum")
+
+                # 1) YAPI — 8 senaryo (HH+HL, CHoCH, LH+LL, Megafon, Üçgen, Yatay, Yeni yapı)
+                _yapi_lbl  = "Karışık"; _yapi_clr = _gs_neu
+                _yapi_expl = "Net swing yapısı yok — yön belirsiz"
+                _yapi_short = ""  # Başlığa eklenir: (HH+HL), (LH+LL), vb.
+                try:
+                    if _gs_df is not None and len(_gs_df) >= 6:
+                        _hs_y = _gs_df['High'].values
+                        _ls_y = _gs_df['Low'].values
+                        _h1, _h2, _h3 = _hs_y[-1], _hs_y[-2], _hs_y[-3]
+                        _l1, _l2, _l3 = _ls_y[-1], _ls_y[-2], _ls_y[-3]
+                        _h4, _h5, _h6 = _hs_y[-4], _hs_y[-5], _hs_y[-6]
+                        _l4, _l5, _l6 = _ls_y[-4], _ls_y[-5], _ls_y[-6]
+                        # Eşitlik toleransı (son 6 mum range'inin %15'i)
+                        _avg_rng = max(1e-9, (max(_hs_y[-6:]) - min(_ls_y[-6:])) / 5)
+                        _tol_y   = _avg_rng * 0.15
+
+                        _hh = _h1 > _h2 > _h3
+                        _hl = _l1 > _l2 > _l3
+                        _lh = _h1 < _h2 < _h3
+                        _ll = _l1 < _l2 < _l3
+                        _prev_hh = _h4 > _h5 > _h6
+                        _prev_hl = _l4 > _l5 > _l6
+                        _prev_lh = _h4 < _h5 < _h6
+                        _prev_ll = _l4 < _l5 < _l6
+
+                        if _hh and _hl:
+                            if _prev_lh and _prev_ll:
+                                _yapi_lbl = "Dönüş yukarı ⤴"; _yapi_clr = _gs_up_clr
+                                _yapi_expl = "Yapı aşağıdan yukarıya kırıldı — CHoCH (dönüş sinyali)"
+                                _yapi_short = "HH+HL"
+                            else:
+                                _yapi_lbl = "Sağlam yapı ↑"; _yapi_clr = _gs_up_clr
+                                _yapi_expl = "Yüksekler ve dipler yükseliyor — klasik yükseliş yapısı"
+                                _yapi_short = "HH+HL"
+                        elif _lh and _ll:
+                            if _prev_hh and _prev_hl:
+                                _yapi_lbl = "Dönüş aşağı ⤵"; _yapi_clr = _gs_dn_clr
+                                _yapi_expl = "Yapı yukarıdan aşağıya kırıldı — CHoCH (dönüş sinyali)"
+                                _yapi_short = "LH+LL"
+                            else:
+                                _yapi_lbl = "Yapı bozuk ↓"; _yapi_clr = _gs_dn_clr
+                                _yapi_expl = "Yüksekler ve dipler düşüyor — klasik düşüş yapısı"
+                                _yapi_short = "LH+LL"
+                        elif _hh and _ll:
+                            _yapi_lbl = "Megafon ⚠"; _yapi_clr = _gs_dn_clr
+                            _yapi_expl = "Yüksekler yükseliyor, dipler düşüyor — genişleyen volatilite, sağlıksız"
+                            _yapi_short = "HH+LL"
+                        elif _lh and _hl:
+                            _yapi_lbl = "Üçgen sıkışma"; _yapi_clr = _gs_neu
+                            _yapi_expl = "Yüksekler düşüyor, dipler yükseliyor — daralan üçgen, kırılım yakın"
+                            _yapi_short = "LH+HL"
+                        elif abs(_h1 - _h3) < _tol_y and abs(_l1 - _l3) < _tol_y:
+                            _yapi_lbl = "Yatay range"; _yapi_clr = _gs_neu
+                            _yapi_expl = "Eşit yüksekler + eşit dipler — yatay konsolidasyon"
+                            _yapi_short = "eşit"
+                        elif _hh and not _ll:
+                            _yapi_lbl = "Yeni yapı oluşuyor ↑"; _yapi_clr = _gs_neu
+                            _yapi_expl = "Yapının bir tarafı kırıldı. Tam trend yeni yapı henüz oluşmadı."
+                            _yapi_short = "HH"
+                        elif _hl and not _lh:
+                            _yapi_lbl = "Yeni yapı oluşuyor ↑"; _yapi_clr = _gs_neu
+                            _yapi_expl = "Yapının bir tarafı kırıldı. Tam trend yeni yapı henüz oluşmadı."
+                            _yapi_short = "HL"
+                        elif _lh or _ll:
+                            _yapi_lbl = "Yeni yapı oluşuyor ↓"; _yapi_clr = _gs_neu
+                            _yapi_expl = "Yapının bir tarafı kırıldı. Tam trend yeni yapı henüz oluşmadı."
+                            _yapi_short = "LH" if _lh else "LL"
+                except Exception:
+                    pass
+
+                # CHoCH dönüş ve Megafon → pulse (kritik yapı sinyalleri)
+                _yapi_pulse = ("Dönüş" in _yapi_lbl) or ("Megafon" in _yapi_lbl)
+                _yapi_label_full = f"Yapı ({_yapi_short})" if _yapi_short else "Yapı"
+                _gs_items_html += _gs_row(
+                    _yapi_label_full,
+                    f"<span style='color:{_yapi_clr};'>{_yapi_lbl}</span>",
+                    explain=_yapi_expl,
+                    lc=_yapi_clr,
+                    pulse=_yapi_pulse
+                )
+
+                # 2) MOMENTUM YÖNÜ — RSI 5g eğimi × seviye matris (7 senaryo)
+                _mom_lbl = "Yetersiz veri"; _mom_clr = _gs_neu; _mom_expl = "RSI tarihçesi yetersiz"
+                try:
+                    if _gs_df is not None and len(_gs_df) >= 20:
+                        _delta_m = _gs_df['Close'].diff()
+                        _gain_m  = _delta_m.where(_delta_m > 0, 0).rolling(14).mean()
+                        _loss_m  = (-_delta_m.where(_delta_m < 0, 0)).rolling(14).mean()
+                        _rs_m    = _gain_m / _loss_m
+                        _rsi_ser = 100 - 100 / (1 + _rs_m)
+                        _rsi_n   = float(_rsi_ser.iloc[-1])
+                        _rsi_5   = float(_rsi_ser.iloc[-6])
+                        _rsi_dlt = _rsi_n - _rsi_5
+
+                        if _rsi_dlt > 10 and _rsi_n < 50:
+                            _mom_lbl = "Sert dönüş ↗↗"; _mom_clr = _gs_up_clr
+                            _mom_expl = f"RSI 5g'de +{_rsi_dlt:.1f} — aşırı satımdan güçlü dönüş"
+                        elif _rsi_dlt > 5 and _rsi_n < 50:
+                            _mom_lbl = "Toparlanma ↗"; _mom_clr = _gs_up_clr
+                            _mom_expl = f"RSI 5g'de +{_rsi_dlt:.1f} — düşük seviyeden toparlanıyor"
+                        elif _rsi_dlt > 5 and _rsi_n >= 50:
+                            _mom_lbl = "Trend hızlanıyor ↑"; _mom_clr = _gs_up_clr
+                            _mom_expl = f"RSI 5g'de +{_rsi_dlt:.1f} — momentum bölgesinde ivmeleniyor"
+                        elif _rsi_dlt < -10 and _rsi_n > 60:
+                            _mom_lbl = "Tepe geri çekilme ⤵"; _mom_clr = _gs_dn_clr
+                            _mom_expl = f"RSI 5g'de {_rsi_dlt:.1f} — yüksek seviyeden sert geri çekilme"
+                        elif _rsi_dlt < -5 and _rsi_n > 50:
+                            _mom_lbl = "Yavaşlıyor ↘"; _mom_clr = _gs_dn_clr
+                            _mom_expl = f"RSI 5g'de {_rsi_dlt:.1f} — yükseliş yorgun"
+                        elif _rsi_dlt < -5 and _rsi_n <= 50:
+                            _mom_lbl = "Aşağı ivme ↓↓"; _mom_clr = _gs_dn_clr
+                            _mom_expl = f"RSI 5g'de {_rsi_dlt:.1f} — düşüş hızlanıyor"
+                        else:
+                            _mom_lbl = "Yatay →"; _mom_clr = _gs_neu
+                            _mom_expl = f"RSI 5g'de {_rsi_dlt:+.1f} — yön belirsiz"
+                except Exception:
+                    pass
+
+                # Sert dönüş / Tepe geri çekilme → pulse
+                _mom_pulse = ("Sert" in _mom_lbl) or ("Tepe geri çekilme" in _mom_lbl)
+                _gs_items_html += _gs_row(
+                    "Momentum",
+                    f"<span style='color:{_mom_clr};'>{_mom_lbl}</span>",
+                    explain=_mom_expl,
+                    lc=_mom_clr,
+                    pulse=_mom_pulse
+                )
+
+                # 3) RANGE KONUMU — 20g aralık × değişim matris (9 senaryo)
+                _rng_lbl = "—"; _rng_clr = _gs_neu; _rng_expl = "20g aralık verisi yok"
+                _rng_pos_pct = None
+                try:
+                    if _gs_df is not None and len(_gs_df) >= 20 and _curr_close_val:
+                        _h20 = float(_gs_df['High'].iloc[-20:].max())
+                        _l20 = float(_gs_df['Low'].iloc[-20:].min())
+                        _close_5g = float(_gs_df['Close'].iloc[-6])
+                        if _h20 > _l20:
+                            _rng_pos_pct  = (_curr_close_val - _l20) / (_h20 - _l20) * 100
+                            _rng_prev_pct = (_close_5g - _l20) / (_h20 - _l20) * 100
+                            _drng         = _rng_pos_pct - _rng_prev_pct
+
+                            _rng_pos_str = f"5 gün önce fiyat son 20 günlük aralığın %{_rng_prev_pct:.0f}'sindeydi, şimdi %{_rng_pos_pct:.0f}'sinde"
+                            if _rng_pos_pct < 20 and _rng_prev_pct < 20:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Dipte tutunma"; _rng_clr = _gs_dn_clr
+                                _rng_expl = f"{_rng_pos_str} — sürekli dipte tutunma, düşüş baskısı sürüyor"
+                            elif _rng_pos_pct < 33 and _rng_prev_pct > 50:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Üstten düşüş ⤵"; _rng_clr = _gs_dn_clr
+                                _rng_expl = f"{_rng_pos_str} — satış baskısı, U-top çöküş"
+                            elif _rng_pos_pct < 33:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Discount"; _rng_clr = _gs_up_clr
+                                _rng_expl = f"{_rng_pos_str} — aralığın alt bölgesinde, ucuz bölge"
+                            elif _rng_pos_pct > 80 and _rng_prev_pct > 80:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Tepede tıkalı ⚠"; _rng_clr = _gs_dn_clr
+                                _rng_expl = f"{_rng_pos_str} — sürekli tepede tıkanma, dağıtım riski"
+                            elif _rng_pos_pct > 66 and _rng_prev_pct < 33:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · V-dönüş ⤴"; _rng_clr = _gs_up_clr
+                                _rng_expl = f"{_rng_pos_str} — alıcı baskısı, dipten V-dönüş"
+                            elif _rng_pos_pct > 66 and _rng_prev_pct > 66:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Premium tutunma ★"; _rng_clr = _gs_up_clr
+                                _rng_expl = f"{_rng_pos_str} — premium bölgede tutunma, yükseliş sağlıklı"
+                            elif _rng_pos_pct > 66:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Premium"; _rng_clr = _gs_dn_clr
+                                _rng_expl = f"{_rng_pos_str} — aralığın üst bölgesinde, pahalı bölge"
+                            elif _drng > 15:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Toparlanma ↗"; _rng_clr = _gs_up_clr
+                                _rng_expl = f"{_rng_pos_str} — discount'tan çıkış, alıcı baskısı geliyor"
+                            elif _drng < -15:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Premium kaybı ↘"; _rng_clr = _gs_dn_clr
+                                _rng_expl = f"{_rng_pos_str} — premium'dan düşüş, alıcı baskısı zayıflıyor"
+                            else:
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Orta — yatay"; _rng_clr = _gs_neu
+                                _rng_expl = f"{_rng_pos_str} — orta bölgede yatay sıkışma, yön belirsiz"
+                except Exception:
+                    pass
+
+                # Mini bar + delta yüzde (renkli: pozitif yeşil, negatif kırmızı)
+                if _rng_pos_pct is not None:
+                    _bar_html = (
+                        f"<span style='display:inline-block;width:54px;height:5px;background:#1e293b;"
+                        f"border-radius:3px;position:relative;margin-right:6px;vertical-align:middle;'>"
+                        f"<span style='position:absolute;left:{_rng_pos_pct:.0f}%;top:-2.5px;"
+                        f"width:10px;height:10px;border-radius:50%;background:{_rng_clr};"
+                        f"transform:translateX(-50%);box-shadow:0 0 4px {_rng_clr};'></span>"
+                        f"</span>"
+                    )
+                    # Delta: 5g'deki konum değişimi (pozitif yeşil, negatif kırmızı)
+                    try:
+                        _delta_rng_val = _rng_pos_pct - _rng_prev_pct
+                        _delta_clr = _gs_up_clr if _delta_rng_val > 0 else (_gs_dn_clr if _delta_rng_val < 0 else _gs_neu)
+                        _delta_sign = "+" if _delta_rng_val > 0 else ""
+                        _delta_html = (f"<span style='color:{_delta_clr};font-size:0.78rem;"
+                                       f"font-weight:700;margin-right:5px;'>%{_delta_sign}{_delta_rng_val:.0f}</span>")
+                    except Exception:
+                        _delta_html = ""
+                    _rng_value = (f"{_bar_html}{_delta_html}"
+                                  f"<span style='color:{_rng_clr};font-size:0.75rem;'>{_rng_lbl.split(' · ', 1)[-1] if ' · ' in _rng_lbl else _rng_lbl}</span>")
+                else:
+                    _rng_value = f"<span style='color:{_rng_clr};'>{_rng_lbl}</span>"
+
+                # V-dönüş, Üstten düşüş, Tepede tıkalı → pulse (kritik range sinyalleri)
+                _rng_pulse = any(k in _rng_lbl for k in ("V-dönüş", "Üstten düşüş", "Tepede tıkalı"))
+                _gs_items_html += _gs_row(
+                    "Son 20G Range",
+                    _rng_value,
+                    explain=_rng_expl,
+                    lc=_rng_clr,
+                    pulse=_rng_pulse
                 )
 
                 # ── GRUP 1: YÖN (önce macro/orta vade, sonra kısa vade) ──────────
@@ -14850,23 +15191,57 @@ def _render_genel_ozet_panel():
                 _net_sig = (1 if _gs_net_txt in ("YUKARI", "HAFİF YUKARI")
                             else (-1 if _gs_net_txt in ("AŞAĞI", "HAFİF AŞAĞI") else 0))
 
+                # Kısa vade yön bayrağı (Ana trend açıklamasını ayarlamak için kullanılır)
+                _kv_is_neg = _gs_net_txt in ("AŞAĞI ★", "AŞAĞI", "HAFİF AŞAĞI", "KARARSIZ", "ÇELİŞKİLİ")
+
                 # Ana trend önce — orta vade bağlamı (2-3 ay)
                 if _gs_sma50_txt:
                     _s50col  = _gs_up_clr if _gs_sma50_above else _gs_dn_clr
                     _s50_dir = "YUKARI" if _gs_sma50_above else "AŞAĞI"
+                    # Kısa vade negatif/kararsız ise "köklü/sağlam" abartılarını kaldır
+                    if _kv_is_neg:
+                        # _gs_sma50_txt içindeki "Köklü yükseliş/düşüş" → "Yükseliş/Düşüş trendi"
+                        _trend_txt_clean = (_gs_sma50_txt
+                                            .replace("Köklü yükseliş", "Yükseliş trendi")
+                                            .replace("Köklü düşüş", "Düşüş trendi"))
+                        _ana_expl = "Orta vade (2–3 ay) · " + _trend_txt_clean
+                    else:
+                        _ana_expl = ("Orta vade (2–3 ay) · " + _gs_sma50_txt +
+                                     (" · sağlam" if _gs_sma50_above else " · baskılı"))
                     _gs_items_html += _gs_row(
                         "Ana trend",
                         f"<span style='color:{_s50col};'>{_s50_dir}</span>",
-                        explain=("Orta vade (2–3 ay) · " + _gs_sma50_txt +
-                                 (" · sağlam" if _gs_sma50_above else " · baskılı")),
+                        explain=_ana_expl,
                         lc=_s50col
                     )
 
                 # Kısa Vade görünüm sonra — kısa vade (bugün/bu hafta)
+                # Ana trend ile çelişki kontrolü (kısa vade negatif + ana trend yukarı, ya da tersi)
+                _conflict = False
+                if _gs_sma50_above is not None:
+                    if _gs_sma50_above and _kv_is_neg:
+                        _conflict = True
+                    elif (not _gs_sma50_above) and (_gs_net_txt in ("YUKARI ★", "YUKARI", "HAFİF YUKARI")):
+                        _conflict = True
+
+                _conflict_suffix = " — ana trendle çelişiyor" if _conflict else ""
+
+                if _gs_up == 4:
+                    _kv_expl = "4/4 sinyal yukarı yönde — tam konsensüs, güçlü yukarı görünüm"
+                elif _gs_dn == 4:
+                    _kv_expl = "4/4 sinyal aşağı yönde — tam konsensüs, güçlü aşağı görünüm"
+                elif _gs_up == 2 and _gs_dn == 2:
+                    _kv_expl = "2 yukarı + 2 aşağı — sinyaller çelişiyor, yön net değil" + _conflict_suffix
+                elif _gs_up >= 3:
+                    _kv_expl = f"3/4 sinyal yukarı — güçlü konsensüs ({_gs_up} yukarı, {_gs_dn} aşağı)" + _conflict_suffix
+                elif _gs_dn >= 3:
+                    _kv_expl = f"3/4 sinyal aşağı — güçlü konsensüs ({_gs_dn} aşağı, {_gs_up} yukarı)" + _conflict_suffix
+                else:
+                    _kv_expl = f"Bu hafta yön kararsız · 4 sinyal oylaması — {_dom_n}/4 aynı yönde" + _conflict_suffix
                 _gs_items_html += _gs_row(
                     "Kısa Vade Görünüm",
                     f"<span style='color:{_gs_net_clr};'>{_gs_net_txt}</span>",
-                    explain=f"Kısa vade (bugün–bu hafta) · 4 sinyal oylaması — {_dom_n}/4 aynı yönde",
+                    explain=_kv_expl,
                     lc=_dir_color(_net_sig)
                 )
 
@@ -14888,26 +15263,112 @@ def _render_genel_ozet_panel():
                         lc=_gs_neu
                     )
                 else:
-                    _vol_intp = "ortalama üstü" if _gs_rvol >= 1.5 else ("normal" if _gs_rvol >= 0.8 else "zayıf")
-                    _vol_clr  = _gs_up_clr if _gs_rvol >= 1.5 else (_gs_neu if _gs_rvol >= 0.8 else _gs_dn_clr)
-                    _gs_items_html += _gs_row(
-                        "Hacim",
-                        (f"<span style='color:{_vol_clr};'>{_gs_rvol:.1f}x</span> "
-                         f"<span style='color:{_gs_neu};font-size:0.73rem;'>{_vol_intp}</span>"),
-                        explain=f"Son 5 gün alıcı/satıcı dengesi: {_dpct}",
-                        lc=_dir_color(_sig_hacim)
-                    )
+                    # VSA: hacim × mum anatomisi (9 senaryo)
+                    _vsa_lbl = None; _vsa_clr = _gs_neu; _vsa_expl = None
+                    try:
+                        if _gs_df is not None and len(_gs_df) >= 1:
+                            _o_v = float(_gs_df['Open'].iloc[-1])
+                            _c_v = float(_gs_df['Close'].iloc[-1])
+                            _h_v = float(_gs_df['High'].iloc[-1])
+                            _l_v = float(_gs_df['Low'].iloc[-1])
+                            _rng_v = _h_v - _l_v
+                            if _rng_v > 0:
+                                _body_v   = abs(_c_v - _o_v)
+                                _body_r_v = _body_v / _rng_v
+                                _is_green = _c_v > _o_v
+                                _is_red   = _c_v < _o_v
+                                _uw_r     = (_h_v - max(_c_v, _o_v)) / _rng_v
+                                _lw_r     = (min(_c_v, _o_v) - _l_v) / _rng_v
+                                _strong   = _body_r_v > 0.6
+                                _is_doji  = _body_r_v < 0.2
+                                _long_uw  = _uw_r > 0.4
+                                _long_lw  = _lw_r > 0.4
+                                _hi_vol   = _gs_rvol >= 1.5
+                                _lo_vol   = _gs_rvol < 0.8
+
+                                if _hi_vol and _strong and _is_green:
+                                    _vsa_lbl = "Alım onayı ★"; _vsa_clr = _gs_up_clr
+                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + güçlü yeşil gövde — talep güçlü"
+                                elif _hi_vol and _strong and _is_red:
+                                    _vsa_lbl = "Satım onayı ★"; _vsa_clr = _gs_dn_clr
+                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + güçlü kırmızı gövde — arz güçlü"
+                                elif _hi_vol and _is_doji:
+                                    _vsa_lbl = "Climax ⚠⚠"; _vsa_clr = _gs_dn_clr
+                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + doji — climax, dönüş yakın"
+                                elif _hi_vol and _long_uw:
+                                    _vsa_lbl = "Üst rejekti ⤵"; _vsa_clr = _gs_dn_clr
+                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + üst fitil — yükselişte dağıtım"
+                                elif _hi_vol and _long_lw:
+                                    _vsa_lbl = "Alt rejekti ⤴"; _vsa_clr = _gs_up_clr
+                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + alt fitil — düşüşte toplama"
+                                elif _lo_vol and _strong and _is_green:
+                                    _vsa_lbl = "Sahte alım ⚠"; _vsa_clr = _gs_dn_clr
+                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + yeşil gövde — no demand"
+                                elif _lo_vol and _strong and _is_red:
+                                    _vsa_lbl = "Sahte satım ⚠"; _vsa_clr = _gs_up_clr
+                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + kırmızı gövde — no supply"
+                                elif _lo_vol and _is_doji:
+                                    _vsa_lbl = "Ölü piyasa"; _vsa_clr = _gs_neu
+                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + doji — likidite yok"
+                    except Exception:
+                        pass
+
+                    # Hacim mini bar (1.5x markerlı) — bar 0-3x aralığında
+                    def _vol_bar(rvol_v, clr):
+                        _fill = min(rvol_v / 3.0, 1.0) * 100
+                        _mark = 1.5 / 3.0 * 100  # %50
+                        return (
+                            f"<span style='display:inline-block;width:46px;height:5px;background:#1e293b;"
+                            f"border-radius:3px;position:relative;margin-right:5px;vertical-align:middle;'>"
+                            f"<span style='position:absolute;left:0;top:0;width:{_fill:.0f}%;"
+                            f"height:100%;background:{clr};border-radius:3px;'></span>"
+                            f"<span style='position:absolute;left:{_mark:.0f}%;top:-2px;"
+                            f"width:1px;height:9px;background:#64748b;'></span>"
+                            f"</span>"
+                        )
+
+                    # VSA kritik sinyaller → pulse animasyon
+                    _vsa_critical = {
+                        "Climax ⚠⚠", "Üst rejekti ⤵", "Sahte alım ⚠",
+                        "Sahte satım ⚠", "Alt rejekti ⤴"
+                    }
+
+                    if _vsa_lbl:
+                        _vsa_bar = _vol_bar(_gs_rvol, _vsa_clr)
+                        _gs_items_html += _gs_row(
+                            "Hacim",
+                            (f"{_vsa_bar}"
+                             f"<span style='color:{_vsa_clr};'>{_gs_rvol:.1f}x</span> "
+                             f"<span style='color:{_gs_neu};font-size:0.73rem;'>{_vsa_lbl}</span>"),
+                            explain=_vsa_expl + f" · 5g denge: {_dpct}",
+                            lc=_vsa_clr,
+                            pulse=(_vsa_lbl in _vsa_critical)
+                        )
+                    else:
+                        _vol_intp = "ortalama üstü" if _gs_rvol >= 1.5 else ("normal" if _gs_rvol >= 0.8 else "zayıf")
+                        _vol_clr  = _gs_up_clr if _gs_rvol >= 1.5 else (_gs_neu if _gs_rvol >= 0.8 else _gs_dn_clr)
+                        _bar_h = _vol_bar(_gs_rvol, _vol_clr)
+                        _gs_items_html += _gs_row(
+                            "Hacim",
+                            (f"{_bar_h}"
+                             f"<span style='color:{_vol_clr};'>{_gs_rvol:.1f}x</span> "
+                             f"<span style='color:{_gs_neu};font-size:0.73rem;'>{_vol_intp}</span>"),
+                            explain=f"Son 5 gün alıcı/satıcı dengesi: {_dpct}",
+                            lc=_dir_color(_sig_hacim)
+                        )
 
                 _obv_t = _gs_obv.get('title', ''); _obv_d = _gs_obv.get('desc', '')
                 _obv_map = {
-                    "🔥 GÜÇLÜ GİZLİ GİRİŞ":                  ("Gizli giriş",      _gs_up_clr, "Fiyat düşerken kurumsal birikim sinyali gözlemleniyor"),
-                    "👀 Olası Toplama (Zayıf)":                ("Zayıf toplama",    _gs_neu,    "Hafif birikim emaresi var, henüz güçlü değil"),
-                    "⚠️ GİZLİ ÇIKIŞ":                         ("Gizli çıkış",      _gs_dn_clr, "Fiyat çıkarken OBV geriliyor — dağıtım sinyali"),
-                    "⚠️ GİZLİ ÇIKIŞ (Dağıtım)":               ("Gizli çıkış",      _gs_dn_clr, "Fiyat çıkarken OBV geriliyor — dağıtım sinyali"),
-                    "✅ Hacim Destekli Trend":                  ("Trend destekli",   _gs_up_clr, "Hacim yönü destekliyor — sağlıklı hareket"),
-                    "✅ SAĞLIKLI TREND (Hacim Onaylı)":         ("Trend destekli",   _gs_up_clr, "Hacim yönü destekliyor — sağlıklı hareket"),
-                    "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)":     ("Direnç / emilim",  _gs_neu,    "Düşüşe rağmen OBV ortalaması üzerinde — kurumsal destek gözlemleniyor"),
-                    "⚖️ ZAYIF İVME (Hacimsiz Bölge)":         ("Hacimsiz",         _gs_neu,    "OBV ortalama altında — net para akışı yok"),
+                    "🔥 GÜÇLÜ GİZLİ GİRİŞ":                        ("Gizli giriş",       _gs_up_clr, "Fiyat düşerken kurumsal birikim sinyali gözlemleniyor"),
+                    "👀 Olası Toplama (Zayıf)":                      ("Zayıf toplama",     _gs_neu,    "Hafif birikim emaresi var, henüz güçlü değil"),
+                    "⚠️ GİZLİ ÇIKIŞ":                               ("Gizli çıkış",       _gs_dn_clr, "Fiyat çıkarken OBV geriliyor — dağıtım sinyali"),
+                    "⚠️ GİZLİ ÇIKIŞ (Dağıtım)":                     ("Gizli çıkış",       _gs_dn_clr, "Fiyat çıkarken OBV geriliyor — dağıtım sinyali"),
+                    "✅ Hacim Destekli Trend":                        ("Trend destekli",    _gs_up_clr, "Hacim yönü destekliyor — sağlıklı hareket"),
+                    "✅ SAĞLIKLI TREND (Hacim Onaylı)":               ("Trend destekli",    _gs_up_clr, "Hacim yönü destekliyor — sağlıklı hareket"),
+                    "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)":           ("Direnç / emilim",   _gs_neu,    "Düşüşe rağmen OBV ortalaması üzerinde — kurumsal destek gözlemleniyor"),
+                    "⚖️ ZAYIF İVME (Hacimsiz Bölge)":               ("Hacimsiz",          _gs_neu,    "OBV ortalama altında — net para akışı yok"),
+                    "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)":           ("Kafa çeviriyor ↑",  "#38bdf8",  "5g OBV yukarı döndü — 14g hâlâ baskılı, erken toparlanma sinyali"),
+                    "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)":            ("Kafa çeviriyor ↓",  "#f59e0b",  "5g OBV zayıfladı ama 14g hâlâ pozitif — kısa vadeli yavaşlama"),
                 }
                 _ov_lbl, _ov_clr, _ov_expl = _obv_map.get(
                     _obv_t, ("nötr", _gs_neu, "Akıllı para hareketi belirgin değil"))
@@ -14933,145 +15394,181 @@ def _render_genel_ozet_panel():
                 # ── GRUP 3: MOMENTUM ──────────────────────────────────────────
                 _gs_items_html += _gs_section("Momentum")
 
+                # RSI Divergence — fiyat ile RSI arasındaki uyumsuzluk
+                # Bullish: fiyat yeni dip, RSI daha yüksek (satıcı tükeniyor)
+                # Bearish: fiyat yeni tepe, RSI daha düşük (alıcı tükeniyor)
+                _rsi_div = "none"; _rsi_div_expl = ""
+                try:
+                    if _gs_df is not None and len(_gs_df) >= 20:
+                        _delta_d = _gs_df['Close'].diff()
+                        _gain_d  = _delta_d.where(_delta_d > 0, 0).rolling(14).mean()
+                        _loss_d  = (-_delta_d.where(_delta_d < 0, 0)).rolling(14).mean()
+                        _rsi_arr_d = (100 - 100 / (1 + (_gain_d / _loss_d))).values
+                        _lo_arr_d  = _gs_df['Low'].values
+                        _hi_arr_d  = _gs_df['High'].values
+                        _n_d       = len(_lo_arr_d)
+                        # Son 5 mum vs öncesi 6-14
+                        _r_lo_pos  = _n_d - 5  + int(_lo_arr_d[-5:].argmin())
+                        _p_lo_pos  = _n_d - 14 + int(_lo_arr_d[-14:-5].argmin())
+                        _r_hi_pos  = _n_d - 5  + int(_hi_arr_d[-5:].argmax())
+                        _p_hi_pos  = _n_d - 14 + int(_hi_arr_d[-14:-5].argmax())
+                        # Regular Bullish: yeni dip, RSI daha yüksek → satıcı tükeniyor
+                        if (_lo_arr_d[_r_lo_pos] < _lo_arr_d[_p_lo_pos]) and \
+                           (_rsi_arr_d[_r_lo_pos] > _rsi_arr_d[_p_lo_pos] + 2):
+                            _rsi_div = "bull"
+                            _rsi_div_expl = "Fiyat yeni dip, RSI dip yapmadı — satıcı tükeniyor"
+                        # Regular Bearish: yeni tepe, RSI daha düşük → alıcı tükeniyor
+                        elif (_hi_arr_d[_r_hi_pos] > _hi_arr_d[_p_hi_pos]) and \
+                             (_rsi_arr_d[_r_hi_pos] < _rsi_arr_d[_p_hi_pos] - 2):
+                            _rsi_div = "bear"
+                            _rsi_div_expl = "Fiyat yeni tepe, RSI tepe yapmadı — alıcı tükeniyor"
+                        # Hidden Bullish: yüksek dip, RSI yeni dip → trend devamı (yukarı)
+                        elif (_lo_arr_d[_r_lo_pos] > _lo_arr_d[_p_lo_pos]) and \
+                             (_rsi_arr_d[_r_lo_pos] < _rsi_arr_d[_p_lo_pos] - 2):
+                            _rsi_div = "hidden_bull"
+                            _rsi_div_expl = "Fiyat yüksek dip, RSI yeni dip — yükseliş trendinde sağlıklı geri çekilme"
+                        # Hidden Bearish: alçak tepe, RSI yeni tepe → trend devamı (aşağı)
+                        elif (_hi_arr_d[_r_hi_pos] < _hi_arr_d[_p_hi_pos]) and \
+                             (_rsi_arr_d[_r_hi_pos] > _rsi_arr_d[_p_hi_pos] + 2):
+                            _rsi_div = "hidden_bear"
+                            _rsi_div_expl = "Fiyat alçak tepe, RSI yeni tepe — düşüş trendinde sağlıklı sıçrama"
+                except Exception:
+                    pass
+
                 if _gs_rsi_disp:
                     if _gs_rsi_val < 30:
                         _rsi_lbl = "aşırı satım"; _rc = _gs_up_clr
                         _rsi_expl = "Aşırı satım — düşüş hız kaybediyor, tek başına dönüş garantisi değil"
-                    elif _gs_rsi_val <= 60:
-                        _rsi_lbl = "alım bölgesi"; _rc = _gs_up_clr
-                        _rsi_expl = "Momentum aktif bölge"
-                    elif _gs_rsi_val > 70:
+                    elif _gs_rsi_val <= 45:
+                        _rsi_lbl = "zayıf"; _rc = "#f59e0b"
+                        _rsi_expl = "Nötrün altında — momentum zayıf"
+                    elif _gs_rsi_val <= 55:
+                        _rsi_lbl = "nötr"; _rc = _gs_neu
+                        _rsi_expl = "50 bölgesi — yön sinyali zayıf"
+                    elif _gs_rsi_val <= 70:
+                        _rsi_lbl = "güçlü"; _rc = _gs_up_clr
+                        _rsi_expl = "Nötrün üstünde — momentum bölgesi"
+                    else:
                         _rsi_lbl = "aşırı alım"; _rc = _gs_dn_clr
                         _rsi_expl = "Güçlü trendlerde RSI haftalarca 70+ kalabilir — OBV/Hacim çelişkisi yoksa düzeltme zorunlu değil"
+
+                    # Divergence chip — seviyenin yanına ekle
+                    if _rsi_div == "bull":
+                        _div_chip  = (f" <span style='color:{_gs_up_clr};font-size:0.72rem;"
+                                      f"font-weight:700;'>· Poz Div ✓</span>")
+                        _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
+                    elif _rsi_div == "bear":
+                        _div_chip  = (f" <span style='color:{_gs_dn_clr};font-size:0.72rem;"
+                                      f"font-weight:700;'>· Neg Div ✗</span>")
+                        _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
+                    elif _rsi_div == "hidden_bull":
+                        _div_chip  = (f" <span style='color:{_gs_up_clr};font-size:0.72rem;"
+                                      f"font-weight:700;'>· Gizli Poz ↗</span>")
+                        _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
+                    elif _rsi_div == "hidden_bear":
+                        _div_chip  = (f" <span style='color:{_gs_dn_clr};font-size:0.72rem;"
+                                      f"font-weight:700;'>· Gizli Neg ↘</span>")
+                        _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
                     else:
-                        _rsi_lbl = "nötr"; _rc = _gs_neu
-                        _rsi_expl = "Nötr bölge, yön sinyali zayıf"
+                        _div_chip  = ""
+
+                    # RSI mini gauge (30/70 markerlı)
+                    _rsi_pct = max(0, min(100, _gs_rsi_val))
+                    _rsi_gauge = (
+                        f"<span style='display:inline-block;width:50px;height:5px;background:#1e293b;"
+                        f"border-radius:3px;position:relative;margin-right:5px;vertical-align:middle;'>"
+                        f"<span style='position:absolute;left:30%;top:-2px;width:1px;height:9px;background:#475569;'></span>"
+                        f"<span style='position:absolute;left:70%;top:-2px;width:1px;height:9px;background:#475569;'></span>"
+                        f"<span style='position:absolute;left:{_rsi_pct:.0f}%;top:-2.5px;"
+                        f"width:9px;height:9px;border-radius:50%;background:{_rc};"
+                        f"transform:translateX(-50%);box-shadow:0 0 4px {_rc};'></span>"
+                        f"</span>"
+                    )
+                    # Regular Div (bull/bear) → pulse
+                    _rsi_pulse = _rsi_div in ("bull", "bear")
                     _gs_items_html += _gs_row(
                         "RSI",
-                        (f"<span style='color:{_rc};'>{_gs_rsi_val:.0f}</span> "
-                         f"<span style='color:{_gs_neu};font-size:0.73rem;'>{_rsi_lbl}</span>"),
+                        (f"{_rsi_gauge}"
+                         f"<span style='color:{_rc};'>{_gs_rsi_val:.0f}</span> "
+                         f"<span style='color:{_gs_neu};font-size:0.73rem;'>{_rsi_lbl}</span>"
+                         f"{_div_chip}"),
                         explain=_rsi_expl,
-                        lc=_rc
+                        lc=_rc,
+                        pulse=_rsi_pulse
                     )
 
-                def _strip_emoji(s):
-                    import re
-                    return re.sub(r'[^\w\s\(\)\.\,\:\!\?çğıöşüÇĞİÖŞÜ%/-]', '', s).strip()
+                # Mum — Kapanış Konumu (CP) matrisi (9 senaryo)
+                # Son 5g günlük aralık içinde kapanış konumu × önceki 5g referansı
+                _cp_lbl = None; _cp_clr = _gs_neu; _cp_expl = "Veri yetersiz"
+                try:
+                    if _gs_df is not None and len(_gs_df) >= 10:
+                        _cp_vals = []
+                        for _i in range(-5, 0):
+                            _h_i = float(_gs_df['High'].iloc[_i])
+                            _l_i = float(_gs_df['Low'].iloc[_i])
+                            _c_i = float(_gs_df['Close'].iloc[_i])
+                            _r_i = _h_i - _l_i
+                            if _r_i > 0:
+                                _cp_vals.append((_c_i - _l_i) / _r_i * 100)
+                        _cp_now = sum(_cp_vals) / len(_cp_vals) if _cp_vals else 50.0
+                        _cp_prev_vals = []
+                        for _i in range(-10, -5):
+                            _h_i = float(_gs_df['High'].iloc[_i])
+                            _l_i = float(_gs_df['Low'].iloc[_i])
+                            _c_i = float(_gs_df['Close'].iloc[_i])
+                            _r_i = _h_i - _l_i
+                            if _r_i > 0:
+                                _cp_prev_vals.append((_c_i - _l_i) / _r_i * 100)
+                        _cp_prev = sum(_cp_prev_vals) / len(_cp_prev_vals) if _cp_prev_vals else 50.0
+                        _cp_delta = _cp_now - _cp_prev
 
-                if _gs_cdesc and _gs_cdesc != 'Belirgin, güçlü bir formasyon yok.':
-                    _cand_clean = _gs_cdesc.replace('ALICI:', '').replace('SATICI:', '').strip()
-                    _cand_short = _cand_clean.split('|')[0].strip() if '|' in _cand_clean else _cand_clean
-                    _cand_short = _strip_emoji(_cand_short)[:40]
-                    _bg_parts = []
-                    if _gs_consec_label: _bg_parts.append(_gs_consec_label)
-                    if _gs_hh_hl_txt:    _bg_parts.append("HH+HL yapısı")
-                    _bg_txt = " · ".join(_bg_parts)
-                    if _gs_cdesc.startswith('ALICI'):
-                        _gs_items_html += _gs_row(
-                            "Mum",
-                            f"<span style='color:{_gs_up_clr};'>{_cand_short}</span>",
-                            explain="Yükseliş sinyali" + (f" · {_bg_txt}" if _bg_txt else ""),
-                            lc=_gs_up_clr
-                        )
-                    elif _gs_cdesc.startswith('SATICI'):
-                        _gs_items_html += _gs_row(
-                            "Mum",
-                            f"<span style='color:{_gs_dn_clr};'>{_cand_short}</span>",
-                            explain="Düşüş sinyali" + (f" · {_bg_txt}" if _bg_txt else ""),
-                            lc=_gs_dn_clr
-                        )
-                    else:
-                        _gs_items_html += _gs_row(
-                            "Mum",
-                            f"<span style='color:{_gs_neu};'>{_cand_short}</span>",
-                            explain="Yön belirsiz formasyon",
-                            lc=_gs_neu
-                        )
-                elif _gs_consec_label or _gs_hh_hl_txt:
-                    _bg = []
-                    if _gs_consec_label: _bg.append(_gs_consec_label)
-                    if _gs_hh_hl_txt:    _bg.append("HH+HL yapısı")
-                    _gs_items_html += _gs_row(
-                        "Mum",
-                        f"<span style='color:{_gs_neu};'>belirgin yok</span>",
-                        explain=" · ".join(_bg),
-                        lc=_gs_neu
-                    )
-
-                # ── GRUP 4: AKSİYON ──────────────────────────────────────────
-                _gs_items_html += _gs_section("Aksiyon")
-
-                # % mesafe helper
-                def _pct_tag(val, base):
-                    if val is None or base is None or base == 0:
-                        return ""
-                    pct = (val / base - 1) * 100
-                    return (f" <span style='color:{_gs_neu};font-size:0.68rem;font-weight:400;'>"
-                            f"({pct:+.1f}%)</span>")
-
-                if _gs_low5_txt or _gs_high5_txt:
-                    if _gs_net_txt in ("YUKARI", "HAFİF YUKARI") and _gs_low5_txt:
-                        # Long senaryo → 5G dip
-                        _gs_items_html += _gs_row(
-                            "Stop seviyesi",
-                            (f"<span style='color:{_gs_dn_clr};'>{_gs_low5_txt}</span>"
-                             + _pct_tag(_low5_val, _curr_close_val)),
-                            explain="Altında kapanış → yükseliş senaryosu iptal",
-                            stop=True, lc=_gs_dn_clr
-                        )
-                    elif _gs_net_txt in ("AŞAĞI", "HAFİF AŞAĞI") and _gs_high5_txt:
-                        # Short senaryo → 5G tepe
-                        _gs_items_html += _gs_row(
-                            "İptal noktası",
-                            (f"<span style='color:{_gs_up_clr};'>{_gs_high5_txt}</span>"
-                             + _pct_tag(_high5_val, _curr_close_val)),
-                            explain="Üstünde kapanış → düşüş senaryosu iptal",
-                            stop=True, lc=_gs_up_clr
-                        )
-                    else:
-                        # Kararsız → her iki seviye birden
-                        if _gs_low5_txt and _gs_high5_txt:
-                            _lvl_html = (f"<span style='color:{_gs_dn_clr};'>{_gs_low5_txt}</span>"
-                                         + _pct_tag(_low5_val, _curr_close_val)
-                                         + f" <span style='color:{_gs_neu};'>↔</span> "
-                                         + f"<span style='color:{_gs_up_clr};'>{_gs_high5_txt}</span>"
-                                         + _pct_tag(_high5_val, _curr_close_val))
+                        _cp_pre_str = f"5 gün önce fiyat son 20 günlük aralığın %{_cp_prev:.0f}'sindeydi, şimdi %{_cp_now:.0f}'sinde"
+                        if _cp_now >= 80 and _cp_prev >= 80:
+                            _cp_lbl = f"Alıcı kontrolü var ★ (%{_cp_now:.0f})"; _cp_clr = _gs_up_clr
+                            _cp_expl = f"{_cp_pre_str} — alıcı kontrolü var"
+                        elif _cp_now >= 70 and _cp_prev <= 25:
+                            _cp_lbl = f"Alıcı agresif ⤴ (%{_cp_prev:.0f}→%{_cp_now:.0f})"; _cp_clr = _gs_up_clr
+                            _cp_expl = f"{_cp_pre_str} — alıcı agresif"
+                        elif _cp_now >= 75 and _cp_prev < 55:
+                            _cp_lbl = f"Alıcı baskısı oluştu ↑ (%{_cp_prev:.0f}→%{_cp_now:.0f})"; _cp_clr = _gs_up_clr
+                            _cp_expl = f"{_cp_pre_str} — alıcı baskısı oluştu"
+                        elif _cp_now >= 60 and _cp_delta >= 0:
+                            _cp_lbl = f"Alıcı baskısı sürüyor (%{_cp_now:.0f})"; _cp_clr = _gs_up_clr
+                            _cp_expl = f"{_cp_pre_str} — alıcı baskısı sürüyor"
+                        elif _cp_now >= 55 and _cp_delta < -15:
+                            _cp_lbl = f"Alıcı zayıflıyor ⚠ (%{_cp_now:.0f})"; _cp_clr = "#f59e0b"
+                            _cp_expl = f"{_cp_pre_str} — alıcı zayıflıyor"
+                        elif _cp_now <= 20 and _cp_prev <= 20:
+                            _cp_lbl = f"Satıcı kontrolü var ★ (%{_cp_now:.0f})"; _cp_clr = _gs_dn_clr
+                            _cp_expl = f"{_cp_pre_str} — satıcı kontrolü var"
+                        elif _cp_now <= 30 and _cp_prev >= 60:
+                            _cp_lbl = f"Satıcı agresif ⤵ (%{_cp_prev:.0f}→%{_cp_now:.0f})"; _cp_clr = _gs_dn_clr
+                            _cp_expl = f"{_cp_pre_str} — satıcı agresif"
+                        elif _cp_now <= 35 and _cp_prev >= 75:
+                            _cp_lbl = f"Satıcı baskısı oluştu ↘ (%{_cp_prev:.0f}→%{_cp_now:.0f})"; _cp_clr = _gs_dn_clr
+                            _cp_expl = f"{_cp_pre_str} — satıcı baskısı oluştu"
+                        elif _cp_now <= 40 and _cp_delta <= 0:
+                            _cp_lbl = f"Satıcı baskısı sürüyor (%{_cp_now:.0f})"; _cp_clr = _gs_dn_clr
+                            _cp_expl = f"{_cp_pre_str} — satıcı baskısı sürüyor"
                         else:
-                            _lvl_html = f"<span style='color:{_gs_neu};'>{_gs_low5_txt or _gs_high5_txt}</span>"
-                        _gs_items_html += _gs_row(
-                            "Kritik seviye",
-                            _lvl_html,
-                            explain="Hangi yön kırılırsa o senaryo çalışır",
-                            stop=True, lc=_gs_neu
-                        )
+                            _cp_lbl = f"Kararsız (%{_cp_now:.0f})"; _cp_clr = _gs_neu
+                            _cp_expl = f"{_cp_pre_str} — kararsız"
+                except Exception:
+                    pass
 
-                if _lr_score is not None:
-                    if _lr_score >= 65:
-                        _radar_expl = "Tüm kriterler hizalandı — set-up koşulları oluşmuş"
-                    elif _lr_score >= 45:
-                        _radar_expl = "Bazı kriterler eksik — koşullar henüz tamamlanmamış"
-                    elif _lr_score >= 25:
-                        _radar_expl = "Çok az kriter geçti — sinyal olgunlaşmamış"
-                    else:
-                        _radar_expl = "Kriterler olumsuz — kriterlerin dışında"
+                if _cp_lbl:
+                    # Alıcı agresif, Satıcı agresif, Satıcı baskısı oluştu, Alıcı zayıflıyor → pulse
+                    _cp_pulse = any(k in _cp_lbl for k in (
+                        "Alıcı agresif", "Satıcı agresif", "Satıcı baskısı oluştu", "Alıcı zayıflıyor"
+                    ))
                     _gs_items_html += _gs_row(
-                        "LONG RADAR",
-                        (f"<span style='color:{_lr_clr};'>{_lr_score}/100</span> "
-                         f"<span style='color:{_gs_neu};font-size:0.73rem;'>{_lr_status}</span>"),
-                        explain=_radar_expl + " · 5 alım kriterinin birleşik skoru",
-                        lc=_lr_clr
+                        "Mum (Kapanış Konumu)",
+                        f"<span style='color:{_cp_clr};'>{_cp_lbl}</span>",
+                        explain=_cp_expl,
+                        lc=_cp_clr,
+                        pulse=_cp_pulse
                     )
 
-                if _atr14_val is not None and _curr_close_val:
-                    _atr_pct = _atr14_val / _curr_close_val * 100
-                    _atr_clr = (_gs_up_clr if _atr_pct > 3.5
-                                else (_gs_neu if _atr_pct > 1.5 else _gs_dn_clr))
-                    _gs_items_html += _gs_row(
-                        "ATR (14)",
-                        (f"<span style='color:{_atr_clr};'>{_fmt_lvl(_atr14_val)}</span>"
-                         f" <span style='color:{_gs_neu};font-size:0.73rem;'>(%{_atr_pct:.1f})</span>"),
-                        explain="Ortalama günlük hareket — stop mesafesi ve pozisyon boyutu için",
-                    )
 
         except Exception:
             _gs_items_html = "<div style='font-size:0.7rem;color:#64748b;padding:6px 2px;font-style:italic;'>Özet hesaplanamadı.</div>"
@@ -15080,6 +15577,12 @@ def _render_genel_ozet_panel():
         _hdr_txt = "#38bdf8"; _cnt_bg = "#060d1a"; _border = "#1e3a5f"
 
         st.markdown(f"""
+        <style>
+        @keyframes gs-pulse-warn {{
+          0%, 100% {{ box-shadow: 0 0 0 0 rgba(248,113,113,0.45); }}
+          50%      {{ box-shadow: 0 0 10px 2px rgba(248,113,113,0.18); }}
+        }}
+        </style>
         <details open style="margin-bottom:7px;border-radius:10px;overflow:hidden;
                         border:1px solid {_border};box-shadow:0 4px 12px rgba(0,0,0,0.4);">
           <summary style="cursor:pointer;padding:8px 13px;background:{_hdr_bg};
@@ -15539,7 +16042,7 @@ def get_golden_trio_batch_scan(ticker_list):
 
                 if (current_price > _s200 and current_price > _s50 and
                         _s50 > _s50_5 and 35 <= rsi_now <= 73 and
-                        _dist <= 15 and _g20 <= 20):
+                        _dist <= 22 and _g20 <= 20):
 
                     _kapi = 0; _kapi_list = []
 
@@ -15688,7 +16191,7 @@ with col_ass:
 
 # 4. MASTER SCAN BUTONU
 with col_btn:
-    if st.button("🕵️ TÜM PİYASAYI TARA (MASTER SCAN)", type="primary", use_container_width=True):
+    if st.button("💎 TÜM PİYASAYI TARA (MASTER SCAN)", type="secondary", use_container_width=True):
 
         _cat      = st.session_state.get('category', 'S&P 500')
         scan_list = ASSET_GROUPS.get(_cat, [])
@@ -15770,6 +16273,11 @@ with col_btn:
             # 15. ALTIN FIRSAT + VIP FORMASYON AJANI - %97
             my_bar.progress(97, text="💎 Altın Set-up + VIP Formasyon (Fincan-Kulp/TOBO/Üçgen) Taranıyor...%97")
             st.session_state.golden_pattern_data = scan_golden_pattern_agent(scan_list, _cat)
+
+            # 16. LONG RADAR LOGLAMA - %98
+            my_bar.progress(98, text="🚀 Long Radar Skoru Kaydediliyor...%98")
+            _lr_batch_df = scan_long_radar_batch(scan_list, min_score=70)
+            log_scan_signal("long_radar", _lr_batch_df, category=_cat)
 
             # --- TOP 20 + CONFLUENCE - %99
             my_bar.progress(99, text="🏆 TOP 20 & Confluence Hesaplanıyor...%99")
@@ -16455,60 +16963,60 @@ if st.session_state.generate_prompt:
             
     r2_txt = f"Skor: {radar_val} | Setup: {radar_setup}"
 
-    # --- GERÇEK PARA AKIŞI (OBV & DIVERGENCE) ---
+    # --- GERÇEK PARA AKIŞI (OBV & DIVERGENCE — Dual Window 5g+14g) ---
     para_akisi_txt = "Nötr"
 
-    # df_hist değişkeninin yukarıda tanımlı olduğundan emin ol (genelde prompt başında tanımlıdır)
     if 'df_hist' in locals() and df_hist is not None and len(df_hist) > 20:
         # 1. OBV Hesapla
-        change = df_hist['Close'].diff()
-        direction = np.sign(change).fillna(0)
-        obv = (direction * df_hist['Volume']).cumsum()
-        
-        # YENİ: AI'ın hacim gücünü anlaması için 20 Günlük Ortalamayı (SMA) ekliyoruz
-        obv_sma = obv.rolling(20).mean()
+        _pa_change = df_hist['Close'].diff()
+        _pa_dir    = np.sign(_pa_change).fillna(0)
+        _pa_obv    = (_pa_dir * df_hist['Volume']).cumsum()
+        _pa_sma20  = _pa_obv.rolling(20).mean()
 
-        # 2. Trendleri Kıyasla (Son 10 Gün)
-        p_now = df_hist['Close'].iloc[-1]; p_old = df_hist['Close'].iloc[-11]
-        obv_now = obv.iloc[-1]; obv_old = obv.iloc[-11]
-        obv_sma_now = obv_sma.iloc[-1]
+        # 2. Dual-Window Karşılaştırma (5g + 14g)
+        _pa_now      = _pa_obv.iloc[-1]
+        _pa_5g_up    = _pa_now > _pa_obv.iloc[-6]    # kısa ivme
+        _pa_14g_up   = _pa_now > _pa_obv.iloc[-15]   # orta vade (RSI uyumlu)
+        _pa_strong   = _pa_now > _pa_sma20.iloc[-1]
 
-        price_trend = "YUKARI" if p_now > p_old else "AŞAĞI"
-        obv_trend_raw = "YUKARI" if obv_now > obv_old else "AŞAĞI"
-        
-        # YENİ: AI için ekstra karar değişkenleri
-        is_obv_strong = obv_now > obv_sma_now
-        p_yesterday = df_hist['Close'].iloc[-2]
-        
-        # --- [YENİ] Prompt İçin RSI Emniyet Kilidi ---
-        # AI'ın tepede "Gizli Giriş" diye saçmalamasını engeller.
-        delta_p = df_hist['Close'].diff()
-        gain_p = (delta_p.where(delta_p > 0, 0)).rolling(14).mean()
-        loss_p = (-delta_p.where(delta_p < 0, 0)).rolling(14).mean()
-        rsi_val_prompt = 100 - (100 / (1 + gain_p/loss_p)).iloc[-1]
+        _p_now       = df_hist['Close'].iloc[-1]
+        _p_old5      = df_hist['Close'].iloc[-6]
+        _p_yesterday = df_hist['Close'].iloc[-2]
+        price_trend  = "YUKARI" if _p_now > _p_old5 else "AŞAĞI"
 
-        # 3. Yorumla (Güncellenmiş Profesyonel Mantık)
-        if rsi_val_prompt > 60 and price_trend == "AŞAĞI":
-             # Fiyat düşüyor ama RSI hala tepedeyse bu giriş değil, "Mal Yedirme" olabilir.
-             para_akisi_txt = "⚠️ ZİRVE BASKISI (Dağıtım Riski): Fiyat düşüyor ancak RSI şişkin. Bu bir giriş fırsatı değil, tepeden mal dağıtımı olabilir."
-             
-        elif price_trend == "AŞAĞI" and obv_trend_raw == "YUKARI":
-            if is_obv_strong:
-                para_akisi_txt = "🔥 GÜÇLÜ GİZLİ GİRİŞ (Akümülasyon): Son 10 günde fiyat düşmesine rağmen, gerçek hacim (OBV) 20 günlük ortalamasını yukarı kesti. Akıllı para gizlice mal topluyor olabilir!"
+        # RSI Emniyet Kilidi — AI'ın tepede "Gizli Giriş" diye saçmalamasını engeller
+        _delta_p = df_hist['Close'].diff()
+        _gain_p  = (_delta_p.where(_delta_p > 0, 0)).rolling(14).mean()
+        _loss_p  = (-_delta_p.where(_delta_p < 0, 0)).rolling(14).mean()
+        _rsi_prompt = 100 - (100 / (1 + _gain_p / _loss_p)).iloc[-1]
+
+        # 3. Yorumla — Dual-Window Mantığı
+        if _rsi_prompt > 60 and price_trend == "AŞAĞI":
+            para_akisi_txt = "⚠️ ZİRVE BASKISI (Dağıtım Riski): Fiyat düşüyor ancak RSI şişkin. Bu bir giriş fırsatı değil, tepeden mal dağıtımı olabilir."
+
+        elif _pa_5g_up and not _pa_14g_up:
+            para_akisi_txt = "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma): Son 5 günde OBV yukarı döndü ancak 14 günlük pencere hâlâ baskılı. Erken toparlanma sinyali — orta vadeli teyit bekleniyor."
+
+        elif not _pa_5g_up and _pa_14g_up:
+            para_akisi_txt = "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama): 5 günlük OBV ivmesi zayıfladı ancak 14 günlük yapı hâlâ pozitif. Kısa vadeli yavaşlama — trend bozulmadı, izlemeye devam."
+
+        elif price_trend == "AŞAĞI" and _pa_5g_up and _pa_14g_up:
+            if _pa_strong:
+                para_akisi_txt = "🔥 GÜÇLÜ GİZLİ GİRİŞ (Akümülasyon): Fiyat düşmesine rağmen hem 5g hem 14g OBV pencereleri yukarı ve OBV 20 günlük ortalamasını kırdı. Akıllı para gizlice mal topluyor olabilir!"
             else:
-                para_akisi_txt = "👀 OLASI TOPLAMA (Zayıf): Son 10 günde fiyat düşerken OBV hafifçe yükseliyor, ancak henüz 20 günlük ortalamasını aşacak kadar güçlü bir para girişi yok."
-                
-        elif price_trend == "YUKARI" and obv_trend_raw == "AŞAĞI":
-            para_akisi_txt = "⚠️ GİZLİ ÇIKIŞ (Dağıtım): Son 10 günde fiyat yükselmesine rağmen kümülatif hacim (OBV) düşüyor. Yükseliş sahte olabilir, büyük oyuncular mal dağıtıyor (çıkış yapıyor) olabilir."
-            
-        elif is_obv_strong:
-            if p_now < p_yesterday:
-                para_akisi_txt = "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim): Bugün fiyat düşüş eğiliminde olsa da kümülatif hacim (OBV) hala 20 günlük ortalamasının üzerinde gücünü koruyor. Panik satışları büyük oyuncular tarafından karşılanıyor olabilir."
+                para_akisi_txt = "👀 OLASI TOPLAMA (Zayıf): Fiyat düşerken her iki OBV penceresi de yükseliyor ancak henüz 20 günlük ortalamasını aşacak güçte değil."
+
+        elif price_trend == "YUKARI" and not _pa_5g_up and not _pa_14g_up:
+            para_akisi_txt = "⚠️ GİZLİ ÇIKIŞ (Dağıtım): Fiyat yükselmesine rağmen hem 5g hem 14g OBV pencereleri düşüyor. Yükseliş sahte olabilir — büyük oyuncular sessizce çıkış yapıyor olabilir."
+
+        elif _pa_strong and _pa_5g_up and _pa_14g_up:
+            if _p_now < _p_yesterday:
+                para_akisi_txt = "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim): Bugün fiyat kırmızı olsa da OBV her iki pencerede güçlü ve 20 günlük ortalamanın üzerinde. Panik satışları kurumsal alıcılar tarafından karşılanıyor."
             else:
-                para_akisi_txt = "✅ SAĞLIKLI TREND (Hacim Onaylı): Fiyattaki yükseliş, gerçek hacim (OBV) tarafından net bir şekilde destekleniyor. Trendin arkasında akıllı paranın itici gücü var."
-                
+                para_akisi_txt = "✅ SAĞLIKLI TREND (Hacim Onaylı): Fiyattaki yükseliş hem kısa (5g) hem orta (14g) vadeli OBV tarafından destekleniyor. Trendin arkasında akıllı paranın itici gücü var."
+
         else:
-            para_akisi_txt = "⚖️ ZAYIF İVME (Hacimsiz Bölge): Kümülatif hacim akışı (OBV) 20 günlük ortalamasının altında süzülüyor. Fiyat hareketlerini destekleyecek net ve iştahlı bir para girişi görünmüyor."
+            para_akisi_txt = "⚖️ ZAYIF İVME (Hacimsiz Bölge): OBV 20 günlük ortalamasının altında. Fiyat hareketini destekleyecek net kurumsal para akışı görünmüyor."
             
     elif synth_data is not None and len(synth_data) > 15:
         # Yedek Plan: df_hist yoksa eski yöntemi kullan
@@ -16983,6 +17491,204 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
         _pa_priority_str = "⚡ AKTİF PA SİNYALİ: Belirgin tetikleyici yok — nötr izleme modu. Veriyi dengeli değerlendir.\n"
     # ────────────────────────────────────────────────────────────────
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # GENEL ÖZET PANEL — DETAYLI SENARYO HARİTASI (3-30g taktiksel okuma)
+    # _render_genel_ozet_panel() ile aynı genişletilmiş senaryo motorunu çalıştırır.
+    # AI bu yapılandırılmış okumayı kısa-orta vade çerçevesi olarak kullanır.
+    # ═══════════════════════════════════════════════════════════════════════
+    _panel_rows = []
+    try:
+        _pdf = df_hist
+        if _pdf is not None and len(_pdf) >= 20:
+            _hs = _pdf['High'].values
+            _ls = _pdf['Low'].values
+            _cs = _pdf['Close'].values
+            _os = _pdf['Open'].values
+            _cv = float(_cs[-1])
+
+            # ─── 1) YAPI (8 senaryo) ───
+            _h1,_h2,_h3 = _hs[-1],_hs[-2],_hs[-3]
+            _l1,_l2,_l3 = _ls[-1],_ls[-2],_ls[-3]
+            _h4,_h5,_h6 = _hs[-4],_hs[-5],_hs[-6]
+            _l4,_l5,_l6 = _ls[-4],_ls[-5],_ls[-6]
+            _avg_rng_p = max(1e-9, (max(_hs[-6:]) - min(_ls[-6:])) / 5)
+            _tol_p = _avg_rng_p * 0.15
+            _hh_p = _h1 > _h2 > _h3; _hl_p = _l1 > _l2 > _l3
+            _lh_p = _h1 < _h2 < _h3; _ll_p = _l1 < _l2 < _l3
+            _phh = _h4 > _h5 > _h6; _phl = _l4 > _l5 > _l6
+            _plh = _h4 < _h5 < _h6; _pll = _l4 < _l5 < _l6
+            if _hh_p and _hl_p:
+                _yapi_p = ("Dönüş yukarı ⤴ (CHoCH up — düşüşten yükselişe dönüş)" if (_plh and _pll)
+                           else "Sağlam yapı ↑ (HH+HL — klasik yükseliş)")
+            elif _lh_p and _ll_p:
+                _yapi_p = ("Dönüş aşağı ⤵ (CHoCH down — yükselişten düşüşe dönüş)" if (_phh and _phl)
+                           else "Yapı bozuk ↓ (LH+LL — klasik düşüş)")
+            elif _hh_p and _ll_p:
+                _yapi_p = "Megafon ⚠ (genişleyen volatilite, sağlıksız)"
+            elif _lh_p and _hl_p:
+                _yapi_p = "Üçgen sıkışma (daralan, kırılım yakın)"
+            elif abs(_h1-_h3) < _tol_p and abs(_l1-_l3) < _tol_p:
+                _yapi_p = "Yatay range (eşit yüksek+dip)"
+            elif _hh_p and not _ll_p:
+                _yapi_p = "Yarı yapı ↑ (sadece yüksekler yükseliyor)"
+            elif _hl_p and not _lh_p:
+                _yapi_p = "Yarı yapı ↑ (sadece dipler yükseliyor)"
+            elif _lh_p or _ll_p:
+                _yapi_p = "Yarı yapı ↓ (tek taraflı bozulma)"
+            else:
+                _yapi_p = "Karışık (net swing yok)"
+            _panel_rows.append(f"- YAPI: {_yapi_p}")
+
+            # ─── 2) MOMENTUM SLOPE (RSI 5g eğimi × seviye — 7 senaryo) ───
+            _delta_p = _pdf['Close'].diff()
+            _gain_p = _delta_p.where(_delta_p > 0, 0).rolling(14).mean()
+            _loss_p = (-_delta_p.where(_delta_p < 0, 0)).rolling(14).mean()
+            _rsi_s = (100 - 100/(1 + (_gain_p/_loss_p)))
+            _rsi_n = float(_rsi_s.iloc[-1])
+            _rsi_5 = float(_rsi_s.iloc[-6])
+            _rsi_dlt = _rsi_n - _rsi_5
+            if _rsi_dlt > 10 and _rsi_n < 50:
+                _mom_p = f"Sert dönüş ↗↗ (RSI +{_rsi_dlt:.1f}, aşırı satımdan güçlü dönüş)"
+            elif _rsi_dlt > 5 and _rsi_n < 50:
+                _mom_p = f"Toparlanma ↗ (RSI +{_rsi_dlt:.1f}, düşük seviyeden toparlanıyor)"
+            elif _rsi_dlt > 5 and _rsi_n >= 50:
+                _mom_p = f"Trend hızlanıyor ↑ (RSI +{_rsi_dlt:.1f}, momentum ivmeleniyor)"
+            elif _rsi_dlt < -10 and _rsi_n > 60:
+                _mom_p = f"Tepe geri çekilme ⤵ (RSI {_rsi_dlt:.1f}, yüksek seviyeden sert düşüş)"
+            elif _rsi_dlt < -5 and _rsi_n > 50:
+                _mom_p = f"Yavaşlıyor ↘ (RSI {_rsi_dlt:.1f}, yükseliş yorgun)"
+            elif _rsi_dlt < -5 and _rsi_n <= 50:
+                _mom_p = f"Aşağı ivme ↓↓ (RSI {_rsi_dlt:.1f}, düşüş hızlanıyor)"
+            else:
+                _mom_p = f"Yatay → (RSI {_rsi_dlt:+.1f}, yön belirsiz)"
+            _panel_rows.append(f"- MOMENTUM SLOPE: {_mom_p}")
+
+            # ─── 3) RANGE KONUMU (20g × delta — 9 senaryo) ───
+            _h20 = float(_pdf['High'].iloc[-20:].max())
+            _l20 = float(_pdf['Low'].iloc[-20:].min())
+            _c5g = float(_cs[-6])
+            if _h20 > _l20:
+                _rn = (_cv - _l20)/(_h20 - _l20)*100
+                _rp = (_c5g - _l20)/(_h20 - _l20)*100
+                _dr_p = _rn - _rp
+                if _rn < 20 and _rp < 20:    _rng_p = f"Dipte tutunma (%{_rn:.0f}, sürekli dipte)"
+                elif _rn < 33 and _rp > 50:  _rng_p = f"Sert düşüş ⤵ (%{_rp:.0f}→%{_rn:.0f}, U-top çöküş)"
+                elif _rn < 33:               _rng_p = f"Discount (%{_rn:.0f}, ucuz bölge)"
+                elif _rn > 80 and _rp > 80:  _rng_p = f"Tepede tıkalı ⚠ (%{_rn:.0f}, dağıtım riski)"
+                elif _rn > 66 and _rp < 33:  _rng_p = f"V-bottom ⤴ (%{_rp:.0f}→%{_rn:.0f}, sert dönüş)"
+                elif _rn > 66 and _rp > 66:  _rng_p = f"Premium tutunma ★ (%{_rn:.0f}, sağlıklı yükseliş)"
+                elif _rn > 66:               _rng_p = f"Premium (%{_rn:.0f}, pahalı bölge)"
+                elif _dr_p > 15:             _rng_p = f"Toparlanma ↗ (%{_rp:.0f}→%{_rn:.0f}, discount'tan çıkış)"
+                elif _dr_p < -15:            _rng_p = f"Premium kaybı ↘ (%{_rp:.0f}→%{_rn:.0f}, premium'dan düşüş)"
+                else:                        _rng_p = f"Orta — yatay (%{_rn:.0f}, sıkışma)"
+            else:
+                _rng_p = "Veri yetersiz"
+            _panel_rows.append(f"- RANGE (20g): {_rng_p}")
+
+            # ─── 4) VSA (Hacim × Mum anatomisi — 9 senaryo) ───
+            try:
+                _v_curr = float(_pdf['Volume'].iloc[-1])
+                _v_avg = float(_pdf['Volume'].rolling(20).mean().iloc[-1])
+                _rvol_p = _v_curr / _v_avg if _v_avg > 0 else 1.0
+                _o_v = float(_os[-1]); _c_v = float(_cs[-1])
+                _h_v = float(_hs[-1]); _l_v = float(_ls[-1])
+                _rv = _h_v - _l_v
+                if _rv > 0:
+                    _br = abs(_c_v - _o_v) / _rv
+                    _is_g = _c_v > _o_v; _is_r = _c_v < _o_v
+                    _uwr = (_h_v - max(_c_v, _o_v))/_rv
+                    _lwr = (min(_c_v, _o_v) - _l_v)/_rv
+                    _stp = _br > 0.6; _dj = _br < 0.2
+                    _luw = _uwr > 0.4; _llw = _lwr > 0.4
+                    _hv = _rvol_p >= 1.5; _lv_f = _rvol_p < 0.8
+                    if _hv and _stp and _is_g:      _vsa_p = f"Alım onayı ★ ({_rvol_p:.1f}x hacim + güçlü yeşil gövde)"
+                    elif _hv and _stp and _is_r:    _vsa_p = f"Satım onayı ★ ({_rvol_p:.1f}x hacim + güçlü kırmızı gövde)"
+                    elif _hv and _dj:               _vsa_p = f"Climax ⚠⚠ ({_rvol_p:.1f}x hacim + doji, dönüş yakın)"
+                    elif _hv and _luw:              _vsa_p = f"Üst rejekti ⤵ ({_rvol_p:.1f}x hacim + üst fitil, dağıtım)"
+                    elif _hv and _llw:              _vsa_p = f"Alt rejekti ⤴ ({_rvol_p:.1f}x hacim + alt fitil, toplama)"
+                    elif _lv_f and _stp and _is_g:  _vsa_p = f"Sahte alım ⚠ ({_rvol_p:.1f}x hacim + yeşil gövde, no demand)"
+                    elif _lv_f and _stp and _is_r:  _vsa_p = f"Sahte satım ⚠ ({_rvol_p:.1f}x hacim + kırmızı gövde, no supply)"
+                    elif _lv_f and _dj:             _vsa_p = f"Ölü piyasa ({_rvol_p:.1f}x hacim + doji)"
+                    else:                           _vsa_p = f"Normal ({_rvol_p:.1f}x hacim, belirgin VSA yok)"
+                else:
+                    _vsa_p = "Veri yetersiz"
+            except Exception:
+                _vsa_p = "Veri yetersiz"
+            _panel_rows.append(f"- VSA (Hacim × Mum): {_vsa_p}")
+
+            # ─── 5) RSI DIVERGENCE (5 tip: Regular bull/bear + Hidden bull/bear + Yok) ───
+            try:
+                _rsi_arr = _rsi_s.values
+                _np = len(_ls)
+                _rl = _np - 5 + int(_ls[-5:].argmin())
+                _pl = _np - 14 + int(_ls[-14:-5].argmin())
+                _rh = _np - 5 + int(_hs[-5:].argmax())
+                _ph = _np - 14 + int(_hs[-14:-5].argmax())
+                if (_ls[_rl] < _ls[_pl]) and (_rsi_arr[_rl] > _rsi_arr[_pl] + 2):
+                    _div_p = "Regular Bull ✓ (Poz Div — fiyat yeni dip, RSI dip yok; satıcı tükeniyor, dönüş yakın)"
+                elif (_hs[_rh] > _hs[_ph]) and (_rsi_arr[_rh] < _rsi_arr[_ph] - 2):
+                    _div_p = "Regular Bear ✗ (Neg Div — fiyat yeni tepe, RSI tepe yok; alıcı tükeniyor, dönüş yakın)"
+                elif (_ls[_rl] > _ls[_pl]) and (_rsi_arr[_rl] < _rsi_arr[_pl] - 2):
+                    _div_p = "Hidden Bull ↗ (Gizli Poz — yükseliş trendinde sağlıklı geri çekilme; trend devam ediyor)"
+                elif (_hs[_rh] < _hs[_ph]) and (_rsi_arr[_rh] > _rsi_arr[_ph] + 2):
+                    _div_p = "Hidden Bear ↘ (Gizli Neg — düşüş trendinde sağlıklı sıçrama; trend devam ediyor)"
+                else:
+                    _div_p = "Yok (fiyat ve RSI uyumlu — divergence sinyali yok)"
+            except Exception:
+                _div_p = "Yok"
+            _panel_rows.append(f"- RSI DIVERGENCE: {_div_p}")
+            _rsi_lvl = ('aşırı satım' if _rsi_n < 30
+                        else ('zayıf' if _rsi_n <= 45
+                              else ('nötr' if _rsi_n <= 55
+                                    else ('güçlü' if _rsi_n <= 70 else 'aşırı alım'))))
+            _panel_rows.append(f"- RSI SEVİYESİ: {_rsi_n:.0f} ({_rsi_lvl})")
+
+            # ─── 6) MUM (Kapanış Konumu CP — 10 senaryo) ───
+            _cp_vals = []
+            for _i in range(-5, 0):
+                _h_i = float(_hs[_i]); _l_i = float(_ls[_i]); _c_i = float(_cs[_i])
+                _r_i = _h_i - _l_i
+                if _r_i > 0:
+                    _cp_vals.append((_c_i - _l_i)/_r_i*100)
+            _cp_now = sum(_cp_vals)/len(_cp_vals) if _cp_vals else 50.0
+            _cp_prev_vals = []
+            for _i in range(-10, -5):
+                _h_i = float(_hs[_i]); _l_i = float(_ls[_i]); _c_i = float(_cs[_i])
+                _r_i = _h_i - _l_i
+                if _r_i > 0:
+                    _cp_prev_vals.append((_c_i - _l_i)/_r_i*100)
+            _cp_pre = sum(_cp_prev_vals)/len(_cp_prev_vals) if _cp_prev_vals else 50.0
+            _cd = _cp_now - _cp_pre
+            if _cp_now >= 80 and _cp_pre >= 80:
+                _cp_p = f"Alıcı kontrolü var ★ (CP %{_cp_now:.0f}, son 5 günde sürekli üst kapanış)"
+            elif _cp_now >= 70 and _cp_pre <= 25:
+                _cp_p = f"Alıcı agresif ⤴ (CP %{_cp_pre:.0f}→%{_cp_now:.0f}, dipten sert dönüş)"
+            elif _cp_now >= 75 and _cp_pre < 55:
+                _cp_p = f"Alıcı baskısı oluştu ↑ (CP %{_cp_pre:.0f}→%{_cp_now:.0f}, yeni alım baskısı)"
+            elif _cp_now >= 60 and _cd >= 0:
+                _cp_p = f"Alıcı baskısı sürüyor (CP %{_cp_now:.0f}, üst yarıda kapanış sürüyor)"
+            elif _cp_now >= 55 and _cd < -15:
+                _cp_p = f"Alıcı zayıflıyor ⚠ (CP %{_cp_pre:.0f}→%{_cp_now:.0f}, kapanış konumu düşüyor)"
+            elif _cp_now <= 20 and _cp_pre <= 20:
+                _cp_p = f"Satıcı kontrolü var ★ (CP %{_cp_now:.0f}, son 5 günde sürekli alt kapanış)"
+            elif _cp_now <= 30 and _cp_pre >= 60:
+                _cp_p = f"Satıcı agresif ⤵ (CP %{_cp_pre:.0f}→%{_cp_now:.0f}, üstten ani çöküş)"
+            elif _cp_now <= 35 and _cp_pre >= 75:
+                _cp_p = f"Satıcı baskısı oluştu ↘ (CP %{_cp_pre:.0f}→%{_cp_now:.0f}, yeni satım baskısı, dağıtım sinyali olabilir)"
+            elif _cp_now <= 40 and _cd <= 0:
+                _cp_p = f"Satıcı baskısı sürüyor (CP %{_cp_now:.0f}, alt yarıda kapanış sürüyor)"
+            else:
+                _cp_p = f"Kararsız (CP %{_cp_now:.0f}, önceki %{_cp_pre:.0f})"
+            _panel_rows.append(f"- MUM (CP — Kapanış Konumu): {_cp_p}")
+    except Exception:
+        pass
+
+    if _panel_rows:
+        _panel_summary_str = "\n".join(_panel_rows)
+    else:
+        _panel_summary_str = "Veri yetersiz — panel okuması üretilemedi."
+    # ────────────────────────────────────────────────────────────────
+
     prompt = f"""*** KİMLİĞİN ***
 25 yıldır hem kurumsal hem bireysel portföy yöneten, BIST'i ve global piyasaları yakından izleyen bir analistsin. Karmaşık veriyi sade dile çevirmekte iyisin — ama sadeleştirirken bilgiyi kaybetmezsin. Ne korkutursan ne de umutlandırırsın. Veri ne diyorsa onu söylersin, fazlasını değil. Hem yükseliş hem düşüş gördün, ikisini de bekliyorsun. Soğukkanlısın.
 
@@ -17311,6 +18017,21 @@ Likidite havuzlarına bakarak, küçük yatırımcıların nerede 'terste kalmı
 - TUZAK DURUMU (SFP): {sfp_desc}
 - HARMONİK FORMASYON (XABCD Fibonacci): {harm_txt} (Varsa: harmonik PRZ + ICT bölgesi çakışmasını özellikle vurgula)
 - NİHAİ KARAR VE AKSİYON PLANI (THE BOTTOM LINE): {ict_data.get('bottom_line', 'Veri Yok')}
+
+*** 🎯 GENEL ÖZET PANELİ — 3-30 GÜN TAKTİKSEL OKUMA (DETAYLI SENARYO HARİTASI) ***
+(Bu blok, GENEL ÖZET panelinde abonenin gördüğü genişletilmiş senaryo motorunun çıktısıdır. Her satır, fiyat-hacim-momentum dinamiklerinin tek bir boyutunu özetler. AI olarak bu okumayı **3-30 günlük taktiksel çerçeve** olarak kullan; analizinde yorumlarken bu sinyallerin birbirleriyle uyumunu veya çelişkisini öne çıkar. Statik veri değil, fiyat hareketinin canlı bir okumasıdır.)
+{_panel_summary_str}
+
+YORUMLAMA REHBERİ:
+- YAPI: Klasik HH+HL veya LH+LL net trend söyler; CHoCH "dönüş başlıyor" demektir; Megafon ve Üçgen sıkışma "geçiş dönemi"dir.
+- MOMENTUM SLOPE: Seviye değil, RSI'ın 5g'lik değişim hızı. "Sert dönüş" ve "Tepe geri çekilme" en yüksek bilgi taşır.
+- RANGE: 20g aralığın neresinde + 5g önce neredeydi. V-bottom/U-top gibi sert hareketler dağıtım/toplama izi olabilir.
+- VSA: O günkü mum + hacim kombinasyonu. "Climax/Üst rejekti" tepe sinyali; "Alt rejekti/Alım onayı" dip sinyali. "Sahte alım/satım" tuzak uyarısıdır.
+- RSI DIVERGENCE: Regular = dönüş yakın; Hidden = trend devam ediyor. İkisi karıştırılmamalı.
+- MUM (CP): Son 5g kapanışının günlük aralıkta ortalama konumu. "Satıcı baskısı oluştu" + "Premium" çakışırsa dağıtım, "Alıcı agresif" + "Discount" çakışırsa toplama olabilir.
+
+KURAL: Bu 7 satırın birbiriyle çakıştığı bölgeyi bul. Çakışma varsa o senaryoyu öne çıkar. Çelişki varsa "veri X diyor ama Y bunu sorguluyor" şeklinde dürüstçe söyle.
+
 *** 3. ALGORİTMİK ANALİZ STANDARTLARI (BİLGİ NOTU) ***
 Analiz yaparken algoritmamızın şu katı kuralları uyguladığını bil ve yorumlarını bu temel üzerine inşa et:
 1. MUM FORMASYONLARI (H1/L1 Hassasiyeti): 
@@ -17453,17 +18174,26 @@ TEKNİK KART:
 1⃣🔹) Genel Sentez (Composite Skor + Vade Uyumu)
 - Master Skor: (Algoritmik Composite Skoru ve karar etiketini yaz; en güçlü ve en zayıf alt faktörü vurgula — örn. "Trend 100 mükemmel ama Hacim 50 zayıf")
 - Vade Uyumu (MTF): (4H/Günlük/Haftalık/Aylık matrisinden dominant yön ve uyum oranı; vadelerin uyumlu mu yoksa çelişkili mi olduğu)
-2⃣🔹) Fiyat Davranışı ve Formasyon
-- Mum Yapısı: (Gövde ve fitillere göre görsel okuma + algoritmik PA sinyali)
+2⃣🔹) Yapı & Fiyat Davranışı
+- Trend Yapısı: (GENEL ÖZET PANEL'deki "YAPI" satırını kullan — HH+HL / LH+LL / CHoCH up/down / Megafon / Üçgen sıkışma / Yatay range / Yarı yapı'dan hangisi aktif? CHoCH varsa "dönüş başlıyor", megafon varsa "sağlıksız volatilite", üçgen varsa "kırılım yakın" vurgusu yap.)
+- Mum & Fitil (Kapanış Konumu): (Panel'deki "Mum (Kapanış Konumu)" satırını kullan — Son 5g kapanış konumu × önceki 5g referansı. Alıcı kontrolü var / Alıcı agresif / Alıcı baskısı oluştu / Alıcı baskısı sürüyor / Alıcı zayıflıyor / Satıcı kontrolü var / Satıcı agresif / Satıcı baskısı oluştu / Satıcı baskısı sürüyor / Kararsız — 10 senaryodan hangisi aktif? Bu okuma "kim kontrol ediyor" sorusuna objektif cevaptır.)
 - Formasyon Durumu: (Grafikte gördüğün OBO, TOBO, Bayrak vs. formasyon ve ikili/üçlü mum yapıları — formasyon yoksa bu satırı atla)
-3⃣🔹) Hacim, Efor ve Akıllı Para İzi
-- Hacim/Fiyat Uyumu: (Hacmin fiyat hareketini destekleyip desteklemediği, 'Churning' olup olmadığı)
-- Kurumsal Akış: (Grafikteki fitillere ve algoritmaya göre emilim veya agresif çıkış)
-4⃣🔹) Trend Skoru ve Enerji
+3⃣🔹) Momentum & Vade Uyumu
+- RSI Slope & MACD: (GENEL ÖZET PANEL'deki "MOMENTUM SLOPE" satırını kullan — RSI seviyesi DEĞİL, 5g'lik DEĞİŞİM. Sert dönüş / Toparlanma / Trend hızlanıyor / Yatay / Yavaşlıyor / Aşağı ivme / Tepe geri çekilme'den hangisi aktif? Seviye yorumu yapacaksan panel'deki RSI seviyesi etiketini (zayıf/nötr/güçlü) kullan, "alım bölgesi" gibi vague ifadeler KULLANMA.)
+- Uyumsuzluk (Divergence): (Panel'deki "RSI DIVERGENCE" satırını kullan — 5 tip var: Regular Bull (dönüş yakın yukarı), Regular Bear (dönüş yakın aşağı), Hidden Bull (yükseliş trendi devam), Hidden Bear (düşüş trendi devam), Yok. Regular ve Hidden farklı şeyler — karıştırma. Regular "tükenme" sinyalidir, Hidden "trend devam ediyor" sinyalidir.)
+- MTF Momentum: (Kısa/orta/uzun vade momentum uyumu; hangi periyotta zayıflama başladı?)
+4⃣🔹) Hacim, Efor ve Akıllı Para İzi (VSA)
+- Hacim/Mum Uyumu (VSA): (GENEL ÖZET PANEL'deki "VSA" satırını kullan — 9 senaryo: Alım onayı ★, Satım onayı ★, Climax ⚠⚠ (dönüş yakın), Üst rejekti ⤵ (dağıtım), Alt rejekti ⤴ (toplama), Sahte alım ⚠ (no demand), Sahte satım ⚠ (no supply), Ölü piyasa, Normal. Climax/Üst rejekti varsa tepe sinyali, Alt rejekti varsa dip sinyali, Sahte alım/satım varsa tuzak uyarısı.)
+- Kurumsal Akış: (OBV, Delta, kurumsal emilim/çıkış izleri; panel'deki VSA ile Smart Money Volume verisini birlikte değerlendir)
+5⃣🔹) Likidite & Kritik Bantlar
+- Range Konumu: (GENEL ÖZET PANEL'deki "RANGE (20g)" satırını kullan — Discount / Premium / V-bottom / U-top / Toparlanma / Premium kaybı / Premium tutunma / Tepede tıkalı / Dipte tutunma / Orta gibi 9 senaryodan hangisi aktif? Range konumu fiyatın 20g aralıkta nerede olduğunu ve 5g önce neredeydiyse bunu gösterir.)
+- Üst Havuz: (Fiyatın üstündeki en yakın likidite / kritik seviye)
+- Alt Havuz: (Fiyatın altındaki en yakın likidite / kritik seviye)
+6⃣🔹) Trend Skoru ve Enerji
 - Enerji Puanı: (Algoritmadan gelen Skoru yaz ve grafikteki sıkışmayı/momentumu yorumla)
-5⃣🔹🔹 Teknik Okuma Özeti
-(Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik özeti — Composite Skor ve Vade Uyumunu mutlaka özetin çerçevesine koy.)
-Bu 5 maddelik TEKNİK KART Algoritmamın çıktısıdır.Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
+7⃣🔹🔹 Teknik Okuma Özeti
+(Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik özeti — Composite Skor ve Vade Uyumunu mutlaka özetin çerçevesine koy. Panel'deki 7 senaryonun BİRBİRİYLE UYUMU veya ÇELİŞKİSİ üzerinden hikayeyi kur. Örn: "Yapı sağlam ↑ + Momentum hızlanıyor + Premium tutunma + Alım onayı" çakışırsa "tüm sinyaller hizalı" de; "Yapı bozuk + Sahte alım + Yorgun alıcı" çakışırsa "tuzak riski" de.)
+Bu 7 maddelik TEKNİK KART Algoritmamın çıktısıdır.Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #BIST100 #SmartMoneyRadar #{clean_ticker}
 
 ** Dördüncü Görevin:
@@ -17585,7 +18315,7 @@ UYARI: Sadece gerçek bir risk varsa yaz — RSI uyumsuzluğu, stopping volume, 
 Analizin sonuna "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." yaz (küçük harf, noktalı) ve altına "#SmartMoneyRadar #BIST100" yaz.
 
 *****GÖREVLERİN SUNUŞ SIRALAMASI (DİNAMİK)*****
-Görevlerin sunuş sırası bugünkü en baskın sinyale göre değişiyor:
+Görevlerin sunuş sırası bugünkü en baskın sinyale göre değişiyor. Görev sıralaması yaparken en başa neden o görevi aldığını aşağıdaki argümanlarla açıkla:
 
 EĞER Royal Flush Nadir Set-up sinyali tetiklendiyse:
 → Sıralama: Dördüncü (Abone özeti) → İkinci (Twitter) → Birinci (Detaylı analiz) → Üçüncü (Teknik kart)
@@ -17657,7 +18387,7 @@ def _show_fullscreen_chart():
     _disp   = get_display_name(_ticker)
 
     # ── Grafik + özet verilerini önceden hesapla (başlıkta göstermek için) ──
-    _fig, _smc_sum = _main_price_chart_plotly(_ticker, False)
+    _fig, _smc_sum = _main_price_chart_plotly(_ticker, True)
 
     # ── Chip HTML'i oluştur ───────────────────────────────────────────────────
     def _chip(label, color, mono=True):
@@ -18005,21 +18735,177 @@ def _show_fullscreen_chart():
             if _h_bar_once != '—' and str(_h_bar_once).strip():
                 st.caption(f"D noktası {_h_bar_once} gün önce oluştu." if str(_h_bar_once) != 'bekleniyor' else "D noktası henüz bekleniyor — PRZ yaklaşıyor.")
 
-col_left, col_right = st.columns([4, 1])
+
+col_left, col_right = st.columns([82, 20])
 
 # --- SOL SÜTUN ---
-with col_left:
-    # ── ANA FİYAT GRAFİĞİ (buton → popup) ───────────────────────────────────
-    _disp_name = get_display_name(st.session_state.ticker)
 
-    if st.button(
-        f"🧠  {_disp_name}  ·  AKILLI PARA İZİ  ·  SMC Derin Yapı Grafiğini İncelemek için TIKLA",
-        key="btn_fullscreen_chart",
-        use_container_width=True,
-        type="primary",
-    ):
-        _show_fullscreen_chart()
+def _render_left_col():
+    # ══════════════════════════════════════════════════════════════════════════════
+    # KATMAN 1 — ÜST BİLGİ ŞERİDİ
+    # Fiyat · Değişim · Bias · Güven Skoru · RSI · En Yakın Destek / Direnç
+    # Tek bakışta 5 saniyede tablo: Al mı? Bekle mi? Risk nerede?
+    # ══════════════════════════════════════════════════════════════════════════════
+    try:
+        _k1_ticker = st.session_state.ticker
+        _k1_disp   = get_display_name(_k1_ticker)
+        _k1_info   = fetch_stock_info(_k1_ticker) or {}
+        _k1_price  = _k1_info.get('price', 0)
+        _k1_chg    = _k1_info.get('change_pct', 0)
+        _k1_is_idx = _k1_price > 1000 or "XU" in _k1_ticker.upper() or "^" in _k1_ticker
 
+        # ── Fiyat formatı ──────────────────────────────────────────────────────────
+        _k1_px_str  = f"{int(_k1_price):,}".replace(",", ".") if _k1_is_idx else f"{_k1_price:.2f}"
+        _k1_chg_col = "#4ade80" if _k1_chg >= 0 else "#f87171"
+        _k1_chg_arr = "▲" if _k1_chg >= 0 else "▼"
+        _k1_chg_str = f"{_k1_chg_arr} %{abs(_k1_chg):.2f}"
+
+        # ── Bias (ICT yapı analizi) ────────────────────────────────────────────────
+        _k1_ict      = calculate_ict_deep_analysis(_k1_ticker)
+        _k1_bias_raw = (_k1_ict.get('bias', 'neutral') if _k1_ict else 'neutral')
+        if 'bullish' in _k1_bias_raw:
+            _k1_bias_lbl = "BULLISH ↑"; _k1_bias_col = "#4ade80"; _k1_bias_bg = "rgba(74,222,128,0.12)"
+        elif 'bearish' in _k1_bias_raw:
+            _k1_bias_lbl = "BEARISH ↓"; _k1_bias_col = "#f87171"; _k1_bias_bg = "rgba(248,113,113,0.12)"
+        else:
+            _k1_bias_lbl = "NÖTR →";    _k1_bias_col = "#f59e0b"; _k1_bias_bg = "rgba(245,158,11,0.12)"
+
+        # ── Güven Skoru (conviction — sadece df ile hızlı hesap) ──────────────────
+        _k1_df        = get_safe_historical_data(_k1_ticker, period="1y")
+        _k1_conv      = calculate_conviction_score(_k1_df) if _k1_df is not None else {"score": 50}
+        _k1_conv_score = _k1_conv.get('score', 50)
+        if   _k1_conv_score >= 70: _k1_conv_col = "#4ade80"
+        elif _k1_conv_score >= 55: _k1_conv_col = "#86efac"
+        elif _k1_conv_score >= 45: _k1_conv_col = "#f59e0b"
+        else:                      _k1_conv_col = "#f87171"
+
+        # ── RSI (14 periyot, hızlı hesap) ─────────────────────────────────────────
+        _k1_rsi_val = 50.0
+        try:
+            if _k1_df is not None and len(_k1_df) >= 15:
+                _k1_close = _k1_df['Close'].iloc[:, 0] if isinstance(_k1_df['Close'], pd.DataFrame) else _k1_df['Close']
+                _k1_delta = _k1_close.diff()
+                _k1_gain  = _k1_delta.clip(lower=0).rolling(14).mean()
+                _k1_loss  = (-_k1_delta.clip(upper=0)).rolling(14).mean()
+                _k1_rs    = _k1_gain / _k1_loss.replace(0, 1e-9)
+                _k1_rsi_val = float((100 - 100 / (1 + _k1_rs)).iloc[-1])
+        except Exception:
+            pass
+        _k1_rsi_col = "#4ade80" if _k1_rsi_val >= 55 else ("#f87171" if _k1_rsi_val <= 40 else "#f59e0b")
+
+        # ── RS Gücü (sadece BIST hisseleri) ───────────────────────────────────────
+        _k1_is_bist_stock = (
+            not _k1_is_idx and
+            "-" not in _k1_ticker and
+            "=F" not in _k1_ticker and
+            "^" not in _k1_ticker and
+            "USD" not in _k1_ticker.upper()
+        )
+        _k1_rs_str = "—"; _k1_rs_col = "#64748b"
+        if _k1_is_bist_stock:
+            try:
+                _k1_xu_df = get_safe_historical_data("XU100", period="3mo")
+                if _k1_xu_df is not None and _k1_df is not None and len(_k1_df) >= 21:
+                    _xu_c  = _k1_xu_df['Close'].iloc[:, 0] if isinstance(_k1_xu_df['Close'], pd.DataFrame) else _k1_xu_df['Close']
+                    _stk_c = _k1_df['Close'].iloc[:, 0]    if isinstance(_k1_df['Close'],   pd.DataFrame) else _k1_df['Close']
+                    _xu_ret  = float(_xu_c.pct_change(20).iloc[-1])
+                    _stk_ret = float(_stk_c.pct_change(20).iloc[-1])
+                    _rs_val  = (1 + _stk_ret) / (1 + _xu_ret) if (1 + _xu_ret) != 0 else 1.0
+                    _k1_rs_str = f"{_rs_val:.2f}×"
+                    _k1_rs_col = "#4ade80" if _rs_val >= 1.0 else "#f87171"
+            except Exception:
+                pass
+
+        # ── Hacim (bugün / 20g ort.) ───────────────────────────────────────────────
+        _k1_vol_str = "—"; _k1_vol_col = "#64748b"
+        try:
+            if _k1_df is not None and len(_k1_df) >= 21 and 'Volume' in _k1_df.columns:
+                _vol_s     = _k1_df['Volume'].iloc[:, 0] if isinstance(_k1_df['Volume'], pd.DataFrame) else _k1_df['Volume']
+                _vol_today = float(_vol_s.iloc[-1])
+                _vol_avg   = float(_vol_s.rolling(20).mean().iloc[-1])
+                if _vol_avg > 0:
+                    _vr = _vol_today / _vol_avg
+                    _k1_vol_str = f"{_vr:.1f}×"
+                    _k1_vol_col = "#4ade80" if _vr >= 1.5 else ("#f59e0b" if _vr >= 0.8 else "#f87171")
+        except Exception:
+            pass
+
+        # ── Beta (BIST→XU100, diğer→^GSPC, endeks/emtia→—) ───────────────────────
+        _k1_beta_str = "—"; _k1_beta_col = "#64748b"
+        try:
+            _ref_ticker_b = "XU100" if _k1_is_bist_stock else (None if _k1_is_idx else "^GSPC")
+            if _ref_ticker_b and _k1_df is not None and len(_k1_df) >= 60:
+                _ref_b = get_safe_historical_data(_ref_ticker_b, period="1y")
+                if _ref_b is not None:
+                    _rc = _ref_b['Close'].iloc[:, 0] if isinstance(_ref_b['Close'], pd.DataFrame) else _ref_b['Close']
+                    _sc = _k1_df['Close'].iloc[:, 0]  if isinstance(_k1_df['Close'],  pd.DataFrame) else _k1_df['Close']
+                    _rr = _rc.pct_change().dropna(); _sr = _sc.pct_change().dropna()
+                    _idx = _sr.index.intersection(_rr.index)
+                    if len(_idx) >= 30:
+                        _beta_val = float(_sr.loc[_idx].cov(_rr.loc[_idx]) / _rr.loc[_idx].var())
+                        _k1_beta_str = f"β {_beta_val:.2f}"
+                        _k1_beta_col = "#f87171" if _beta_val > 1.5 else ("#4ade80" if _beta_val < 0.8 else "#94a3b8")
+        except Exception:
+            pass
+
+        # ── Momentum (5 günlük getiri) ─────────────────────────────────────────────
+        _k1_mom_str = "—"; _k1_mom_col = "#64748b"
+        try:
+            if _k1_df is not None and len(_k1_df) >= 6:
+                _mom_c   = _k1_df['Close'].iloc[:, 0] if isinstance(_k1_df['Close'], pd.DataFrame) else _k1_df['Close']
+                _mom_ret = float((_mom_c.iloc[-1] - _mom_c.iloc[-6]) / _mom_c.iloc[-6] * 100)
+                _k1_mom_str = f"{'▲' if _mom_ret >= 0 else '▼'} %{abs(_mom_ret):.1f}"
+                _k1_mom_col = "#4ade80" if _mom_ret >= 2 else ("#f87171" if _mom_ret <= -2 else "#f59e0b")
+        except Exception:
+            pass
+
+        # ── Chip yardımcı fonksiyonları ────────────────────────────────────────────
+        def _k1_chip(label, value, val_color, last=False):
+            _sep = "" if last else "border-right:1px solid #1e3a5f;"
+            return (
+                f"<div style='display:flex;flex-direction:column;align-items:center;"
+                f"padding:0 14px;{_sep}gap:2px;flex:1;'>"
+                f"<span style='font-size:0.60rem;color:#cbd5e1;font-weight:700;"
+                f"text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;'>{label}</span>"
+                f"<span style='font-size:0.88rem;font-weight:800;color:{val_color};"
+                f"font-family:\"JetBrains Mono\",monospace;white-space:nowrap;'>{value}</span>"
+                f"</div>"
+            )
+
+        st.markdown(f"""
+    <div style="border:1px solid #1e3a5f;border-radius:8px;
+                background:linear-gradient(90deg,#0d1829,#0f2040);
+                padding:8px 4px;margin-bottom:10px;
+                display:flex;align-items:center;justify-content:space-between;
+                box-shadow:0 4px 12px rgba(0,0,0,0.4);width:100%;">
+      <div style="display:flex;flex-direction:column;align-items:center;
+                  padding:0 16px;border-right:1px solid #1e3a5f;gap:2px;flex:1;">
+        <span style="font-size:0.60rem;color:#64748b;font-weight:600;
+                     text-transform:uppercase;letter-spacing:0.5px;color:#cbd5e1;font-weight:700;">HİSSE</span>
+        <span style="font-size:1.0rem;font-weight:900;color:#38bdf8;">{_k1_disp}</span>
+      </div>
+      {_k1_chip("FİYAT",    _k1_px_str,                     "#f1f5f9")}
+      {_k1_chip("DEĞİŞİM",  _k1_chg_str,                    _k1_chg_col)}
+      {_k1_chip("MOMENTUM", _k1_mom_str,                     _k1_mom_col)}
+      <div style="display:flex;flex-direction:column;align-items:center;
+                  padding:0 14px;border-right:1px solid #1e3a5f;gap:2px;flex:1;">
+        <span style="font-size:0.60rem;color:#64748b;font-weight:600;
+                     text-transform:uppercase;letter-spacing:0.5px;color:#cbd5e1;font-weight:700;">YAPI</span>
+        <span style="font-size:0.84rem;font-weight:800;color:{_k1_bias_col};
+                     background:{_k1_bias_bg};padding:2px 9px;border-radius:4px;
+                     font-family:'JetBrains Mono',monospace;white-space:nowrap;">{_k1_bias_lbl}</span>
+      </div>
+      {_k1_chip("RS GÜCÜ",  _k1_rs_str,                      _k1_rs_col)}
+      {_k1_chip("RSI",      f"{_k1_rsi_val:.0f}",            _k1_rsi_col)}
+      {_k1_chip("HACİM",    _k1_vol_str,                     _k1_vol_col)}
+      {_k1_chip("BETA",     _k1_beta_str,                    _k1_beta_col)}
+      {_k1_chip("GÜVEN",    f"{_k1_conv_score}/100",         _k1_conv_col, last=True)}
+    </div>
+    """, unsafe_allow_html=True)
+
+    except Exception:
+        pass
+    # ── /KATMAN 1 ─────────────────────────────────────────────────────────────────
     # ── 52 HAFTALIK RANGE BAR ─────────────────────────────────────────
     try:
         _df_w52 = get_safe_historical_data(st.session_state.ticker, period="1y")
@@ -18038,9 +18924,9 @@ with col_left:
                 return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             _lbl_color = "#94a3b8"
             st.markdown(f"""
-<div style="border:1px solid #1e3a5f;border-radius:8px;background:#0d1829;
+    <div style="border:1px solid #1e3a5f;border-radius:8px;background:#0d1829;
             padding:9px 14px 10px 14px;margin-bottom:8px;">
-  <div style="position:relative;height:8px;border-radius:4px;
+      <div style="position:relative;height:8px;border-radius:4px;
               background:#1e3a5f;margin-bottom:7px;">
     <div style="position:absolute;top:0;left:0;height:100%;width:{_pct}%;
                 background:#38bdf8;border-radius:4px;opacity:0.85;"></div>
@@ -18049,18 +18935,82 @@ with col_left:
                 width:13px;height:13px;border-radius:50%;
                 background:#38bdf8;border:2px solid #0d1829;
                 box-shadow:0 0 8px rgba(56,189,248,0.6);"></div>
-  </div>
-  <div style="display:flex;justify-content:space-between;align-items:center;">
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
     <span style="font-size:0.75rem;color:{_lbl_color};font-weight:600;font-family:'JetBrains Mono',monospace;">52H Düşük: {_fmt(_yl)}</span>
     <span style="font-size:0.75rem;color:{_lbl_color};font-weight:600;">%{_pct} konumda</span>
     <span style="font-size:0.75rem;color:{_lbl_color};font-weight:600;font-family:'JetBrains Mono',monospace;">52H Yüksek: {_fmt(_yh)}</span>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
     except Exception:
         pass
     # ── /52H BAR ──────────────────────────────────────────────────────
+    # ── ANA FİYAT GRAFİĞİ (inline) ───────────────────────────────────────────
+    _disp_name = get_display_name(st.session_state.ticker)
 
+    # ── SMC Grafik — expander (default kapalı) ───────────────────────────────
+    st.markdown("""<style>
+    div[data-testid="stExpander"] details {
+        background: #0d1829 !important;
+        border: 1px solid #1e3a5f !important;
+        border-top: 3px solid #3b82f6 !important;
+        border-radius: 8px !important;
+        margin-bottom: 8px !important;
+    }
+    div[data-testid="stExpander"] details summary {
+        font-size: 1.4rem !important;
+        font-weight: 900 !important;
+        color: #38bdf8 !important;
+        padding: 8px 12px !important;
+    }
+    div[data-testid="stExpander"] details summary:hover {
+        color: #7dd3fc !important;
+    }
+    div[data-testid="stExpander"] details summary svg {
+        fill: #38bdf8 !important;
+    }
+    div[data-testid="stExpander"] .streamlit-expanderContent {
+        border-top: 1px solid #1e3a5f !important;
+        padding: 0 !important;
+    }
+    </style>""", unsafe_allow_html=True)
+
+    with st.expander(f"📈 Smart Money Concept Analiz: SMC Derin Yapı Grafiğini İncelemek için TIKLA  ·  {_disp_name}", expanded=False):
+        _tb_zoom, _tb_full, _ = st.columns([1, 1, 8])
+        with _tb_zoom:
+            _scroll_zoom = st.toggle("🔍", key="chart_scroll_zoom",
+                                     value=False,
+                                     help="Açık: scroll ile zoom | Kapalı: scroll sayfa kaydırır")
+        with _tb_full:
+            if st.button("⛶", key="btn_fullscreen_chart",
+                         help="Derin analiz — SMC + Hacim + Para Akışı + Formasyon"):
+                _show_fullscreen_chart()
+        try:
+            _inline_fig, _ = _main_price_chart_plotly(st.session_state.ticker, True)
+            if _inline_fig is not None:
+                _inline_fig.update_layout(height=440, margin=dict(t=20, b=10, l=0, r=0))
+                st.plotly_chart(
+                    _inline_fig,
+                    use_container_width=True,
+                    config={
+                        'scrollZoom'            : bool(st.session_state.get('chart_scroll_zoom', False)),
+                        'displayModeBar'        : True,
+                        'modeBarButtonsToRemove': ['select2d', 'lasso2d'],
+                        'displaylogo'           : False,
+                    },
+                    key="inline_price_chart",
+                )
+        except Exception:
+            if st.button(
+                f"🧠  {_disp_name}  ·  SMC Derin Yapı Grafiğini İncelemek için TIKLA",
+                key="btn_fullscreen_chart_fb",
+                use_container_width=True,
+                type="primary",
+            ):
+                _show_fullscreen_chart()
+    
+    
     # ── Stale data uyarısı (veri güncellenemediğinde) ─────────────────
     _stale = st.session_state.pop('_data_stale', None)
     if _stale and _stale.get('ticker') == st.session_state.ticker:
@@ -18076,7 +19026,7 @@ with col_left:
             unsafe_allow_html=True
         )
     # ─────────────────────────────────────────────────────────────────────────
-
+    
     # 1. PARA AKIŞ İVMESİ & FİYAT DENGESİ (EN TEPE)
     synth_data = calculate_synthetic_sentiment(st.session_state.ticker)
     if synth_data is None:
@@ -18096,33 +19046,33 @@ with col_left:
                 elif 'close' in df_ma.columns: c_col = 'close'
                 elif 'Fiyat' in df_ma.columns: c_col = 'Fiyat'
                 else: c_col = df_ma.columns[0]
-
+    
                 # 🛡️ YENİ KORUMA: Eğer eski bozuk veriden dolayı 'Close' iki tane gelmişse, sadece ilkini al
                 if isinstance(df_ma[c_col], pd.DataFrame):
                     price_series = df_ma[c_col].iloc[:, 0]
                 else:
                     price_series = df_ma[c_col]
-
+    
                 # DEĞERLERİ GÜVENLİ SERİ ÜZERİNDEN HESAPLA
                 current_price = info.get('price', price_series.iloc[-1]) if info else price_series.iloc[-1]
-
+    
                 ema5 = price_series.ewm(span=5, adjust=False).mean().iloc[-1]
                 ema8 = price_series.ewm(span=8, adjust=False).mean().iloc[-1]
                 ema13 = price_series.ewm(span=13, adjust=False).mean().iloc[-1]
                 ema144 = price_series.ewm(span=144, adjust=False).mean().iloc[-1]
-
+    
                 sma50 = price_series.rolling(window=50).mean().iloc[-1]
                 sma100 = price_series.rolling(window=100).mean().iloc[-1]
                 sma200 = price_series.rolling(window=200).mean().iloc[-1]
-
+    
                 # 52H high/low (son 252 iş günü)
                 year_high = float(price_series.rolling(252).max().iloc[-1])
                 year_low  = float(price_series.rolling(252).min().iloc[-1])
                 w52_rng   = year_high - year_low
                 w52_pct   = int(round((current_price - year_low) / w52_rng * 100)) if w52_rng > 0 else 0
-
+    
                 is_index = "XU" in st.session_state.ticker.upper() or "^" in st.session_state.ticker or current_price > 1000
-
+    
                 def ma_status(ma_value, price):
                     if pd.isna(ma_value): return "⏳ -"
                     if is_index: val_str = f"{int(ma_value)}" 
@@ -18130,7 +19080,7 @@ with col_left:
                         
                     if price > ma_value: return f"🟢 <b>{val_str}</b>"
                     else: return f"🔴 <b>{val_str}</b>"
-
+    
                 clean_ticker = get_display_name(st.session_state.ticker)
                 
                 # Fiyat formatlaması (Endeks ise EMA'lar gibi küsuratsız)
@@ -18147,40 +19097,40 @@ with col_left:
                 badge_bg   = "rgba(16,185,129,0.15)"
                 badge_text = "#10b981"
                 price_color = "#10b981"
-
+    
                 def ma_cell(label, val, price):
                     return (f'<div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:0 8px;border-right:1px solid {border_col};">'
                             f'<span style="font-size:0.66rem;color:{lbl_col};font-weight:600;white-space:nowrap;">{label}</span>'
                             f'<span style="font-size:0.8rem;color:{text_col};font-family:\'JetBrains Mono\',monospace;font-weight:700;">{ma_status(val, price)}</span>'
                             f'</div>')
-
+    
                 def ma_cell_last(label, val, price):
                     return (f'<div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:0 8px;">'
                             f'<span style="font-size:0.66rem;color:{lbl_col};font-weight:600;white-space:nowrap;">{label}</span>'
                             f'<span style="font-size:0.8rem;color:{text_col};font-family:\'JetBrains Mono\',monospace;font-weight:700;">{ma_status(val, price)}</span>'
                             f'</div>')
-
+    
                 def ma_cell(label, val, price, sep=True):
                     border = f"border-right:1px solid {border_col};" if sep else ""
                     return (f'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;{border}padding:4px 0;">'
                             f'<span style="font-size:0.67rem;color:{lbl_col};font-weight:600;">{label}</span>'
                             f'<span style="font-size:0.82rem;color:{text_col};font-family:\'JetBrains Mono\',monospace;font-weight:700;">{ma_status(val, price)}</span>'
                             f'</div>')
-
+    
                 def grp_label(icon, line1, line2, color):
                     return (f'<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex:0 0 72px;padding:4px 0;border-right:1px solid {border_col};">'
                             f'<span style="font-size:0.75rem;">{icon}</span>'
                             f'<span style="font-size:0.65rem;color:{color};font-weight:700;line-height:1.3;">{line1}</span>'
                             f'<span style="font-size:0.65rem;color:{color};font-weight:700;line-height:1.3;">{line2}</span>'
                             f'</div>')
-
+    
                 st.markdown(f"""
-<div style="border:1px solid #1e3a5f;border-radius:8px;overflow:hidden;margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
-  <div style="background:linear-gradient(90deg,#0d1829,#0f2040);padding:5px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e3a5f;">
+    <div style="border:1px solid #1e3a5f;border-radius:8px;overflow:hidden;margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+      <div style="background:linear-gradient(90deg,#0d1829,#0f2040);padding:5px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e3a5f;">
     <span style="font-weight:700;font-size:0.82rem;color:#38bdf8;letter-spacing:0.5px;">📊 TEKNİK SEVİYELER</span>
     <span style="background:{badge_bg};color:{badge_text};padding:2px 10px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:0.82rem;border:1px solid rgba(16,185,129,0.3);">{clean_ticker} — <span style="color:{price_color};">{display_price}</span></span>
-  </div>
-  <div style="display:flex;align-items:stretch;padding:0;background:{bg_col};width:100%;">
+      </div>
+      <div style="display:flex;align-items:stretch;padding:0;background:{bg_col};width:100%;">
     {grp_label("📉", "KISA", "VADE", "#38bdf8")}
     {ma_cell("EMA 5",   ema5,   current_price)}
     {ma_cell("EMA 8",   ema8,   current_price)}
@@ -18190,38 +19140,38 @@ with col_left:
     {ma_cell("SMA 100", sma100, current_price)}
     {ma_cell("SMA 200", sma200, current_price)}
     {ma_cell("EMA 144", ema144, current_price, sep=False)}
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    
     except Exception as e:
         st.warning(f"Teknik tablo oluşturulamadı. Hata: {e}")
     # --------------------------------------------------
     # 1--- SMART MONEY HACİM ANALİZİ ---
     st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
     render_smart_volume_panel(st.session_state.ticker)
-
+    
     # 2. TEKNİK YOL HARİTASI PANELİ
     render_roadmap_8_panel(st.session_state.ticker)
-
+    
     # 3.--- ICT SMART MONEY ANALİZİ ---
     render_ict_deep_panel(st.session_state.ticker)
-
+    
     # 4. Kritik Seviyeler
     render_levels_card(st.session_state.ticker)
-
+    
     # ---------------------------------------------------------
     # 🏆 TARAMA MERKEZİ — TİERELİ DÜZEN (YENİ)
     # ---------------------------------------------------------
-
+    
     # Session state başlatmaları
     for _k in ['ict_scan_data','nadir_firsat_scan_data','guclu_donus_data',
                 'harmonic_confluence_data','accum_data','minervini_data',
                 'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data',
                 'golden_pattern_data']:
         if _k not in st.session_state: st.session_state[_k] = None
-
+    
     # ── STARTUP CACHE RESTORE (piyasa dışı saatlerde otomatik yükle) ─────────
     # Sayfa ilk açıldığında veya yenilendiğinde, son kapanış sonrası yapılmış
     # master scan cache varsa tüm sonuçları session_state'e geri yükler.
@@ -18237,13 +19187,13 @@ with col_left:
             _close_str = _scan_last_close_dt().strftime('%d.%m %H:%M')
             st.session_state['_cache_toast_msg'] = f"📦 {_close_str} kapanışı tarama sonuçları yüklendi"
     # ─────────────────────────────────────────────────────────────────────────
-
+    
     # Skor kartı başlığı — gradient progress bar + puan badge
     def _darken(hex_color, factor=0.65):
         h = hex_color.lstrip('#')
         r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
         return f"#{int(r*factor):02x}{int(g*factor):02x}{int(b*factor):02x}"
-
+    
     def _scan_card_header(icon, title, score, subtitle, color="#3b82f6", desc=""):
         pct   = score
         stars = "⭐" * (score // 20)
@@ -18261,15 +19211,15 @@ with col_left:
                 f"<div style='background:rgba(0,0,0,0.12);border-radius:3px;height:4px;margin-bottom:5px;'>"
                 f"<div style='background:{color};height:4px;border-radius:3px;width:{pct}%;'></div></div>"
                 f"<div style='margin-top:3px;'>{stars} {bottom}</div></div>")
-
+    
     # ══════════════════════════════════════════════════════════
     # ① CONFLUENCE & ELİTLER — Her Zaman Görünür
     # ══════════════════════════════════════════════════════════
     st.markdown("<div style='border-left:4px solid #7c3aed;padding-left:10px;margin-top:22px;margin-bottom:8px;"
                 "font-weight:900;font-size:1.05rem;'>🎯 CONFLUENCE & ELİTLER</div>", unsafe_allow_html=True)
-
+    
     _c_left, _c_right = st.columns(2)
-
+    
     with _c_left:
         st.markdown(_scan_card_header("🔥", "CONFLUENCE", 95,
             "2-3 Metodoloji Kesişimi", "#1d4ed8",
@@ -18278,10 +19228,10 @@ with col_left:
         _hits  = st.session_state.get('confluence_hits')
         _hc_df = st.session_state.get('harmonic_confluence_data')
         _cbg   = "#eff6ff"
-
+    
         # ── İki sub-kolon: sol=CONFLUENCE, sağ=HARMONİK CONF ──
         _sub_cf, _sub_hc = st.columns(2)
-
+    
         with _sub_cf:
             _conf_count = len(_hits) if _hits else 0
             st.markdown(f"<div style='background:linear-gradient(135deg,#7c3aed18,#7c3aed06);"
@@ -18318,7 +19268,7 @@ with col_left:
                 st.markdown(f"<div style='border:1px dashed #7c3aed50;border-radius:7px;"
                             f"padding:18px 10px;text-align:center;color:#94a3b8;font-size:0.8rem;'>"
                             f"Master Scan çalıştırın</div>", unsafe_allow_html=True)
-
+    
         with _sub_hc:
             _hc_count = len(_hc_df) if (_hc_df is not None and not (hasattr(_hc_df,'empty') and _hc_df.empty)) else 0
             st.markdown(f"<div style='background:linear-gradient(135deg,#7c3aed18,#7c3aed06);"
@@ -18351,7 +19301,7 @@ with col_left:
                 st.markdown(f"<div style='border:1px dashed #7c3aed50;border-radius:7px;"
                             f"padding:18px 10px;text-align:center;color:#94a3b8;font-size:0.8rem;'>"
                             f"Master Scan çalıştırın</div>", unsafe_allow_html=True)
-
+    
     # ── ELİT ↔ Pre-Launch kesişim seti ──────────────────────────────────────
     _pb_scan_syms   = set()
     _elit_scan_syms = set()
@@ -18363,7 +19313,7 @@ with col_left:
         _elit_scan_syms.update(set(st.session_state.golden_results['Hisse'].values))
     _double_hit_syms = _elit_scan_syms & _pb_scan_syms
     # ─────────────────────────────────────────────────────────────────────────
-
+    
     with _c_right:
         st.markdown(_scan_card_header("💎", "ELİTLER", 88,
             "Güçlü Yapı + Uçmamış + Harekete Hazır",
@@ -18395,10 +19345,10 @@ with col_left:
         if _has_elite:
             _platin = st.session_state.platin_results
             _tekli  = st.session_state.tekli_altin_results
-
+    
             # ── İKİ SÜTUN ────────────────────────────────────────────
             _col_l, _col_r = st.columns(2)
-
+    
             # ── SOL: HAREKETE HAZIR (3-kapı Platin tarama) ──────────
             with _col_l:
                 st.markdown(
@@ -18432,7 +19382,7 @@ with col_left:
                             "padding-top:22px;'>Bu kategoride Platin bulunamadı</div>",
                             unsafe_allow_html=True
                         )
-
+    
             # ── SAĞ: ALTIN & PLATİN (tekli hisse kriterleri) ────────
             with _col_r:
                 st.markdown(
@@ -18502,16 +19452,16 @@ with col_left:
                 "Master Scan çalıştırın veya yukarıdaki butona basın</div>",
                 unsafe_allow_html=True
             )
-
+    
     st.markdown("<hr style='margin:12px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
-
+    
     # ══════════════════════════════════════════════════════════
     # ② TIER 1 — Kanıtlanmış Yöntemler
     # ══════════════════════════════════════════════════════════
     st.markdown("<div style='border-left:5px solid #16a34a;padding-left:10px;margin-bottom:8px;"
                 "font-weight:900;font-size:1rem;color:#16a34a;'>🥇 TIER 1 — Kanıtlanmış Yöntemler</div>",
                 unsafe_allow_html=True)
-
+    
     # ── ICT Sniper & Royal Flush Nadir Fırsat ──
     if True:
         st.markdown(_scan_card_header(
@@ -18520,10 +19470,10 @@ with col_left:
             "#16a34a",
             desc="🦅 ICT Sniper: Hacimsiz stop avı + toparlanma = likidite sonrası toparlanma yapısı &nbsp;·&nbsp; ♠️ Royal Flush: 5 kriterin aynı anda kesiştiği nadir kraliyet set-up'ı"
         ), unsafe_allow_html=True)
-
+    
         # İki iç sütun: ICT | Royal Flush
         _ict_sub, _rf_sub = st.columns(2)
-
+    
         with _ict_sub:
             st.markdown("<div style='text-align:center;color:#16a34a;font-weight:800;font-size:0.7rem;"
                         "padding:2px;border-radius:4px;border:1px solid #86efac;margin-bottom:4px;'>"
@@ -18564,7 +19514,7 @@ with col_left:
                             if st.button(f"🐻 {sym.replace('.IS','')} ({row['Fiyat']:.2f}) | {row['Durum']}",
                                          key=f"ict_short_{sym}_{i}", use_container_width=True):
                                 on_scan_result_click(sym); st.rerun()
-
+    
         with _rf_sub:
             st.markdown("<div style='text-align:center;color:#7c3aed;font-weight:800;font-size:0.7rem;"
                         "padding:2px;border-radius:4px;border:1px solid #c4b5fd;margin-bottom:4px;'>"
@@ -18603,19 +19553,19 @@ with col_left:
                             if _rf_ac:
                                 st.markdown(f"<div style='font-size:0.72rem;color:#cbd5e1;font-weight:500;margin:-6px 0 4px 4px;"
                                             f"line-height:1.3;'>{_rf_ac}</div>", unsafe_allow_html=True)
-
-
+    
+    
     st.markdown("<hr style='margin:10px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
-
+    
     # ══════════════════════════════════════════════════════════
     # ③ TIER 2 — Yüksek Güven (2×2 Grid)
     # ══════════════════════════════════════════════════════════
     st.markdown("<div style='border-left:5px solid #3b82f6;padding-left:10px;margin-bottom:8px;"
                 "font-weight:900;font-size:1rem;color:#38bdf8;'>🥈 TIER 2 — Yüksek Güven</div>",
                 unsafe_allow_html=True)
-
+    
     _t2c1, _t2c2 = st.columns(2)
-
+    
     with _t2c1:
         st.markdown(_scan_card_header("🔄", "Güçlü Dönüş+", 75,
             "RSI 50-65 + EMA13↑ + RS/BIST100 + VWAP + OBV · min 5/7", "#3b82f6",
@@ -18668,7 +19618,7 @@ with col_left:
                                         f"line-height:1.3;'>{_gd_ac}</div>", unsafe_allow_html=True)
             else:
                 st.warning("OBV birikim + RSI diverjans + hacim frekansı kriterlerini karşılayan hisse bulunamadı.")
-
+    
     with _t2c2:
         st.markdown(_scan_card_header("🚀", "Pre-Launch BOS", 82,
             "Squeeze (≥5g) + 45g Direnç Kırılımı + Hacim + RSI<70", "#3b82f6",
@@ -18725,9 +19675,9 @@ with col_left:
                                         unsafe_allow_html=True)
             else:
                 st.warning("Squeeze + BOS kriterlerini aynı anda karşılayan hisse bulunamadı.")
-
+    
     _t2c3, _t2c4 = st.columns(2)
-
+    
     with _t2c3:
         st.markdown(_scan_card_header("🦁", "Minervini SEPA", 76,
             "VCP + SMA hizalama + RS güç", "#3b82f6",
@@ -18752,7 +19702,7 @@ with col_left:
                                         f"line-height:1.3;'>{_sepa_detay}</div>", unsafe_allow_html=True)
             else:
                 st.warning("Bu zorlu kriterlere uyan hisse bulunamadı.")
-
+    
     with _t2c4:
         st.markdown(_scan_card_header("💎", "Altın Set-up & VIP Formasyon", 78,
             "RS güçlü + Discount + Hacim + Formasyon", "#16a34a",
@@ -18790,16 +19740,16 @@ with col_left:
                             on_scan_result_click(_hzs); st.rerun()
             else:
                 st.caption("Altın Set-up & VIP Formasyon bulunamadı.")
-
-
-
+    
+    
+    
     # 5. GELİŞMİŞ TEKNİK KART
     render_detail_card_advanced(st.session_state.ticker)
-
+    
     st.markdown(f"<div style='font-size:0.9rem;font-weight:600;margin-bottom:4px; margin-top:20px;'>📡 {st.session_state.ticker} hakkında haberler ve analizler</div>", unsafe_allow_html=True)
     symbol_raw = st.session_state.ticker; base_symbol = (symbol_raw.replace(".IS", "").replace("=F", "").replace("-USD", "")); lower_symbol = base_symbol.lower()
     st.markdown(f"""<div class="news-card" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; border-left:none;"><a href="https://seekingalpha.com/symbol/{base_symbol}/news" target="_blank" style="text-decoration:none;"><div style="padding:4px 8px; border-radius:4px; border:1px solid #e5e7eb; font-size:0.8rem; font-weight:600;">SeekingAlpha</div></a><a href="https://finance.yahoo.com/quote/{base_symbol}/news" target="_blank" style="text-decoration:none;"><div style="padding:4px 8px; border-radius:4px; border:1px solid #e5e7eb; font-size:0.8rem; font-weight:600;">Yahoo Finance</div></a><a href="https://www.nasdaq.com/market-activity/stocks/{lower_symbol}/news-headlines" target="_blank" style="text-decoration:none;"><div style="padding:4px 8px; border-radius:4px; border:1px solid #e5e7eb; font-size:0.8rem; font-weight:600;">Nasdaq</div></a><a href="https://stockanalysis.com/stocks/{lower_symbol}/" target="_blank" style="text-decoration:none;"><div style="padding:4px 8px; border-radius:4px; border:1px solid #e5e7eb; font-size:0.8rem; font-weight:600;">StockAnalysis</div></a><a href="https://finviz.com/quote.ashx?t={base_symbol}&p=d" target="_blank" style="text-decoration:none;"><div style="padding:4px 8px; border-radius:4px; border:1px solid #e5e7eb; font-size:0.8rem; font-weight:600;">Finviz</div></a><a href="https://unusualwhales.com/stock/{base_symbol}/overview" target="_blank" style="text-decoration:none;"><div style="padding:4px 8px; border-radius:4px; border:1px solid #e5e7eb; font-size:0.7rem; font-weight:600;">UnusualWhales</div></a></div>""", unsafe_allow_html=True)
-
+    
     # --- GİZLİ TEMETTÜ / BÖLÜNME SIFIRLAMA + VERİ TAZELE BUTONLARI ---
     col_reset, col_refresh, _ = st.columns([1, 1, 2])
     with col_reset:
@@ -18824,7 +19774,7 @@ with col_left:
                     st.toast("⚠️ Dosya bulunamadı ama önbellek temizlendi.", icon="⚠️")
                 
                 st.rerun()
-
+    
     with col_refresh:
         with st.expander("🔄 Veriyi Tazele (Kategorideki Tüm hisseler)"):
             st.caption("Seçili kategorideki tüm eski parquet verilerini yeniden indirir.")
@@ -18852,17 +19802,23 @@ with col_left:
                 _ref_bar.empty()
                 st.toast(f"✅ {_ref_ok} güncellendi, {_ref_fail} başarısız.", icon="🔄")
                 st.rerun()
+    
+    # --- SAĞ SÜTUN ---
+    
 
-# --- SAĞ SÜTUN ---
-with col_right:
-    if not info: info = fetch_stock_info(st.session_state.ticker)
+with col_left:
+    with st.container(height=2500, border=False):
+        _render_left_col()
 
+def _render_right_col():
+    info = fetch_stock_info(st.session_state.ticker)
+    
     # 1. Fiyat (YENİ TERMİNAL GÖRÜNÜMÜ)
     if info and info.get('price'):
         display_ticker = get_display_name(st.session_state.ticker)
         price_val = info.get('price', 0)
         change_val = info.get('change_pct', 0)
-
+    
         # Rengi Belirle
         if change_val >= 0:
             bg_color = "#81bb96"  # Yeşil
@@ -18872,21 +19828,21 @@ with col_right:
             bg_color = "#9B7C99"  # Kırmızı
             arrow = "▼"
             shadow_color = "rgba(220, 38, 38, 0.4)"
-
-        # HTML Kodları
-        st.markdown(f"""<div style="background-color:{bg_color}; border-radius:12px; padding:15px; color:white; text-align:center; box-shadow: 0 10px 15px -3px {shadow_color}, 0 4px 6px -2px rgba(0,0,0,0.05); margin-bottom:15px; border: 1px solid rgba(255,255,255,0.2);">
-<div style="font-size:1.1rem; font-weight:600; opacity:0.9; letter-spacing:1px; margin-bottom:5px; text-transform:uppercase;">FİYAT: {display_ticker}</div>
-<div style="font-family:'JetBrains Mono', monospace; font-size:2.4rem; font-weight:800; line-height:1; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">{price_val:.2f}</div>
-<div style="margin-top:10px;">
-<span style="background:rgba(255,255,255,0.25); color:white; font-weight:700; font-size:1.1rem; padding:4px 12px; border-radius:20px; backdrop-filter: blur(4px);">
-{arrow} %{change_val:.2f}
-</span>
-</div>
-</div>""", unsafe_allow_html=True)
+    
+        # HTML Kodları — %60 boyut (kompakt kart)
+        st.markdown(f"""<div style="background-color:{bg_color}; border-radius:8px; padding:8px 12px; color:white; text-align:center; box-shadow: 0 6px 10px -3px {shadow_color}; margin-bottom:8px; border: 1px solid rgba(255,255,255,0.2);">
+    <div style="font-size:0.72rem; font-weight:600; opacity:0.9; letter-spacing:1px; margin-bottom:3px; text-transform:uppercase;">FİYAT: {display_ticker}</div>
+    <div style="font-family:'JetBrains Mono', monospace; font-size:1.5rem; font-weight:800; line-height:1; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">{price_val:.2f}</div>
+    <div style="margin-top:6px;">
+    <span style="background:rgba(255,255,255,0.25); color:white; font-weight:700; font-size:0.82rem; padding:2px 8px; border-radius:20px; backdrop-filter: blur(4px);">
+    {arrow} %{change_val:.2f}
+    </span>
+    </div>
+    </div>""", unsafe_allow_html=True)
     
     else:
         st.warning("Fiyat verisi alınamadı.")
-
+    
     # --- FORMASYON BUTONU — fiyat paneli hemen altında ---
     _fcd = st.session_state.get('_formasyon_chart_data')
     if _fcd and isinstance(_fcd, dict):
@@ -18914,7 +19870,7 @@ with col_right:
         </style>""", unsafe_allow_html=True)
         if st.button(f"📊 {_fdsp}-{_fpl}", use_container_width=True, key="btn_formasyon_dialog"):
             _formasyon_dialog(_ftk, _fcd, _fpr, _fdsp, _fpl, _fdrk)
-
+    
     # --- HARMONİK FORMASYON BUTONU — formasyon butonunun hemen altında ---
     try:
         _hdf = get_safe_historical_data(st.session_state.ticker, period="1y")
@@ -18944,16 +19900,16 @@ with col_right:
         </style>""", unsafe_allow_html=True)
         if st.button(f"🔮 {_hdsp}-{_hpat}", use_container_width=True, key="btn_harmonik_dialog"):
             _harmonik_dialog(st.session_state.ticker, _hres, _hprice, _hdsp, _hdrk)
-
+    
     # --- BİRLEŞİK SİNYAL PANELİ (Canlı Sinyaller + Tarama Sonuçları) ---
     render_unified_signals_panel(st.session_state.ticker)
-
+    
     # 2. Price Action Paneli
     render_price_action_panel(st.session_state.ticker)
-
+    
     # 🦅 YENİ: ICT SNIPER ONAY RAPORU (Sadece Setup Varsa Çıkar)
     render_ict_certification_card(st.session_state.ticker)
-
+    
     # --- YENİ EKLEME: ALTIN ÜÇLÜ KONTROL PANELİ ---
     # Verileri taze çekelim ki hata olmasın
     try:
@@ -18964,25 +19920,25 @@ with col_right:
         render_golden_trio_banner(ict_data_check, sent_data_check, ticker=st.session_state.ticker)
     except Exception as e:
         pass # Bir hata olursa sessizce geç, ekranı bozma.
-
+    
     # Platin Fırsat (Elit) — tarama yapmadan canlı hesaplar (AF + SMA200 + SMA50 + RSI < 70)
     render_platin_live_banner(st.session_state.ticker, ict_data_check, sent_data_check)
-
+    
     # ÇİFT TEYİT — ELİT + Pre-Launch BOS (önce göster, en önemli)
     render_double_hit_banner(st.session_state.ticker, ict_data_check, sent_data_check)
-
+    
     # Güçlü Dönüş Adayları — bireysel hisse banner'ı
     render_guclu_donus_banner(st.session_state.ticker)
-
+    
     # Pre-Launch BOS — bireysel hisse banner'ı
     render_prelaunch_bos_banner(st.session_state.ticker)
-
+    
     # Harmonik Formasyon — bireysel hisse banner'ı
     render_harmonic_banner(st.session_state.ticker)
-
+    
     # Harmonik Confluence (3'lü teyit) — varsa Royal Flush Nadir Fırsat/Altın Set-up seviyesinde rozet
     render_harmonic_confluence_banner(st.session_state.ticker)
-
+    
     # 💎 VIP FORMASYON — Altın Set-up + Geometrik Yapı batch tarama sonucu
     try:
         _gp_live = st.session_state.get('golden_pattern_data')
@@ -19011,7 +19967,7 @@ with col_right:
                     )
     except:
         pass
-
+    
     # 📦 DARVAS BOX — Bireysel hisse banner'ı (kalite ≥ 75 ise göster)
     try:
         _df_darvas_live = get_safe_historical_data(st.session_state.ticker, period="6mo")
@@ -19048,12 +20004,12 @@ with col_right:
                 )
     except:
         pass
-
+    
     st.markdown("<hr style='margin-top:15px; margin-bottom:10px;'>", unsafe_allow_html=True)
-
-
+    
+    
     st.markdown("<hr style='margin-top:15px; margin-bottom:10px; border-color: rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
-
+    
     # ESKİ DÜZ ÇİZGİYİ SİLDİK, YERİNE MODERN BAŞLIK EKLİYORUZ
     header_html_bottom = """
     <div style="
@@ -19082,7 +20038,7 @@ with col_right:
     </div>
     """
     st.markdown(header_html_bottom, unsafe_allow_html=True)
-
+    
     # ALT SEKMELERİ YİNE ŞIK BİR ÇERÇEVE (CONTAINER) İÇİNE ALIYORUZ
     with st.container(border=True):
         
@@ -19101,10 +20057,10 @@ with col_right:
                 st.session_state.scan_data = analyze_market_intelligence(curr_assets, st.session_state.get('category', 'S&P 500'))
                 st.session_state.radar2_data = radar2_scan(curr_assets)
                 st.rerun()
-
+    
         df1 = st.session_state.get('scan_data')
         df2 = st.session_state.get('radar2_data')
-
+    
         # ORTAK FIRSATLAR KISMI
         st.markdown(f"<div style='font-size:0.9rem;font-weight:bold; margin-bottom:8px; color:#38bdf8; background-color:rgba(30, 64, 175, 0.05); padding:5px; border-radius:5px; border:1px solid #1e40af; text-align:center;'>🎯 Ortak Set-Up'lar (R1 + R2 Kesişim)</div>", unsafe_allow_html=True)
         if df1 is not None and df2 is not None and not df1.empty and not df2.empty:
@@ -19126,7 +20082,7 @@ with col_right:
                 st.caption("Kesişim bulunamadı.")
         else:
             st.caption("Tarama yapıldığında burada kesişen hisseler görünür.")
-
+    
         st.markdown("<hr style='margin:10px 0; border-color: rgba(150,150,150,0.1);'>", unsafe_allow_html=True)
         
         # RADAR 1 LİSTESİ
@@ -19139,7 +20095,7 @@ with col_right:
                     if cols_r1[i % 3].button(f"🔥 {int(row['Skor'])}/7\n{sym.replace('.IS','')}", key=f"r1_tab_{sym}_{i}", use_container_width=True):
                         on_scan_result_click(sym); st.rerun()
             else: st.caption("Veri yok.")
-
+    
         st.markdown("<hr style='margin:10px 0; border-color: rgba(150,150,150,0.1);'>", unsafe_allow_html=True)
         
         # RADAR 2 LİSTESİ
@@ -19171,7 +20127,7 @@ with col_right:
                     if cols_r2[i % 3].button(f"🚀 {int(row['Skor'])}/7\n{sym.replace('.IS','')}{_dbadge}", key=f"r2_tab_{sym}_{i}", use_container_width=True, help=_help):
                         on_scan_result_click(sym); st.rerun()
             else: st.caption("Veri yok.")
-
+    
     # ---------------------------------------------------------
     # SEKME: 👑 TOP 20 MASTER LİSTE
     # ---------------------------------------------------------
@@ -19180,19 +20136,19 @@ with col_right:
             st.markdown('<div style="font-size:0.85rem; color:#64748b; margin-bottom:10px; text-align:center;">Tüm algoritmalardan en çok onay alan elit hisseler</div>', unsafe_allow_html=True)
             # --- Clickable card CSS overlay ---
             st.markdown("""<style>
-.t20wrap { position:relative; margin-bottom:18px; cursor:pointer; }
-.t20wrap:hover .t20card { opacity:0.88; transition:opacity 0.15s; }
-/* Pull the Streamlit button immediately after .t20wrap up to cover the card */
-.t20wrap + div[data-testid="element-container"] {
+    .t20wrap { position:relative; margin-bottom:18px; cursor:pointer; }
+    .t20wrap:hover .t20card { opacity:0.88; transition:opacity 0.15s; }
+    /* Pull the Streamlit button immediately after .t20wrap up to cover the card */
+    .t20wrap + div[data-testid="element-container"] {
     position:relative; z-index:10; margin-top:-120px; height:120px;
-}
-.t20wrap + div[data-testid="element-container"] button {
+    }
+    .t20wrap + div[data-testid="element-container"] button {
     width:100% !important; height:120px !important;
     background:transparent !important; border:none !important;
     box-shadow:none !important; color:transparent !important;
     cursor:pointer !important; position:absolute; top:0; left:0;
-}
-</style>""", unsafe_allow_html=True)
+    }
+    </style>""", unsafe_allow_html=True)
             with st.container(height=500, border=True):
                 for i, item in enumerate(st.session_state.top_20_summary):
                     sym = item['Sembol'].replace('.IS', '')
@@ -19217,21 +20173,21 @@ with col_right:
                                   if onay_sayisi >= 4 else
                                   f'<span style="background:#0d1829;color:#cbd5e1;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;margin-left:6px;">✅ {onay_sayisi} Onay</span>')
                     st.markdown(f"""
-<div class="t20wrap">
-  <div class="t20card" style="background-color:{bg_color};padding:12px;border-radius:8px;border:2px solid {border_color};">
+    <div class="t20wrap">
+      <div class="t20card" style="background-color:{bg_color};padding:12px;border-radius:8px;border:2px solid {border_color};">
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid {border_color}44;padding-bottom:6px;margin-bottom:8px;">
       <span style="font-weight:900;font-size:1.2rem;color:{sym_clr};">{sym} {onay_badge}</span>
       <span style="background:{score_bg};color:white;padding:2px 10px;border-radius:12px;font-weight:800;font-size:0.8rem;">Skor: {score}/100</span>
     </div>
     <div style="font-size:0.8rem;color:{detail_clr};font-weight:600;line-height:1.4;padding:8px;background:rgba(255,255,255,0.07);border-radius:5px;border-left:4px solid {border_color};">{item['katalizor']}</div>
     <div style="font-size:0.65rem;color:#94a3b8;margin-top:8px;font-weight:700;"><span style="color:#94a3b8;">Kesişen Sinyaller:</span> {sources_str}</div>
-  </div>
-</div>""", unsafe_allow_html=True)
+      </div>
+    </div>""", unsafe_allow_html=True)
                     if st.button(sym, key=f"top20b_btn_{sym}_{i}", use_container_width=True):
                         st.session_state.ticker = item['Sembol']; st.rerun()
         else:
             st.info("Lütfen sol menüdeki 'TÜM PİYASAYI TARA' butonunu kullanarak listeyi oluşturun.")
-
+    
     # ---------------------------------------------------------
     # SEKME: 📊 SİNYAL PERFORMANSI
     # ---------------------------------------------------------
@@ -19242,7 +20198,7 @@ with col_right:
             "</div>",
             unsafe_allow_html=True
         )
-
+    
         lookback = st.selectbox(
             "Değerlendirme Penceresi",
             options=[30, 60, 90],
@@ -19250,10 +20206,10 @@ with col_right:
             format_func=lambda x: f"Son {x} gün",
             key="perf_lookback"
         )
-
+    
         with st.spinner("Sinyal performansı hesaplanıyor..."):
             df_summary = get_signal_performance_summary(lookback_days=lookback)
-
+    
         if df_summary.empty:
             st.info(
                 "Henüz yeterli sinyal verisi yok. "
@@ -19276,7 +20232,7 @@ with col_right:
                     "Ort +20G":   st.column_config.TextColumn("Ort. +20G",    width="small"),
                 }
             )
-
+    
             # Ham sinyal detay tablosu (opsiyonel genişletme)
             with st.expander("📋 Ham Sinyal Detayları", expanded=False):
                 df_raw = evaluate_signals(lookback_days=lookback)
@@ -19284,12 +20240,12 @@ with col_right:
                     show_cols = ['Sembol', 'Tarama', 'Sinyal Tarihi', 'Giriş',
                                  'Getiri_5G', 'Getiri_10G', 'Getiri_20G', 'Geçen Gün']
                     show_cols = [c for c in show_cols if c in df_raw.columns]
-
+    
                     def _color_ret(val):
                         if val is None or (isinstance(val, float) and pd.isna(val)):
                             return ''
                         return 'color: #16a34a; font-weight:bold' if float(val) > 0 else 'color:#f87171; font-weight:bold'
-
+    
                     styled = df_raw[show_cols].style.applymap(
                         _color_ret,
                         subset=[c for c in ['Getiri_5G', 'Getiri_10G', 'Getiri_20G'] if c in show_cols]
@@ -19297,3 +20253,6 @@ with col_right:
                     st.dataframe(styled, use_container_width=True, hide_index=True)
                 else:
                     st.caption("Değerlendirilebilir sinyal bulunamadı.")
+with col_right:
+    with st.container(height=1800, border=False):
+        _render_right_col()
