@@ -190,6 +190,53 @@ def shopier_order_mark(order_id: int, username: str, tier: str, days: int,
     con.commit(); con.close()
 
 
+def sub_add_pending(user_id: int, username: str) -> str:
+    """
+    /start yapan ama henüz aboneliği olmayan kullanıcıyı 'pending' olarak işaretle.
+    Shopier ödemesi 5-15 dk sonra geldiğinde sub_add_by_username bu satırı UPDATE eder
+    (user_id korunur) → check_shopier_orders otomatik DM atabilir.
+
+    - user_id zaten DB'de (gerçek pozitif) varsa → no-op (mevcut aboneliği bozma)
+    - Username DB'de var ama user_id negatif (Shopier pseudo) → user_id'yi linkle
+    - Hiçbiri yoksa → yeni 'pending' satırı ekle
+
+    Döndürür: durum string ('new_pending', 'linked', 'skipped_existing', 'invalid')
+    """
+    from datetime import date
+    uname = (username or "").lstrip("@").lower().strip()
+    if not uname or user_id <= 0:
+        return "invalid"
+
+    con = sqlite3.connect(_SIGNALS_DB)
+    # 1. user_id ile bak — varsa dokunma
+    existing = con.execute(
+        "SELECT tier FROM subscribers WHERE user_id=?", (user_id,)
+    ).fetchone()
+    if existing:
+        con.close()
+        return "skipped_existing"
+
+    # 2. Username ile bak — negatif pseudo user_id varsa linkle
+    by_uname = con.execute(
+        "SELECT user_id FROM subscribers WHERE LOWER(username)=?", (uname,)
+    ).fetchone()
+    if by_uname:
+        con.execute(
+            "UPDATE subscribers SET user_id=? WHERE LOWER(username)=? AND user_id <= 0",
+            (user_id, uname)
+        )
+        con.commit(); con.close()
+        return "linked"
+
+    # 3. Yepyeni pending kayıt
+    con.execute("""
+        INSERT INTO subscribers (user_id, username, tier, expiry_date, added_date, note)
+        VALUES (?, ?, 'pending', '', ?, 'pending_start')
+    """, (user_id, uname, date.today().isoformat()))
+    con.commit(); con.close()
+    return "new_pending"
+
+
 def sub_link_user_id(username: str, user_id: int) -> bool:
     """username'e ait kaydın user_id'sini günceller (Shopier sonrası /start ile eşleştirme).
     Döndürür: güncellendi mi."""

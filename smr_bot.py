@@ -734,6 +734,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             smr_core.sub_link_user_id(uname, uid)
             sub["user_id"] = uid
 
+    # Tier 'pending' → henüz ödeme algılanmadı, hoş geldin akışına git
+    if sub and sub.get("tier", "").lower() == "pending":
+        sub = None
+
     if sub:
         from datetime import date
         tier   = sub["tier"].upper()
@@ -767,12 +771,22 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
     else:
+        # Pending olarak kaydet — Shopier 5-15 dk içinde ödemeyi algılarsa
+        # check_shopier_orders otomatik DM atabilir (user_id korunur)
+        if uname:
+            try:
+                _pst = smr_core.sub_add_pending(uid, uname)
+                log.info(f"[/start] pending kayıt: @{uname} (uid={uid}) → {_pst}")
+            except Exception as _e:
+                log.warning(f"[/start] sub_add_pending hata: {_e}")
+
         await msg.reply_text(
-            "👋 Merhaba! *Smart Money Radar*'a hoş geldin.\n\n"
+            "👋 Merhaba. Az önce ödediysen 15 dk içinde otomatik link alacak ve "
+            "SMR dünyasına adım atacaksın, beklemen yeterli.\n\n"
             "📊 *PRO* — Günde 3 analiz\n"
             "👑 *ELITE* — Günde 10 analiz + derin AI raporu\n\n"
-            "Abone olmak için ödeme sayfasını ziyaret et.\n\n"
-            "💡 _Ödeme yaptıysan ve hesabın aktifleşmediyse:_\n"
+            "Henüz ödeme yapmadıysan: smartmoneyradar.app\n\n"
+            "💡 _Hesabın aktifleşmediyse:_\n"
             "Shopier formuna girdiğin Telegram kullanıcı adını kontrol et. "
             "Sorun devam ederse admin'e yaz: @SmartMoneyRadar26",
             parse_mode="Markdown"
@@ -1215,6 +1229,38 @@ async def check_shopier_orders(context=None):
                     auto_status = f"✅ Otomatik eklendi: @{tg_user} — {tier} — Bitiş: {new_expiry}"
                     mark_status = "auto_added"
                     log.info(f"[Shopier] Otomatik eklendi: @{tg_user} → {tier} bitiş:{new_expiry}")
+
+                    # ─── OTOMATIK DAVET LİNKİ (pending user'lar için) ───
+                    # sub_add_by_username pending satırı UPDATE eder → user_id korunur
+                    # user_id > 0 ise → bot DM atabilir, invite link gönderebilir
+                    try:
+                        _sub_after = smr_core.sub_get_by_username(tg_user)
+                        _target_uid = (_sub_after.get("user_id") or 0) if _sub_after else 0
+                        if _target_uid > 0:
+                            _tier_ch = {"PRO": PRO_ID, "ELITE": ELITE_ID}.get(tier)
+                            if _tier_ch:
+                                from datetime import timedelta as _td
+                                _exp_ts = int((datetime.now() + _td(hours=24)).timestamp())
+                                _inv = await bot.create_chat_invite_link(
+                                    chat_id=_tier_ch,
+                                    member_limit=1,
+                                    expire_date=_exp_ts,
+                                    name=f"auto-shopier #{oid}"
+                                )
+                                _emoji = "💎" if tier == "PRO" else "👑"
+                                await bot.send_message(
+                                    chat_id=_target_uid,
+                                    text=(f"🎉 *Hoş geldin!* {_emoji} *{tier}* aboneliğin aktif.\n\n"
+                                          f"Kanala katılmak için davet linkin hazır (24 saat geçerli, tek kullanımlık):\n"
+                                          f"{_inv.invite_link}\n\n"
+                                          f"Bitiş tarihin: `{new_expiry}`"),
+                                    parse_mode="Markdown"
+                                )
+                                auto_status += "\n🎉 Otomatik DM gönderildi (pending → aktif)"
+                                log.info(f"[Shopier] AUTO-DM: @{tg_user} (uid={_target_uid}) {tier} link gönderildi")
+                    except Exception as _dme:
+                        auto_status += f"\n⚠️ Auto-DM hatası: {_dme}"
+                        log.warning(f"[Shopier] Auto-DM hatası @{tg_user}: {_dme}")
                 except Exception as e:
                     auto_status = f"⚠️ Otomatik eklenemedi — manuel ekle\n`/adduser @{tg_user} {tier} {days} shopier`"
                     mark_status = "error"
