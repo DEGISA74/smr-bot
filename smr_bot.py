@@ -779,6 +779,112 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def cmd_sendinvite(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /sendinvite @ahmet PRO        → 24 saat geçerli, tek kullanımlık PRO daveti
+    /sendinvite @ahmet PRO 48     → 48 saat geçerli
+    /sendinvite @ahmet ELITE      → 24 saat ELITE daveti
+
+    Kullanıcı bot'a önceden /start yapmışsa otomatik DM atılır.
+    Yapmadıysa link admin'e gönderilir, admin manuel iletir.
+    """
+    msg = update.message or update.channel_post
+    if not msg:
+        return
+    user_id  = msg.from_user.id if msg.from_user else 0
+    username = msg.from_user.username or "" if msg.from_user else ""
+    if not _is_admin(user_id, username):
+        await msg.reply_text("⛔ Bu komut sadece admin içindir.")
+        return
+
+    args = context.args
+    if not args or len(args) < 2:
+        await msg.reply_text(
+            "❌ Kullanım: /sendinvite @kullaniciadi TİER [SAAT]\n"
+            "Örnek:\n"
+            "  /sendinvite @ahmet PRO       (24 saat — default)\n"
+            "  /sendinvite @ahmet PRO 48    (48 saat)\n"
+            "  /sendinvite @ahmet ELITE     (24 saat ELITE)\n"
+            "Tier: PRO veya ELITE (FREE için link gerekmez)"
+        )
+        return
+
+    uname = args[0].lstrip("@")
+    tier  = args[1].upper()
+    try:
+        hours = int(args[2]) if len(args) > 2 else 24
+    except ValueError:
+        await msg.reply_text("❌ Saat sayısı rakam olmalı. Örnek: /sendinvite @ahmet PRO 48")
+        return
+
+    if tier not in ("PRO", "ELITE"):
+        await msg.reply_text("❌ Tier PRO veya ELITE olmalı.")
+        return
+
+    tier_channel = {"PRO": PRO_ID, "ELITE": ELITE_ID}.get(tier)
+    if not tier_channel:
+        await msg.reply_text(f"❌ {tier} kanal ID'si yapılandırılmamış.")
+        return
+
+    log.info(f"[CMD] /sendinvite — admin={user_id} hedef=@{uname} tier={tier} saat={hours}")
+
+    # 1. Tek kullanımlık link oluştur
+    try:
+        from datetime import timedelta
+        expire_ts = int((datetime.now() + timedelta(hours=hours)).timestamp())
+        inv = await context.bot.create_chat_invite_link(
+            chat_id=tier_channel,
+            member_limit=1,
+            expire_date=expire_ts,
+            name=f"sendinvite @{uname}"
+        )
+        invite_url = inv.invite_link
+        log.info(f"[/sendinvite] link oluşturuldu: {invite_url}")
+    except Exception as e:
+        await msg.reply_text(
+            f"❌ Link oluşturulamadı.\n"
+            f"Sebep: `{e}`\n\n"
+            f"Bot ilgili kanalda *admin* mi? 'Davet linki oluşturma' yetkisi var mı?",
+            parse_mode="Markdown"
+        )
+        log.error(f"[/sendinvite] link hatası: {e}")
+        return
+
+    # 2. Kullanıcıya DM dene (DB'de user_id varsa)
+    sub = smr_core.sub_get_by_username(uname)
+    target_uid = (sub.get("user_id") or 0) if sub else 0
+
+    dm_status = ""
+    if target_uid and target_uid > 0:
+        try:
+            emoji = "💎" if tier == "PRO" else "👑"
+            await context.bot.send_message(
+                chat_id=target_uid,
+                text=(f"{emoji} *Smart Money Radar — {tier}*\n\n"
+                      f"Kanala katılmak için davet linkin hazır:\n{invite_url}\n\n"
+                      f"⏱ Geçerlilik: *{hours} saat* · Tek kullanımlık"),
+                parse_mode="Markdown"
+            )
+            dm_status = "✅ Kullanıcıya DM gönderildi"
+            log.info(f"[/sendinvite] DM başarılı → user_id={target_uid} (@{uname})")
+        except Exception as e:
+            dm_status = f"⚠️ DM atılamadı (`{e}`)"
+            log.warning(f"[/sendinvite] DM hatası: {e}")
+    else:
+        dm_status = "⚠️ DM atılamadı — kullanıcı bot'a /start yapmamış"
+
+    # 3. Admin'e rapor
+    await msg.reply_text(
+        f"✅ *{tier}* davet linki hazır:\n\n"
+        f"`{invite_url}`\n\n"
+        f"👤 Hedef: @{uname}\n"
+        f"⏱ Geçerlilik: *{hours} saat* · Tek kullanımlık\n"
+        f"{dm_status}\n\n"
+        f"_DM atılamadıysa linki manuel ilet (WhatsApp/email)._",
+        parse_mode="Markdown"
+    )
+
+
 async def cmd_removeuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/removeuser @ahmet"""
     msg = update.message or update.channel_post
@@ -1260,6 +1366,7 @@ def main():
 
     # Admin komutları
     app.add_handler(CommandHandler("adduser",    cmd_adduser))
+    app.add_handler(CommandHandler("sendinvite", cmd_sendinvite))
     app.add_handler(CommandHandler("removeuser", cmd_removeuser))
     app.add_handler(CommandHandler("listusers",  cmd_listusers))
     app.add_handler(CommandHandler("durum",      cmd_durum))
