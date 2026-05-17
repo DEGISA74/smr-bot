@@ -734,6 +734,13 @@ def get_signal_performance_summary(lookback_days=90):
         'rs_leaders':     '🚀 RS Momentum',
         'golden_pattern': '⭐ Altın Formasyon',
     }
+    # Erken Radar senaryo etiketleri (er_A1, er_B4, ...) — dinamik ekle
+    try:
+        _cat_icons = {'A': '🔄', 'B': '📐', 'C': '🚀', 'D': '⚠'}
+        for _sid, _scn in ERKEN_RADAR_SCENARIOS.items():
+            scan_labels[f"er_{_sid}"] = f"{_cat_icons.get(_scn['category'], '•')} ER {_sid} · {_scn['name']}"
+    except NameError:
+        pass  # ERKEN_RADAR_SCENARIOS henüz tanımlı değilse (import sırası)
 
     summary = []
     for scan_type, grp in df.groupby('Tarama'):
@@ -11088,10 +11095,94 @@ def render_price_action_panel(ticker):
 
 def calculate_smart_money_score(ticker):
     """
-    5 kriterli Akıllı Para Skoru hesaplar. 0-100 arası normalize edilmiş skor döner.
-    Hem panel render hem AI prompt için kullanılır.
-    Döndürür: dict (score, status, criteria, summary_text) veya None
+    Backwards-compatible wrapper:
+      - Endeksler (XU100, ^GSPC, =F, -USD, GC=F): eski 5 kriterli EMA hizalama mantığı (Endeks Radarı)
+      - Hisseler: Erken Radar 36 senaryo motoru (evaluate_erken_radar)
+    Çıktı eski formatla aynı: dict (score, status, criteria, summary_text, pre_launch, ...).
     """
+    # --- HİSSELER İÇİN: Erken Radar ---
+    _is_index_tk = (ticker.startswith("XU") or ticker.startswith("^") or
+                    ticker.endswith("=F") or "-USD" in ticker or ticker == "GC=F")
+    if not _is_index_tk:
+        try:
+            df_stock = get_safe_historical_data(ticker)
+            if df_stock is None or len(df_stock) < 60:
+                return None
+            _is_bist_tk = ".IS" in ticker
+            _bench_t = "XU100.IS" if _is_bist_tk else "^GSPC"
+            _bench_df = None
+            try:
+                _bench_df = get_safe_historical_data(_bench_t)
+            except Exception:
+                pass
+            er = evaluate_erken_radar(ticker, df_stock, _bench_df)
+            if er is None:
+                return None
+            primary  = er.get('primary')
+            quality  = er.get('overall_quality', 0)
+            red_flags = er.get('red_flags', []) or []
+            # Status text
+            if primary:
+                status_txt = primary['name']
+            elif red_flags:
+                status_txt = "Risk Sinyali"
+            else:
+                status_txt = "Senaryo Yok"
+            # Status color
+            if red_flags and not primary:
+                s_color = "#ef4444"
+            elif quality >= 75:
+                s_color = "#10b981"
+            elif quality >= 50:
+                s_color = "#22c55e"
+            elif quality >= 30:
+                s_color = "#f59e0b"
+            else:
+                s_color = "#94a3b8"
+            # pre_launch: 5★ B-kategorisi (sıkışma) senaryosu varsa
+            pre_launch = bool(primary and primary.get('category') == 'B' and primary.get('stars') == 5)
+            # Summary text — primary + confirms
+            sums = []
+            if primary:
+                sums.append(f"{primary['name']}: {primary['description']}")
+            for c in (er.get('confirmations') or []):
+                sums.append(f"+ {c['name']}: {c['description']}")
+            for rf in red_flags:
+                sums.append(f"⚠ {rf['name']}: {rf['description']}")
+            summary_text = " | ".join(sums) if sums else "Belirgin Erken Radar senaryosu yok"
+            # PİYASA FİLTRESİ (BIST için)
+            market_score = None
+            market_note = ""
+            if _is_bist_tk:
+                try:
+                    _mkt = calculate_smart_money_score("XU100.IS")
+                    if _mkt:
+                        market_score = _mkt.get("score")
+                        if market_score is not None:
+                            if market_score < 40:
+                                market_note = f"BIST puanı: {market_score}/100 — temkinli olmak lazım"
+                            elif market_score >= 65:
+                                market_note = f"BIST puanı: {market_score}/100 — Endeks de destekliyor"
+                            else:
+                                market_note = f"BIST puanı: {market_score}/100 — Endeks nötr"
+                except Exception:
+                    pass
+            return {
+                "score": quality,
+                "score5": None,
+                "score_trend": "",
+                "status": status_txt,
+                "status_color": s_color,
+                "criteria": {},   # eski format, kullanılmıyor artık
+                "pre_launch": pre_launch,
+                "market_score": market_score,
+                "market_note": market_note,
+                "summary_text": summary_text,
+                "_er_data": er,   # paneller için tam veri
+            }
+        except Exception:
+            return None
+    # --- ENDEKSLER İÇİN: ESKİ MANTIK (EMA hizalama) ---
     try:
         df = get_safe_historical_data(ticker)
         if df is None or len(df) < 60:
@@ -11539,137 +11630,222 @@ def calculate_smart_money_score(ticker):
         return None
 
 
-def render_smart_money_panel(ticker):
+def render_erken_radar_panel(ticker):
     """
-    Akıllı Para Skoru paneli — Sidebar: ICT Bottom Line altında, Kurumsal Para İştahı üstünde.
-    Edu-notlar CSS hover ile açılır/kaybolur (roadmap panel tekniği).
+    ERKEN RADAR Paneli — Hareket öncesi hisse tespit motoru.
+    36 senaryolu motor (evaluate_erken_radar) çıktısını sade Türkçe ile gösterir.
     """
-    data = calculate_smart_money_score(ticker)
-    if data is None:
+    df = get_safe_historical_data(ticker)
+    if df is None or len(df) < 60:
         return
 
-    score         = data["score"]
-    score5        = data.get("score5")
-    score_trend   = data.get("score_trend", "")
-    status        = data["status"]
-    s_color       = data["status_color"]
-    criteria      = data["criteria"]
-    pre_launch    = data.get("pre_launch", False)
-    market_score  = data.get("market_score")
-    market_note   = data.get("market_note", "")
-    display_name  = get_display_name(ticker)
+    is_index = (ticker.startswith("XU") or ticker.startswith("^") or
+                ticker.endswith("=F") or "-USD" in ticker or ticker == "GC=F")
+    is_bist  = ".IS" in ticker or ticker.startswith("XU")
 
-    # Pre-launch: kart kenarlığı ve başlık rengi cyan'a döner (SMR Dark)
+    # Endekslere Erken Radar uygulanmaz, eski mantık (EMA hizalama) korunur
+    if is_index:
+        data = calculate_smart_money_score(ticker)
+        if data is None:
+            return
+        # Eski stil küçük kart — endeks bilgisi
+        score = data["score"]; status = data["status"]; s_color = data["status_color"]
+        display_name = get_display_name(ticker)
+        html = (
+            f'<div style="background:#060d1a;border:2px solid #1e3a5f;border-radius:12px;'
+            f'padding:10px 14px;margin-bottom:10px;font-family:Inter,sans-serif;">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;">'
+            f'<div><div style="font-size:0.75rem;font-weight:700;color:#94a3b8;letter-spacing:0.8px;">&#128202; ENDEKS RADARI</div>'
+            f'<div style="font-size:0.85rem;font-weight:800;color:#f1f5f9;margin-top:2px;">{display_name}</div></div>'
+            f'<div style="text-align:right;">'
+            f'<div style="font-family:JetBrains Mono,monospace;font-size:1.8rem;font-weight:900;color:{s_color};">{score}<span style="font-size:0.9rem;color:#94a3b8">/100</span></div>'
+            f'</div></div>'
+            f'<div style="margin-top:6px;text-align:center;font-size:0.78rem;color:{s_color};font-weight:700;">{status}</div>'
+            f'</div>'
+        )
+        st.markdown(html, unsafe_allow_html=True)
+        return
+
+    # Endeks verisini al (RS hesabı için)
+    bench_t  = "XU100.IS" if is_bist else "^GSPC"
+    bench_df = None
+    try:
+        bench_df = get_safe_historical_data(bench_t)
+    except Exception:
+        pass
+
+    er = evaluate_erken_radar(ticker, df, bench_df)
+    if er is None:
+        return
+
+    display_name = get_display_name(ticker)
+    quality      = er.get('overall_quality', 0)
+    primary      = er.get('primary')
+    confirms     = er.get('confirmations', []) or []
+    red_flags    = er.get('red_flags', []) or []
+    matched_n    = er.get('matched_count', 0)
+
+    # Renkler (kaliteye göre)
+    if red_flags and not primary:
+        s_color = "#ef4444"      # tamamen risk
+    elif quality >= 75:
+        s_color = "#10b981"      # yeşil
+    elif quality >= 50:
+        s_color = "#22c55e"      # açık yeşil
+    elif quality >= 30:
+        s_color = "#f59e0b"      # sarı
+    elif quality > 0:
+        s_color = "#94a3b8"      # nötr gri
+    else:
+        s_color = "#64748b"      # zayıf gri
+
+    # Kart renkleri
     card_bg     = "#060d1a"
-    card_border = ("#06b6d4") if pre_launch else ("#1e3a5f")
-    head_bg     = ("#0d1f24") if pre_launch else ("#0d1829")
+    card_border = "#1e3a5f"
+    head_bg     = "#0d1829"
     text_main   = "#f1f5f9"
     text_muted  = "#94a3b8"
-    edu_color   = "#cbd5e1"
     row_bg      = "#0d1829"
-    row_border  = "#1e3a5f"
-    bar_track   = "rgba(255,255,255,0.08)"
-    _s_col      = data["status_color"]
-    s_bg        = f"rgba({','.join(str(int(_s_col.lstrip('#')[i:i+2],16)) for i in (0,2,4))},0.12)" if _s_col.startswith('#') and len(_s_col)==7 else "rgba(16,185,129,0.12)"
 
-    # Pre-launch pulse animasyonu (tetikleyici satırı bekliyor)
-    pulse_css = (
-        "@keyframes sms-pulse{0%,100%{box-shadow:0 0 0 0 rgba(6,182,212,0.4);}50%{box-shadow:0 0 0 5px rgba(6,182,212,0);}}"
-        ".sms-pre-launch{animation:sms-pulse 2s ease-in-out infinite;}"
-    ) if pre_launch else ""
+    # Status etiketi
+    if primary:
+        cat_label = {'A': 'GERİ DÖNÜŞ', 'B': 'SIKIŞMA', 'C': 'TREND DEVAMI', 'D': 'UYARI'}.get(primary['category'], '')
+        status_text = f"{primary['name']} · {cat_label}"
+    elif red_flags:
+        status_text = "DİKKAT — Risk Sinyali"
+    else:
+        status_text = "Belirgin Sinyal Yok"
 
-    # CSS hover: her kriter satırı için (roadmap panel ile aynı teknik)
-    hover_css = "".join(
-        f".sms-row-{i}:hover .sms-tip-{i}{{opacity:1!important;max-height:120px!important;}}"
-        for i in range(len(criteria))
-    )
+    # Stars helper
+    def _stars_html(n, clr=None):
+        if n == 'KIRMIZI':
+            return '<span style="color:#ef4444;font-weight:800;letter-spacing:1px;">⚠ RİSK</span>'
+        try:
+            n = int(n)
+        except Exception:
+            n = 0
+        c = clr or '#fbbf24'
+        return ('<span style="color:#475569;letter-spacing:1px;">' +
+                ('★' * n) + ('☆' * (5 - n)) + '</span>').replace(
+                '<span style="color:#475569;letter-spacing:1px;">★' * n,
+                f'<span style="color:{c};letter-spacing:1px;font-weight:800;">' + '★' * n) + ''
 
-    rows_html = ""
-    for i, (key, c) in enumerate(criteria.items()):
-        if c["pass"] is None:
-            dot     = f'<span style="color:#64748b;font-size:0.8rem;flex-shrink:0;">&#8211;</span>'
-            desc_clr = text_muted
-            lbl_clr  = text_muted
-            dot_rgb  = "100,116,139"
-        elif c["pass"]:
-            dot     = f'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#10b981;box-shadow:0 0 4px #10b981;flex-shrink:0;margin-top:3px;"></span>'
-            desc_clr = text_main
-            lbl_clr  = "#10b981"
-            dot_rgb  = "16,185,129"
-        else:
-            dot     = f'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#ef4444;box-shadow:0 0 4px #ef4444;flex-shrink:0;margin-top:3px;"></span>'
-            desc_clr = text_muted
-            lbl_clr  = "#ef4444"
-            dot_rgb  = "239,68,68"
+    # Daha temiz: doğrudan inline
+    def _stars(n, big=False):
+        if n == 'KIRMIZI':
+            return '<span style="color:#ef4444;font-weight:800;letter-spacing:0.8px;font-size:0.78rem;">⚠ RİSK</span>'
+        try:
+            n = int(n)
+        except Exception:
+            n = 0
+        size = '1.0rem' if big else '0.85rem'
+        return (f'<span style="font-size:{size};letter-spacing:1px;">'
+                f'<span style="color:#fbbf24;">{"★"*n}</span>'
+                f'<span style="color:#334155;">{"★"*(5-n)}</span>'
+                f'</span>')
 
-        # Pre-launch: tetikleyici satırı (index 4) özel vurgu — "bekleniyor" hissi
-        is_trigger_row = (key == "trigger")
-        if pre_launch and is_trigger_row:
-            row_extra_cls  = " sms-pre-launch"
-            row_extra_sty  = f"border:1px dashed #06b6d4;border-left:3px solid #06b6d4;background:rgba(6,182,212,0.08);"
-            lbl_clr        = "#06b6d4"
-            dot            = f'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#06b6d4;box-shadow:0 0 6px #06b6d4;flex-shrink:0;margin-top:3px;"></span>'
-            desc_clr       = "#06b6d4"
-            dot_rgb        = "6,182,212"
-        else:
-            row_extra_cls  = ""
-            row_extra_sty  = f"background:{row_bg};border:1px solid {row_border};border-left:3px solid rgba({dot_rgb},0.6);"
-
-        rows_html += (
-            f'<div class="sms-row-{i}{row_extra_cls}" style="{row_extra_sty}'
-            f'border-radius:7px;padding:7px 9px 5px 9px;margin-bottom:4px;cursor:default;position:relative;">'
-            f'<div style="display:flex;align-items:flex-start;gap:7px;">'
-            f'{dot}'
-            f'<div style="flex:1;min-width:0;">'
-            f'<div style="font-size:0.75rem;font-weight:700;color:{lbl_clr};text-transform:uppercase;letter-spacing:0.5px;line-height:1.2;">{c["label"]}</div>'
-            f'<div style="font-size:0.80rem;color:{desc_clr};margin-top:2px;line-height:1.3;">{c["desc"]}</div>'
+    # Ana senaryo bloğu
+    if primary:
+        cat_clr = {'A': '#22c55e', 'B': '#3b82f6', 'C': '#a855f7', 'D': '#94a3b8'}.get(primary['category'], '#94a3b8')
+        primary_html = (
+            f'<div style="background:rgba({",".join(str(int(cat_clr.lstrip("#")[i:i+2],16)) for i in (0,2,4))},0.08);'
+            f'border:1px solid {cat_clr}55;border-left:3px solid {cat_clr};border-radius:8px;padding:9px 11px;margin-bottom:6px;">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">'
+            f'<div style="font-size:0.74rem;font-weight:800;color:{cat_clr};letter-spacing:0.5px;">&#9733; ANA SENARYO</div>'
+            f'<div>{_stars(primary["stars"], big=True)}</div>'
             f'</div>'
-            f'<span style="font-size:0.5rem;color:{text_muted};flex-shrink:0;margin-top:2px;opacity:0.6;">&#9432;</span>'
+            f'<div style="font-size:0.92rem;font-weight:800;color:{text_main};margin-bottom:3px;">{primary["name"]}</div>'
+            f'<div style="font-size:0.78rem;color:#cbd5e1;line-height:1.4;">{primary["description"]}</div>'
             f'</div>'
-            f'<div class="sms-tip-{i}" style="opacity:0;max-height:0;overflow:hidden;transition:opacity 0.22s,max-height 0.22s;'
-            f'font-size:0.80rem;color:{edu_color};line-height:1.5;padding-top:0;margin-left:16px;">'
-            f'<div style="border-top:1px dashed rgba({dot_rgb},0.25);margin-top:5px;padding-top:4px;">'
-            f'&#128161; {c["edu"]}</div></div>'
+        )
+    else:
+        primary_html = (
+            f'<div style="background:#0d1829;border:1px solid #1e3a5f;border-radius:8px;padding:14px 11px;margin-bottom:6px;text-align:center;">'
+            f'<div style="font-size:0.82rem;color:{text_muted};font-style:italic;">Bu hissede şu an aktif bir Erken Radar senaryosu tetiklenmiyor.</div>'
             f'</div>'
         )
 
+    # Ek teyitler bloğu
+    confirms_html = ""
+    if confirms:
+        confirms_html = (
+            f'<div style="margin-top:4px;margin-bottom:4px;font-size:0.70rem;font-weight:700;color:{text_muted};'
+            f'text-transform:uppercase;letter-spacing:0.6px;">&#10003; Ek Teyitler ({len(confirms)})</div>'
+        )
+        for c in confirms:
+            cat_clr = {'A': '#22c55e', 'B': '#3b82f6', 'C': '#a855f7', 'D': '#94a3b8'}.get(c['category'], '#94a3b8')
+            confirms_html += (
+                f'<div style="background:{row_bg};border:1px solid #1e3a5f;border-left:3px solid {cat_clr}88;'
+                f'border-radius:6px;padding:6px 9px;margin-bottom:3px;display:flex;align-items:center;justify-content:space-between;gap:6px;">'
+                f'<div style="min-width:0;flex:1;">'
+                f'<div style="font-size:0.78rem;font-weight:700;color:{text_main};line-height:1.2;">{c["name"]}</div>'
+                f'<div style="font-size:0.70rem;color:{text_muted};margin-top:2px;line-height:1.3;">{c["description"]}</div>'
+                f'</div>'
+                f'<div style="flex-shrink:0;">{_stars(c["stars"])}</div>'
+                f'</div>'
+            )
+
+    # Red flags bloğu
+    redflags_html = ""
+    if red_flags:
+        redflags_html = (
+            f'<div style="margin-top:6px;margin-bottom:4px;font-size:0.70rem;font-weight:700;color:#fca5a5;'
+            f'text-transform:uppercase;letter-spacing:0.6px;">&#9888; Risk Uyarıları</div>'
+        )
+        for rf in red_flags:
+            redflags_html += (
+                f'<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-left:3px solid #ef4444;'
+                f'border-radius:6px;padding:6px 9px;margin-bottom:3px;">'
+                f'<div style="font-size:0.78rem;font-weight:700;color:#fca5a5;line-height:1.2;">{rf["name"]}</div>'
+                f'<div style="font-size:0.70rem;color:#fecaca;margin-top:2px;line-height:1.3;">{rf["description"]}</div>'
+                f'</div>'
+            )
+
+    # Çoklu teyit notu
+    multi_note = ""
+    if matched_n >= 3:
+        multi_note = (
+            f'<div style="margin-top:6px;background:rgba(168,85,247,0.08);border:1px dashed rgba(168,85,247,0.4);'
+            f'border-radius:6px;padding:6px 9px;text-align:center;">'
+            f'<span style="font-size:0.74rem;color:#c4b5fd;font-weight:700;">&#128161; ÇOKLU TEYİT: {matched_n} farklı senaryo aynı anda — güçlü sinyal</span>'
+            f'</div>'
+        )
+
+    # Final HTML
     html = (
-        f'<style>{hover_css}{pulse_css}</style>'
         f'<div style="background:{card_bg};border:2px solid {card_border};border-radius:12px;'
         f'overflow:hidden;margin-bottom:10px;font-family:Inter,sans-serif;'
         f'box-shadow:0 4px 16px rgba(0,0,0,0.12);">'
-        # ── Başlık bandı: isim sol, skor sağ — tek satır, sarkmaz
+        # Başlık
         f'<div style="background:{head_bg};padding:9px 14px;display:flex;align-items:center;justify-content:space-between;">'
         f'<div style="min-width:0;">'
-        f'<div style="font-size:0.77rem;font-weight:700;color:{text_muted};text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;">&#128640; LONG RADAR</div>'
+        f'<div style="font-size:0.77rem;font-weight:700;color:{text_muted};text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;">&#128640; ERKEN RADAR</div>'
         f'<div style="font-size:0.85rem;font-weight:800;color:{text_main};margin-top:2px;">{display_name}</div>'
         f'</div>'
         f'<div style="text-align:right;flex-shrink:0;margin-left:8px;">'
-        f'<div style="font-family:JetBrains Mono,monospace;font-size:2.0rem;font-weight:900;color:{s_color};line-height:1;">{score}<span style="font-size:1rem;font-weight:600;color:{text_muted}">/100</span></div>'
-        + (f'<div style="font-size:0.70rem;color:{"#10b981" if score_trend.startswith("↑") else "#f87171" if score_trend.startswith("↓") else text_muted};font-weight:600;margin-top:1px;white-space:nowrap;">5g önce: {score5}</div>' if score5 is not None else "")
-        + f'</div>'
+        f'<div style="font-family:JetBrains Mono,monospace;font-size:2.0rem;font-weight:900;color:{s_color};line-height:1;">{quality}<span style="font-size:1rem;font-weight:600;color:{text_muted}">/100</span></div>'
         f'</div>'
-        # ── Status şeridi: tam genişlik, sarkmaz
-        f'<div style="background:{s_bg};border-top:1px solid {s_color}30;border-bottom:1px solid {s_color}30;'
+        f'</div>'
+        # Status şeridi
+        f'<div style="background:rgba({",".join(str(int(s_color.lstrip("#")[i:i+2],16)) for i in (0,2,4))},0.12);'
+        f'border-top:1px solid {s_color}33;border-bottom:1px solid {s_color}33;'
         f'padding:5px 14px;text-align:center;">'
-        f'<span style="font-size:0.85rem;font-weight:800;color:{s_color};letter-spacing:0.3px;white-space:nowrap;">{status}</span>'
+        f'<span style="font-size:0.78rem;font-weight:800;color:{s_color};letter-spacing:0.3px;">{status_text}</span>'
         f'</div>'
-        # ── Piyasa notu (varsa)
-        + (f'<div style="padding:4px 14px;font-size:0.72rem;font-weight:600;'
-           f'color:{"#fbbf24" if market_score is not None and market_score < 40 else "#4ade80" if market_score is not None and market_score >= 65 else text_muted};'
-           f'text-align:center;border-bottom:1px solid {s_color}18;">{market_note}</div>'
-           if market_note else "")
-        # ── Beden
-        + f'<div style="padding:10px 12px 8px 12px;">'
-        # Progress bar
-        f'<div style="position:relative;background:{bar_track};border-radius:99px;height:6px;margin:0 0 2px 0;overflow:hidden;">'
-        f'<div style="background:linear-gradient(90deg,{s_color}88,{s_color});width:{score}%;height:100%;border-radius:99px;"></div>'
+        # Beden
+        f'<div style="padding:10px 12px 10px 12px;">'
+        # Quality bar
+        f'<div style="position:relative;background:rgba(255,255,255,0.08);border-radius:99px;height:6px;margin:0 0 2px 0;overflow:hidden;">'
+        f'<div style="background:linear-gradient(90deg,{s_color}88,{s_color});width:{quality}%;height:100%;border-radius:99px;"></div>'
         f'</div>'
-        f'<div style="display:flex;justify-content:space-between;font-size:0.73rem;color:{text_muted};font-family:JetBrains Mono,monospace;margin-bottom:8px;">'
+        f'<div style="display:flex;justify-content:space-between;font-size:0.70rem;color:{text_muted};font-family:JetBrains Mono,monospace;margin-bottom:8px;">'
         f'<span>0</span><span>50</span><span>100</span>'
         f'</div>'
-        # Kriter satırları
-        f'{rows_html}'
+        # İçerik
+        f'{primary_html}'
+        f'{confirms_html}'
+        f'{redflags_html}'
+        f'{multi_note}'
         f'</div>'
         f'</div>'
     )
@@ -11741,29 +11917,874 @@ def render_ict_certification_card(ticker):
     """
     st.markdown(html_content.replace("\n", " "), unsafe_allow_html=True)
 
-def scan_long_radar_batch(asset_list, min_score=70):
-    """Long Radar (Akıllı Para) skoru >= min_score olan hisseleri batch tarar, loglama için DataFrame döner."""
+def scan_erken_radar_batch(asset_list):
+    """
+    Erken Radar batch tarama — her hisse için evaluate_erken_radar çağrılır,
+    eşleşen HER senaryo ayrı satır olarak döner.
+    Çıktı: DataFrame — bir hisse 3 senaryo tetiklerse 3 satır gelir.
+    Her satır: Sembol, Fiyat, Skor (overall_quality), ScenarioId, ScenarioName, Category, Stars
+    """
     import pandas as pd
-    results = []
+    rows = []
+    # XU100 bench bir kez al
+    try:
+        bench_df = get_safe_historical_data("XU100.IS")
+    except Exception:
+        bench_df = None
     for ticker in asset_list:
         try:
-            data = calculate_smart_money_score(ticker)
-            if data is None:
-                continue
-            score = data.get('score', 0) or 0
-            if score < min_score:
+            # Endeksleri atla
+            if (ticker.startswith("XU") or ticker.startswith("^") or
+                ticker.endswith("=F") or "-USD" in ticker or ticker == "GC=F"):
                 continue
             df_hist = get_safe_historical_data(ticker)
-            price = float(df_hist['Close'].iloc[-1]) if df_hist is not None and not df_hist.empty else 0.0
-            results.append({
-                'Sembol': ticker.replace('.IS', ''),
-                'Fiyat':  round(price, 2),
-                'Skor':   score,
-                'Durum':  data.get('status', ''),
-            })
+            if df_hist is None or len(df_hist) < 60:
+                continue
+            er = evaluate_erken_radar(ticker, df_hist, bench_df)
+            if er is None:
+                continue
+            price = float(df_hist['Close'].iloc[-1])
+            quality = er.get('overall_quality', 0) or 0
+            sym = ticker.replace('.IS', '')
+            # Primary
+            primary = er.get('primary')
+            if primary:
+                rows.append({
+                    'Sembol': sym,
+                    'Fiyat':  round(price, 2),
+                    'Skor':   quality,
+                    'ScenarioId':   primary['id'],
+                    'ScenarioName': primary['name'],
+                    'Category':     primary['category'],
+                    'Stars':        primary['stars'],
+                    'Role':         'primary',
+                })
+            # Confirmations
+            for c in (er.get('confirmations') or []):
+                rows.append({
+                    'Sembol': sym,
+                    'Fiyat':  round(price, 2),
+                    'Skor':   quality,
+                    'ScenarioId':   c['id'],
+                    'ScenarioName': c['name'],
+                    'Category':     c['category'],
+                    'Stars':        c['stars'],
+                    'Role':         'confirmation',
+                })
+            # Red flags
+            for rf in (er.get('red_flags') or []):
+                rows.append({
+                    'Sembol': sym,
+                    'Fiyat':  round(price, 2),
+                    'Skor':   quality,
+                    'ScenarioId':   rf['id'],
+                    'ScenarioName': rf['name'],
+                    'Category':     rf['category'],
+                    'Stars':        rf['stars'],
+                    'Role':         'red_flag',
+                })
         except Exception:
             continue
-    return pd.DataFrame(results) if results else pd.DataFrame()
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+def log_erken_radar_signals(df_batch, category=""):
+    """
+    scan_erken_radar_batch çıktısını signals.db'ye yazar.
+    Her senaryo ayrı scan_type ile: 'er_A1', 'er_B4', vb.
+    Aynı gün + aynı senaryo + aynı sembol kombinasyonu INSERT OR IGNORE ile atlanır.
+    """
+    if df_batch is None or df_batch.empty:
+        return
+    today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        for _, row in df_batch.iterrows():
+            sym = row.get('Sembol', '')
+            if not sym:
+                continue
+            scid = row.get('ScenarioId', '')
+            if not scid:
+                continue
+            scan_type = f"er_{scid}"
+            try:
+                price = float(row.get('Fiyat', 0))
+            except Exception:
+                price = None
+            try:
+                score = float(row.get('Skor', 0))
+            except Exception:
+                score = None
+            stars = row.get('Stars')
+            bias = 'bearish' if row.get('Role') == 'red_flag' else 'bullish'
+            c.execute(
+                '''INSERT OR IGNORE INTO scan_signals
+                   (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (today, sym, scan_type, score, bias, price, None, category)
+            )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        import logging
+        logging.warning(f"[log_erken_radar_signals] HATA: {e}")
+
+# ==============================================================================
+# BÖLÜM 37 — ERKEN RADAR SENARYO MOTORU
+# 36 isimli senaryo ile "hareket öncesi" hisse tespit motoru.
+# 4 kategori: A) Geri Dönüş, B) Sıkışma, C) Trend Devamı, D) Uyarılar
+# Atomik sinyal detektörleri + context builder + senaryo evaluator.
+# ==============================================================================
+
+# --- ATOMIK SİNYAL DETEKTÖRLERİ ---
+
+def _er_rsi(close, period=14):
+    """Wilder RSI."""
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0).rolling(period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+def _er_swing_lows(low_series, lookback=30):
+    """Son N gün içinde swing low'ları bul. Pivot: 2 yan + 2 yan."""
+    lows = []
+    n = len(low_series)
+    start = max(2, n - lookback)
+    for i in range(start, n - 2):
+        try:
+            v = float(low_series.iloc[i])
+            if (v < float(low_series.iloc[i-1]) and v < float(low_series.iloc[i-2]) and
+                v < float(low_series.iloc[i+1]) and v < float(low_series.iloc[i+2])):
+                lows.append((i, v))
+        except Exception:
+            continue
+    return lows
+
+def _er_swing_highs(high_series, lookback=30):
+    """Son N gün içinde swing high'ları bul."""
+    highs = []
+    n = len(high_series)
+    start = max(2, n - lookback)
+    for i in range(start, n - 2):
+        try:
+            v = float(high_series.iloc[i])
+            if (v > float(high_series.iloc[i-1]) and v > float(high_series.iloc[i-2]) and
+                v > float(high_series.iloc[i+1]) and v > float(high_series.iloc[i+2])):
+                highs.append((i, v))
+        except Exception:
+            continue
+    return highs
+
+def _er_strong_bullish_div(low_series, rsi_series):
+    """Güçlü Pozitif: Fiyat LL + RSI HL"""
+    lows = _er_swing_lows(low_series, 30)
+    if len(lows) < 2:
+        return False
+    p1_idx, p1_val = lows[-2]; p2_idx, p2_val = lows[-1]
+    if p2_val >= p1_val:
+        return False
+    try:
+        return float(rsi_series.iloc[p2_idx]) > float(rsi_series.iloc[p1_idx])
+    except Exception:
+        return False
+
+def _er_medium_bullish_div(low_series, rsi_series, tol=0.02):
+    """Orta Pozitif: Fiyat yatay (±2%) + RSI HL"""
+    lows = _er_swing_lows(low_series, 30)
+    if len(lows) < 2:
+        return False
+    p1_idx, p1_val = lows[-2]; p2_idx, p2_val = lows[-1]
+    if p1_val <= 0:
+        return False
+    if abs(p2_val - p1_val) / p1_val > tol:
+        return False
+    try:
+        return float(rsi_series.iloc[p2_idx]) > float(rsi_series.iloc[p1_idx])
+    except Exception:
+        return False
+
+def _er_weak_bullish_div(low_series, rsi_series, rsi_tol=2.0):
+    """Zayıf Pozitif: Fiyat LL + RSI yatay (±2 puan)"""
+    lows = _er_swing_lows(low_series, 30)
+    if len(lows) < 2:
+        return False
+    p1_idx, p1_val = lows[-2]; p2_idx, p2_val = lows[-1]
+    if p2_val >= p1_val:
+        return False
+    try:
+        return abs(float(rsi_series.iloc[p2_idx]) - float(rsi_series.iloc[p1_idx])) <= rsi_tol
+    except Exception:
+        return False
+
+def _er_bearish_div(high_series, rsi_series):
+    """Negatif: Fiyat HH + RSI LH"""
+    highs = _er_swing_highs(high_series, 30)
+    if len(highs) < 2:
+        return False
+    p1_idx, p1_val = highs[-2]; p2_idx, p2_val = highs[-1]
+    if p2_val <= p1_val:
+        return False
+    try:
+        return float(rsi_series.iloc[p2_idx]) < float(rsi_series.iloc[p1_idx])
+    except Exception:
+        return False
+
+def _er_volume_dried(volume):
+    """Son 5g < 20g ort × 0.80"""
+    if len(volume) < 21:
+        return False
+    v5 = float(volume.iloc[-5:].mean())
+    v20 = float(volume.rolling(20).mean().iloc[-1])
+    return v20 > 0 and v5 < v20 * 0.80
+
+def _er_volume_rising_slow(volume):
+    """Son 10g trend pozitif, %5-30 artış (linear regression)"""
+    if len(volume) < 11:
+        return False
+    try:
+        v_recent = volume.iloc[-10:].values
+        x = np.arange(10)
+        slope, _ = np.polyfit(x, v_recent, 1)
+        avg = float(v_recent.mean())
+        if avg <= 0:
+            return False
+        rise_pct = (slope * 10) / avg
+        return 0.05 <= rise_pct <= 0.30
+    except Exception:
+        return False
+
+def _er_pocket_pivot(df):
+    """Yeşil mum + hacim > son 10g'nin en yüksek kırmızı mum hacmi"""
+    if len(df) < 11:
+        return False
+    try:
+        today_c = float(df['Close'].iloc[-1]); today_o = float(df['Open'].iloc[-1])
+        if today_c <= today_o:
+            return False
+        today_v = float(df['Volume'].iloc[-1])
+        last_10 = df.iloc[-11:-1]
+        red = last_10[last_10['Close'] < last_10['Open']]
+        if red.empty:
+            return today_v > float(last_10['Volume'].max())
+        return today_v > float(red['Volume'].max())
+    except Exception:
+        return False
+
+def _er_distribution_day(df, day_offset=-1):
+    """Belirtilen günde distribution day mi? Kırmızı + hacim 20g × 1.5+"""
+    if len(df) < 21 + abs(day_offset):
+        return False
+    try:
+        c = float(df['Close'].iloc[day_offset]); o = float(df['Open'].iloc[day_offset])
+        v = float(df['Volume'].iloc[day_offset])
+        end = len(df) + day_offset
+        start = end - 20
+        if start < 0:
+            return False
+        va = float(df['Volume'].iloc[start:end].mean())
+        return c < o and v > va * 1.5
+    except Exception:
+        return False
+
+def _er_distribution_count(df, days=5):
+    """Son N günde distribution day sayısı"""
+    if len(df) < 21:
+        return 0
+    count = 0
+    for i in range(-days, 0):
+        if _er_distribution_day(df, i):
+            count += 1
+    return count
+
+def _er_updown_vol_ratio(df, days=20):
+    """Yeşil mum hacim toplamı / kırmızı mum hacim toplamı"""
+    if len(df) < days:
+        return 1.0
+    try:
+        recent = df.iloc[-days:]
+        green = recent[recent['Close'] > recent['Open']]
+        red = recent[recent['Close'] < recent['Open']]
+        g_v = float(green['Volume'].sum()) if not green.empty else 0
+        r_v = float(red['Volume'].sum()) if not red.empty else 0
+        if r_v <= 0:
+            return 99.0 if g_v > 0 else 1.0
+        return g_v / r_v
+    except Exception:
+        return 1.0
+
+def _er_bb_width(close, period=20):
+    """BB width = (4*std) / mid — 2 üst + 2 alt"""
+    mid = close.rolling(period).mean()
+    std = close.rolling(period).std()
+    return (std * 4) / mid
+
+def _er_bb_squeeze(close, threshold=0.85):
+    """BB width şu an 20g ortalamanın altında mı (threshold × avg)"""
+    if len(close) < 41:
+        return False
+    try:
+        bbw = _er_bb_width(close)
+        wn = float(bbw.iloc[-1]); wa = float(bbw.rolling(20).mean().iloc[-1])
+        return wa > 0 and wn < wa * threshold
+    except Exception:
+        return False
+
+def _er_bb_squeeze_days(close, threshold=0.85):
+    """Kaç gündür BB sıkışma aktif"""
+    if len(close) < 41:
+        return 0
+    try:
+        bbw = _er_bb_width(close)
+        wa_series = bbw.rolling(20).mean()
+        days = 0
+        for i in range(len(bbw) - 1, -1, -1):
+            wn = float(bbw.iloc[i]); wa = float(wa_series.iloc[i])
+            if wa > 0 and wn < wa * threshold:
+                days += 1
+            else:
+                break
+        return days
+    except Exception:
+        return 0
+
+def _er_atr_contracting(df, threshold=0.7):
+    """ATR son 5g < önceki 20g'nin %X'i"""
+    if len(df) < 26:
+        return False
+    try:
+        h = df['High']; l = df['Low']; c = df['Close']
+        tr1 = h - l
+        tr2 = (h - c.shift()).abs()
+        tr3 = (l - c.shift()).abs()
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr5 = float(tr.iloc[-5:].mean())
+        atr20 = float(tr.iloc[-25:-5].mean())
+        return atr20 > 0 and atr5 < atr20 * threshold
+    except Exception:
+        return False
+
+def _er_position_60(df):
+    """60g range içinde fiyatın yüzdelik konumu (0-1)"""
+    if len(df) < 60:
+        return 0.5
+    try:
+        h60 = float(df['High'].iloc[-60:].max())
+        l60 = float(df['Low'].iloc[-60:].min())
+        rng = h60 - l60
+        if rng <= 0:
+            return 0.5
+        return (float(df['Close'].iloc[-1]) - l60) / rng
+    except Exception:
+        return 0.5
+
+def _er_recent_fall(df, lookback=60, threshold=0.15):
+    """Son N günde belirli %'ten fazla düştü mü (zirveden)"""
+    if len(df) < lookback:
+        return False
+    try:
+        h = float(df['High'].iloc[-lookback:].max())
+        c = float(df['Close'].iloc[-1])
+        return h > 0 and (h - c) / h > threshold
+    except Exception:
+        return False
+
+def _er_fall_stopped(df, days=10):
+    """Son N gün yatay/hafif yukarı"""
+    if len(df) < days:
+        return False
+    try:
+        c_r = df['Close'].iloc[-days:]
+        change = (float(c_r.iloc[-1]) / float(c_r.iloc[0])) - 1
+        return change > -0.05
+    except Exception:
+        return False
+
+def _er_lateral_range(df, days=20, threshold=0.10):
+    """Son N gün range darlığı"""
+    if len(df) < days:
+        return False
+    try:
+        last = df.iloc[-days:]
+        h = float(last['High'].max()); l = float(last['Low'].min())
+        return l > 0 and (h - l) / l < threshold
+    except Exception:
+        return False
+
+def _er_above_sma(df, period):
+    if len(df) < period:
+        return False
+    try:
+        sma = df['Close'].rolling(period).mean()
+        return float(df['Close'].iloc[-1]) > float(sma.iloc[-1])
+    except Exception:
+        return False
+
+def _er_sma50_rising(df):
+    if len(df) < 56:
+        return False
+    try:
+        sma50 = df['Close'].rolling(50).mean()
+        return float(sma50.iloc[-1]) > float(sma50.iloc[-6])
+    except Exception:
+        return False
+
+def _er_pullback(df, max_pct=0.08, min_pct=0.03, recent_days=10):
+    """Son N günde belirli aralıkta pullback yapmış mı (zirveden)"""
+    if len(df) < recent_days:
+        return False
+    try:
+        h = float(df['High'].iloc[-recent_days:].max())
+        c = float(df['Close'].iloc[-1])
+        if h <= 0:
+            return False
+        pb = (h - c) / h
+        return min_pct <= pb <= max_pct
+    except Exception:
+        return False
+
+def _er_pullback_to_sma(df, period, tol=0.02):
+    """Fiyat SMA(period)'a ±tol içinde yakın mı"""
+    if len(df) < period:
+        return False
+    try:
+        sma = float(df['Close'].rolling(period).mean().iloc[-1])
+        c = float(df['Close'].iloc[-1])
+        return sma > 0 and abs(c - sma) / sma < tol
+    except Exception:
+        return False
+
+def _er_double_bottom(df, lookback=40, tolerance=0.04):
+    """Çift dip: 2 swing low yakın seviyede"""
+    if len(df) < lookback:
+        return False
+    lows = _er_swing_lows(df['Low'], lookback=lookback)
+    if len(lows) < 2:
+        return False
+    p1_idx, p1_val = lows[-2]; p2_idx, p2_val = lows[-1]
+    if p2_idx - p1_idx < 5 or p2_idx - p1_idx > 35:
+        return False
+    if p1_val <= 0:
+        return False
+    return abs(p2_val - p1_val) / p1_val < tolerance
+
+def _er_flag_pattern(df):
+    """Bayrak: önceki 10g sert yükseliş + son 5g yatay/hafif aşağı"""
+    if len(df) < 16:
+        return False
+    try:
+        earlier = float(df['Close'].iloc[-16])
+        flag_start = float(df['Close'].iloc[-6])
+        current = float(df['Close'].iloc[-1])
+        if earlier <= 0 or flag_start <= 0:
+            return False
+        flagpole = (flag_start - earlier) / earlier
+        flag_move = (current - flag_start) / flag_start
+        return flagpole > 0.10 and -0.05 < flag_move < 0.02
+    except Exception:
+        return False
+
+def _er_triangle_contraction(df, lookback=20):
+    """Üçgen: HH azalıyor + LL artıyor (son N gün içinde)"""
+    if len(df) < lookback:
+        return False
+    try:
+        recent_high = df['High'].iloc[-lookback:]
+        recent_low = df['Low'].iloc[-lookback:]
+        highs = _er_swing_highs(recent_high, lookback=lookback)
+        lows = _er_swing_lows(recent_low, lookback=lookback)
+        if len(highs) < 2 or len(lows) < 2:
+            return False
+        h1 = highs[-2][1]; h2 = highs[-1][1]
+        l1 = lows[-2][1]; l2 = lows[-1][1]
+        return h2 < h1 and l2 > l1
+    except Exception:
+        return False
+
+# --- RS DETEKTÖRLERİ (Endekse karşı) ---
+
+def _er_rs_pct(close, bench_close, days):
+    """RS farkı (yüzde): hisse getirisi - endeks getirisi"""
+    if bench_close is None or len(close) < days+1 or len(bench_close) < days+1:
+        return 0.0
+    try:
+        common = close.index.intersection(bench_close.index)
+        if len(common) < days+1:
+            return 0.0
+        s = close.loc[common]; b = bench_close.loc[common]
+        sr = (float(s.iloc[-1]) / float(s.iloc[-days-1])) - 1
+        br = (float(b.iloc[-1]) / float(b.iloc[-days-1])) - 1
+        return (sr - br) * 100
+    except Exception:
+        return 0.0
+
+def _er_rs_turning(close, bench_close):
+    """20g negatif ama 5g pozitife döndü"""
+    if bench_close is None:
+        return False
+    return _er_rs_pct(close, bench_close, 20) < 0 and _er_rs_pct(close, bench_close, 5) > 0
+
+def _er_rs_crossover(close, bench_close):
+    """20g negatif ama 10g pozitife döndü (orta vade crossover)"""
+    if bench_close is None:
+        return False
+    return _er_rs_pct(close, bench_close, 20) < 0 and _er_rs_pct(close, bench_close, 10) > 0
+
+def _er_rs_persistent_positive(close, bench_close):
+    """5g+10g+20g+60g hepsi pozitif"""
+    if bench_close is None:
+        return False
+    for d in (5, 10, 20, 60):
+        if _er_rs_pct(close, bench_close, d) <= 0:
+            return False
+    return True
+
+def _er_rs_accelerating(close, bench_close):
+    """RS 5g > 10g > 20g (eğim artıyor) ve 5g pozitif"""
+    if bench_close is None:
+        return False
+    rs5 = _er_rs_pct(close, bench_close, 5)
+    rs10 = _er_rs_pct(close, bench_close, 10)
+    rs20 = _er_rs_pct(close, bench_close, 20)
+    return rs5 > rs10 > rs20 and rs5 > 0
+
+def _er_rs_new_high(close, bench_close, lookback=20):
+    """RS oranı son N gün'ün en yüksek %98'inde"""
+    if bench_close is None:
+        return False
+    try:
+        common = close.index.intersection(bench_close.index)
+        if len(common) < lookback:
+            return False
+        rs_ratio = close.loc[common] / bench_close.loc[common]
+        if len(rs_ratio) < lookback:
+            return False
+        recent_max = float(rs_ratio.iloc[-lookback:].max())
+        current = float(rs_ratio.iloc[-1])
+        return recent_max > 0 and current >= recent_max * 0.98
+    except Exception:
+        return False
+
+def _er_rs_healthy_pullback(close, bench_close):
+    """RS 20g pozitif ama son 5g hafif düşüyor (-3% < rs5 < 0)"""
+    if bench_close is None:
+        return False
+    rs20 = _er_rs_pct(close, bench_close, 20)
+    rs5 = _er_rs_pct(close, bench_close, 5)
+    return rs20 > 0 and -3 < rs5 < 0
+
+def _er_rs_negative_60(close, bench_close):
+    """60g'de RS %5'ten fazla negatif"""
+    if bench_close is None:
+        return False
+    return _er_rs_pct(close, bench_close, 60) < -5
+
+def _er_index_falling(bench_close, days=10):
+    """Endeks son N gün'de düşmüş"""
+    if bench_close is None or len(bench_close) < days+1:
+        return False
+    try:
+        return float(bench_close.iloc[-1]) < float(bench_close.iloc[-days-1])
+    except Exception:
+        return False
+
+# --- CONTEXT BUILDER ---
+
+def _er_build_context(df, bench_df=None):
+    """Tüm sinyalleri tek seferde hesapla, dict döner."""
+    if df is None or len(df) < 60:
+        return None
+    try:
+        close = df['Close']
+        volume = df['Volume']
+        low = df['Low']
+        high = df['High']
+        rsi_series = _er_rsi(close)
+        rsi_now = float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else 50.0
+        bench_close = bench_df['Close'] if bench_df is not None else None
+        pos60 = _er_position_60(df)
+
+        return {
+            # RSI zonları
+            'rsi_now': rsi_now,
+            'rsi_25_35': 25 <= rsi_now <= 35,
+            'rsi_30_45': 30 <= rsi_now <= 45,
+            'rsi_30_50': 30 <= rsi_now <= 50,
+            'rsi_35_50': 35 <= rsi_now <= 50,
+            'rsi_40_55': 40 <= rsi_now <= 55,
+            'rsi_42_58': 42 <= rsi_now <= 58,
+            'rsi_45_55': 45 <= rsi_now <= 55,
+            'rsi_45_60': 45 <= rsi_now <= 60,
+            'rsi_45_65': 45 <= rsi_now <= 65,
+            'rsi_50_60': 50 <= rsi_now <= 60,
+            'rsi_50_65': 50 <= rsi_now <= 65,
+            # Trend
+            'above_sma20': _er_above_sma(df, 20),
+            'above_sma50': _er_above_sma(df, 50),
+            'sma50_rising': _er_sma50_rising(df),
+            # Hacim
+            'vol_dried': _er_volume_dried(volume),
+            'vol_rising_slow': _er_volume_rising_slow(volume),
+            'pocket_pivot': _er_pocket_pivot(df),
+            'distribution_day': _er_distribution_day(df, -1),
+            'distribution_count_5d': _er_distribution_count(df, 5),
+            'updown_ratio_bullish': _er_updown_vol_ratio(df) > 1.2,
+            # Volatilite
+            'bb_squeeze': _er_bb_squeeze(close),
+            'bb_squeeze_days': _er_bb_squeeze_days(close),
+            'atr_contracting': _er_atr_contracting(df),
+            # Konum
+            'pos_60': pos60,
+            'pos_60_lower_30': pos60 < 0.30,
+            'pos_60_lower_50': pos60 < 0.50,
+            'pos_60_upper_80': pos60 > 0.80,
+            'pos_60_mid': 0.40 < pos60 < 0.70,
+            'recent_fall_15': _er_recent_fall(df, 60, 0.15),
+            'recent_fall_25': _er_recent_fall(df, 60, 0.25),
+            'fall_stopped': _er_fall_stopped(df),
+            # Yapı
+            'lateral_20': _er_lateral_range(df, 20, 0.10),
+            'lateral_10': _er_lateral_range(df, 10, 0.06),
+            'pullback_3_8': _er_pullback(df, 0.08, 0.03, 10),
+            'pullback_to_sma20': _er_pullback_to_sma(df, 20, 0.02),
+            'pullback_to_sma50': _er_pullback_to_sma(df, 50, 0.03),
+            'double_bottom': _er_double_bottom(df),
+            'flag_pattern': _er_flag_pattern(df),
+            'triangle': _er_triangle_contraction(df),
+            # Divergence
+            'strong_bull_div': _er_strong_bullish_div(low, rsi_series),
+            'medium_bull_div': _er_medium_bullish_div(low, rsi_series),
+            'weak_bull_div': _er_weak_bullish_div(low, rsi_series),
+            'bearish_div': _er_bearish_div(high, rsi_series),
+            # RS
+            'rs_turning': _er_rs_turning(close, bench_close),
+            'rs_crossover': _er_rs_crossover(close, bench_close),
+            'rs_persistent_positive': _er_rs_persistent_positive(close, bench_close),
+            'rs_accelerating': _er_rs_accelerating(close, bench_close),
+            'rs_new_high': _er_rs_new_high(close, bench_close),
+            'rs_healthy_pullback': _er_rs_healthy_pullback(close, bench_close),
+            'rs_negative_60': _er_rs_negative_60(close, bench_close),
+            'rs_20d_pct': _er_rs_pct(close, bench_close, 20) if bench_close is not None else 0.0,
+            # Piyasa
+            'index_falling': _er_index_falling(bench_close),
+        }
+    except Exception:
+        return None
+
+# --- 36 SENARYO ---
+
+ERKEN_RADAR_SCENARIOS = {
+    # === A. GERİ DÖNÜŞ FIRSATLARI (9) ===
+    'A1': {'name': 'Dipte Sessizlik', 'category': 'A', 'stars': 5,
+           'description': 'Hisse uzun süredir düşüyor ama satıcı bitiyor, alıcı görünmeye başladı',
+           'detect': lambda c: c['rsi_30_45'] and c['strong_bull_div'] and c['vol_dried'] and c['fall_stopped'] and c['recent_fall_15']},
+    'A2': {'name': 'Hacimli Tepki', 'category': 'A', 'stars': 4,
+           'description': 'Düşüşten sonra ilk büyük alım günü geldi',
+           'detect': lambda c: c['rsi_35_50'] and c['pocket_pivot'] and c['recent_fall_15']},
+    'A3': {'name': 'Çift Dip / İkinci Test', 'category': 'A', 'stars': 4,
+           'description': 'Aynı dibe ikinci kez geldi, bu sefer satıcı daha az',
+           'detect': lambda c: c['double_bottom'] and c['rsi_30_50'] and c['vol_dried']},
+    'A4': {'name': 'Yön Değiştiriyor', 'category': 'A', 'stars': 4,
+           'description': 'Piyasa düşerken bu hisse direnç gösteriyor, akıllı para alıyor',
+           'detect': lambda c: c['index_falling'] and c['rs_turning'] and c['rsi_35_50']},
+    'A5': {'name': 'Toparlanma Başlıyor', 'category': 'A', 'stars': 3,
+           'description': 'Düşüş yavaşladı, küçük alımlar var ama henüz teyit yok',
+           'detect': lambda c: c['rsi_35_50'] and c['fall_stopped'] and c['pos_60_lower_50'] and (c['weak_bull_div'] or c['vol_rising_slow'])},
+    'A6': {'name': 'Dipte Sıkışma', 'category': 'A', 'stars': 4,
+           'description': 'Aşağıda sıkışıyor, yakında yön belirleyecek',
+           'detect': lambda c: c['rsi_30_45'] and c['bb_squeeze'] and c['pos_60_lower_30'] and c['fall_stopped']},
+    'A7': {'name': 'Hacimli Toparlanma', 'category': 'A', 'stars': 4,
+           'description': 'Alıcıların hacmi satıcılardan fazla, denge alıcıya kayıyor',
+           'detect': lambda c: c['rsi_35_50'] and c['updown_ratio_bullish'] and c['pos_60_lower_50']},
+    'A8': {'name': 'Ucuz + Hacimli Atak', 'category': 'A', 'stars': 5,
+           'description': 'Düşmüş hissede tek günde büyük alım, kurumsal ilgi başladı',
+           'detect': lambda c: c['rsi_30_45'] and c['pocket_pivot'] and c['recent_fall_15']},
+    'A9': {'name': 'Ucuz Bölgede Bekleyiş', 'category': 'A', 'stars': 3,
+           'description': 'Hisse ucuz, satıcı bitiyor ama net dönüş sinyali yok',
+           'detect': lambda c: (c['rsi_25_35'] or c['rsi_30_45']) and c['vol_dried'] and not c['strong_bull_div'] and not c['medium_bull_div']},
+
+    # === B. SIKIŞMA FIRSATLARI (11) ===
+    'B1': {'name': 'Mükemmel Sıkışma', 'category': 'B', 'stars': 5,
+           'description': 'Yay gibi geriliyor, patlama yakın',
+           'detect': lambda c: c['rsi_45_55'] and c['bb_squeeze'] and c['bb_squeeze_days'] >= 5 and c['vol_dried'] and c['rs_20d_pct'] > 0},
+    'B2': {'name': 'Sessiz Birikim', 'category': 'B', 'stars': 5,
+           'description': 'Fiyat hareketsiz ama hacim artıyor, alıcılar pozisyon alıyor',
+           'detect': lambda c: c['lateral_20'] and c['vol_rising_slow'] and (c['rs_turning'] or c['rs_crossover'] or c['rs_persistent_positive'])},
+    'B3': {'name': 'Klasik Sıkışma', 'category': 'B', 'stars': 4,
+           'description': 'Hacim ve volatilite azalıyor, kırılım için ideal zemin',
+           'detect': lambda c: c['lateral_20'] and c['vol_dried'] and c['atr_contracting']},
+    'B4': {'name': 'Yatayda Hacim Patlaması', 'category': 'B', 'stars': 5,
+           'description': 'Yatay seyirde tek günde kurumsal alım, hareket başlamak üzere',
+           'detect': lambda c: c['lateral_20'] and c['pocket_pivot']},
+    'B5': {'name': 'Üçgen Daralma', 'category': 'B', 'stars': 4,
+           'description': 'Hisse üçgen içinde sıkışıyor, kırılım yaklaşıyor',
+           'detect': lambda c: c['triangle'] and c['vol_dried']},
+    'B6': {'name': 'Yatay + Endekse Direnç', 'category': 'B', 'stars': 4,
+           'description': 'Endeks düşerken bu hisse yatay duruyor, çok güçlü',
+           'detect': lambda c: c['lateral_20'] and c['index_falling'] and c['rs_20d_pct'] > 0},
+    'B7': {'name': 'Yatay + Hafif Pullback', 'category': 'B', 'stars': 3,
+           'description': 'Sıkışma içinde hafif geri çekildi, alım fırsatı olabilir',
+           'detect': lambda c: c['lateral_20'] and c['pullback_3_8'] and c['rsi_45_55']},
+    'B8': {'name': 'Sıkışma Sonu', 'category': 'B', 'stars': 4,
+           'description': 'Sıkışma çok uzadı, hacim canlanıyor, patlama yakın',
+           'detect': lambda c: c['bb_squeeze_days'] >= 10 and c['vol_rising_slow']},
+    'B9': {'name': 'Alt Sınır Testi', 'category': 'B', 'stars': 3,
+           'description': 'Sıkışma alt sınırını test etti ve toparlandı',
+           'detect': lambda c: c['lateral_20'] and c['pos_60_mid'] and c['fall_stopped'] and c['updown_ratio_bullish']},
+    'B10': {'name': 'Yatay + Momentum Çelişkisi', 'category': 'B', 'stars': 5,
+            'description': 'Sıkışma içinde gizli güç birikiyor, dönüş yakın',
+            'detect': lambda c: c['lateral_20'] and (c['strong_bull_div'] or c['medium_bull_div']) and c['vol_dried']},
+    'B11': {'name': 'Tepe Yakını Sıkışma', 'category': 'B', 'stars': 4,
+            'description': 'Tepe yakınında sıkışıyor, yukarı kırılım olası',
+            'detect': lambda c: c['pos_60_upper_80'] and c['bb_squeeze'] and c['rs_20d_pct'] > 0},
+
+    # === C. TREND DEVAMI FIRSATLARI (11) ===
+    'C1': {'name': 'İdeal Pullback', 'category': 'C', 'stars': 5,
+           'description': 'Yukarı trendde sağlıklı geri çekilme — klasik alım noktası',
+           'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['rsi_50_60'] and c['pullback_3_8'] and c['vol_dried']},
+    'C2': {'name': 'Ortalama Testi', 'category': 'C', 'stars': 4,
+           'description': 'Yukarı trendde 20 veya 50 günlük ortalamadan tepki aldı',
+           'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and (c['pullback_to_sma20'] or c['pullback_to_sma50']) and c['rsi_45_60']},
+    'C3': {'name': 'Pullback + Hacimli Alım', 'category': 'C', 'stars': 5,
+           'description': 'Geri çekilme sonrası kurumsal alım günü, klasik devam sinyali',
+           'detect': lambda c: c['above_sma50'] and c['pullback_3_8'] and c['pocket_pivot']},
+    'C4': {'name': 'Soluklanma', 'category': 'C', 'stars': 4,
+           'description': 'Trend devam ediyor, kısa süreli dinlenme',
+           'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['lateral_10'] and c['rsi_50_65']},
+    'C5': {'name': 'Bayrak Formasyonu', 'category': 'C', 'stars': 4,
+           'description': 'Hızlı yükselişten sonra düz konsolidasyon, devam beklentisi',
+           'detect': lambda c: c['above_sma50'] and c['flag_pattern'] and c['rsi_45_65']},
+    'C6': {'name': 'Piyasa Lideri', 'category': 'C', 'stars': 5,
+           'description': 'Endekste lider konumda, hafif geri çekildi',
+           'detect': lambda c: c['above_sma50'] and c['rs_new_high'] and c['rs_healthy_pullback']},
+    'C7': {'name': 'Sağlam Trend Yapısı', 'category': 'C', 'stars': 4,
+           'description': 'Tüm ortalamalar düzgün hizalı, çok temiz görünüm',
+           'detect': lambda c: c['above_sma20'] and c['above_sma50'] and c['sma50_rising'] and c['rs_persistent_positive'] and c['rsi_45_65']},
+    'C8': {'name': 'Yukarı Kanal Testi', 'category': 'C', 'stars': 4,
+           'description': 'Yukarı kanalın alt sınırını test etti',
+           'detect': lambda c: c['above_sma50'] and c['pullback_to_sma20'] and c['rsi_45_55'] and c['vol_dried']},
+    'C9': {'name': 'Pullback Başlıyor', 'category': 'C', 'stars': 3,
+           'description': 'Geri çekilme yeni başladı, henüz tam test yok',
+           'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['rsi_45_60'] and not c['pullback_to_sma20'] and not c['pullback_to_sma50']},
+    'C10': {'name': 'Trendde Sıkışma', 'category': 'C', 'stars': 4,
+            'description': 'Yukarı trendde ara konsolidasyon',
+            'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['bb_squeeze'] and c['lateral_10']},
+    'C11': {'name': 'Trendde Momentum Sağlam', 'category': 'C', 'stars': 4,
+            'description': "Pullback'te momentum bozulmadı, devam sinyali",
+            'detect': lambda c: c['above_sma50'] and c['pullback_3_8'] and (c['strong_bull_div'] or c['medium_bull_div'])},
+
+    # === D. UYARILAR (5) ===
+    'D1': {'name': 'Tek Güçlü Sinyal', 'category': 'D', 'stars': 3,
+           'description': 'Tek günlük güçlü alım, ama diğer kriterler zayıf',
+           'detect': lambda c: c['pocket_pivot'] and not c['above_sma50'] and not c['vol_dried']},
+    'D2': {'name': 'Karışık Sinyal', 'category': 'D', 'stars': 2,
+           'description': 'Belirsiz tablo, bazı pozitif sinyaller var ama çelişkiler de',
+           'detect': lambda c: (c['weak_bull_div'] or c['vol_rising_slow']) and c['bearish_div']},
+    'D3': {'name': 'Erken Aşama', 'category': 'D', 'stars': 2,
+           'description': 'Birikim sinyalleri yeni başlıyor, beklemeli',
+           'detect': lambda c: c['rsi_30_50'] and not c['pos_60_upper_80'] and c['vol_dried'] and not c['strong_bull_div'] and not c['medium_bull_div'] and not c['weak_bull_div'] and not c['pocket_pivot'] and not c['bb_squeeze']},
+    'D4': {'name': 'Kurumsal Satış Riski', 'category': 'D', 'stars': 'KIRMIZI',
+           'description': 'Son günlerde kurumsal satış işaretleri, dikkatli ol',
+           'detect': lambda c: c['distribution_count_5d'] >= 2},
+    'D5': {'name': 'Trend Bozuldu', 'category': 'D', 'stars': 'KIRMIZI',
+           'description': 'Yapı bozuldu, alım için uygun değil',
+           'detect': lambda c: not c['above_sma50'] and c['distribution_day'] and c['rs_negative_60']},
+}
+
+# --- EVALUATOR ---
+
+def evaluate_erken_radar(ticker, df, bench_df=None):
+    """36 senaryoyu test et, eşleşenleri döner.
+    Çıktı: {primary, confirmations, red_flags, overall_quality, verdict, context, matched_count}
+    """
+    ctx = _er_build_context(df, bench_df)
+    if ctx is None:
+        return None
+    matched = []
+    red_flags = []
+    for sid, sc in ERKEN_RADAR_SCENARIOS.items():
+        try:
+            if sc['detect'](ctx):
+                entry = {
+                    'id': sid,
+                    'name': sc['name'],
+                    'category': sc['category'],
+                    'stars': sc['stars'],
+                    'description': sc['description'],
+                }
+                if sc['stars'] == 'KIRMIZI':
+                    red_flags.append(entry)
+                else:
+                    matched.append(entry)
+        except Exception:
+            continue
+    # Sırala: yıldız sayısı desc, sonra ID
+    matched.sort(key=lambda x: (-(x['stars'] if isinstance(x['stars'], int) else 0), x['id']))
+    primary = matched[0] if matched else None
+    confirmations = matched[1:5] if len(matched) > 1 else []
+    # Quality
+    quality = 0
+    star_to_qual = {5: 85, 4: 65, 3: 45, 2: 25}
+    if primary:
+        quality = star_to_qual.get(primary['stars'], 30)
+        quality += min(len(confirmations) * 4, 15)
+    if red_flags:
+        quality = max(0, quality - 30)
+    return {
+        'primary': primary,
+        'confirmations': confirmations,
+        'red_flags': red_flags,
+        'overall_quality': min(quality, 100),
+        'verdict': primary['description'] if primary else ('Risk uyarısı var' if red_flags else 'Anlamlı senaryo yok'),
+        'context': ctx,
+        'matched_count': len(matched),
+        'red_flag_count': len(red_flags),
+    }
+
+
+def build_erken_radar_prompt_text(er_data, quality=None):
+    """
+    Erken Radar evaluator çıktısını AI prompt için formatlar.
+    er_data: evaluate_erken_radar() çıktısı
+    quality: opsiyonel — wrapper'dan gelen 0-100 skor (yoksa er_data['overall_quality'])
+    """
+    if not er_data:
+        return "Erken Radar verisi yok"
+    if quality is None:
+        quality = er_data.get('overall_quality', 0)
+    primary  = er_data.get('primary')
+    confirms = er_data.get('confirmations', []) or []
+    red_flags = er_data.get('red_flags', []) or []
+    matched_n = er_data.get('matched_count', 0)
+
+    cat_label = {'A': 'GERİ DÖNÜŞ', 'B': 'SIKIŞMA', 'C': 'TREND DEVAMI', 'D': 'UYARI'}
+    parts = []
+    parts.append(f"📊 Kalite Skoru: {quality}/100 — Toplam {matched_n} senaryo eşleşti")
+    if primary:
+        stars = primary.get('stars', 0)
+        sgs = '★' * (int(stars) if isinstance(stars, int) else 0)
+        parts.append(f"\n🎯 ANA SENARYO [{primary['id']}] {primary['name']} ({sgs} — {cat_label.get(primary['category'], '')})")
+        parts.append(f"   → {primary['description']}")
+    else:
+        if red_flags:
+            parts.append("\n🎯 ANA SENARYO: Yok — sadece risk sinyalleri var")
+        else:
+            parts.append("\n🎯 ANA SENARYO: Yok — bu hisse Erken Radar kriterlerini tetiklemiyor")
+    if confirms:
+        parts.append(f"\n✅ EK TEYİTLER ({len(confirms)}):")
+        for c in confirms:
+            stars = c.get('stars', 0)
+            sgs = '★' * (int(stars) if isinstance(stars, int) else 0)
+            parts.append(f"   • [{c['id']}] {c['name']} ({sgs}) — {c['description']}")
+    if red_flags:
+        parts.append(f"\n⚠ RİSK UYARILARI ({len(red_flags)}):")
+        for rf in red_flags:
+            parts.append(f"   • [{rf['id']}] {rf['name']} — {rf['description']}")
+    if matched_n >= 3 and not red_flags:
+        parts.append(f"\n💡 ÇOKLU TEYİT: {matched_n} farklı senaryo aynı anda tetiklendi — güçlü sinyal")
+    return "\n".join(parts)
+
 
 def render_ict_deep_panel(ticker):
     data = calculate_ict_deep_analysis(ticker)
@@ -14799,13 +15820,35 @@ def _render_genel_ozet_panel():
                 # ── DATA-READY FLAG (erken seans: gün içi hacim henüz yok) ──────
                 _data_ready = _gs_rvol >= 0.05
 
-                # ── LONG RADAR — verdict band için önceden hesapla ─────────────
+                # ── ERKEN RADAR — verdict band için önceden hesapla ─────────────
                 _lr_score = None; _lr_status = ""
                 try:
-                    _sms = calculate_smart_money_score(_ticker)
-                    if _sms and _sms.get('score') is not None:
-                        _lr_score  = _sms['score']
-                        _lr_status = _sms.get('status', '')
+                    _is_idx = (_ticker.startswith("XU") or _ticker.startswith("^") or
+                               _ticker.endswith("=F") or "-USD" in _ticker)
+                    if _is_idx:
+                        # Endeks için eski endeks-radar mantığı
+                        _sms = calculate_smart_money_score(_ticker)
+                        if _sms and _sms.get('score') is not None:
+                            _lr_score  = _sms['score']
+                            _lr_status = _sms.get('status', '')
+                    else:
+                        # Hisseler için Erken Radar
+                        _bench_t = "XU100.IS" if ".IS" in _ticker else "^GSPC"
+                        _bench_df = None
+                        try:
+                            _bench_df = get_safe_historical_data(_bench_t)
+                        except Exception:
+                            pass
+                        _er = evaluate_erken_radar(_ticker, df, _bench_df)
+                        if _er is not None:
+                            _lr_score = _er.get('overall_quality', 0)
+                            _primary  = _er.get('primary')
+                            if _primary:
+                                _lr_status = _primary.get('name', '')
+                            elif _er.get('red_flags'):
+                                _lr_status = "Risk Sinyali"
+                            else:
+                                _lr_status = "Senaryo Yok"
                 except Exception:
                     pass
 
@@ -15823,9 +16866,9 @@ with st.sidebar:
 </div>""", unsafe_allow_html=True)
     except: pass
 
-    # 🎯 AKILLI PARA SKORU — ICT Bottom Line altında, Kurumsal Para İştahı üstünde
+    # 🚀 ERKEN RADAR — Hareket öncesi senaryolu tespit motoru (eski Long Radar yerine)
     if st.session_state.get('ticker'):
-        render_smart_money_panel(st.session_state.ticker)
+        render_erken_radar_panel(st.session_state.ticker)
 
     # (Genel Sağlık + Canlı Sinyaller artık _render_health_signals_panel() ile sağ sütunda gösteriliyor)
 
@@ -16275,9 +17318,9 @@ with col_btn:
             st.session_state.golden_pattern_data = scan_golden_pattern_agent(scan_list, _cat)
 
             # 16. LONG RADAR LOGLAMA - %98
-            my_bar.progress(98, text="🚀 Long Radar Skoru Kaydediliyor...%98")
-            _lr_batch_df = scan_long_radar_batch(scan_list, min_score=70)
-            log_scan_signal("long_radar", _lr_batch_df, category=_cat)
+            my_bar.progress(98, text="🚀 Erken Radar Senaryoları Kaydediliyor...%98")
+            _er_batch_df = scan_erken_radar_batch(scan_list)
+            log_erken_radar_signals(_er_batch_df, category=_cat)
 
             # --- TOP 20 + CONFLUENCE - %99
             my_bar.progress(99, text="🏆 TOP 20 & Confluence Hesaplanıyor...%99")
@@ -17281,13 +18324,20 @@ if st.session_state.generate_prompt:
     except Exception:
         harm_txt = "Yok"
 
-    # KALKIŞ RADARI pre_launch durumu
+    # ERKEN RADAR — 36 senaryolu motor (Long Radar yerine)
     try:
         _sms = calculate_smart_money_score(t)
-        _sms_str = (f"Skor: {_sms['score']}/100 — Durum: {_sms['status']}\n{_sms['summary_text']}"
-                    + ("\n⚡ ÖN HAZIRLIK UYARISI: 4 temel kriter karşılandı, tetik (trigger) henüz ateşlenmedi — "
-                       "fiyat henüz hareket etmeden önce ideal pencere olabilir." if _sms.get('pre_launch') else "")
-                    ) if _sms else "Hesaplanamadı"
+        _er_payload = _sms.get('_er_data') if _sms else None
+        _is_index_t = (t.startswith("XU") or t.startswith("^") or t.endswith("=F") or "-USD" in t or t == "GC=F")
+        if _er_payload and not _is_index_t:
+            _sms_str = build_erken_radar_prompt_text(_er_payload, _sms.get('score', 0))
+        elif _sms:
+            # Endeks: eski format korunur
+            _sms_str = (f"Skor: {_sms['score']}/100 — Durum: {_sms['status']}\n{_sms['summary_text']}"
+                        + ("\n⚡ ÖN HAZIRLIK UYARISI: 4 temel kriter karşılandı, tetik (trigger) henüz ateşlenmedi — "
+                           "fiyat henüz hareket etmeden önce ideal pencere olabilir." if _sms.get('pre_launch') else ""))
+        else:
+            _sms_str = "Hesaplanamadı"
     except Exception:
         _sms_str = "Hesaplanamadı"
 
@@ -17956,14 +19006,28 @@ Dağıtım (Distribution) işaretleri: Fiyat yukarı + OBV aşağı, yüksek hac
 - Algoritmik Kanaat Skoru: {_conviction_prompt_str}
 Kural: Faz 3 (Dağıtım) veya Faz 4 (Düşüş) iken gelen AL sinyallerini "karşı-trend" olarak işaretle ve riskini vurgula. Faz 2 (Yükseliş) iken SAT sinyali varsa aynı şekilde dikkat çek. Kanaat skoru 45 altında (SHORT/GÜÇLÜ SHORT) iken pozitif senaryo çiziyorsan bunu açıkça "algoritmanın genel eğilimiyle çelişiyor" diye belirt.
 
-*** AKILLI PARA HAZIRLIK SKORU (5 KRİTERLİ ALGORİTMİK ANALİZ) ***
+*** ERKEN RADAR — 36 SENARYOLU HAREKET ÖNCESİ TESPİT MOTORU ***
 {_sms_str}
+
+*** ERKEN RADAR YORUMLAMA REHBERİ ***
+- **A kategorisi (Geri Dönüş):** Hisse düşmüş, dönüş arayışı. Risk yüksek ama potansiyel de büyük.
+- **B kategorisi (Sıkışma):** Yatay konsolidasyondan kırılım hazırlığı. Pre-move setup'ları.
+- **C kategorisi (Trend Devamı):** Yukarı trendde sağlıklı pullback. Düşük risk, orta potansiyel.
+- **D kategorisi (Uyarılar):** Risk sinyalleri — alım kararına dikkat.
+- **5★ senaryolar:** En güvenilir setup'lar. Bunu öne çıkar.
+- **Çoklu teyit (3+ senaryo aynı anda):** Çok daha güçlü sinyal — analizinde vurgula.
+- **Ana senaryo + risk uyarısı birlikte:** Tablo karışık — fırsatı kabul et ama uyarıyı da yaz.
+- **Skor 75+:** Güçlü Erken Radar — analizin merkezine al.
+- **Skor 50-75:** Orta güç — destekleyici bağlam olarak kullan.
+- **Skor 30 altı veya 0:** Erken Radar bu hisseyi seçmiyor — ya zaten hareket etti ya da pre-move değil. Bunu açıkça belirt, "Erken Radar henüz yeşil yakmadı" gibi bağla.
+- **Hidden divergence yok bu sistemde** — sadece Güçlü/Orta/Zayıf Pozitif divergence değerlendirilir.
+- ASLA "Mansfield", "VCP", "Pocket Pivot" gibi teknik jargon kullanma. Senaryo isimleri zaten sade Türkçe — onları olduğu gibi kullan.
 
 *** CANLI TARAMA SONUÇLARI (SİNYAL KUTUSU) ***
 (Burası sistemin tespit ettiği en sıcak sinyallerdir, )
 {scan_summary_str}
 Eğer sinyal kutusunda "AKILLI PARA BİRİKİMİ" sinyali varsa: Bu sinyalin ne anlama geldiğini aboneye düz dille açıkla (Force Index, fiyat yataylığı), ardından ICT bölgesi (OB/FVG/bias) ile bağla — "kurumsal birikim + ICT alım bölgesi çakışması" varsa bunu öne çıkar.
-Eğer Akıllı Para Hazırlık Skoru 65 veya üzerindeyse, bunu analizinin içine doğal bir şekilde eriştir — "sistem bu hissenin kırılım hazırlığında olduğuna dair güçlü sinyaller veriyor" gibi bir bağlam kur.
+Eğer Erken Radar Kalite Skoru 65 veya üzerindeyse, ana senaryonun adını ve hikayesini analizinin merkezine al — "Erken Radar bu hissede [senaryo adı] tespit etti" şeklinde bağla. Çoklu teyit varsa "birden fazla bağımsız sinyal aynı yöne işaret ediyor" diye vurgula.
 
 *** KURUMSAL PARA İŞTAHI KARNESİ (Detaylı Puanlar) Ama bunların GECİKMELİ VERİLER olduğunu unutma. Analize ekleyeceksen 'son kaç günün verileri' olduğunu muhakkak belirt***
 - YAPI (Structure): {sent_yapi} (Market yapısı puanları şöyle: Son 20 günün %97-100 zirvesinde (12). Son 5 günün en düşük seviyesi, önceki 20 günün en düşük seviyesinden yukarıdaysa: HL (8))
