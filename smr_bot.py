@@ -1047,7 +1047,7 @@ async def reset_daily_limits(context: ContextTypes.DEFAULT_TYPE):
     log.info(f"Günlük limitler sıfırlandı ({count} kayıt temizlendi)")
 
 
-# ─── 19:00 GÜNLÜK BÜLTEN ─────────────────────────────────────────────────────
+# ─── GÜNLÜK BÜLTEN (Pzt-Cuma 19:00, Paz 21:00) ───────────────────────────────
 async def _send_bulletin_to_channel(
     context, chat_id: int, tier: str, now_str: str, is_sunday: bool = False
 ):
@@ -1463,11 +1463,20 @@ def main():
         name="reset_daily"
     )
 
-    # 19:00 — PRO kanalına günlük bülten
+    # 19:00 — Pzt-Cuma günlük bülten (Cmt + Paz hariç)
     app.job_queue.run_daily(
         send_daily_bulletin,
         time=datetime.strptime("19:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
+        days=(0, 1, 2, 3, 4),  # Pzt-Cuma
         name="daily_bulletin"
+    )
+
+    # 21:00 — Pazar Hatırlatması (sadece Paz)
+    app.job_queue.run_daily(
+        send_daily_bulletin,
+        time=datetime.strptime("21:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
+        days=(6,),  # Sadece Pazar
+        name="sunday_bulletin"
     )
 
     # Her 5 dakikada Shopier sipariş kontrolü
@@ -1480,7 +1489,7 @@ def main():
         )
         log.info("✅ Shopier sipariş kontrolü aktif (5dk)")
 
-    log.info("✅ Bot aktif. Bülten: 19:00 | Sıfırlama: 00:00")
+    log.info("✅ Bot aktif. Bülten: Pzt-Cuma 19:00, Paz 21:00 | Sıfırlama: 00:00")
 
     # aiohttp — Shopier OSB endpoint
     web_app = web.Application()
