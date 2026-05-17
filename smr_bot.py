@@ -530,12 +530,19 @@ async def delete_non_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text.startswith("#"):
         return  # Geçerli mesaj — handle_ticker işleyecek
 
-    # # ile başlamıyor → sil + kısa uyarı
+    # SADECE EMOJİ izin var (harf/rakam yoksa = emoji veya işaret → bırak)
+    if text and not any(c.isalpha() or c.isdigit() for c in text):
+        return  # Sadece emoji/işaret — analizlerin altına tepki verme izni
+
+    # Yazı/rakam içeriyor ya da #'sız tam metin → sil + kısa uyarı
     try:
         await msg.delete()
         warn = await context.bot.send_message(
             chat_id=chat_id,
-            text="⚠️ Bu kanalda yalnızca hisse kodu yazabilirsiniz.\nÖrnek: #THYAO",
+            text="⚠️ Bu kanalda yorum/yazı kapalıdır.\n"
+                 "📊 Analiz için: `#THYAO` gibi hisse kodu yaz\n"
+                 "💬 Tepki için: sadece emoji (👍 ❤️ 🔥)",
+            parse_mode="Markdown"
         )
         await asyncio.sleep(5)
         await warn.delete()
