@@ -753,7 +753,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     invite_text = f"\n\n📨 Kanala katılmak için (48 saat geçerli):\n{inv.invite_link}"
                 except Exception:
-                    invite_text = "\n\n📨 Kanal linki için admin'e yaz."
+                    invite_text = "\n\n📨 Kanal linki için admin'e yaz: @SmartMoneyRadar26"
             await msg.reply_text(
                 f"{emoji} *Aboneliğin aktif!*\n"
                 f"Tier: *{tier}* | Bitiş: `{expiry}`"
@@ -774,7 +774,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Abone olmak için ödeme sayfasını ziyaret et.\n\n"
             "💡 _Ödeme yaptıysan ve hesabın aktifleşmediyse:_\n"
             "Shopier formuna girdiğin Telegram kullanıcı adını kontrol et. "
-            "Sorun devam ederse admin'e yaz.",
+            "Sorun devam ederse admin'e yaz: @SmartMoneyRadar26",
             parse_mode="Markdown"
         )
 
