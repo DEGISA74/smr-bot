@@ -39,3 +39,6 @@ Thumbs.db
 *yedek*
 *test*
 bot_test.py
+
+# Site (dinamik cron çıktısı)
+public/frontend/latest.json
