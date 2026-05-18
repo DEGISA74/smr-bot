@@ -16,15 +16,28 @@ import sqlite3
 import json
 import sys
 import os
+import io
 import time
 from pathlib import Path
 from datetime import datetime, date, timedelta
 import pandas as pd
 import pytz
 
+# UTF-8 stdout zorunlu (Windows cp1254 emoji uyumsuzluğunu çöz)
+try:
+    if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # ─── KONFİG ──────────────────────────────────────────────────────────────────
 BASE_DIR     = Path(__file__).parent
-DB_FILE      = BASE_DIR / "signals.db"
+DB_FILE      = BASE_DIR / "patron.db"   # app.py ile aynı DB
 PARQUET_DIR  = BASE_DIR / "veriler"
 OUTPUT_FILE  = BASE_DIR / "backtest_results.json"
 LOOKBACK_DAYS    = 90

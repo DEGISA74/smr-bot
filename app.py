@@ -17295,16 +17295,10 @@ with col_btn:
         _cat      = st.session_state.get('category', 'S&P 500')
         scan_list = ASSET_GROUPS.get(_cat, [])
 
-        # ── AGRESİF CACHE KONTROLÜ (piyasa dışı saatlerde) ─────────────────
-        _master_cached = load_scan_result("master_scan", _cat)
-        if _master_cached is not None:
-            # Diske kaydedilmiş sonuçları session_state'e geri yükle
-            for _k, _v in _master_cached.items():
-                st.session_state[_k] = _v
-            _close_dt = _scan_last_close_dt()
-            st.toast(f"📦 Cache yüklendi ({_close_dt.strftime('%d.%m %H:%M')} kapanışından)", icon="⚡")
-            st.rerun()
-        # ────────────────────────────────────────────────────────────────────
+        # ── CACHE KONTROLÜ KAPATILDI — buton tıklanınca DAİMA fresh scan
+        # (Cache load sadece sayfa ilk açılışında çalışır, line ~20385'te)
+        # Eskiden burada cache load + st.rerun() vardı → Erken Radar adımı hiç
+        # çalışmıyordu. Artık her buton tıklaması full Master Scan çalıştırır.
 
         # --- A. HAZIRLIK ---
         st.toast("Ajanlar göreve çağrılıyor...", icon="🕵️")
@@ -17445,6 +17439,7 @@ with col_btn:
                 "top_20_summary":           st.session_state.top_20_summary,
                 "confluence_hits":          st.session_state.confluence_hits,
                 "golden_pattern_data":      st.session_state.golden_pattern_data,
+                "erken_radar_data":         st.session_state.get('erken_radar_data'),
             }
             # Önce tüm snapshot'ı bir arada dene
             _save_ok = False
