@@ -1273,9 +1273,18 @@ def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd
     Günlük veri için son satırın Close fiyatını canlı fiyatla günceller.
     Grafik ile fiyat kutusu arasındaki cache kaynaklı uyuşmazlığı giderir.
     Sadece interval='1d' için çalışır; intraday verilere dokunmaz.
+
+    ⚠️ BAN KORUMASI: Master Scan çalışırken (session_state['_master_scan_running']==True)
+    yfinance live API çağrılarını ATLA — 500 ticker × 1 API call = ban riski.
     """
     if interval != "1d" or df is None or df.empty:
         return df
+    # Master Scan içinde live patch atla (parquet'teki kapanış zaten yeterli)
+    try:
+        if st.session_state.get('_master_scan_running', False):
+            return df
+    except Exception:
+        pass
     try:
         _live = get_live_price(ticker)
         if _live <= 0:
@@ -17404,6 +17413,11 @@ with col_btn:
         # Eskiden burada cache load + st.rerun() vardı → Erken Radar adımı hiç
         # çalışmıyordu. Artık her buton tıklaması full Master Scan çalıştırır.
 
+        # ⚠️ BAN KORUMA FLAG: tüm batch tarama fonksiyonlarında live yfinance
+        # API çağrılarını (get_live_price) atlamak için flag aç. Parquet'teki
+        # kapanış verisi yeterli — 500 ticker × ban riski engellenir.
+        st.session_state['_master_scan_running'] = True
+
         # --- A. HAZIRLIK ---
         st.toast("Ajanlar göreve çağrılıyor...", icon="🕵️")
 
@@ -17578,8 +17592,12 @@ with col_btn:
                 st.warning(f"⚠️ Tarama önbelleği kaydedilemedi. Atlanan keyler: {_skip_str}")
 
             st.session_state.generate_prompt = False
+            # ⚠️ BAN KORUMA flag'i kapat (sayfa render'larında tek hisse view'da live patch aktif)
+            st.session_state['_master_scan_running'] = False
 
         except Exception as e:
+            # Hata olsa bile flag'i kapat (sonsuza kadar açık kalmasın)
+            st.session_state['_master_scan_running'] = False
             # Streamlit'in kendi exception'larını (RerunException, StopException) yeniden fırlat
             _etype = type(e).__name__
             if any(x in _etype for x in ("Rerun", "Stop", "Script")):
