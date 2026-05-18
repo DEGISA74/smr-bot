@@ -634,12 +634,14 @@ def remove_watchlist_db(symbol):
     conn.commit()
     conn.close()
 
+@st.cache_data(ttl=600, show_spinner=False)
 def evaluate_signals(lookback_days=90, forward_windows=None):
     """
     scan_signals tablosundaki sinyalleri değerlendirir.
     Her sinyal için +5, +10, +20 günlük fiyat getirisini hesaplar.
     Minimum 5 gün geçmemiş sinyaller atlanır (henüz olgunlaşmamış).
     Parquet cache üzerinden çalışır — ek internet isteği yapmaz.
+    Cache: 10 dakika (DB nadiren güncellenir, Streamlit her render'da çağırmasın).
     """
     if forward_windows is None:
         forward_windows = [5, 10, 20]
