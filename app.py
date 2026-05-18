@@ -17378,6 +17378,48 @@ with col_btn:
             st.session_state.erken_radar_data = _er_batch_df
             save_scan_result("erken_radar_data", _er_batch_df, _cat)
 
+            # 16b. SITE FRONTEND TADIMLIK JSON — sadece BIST için, FREE pazarlama (top 2 + lock count)
+            if "BIST" in _cat.upper() and _er_batch_df is not None and not _er_batch_df.empty:
+                try:
+                    import json as _json
+                    from pathlib import Path as _Path
+                    # 5★ primary'leri al, aging hesapla, sırala
+                    _er5 = _er_batch_df[(_er_batch_df['Role'] == 'primary') &
+                                        (_er_batch_df['Stars'].apply(lambda v: isinstance(v, int) and v == 5))]
+                    _all_primary = _er_batch_df[_er_batch_df['Role'] == 'primary']
+                    _aging_pairs2 = [(str(_r['Sembol']), str(_r['ScenarioId'])) for _, _r in _er5.iterrows()]
+                    _aging_map2 = get_scenario_ages_batch(_aging_pairs2, max_lookback=30)
+                    _preview_items = []
+                    for _, _r in _er5.iterrows():
+                        _tk = str(_r.get('Sembol', '')).replace('.IS', '')
+                        if not _tk:
+                            continue
+                        _preview_items.append({
+                            'ticker':        _tk,
+                            'scenario_id':   str(_r.get('ScenarioId', '')),
+                            'scenario_name': str(_r.get('ScenarioName', '')),
+                            'category':      str(_r.get('Category', '')),
+                            'stars':         5,
+                            'aging_days':    _aging_map2.get((_r.get('Sembol', ''), _r.get('ScenarioId', '')), 1),
+                        })
+                    # Aging'e göre sırala (uzun süredir aktif olanlar daha "sıkışmış" — öncelikli)
+                    _preview_items.sort(key=lambda x: x['aging_days'], reverse=True)
+                    _show_n = 2
+                    _public_items   = _preview_items[:_show_n]
+                    _locked_total   = max(0, len(_all_primary) - _show_n)
+                    _preview_payload = {
+                        'generated_at':   datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d %H:%M"),
+                        'category':       _cat,
+                        'public_items':   _public_items,
+                        'locked_count':   _locked_total,
+                    }
+                    _frontend_dir = _Path(r"C:\Users\LENOVO\OneDrive\Desktop\Patron Terminal\public\frontend")
+                    _preview_path = _frontend_dir / "erken_radar_preview.json"
+                    _preview_path.write_text(_json.dumps(_preview_payload, ensure_ascii=False, indent=2), encoding='utf-8')
+                except Exception as _e:
+                    import logging as _logging
+                    _logging.warning(f"[erken_radar_preview] JSON üretim hatası: {_e}")
+
             # --- TOP 20 + CONFLUENCE - %99
             my_bar.progress(99, text="🏆 TOP 20 & Confluence Hesaplanıyor...%99")
             st.session_state.top_20_summary  = compile_top_20_summary()

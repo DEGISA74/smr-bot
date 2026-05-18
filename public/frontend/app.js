@@ -42,6 +42,49 @@ async function loadData() {
   renderCTA();
   updateTwitterLinks();
   renderBgDeco(data.xu100_grafik || []);
+  renderErkenRadarPreview();
+}
+
+// ── ERKEN RADAR PREVIEW (Tadımlık — FREE) ────────────────────────────────────
+async function renderErkenRadarPreview() {
+  const panel = document.getElementById('erken-radar-panel');
+  const body  = document.getElementById('erken-radar-body');
+  const tag   = document.getElementById('erken-radar-tag');
+  if (!panel || !body) return;
+  try {
+    const res = await fetch('erken_radar_preview.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return; // sessizce gizli kalır
+    const data = await res.json();
+    const items = data.public_items || [];
+    if (items.length === 0) return;
+    panel.style.display = '';
+    if (tag) tag.textContent = `Güncelleme: ${data.generated_at || '—'}`;
+    const catIcons = { A: '🔄', B: '📐', C: '🚀', D: '⚠' };
+    const itemsHtml = items.map(it => {
+      const icon = catIcons[it.category] || '🎯';
+      const aging = it.aging_days >= 5
+        ? `<span style="color:#fbbf24;font-weight:700;">⏳ ${it.aging_days}g aktif</span>`
+        : (it.aging_days >= 2 ? `<span style="color:#94a3b8;">${it.aging_days}g aktif</span>` : '');
+      return `<div class="erp-row">
+        <div class="erp-row-line">
+          <span class="erp-icon">${icon}</span>
+          <span class="erp-ticker">${it.ticker}</span>
+          <span class="erp-stars">★★★★★</span>
+          ${aging ? `<span class="erp-aging">${aging}</span>` : ''}
+        </div>
+        <div class="erp-scenario">${it.scenario_name}</div>
+      </div>`;
+    }).join('');
+    const lockHtml = data.locked_count > 0
+      ? `<div class="erp-lock">
+           🔒 Diğer <b>${data.locked_count}</b> senaryo PRO üyelere açık.
+           <a href="#" onclick="openPlansModal();return false;" class="erp-cta">[PRO'ya geç]</a>
+         </div>`
+      : '';
+    body.innerHTML = `<div class="erp-wrap">${itemsHtml}${lockHtml}</div>`;
+  } catch (err) {
+    // sessiz başarısızlık — JSON yoksa veya hatalıysa panel gizli kalır
+  }
 }
 
 
