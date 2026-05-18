@@ -318,20 +318,23 @@
         <div style="font-size:9px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase">ÜCRETSİZ</div>
         <div style="font-size:18px;font-weight:900;color:#f1f5f9;margin:2px 0 8px">FREE <span style="font-size:12px;color:#64748b;font-weight:400">60 /ay</span></div>
         <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 1 hisse analizi<br>• Para Akışı görüntüsü<br>• ICT Bottomline özeti<br>• Anlık sinyal değerlendirmesi</div>
-        <a href="#" target="_blank" style="display:block;margin-top:10px;text-align:center;background:rgba(255,255,255,0.06);border:1px solid #334155;border-radius:7px;padding:8px;color:#94a3b8;text-decoration:none;font-size:12px;font-weight:600">Kanala Katıl →</a>
+        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-top:8px;background:transparent;border:1px dashed #334155;border-radius:6px;padding:6px;color:#64748b;font-size:11px;font-weight:600;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <a href="#" target="_blank" style="display:block;margin-top:6px;text-align:center;background:rgba(255,255,255,0.06);border:1px solid #334155;border-radius:7px;padding:8px;color:#94a3b8;text-decoration:none;font-size:12px;font-weight:600">Kanala Katıl →</a>
       </div>
       <!-- PRO -->
       <div style="background:#0a1628;border:1px solid #2563eb;border-radius:10px;padding:14px 16px">
         <div style="font-size:9px;font-weight:700;color:#3b82f6;letter-spacing:1px;text-transform:uppercase">PRO</div>
         <div style="font-size:18px;font-weight:900;color:#3b82f6;margin:2px 0 8px">₺299 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span></div>
         <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 3 hisse/coin/emtia analizi<br>• Para Akışı görüntüsü<br>• ICT Bottomline özeti<br>• <strong style="color:#f1f5f9">Detaylı Teknik Kart</strong><br>• Her akşam 19:00 BIST100 Teknik Kartı</div>
-        <a href="#" target="_blank" style="display:block;margin-top:10px;text-align:center;background:#1d4ed8;border-radius:7px;padding:8px;color:#fff;text-decoration:none;font-size:12px;font-weight:700">🔵 PRO'ya Katıl →</a>
+        <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-top:8px;background:transparent;border:1px dashed #2563eb;border-radius:6px;padding:6px;color:#3b82f6;font-size:11px;font-weight:600;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <a href="#" target="_blank" style="display:block;margin-top:6px;text-align:center;background:#1d4ed8;border-radius:7px;padding:8px;color:#fff;text-decoration:none;font-size:12px;font-weight:700">🔵 PRO'ya Katıl →</a>
       </div>
       <!-- ELITE -->
       <div style="background:#0a1628;border:1px solid #7c3aed;border-radius:10px;padding:14px 16px">
         <div style="font-size:9px;font-weight:700;color:#8b5cf6;letter-spacing:1px;text-transform:uppercase">ELİTE</div>
         <div style="font-size:18px;font-weight:900;color:#8b5cf6;margin:2px 0 8px">₺599 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span></div>
         <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 10 hisse/coin/emtia analizi<br>• Para Akışı görüntüsü<br>• ICT Bottomline özeti<br>• <strong style="color:#f1f5f9">Uzman Analiz Raporu</strong><br>• Her akşam 19:00 detaylı BIST100 bülteni<br>• Her hafta sonu TIER 1 Tarama Raporu</div>
+        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-top:8px;background:transparent;border:1px dashed #7c3aed;border-radius:6px;padding:6px;color:#8b5cf6;font-size:11px;font-weight:600;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div style="display:flex;flex-direction:column;gap:3px;margin:8px 0">
           <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.2);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#ffd700;font-weight:700">⭐ CONFLUENCE TARAMA</div>
           <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#8b5cf6;font-weight:700">✦ ELİTE SET-UP'LAR</div>
@@ -342,7 +345,252 @@
     </div>
   </div>
 </div>
+<!-- ÖRNEK ÇIKTI MODAL -->
+<div id="example-modal" onclick="if(event.target===this)closeExampleModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;overflow-y:auto;padding:20px">
+  <div style="max-width:480px;margin:30px auto;background:#0d1117;border-radius:14px;overflow:hidden;position:relative">
+    <!-- Header -->
+    <div id="ex-header" style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #1e293b">
+      <button onclick="closeExampleModal()" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;line-height:1;padding:0 6px 0 0">←</button>
+      <div>
+        <div id="ex-tier-label" style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase"></div>
+        <div style="font-size:12px;color:#64748b">Gerçek bot çıktısı örneği — XU100 analizi</div>
+      </div>
+      <div id="ex-tier-badge" style="margin-left:auto;font-size:10px;font-weight:800;padding:3px 8px;border-radius:4px"></div>
+    </div>
+    <!-- İçerik -->
+    <div id="ex-content" style="padding:0"></div>
+    <!-- Alt CTA -->
+    <div id="ex-cta" style="padding:14px 16px;border-top:1px solid #1e293b;text-align:center"></div>
+  </div>
+</div>
+
+<!-- ÖRNEK İÇERİK ŞABLONLARI — içerik doğrudan HTML, JS string yok -->
+
+<!-- FREE şablon -->
+<div id="ex-tpl-free" style="display:none">
+  <div style="background:#1a1a2e;height:90px;overflow:hidden;border-bottom:1px solid #1e293b">
+    <svg width="100%" height="90" viewBox="0 0 440 90" preserveAspectRatio="none" style="opacity:0.6">
+      <polyline points="0,70 40,65 80,72 100,55 130,60 160,40 190,50 210,30 240,45 260,35 290,55 320,42 350,38 380,50 420,30 440,45" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+      <rect x="30" y="60" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="70" y="52" width="8" height="15" fill="#22c55e" opacity="0.7"/>
+      <rect x="150" y="35" width="8" height="18" fill="#ef4444" opacity="0.7"/><rect x="210" y="25" width="8" height="14" fill="#22c55e" opacity="0.7"/>
+      <rect x="330" y="32" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="390" y="26" width="8" height="16" fill="#ef4444" opacity="0.7"/>
+      <text x="8" y="82" fill="#334155" font-size="8" font-family="monospace">Para Akisi Grafigi — ornek</text>
+    </svg>
+  </div>
+  <div style="background:#17212b;padding:14px 16px;font-family:monospace;font-size:12px">
+    <div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">📊 <b>#XU100</b> — 14.203 <span style="color:#ef4444">▼%1,11</span></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      📍 <b>Büyük Ana Trend:</b> 🟢 YUKARI<br>
+      <span style="color:#64748b;font-size:11px;padding-left:16px">└ SMA50 üstünde · 1g</span><br>
+      🌟 <b>Kısa Vade Görünüm:</b> 🔴 AŞAĞI ↓<br>
+      <span style="color:#64748b;font-size:11px;padding-left:16px">└ Kısa vade (bugün–bu hafta) · 0/4 sinyal yukarı yönde</span>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      🛡 <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.008</code> — <i style="color:#64748b">ATR Destek</i><br>
+      🛡 <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">13.715</code> — <i style="color:#64748b">ATR Destek 4</i><br>
+      🎯 <b>Direnç 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.399</code> — <i style="color:#64748b">ATR Direnç</i><br>
+      🎯 <b>Direnç 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.692</code> — <i style="color:#64748b">ATR Direnç 4</i>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      ❌ <b>OBV Birikim</b> — Net birikim yok<br>
+      ❌ <b>BB Sıkışma</b> — Aktif sıkışma yok<br>
+      ❌ <b>Tetikleyici</b> — Tetik atılmadı | RSI 41<br>
+      ✦ <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">1/4</code>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1">📈 <b>RSI:</b> 41.4</div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#94a3b8;line-height:1.7;font-size:11.5px">💬 Makro yön yukarı (Boğa %61) ama kısa vadede sıkışma var. RSI 41 nötr; MACD negatif eğilimde, OBV yukarı. 14.399 kırılımı hacimle desteklenirse momentum geri gelebilir. 14.008 altına sarkmadıkça trend bozulmuş sayılmaz.</div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="font-size:10px;color:#475569;line-height:1.7">⚠️ <i>Eğitim amaçlıdır, yatırım tavsiyesi değildir.</i><br>
+    <span style="color:#3b82f6">— PRO üyeler bu hisse için Detaylı Teknik Kartı da okudu. Sen de ister misin?</span></div>
+  </div>
+</div>
+
+<!-- PRO şablon -->
+<div id="ex-tpl-pro" style="display:none">
+  <div style="background:#1a1a2e;height:90px;overflow:hidden;border-bottom:1px solid #1e293b">
+    <svg width="100%" height="90" viewBox="0 0 440 90" preserveAspectRatio="none" style="opacity:0.6">
+      <polyline points="0,70 40,65 80,72 100,55 130,60 160,40 190,50 210,30 240,45 260,35 290,55 320,42 350,38 380,50 420,30 440,45" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+      <rect x="30" y="60" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="70" y="52" width="8" height="15" fill="#22c55e" opacity="0.7"/>
+      <rect x="150" y="35" width="8" height="18" fill="#ef4444" opacity="0.7"/><rect x="210" y="25" width="8" height="14" fill="#22c55e" opacity="0.7"/>
+      <rect x="330" y="32" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="390" y="26" width="8" height="16" fill="#ef4444" opacity="0.7"/>
+      <text x="8" y="82" fill="#334155" font-size="8" font-family="monospace">Para Akisi Grafigi — ornek</text>
+    </svg>
+  </div>
+  <div style="background:#17212b;padding:14px 16px;font-family:monospace;font-size:12px">
+    <div style="font-size:10px;font-weight:700;color:#64748b;border-bottom:1px solid #1e293b;padding-bottom:6px;margin-bottom:10px">🏛 SMR Günlük Bülten — 18.05.2026</div>
+    <div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">📊 <b>#XU100</b> — 14.029 <span style="color:#ef4444">▼%2,32</span></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      📍 <b>Büyük Ana Trend:</b> 🟢 YUKARI<br>
+      <span style="color:#64748b;font-size:11px;padding-left:16px">└ SMA50 üstünde · 1g</span><br>
+      🌟 <b>Kısa Vade Görünüm:</b> 🔴 AŞAĞI ↓<br>
+      <span style="color:#64748b;font-size:11px;padding-left:16px">└ 0/4 sinyal yukarı yönde</span>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      🛡 <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">13.824</code> — <i style="color:#64748b">ATR Destek</i><br>
+      🛡 <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">13.516</code> — <i style="color:#64748b">ATR Destek 4</i><br>
+      🎯 <b>Direnç 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.234</code> — <i style="color:#64748b">ATR Direnç</i><br>
+      🎯 <b>Direnç 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.538</code> — <i style="color:#64748b">FVG Alt</i>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      ❌ <b>OBV Birikim</b> — Net birikim yok<br>
+      ❌ <b>BB Sıkışma</b> — Aktif sıkışma yok<br>
+      ❌ <b>Tetikleyici</b> — Tetik atılmadı | RSI 38<br>
+      ✦ <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">1/4</code>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1">📈 <b>RSI:</b> 38.5</div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#94a3b8;line-height:1.7;font-size:11.5px">💬 Aktif yükseliş dalgası — SMA50 (13.757) üstünde tutunma sürüyor (Boğa %59). RSI 38 ve OBV yukarı, kurumsal iştahın canlı olduğunu gösteriyor. 14.234 üzerinde hacimli geçiş yeni yön açabilir. Yapı bozulması için referans: 13.824 altı.</div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="font-size:10px;color:#475569">⚠️ <i>Eğitim amaçlıdır, yatırım tavsiyesi değildir.</i></div>
+  </div>
+  <!-- AI TEKNİK KART -->
+  <div style="background:#0f1923;border-top:2px solid #2563eb;padding:14px 16px;font-family:monospace">
+    <div style="font-size:11px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;margin-bottom:12px">🤖 AI TEKNİK KART — #XU100</div>
+    <div style="font-size:11.5px;color:#cbd5e1;line-height:1.85">
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">1️⃣ Genel Sentez</span><br>
+        <span style="color:#94a3b8">Düşüş kırılımı (BOS) ile düşüş trendi hakim. Son swing tepesi 15.205, salınım dibi 14.246,30. Fiyat kurumsal satım bölgesi olan premium (pahalı) alanda işlem görüyor.</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">2️⃣ Yapı &amp; Fiyat Davranışı</span><br>
+        <span style="color:#94a3b8">Mum kapanışları günlük aralığın alt kısmında — satıcı baskısı belirginleşiyor. OB: 14.991–15.204 aralığında arz bölgesi. FVG: 14.538–14.566. EQL: 14.246,30 seviyesinde eşit dipler (likidite havuzu).</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">3️⃣ Momentum &amp; Vade Uyumu</span><br>
+        <span style="color:#94a3b8">RSI 5g değişim hızı yatay, MACD histogramı genişliyor — momentum zayıflıyor. RSI uyumsuzluğu tespit edilmedi. Kısa ve orta vadeli momentumun zayıflama eğiliminde.</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">4️⃣ Hacim, Efor ve Akıllı Para İzi (VSA)</span><br>
+        <span style="color:#94a3b8">SMA200 üstünde (ana yapı sağlam) ancak SMA20 altında. Düşük hacimle hareket (RVOL 0.0x). Kümülatif delta son 5 günde %80 satış baskısına işaret ediyor. VWAP'ın %4,2 altında işlem. Piyasa Fazı: YÜKSELİŞ (FAZ 2).</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">5️⃣ Likidite &amp; Kritik Bantlar</span><br>
+        <span style="color:#94a3b8">Üst Havuz: 15.205. Alt Havuz: 14.266 (PDL kırıldı) ve 14.246,30 (EQL). Son 20g aralığın alt bandına yakın; sert düşüş sonrası tutunma eğilimi.</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">6️⃣ Trend Skoru ve Enerji</span><br>
+        <span style="color:#94a3b8">Enerji Puanı: 4/5. Sonraki hamle için enerji birikimi var; ancak sinyaller karışık.</span>
+      </div>
+      <div>
+        <span style="color:#3b82f6;font-weight:700">7️⃣ Teknik Okuma Özeti</span><br>
+        <span style="color:#94a3b8">Düşüş kırılımı (BOS) sonrası fiyat premium bölgede, düşük hacimle satış baskısıyla işlem görüyor. 14.246,30'daki EQL'e (eşit diplere) doğru çekilme ihtimali masada. Risk: Düşük hacim ve belirgin satış baskısı düşüşün devamını güçlendiriyor.</span>
+      </div>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin-top:12px;padding-top:8px;font-size:10px;color:#475569;line-height:1.7">
+      SMR-PRO aboneleri için Algoritmanın TEKNİK KART çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.<br>
+      <span style="color:#94a3b8">#SmartMoneyRadar #XU100</span><br><br>
+      <span style="color:#8b5cf6;font-weight:600">— ELİTE üyeler tam uzman analizini de aldı. Farkı görmek ister misin?</span>
+    </div>
+  </div>
+</div>
+
+<!-- ELITE şablon (şimdilik PRO ile aynı, ELITE kartı gelince güncellenecek) -->
+<div id="ex-tpl-elite" style="display:none">
+  <div style="background:#0a0f1a;padding:20px;font-family:monospace;text-align:center;color:#8b5cf6;font-size:13px">
+    🔬 ELİTE örnek içeriği yakında eklenecek
+  </div>
+</div>
+
+<!-- CTA divleri -->
+<div id="ex-cta-free" style="display:none">
+  <a href="#" onclick="closeExampleModal();openPlansModal();return false;" style="display:inline-block;background:rgba(255,255,255,0.06);border:1px solid #334155;border-radius:7px;padding:8px 20px;color:#94a3b8;text-decoration:none;font-size:12px;font-weight:600">Kanala Katıl →</a>
+</div>
+<div id="ex-cta-pro" style="display:none">
+  <a href="#" onclick="closeExampleModal();openPlansModal();return false;" style="display:inline-block;background:#1d4ed8;border-radius:7px;padding:8px 20px;color:#fff;text-decoration:none;font-size:12px;font-weight:700">🔵 PRO'ya Katıl →</a>
+</div>
+<div id="ex-cta-elite" style="display:none">
+  <div style="font-size:11px;color:#8b5cf6;font-weight:700">🕐 Yakında açılıyor</div>
+</div>
+
 <script>
+var EX_META = {
+  free:  { label:'ÜCRETSİZ', lc:'#64748b', badge:'FREE',  bb:'rgba(100,116,139,0.15)', bc:'#94a3b8' },
+  pro:   { label:'PRO',      lc:'#3b82f6', badge:'PRO',   bb:'rgba(37,99,235,0.15)',   bc:'#3b82f6' },
+  elite: { label:'ELİTE',    lc:'#8b5cf6', badge:'ELİTE', bb:'rgba(124,58,237,0.15)',  bc:'#8b5cf6' }
+};
+(function buildTemplates(){
+  var CHART_SVG = '<div style="background:#1a1a2e;height:110px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #1e293b"><svg width="100%" height="90" viewBox="0 0 440 90" preserveAspectRatio="none" style="opacity:0.7"><polyline points="0,70 40,65 80,72 100,55 130,60 160,40 190,50 210,30 240,45 260,35 290,55 320,42 350,38 380,50 420,30 440,45" fill="none" stroke="#22c55e" stroke-width="1.5"/><rect x="30" y="60" width="8" height="10" fill="#ef4444" opacity="0.6"/><rect x="60" y="55" width="8" height="15" fill="#22c55e" opacity="0.6"/><rect x="150" y="35" width="8" height="18" fill="#ef4444" opacity="0.6"/><rect x="210" y="25" width="8" height="14" fill="#22c55e" opacity="0.6"/><rect x="330" y="32" width="8" height="8" fill="#ef4444" opacity="0.6"/><rect x="390" y="26" width="8" height="18" fill="#22c55e" opacity="0.6"/><text x="8" y="14" fill="#64748b" font-size="9" font-family="monospace">Para Akisi Grafigi</text></svg></div>';
+
+  var FREE_HTML = CHART_SVG +
+    '<div style="background:#17212b;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">&#128202; <b>#XU100</b> &#8212; 14,203 <span style="color:#ef4444">&#9660;%1.11</span></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128205; <b>Buyuk Ana Trend:</b> &#127834; YUKARI<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; SMA50 ustunde &middot; 1g</span><br>&#127775; <b>Kisa Vade Gorunum:</b> &#128308; ASAGI &#8595;<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; 0/4 sinyal yukari yonde</span></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128737; <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,008</code> &#8212; <i style="color:#64748b">ATR Destek</i><br>&#128737; <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">13,715</code> &#8212; <i style="color:#64748b">ATR Destek 4</i><br>&#127919; <b>Direnc 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,399</code> &#8212; <i style="color:#64748b">ATR Direnc</i><br>&#127919; <b>Direnc 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,692</code> &#8212; <i style="color:#64748b">ATR Direnc 4</i></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#10060; <b>OBV Birikim</b> &#8212; Net birikim yok<br>&#10060; <b>BB Sikisma</b> &#8212; Aktif sikisma yok<br>&#10060; <b>Tetikleyici</b> &#8212; Tetik atilmadi | RSI 41<br>&#10022; <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">1/4</code></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1">&#128202; <b>RSI:</b> 41.4</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:11.5px;color:#94a3b8;line-height:1.7">&#128172; Makro yon yukari (Boga %61) ama kisa vadede sikisma var. RSI 41 notr; MACD negatif egilimde, OBV yukari. 14.399 kirilimi hacimle desteklenirse momentum geri gelebilir. 14.008 altina sarkmadikca trend bozulmus sayilmaz.</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:10px;color:#475569;line-height:1.7">&#9888;&#65039; <i>Egitim amaclidir, yatirim tavsiyesi degildir.</i><br><span style="color:#3b82f6">&#8212; PRO uyeler bu hisse icin Detayli Teknik Karti da okudu. Sen de ister misin?</span></div>' +
+    '</div>';
+
+  var PRO_CARD = CHART_SVG +
+    '<div style="background:#17212b;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:10px;font-weight:700;color:#64748b;border-bottom:1px solid #1e293b;padding-bottom:6px;margin-bottom:10px">&#127963; SMR Gunluk Bulten &#8212; 18.05.2026</div>' +
+    '<div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">&#128202; <b>#XU100</b> &#8212; 14,029 <span style="color:#ef4444">&#9660;%2.32</span></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128205; <b>Buyuk Ana Trend:</b> &#127834; YUKARI<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; SMA50 ustunde &middot; 1g</span><br>&#127775; <b>Kisa Vade Gorunum:</b> &#128308; ASAGI &#8595;<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; 0/4 sinyal yukari yonde</span></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128737; <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">13,824</code> &#8212; <i style="color:#64748b">ATR Destek</i><br>&#128737; <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">13,516</code> &#8212; <i style="color:#64748b">ATR Destek 4</i><br>&#127919; <b>Direnc 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,234</code> &#8212; <i style="color:#64748b">ATR Direnc</i><br>&#127919; <b>Direnc 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,538</code> &#8212; <i style="color:#64748b">FVG Alt</i></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#10060; <b>OBV Birikim</b> &#8212; Net birikim yok<br>&#10060; <b>BB Sikisma</b> &#8212; Aktif sikisma yok<br>&#10060; <b>Tetikleyici</b> &#8212; Tetik atilmadi | RSI 38<br>&#10022; <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">1/4</code></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1">&#128202; <b>RSI:</b> 38.5</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:11.5px;color:#94a3b8;line-height:1.7">&#128172; Aktif yukselis dalgasi &#8212; SMA50 (13,757) ustunde tutunma suruyor (Boga %59). RSI 38 ve OBV yukari, kurumsal istahin canli oldugunu gosteriyor. 14,234 uzerinde hacimli gecis yeni yon acabilir. Yapi bozulmasi icin referans: 13,824 alti.</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:10px;color:#475569">&#9888;&#65039; <i>Egitim amaclidir, yatirim tavsiyesi degildir.</i></div>' +
+    '</div>';
+
+  var PRO_KART =
+    '<div style="background:#0f1923;border-top:2px solid #2563eb;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:11px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;margin-bottom:12px">&#129302; AI TEKNIK KART &#8212; #XU100</div>' +
+    '<div style="font-size:11.5px;color:#cbd5e1;line-height:1.85">' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">1&#65039;&#8419; Genel Sentez (Yapi + Bolge Uyumu)</span><br><span style="color:#94a3b8">- Trend Yonu: Dusus kirilimi (BOS &#8212; yapi kirilimi) ile dusus trendi hakim. Son swing tepesi 15.205, en son salinimda dip 14.246,30.<br>- Bolge Uyumu: Fiyat, kurumsal satim bolgesi olan premium (pahali) alanda islem goruyor.</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">2&#65039;&#8419; Yapi &amp; Fiyat Davranisi</span><br><span style="color:#94a3b8">- Trend Yapisi: Dusus kirilimi (BOS) sonrasinda yapi dusus trendi yonunde ilerliyor.<br>- Mum &amp; Fitil (Kapanis Konumu): Son 5 gunun mum kapanis seveleri gunluk araligin alt kisminda &#8212; satici baskisi belirginlesiyor. Son mumda alt banda yakin kapanis goruldu.<br>- OB/FVG: 14.991,70&#8211;15.204,90 araliginda arz bolgesi (Order Block &#8212; kurumsal satim bolgesi); 14.538,40&#8211;14.566,20 araliginda fiyat boslugu (FVG) mevcut.<br>- EQL &amp; Sweep: 14.246,30 seviyesinde esit dipler (EQL &#8212; likidite havuzu). Belirgin likidite avi (Sweep) tespit edilmedi.</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">3&#65039;&#8419; Momentum &amp; Vade Uyumu</span><br><span style="color:#94a3b8">- RSI Slope &amp; MACD: RSI 5 gunluk degisim hizi yatay; MACD histogrami genisliyor &#8212; momentum zayifliyor.<br>- RSI Divergence (Uyumsuzluk): Belirgin uyumsuzluk tespit edilmedi.<br>- MTF Momentum: Kisa ve orta vadeli momentumun zayiflama egiliminde oldugu gozlemleniyor.</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">4&#65039;&#8419; Hacim, Efor ve Akilli Para Izi (VSA)</span><br><span style="color:#94a3b8">- MA &amp; EMA Dizilimi: SMA200 ustunde (ana yapi saglam) ancak SMA20 altinda &#8212; kisa vadeli baski var. EMAlar karisik dizilimde.<br>- Hacim/Mum Uyumu (VSA &#8212; hacim-fiyat analizi): Dusuk hacimle hareket; alim ya da satim eforu belirgin degil. Kumulatif delta son 5 gunde %80 satis baskisina isaret ediyor.<br>- Kurumsal Akis: Fiyat, 20 gunluk VWAP olan 14.643un %4,2 altinda. Bollinger Bandi alt banda yakin. Piyasa Fazi: YUKSELIS (FAZ 2).</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">5&#65039;&#8419; Likidite &amp; Kritik Bantlar</span><br><span style="color:#94a3b8">- Ust Havuz: En yakin kritik direnc 15.205.<br>- Alt Havuz: 14.266 (PDL &#8212; onceki gun dibi kirildi) ve 14.246,30 (EQL &#8212; esit dipler likidite bolgesi).<br>- Range Konumu: Son 20 gunluk araligin alt bandina yakin; son 5 gunluk sert dusus sonrasi tutunma egilimi var.</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">6&#65039;&#8419; Trend Skoru ve Enerji</span><br><span style="color:#94a3b8">- Enerji Puani: 4/5. Bir sonraki hamle icin enerji birikimi var; ancak sinyaller karisik.</span></div>' +
+    '<div><span style="color:#3b82f6;font-weight:700">7&#65039;&#8419; Teknik Okuma Ozeti</span><br><span style="color:#94a3b8">- Dusus kirilimi (BOS) sonrasi fiyat premium bolgede, dusuk hacimle ve satis baskisiyla islem goruyor. 14.246,30daki EQLe (esit diplere) dogru cekilme ihtimali masada.<br>- Risk Uyarisi: Dusuk hacim ve belirgin satis baskisi, mevcut dususu devam potansiyelini artiriyor.</span></div>' +
+    '</div>' +
+    '<div style="border-top:1px solid #1e293b;margin-top:12px;padding-top:8px;font-size:10px;color:#475569;line-height:1.7">SMR-PRO aboneleri icin Algoritmamin TEKNIK KART ciktisidir. Egitim amaclidir. Yatirim tavsiyesi degildir.<br><span style="color:#94a3b8">#SmartMoneyRadar #XU100</span><br><br><span style="color:#8b5cf6;font-weight:600">&#8212; ELITE uyeler tam uzman analizini de aldi. Farki gormek ister misin?</span></div>' +
+    '</div>';
+
+  document.getElementById('ex-tpl-free').innerHTML  = FREE_HTML;
+  document.getElementById('ex-tpl-pro').innerHTML   = PRO_CARD + PRO_KART;
+  document.getElementById('ex-tpl-elite').innerHTML = PRO_CARD + PRO_KART; // ELITE eklenince guncellenir
+})();
+
+
+
+function openExampleModal(tier) {
+  var m = EX_META[tier]; if (!m) return;
+  document.getElementById('ex-tier-label').textContent = m.label;
+  document.getElementById('ex-tier-label').style.color = m.lc;
+  document.getElementById('ex-tier-badge').textContent = m.badge;
+  document.getElementById('ex-tier-badge').style.background = m.bb;
+  document.getElementById('ex-tier-badge').style.color = m.bc;
+  var tpl = document.getElementById('ex-tpl-' + tier);
+  document.getElementById('ex-content').innerHTML = tpl ? tpl.innerHTML : '';
+  var cta = document.getElementById('ex-cta-' + tier);
+  document.getElementById('ex-cta').innerHTML = cta ? cta.innerHTML : '';
+  document.getElementById('example-modal').style.display = 'block';
+}
+function closeExampleModal() {
+  document.getElementById('example-modal').style.display = 'none';
+}
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeExampleModal(); });
+
 function openPlansModal(){document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';}
 function closePlansModal(){document.getElementById('plans-modal').style.display='none';document.body.style.overflow='';}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closePlansModal();});
