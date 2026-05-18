@@ -177,6 +177,10 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
                 wait_sec = 60 * attempt  # 1. → 60sn, 2. → 120sn, 3. → 180sn
                 log.warning(f"Gemini kota aşımı (deneme {attempt}/{max_retries}) — {wait_sec}sn bekleniyor")
                 await asyncio.sleep(wait_sec)
+            elif "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str.lower():
+                wait_sec = 30 * attempt  # 1. → 30sn, 2. → 60sn, 3. → 90sn
+                log.warning(f"Gemini 503 yoğunluk (deneme {attempt}/{max_retries}) — {wait_sec}sn bekleniyor")
+                await asyncio.sleep(wait_sec)
             else:
                 # Başka hata — retry etme
                 log.error(f"Gemini API hatası: {e}")
