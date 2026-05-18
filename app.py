@@ -11934,21 +11934,52 @@ def scan_erken_radar_batch(asset_list):
     eşleşen HER senaryo ayrı satır olarak döner.
     Çıktı: DataFrame — bir hisse 3 senaryo tetiklerse 3 satır gelir.
     Her satır: Sembol, Fiyat, Skor (overall_quality), ScenarioId, ScenarioName, Category, Stars
+
+    PERFORMANS: get_batch_data_cached ile TÜM hisseler tek seferde alınır
+    (MultiIndex DataFrame), tek tek get_safe_historical_data çağrısı yapılmaz.
+    BIST 500 için ~6sn (eskiden 2-5dk).
     """
     import pandas as pd
     rows = []
-    # XU100 bench bir kez al
+    # Endeksleri filtrele (batch download ile gelmesinler)
+    stock_list = [t for t in asset_list
+                  if not (t.startswith("XU") or t.startswith("^") or
+                          t.endswith("=F") or "-USD" in t or t == "GC=F")]
+    if not stock_list:
+        return pd.DataFrame()
+
+    # XU100 bench bir kez al (parquet'ten, live patch atlanır - flag set)
     try:
         bench_df = get_safe_historical_data("XU100.IS")
     except Exception:
         bench_df = None
-    for ticker in asset_list:
+
+    # TÜM hisseleri tek batch'te al (MultiIndex DataFrame, cache'li)
+    try:
+        batch_data = get_batch_data_cached(stock_list, period="1y")
+    except Exception:
+        batch_data = None
+
+    def _extract_df(ticker):
+        """MultiIndex'ten ticker'ın DataFrame'ini çıkar (yoksa fallback parquet)"""
+        if batch_data is not None and not batch_data.empty:
+            try:
+                if isinstance(batch_data.columns, pd.MultiIndex):
+                    if ticker in batch_data.columns.levels[0]:
+                        return batch_data[ticker].dropna(how='all')
+                else:
+                    return batch_data.dropna(how='all')
+            except Exception:
+                pass
+        # Fallback: tek hisse parquet'ten
         try:
-            # Endeksleri atla
-            if (ticker.startswith("XU") or ticker.startswith("^") or
-                ticker.endswith("=F") or "-USD" in ticker or ticker == "GC=F"):
-                continue
-            df_hist = get_safe_historical_data(ticker)
+            return get_safe_historical_data(ticker)
+        except Exception:
+            return None
+
+    for ticker in stock_list:
+        try:
+            df_hist = _extract_df(ticker)
             if df_hist is None or len(df_hist) < 60:
                 continue
             er = evaluate_erken_radar(ticker, df_hist, bench_df)
