@@ -20475,6 +20475,28 @@ def _render_left_col():
     if st.session_state.get('golden_results') is not None and not st.session_state.golden_results.empty:
         _elit_scan_syms.update(set(st.session_state.golden_results['Hisse'].values))
     _double_hit_syms = _elit_scan_syms & _pb_scan_syms
+
+    # ── ELİT ↔ Erken Radar 5★ kesişim seti (ÇİFT ALTIN ETİKET) ──────────────
+    _er_5star_syms_clean = set()  # .IS olmadan
+    _er_5star_detail = {}         # sym_clean → {id, name}
+    _er_df_state = st.session_state.get('erken_radar_data')
+    if _er_df_state is not None and hasattr(_er_df_state, 'empty') and not _er_df_state.empty:
+        try:
+            _er_5 = _er_df_state[(_er_df_state['Role'] == 'primary') &
+                                 (_er_df_state['Stars'].apply(lambda v: isinstance(v, int) and v == 5))]
+            for _, _r in _er_5.iterrows():
+                _sc = str(_r.get('Sembol', '')).replace('.IS', '')
+                if _sc:
+                    _er_5star_syms_clean.add(_sc)
+                    _er_5star_detail[_sc] = {
+                        'id':   str(_r.get('ScenarioId', '')),
+                        'name': str(_r.get('ScenarioName', '')),
+                    }
+        except Exception:
+            pass
+    # ELİTLER sembollerini de .IS'siz forma indir, kesişimi hesapla
+    _elit_syms_clean = {str(s).replace('.IS', '') for s in _elit_scan_syms}
+    _elit_x_er5_syms = _elit_syms_clean & _er_5star_syms_clean   # .IS olmadan
     # ─────────────────────────────────────────────────────────────────────────
     
     with _c_right:
@@ -20535,8 +20557,16 @@ def _render_left_col():
                             _phaz = _pr.get('Hazırlık', '')
                             _pg_n = int(str(_phaz).split('/')[0]) if '/' in str(_phaz) else 0
                             _pdbl = _psym in _double_hit_syms
-                            _plbl = f"{'🔥' if _pg_n == 3 else '💎'} {_pd_} ({_pfs}) {_phaz}" + (" 🟠" if _pred else "") + (" 🚀" if _pdbl else "")
-                            _ptip = f"Kurulum: {_pkur} · {_phaz} kapı açık" + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _pdbl else "")
+                            _psym_clean = str(_psym).replace('.IS', '')
+                            _per5 = _psym_clean in _elit_x_er5_syms
+                            _per5_meta = _er_5star_detail.get(_psym_clean, {}) if _per5 else {}
+                            _plbl = (f"{'🔥' if _pg_n == 3 else '💎'} {_pd_} ({_pfs}) {_phaz}"
+                                     + (" 🟠" if _pred else "")
+                                     + (" 🚀" if _pdbl else "")
+                                     + (" 🎯" if _per5 else ""))
+                            _ptip = (f"Kurulum: {_pkur} · {_phaz} kapı açık"
+                                     + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _pdbl else "")
+                                     + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_per5_meta.get('id','5★')} ({_per5_meta.get('name','')})" if _per5 else ""))
                             if st.button(_plbl, key=f"elit_plt2_{_pi}", use_container_width=True, help=_ptip):
                                 on_scan_result_click(_psym); st.rerun()
                     else:
@@ -20586,10 +20616,17 @@ def _render_left_col():
                                     _darvas_lbl = " 🟦"
                                     _darvas_tip = (f" | 🟦 Darvas Kutu Oluşuyor — {_tda}g"
                                                    f" ({_tdt}→{_tdb}) · Kalite:{_tdq}/100")
-                            _tlbl  = f"{'💎 Platin' if _tisp else '🏆 Altın'} · {_td_} ({_tfs}){_darvas_lbl}" + (" 🟠" if _tred else "") + (" 🚀" if _tdbl else "")
+                            _tsym_clean = str(_tsym).replace('.IS', '')
+                            _ter5 = _tsym_clean in _elit_x_er5_syms
+                            _ter5_meta = _er_5star_detail.get(_tsym_clean, {}) if _ter5 else {}
+                            _tlbl  = (f"{'💎 Platin' if _tisp else '🏆 Altın'} · {_td_} ({_tfs}){_darvas_lbl}"
+                                      + (" 🟠" if _tred else "")
+                                      + (" 🚀" if _tdbl else "")
+                                      + (" 🎯" if _ter5 else ""))
                             _ttip  = (f"{'💎 Platin' if _tisp else '🏆 Altın'} · Discount %{_tdisc} · RSI {_trsi}"
                                       + _darvas_tip
-                                      + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _tdbl else ""))
+                                      + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _tdbl else "")
+                                      + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_ter5_meta.get('id','5★')} ({_ter5_meta.get('name','')})" if _ter5 else ""))
                             if st.button(_tlbl, key=f"elit_tekli_{_ti}", use_container_width=True, help=_ttip):
                                 on_scan_result_click(_tsym); st.rerun()
                     else:
@@ -20860,7 +20897,10 @@ def _render_left_col():
                             _age_suffix = f" · {_er_age}g"   # uzun süredir aktif (potansiyel patlama)
                         elif _er_age >= 2:
                             _age_suffix = f" · {_er_age}g"
-                        _lbl = f"{_ercat_icon} {_ersym} ({_erprice_s}) | {_erscid} {_erstars_str}{_multi_suffix}{_age_suffix}"
+                        # ELİTLER ile ÇİFT ALTIN ETİKET (5★ + ELİTLER)
+                        _er_in_elit = (_ersym in _elit_syms_clean) and (_erstars_n == 5)
+                        _elit_suffix = " 💎🎯" if _er_in_elit else (" 💎" if _ersym in _elit_syms_clean else "")
+                        _lbl = f"{_ercat_icon} {_ersym} ({_erprice_s}) | {_erscid} {_erstars_str}{_multi_suffix}{_age_suffix}{_elit_suffix}"
                         if st.button(_lbl, key=f"er_btn_{_ersym}_{_eri}", use_container_width=True):
                             on_scan_result_click(_err.get('Sembol', _ersym)); st.rerun()
                         # Senaryo açıklaması + ek teyitler listesi + aging notu
@@ -20878,11 +20918,18 @@ def _render_left_col():
                         if _other_scns:
                             _confirm_suffix = (f" <span style='color:#a855f7;font-weight:600;'>+ Ek teyitler: "
                                                f"{', '.join(_other_scns)}</span>")
+                        # ÇİFT ALTIN ETİKET vurgusu (Erken Radar 5★ + ELİTLER)
+                        _golden_badge = ""
+                        if _er_in_elit:
+                            _golden_badge = (" <span style='color:#fbbf24;font-weight:800;"
+                                             "background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);"
+                                             "border-radius:4px;padding:1px 6px;'>"
+                                             "💎🎯 ÇİFT ALTIN ETİKET (ELİTLER + ER 5★)</span>")
                         if _erdesc:
                             st.markdown(
                                 f"<div style='font-size:0.72rem;color:#cbd5e1;font-weight:500;"
                                 f"margin:-4px 0 6px 4px;line-height:1.4;'>"
-                                f"<b style='color:#7dd3fc;'>{_ername}:</b> {_erdesc}{_aging_note}{_confirm_suffix}</div>",
+                                f"<b style='color:#7dd3fc;'>{_ername}:</b> {_erdesc}{_aging_note}{_confirm_suffix}{_golden_badge}</div>",
                                 unsafe_allow_html=True
                             )
             else:
