@@ -12104,33 +12104,33 @@ def _er_rsi(close, period=14):
     return 100 - (100 / (1 + rs))
 
 def _er_swing_lows(low_series, lookback=30):
-    """Son N gün içinde swing low'ları bul. Pivot: 2 yan + 2 yan."""
-    lows = []
-    n = len(low_series)
+    """Son N gün içinde swing low'ları bul. Pivot: 2 yan + 2 yan. (numpy hızlı)"""
+    try:
+        arr = low_series.values if hasattr(low_series, 'values') else np.asarray(low_series)
+    except Exception:
+        return []
+    n = len(arr)
     start = max(2, n - lookback)
+    lows = []
     for i in range(start, n - 2):
-        try:
-            v = float(low_series.iloc[i])
-            if (v < float(low_series.iloc[i-1]) and v < float(low_series.iloc[i-2]) and
-                v < float(low_series.iloc[i+1]) and v < float(low_series.iloc[i+2])):
-                lows.append((i, v))
-        except Exception:
-            continue
+        v = arr[i]
+        if v < arr[i-1] and v < arr[i-2] and v < arr[i+1] and v < arr[i+2]:
+            lows.append((i, float(v)))
     return lows
 
 def _er_swing_highs(high_series, lookback=30):
-    """Son N gün içinde swing high'ları bul."""
-    highs = []
-    n = len(high_series)
+    """Son N gün içinde swing high'ları bul. (numpy hızlı)"""
+    try:
+        arr = high_series.values if hasattr(high_series, 'values') else np.asarray(high_series)
+    except Exception:
+        return []
+    n = len(arr)
     start = max(2, n - lookback)
+    highs = []
     for i in range(start, n - 2):
-        try:
-            v = float(high_series.iloc[i])
-            if (v > float(high_series.iloc[i-1]) and v > float(high_series.iloc[i-2]) and
-                v > float(high_series.iloc[i+1]) and v > float(high_series.iloc[i+2])):
-                highs.append((i, v))
-        except Exception:
-            continue
+        v = arr[i]
+        if v > arr[i-1] and v > arr[i-2] and v > arr[i+1] and v > arr[i+2]:
+            highs.append((i, float(v)))
     return highs
 
 def _er_strong_bullish_div(low_series, rsi_series):
@@ -12212,47 +12212,65 @@ def _er_volume_rising_slow(volume):
         return False
 
 def _er_pocket_pivot(df):
-    """Yeşil mum + hacim > son 10g'nin en yüksek kırmızı mum hacmi"""
+    """Yeşil mum + hacim > son 10g'nin en yüksek kırmızı mum hacmi (numpy)"""
     if len(df) < 11:
         return False
     try:
-        today_c = float(df['Close'].iloc[-1]); today_o = float(df['Open'].iloc[-1])
+        closes = df['Close'].values
+        opens  = df['Open'].values
+        vols   = df['Volume'].values
+        today_c, today_o, today_v = closes[-1], opens[-1], vols[-1]
         if today_c <= today_o:
             return False
-        today_v = float(df['Volume'].iloc[-1])
-        last_10 = df.iloc[-11:-1]
-        red = last_10[last_10['Close'] < last_10['Open']]
-        if red.empty:
-            return today_v > float(last_10['Volume'].max())
-        return today_v > float(red['Volume'].max())
+        # Son 10 gün (bugün hariç)
+        c10, o10, v10 = closes[-11:-1], opens[-11:-1], vols[-11:-1]
+        red_mask = c10 < o10
+        if not red_mask.any():
+            return today_v > float(v10.max())
+        return today_v > float(v10[red_mask].max())
     except Exception:
         return False
 
 def _er_distribution_day(df, day_offset=-1):
-    """Belirtilen günde distribution day mi? Kırmızı + hacim 20g × 1.5+"""
+    """Belirtilen günde distribution day mi? Kırmızı + hacim 20g × 1.5+ (numpy)"""
     if len(df) < 21 + abs(day_offset):
         return False
     try:
-        c = float(df['Close'].iloc[day_offset]); o = float(df['Open'].iloc[day_offset])
-        v = float(df['Volume'].iloc[day_offset])
+        closes = df['Close'].values
+        opens  = df['Open'].values
+        vols   = df['Volume'].values
+        c, o, v = closes[day_offset], opens[day_offset], vols[day_offset]
         end = len(df) + day_offset
         start = end - 20
         if start < 0:
             return False
-        va = float(df['Volume'].iloc[start:end].mean())
+        va = float(vols[start:end].mean())
         return c < o and v > va * 1.5
     except Exception:
         return False
 
 def _er_distribution_count(df, days=5):
-    """Son N günde distribution day sayısı"""
+    """Son N günde distribution day sayısı (numpy vektorize)"""
     if len(df) < 21:
         return 0
-    count = 0
-    for i in range(-days, 0):
-        if _er_distribution_day(df, i):
-            count += 1
-    return count
+    try:
+        closes = df['Close'].values
+        opens  = df['Open'].values
+        vols   = df['Volume'].values
+        n = len(df)
+        count = 0
+        for i in range(-days, 0):
+            end = n + i
+            start = end - 20
+            if start < 0:
+                continue
+            c, o, v = closes[i], opens[i], vols[i]
+            va = vols[start:end].mean()
+            if c < o and v > va * 1.5:
+                count += 1
+        return count
+    except Exception:
+        return 0
 
 def _er_updown_vol_ratio(df, days=20):
     """Yeşil mum hacim toplamı / kırmızı mum hacim toplamı"""
@@ -12460,8 +12478,21 @@ def _er_triangle_contraction(df, lookback=20):
 
 # --- RS DETEKTÖRLERİ (Endekse karşı) ---
 
-def _er_rs_pct(close, bench_close, days):
-    """RS farkı (yüzde): hisse getirisi - endeks getirisi"""
+def _er_rs_pct(close, bench_close, days, _aligned=None):
+    """RS farkı (yüzde): hisse getirisi - endeks getirisi.
+    _aligned: pre-aligned (s_arr, b_arr) numpy tuple (opsiyonel, hızlı yol)"""
+    if _aligned is not None:
+        s_arr, b_arr = _aligned
+        n = len(s_arr)
+        if n < days+1:
+            return 0.0
+        try:
+            sr = (s_arr[-1] / s_arr[-days-1]) - 1
+            br = (b_arr[-1] / b_arr[-days-1]) - 1
+            return float((sr - br) * 100)
+        except Exception:
+            return 0.0
+    # Fallback (eski yol, scan_erken_radar_batch dışından çağrılırsa)
     if bench_close is None or len(close) < days+1 or len(bench_close) < days+1:
         return 0.0
     try:
@@ -12548,7 +12579,7 @@ def _er_index_falling(bench_close, days=10):
 # --- CONTEXT BUILDER ---
 
 def _er_build_context(df, bench_df=None):
-    """Tüm sinyalleri tek seferde hesapla, dict döner."""
+    """Tüm sinyalleri tek seferde hesapla, dict döner. RS için bench bir kez align edilir."""
     if df is None or len(df) < 60:
         return None
     try:
@@ -12560,6 +12591,21 @@ def _er_build_context(df, bench_df=None):
         rsi_now = float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else 50.0
         bench_close = bench_df['Close'] if bench_df is not None else None
         pos60 = _er_position_60(df)
+
+        # ── RS HIZLI YOL: bench'i bir kez align et, numpy array olarak sakla ──
+        _aligned = None
+        _rs_ratio_arr = None
+        if bench_close is not None:
+            try:
+                _common = close.index.intersection(bench_close.index)
+                if len(_common) >= 21:
+                    _s_arr = close.loc[_common].values.astype(float)
+                    _b_arr = bench_close.loc[_common].values.astype(float)
+                    _aligned = (_s_arr, _b_arr)
+                    # RS ratio (Mansfield ham veri) — _er_rs_new_high için
+                    _rs_ratio_arr = _s_arr / _b_arr
+            except Exception:
+                _aligned = None
 
         return {
             # RSI zonları
@@ -12613,20 +12659,78 @@ def _er_build_context(df, bench_df=None):
             'medium_bull_div': _er_medium_bullish_div(low, rsi_series),
             'weak_bull_div': _er_weak_bullish_div(low, rsi_series),
             'bearish_div': _er_bearish_div(high, rsi_series),
-            # RS
-            'rs_turning': _er_rs_turning(close, bench_close),
-            'rs_crossover': _er_rs_crossover(close, bench_close),
-            'rs_persistent_positive': _er_rs_persistent_positive(close, bench_close),
-            'rs_accelerating': _er_rs_accelerating(close, bench_close),
-            'rs_new_high': _er_rs_new_high(close, bench_close),
-            'rs_healthy_pullback': _er_rs_healthy_pullback(close, bench_close),
-            'rs_negative_60': _er_rs_negative_60(close, bench_close),
-            'rs_20d_pct': _er_rs_pct(close, bench_close, 20) if bench_close is not None else 0.0,
+            # RS (cached aligned — common_index sadece 1 kez hesaplandı, 8x daha hızlı)
+            'rs_turning':             _er_rs_turning_fast(_aligned),
+            'rs_crossover':           _er_rs_crossover_fast(_aligned),
+            'rs_persistent_positive': _er_rs_persistent_positive_fast(_aligned),
+            'rs_accelerating':        _er_rs_accelerating_fast(_aligned),
+            'rs_new_high':            _er_rs_new_high_fast(_rs_ratio_arr),
+            'rs_healthy_pullback':    _er_rs_healthy_pullback_fast(_aligned),
+            'rs_negative_60':         _er_rs_negative_60_fast(_aligned),
+            'rs_20d_pct':             _er_rs_pct(close, bench_close, 20, _aligned=_aligned) if _aligned is not None else 0.0,
             # Piyasa
             'index_falling': _er_index_falling(bench_close),
         }
     except Exception:
         return None
+
+
+# ── HIZLI RS DETEKTÖRLERİ (cached aligned tuple üzerinden) ──────────────────
+
+def _er_rs_pct_fast(_aligned, days):
+    """Aligned numpy arr ile direkt hesap (common_index gerektirmez)"""
+    if _aligned is None:
+        return 0.0
+    s_arr, b_arr = _aligned
+    if len(s_arr) < days+1:
+        return 0.0
+    try:
+        sr = (s_arr[-1] / s_arr[-days-1]) - 1
+        br = (b_arr[-1] / b_arr[-days-1]) - 1
+        return float((sr - br) * 100)
+    except Exception:
+        return 0.0
+
+def _er_rs_turning_fast(_aligned):
+    return _er_rs_pct_fast(_aligned, 20) < 0 and _er_rs_pct_fast(_aligned, 5) > 0
+
+def _er_rs_crossover_fast(_aligned):
+    return _er_rs_pct_fast(_aligned, 20) < 0 and _er_rs_pct_fast(_aligned, 10) > 0
+
+def _er_rs_persistent_positive_fast(_aligned):
+    if _aligned is None:
+        return False
+    for d in (5, 10, 20, 60):
+        if _er_rs_pct_fast(_aligned, d) <= 0:
+            return False
+    return True
+
+def _er_rs_accelerating_fast(_aligned):
+    if _aligned is None:
+        return False
+    rs5 = _er_rs_pct_fast(_aligned, 5)
+    rs10 = _er_rs_pct_fast(_aligned, 10)
+    rs20 = _er_rs_pct_fast(_aligned, 20)
+    return rs5 > rs10 > rs20 and rs5 > 0
+
+def _er_rs_new_high_fast(_rs_ratio_arr, lookback=20):
+    """RS ratio (close/bench) son N gün'ün tepesinde mi"""
+    if _rs_ratio_arr is None or len(_rs_ratio_arr) < lookback:
+        return False
+    try:
+        recent_max = float(_rs_ratio_arr[-lookback:].max())
+        current = float(_rs_ratio_arr[-1])
+        return recent_max > 0 and current >= recent_max * 0.98
+    except Exception:
+        return False
+
+def _er_rs_healthy_pullback_fast(_aligned):
+    rs20 = _er_rs_pct_fast(_aligned, 20)
+    rs5  = _er_rs_pct_fast(_aligned, 5)
+    return rs20 > 0 and -3 < rs5 < 0
+
+def _er_rs_negative_60_fast(_aligned):
+    return _er_rs_pct_fast(_aligned, 60) < -5
 
 # --- 36 SENARYO ---
 
