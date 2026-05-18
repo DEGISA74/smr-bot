@@ -17317,10 +17317,12 @@ with col_btn:
             my_bar.progress(97, text="💎 Altın Set-up + VIP Formasyon (Fincan-Kulp/TOBO/Üçgen) Taranıyor...%97")
             st.session_state.golden_pattern_data = scan_golden_pattern_agent(scan_list, _cat)
 
-            # 16. LONG RADAR LOGLAMA - %98
+            # 16. ERKEN RADAR LOGLAMA + PANEL VERİSİ - %98
             my_bar.progress(98, text="🚀 Erken Radar Senaryoları Kaydediliyor...%98")
             _er_batch_df = scan_erken_radar_batch(scan_list)
             log_erken_radar_signals(_er_batch_df, category=_cat)
+            st.session_state.erken_radar_data = _er_batch_df
+            save_scan_result("erken_radar_data", _er_batch_df, _cat)
 
             # --- TOP 20 + CONFLUENCE - %99
             my_bar.progress(99, text="🏆 TOP 20 & Confluence Hesaplanıyor...%99")
@@ -20727,37 +20729,88 @@ def _render_left_col():
                 st.warning("OBV birikim + RSI diverjans + hacim frekansı kriterlerini karşılayan hisse bulunamadı.")
     
     with _t2c2:
-        st.markdown(_scan_card_header("🚀", "Pre-Launch BOS", 82,
-            "Squeeze (≥5g) + 45g Direnç Kırılımı + Hacim + RSI<70", "#3b82f6",
-            desc="Sıkışma sonrası kurumsal kırılım — hareket başlar başlamaz, kalabalık girmeden önce"
+        st.markdown(_scan_card_header("🎯", "HAREKETE HAZIR — HAREKETE BAŞLAYAN", 90,
+            "Erken Radar (36 senaryo) + Pre-Launch BOS", "#3b82f6",
+            desc="İki katmanlı pre-move radarı: senaryo bazlı erken tespit (hazır) + sıkışma sonrası kurumsal kırılım (başlayan)"
         ), unsafe_allow_html=True)
-        if st.button(f"🚀 PRE-LAUNCH BOS TARA ({st.session_state.category})", type="secondary",
-                     use_container_width=True, key="btn_scan_prelaunch",
-                     help="İki aşamalı sert eleme:\n\n"
-                          "1️⃣ Squeeze: BOS öncesi 15-25 günde en az 5 gün Bollinger/Keltner sıkışması — yay gerilmiş olmalı.\n\n"
-                          "2️⃣ BOS: Son 3 gün içinde 45 günlük swing high kırıldı — direnç aşıldı.\n\n"
-                          "Puanlama: Hacim (1.5x→+25), RS>BIST100→+20, RSI 50-65→+20, BOS seviyesine yakınlık→+20, SMA50 üzeri→+15. RSI>70 kesin elenme. Min 55/100."):
-            with st.spinner("Squeeze tarihi + BOS kırılımı + hacim teyidi taranıyor..."):
-                current_assets = ASSET_GROUPS.get(st.session_state.category, [])
-                st.session_state.prelaunch_bos_data = scan_prelaunch_bos(current_assets)
-                save_scan_result("prelaunch_bos_data", st.session_state.prelaunch_bos_data, st.session_state.category)
-        if st.session_state.prelaunch_bos_data is not None:
-            df_pb = st.session_state.prelaunch_bos_data
-            if not df_pb.empty:
+
+        # ── İki sub-kolon: sol=HAREKETE HAZIR (Erken Radar), sağ=HAREKETE BAŞLAYAN (Pre-Launch BOS) ──
+        _sub_er, _sub_pb = st.columns(2)
+
+        # ============ SOL: HAREKETE HAZIR (Erken Radar) ============
+        with _sub_er:
+            _er_df = st.session_state.get('erken_radar_data')
+            _er_count = len(_er_df) if (_er_df is not None and hasattr(_er_df, 'empty') and not _er_df.empty) else 0
+            st.markdown(f"<div style='background:linear-gradient(135deg,#3b82f618,#3b82f606);"
+                        f"border:1px solid #3b82f650;border-radius:8px;padding:6px 10px;margin-bottom:5px;'>"
+                        f"<span style='font-size:0.78rem;font-weight:900;color:#7dd3fc;'>"
+                        f"🚀 HAREKETE HAZIR — {_er_count} Hisse</span></div>", unsafe_allow_html=True)
+            if _er_count > 0:
+                # Sadece primary + confirmation (red_flag'leri dışla), yıldız sayısına göre sırala
+                _er_clean = _er_df[_er_df['Role'].isin(['primary', 'confirmation'])].copy()
+                # Yıldızı int'e çevirip sırala (KIRMIZI'lar zaten dışlandı)
+                def _stars_int(v):
+                    try: return int(v)
+                    except: return 0
+                _er_clean['_stars_n'] = _er_clean['Stars'].apply(_stars_int)
+                # Hisse başına en güçlü senaryoyu öne çıkar (primary öncelikli + yıldız desc)
+                _er_clean['_role_rank'] = _er_clean['Role'].map({'primary': 0, 'confirmation': 1})
+                _er_clean = _er_clean.sort_values(by=['_role_rank', '_stars_n', 'Sembol'], ascending=[True, False, True])
+                with st.container(height=320, border=False):
+                    _shown_syms = set()
+                    for _eri, _err in _er_clean.iterrows():
+                        _ersym = str(_err.get('Sembol', '')).replace('.IS', '')
+                        if _ersym in _shown_syms:
+                            continue  # Bir hisse için sadece 1 satır (en güçlü senaryo)
+                        _shown_syms.add(_ersym)
+                        _erprice = _err.get('Fiyat', 0)
+                        _erprice_s = f"{int(_erprice)}" if _erprice >= 1000 else f"{_erprice:.2f}"
+                        _erscid = _err.get('ScenarioId', '')
+                        _ername = _err.get('ScenarioName', '')
+                        _ercat = _err.get('Category', '')
+                        _erstars_n = _err.get('_stars_n', 0)
+                        _erstars_str = '★' * _erstars_n + '☆' * (5 - _erstars_n)
+                        _ercat_icon = {'A': '🔄', 'B': '📐', 'C': '🚀', 'D': '⚠'}.get(_ercat, '•')
+                        _lbl = f"{_ercat_icon} {_ersym} ({_erprice_s}) | {_erscid} {_erstars_str}"
+                        if st.button(_lbl, key=f"er_btn_{_ersym}_{_eri}", use_container_width=True):
+                            on_scan_result_click(_err.get('Sembol', _ersym)); st.rerun()
+                        # Senaryo açıklaması (ERKEN_RADAR_SCENARIOS'tan)
+                        _erdesc = ERKEN_RADAR_SCENARIOS.get(_erscid, {}).get('description', '')
+                        if _erdesc:
+                            st.markdown(
+                                f"<div style='font-size:0.72rem;color:#cbd5e1;font-weight:500;"
+                                f"margin:-4px 0 6px 4px;line-height:1.4;'>"
+                                f"<b style='color:#7dd3fc;'>{_ername}:</b> {_erdesc}</div>",
+                                unsafe_allow_html=True
+                            )
+            else:
+                st.markdown(f"<div style='border:1px dashed #3b82f650;border-radius:7px;"
+                            f"padding:18px 10px;text-align:center;color:#94a3b8;font-size:0.8rem;'>"
+                            f"Master Scan çalıştırın</div>", unsafe_allow_html=True)
+
+        # ============ SAĞ: HAREKETE BAŞLAYAN (Pre-Launch BOS) ============
+        with _sub_pb:
+            df_pb = st.session_state.get('prelaunch_bos_data')
+            _pb_count = len(df_pb) if (df_pb is not None and hasattr(df_pb, 'empty') and not df_pb.empty) else 0
+            st.markdown(f"<div style='background:linear-gradient(135deg,#3b82f618,#3b82f606);"
+                        f"border:1px solid #3b82f650;border-radius:8px;padding:6px 10px;margin-bottom:5px;'>"
+                        f"<span style='font-size:0.78rem;font-weight:900;color:#38bdf8;'>"
+                        f"⚡ HAREKETE BAŞLAYAN — {_pb_count} Hisse</span></div>", unsafe_allow_html=True)
+            if _pb_count > 0:
                 _d0 = int((df_pb['BOS_Day'] == 0).sum())
                 _d1 = int((df_pb['BOS_Day'] == 1).sum())
                 _d2p = int((df_pb['BOS_Day'] >= 2).sum())
                 _day_str = ""
-                if _d0: _day_str += f"  ·  ⚡ {_d0} bugün"
-                if _d1: _day_str += f"  ·  🕐 {_d1} dün"
-                if _d2p: _day_str += f"  ·  ⏳ {_d2p} eski"
-                st.markdown(
-                    f"<div style='text-align:center;font-size:0.65rem;font-weight:700;"
-                    f"color:#38bdf8;margin-bottom:3px;'>"
-                    f"🚀 {len(df_pb)} Hisse{_day_str}"
-                    f"</div>", unsafe_allow_html=True
-                )
-                with st.container(height=150, border=True):
+                if _d0: _day_str += f"⚡{_d0} "
+                if _d1: _day_str += f"🕐{_d1} "
+                if _d2p: _day_str += f"⏳{_d2p}"
+                if _day_str:
+                    st.markdown(
+                        f"<div style='text-align:center;font-size:0.65rem;font-weight:700;"
+                        f"color:#38bdf8;margin-bottom:3px;'>{_day_str.strip()}</div>",
+                        unsafe_allow_html=True
+                    )
+                with st.container(height=320, border=False):
                     for i, (_, row) in enumerate(df_pb.iterrows()):
                         sym        = row['Sembol']
                         day_icon   = ["⚡", "🕐", "⏳", "⏳"][int(row.get('BOS_Day', 0))]
@@ -20768,7 +20821,7 @@ def _render_left_col():
                         rs_str     = f"RS:{rs_v:+.1f}%" if isinstance(rs_v, float) else ""
                         _pb_double = sym in _double_hit_syms
                         lbl = (f"{day_icon}{'💎' if _pb_double else ''} {sym.replace('.IS','')} | "
-                               f"Skor:{skor_v} | RSI:{rsi_v:.0f} | Vol:{vol_k:.1f}x | {rs_str}")
+                               f"Skor:{skor_v} | RSI:{rsi_v:.0f}")
                         if st.button(lbl, key=f"pb_btn_{sym}_{i}", use_container_width=True):
                             on_scan_result_click(sym); st.rerun()
                         if _pb_double:
@@ -20778,10 +20831,13 @@ def _render_left_col():
                         _pb_ac = row.get('Aciklama', '')
                         if _pb_ac:
                             st.markdown(f"<div style='font-size:0.72rem;color:#cbd5e1;font-weight:600;"
-                                        f"margin:-4px 0 4px 4px;line-height:1.3;'>{_pb_ac}</div>",
+                                        f"margin:-4px 0 4px 4px;line-height:1.3;'>"
+                                        f"Vol:{vol_k:.1f}x · {rs_str} · {_pb_ac}</div>",
                                         unsafe_allow_html=True)
             else:
-                st.warning("Squeeze + BOS kriterlerini aynı anda karşılayan hisse bulunamadı.")
+                st.markdown(f"<div style='border:1px dashed #3b82f650;border-radius:7px;"
+                            f"padding:18px 10px;text-align:center;color:#94a3b8;font-size:0.8rem;'>"
+                            f"Master Scan çalıştırın</div>", unsafe_allow_html=True)
     
     _t2c3, _t2c4 = st.columns(2)
     
