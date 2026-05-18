@@ -154,7 +154,7 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
         log.warning("Gemini API key ayarlanmamış — AI atlanıyor")
         return ""
 
-    max_retries = 3
+    max_retries = 5
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -172,17 +172,19 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
 
         except Exception as e:
             err_str = str(e)
-            # 429 = kota aşımı → bekle ve tekrar dene
+            # 429 = kota/rate limit → uzun bekleme
             if "429" in err_str or "quota" in err_str.lower() or "ResourceExhausted" in err_str:
-                wait_sec = 60 * attempt  # 1. → 60sn, 2. → 120sn, 3. → 180sn
+                wait_sec = 60 * attempt  # 60/120/180/240/300sn
                 log.warning(f"Gemini kota aşımı (deneme {attempt}/{max_retries}) — {wait_sec}sn bekleniyor")
                 await asyncio.sleep(wait_sec)
-            elif "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str.lower():
-                wait_sec = 30 * attempt  # 1. → 30sn, 2. → 60sn, 3. → 90sn
-                log.warning(f"Gemini 503 yoğunluk (deneme {attempt}/{max_retries}) — {wait_sec}sn bekleniyor")
+            # 500/502/503/504 = geçici sunucu sorunu → kısa bekleme
+            elif any(c in err_str for c in ("500", "502", "503", "504")) or \
+                 any(k in err_str for k in ("UNAVAILABLE", "INTERNAL", "high demand", "Bad Gateway", "Gateway Timeout")):
+                wait_sec = 30 * attempt  # 30/60/90/120/150sn
+                log.warning(f"Gemini geçici hata (deneme {attempt}/{max_retries}) — {wait_sec}sn bekleniyor: {err_str[:80]}")
                 await asyncio.sleep(wait_sec)
             else:
-                # Başka hata — retry etme
+                # 400/401/403/404 vb. — retry anlamsız
                 log.error(f"Gemini API hatası: {e}")
                 return ""
 
