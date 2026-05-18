@@ -21067,7 +21067,85 @@ def _render_left_col():
                 _ref_bar.empty()
                 st.toast(f"✅ {_ref_ok} güncellendi, {_ref_fail} başarısız.", icon="🔄")
                 st.rerun()
-    
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🏆 BACKTEST PERFORMANS DASHBOARD (Son 90 Gün — scan_signals tablosundan)
+    # ═══════════════════════════════════════════════════════════════════════
+    st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
+    with st.expander("🏆 TARAMA PERFORMANSI — Backtest (Son 90 Gün)", expanded=False):
+        st.caption("scan_signals tablosundan otomatik hesap. "
+                   "Her sinyalin +5/+10/+20 gün sonraki fiyatına bakarak hit rate hesaplanır. "
+                   "Min 3 değerlendirilmiş sinyal gerekir, daha az olanlar '— (n=N)' olarak görünür.")
+
+        # DB sağlık göstergesi
+        _db_total = 0; _db_first = "—"; _db_last = "—"; _db_uniq = 0
+        try:
+            _bt_conn = sqlite3.connect(DB_FILE)
+            _bt_c = _bt_conn.cursor()
+            _db_total = _bt_c.execute("SELECT COUNT(*) FROM scan_signals").fetchone()[0]
+            _db_last  = _bt_c.execute("SELECT MAX(scan_date) FROM scan_signals").fetchone()[0] or "—"
+            _db_first = _bt_c.execute("SELECT MIN(scan_date) FROM scan_signals").fetchone()[0] or "—"
+            _db_uniq  = _bt_c.execute("SELECT COUNT(DISTINCT scan_type) FROM scan_signals").fetchone()[0]
+            _bt_conn.close()
+        except Exception:
+            pass
+        st.markdown(
+            f"<div style='display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#94a3b8;"
+            f"background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.2);"
+            f"border-radius:6px;padding:6px 10px;margin-bottom:8px;'>"
+            f"<span>📊 <b style='color:#7dd3fc;'>{_db_total:,}</b> toplam sinyal</span>"
+            f"<span>🔖 <b style='color:#7dd3fc;'>{_db_uniq}</b> tarama tipi</span>"
+            f"<span>📅 <b style='color:#cbd5e1;'>{_db_first}</b> → <b style='color:#cbd5e1;'>{_db_last}</b></span>"
+            f"</div>", unsafe_allow_html=True
+        )
+
+        try:
+            _perf_df = get_signal_performance_summary(lookback_days=90)
+            if _perf_df is not None and not _perf_df.empty:
+                # Hit 20G'ye göre sırala — en başarılı ilk
+                def _parse_pct(v):
+                    try:
+                        s = str(v).replace('%','').replace(',','.').strip()
+                        if s.startswith('—') or 'n=' in s:
+                            return -1.0  # değerlendirilmemiş — en sona at
+                        return float(s)
+                    except Exception:
+                        return -1.0
+                _perf_df = _perf_df.copy()
+                _perf_df['_hit20_n'] = _perf_df['Hit 20G'].apply(_parse_pct)
+                _perf_df_sorted = _perf_df.sort_values(['_hit20_n', 'Sinyal'], ascending=[False, False]).drop(columns=['_hit20_n'])
+
+                # ─── Erken Radar (er_*) ve Klasik taramalar ayrı tabloda ───
+                _er_mask = _perf_df_sorted['Tarama'].str.contains('ER [A-D]', regex=True, na=False)
+                _er_perf = _perf_df_sorted[_er_mask]
+                _classic_perf = _perf_df_sorted[~_er_mask]
+
+                if not _er_perf.empty:
+                    st.markdown("**🎯 Erken Radar Senaryoları**")
+                    st.dataframe(_er_perf, use_container_width=True, hide_index=True)
+                if not _classic_perf.empty:
+                    st.markdown("**📊 Klasik Taramalar**")
+                    st.dataframe(_classic_perf, use_container_width=True, hide_index=True)
+
+                # En başarılı 3 vurgusu
+                _top = _perf_df_sorted[_perf_df_sorted.apply(lambda r: _parse_pct(r['Hit 20G']) > 0, axis=1)].head(3)
+                if not _top.empty:
+                    st.markdown("**🥇 20 Günlük Hit Rate Sıralamasında İlk 3**")
+                    for _, _row in _top.iterrows():
+                        st.markdown(
+                            f"- **{_row['Tarama']}** — "
+                            f"Hit 20G: `{_row['Hit 20G']}` · "
+                            f"Ort getiri: `{_row['Ort +20G']}` · "
+                            f"`{_row['Sinyal']}` sinyal değerlendirildi"
+                        )
+                else:
+                    st.caption("ℹ️ Henüz hiçbir senaryoda 3+ değerlendirilmiş sinyal yok — birkaç gün daha bekleyin.")
+            else:
+                st.info("Henüz değerlendirilebilir sinyal yok. Master Scan'i bir kaç gün çalıştırın "
+                        "(her sinyalin değerlendirilmesi için min 5 gün geçmesi gerekir).")
+        except Exception as e:
+            st.warning(f"Performans hesabı çalışmadı: {e}")
+
     # --- SAĞ SÜTUN ---
     
 
