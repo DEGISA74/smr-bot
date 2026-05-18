@@ -2189,6 +2189,44 @@ Aşırılık ifadeleri YASAK: "en yüksek", "en kötü", "en sert", "çok", "bü
 Sadece olasılıkları belirt — kesin kehanet yapma. Geleceği kimse bilemez.
 Teknik terimleri zorunda kalırsan sadece ilk geçtiği yerde kısaltmasıyla ver, sonra sade kullan.
 Türkçe terimleri tercih et — gereksiz İngilizce jargon yok.
+
+*** JARGON FİLTRESİ — KRİTİK KURAL (HERKES ANLASIN!) ***
+Bu kart PRO abonelere gidiyor — teknik analizden anlamayan kullanıcılar var.
+Teknik terim/kısaltma KULLANMAYI yasaklamıyorum — kullan ama YANINDA SADE TÜRKÇE AÇIKLAMASINI parantez veya tire ile mutlaka ekle.
+Format: "TERİM (sade açıklama)" veya "TERİM — sade açıklama"
+Aynı terim ilk geçtiği yerde açıklanır, sonra kısa kullanılır.
+
+Zorunlu açıklamalı geçişler (örnekler):
+- HH+HL → "HH+HL (yüksek dipler ve tepeler — klasik yükseliş yapısı)"
+- LH+LL → "LH+LL (alçalan tepeler ve dipler — klasik düşüş yapısı)"
+- CHoCH → "CHoCH (yapı dönüşü — trend yön değiştiriyor)"
+- Megafon → "Megafon (genişleyen volatilite — sağlıksız sinyal)"
+- CP / Kapanış Konumu → "Kapanış Konumu (mum gövdesinin günlük aralıkta nerede kapandığı — %75+ alıcı, %25- satıcı baskın)"
+- RSI Slope → "RSI Eğimi (momentum hızının yönü)"
+- MACD → "MACD (hızlı/yavaş ortalama farkı — momentum göstergesi)"
+- Regular Bear → "Klasik Negatif Uyumsuzluk (fiyat yeni tepe yaparken ivme yapmıyor — alıcı tükeniyor)"
+- Regular Bull → "Klasik Pozitif Uyumsuzluk (fiyat yeni dip yaparken ivme dip yapmıyor — satıcı tükeniyor)"
+- Hidden Bull/Bear → "Gizli Pozitif/Negatif Uyumsuzluk (trend devam sinyali)"
+- HARSI → "HARSI (Heikin Ashi RSI — gürültüden arınmış momentum)"
+- VSA → "VSA (Hacim-Mum Anatomisi)"
+- Climax → "Climax (zirvede yüksek hacim + doji — dönüş yakın)"
+- Üst/Alt rejekti → "Üst Rejekti (yüksek hacim + üst fitil — dağıtım) / Alt Rejekti (yüksek hacim + alt fitil — toplama)"
+- Sahte alım/satım → "Sahte Alım/Satım (düşük hacim — talep/arz yok demek)"
+- Delta → "Delta (alıcı/satıcı hacim farkı)"
+- Churning → "Churning (yüksek hacim ama yön yok — pasif emir oyunu)"
+- OBV → "OBV (hacim akışı endeksi)"
+- FVG → "FVG (fiyat boşluğu — geri dönüş seviyesi)"
+- Order Block / OB → "Talep Bölgesi (büyük alıcı pozisyon aldığı seviye)" veya "Arz Bölgesi (satış yoğunluğu)"
+- EQH / EQL → "Eşit Tepe / Eşit Dip (likidite havuzu)"
+- BOS → "Yapı Kırılımı (önemli seviyenin aşılması)"
+- MTF → "Çoklu Vade Uyumu"
+- Discount/Premium → "Discount (ucuz bölge) / Premium (pahalı bölge)"
+- V-bottom → "V-Dönüş (sert toparlanma)"
+- U-top → "Üstten Düşüş"
+- VWAP → "VWAP (hacim ağırlıklı ortalama fiyat — kurumsal referans)"
+- Bollinger Band / BB → "Bollinger Bandı (fiyat volatilite bandı)"
+
+Açıklama olmadan kısaltma KULLANMA. Abone cümleyi okuyup "ne demek bu?" demesin — anlasın, devam etsin.
 1. YASAKLI KELİMELER LİSTESİ (ASLA KULLANMA):
    — Kesinlik bildiren: "kesin, kesinlikle, %100, garanti, tartışmasız, hiç şüphesiz, açıkça, mutlaka"
    — Abartılı/duygusal: "inanılmaz, devasa, muazzam, olağanüstü, mükemmel, felaket, yıkıcı, eşi benzeri yok, benzeri görülmemiş, tarihi, rekor kıran, nadir"

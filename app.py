@@ -12030,6 +12030,60 @@ def log_erken_radar_signals(df_batch, category=""):
         import logging
         logging.warning(f"[log_erken_radar_signals] HATA: {e}")
 
+
+def get_scenario_ages_batch(pairs, max_lookback=30):
+    """
+    Toplu senaryo aging hesabı.
+    pairs: [(symbol, scenario_id), ...]
+    Döner: {(symbol, scenario_id): consecutive_days_int}
+    scan_signals tablosunda er_<id> scan_type altında ardışık günleri sayar.
+    """
+    if not pairs:
+        return {}
+    from datetime import timedelta as _td
+    result = {}
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        today = datetime.now(_TZ_ISTANBUL).date()
+        for sym, sid in pairs:
+            try:
+                sym_clean = (sym or '').replace('.IS', '')
+                if not sym_clean or not sid:
+                    result[(sym, sid)] = 0
+                    continue
+                scan_type = f"er_{sid}"
+                rows = c.execute(
+                    "SELECT DISTINCT scan_date FROM scan_signals "
+                    "WHERE symbol=? AND scan_type=? "
+                    "AND scan_date >= date('now', ?) "
+                    "ORDER BY scan_date DESC",
+                    (sym_clean, scan_type, f'-{max_lookback} days')
+                ).fetchall()
+                if not rows:
+                    result[(sym, sid)] = 0
+                    continue
+                days = 0
+                expected = today
+                for r in rows:
+                    try:
+                        d = datetime.strptime(r[0], '%Y-%m-%d').date()
+                    except Exception:
+                        continue
+                    if d == expected:
+                        days += 1
+                        expected = expected - _td(days=1)
+                    elif d < expected:
+                        break  # Ardışıklık bozuldu
+                result[(sym, sid)] = days
+            except Exception:
+                result[(sym, sid)] = 0
+        conn.close()
+    except Exception:
+        pass
+    return result
+
+
 # ==============================================================================
 # BÖLÜM 37 — ERKEN RADAR SENARYO MOTORU
 # 36 isimli senaryo ile "hareket öncesi" hisse tespit motoru.
@@ -20756,6 +20810,27 @@ def _render_left_col():
                 # Hisse başına en güçlü senaryoyu öne çıkar (primary öncelikli + yıldız desc)
                 _er_clean['_role_rank'] = _er_clean['Role'].map({'primary': 0, 'confirmation': 1})
                 _er_clean = _er_clean.sort_values(by=['_role_rank', '_stars_n', 'Sembol'], ascending=[True, False, True])
+                # Hisse başına senaryo sayısı (çoklu teyit tespiti — primary + confirmation toplamı)
+                _scenario_counts = _er_clean.groupby('Sembol').size().to_dict()
+                # Aging: her (sym, scenario) için ardışık gün sayısı
+                _aging_pairs = [(str(_r['Sembol']), str(_r['ScenarioId'])) for _, _r in _er_clean.iterrows()]
+                _aging_map = get_scenario_ages_batch(_aging_pairs, max_lookback=30)
+                # Üst rozet: 3+ senaryo tetikleyen hisse sayısı (ÇOKLU TEYİT vurgusu)
+                _multi_n = sum(1 for _v in _scenario_counts.values() if _v >= 3)
+                _multi_2plus = sum(1 for _v in _scenario_counts.values() if _v >= 2)
+                if _multi_n > 0 or _multi_2plus > 0:
+                    _multi_badge = ""
+                    if _multi_n > 0:
+                        _multi_badge += f"<span style='color:#c4b5fd;font-weight:800;'>🌟 ÇOKLU TEYİT: {_multi_n} hisse (3+ senaryo)</span>"
+                    if _multi_2plus - _multi_n > 0:
+                        if _multi_badge: _multi_badge += " · "
+                        _multi_badge += f"<span style='color:#7dd3fc;'>✦ {_multi_2plus - _multi_n} hisse (2 senaryo)</span>"
+                    st.markdown(
+                        f"<div style='text-align:center;font-size:0.68rem;font-weight:700;"
+                        f"background:rgba(168,85,247,0.06);border:1px dashed rgba(168,85,247,0.3);"
+                        f"border-radius:6px;padding:4px 8px;margin-bottom:4px;'>{_multi_badge}</div>",
+                        unsafe_allow_html=True
+                    )
                 with st.container(height=320, border=False):
                     _shown_syms = set()
                     for _eri, _err in _er_clean.iterrows():
@@ -20771,16 +20846,43 @@ def _render_left_col():
                         _erstars_n = _err.get('_stars_n', 0)
                         _erstars_str = '★' * _erstars_n + '☆' * (5 - _erstars_n)
                         _ercat_icon = {'A': '🔄', 'B': '📐', 'C': '🚀', 'D': '⚠'}.get(_ercat, '•')
-                        _lbl = f"{_ercat_icon} {_ersym} ({_erprice_s}) | {_erscid} {_erstars_str}"
+                        # Çoklu teyit sayısı
+                        _sc_count = _scenario_counts.get(_err.get('Sembol', ''), 1)
+                        _multi_suffix = ""
+                        if _sc_count >= 3:
+                            _multi_suffix = f" 🌟+{_sc_count-1}"
+                        elif _sc_count == 2:
+                            _multi_suffix = f" ✦+1"
+                        # Aging — kaç gündür aktif
+                        _er_age = _aging_map.get((_err.get('Sembol', ''), _erscid), 0)
+                        _age_suffix = ""
+                        if _er_age >= 5:
+                            _age_suffix = f" · {_er_age}g"   # uzun süredir aktif (potansiyel patlama)
+                        elif _er_age >= 2:
+                            _age_suffix = f" · {_er_age}g"
+                        _lbl = f"{_ercat_icon} {_ersym} ({_erprice_s}) | {_erscid} {_erstars_str}{_multi_suffix}{_age_suffix}"
                         if st.button(_lbl, key=f"er_btn_{_ersym}_{_eri}", use_container_width=True):
                             on_scan_result_click(_err.get('Sembol', _ersym)); st.rerun()
-                        # Senaryo açıklaması (ERKEN_RADAR_SCENARIOS'tan)
+                        # Senaryo açıklaması + ek teyitler listesi + aging notu
                         _erdesc = ERKEN_RADAR_SCENARIOS.get(_erscid, {}).get('description', '')
+                        _aging_note = ""
+                        if _er_age >= 5:
+                            _aging_note = (f" <span style='color:#fbbf24;font-weight:700;'>"
+                                           f"⏳ {_er_age} gündür aktif (sıkışma uzadıkça enerji birikiyor)</span>")
+                        elif _er_age >= 2:
+                            _aging_note = f" <span style='color:#94a3b8;font-style:italic;'>· {_er_age} gündür aktif</span>"
+                        # Bu hissenin diğer tetiklenen senaryolarını topla
+                        _other_scns = _er_clean[(_er_clean['Sembol'] == _err.get('Sembol', '')) &
+                                                (_er_clean['ScenarioId'] != _erscid)]['ScenarioId'].tolist()
+                        _confirm_suffix = ""
+                        if _other_scns:
+                            _confirm_suffix = (f" <span style='color:#a855f7;font-weight:600;'>+ Ek teyitler: "
+                                               f"{', '.join(_other_scns)}</span>")
                         if _erdesc:
                             st.markdown(
                                 f"<div style='font-size:0.72rem;color:#cbd5e1;font-weight:500;"
                                 f"margin:-4px 0 6px 4px;line-height:1.4;'>"
-                                f"<b style='color:#7dd3fc;'>{_ername}:</b> {_erdesc}</div>",
+                                f"<b style='color:#7dd3fc;'>{_ername}:</b> {_erdesc}{_aging_note}{_confirm_suffix}</div>",
                                 unsafe_allow_html=True
                             )
             else:

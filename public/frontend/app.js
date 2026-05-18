@@ -245,7 +245,11 @@ function renderXU100Panel(d, ozet, grafik) {
   const skor    = ozet?.genel_skor ?? 0;
 
   const htag = document.getElementById("xu100-header-price");
-  if (htag) htag.textContent = fmt(d.kapanis);
+  if (htag) {
+    htag.textContent = fmt(d.kapanis);
+    htag.classList.toggle('price-pos', pos);
+    htag.classList.toggle('price-neg', !pos);
+  }
 
   // Grafik HTML — gerçek veri varsa kullan, yoksa boş mesaj
   const chartHtml = grafik && grafik.length >= 5
