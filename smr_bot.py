@@ -1151,6 +1151,103 @@ async def send_daily_bulletin(context: ContextTypes.DEFAULT_TYPE):
     await _send_bulletin_to_channel(context, ELITE_ID, tier="elite", now_str=now_str, is_sunday=is_sunday)
 
 
+# ─── RENEWAL HATIRLATMA (T-3, T-1, T-0) ──────────────────────────────────────
+async def send_renewal_reminders(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Her gün 10:00'da çalışır.
+    PRO ve ELITE abonelerden expiry_date'i 3, 1 veya 0 gün kalanları bulup DM gönderir.
+    Aynı kullanıcıya günde 1 mesajdan fazla gitmez (gün geçtikçe days_left değişir, doğal duplicate önleme).
+    """
+    from datetime import date as _date
+    today = _date.today()
+    try:
+        active_subs = smr_core.sub_list_active()
+    except Exception as e:
+        log.warning(f"[renewal] sub_list_active hata: {e}")
+        return
+
+    sent_count = {'t3': 0, 't1': 0, 't0': 0}
+    fail_count = 0
+    fail_users = []
+
+    for sub in active_subs:
+        try:
+            user_id = sub.get('user_id', 0)
+            if not isinstance(user_id, int) or user_id <= 0:
+                continue  # pending / pseudo (negatif) — gerçek user yok
+            tier = (sub.get('tier') or '').upper()
+            if tier not in ('PRO', 'ELITE'):
+                continue
+            uname    = sub.get('username') or ''
+            exp_str  = sub.get('expiry_date') or ''
+            try:
+                exp_date = datetime.strptime(exp_str, '%Y-%m-%d').date()
+            except Exception:
+                continue
+            days_left = (exp_date - today).days
+
+            if days_left == 3:
+                msg = (
+                    f"🔔 *SMR Hatırlatma*\n\n"
+                    f"Merhaba @{uname},\n\n"
+                    f"{tier} aboneliğin *3 gün sonra* sona eriyor (bitiş tarihi: `{exp_str}`).\n\n"
+                    f"Kesintisiz erişim için yenileyebilirsin.\n"
+                    f"Bilgi & yenileme: @SmartMoneyRadar26"
+                )
+                bias = 't3'
+            elif days_left == 1:
+                msg = (
+                    f"⚠️ *SMR Hatırlatma*\n\n"
+                    f"Merhaba @{uname},\n\n"
+                    f"{tier} aboneliğin *yarın* sona eriyor (bitiş tarihi: `{exp_str}`).\n\n"
+                    f"Bugün yenilersen erişim kesintisi yaşamazsın.\n"
+                    f"Bilgi & yenileme: @SmartMoneyRadar26"
+                )
+                bias = 't1'
+            elif days_left == 0:
+                msg = (
+                    f"⏰ *SMR Hatırlatma*\n\n"
+                    f"Merhaba @{uname},\n\n"
+                    f"{tier} aboneliğin *bugün* sona eriyor. Kanal erişimin yakında kesilecek.\n\n"
+                    f"Yenilemek için: @SmartMoneyRadar26"
+                )
+                bias = 't0'
+            else:
+                continue
+
+            try:
+                await context.bot.send_message(chat_id=user_id, text=msg, parse_mode='Markdown')
+                sent_count[bias] += 1
+            except Exception as e:
+                fail_count += 1
+                fail_users.append(f"@{uname or user_id} ({bias})")
+                log.warning(f"[renewal] DM hatası user_id={user_id} (@{uname}): {e}")
+        except Exception as e:
+            log.warning(f"[renewal] iterate hata: {e}")
+            continue
+
+    total = sum(sent_count.values())
+    if total > 0 or fail_count > 0:
+        log.info(
+            f"[renewal] Gönderildi T-3={sent_count['t3']}, T-1={sent_count['t1']}, "
+            f"T-0={sent_count['t0']}, fail={fail_count}"
+        )
+        # Admin'e özet
+        try:
+            adm = "🔔 *Renewal Hatırlatma Özeti*\n\n"
+            if sent_count['t3']: adm += f"• T-3 günü: {sent_count['t3']} kişi\n"
+            if sent_count['t1']: adm += f"• T-1 günü: {sent_count['t1']} kişi\n"
+            if sent_count['t0']: adm += f"• T-0 (bugün biten): {sent_count['t0']} kişi\n"
+            if fail_count > 0:
+                adm += f"\n⚠️ DM başarısız ({fail_count}): " + ", ".join(fail_users[:8])
+                if len(fail_users) > 8:
+                    adm += f" +{len(fail_users)-8} kişi"
+                adm += "\n_Manuel iletişim gerekebilir._"
+            await context.bot.send_message(chat_id=ADMIN_ID, text=adm, parse_mode='Markdown')
+        except Exception:
+            pass
+
+
 # ─── SHOPİER API — PERİYODİK SİPARİŞ KONTROLÜ ───────────────────────────────
 async def check_shopier_orders(context=None):
     """
@@ -1479,6 +1576,13 @@ def main():
         name="sunday_bulletin"
     )
 
+    # 10:00 — Renewal hatırlatma (T-3 / T-1 / T-0)
+    app.job_queue.run_daily(
+        send_renewal_reminders,
+        time=datetime.strptime("10:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
+        name="renewal_reminders"
+    )
+
     # Her 5 dakikada Shopier sipariş kontrolü
     if SHOPIER_API_KEY:
         app.job_queue.run_repeating(
@@ -1489,7 +1593,7 @@ def main():
         )
         log.info("✅ Shopier sipariş kontrolü aktif (5dk)")
 
-    log.info("✅ Bot aktif. Bülten: Pzt-Cuma 19:00, Paz 21:00 | Sıfırlama: 00:00")
+    log.info("✅ Bot aktif. Bülten: Pzt-Cuma 19:00, Paz 21:00 | Renewal: 10:00 | Sıfırlama: 00:00")
 
     # aiohttp — Shopier OSB endpoint
     web_app = web.Application()
