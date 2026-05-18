@@ -21160,82 +21160,153 @@ def _render_left_col():
                 st.rerun()
 
     # ═══════════════════════════════════════════════════════════════════════
-    # 🏆 BACKTEST PERFORMANS DASHBOARD (Son 90 Gün — scan_signals tablosundan)
+    # 🏆 BACKTEST PERFORMANS DASHBOARD — JSON'dan okur (sıfır gecikme)
+    # backtest_runner.py tarafından üretilen backtest_results.json'u render eder
     # ═══════════════════════════════════════════════════════════════════════
     st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
     with st.expander("🏆 TARAMA PERFORMANSI — Backtest (Son 90 Gün)", expanded=False):
-        st.caption("scan_signals tablosundan otomatik hesap. "
-                   "Her sinyalin +5/+10/+20 gün sonraki fiyatına bakarak hit rate hesaplanır. "
-                   "Min 3 değerlendirilmiş sinyal gerekir, daha az olanlar '— (n=N)' olarak görünür.")
+        import json as _bt_json
+        from pathlib import Path as _bt_Path
+        _bt_path = _bt_Path(__file__).parent / "backtest_results.json"
 
-        # DB sağlık göstergesi
-        _db_total = 0; _db_first = "—"; _db_last = "—"; _db_uniq = 0
-        try:
-            _bt_conn = sqlite3.connect(DB_FILE)
-            _bt_c = _bt_conn.cursor()
-            _db_total = _bt_c.execute("SELECT COUNT(*) FROM scan_signals").fetchone()[0]
-            _db_last  = _bt_c.execute("SELECT MAX(scan_date) FROM scan_signals").fetchone()[0] or "—"
-            _db_first = _bt_c.execute("SELECT MIN(scan_date) FROM scan_signals").fetchone()[0] or "—"
-            _db_uniq  = _bt_c.execute("SELECT COUNT(DISTINCT scan_type) FROM scan_signals").fetchone()[0]
-            _bt_conn.close()
-        except Exception:
-            pass
-        st.markdown(
-            f"<div style='display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#94a3b8;"
-            f"background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.2);"
-            f"border-radius:6px;padding:6px 10px;margin-bottom:8px;'>"
-            f"<span>📊 <b style='color:#7dd3fc;'>{_db_total:,}</b> toplam sinyal</span>"
-            f"<span>🔖 <b style='color:#7dd3fc;'>{_db_uniq}</b> tarama tipi</span>"
-            f"<span>📅 <b style='color:#cbd5e1;'>{_db_first}</b> → <b style='color:#cbd5e1;'>{_db_last}</b></span>"
-            f"</div>", unsafe_allow_html=True
-        )
-
-        try:
-            _perf_df = get_signal_performance_summary(lookback_days=90)
-            if _perf_df is not None and not _perf_df.empty:
-                # Hit 20G'ye göre sırala — en başarılı ilk
-                def _parse_pct(v):
+        # ── Çalıştırma butonu (subprocess ile arka planda) ──────────────
+        _bt_col1, _bt_col2 = st.columns([3, 1])
+        with _bt_col2:
+            if st.button("🔄 Şimdi Çalıştır", key="bt_run_btn", use_container_width=True,
+                         help="backtest_runner.py'yi arka planda çalıştırır. ~1-30 saniye sürer (sinyal sayısına bağlı)."):
+                import subprocess as _bt_sub
+                import sys as _bt_sys
+                with st.spinner("Backtest çalışıyor... (konsol penceresinde progress)"):
                     try:
-                        s = str(v).replace('%','').replace(',','.').strip()
-                        if s.startswith('—') or 'n=' in s:
-                            return -1.0  # değerlendirilmemiş — en sona at
-                        return float(s)
-                    except Exception:
-                        return -1.0
-                _perf_df = _perf_df.copy()
-                _perf_df['_hit20_n'] = _perf_df['Hit 20G'].apply(_parse_pct)
-                _perf_df_sorted = _perf_df.sort_values(['_hit20_n', 'Sinyal'], ascending=[False, False]).drop(columns=['_hit20_n'])
-
-                # ─── Erken Radar (er_*) ve Klasik taramalar ayrı tabloda ───
-                _er_mask = _perf_df_sorted['Tarama'].str.contains('ER [A-D]', regex=True, na=False)
-                _er_perf = _perf_df_sorted[_er_mask]
-                _classic_perf = _perf_df_sorted[~_er_mask]
-
-                if not _er_perf.empty:
-                    st.markdown("**🎯 Erken Radar Senaryoları**")
-                    st.dataframe(_er_perf, use_container_width=True, hide_index=True)
-                if not _classic_perf.empty:
-                    st.markdown("**📊 Klasik Taramalar**")
-                    st.dataframe(_classic_perf, use_container_width=True, hide_index=True)
-
-                # En başarılı 3 vurgusu
-                _top = _perf_df_sorted[_perf_df_sorted.apply(lambda r: _parse_pct(r['Hit 20G']) > 0, axis=1)].head(3)
-                if not _top.empty:
-                    st.markdown("**🥇 20 Günlük Hit Rate Sıralamasında İlk 3**")
-                    for _, _row in _top.iterrows():
-                        st.markdown(
-                            f"- **{_row['Tarama']}** — "
-                            f"Hit 20G: `{_row['Hit 20G']}` · "
-                            f"Ort getiri: `{_row['Ort +20G']}` · "
-                            f"`{_row['Sinyal']}` sinyal değerlendirildi"
+                        _bt_result = _bt_sub.run(
+                            [_bt_sys.executable, str(_bt_Path(__file__).parent / "backtest_runner.py")],
+                            cwd=str(_bt_Path(__file__).parent),
+                            capture_output=True, text=True, timeout=300
                         )
+                        if _bt_result.returncode == 0:
+                            st.success("✅ Backtest tamamlandı, sayfayı yenile.")
+                        else:
+                            st.error(f"❌ Backtest hata: {_bt_result.stderr[-500:]}")
+                    except _bt_sub.TimeoutExpired:
+                        st.error("⏱ Timeout (5dk). Çok sinyal var olabilir.")
+                    except Exception as _e:
+                        st.error(f"❌ Çalıştırma hatası: {_e}")
+
+        if not _bt_path.exists():
+            with _bt_col1:
+                st.info("Henüz backtest çalıştırılmadı. **🔄 Şimdi Çalıştır** butonuna bas — "
+                        "ya da `run_backtest.bat` dosyasına çift tıkla.")
+        else:
+            try:
+                _bt = _bt_json.loads(_bt_path.read_text(encoding='utf-8'))
+                _bt_gen = _bt.get('generated_at', '—')
+
+                # Tazelik göstergesi
+                _bt_fresh_color = "#10b981"  # default yeşil
+                _bt_fresh_label = "✓ güncel"
+                try:
+                    _bt_dt = datetime.strptime(_bt_gen, "%Y-%m-%d %H:%M:%S")
+                    _bt_age_h = (datetime.now() - _bt_dt).total_seconds() / 3600
+                    if _bt_age_h > 168:  # 7 gün
+                        _bt_fresh_color = "#ef4444"; _bt_fresh_label = "⚠️ 7+ gün eski, güncelle"
+                    elif _bt_age_h > 24:
+                        _bt_fresh_color = "#f59e0b"; _bt_fresh_label = f"{int(_bt_age_h/24)} gün önce"
+                    elif _bt_age_h > 1:
+                        _bt_fresh_label = f"{int(_bt_age_h)} saat önce"
+                    else:
+                        _bt_fresh_label = f"{int(_bt_age_h*60)} dakika önce"
+                except Exception:
+                    pass
+
+                with _bt_col1:
+                    st.markdown(
+                        f"<div style='display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#94a3b8;"
+                        f"background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.2);"
+                        f"border-radius:6px;padding:6px 10px;'>"
+                        f"<span>📅 Son hesap: <b style='color:{_bt_fresh_color};'>{_bt_gen}</b> "
+                        f"<span style='color:{_bt_fresh_color};'>({_bt_fresh_label})</span></span>"
+                        f"<span>⏱ Süre: <b>{_bt.get('duration_sec','—')}s</b></span>"
+                        f"</div>", unsafe_allow_html=True
+                    )
+
+                # DB stats
+                _bt_stats = _bt.get('db_stats', {})
+                _bt_eval = _bt.get('eval_meta', {})
+                st.markdown(
+                    f"<div style='display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#94a3b8;"
+                    f"background:rgba(125,211,252,0.04);border:1px solid rgba(125,211,252,0.18);"
+                    f"border-radius:6px;padding:6px 10px;margin-top:6px;margin-bottom:10px;'>"
+                    f"<span>📊 <b style='color:#7dd3fc;'>{_bt_stats.get('total_signals',0):,}</b> toplam sinyal</span>"
+                    f"<span>✓ <b style='color:#10b981;'>{_bt_eval.get('evaluated',0)}</b> değerlendirildi</span>"
+                    f"<span>⏳ <b style='color:#f59e0b;'>{_bt_eval.get('pending',0)}</b> bekleyen (henüz 5g geçmedi)</span>"
+                    f"<span>🔖 <b style='color:#cbd5e1;'>{_bt_stats.get('unique_scan_types',0)}</b> tarama tipi</span>"
+                    f"<span>📅 <b style='color:#cbd5e1;'>{_bt_stats.get('first_date','—')}</b> → <b style='color:#cbd5e1;'>{_bt_stats.get('last_date','—')}</b></span>"
+                    f"</div>", unsafe_allow_html=True
+                )
+
+                _bt_summary = _bt.get('summary', [])
+                if _bt_summary:
+                    # DataFrame'e çevir, format ayarla
+                    _bt_df = pd.DataFrame(_bt_summary)
+                    def _fmt_pct(v): return f"%{v}" if v is not None else "—"
+                    def _fmt_ret(v): return f"%{v:+.2f}" if v is not None else "—"
+                    _bt_display = pd.DataFrame({
+                        'Tarama': _bt_df['label'],
+                        'Sinyal': _bt_df['total_signals'],
+                        'Hit 5G': _bt_df['hit_5g_pct'].apply(_fmt_pct),
+                        'Ort +5G': _bt_df['avg_5g_ret'].apply(_fmt_ret),
+                        'Hit 10G': _bt_df['hit_10g_pct'].apply(_fmt_pct),
+                        'Ort +10G': _bt_df['avg_10g_ret'].apply(_fmt_ret),
+                        'Hit 20G': _bt_df['hit_20g_pct'].apply(_fmt_pct),
+                        'Ort +20G': _bt_df['avg_20g_ret'].apply(_fmt_ret),
+                    })
+                    # ER ve Klasik ayrı
+                    _is_er = _bt_df['category'].isin(['A', 'B', 'C', 'D'])
+                    _er_view = _bt_display[_is_er.values]
+                    _classic_view = _bt_display[~_is_er.values]
+                    if not _er_view.empty:
+                        st.markdown("**🎯 Erken Radar Senaryoları**")
+                        st.dataframe(_er_view, use_container_width=True, hide_index=True)
+                    if not _classic_view.empty:
+                        st.markdown("**📊 Klasik Taramalar**")
+                        st.dataframe(_classic_view, use_container_width=True, hide_index=True)
+
+                    # Top 5 vurgu
+                    _top5 = _bt.get('top5_by_hit20', [])
+                    if _top5:
+                        st.markdown("**🥇 En Başarılı 5 (20G Hit Rate)**")
+                        for _t in _top5:
+                            st.markdown(
+                                f"- **{_t['label']}** — "
+                                f"Hit 20G: `%{_t['hit_20g_pct']}` · "
+                                f"Ort: `%{_t['avg_20g_ret']:+.2f}` · "
+                                f"`{_t['total_signals']}` sinyal"
+                            )
+
+                    # Kategori bazlı en iyi
+                    _best_cat = _bt.get('best_per_category', {})
+                    if _best_cat:
+                        st.markdown("**🏆 Kategori Şampiyonları**")
+                        _cat_full = {'A': 'GERİ DÖNÜŞ', 'B': 'SIKIŞMA', 'C': 'TREND DEVAMI'}
+                        for _ck, _cv in _best_cat.items():
+                            st.markdown(f"- **{_cat_full.get(_ck, _ck)}:** {_cv['label']} "
+                                        f"(hit %{_cv['hit_20g']} · ort %{_cv['avg_20g']:+.2f})")
+
+                    # En kötü 5 (eleme adayları)
+                    _worst = _bt.get('worst_5', [])
+                    if _worst:
+                        with st.expander("⚠️ En Düşük 5 (Eleme Adayları)", expanded=False):
+                            for _w in _worst:
+                                st.markdown(
+                                    f"- **{_w['label']}** — "
+                                    f"Hit 20G: `%{_w['hit_20g_pct']}` · "
+                                    f"Ort: `%{_w['avg_20g_ret']:+.2f}` · "
+                                    f"`{_w['total_signals']}` sinyal"
+                                )
                 else:
-                    st.caption("ℹ️ Henüz hiçbir senaryoda 3+ değerlendirilmiş sinyal yok — birkaç gün daha bekleyin.")
-            else:
-                st.info("Henüz değerlendirilebilir sinyal yok. Master Scan'i bir kaç gün çalıştırın "
-                        "(her sinyalin değerlendirilmesi için min 5 gün geçmesi gerekir).")
-        except Exception as e:
-            st.warning(f"Performans hesabı çalışmadı: {e}")
+                    st.info("Henüz değerlendirilebilir sinyal yok (min 5g geçmesi gerekir).")
+            except Exception as e:
+                st.warning(f"backtest_results.json okunamadı: {e}")
 
     # --- SAĞ SÜTUN ---
     

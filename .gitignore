@@ -37,8 +37,13 @@ Thumbs.db
 
 # Test/yedek dosyalar
 *yedek*
-*test*
+test_*.py
+*_test.py
 bot_test.py
+
+# Backtest çıktısı (her gün yenilenir, commit gerekmez)
+backtest_results.json
 
 # Site (dinamik cron çıktısı)
 public/frontend/latest.json
+public/frontend/erken_radar_preview.json
