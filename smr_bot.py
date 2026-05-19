@@ -89,6 +89,32 @@ def _usage_inc(chat_id: int, user_id: int, today: str):
             if datetime.strptime(k.split(":")[-1], "%Y-%m-%d").date().toordinal() >= cutoff}
     _save_usage(data)
 
+# ─── BONUS KREDİ HAVUZU ──────────────────────────────────────────────────────
+# /addcredit @username N → bugün için N ek sorgu hakkı verir
+
+def _bonus_get(user_id: int, today: str) -> int:
+    return _load_usage().get(f"bonus:{user_id}:{today}", 0)
+
+def _bonus_add(user_id: int, today: str, n: int):
+    data = _load_usage()
+    key  = f"bonus:{user_id}:{today}"
+    data[key] = max(0, data.get(key, 0) + n)
+    _save_usage(data)
+
+def _uname_to_uid(username: str) -> int | None:
+    """usage_tracker'daki uid_map'ten @username → user_id çözümler."""
+    uname = username.lstrip("@").lower()
+    return _load_usage().get(f"uid_map:{uname}")
+
+def _save_uid_map(user_id: int, username: str):
+    """Mesaj geldiğinde username ↔ user_id eşlemesini kalıcı kaydeder."""
+    if not username:
+        return
+    data = _load_usage()
+    data[f"uid_map:{username.lower()}"] = user_id
+    _save_usage(data)
+# ─────────────────────────────────────────────────────────────────────────────
+
 usage_tracker: dict = defaultdict(int)  # geriye dönük uyumluluk için bırakıldı
 
 _gemini_daily_count: int = 0          # günlük Gemini API çağrı sayacı
@@ -412,6 +438,8 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if msg.from_user:
         user_id = msg.from_user.id
         username = msg.from_user.username or ""
+        if username:
+            _save_uid_map(user_id, username)   # /addcredit için username→uid haritası
     elif update.channel_post:
         # Kanala sadece admin yazabilir → limitsiz say
         user_id  = msg.chat_id
@@ -429,9 +457,9 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         or (username and username.lower() in {u.lower() for u in UNLIMITED_USERNAMES})
     )
     if not is_unlimited:
-        today = datetime.now().date().isoformat()
-        limit = DAILY_LIMITS[chat_id]
-        used  = _usage_get(chat_id, user_id, today)
+        today  = datetime.now().date().isoformat()
+        limit  = DAILY_LIMITS[chat_id] + _bonus_get(user_id, today)
+        used   = _usage_get(chat_id, user_id, today)
         if used >= limit:
             upgrade = "\n\n💎 Günde 3 sorgu için PRO üyelik: [yakında]" if chat_id == FREE_ID else ""
             await msg.reply_text(
@@ -769,6 +797,59 @@ async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
     log.info(f"[ADMIN] adduser: @{uname} → {tier} ({days}g) bitiş:{expiry}")
+
+
+async def cmd_addcredit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/addcredit @kullanici 5  —  bugün için N ek sorgu hakkı verir."""
+    msg     = update.message or update.channel_post
+    if not msg:
+        return
+    user_id = msg.from_user.id if msg.from_user else msg.chat_id
+    if not _is_admin(user_id):
+        await msg.reply_text("⛔ Bu komut sadece admin içindir.")
+        return
+
+    args = context.args or []
+    if len(args) < 2:
+        await msg.reply_text(
+            "❌ Kullanım: /addcredit @kullanici ADET\n"
+            "Örnek: /addcredit @ahmet 5\n"
+            "Veya user_id ile: /addcredit 123456789 5"
+        )
+        return
+
+    target_raw = args[0].lstrip("@")
+    try:
+        n = int(args[1])
+        if n <= 0:
+            raise ValueError
+    except ValueError:
+        await msg.reply_text("❌ Adet pozitif tam sayı olmalı.")
+        return
+
+    # username veya numeric user_id kabul et
+    try:
+        target_uid = int(target_raw)
+    except ValueError:
+        target_uid = _uname_to_uid(target_raw)
+
+    if not target_uid:
+        await msg.reply_text(
+            f"❌ @{target_raw} henüz bot ile hiç iletişime geçmemiş — user_id bilinmiyor.\n"
+            f"Kullanıcının sayısal ID'sini kullanın: /addcredit 123456789 {n}"
+        )
+        return
+
+    today = datetime.now().date().isoformat()
+    _bonus_add(target_uid, today, n)
+    current_bonus = _bonus_get(target_uid, today)
+
+    await msg.reply_text(
+        f"✅ *@{target_raw}* için bugün *+{n}* ek sorgu hakkı eklendi.\n"
+        f"Bugünkü toplam bonus: *{current_bonus}* sorgu",
+        parse_mode="Markdown"
+    )
+    log.info(f"[ADMIN] addcredit: {target_raw} (uid={target_uid}) +{n} bugün={today}")
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1565,6 +1646,7 @@ def main():
 
     # Admin komutları
     app.add_handler(CommandHandler("adduser",    cmd_adduser))
+    app.add_handler(CommandHandler("addcredit",  cmd_addcredit))
     app.add_handler(CommandHandler("sendinvite", cmd_sendinvite))
     app.add_handler(CommandHandler("removeuser", cmd_removeuser))
     app.add_handler(CommandHandler("listusers",  cmd_listusers))
