@@ -304,8 +304,11 @@
 
 <!-- PLANS MODAL -->
 <div id="plans-modal" onclick="if(event.target===this)closePlansModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;overflow-y:auto;padding:20px">
-  <div style="max-width:540px;margin:40px auto;background:#0d1829;border:1px solid #1e3a5f;border-radius:14px;padding:24px;position:relative">
-    <button onclick="closePlansModal()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1">✕</button>
+  <div style="max-width:540px;margin:40px auto;background:#0d1829;border:1px solid #1e3a5f;border-radius:14px;overflow:hidden">
+    <div style="position:sticky;top:0;z-index:2;background:#0d1829;border-bottom:1px solid #1e293b;padding:10px 14px;display:flex;justify-content:flex-end">
+      <button onclick="closePlansModal()" style="background:rgba(100,116,139,0.15);border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:14px;font-weight:700;cursor:pointer;padding:6px 14px;display:flex;align-items:center;gap:6px"><span style="font-size:16px;line-height:1">✕</span> Kapat</button>
+    </div>
+    <div style="padding:24px">
     <div style="text-align:center;margin-bottom:20px">
       <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">TELEGRAM KANALI</div>
       <div style="font-size:17px;font-weight:800;color:#f1f5f9">Hisse adını yaz,<br>analiz önüne gelsin.</div>
@@ -341,14 +344,15 @@
         <div style="display:block;margin-top:6px;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
       </div>
     </div>
+    </div><!-- /padding:24px -->
   </div>
 </div>
 <!-- ÖRNEK ÇIKTI MODAL -->
 <div id="example-modal" onclick="if(event.target===this)closeExampleModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;overflow-y:auto;padding:20px">
   <div style="max-width:480px;margin:30px auto;background:#0d1117;border-radius:14px;overflow:hidden;position:relative">
     <!-- Header -->
-    <div id="ex-header" style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #1e293b">
-      <button onclick="closeExampleModal()" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;line-height:1;padding:0 6px 0 0">←</button>
+    <div id="ex-header" style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #1e293b;position:sticky;top:0;background:#0d1117;z-index:2">
+      <button onclick="closeExampleModal()" style="background:rgba(100,116,139,0.15);border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:13px;font-weight:700;cursor:pointer;padding:5px 12px;white-space:nowrap">✕ Kapat</button>
       <div>
         <div id="ex-tier-label" style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase"></div>
         <div style="font-size:12px;color:#64748b">Gerçek bot çıktısı örneği — XU100 analizi</div>
@@ -660,6 +664,7 @@ var EX_META = {
 
 function openExampleModal(tier) {
   var m = EX_META[tier]; if (!m) return;
+  history.pushState({smrModal:'example'},'');
   document.getElementById('ex-tier-label').textContent = m.label;
   document.getElementById('ex-tier-label').style.color = m.lc;
   document.getElementById('ex-tier-badge').textContent = m.badge;
@@ -676,9 +681,10 @@ function closeExampleModal() {
 }
 document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeExampleModal(); });
 
-function openPlansModal(){document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';}
+function openPlansModal(){history.pushState({smrModal:'plans'},'');document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';}
 function closePlansModal(){document.getElementById('plans-modal').style.display='none';document.body.style.overflow='';}
-document.addEventListener('keydown',function(e){if(e.key==='Escape')closePlansModal();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closePlansModal();closeExampleModal();}});
+window.addEventListener('popstate',function(){closePlansModal();closeExampleModal();});
 document.addEventListener('click',function(e){
   var el=e.target;
   for(var i=0;i<8;i++){
