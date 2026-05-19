@@ -1056,7 +1056,7 @@ function renderTgAdPanel() {
         <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
           📊 Günde 1 hisse
         </div>
-        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(0,230,118,0.4);border-radius:4px;padding:4px;color:#00e676;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1064,9 +1064,7 @@ function renderTgAdPanel() {
         </div>
       </div>
       <div style="padding:8px 10px">
-        <a href="${TWITTER_URL}" target="_blank" class="tg-cta-btn" style="background:transparent;border:1px solid var(--border2);color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:7px">
-          🕐 Çok Yakında
-        </a>
+        <div style="display:block;width:100%;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
       </div>
     </div>
 
@@ -1081,7 +1079,7 @@ function renderTgAdPanel() {
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
           📊 Günde 3 hisse/coin/emtia araştırma
         </div>
-        <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(70,130,255,0.4);border-radius:4px;padding:4px;color:#70a8ff;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1090,9 +1088,7 @@ function renderTgAdPanel() {
         </div>
       </div>
       <div style="padding:8px 10px">
-        <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="tg-cta-btn" style="background:transparent;border:1px solid var(--border2);color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:7px">
-          🕐 Çok Yakında
-        </a>
+        <div style="display:block;width:100%;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
       </div>
     </div>
 
@@ -1110,7 +1106,7 @@ function renderTgAdPanel() {
         <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
           📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
         </div>
-        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(139,92,246,0.4);border-radius:4px;padding:4px;color:#a78bfa;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1130,9 +1126,7 @@ function renderTgAdPanel() {
         </div>
       </div>
       <div style="padding:8px 10px">
-        <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="tg-cta-btn" style="background:transparent;border:1px solid var(--border2);color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:7px">
-          🕐 Çok Yakında
-        </a>
+        <div style="display:block;width:100%;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
       </div>
     </div>
 
@@ -1179,7 +1173,7 @@ function renderMobilePlans() {
         <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
           📊 Günde 1 hisse
         </div>
-        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(0,230,118,0.4);border-radius:4px;padding:4px;color:#00e676;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1187,9 +1181,7 @@ function renderMobilePlans() {
         </div>
       </div>
       <div style="padding:8px 10px">
-        <a class="tg-cta-btn" style="background:transparent;border:1px solid var(--border2);color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:7px">
-          🕐 Çok Yakında
-        </a>
+        <div style="display:block;width:100%;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
       </div>
     </div>
 
@@ -1205,7 +1197,7 @@ function renderMobilePlans() {
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
           📊 Günde 3 hisse/coin/emtia araştırma
         </div>
-        <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(70,130,255,0.4);border-radius:4px;padding:4px;color:#70a8ff;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1214,9 +1206,7 @@ function renderMobilePlans() {
         </div>
       </div>
       <div style="padding:8px 10px">
-        <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="tg-cta-btn" style="background:transparent;border:1px solid var(--border2);color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:7px">
-          🕐 Çok Yakında
-        </a>
+        <div style="display:block;width:100%;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
       </div>
     </div>
 
@@ -1235,7 +1225,7 @@ function renderMobilePlans() {
         <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
           📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
         </div>
-        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(139,92,246,0.4);border-radius:4px;padding:4px;color:#a78bfa;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1254,9 +1244,7 @@ function renderMobilePlans() {
         </div>
       </div>
       <div style="padding:8px 10px">
-        <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="tg-cta-btn" style="background:transparent;border:1px solid var(--border2);color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:7px">
-          🕐 Çok Yakında
-        </a>
+        <div style="display:block;width:100%;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
       </div>
     </div>
   `;
