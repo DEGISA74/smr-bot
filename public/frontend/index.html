@@ -578,9 +578,28 @@ var EX_META = {
     '<div style="border-top:1px solid #1e293b;margin-top:12px;padding-top:8px;font-size:10px;color:#475569;line-height:1.7">SMR-PRO aboneleri icin Algoritmamin TEKNIK KART ciktisidir. Egitim amaclidir. Yatirim tavsiyesi degildir.<br><span style="color:#94a3b8">#SmartMoneyRadar #XU100</span><br><br><span style="color:#8b5cf6;font-weight:600">&#8212; ELITE uyeler tam uzman analizini de aldi. Farki gormek ister misin?</span></div>' +
     '</div>';
 
+  var ELITE_KART =
+    '<div style="background:#0d0f1e;border-top:2px solid #7c3aed;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:11px;font-weight:800;color:#a78bfa;letter-spacing:0.5px;margin-bottom:4px">&#128270; UZMAN ANALİZ RAPORU &#8212; #XU100</div>' +
+    '<div style="font-size:9px;color:#64748b;margin-bottom:12px">ELİTE &#8212; Derin Teknik Analiz</div>' +
+    '<div style="font-size:11.5px;color:#cbd5e1;line-height:1.9">' +
+    '<div style="margin-bottom:12px"><span style="color:#a78bfa;font-weight:700">&#127981; Yapi &amp; Senaryo</span><br>' +
+    '<span style="color:#94a3b8">BOS (yapi kirilimi) sonrasi dusus trendi konfirme. Premium bolgede (pahalı alanda) islem goruyoruz; 15.205 swing tepesi hala kirilmadi. Fiyat 14.538-14.566 FVG direncinde tikanıyor &#8212; bu bolgeden red geldiginde 14.246 EQL (esit dipler likidite havuzu) hedef. Alternatif: hacimli yukselis kirilimi 14.566 ustunde kapanirsa senaryo gecikmeli olarak degisir.</span></div>' +
+    '<div style="margin-bottom:12px"><span style="color:#a78bfa;font-weight:700">&#128200; Momentum &amp; Sapma</span><br>' +
+    '<span style="color:#94a3b8">RSI 38 bolgesinde; 5 gunluk egim yatay &#8212; ne guclu satici ne guclü alici. MACD histogrami genisliyor, negatif. Dikkat: fiyat yeni dip yaparken RSI yapmiyorsa (Hidden Bull Div) bu trend DEVAM sinyali degil, teknik bir tepki firsatidir &#8212; ana yonu degistirmez.</span></div>' +
+    '<div style="margin-bottom:12px"><span style="color:#a78bfa;font-weight:700">&#128181; VSA &amp; Kurumsal Iz</span><br>' +
+    '<span style="color:#94a3b8">Son 5 gunde hacim ortalamanin altinda &#8212; dusus inandirici degil, likidite toplanıyor. Kumulatif delta -%80; satici agir basıyor ama "climax" seviyesine ulasmadi. VWAP %4.2 altinda olmak kurumsal acisindan hala "iskontolu" &#8212; uzun vadeli alicı burada olabilir, dikkatli izle.</span></div>' +
+    '<div><span style="color:#a78bfa;font-weight:700">&#127919; Okuma &amp; Plan</span><br>' +
+    '<span style="color:#94a3b8">Kisa: 14.538 direnci kırılamadikca satis baskisi devam, 14.266-14.246 alt havuza dogru cekilme ihtimali yuксek. Orta: 14.246 bolgesi test edilirse tepki alimi gelip gelmedigini ve hacimi izle. Uzun: SMA200 tutundugu surece buyuk yapisal bozulma yok; bu bir satis dalgasi, trend degisimi degil.</span></div>' +
+    '</div>' +
+    '<div style="border-top:1px solid #1e293b;margin-top:12px;padding-top:8px;font-size:10px;color:#475569;line-height:1.7">' +
+    'SMR-ELİTE aboneleri icin derin uzman analizidir. Egitim amaclidir. Yatirim tavsiyesi degildir.<br>' +
+    '<span style="color:#64748b">#SmartMoneyRadar #XU100</span></div>' +
+    '</div>';
+
   document.getElementById('ex-tpl-free').innerHTML  = FREE_HTML;
   document.getElementById('ex-tpl-pro').innerHTML   = PRO_CARD + PRO_KART;
-  document.getElementById('ex-tpl-elite').innerHTML = ELITE_CHART + PRO_CARD_BODY + PRO_KART;
+  document.getElementById('ex-tpl-elite').innerHTML = ELITE_CHART + PRO_CARD_BODY + ELITE_KART;
 })();
 
 
