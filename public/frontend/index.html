@@ -122,8 +122,8 @@
       <!-- ── MAIN CONTENT ────────────────────────────────────────────── -->
       <main class="main-content">
 
-        <!-- COUNTER BAR -->
-        <div class="counter-bar" id="counter-bar"><!-- app.js --></div>
+        <!-- CTA BÖLÜMÜ (üste taşındı) -->
+        <div class="cta-section" id="cta-section"><!-- app.js --></div>
 
         <!-- TOP 3 SİNYALLER -->
         <div id="top3-sinyaller-panel"></div>
@@ -204,8 +204,6 @@
           </div>
           <a href="https://x.com/SMRadar_2026" target="_blank" class="btn-twitter">𝕏 Twitter'da Takip Et</a>
         </div>
-
-        <div class="cta-section" id="cta-section"><!-- app.js --></div>
 
         <!-- MOBİL PLAN KARTLARI (sadece mobilde görünür, TG panel gizli olduğunda) -->
         <div id="mobile-plans"><!-- app.js --></div>
@@ -516,9 +514,21 @@ var EX_META = {
   elite: { label:'ELİTE',    lc:'#8b5cf6', badge:'ELİTE', bb:'rgba(124,58,237,0.15)',  bc:'#8b5cf6' }
 };
 (function buildTemplates(){
-  var CHART_SVG = '<div style="background:#1a1a2e;height:110px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #1e293b"><svg width="100%" height="90" viewBox="0 0 440 90" preserveAspectRatio="none" style="opacity:0.7"><polyline points="0,70 40,65 80,72 100,55 130,60 160,40 190,50 210,30 240,45 260,35 290,55 320,42 350,38 380,50 420,30 440,45" fill="none" stroke="#22c55e" stroke-width="1.5"/><rect x="30" y="60" width="8" height="10" fill="#ef4444" opacity="0.6"/><rect x="60" y="55" width="8" height="15" fill="#22c55e" opacity="0.6"/><rect x="150" y="35" width="8" height="18" fill="#ef4444" opacity="0.6"/><rect x="210" y="25" width="8" height="14" fill="#22c55e" opacity="0.6"/><rect x="330" y="32" width="8" height="8" fill="#ef4444" opacity="0.6"/><rect x="390" y="26" width="8" height="18" fill="#22c55e" opacity="0.6"/><text x="8" y="14" fill="#64748b" font-size="9" font-family="monospace">Para Akisi Grafigi</text></svg></div>';
+  function makeChartImg(src, label) {
+    var fallback = 'this.style.display=\'none\';this.parentNode.style.minHeight=\'0\'';
+    return '<div style="background:#0a0f1a;border-bottom:1px solid #1e293b;text-align:center">' +
+      '<div style="font-size:9px;color:#334155;padding:4px 8px;text-align:left;font-family:monospace">' + label + '</div>' +
+      '<img src="' + src + '" alt="' + label + '" loading="lazy" ' +
+      'style="width:100%;max-height:480px;object-fit:contain;display:block" ' +
+      'onerror="' + fallback + '">' +
+      '</div>';
+  }
 
-  var FREE_HTML = CHART_SVG +
+  var FREE_CHART  = makeChartImg('assets/ornek_free.png',  'Örnek FREE analiz çıktısı');
+  var PRO_CHART   = makeChartImg('assets/ornek_pro.png',   'Örnek PRO analiz çıktısı');
+  var ELITE_CHART = makeChartImg('assets/ornek_elite.png', 'Örnek ELİTE analiz çıktısı');
+
+  var FREE_HTML = FREE_CHART +
     '<div style="background:#17212b;padding:14px 16px;font-family:monospace">' +
     '<div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">&#128202; <b>#XU100</b> &#8212; 14,203 <span style="color:#ef4444">&#9660;%1.11</span></div>' +
     '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128205; <b>Buyuk Ana Trend:</b> &#127834; YUKARI<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; SMA50 ustunde &middot; 1g</span><br>&#127775; <b>Kisa Vade Gorunum:</b> &#128308; ASAGI &#8595;<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; 0/4 sinyal yukari yonde</span></div>' +
@@ -534,7 +544,7 @@ var EX_META = {
     '<div style="font-size:10px;color:#475569;line-height:1.7">&#9888;&#65039; <i>Egitim amaclidir, yatirim tavsiyesi degildir.</i><br><span style="color:#3b82f6">&#8212; PRO uyeler bu hisse icin Detayli Teknik Karti da okudu. Sen de ister misin?</span></div>' +
     '</div>';
 
-  var PRO_CARD = CHART_SVG +
+  var PRO_CARD_BODY =
     '<div style="background:#17212b;padding:14px 16px;font-family:monospace">' +
     '<div style="font-size:10px;font-weight:700;color:#64748b;border-bottom:1px solid #1e293b;padding-bottom:6px;margin-bottom:10px">&#127963; SMR Gunluk Bulten &#8212; 18.05.2026</div>' +
     '<div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">&#128202; <b>#XU100</b> &#8212; 14,029 <span style="color:#ef4444">&#9660;%2.32</span></div>' +
@@ -550,6 +560,8 @@ var EX_META = {
     '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
     '<div style="font-size:10px;color:#475569">&#9888;&#65039; <i>Egitim amaclidir, yatirim tavsiyesi degildir.</i></div>' +
     '</div>';
+
+  var PRO_CARD = PRO_CHART + PRO_CARD_BODY;
 
   var PRO_KART =
     '<div style="background:#0f1923;border-top:2px solid #2563eb;padding:14px 16px;font-family:monospace">' +
@@ -568,7 +580,7 @@ var EX_META = {
 
   document.getElementById('ex-tpl-free').innerHTML  = FREE_HTML;
   document.getElementById('ex-tpl-pro').innerHTML   = PRO_CARD + PRO_KART;
-  document.getElementById('ex-tpl-elite').innerHTML = PRO_CARD + PRO_KART; // ELITE eklenince guncellenir
+  document.getElementById('ex-tpl-elite').innerHTML = ELITE_CHART + PRO_CARD_BODY + PRO_KART;
 })();
 
 

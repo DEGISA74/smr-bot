@@ -24,7 +24,6 @@ async function loadData() {
 
   hideLoading();
   renderUpdateTime(data.meta);
-  renderCounterBar(data.piyasa_ozeti);
   renderTop3Sinyaller(data.top3_sinyaller || []);
   renderXU100Panel(data.xu100, data.piyasa_ozeti, data.xu100_grafik || []);
   renderTeknikSeviyeler(data.xu100);
@@ -1054,9 +1053,10 @@ function renderTgAdPanel() {
           <span style="font-size:20px;font-weight:900;color:#00e676">FREE</span>
           <span style="font-size:11px;color:var(--text-muted)">₺0 /ay</span>
         </div>
-        <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:7px">
+        <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
           📊 Günde 1 hisse
         </div>
+        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(0,230,118,0.4);border-radius:4px;padding:4px;color:#00e676;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1078,9 +1078,10 @@ function renderTgAdPanel() {
           <span style="font-size:20px;font-weight:900;color:#70a8ff">PRO</span>
           <span style="font-size:11px;color:var(--text-muted)">₺299 /ay</span>
         </div>
-        <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:7px">
+        <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
           📊 Günde 3 hisse/coin/emtia araştırma
         </div>
+        <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(70,130,255,0.4);border-radius:4px;padding:4px;color:#70a8ff;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1109,6 +1110,7 @@ function renderTgAdPanel() {
         <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
           📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
         </div>
+        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(139,92,246,0.4);border-radius:4px;padding:4px;color:#a78bfa;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1174,9 +1176,10 @@ function renderMobilePlans() {
           <span style="font-size:20px;font-weight:900;color:#00e676">FREE</span>
           <span style="font-size:11px;color:var(--text-muted)">₺0 /ay</span>
         </div>
-        <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:7px">
+        <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
           📊 Günde 1 hisse
         </div>
+        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(0,230,118,0.4);border-radius:4px;padding:4px;color:#00e676;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1199,9 +1202,10 @@ function renderMobilePlans() {
           <span style="font-size:20px;font-weight:900;color:#70a8ff">PRO</span>
           <span style="font-size:11px;color:var(--text-muted)">₺299 /ay</span>
         </div>
-        <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:7px">
+        <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
           📊 Günde 3 hisse/coin/emtia araştırma
         </div>
+        <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(70,130,255,0.4);border-radius:4px;padding:4px;color:#70a8ff;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
@@ -1231,6 +1235,7 @@ function renderMobilePlans() {
         <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
           📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
         </div>
+        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:transparent;border:1px dashed rgba(139,92,246,0.4);border-radius:4px;padding:4px;color:#a78bfa;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
