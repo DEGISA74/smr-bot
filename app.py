@@ -887,7 +887,7 @@ raw_bist_stocks = [
     "KAPLM.IS", "KAREL.IS", "KARSN.IS", "KARYE.IS", "KATMR.IS", "KAYSE.IS", "KCAER.IS", "KCHOL.IS", "KENT.IS", "KERVN.IS", "KERVT.IS", "KFEIN.IS", "KGYO.IS", "KIMMR.IS", "KLGYO.IS", "KLKIM.IS", "KLMSN.IS", "KLNMA.IS", "KLSER.IS", "KLRHO.IS", "KMPUR.IS", "KNFRT.IS", "KOCMT.IS", "KONKA.IS", "KONTR.IS", "KONYA.IS", "KOPOL.IS", "KORDS.IS", "KOTON.IS", "KOZAA.IS", "KOZAL.IS", "KRDMA.IS", "KRDMB.IS", "KRDMD.IS", "KRGYO.IS", "KRONT.IS", "KRPLS.IS", "KRSTL.IS", "KRTEK.IS", "KRVGD.IS", "KSTUR.IS", "KTLEV.IS", "KTSKR.IS", "KUTPO.IS", "KUVVA.IS", "KUYAS.IS", "KZBGY.IS", "KZGYO.IS",
     "LIDER.IS", "LIDFA.IS", "LILAK.IS", "LINK.IS", "LKMNH.IS", "LMKDC.IS", "LOGO.IS", "LUKSK.IS",
     "MAALT.IS", "MACKO.IS", "MAGEN.IS", "MAKIM.IS", "MAKTK.IS", "MANAS.IS", "MARBL.IS", "MARKA.IS", "MARTI.IS", "MAVI.IS", "MEDTR.IS", "MEGAP.IS", "MEGMT.IS", "MEKAG.IS", "MEPET.IS", "MERCN.IS", "MERIT.IS", "MERKO.IS", "METEM.IS", "METRO.IS", "METUR.IS", "MGROS.IS", "MIATK.IS", "MIPAZ.IS", "MMCAS.IS", "MNDRS.IS", "MNDTR.IS", "MOBTL.IS", "MOGAN.IS", "MPARK.IS", "MRGYO.IS", "MRSHL.IS", "MSGYO.IS", "MTRKS.IS", "MTRYO.IS", "MZHLD.IS",
-    "NATEN.IS", "NETAS.IS", "NIBAS.IS", "NTGAZ.IS", "NUGYO.IS", "NUHCM.IS",
+    "NATEN.IS", "NETAS.IS", "NIBAS.IS", "NTGAZ.IS", "NUGYO.IS", "NUHCM.IS", "ARFYE.IS", 
     "OBASE.IS", "OBAMS.IS", "ODAS.IS", "ODINE.IS", "OFSYM.IS", "ONCSM.IS", "ORCA.IS", "ORGE.IS", "ORMA.IS", "OSMEN.IS", "OSTIM.IS", "OTKAR.IS", "OTTO.IS", "OYAKC.IS", "OYAYO.IS", "OYLUM.IS", "OYYAT.IS", "OZGYO.IS", "OZKGY.IS", "OZRDN.IS", "OZSUB.IS",
     "PAGYO.IS", "PAMEL.IS", "PAPIL.IS", "PARSN.IS", "PASEU.IS", "PCILT.IS", "PEGYO.IS", "PEKGY.IS", "PENGD.IS", "PENTA.IS", "PETKM.IS", "PETUN.IS", "PGSUS.IS", "PINSU.IS", "PKART.IS", "PKENT.IS", "PLAT.IS", "PNLSN.IS", "POLHO.IS", "POLTK.IS", "PRDGS.IS", "PRKAB.IS", "PRKME.IS", "PRZMA.IS", "PSDTC.IS", "PSGYO.IS", "PTEK.IS",
     "QNBFB.IS", "QNBFL.IS", "QUAGR.IS", "PLTUR.IS", "PATEK.IS", "NETCD.IS",
@@ -4612,7 +4612,7 @@ def scan_prelaunch_bos(asset_list):
     for symbol in asset_list:
         try:
             if isinstance(data.columns, pd.MultiIndex):
-                if symbol not in data.columns.levels[0]:
+                if symbol not in data.columns.get_level_values(0):
                     continue
                 df = data[symbol].dropna()
             else:
@@ -10064,15 +10064,18 @@ def render_sentiment_card(sent):
     # --- KART OLUŞTURUCU (SOLA YASLI - HATA VERMEZ) ---
     def make_card(num, title, score_lbl, val, desc, emo):
         # DİKKAT: Aşağıdaki HTML kodları bilerek en sola yaslanmıştır.
-        return f"""<div style="border:1px solid #1e3a5f; border-radius: 8px; margin-bottom: 8px; background:#0d1829; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-<div style="background:#0d1829; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+        return f"""<div class="smr-score-card" style="border:1px solid #1e3a5f; border-radius: 8px; margin-bottom: 8px; background:#0d1829; box-shadow: 0 1px 2px rgba(0,0,0,0.02); cursor:default;">
+<div style="background:#0d1829; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
 <div style="display:flex; align-items:center; gap:6px;">
 <span style="background:{color}; color:white; width:20px; height:20px; border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:0.7rem; font-weight:bold;">{num}</span>
 <span style="font-weight: 700; color:#94a3b8; font-size: 0.8rem;">{title} <span style="color:#94a3b8; font-weight:400; font-size:0.7rem;">({score_lbl})</span></span>
 </div>
+<div style="display:flex;align-items:center;gap:6px;">
 <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 700; color:#f1f5f9;">{val}</div>
+<span style="color:#334155;font-size:0.75rem;line-height:1;">···</span>
 </div>
-<div style="padding: 10px; font-size: 0.85rem; color:#38bdf8; line-height: 1.4; background:#0d1829;">
+</div>
+<div class="smr-card-desc" style="padding: 10px; font-size: 0.85rem; color:#38bdf8; line-height: 1.4; background:#0d1829; border-top:1px solid #1e3a5f;">
 <span style="color:{color}; font-size:1rem; float:left; margin-right:6px; line-height:1;">{emo}</span>
 {desc}
 </div>
@@ -10090,7 +10093,12 @@ def render_sentiment_card(sent):
     cards_html += make_card("6", "GÜÇ", lbl_rs, sent['rs'], "Hissenin Endekse göre relatif gücünü (RS) ölçer. Mansfield RS göstergesi 0'ın üzerinde (5). RS trendi son 5 güne göre yükselişte (5). Endeks düşerken hisse artıda (Alpha) (5)", "💪")
 
     # --- ANA HTML (SOLA YASLI) ---
-    final_html = f"""<div class="info-card" style="border-top: 3px solid {color}; background-color:#0d1829; padding-bottom: 2px;">
+    final_html = f"""<style>
+.smr-card-desc {{ display: none; }}
+.smr-score-card:hover .smr-card-desc {{ display: block; }}
+.smr-score-card:hover {{ border-color: #2563eb !important; }}
+</style>
+<div class="info-card" style="border-top: 3px solid {color}; background-color:#0d1829; padding-bottom: 2px;">
 <div class="info-header" style="color:#38bdf8; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
 <span>💼 KURUMSAL İLGİ: {display_ticker}</span>
 <span style="font-family:'JetBrains Mono'; font-weight:800; font-size:1.1rem; color:{color}; background:{color}15; padding:2px 8px; border-radius:6px;">{score}/100</span>
@@ -11955,8 +11963,11 @@ def scan_erken_radar_batch(asset_list):
         bench_df = None
 
     # TÜM hisseleri tek batch'te al (MultiIndex DataFrame, cache'li)
+    # ⚡ CACHE HIT: asset_list (scan_list ile aynı) → Master Scan başındaki
+    # get_batch_data_cached(scan_list) cache'ini doğrudan vurur — stock_list
+    # farklı key üretiyordu ve %98'de gereksiz 500 parquet okuma tetikliyordu.
     try:
-        batch_data = get_batch_data_cached(stock_list, period="1y")
+        batch_data = get_batch_data_cached(asset_list, period="1y")
     except Exception:
         batch_data = None
 
@@ -11965,7 +11976,8 @@ def scan_erken_radar_batch(asset_list):
         if batch_data is not None and not batch_data.empty:
             try:
                 if isinstance(batch_data.columns, pd.MultiIndex):
-                    if ticker in batch_data.columns.levels[0]:
+                    # get_level_values(0): actual values (levels[0] frozen olabilir)
+                    if ticker in batch_data.columns.get_level_values(0):
                         return batch_data[ticker].dropna(how='all')
                 else:
                     return batch_data.dropna(how='all')
@@ -17522,6 +17534,13 @@ with col_btn:
             log_erken_radar_signals(_er_batch_df, category=_cat)
             st.session_state.erken_radar_data = _er_batch_df
             save_scan_result("erken_radar_data", _er_batch_df, _cat)
+            # Debug toast — kaç hisse/senaryo bulundu
+            if _er_batch_df is not None and not _er_batch_df.empty:
+                _er_primary_n = int((_er_batch_df['Role'] == 'primary').sum())
+                _er_total_n   = len(_er_batch_df)
+                st.toast(f"🚀 Erken Radar: {_er_primary_n} hisse, {_er_total_n} senaryo", icon="✅")
+            else:
+                st.toast("⚠️ Erken Radar: Hiç senaryo eşleşmedi", icon="⚠️")
 
             # 16b. SITE FRONTEND TADIMLIK JSON — sadece BIST için, FREE pazarlama (top 2 + lock count)
             if "BIST" in _cat.upper() and _er_batch_df is not None and not _er_batch_df.empty:
@@ -18988,7 +19007,7 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
     # ────────────────────────────────────────────────────────────────
 
     prompt = f"""*** KİMLİĞİN ***
-25 yıldır hem kurumsal hem bireysel portföy yöneten, BIST'i ve global piyasaları yakından izleyen bir analistsin. Karmaşık veriyi sade dile çevirmekte iyisin — ama sadeleştirirken bilgiyi kaybetmezsin. Ne korkutursan ne de umutlandırırsın. Veri ne diyorsa onu söylersin, fazlasını değil. Hem yükseliş hem düşüş gördün, ikisini de bekliyorsun. Soğukkanlısın.
+25 yıldır hem kurumsal hem bireysel portföy yöneten, BIST'i ve global piyasaları yakından izleyen ve çok iyi analiz edebilen, çok değerli, çok bilgili ve çok deneyimli bir analistsin. Karmaşık veriyi sade dile çevirmekte iyisin — ama sadeleştirirken bilgiyi kaybetmezsin. Ne korkutursan ne de umutlandırırsın. Veri ne diyorsa onu söylersin, fazlasını değil. Hem yükseliş hem düşüş gördün, ikisini de bekliyorsun. Soğukkanlısın.
 
 Hem finans bilgisi olan hem olmayan aynı metni okuyacak. İkisi için ayrı analiz yazma — teknik terimleri aşağıdaki ANLATIM KURALI'na göre benzetmeyle ver, sonra devam et. Hız kesme. Doğru ton: bir konuyu gerçekten bilen birinin sohbet dili.
 
@@ -21023,7 +21042,11 @@ def _render_left_col():
         # ============ SOL: HAREKETE HAZIR (Erken Radar) ============
         with _sub_er:
             _er_df = st.session_state.get('erken_radar_data')
-            _er_count = len(_er_df) if (_er_df is not None and hasattr(_er_df, 'empty') and not _er_df.empty) else 0
+            # Unique hisse = primary rolündeki satır sayısı (her hissenin 1 primary'si var)
+            if _er_df is not None and hasattr(_er_df, 'empty') and not _er_df.empty:
+                _er_count = int((_er_df['Role'] == 'primary').sum())
+            else:
+                _er_count = 0
             st.markdown(f"<div style='background:linear-gradient(135deg,#3b82f618,#3b82f606);"
                         f"border:1px solid #3b82f650;border-radius:8px;padding:6px 10px;margin-bottom:5px;'>"
                         f"<span style='font-size:0.78rem;font-weight:900;color:#7dd3fc;'>"
@@ -21176,10 +21199,11 @@ def _render_left_col():
                                         f"Vol:{vol_k:.1f}x · {rs_str} · {_pb_ac}</div>",
                                         unsafe_allow_html=True)
             else:
+                _pb_msg = "Master Scan çalıştırın" if df_pb is None else "Bugün eşleşme yok"
                 st.markdown(f"<div style='border:1px dashed #3b82f650;border-radius:7px;"
                             f"padding:18px 10px;text-align:center;color:#94a3b8;font-size:0.8rem;'>"
-                            f"Master Scan çalıştırın</div>", unsafe_allow_html=True)
-    
+                            f"{_pb_msg}</div>", unsafe_allow_html=True)
+
     _t2c3, _t2c4 = st.columns(2)
     
     with _t2c3:
