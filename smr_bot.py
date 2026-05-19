@@ -91,6 +91,9 @@ def _usage_inc(chat_id: int, user_id: int, today: str):
 
 usage_tracker: dict = defaultdict(int)  # geriye dönük uyumluluk için bırakıldı
 
+_gemini_daily_count: int = 0          # günlük Gemini API çağrı sayacı
+_GEMINI_WARN_THRESHOLDS = [800, 950]  # bu eşiklerde ADMIN_ID'ye bildirim gider
+
 # Eşzamanlı analiz sınırı (yfinance CPU-bound olduğu için)
 ANALYSIS_SEMAPHORE = asyncio.Semaphore(2)
 
@@ -168,6 +171,37 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
             )
             text = response.text.strip() if response.text else ""
             log.info(f"AI üretildi: {len(text)} karakter (deneme {attempt})")
+
+            # Günlük sayacı artır ve eşik bildirimlerini gönder
+            global _gemini_daily_count
+            _gemini_daily_count += 1
+            if _gemini_daily_count in _GEMINI_WARN_THRESHOLDS:
+                try:
+                    if _gemini_daily_count == 800:
+                        notif = (
+                            "⚠️ *Gemini API — Limite Yaklaşıyorsun*\n\n"
+                            f"Bugün *{_gemini_daily_count}* çağrı yapıldı.\n"
+                            "Ücretsiz günlük limit: 1.000 istek.\n"
+                            "Kalan: ~200 istek."
+                        )
+                    else:
+                        notif = (
+                            "🚨 *Gemini API — KRİTİK SEVİYE*\n\n"
+                            f"Bugün *{_gemini_daily_count}* çağrı yapıldı.\n"
+                            "Ücretsiz günlük limit: 1.000 istek.\n"
+                            "Kalan: yalnızca ~50 istek!\n"
+                            "Limit dolunca AI analizler atlanmaya başlar."
+                        )
+                    import telegram as _tg
+                    _tg_bot = _tg.Bot(token=BOT_TOKEN)
+                    await _tg_bot.send_message(
+                        chat_id=ADMIN_ID,
+                        text=notif,
+                        parse_mode="Markdown"
+                    )
+                except Exception as _ne:
+                    log.warning(f"Gemini eşik bildirimi gönderilemedi: {_ne}")
+
             return text
 
         except Exception as e:
@@ -1048,8 +1082,10 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # ─── GÜNLÜK SIFIRLAMA (00:00) ────────────────────────────────────────────────
 async def reset_daily_limits(context: ContextTypes.DEFAULT_TYPE):
     """Her gece 00:00'da kullanım sayaçlarını sıfırla."""
+    global _gemini_daily_count
     count = len(usage_tracker)
     usage_tracker.clear()
+    _gemini_daily_count = 0
     log.info(f"Günlük limitler sıfırlandı ({count} kayıt temizlendi)")
 
 
