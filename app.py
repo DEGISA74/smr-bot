@@ -1123,11 +1123,19 @@ def get_batch_data_cached(asset_list, period="1y"):
                 df_cached = pd.read_parquet(file_path)
                 if not df_cached.empty:
                     if not is_yahoo_update_needed(sym, df_cached.index[-1]):
-                        # 👇 ESKİ HALİ: combined_dict[sym] = df_cached.tail(500)
-                        # 👇 YENİ HALİ:
-                        df_ready = df_cached.tail(500).copy()
-                        combined_dict[sym] = apply_volume_projection(df_ready, sym)
-                        needs_download = False
+                        # Bölünme tespiti: son kapanıştaki ani sıçrama (>35% tek günde)
+                        # → cache stale, yeniden indir
+                        _rc = df_cached['Close'].dropna()
+                        _split_flag = (
+                            len(_rc) >= 2 and
+                            abs(_rc.iloc[-1] / _rc.iloc[-2] - 1) > 0.35
+                        )
+                        if _split_flag:
+                            os.remove(file_path)
+                        else:
+                            df_ready = df_cached.tail(500).copy()
+                            combined_dict[sym] = apply_volume_projection(df_ready, sym)
+                            needs_download = False
             except: pass
         if needs_download:
             missing_assets.append(sym)
@@ -1547,6 +1555,30 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
     parquet'in diske yazılmasını garanti eder.
     """
     _ensure_parquet_on_disk(ticker, interval)
+
+    # ── BÖLÜNME / TEMETTÜ TESPİTİ ────────────────────────────────────────────
+    # Parquet'teki son kapanış ile canlı fiyat arasında 2x'ten fazla fark varsa
+    # bölünme/büyük temettü sonrası düzeltme yapılmamış demektir.
+    # Parquet + Streamlit in-memory cache temizlenerek taze veri çekilir.
+    if interval == "1d":
+        try:
+            _ct_s = ticker.replace(".IS", "")
+            if ".IS" in ticker or ticker.startswith("XU"):
+                _ct_s = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
+            _fp_s = os.path.join(CACHE_DIR, f"{_ct_s}_1d.parquet")
+            if os.path.exists(_fp_s):
+                _df_p   = pd.read_parquet(_fp_s)
+                _last_p = float(_df_p['Close'].dropna().iloc[-1])
+                _live_p = get_live_price(ticker)
+                if _live_p > 0 and _last_p > 0:
+                    _ratio = max(_last_p, _live_p) / min(_last_p, _live_p)
+                    if _ratio > 2.0:
+                        os.remove(_fp_s)
+                        _get_safe_historical_data_cached.clear()
+        except Exception:
+            pass
+    # ─────────────────────────────────────────────────────────────────────────
+
     df = _get_safe_historical_data_cached(ticker, period=period, interval=interval)
     return _patch_live_price(df, ticker, interval)
 
