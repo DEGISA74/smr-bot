@@ -641,7 +641,7 @@ function renderSidebarLeft(d, ozet) {
       <span class="sidebar-stat-label">1. YAPI</span>
       <span class="sidebar-stat-val o">Kurumsal İlgi Var</span>
     </div>
-    <div style="position:relative;overflow:hidden;margin-top:5px">
+    <div style="position:relative;overflow:hidden;margin-top:5px;max-height:38px">
       <div style="filter:blur(3.5px);user-select:none;pointer-events:none">
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Trend</span><span class="sidebar-stat-val g">A+ KALİTE</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Momentum</span><span class="sidebar-stat-val c">YÜKSEK</span></div>
@@ -670,7 +670,7 @@ function renderSidebarLeft(d, ozet) {
         <div class="signal-dot ${(ozet?.sma200_ustu_pct||0)>=50?'g':'r'}"></div>
         <span>SMA200+: %${ozet?.sma200_ustu_pct?.toFixed(0)||'—'}</span>
       </div>
-      <div style="position:relative;overflow:hidden;margin-top:6px">
+      <div style="position:relative;overflow:hidden;margin-top:6px;max-height:38px">
         <div style="filter:blur(3.5px);user-select:none;pointer-events:none">
           <div class="signal-row"><div class="signal-dot g"></div><span>ATR Risk Bölgesi: DÜŞÜK</span></div>
           <div class="signal-row"><div class="signal-dot c"></div><span>Bollinger: Üst banda yakın</span></div>
@@ -1014,7 +1014,7 @@ function renderCanliSinyaller(d, ozet) {
     </div>
 
     <!-- Kilitli ek sinyaller -->
-    <div style="position:relative;overflow:hidden;margin-top:6px;border-radius:4px">
+    <div style="position:relative;overflow:hidden;margin-top:6px;border-radius:4px;max-height:38px">
       <div style="filter:blur(3.5px);user-select:none;pointer-events:none">
         <div class="signal-row"><div class="signal-dot g"></div><span>Long Sinyali: 7 Hisse (BIST30)</span></div>
         <div class="signal-row"><div class="signal-dot r"></div><span>Short Sinyali: 2 Hisse</span></div>
