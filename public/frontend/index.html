@@ -578,28 +578,45 @@ var EX_META = {
     '<div style="border-top:1px solid #1e293b;margin-top:12px;padding-top:8px;font-size:10px;color:#475569;line-height:1.7">SMR-PRO aboneleri icin Algoritmamin TEKNIK KART ciktisidir. Egitim amaclidir. Yatirim tavsiyesi degildir.<br><span style="color:#94a3b8">#SmartMoneyRadar #XU100</span><br><br><span style="color:#8b5cf6;font-weight:600">&#8212; ELITE uyeler tam uzman analizini de aldi. Farki gormek ister misin?</span></div>' +
     '</div>';
 
+  var ELITE_CARD_BODY =
+    '<div style="background:#17212b;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:10px;font-weight:700;color:#64748b;border-bottom:1px solid #1e293b;padding-bottom:6px;margin-bottom:10px">&#127963; SMR Pazar Haberle&#351;mesi &#8212; 17.05.2026 &nbsp;&#183;&nbsp; <span style="color:#475569">&#128197; Cuma analiz b&#252;lteni</span></div>' +
+    '<div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">&#128202; <b>#XU100</b> &#8212; 14,567 <span style="color:#ef4444">&#9660;%3.95</span></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128205; <b>B&#252;y&#252;k Ana Trend:</b> &#127834; YUKARI<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; SMA50 &#252;st&#252;nde &middot; 15g</span><br>&#128301; <b>K&#305;sa Vade G&#246;r&#252;n&#252;m:</b> &#128308; A&#350;A&#286;I &#8595;<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; K&#305;sa vade (bug&#252;n&#8211;bu hafta) &middot; 0/4 sinyal yukar&#305; y&#246;nde</span></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128737; <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,186</code> &#8212; <i style="color:#64748b">ATR Destek</i><br>&#128737; <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">13,856</code> &#8212; <i style="color:#64748b">ATR Destek 4</i><br>&#127919; <b>Diren&#231; 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,897</code> &#8212; <i style="color:#64748b">ATR Diren&#231;</i><br>&#127919; <b>Diren&#231; 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">15,177</code> &#8212; <i style="color:#64748b">ATR Diren&#231; 4</i></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#10003; <b>OBV Birikim</b> &#8212; OBV aktif al&#305;m<br>&#10060; <b>BB S&#305;k&#305;&#351;ma</b> &#8212; Aktif s&#305;k&#305;&#351;ma yok<br>&#10060; <b>Tetikleyici</b> &#8212; Tetik at&#305;lmad&#305; | RSI 48<br>&#10022; <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">2/4</code></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1">&#128202; <b>RSI:</b> 48.4</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:11.5px;color:#94a3b8;line-height:1.7">&#128172; Ana trend sa&#287;lam (SMA50 &#252;st&#252;nde) ancak g&#252;nl&#252;k %3.95 sert d&#252;&#351;&#252;&#351;le k&#305;sa vade bask&#305;ya girdi. OBV kurumsal al&#305;m&#305; g&#246;sterirken fiyat geri &#231;ekiliyor &#8212; bu ayr&#305;&#351;ma kritik. 14.186 destek&#279;i koruma alt&#305;na al&#305;nmas&#305; &#351;art.</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:10px;color:#475569;line-height:1.7">&#9888;&#65039; <i>E&#287;itim ama&#231;l&#305;d&#305;r, yat&#305;r&#305;m tavsiyesi de&#287;ildir.</i></div>' +
+    '</div>';
+
   var ELITE_KART =
     '<div style="background:#0d0f1e;border-top:2px solid #7c3aed;padding:14px 16px;font-family:monospace">' +
-    '<div style="font-size:11px;font-weight:800;color:#a78bfa;letter-spacing:0.5px;margin-bottom:4px">&#128270; UZMAN ANALİZ RAPORU &#8212; #XU100</div>' +
-    '<div style="font-size:9px;color:#64748b;margin-bottom:12px">ELİTE &#8212; Derin Teknik Analiz</div>' +
+    '<div style="font-size:11px;font-weight:800;color:#a78bfa;letter-spacing:0.5px;margin-bottom:2px">&#128270; AI UZMAN ANAL&#304;Z RAPORU &#8212; #XU100</div>' +
+    '<div style="font-size:9px;color:#64748b;margin-bottom:12px">EL&#304;TE &#8212; Derin Teknik Analiz &nbsp;|&nbsp; 17.05.2026</div>' +
     '<div style="font-size:11.5px;color:#cbd5e1;line-height:1.9">' +
-    '<div style="margin-bottom:12px"><span style="color:#a78bfa;font-weight:700">&#127981; Yapi &amp; Senaryo</span><br>' +
-    '<span style="color:#94a3b8">BOS (yapi kirilimi) sonrasi dusus trendi konfirme. Premium bolgede (pahalı alanda) islem goruyoruz; 15.205 swing tepesi hala kirilmadi. Fiyat 14.538-14.566 FVG direncinde tikanıyor &#8212; bu bolgeden red geldiginde 14.246 EQL (esit dipler likidite havuzu) hedef. Alternatif: hacimli yukselis kirilimi 14.566 ustunde kapanirsa senaryo gecikmeli olarak degisir.</span></div>' +
-    '<div style="margin-bottom:12px"><span style="color:#a78bfa;font-weight:700">&#128200; Momentum &amp; Sapma</span><br>' +
-    '<span style="color:#94a3b8">RSI 38 bolgesinde; 5 gunluk egim yatay &#8212; ne guclu satici ne guclü alici. MACD histogrami genisliyor, negatif. Dikkat: fiyat yeni dip yaparken RSI yapmiyorsa (Hidden Bull Div) bu trend DEVAM sinyali degil, teknik bir tepki firsatidir &#8212; ana yonu degistirmez.</span></div>' +
-    '<div style="margin-bottom:12px"><span style="color:#a78bfa;font-weight:700">&#128181; VSA &amp; Kurumsal Iz</span><br>' +
-    '<span style="color:#94a3b8">Son 5 gunde hacim ortalamanin altinda &#8212; dusus inandirici degil, likidite toplanıyor. Kumulatif delta -%80; satici agir basıyor ama "climax" seviyesine ulasmadi. VWAP %4.2 altinda olmak kurumsal acisindan hala "iskontolu" &#8212; uzun vadeli alicı burada olabilir, dikkatli izle.</span></div>' +
+    '<div style="margin-bottom:11px"><span style="color:#a78bfa;font-weight:700">&#128202; Yap&#305; &amp; Fiyat Davran&#305;&#351;</span><br>' +
+    '<span style="color:#94a3b8">LH+LL (d&#252;&#351;&#252;k tepeler ve dipler &#8212; zay&#305;flayan yap&#305;) yap&#305;s&#305; hakim; 15.177 swing tepesi alt&#305;nda kal&#305;nd&#305;&#287;&#305; s&#252;rece sat&#305;&#351; bask&#305;s&#305; devam eder. G&#252;nl&#252;k mum aral&#305;&#287;&#305;n&#305;n alt yar&#305;s&#305;nda kapand&#305; &#8212; sat&#305;c&#305; hakimiyeti net. 14.897 ATR direnci k&#305;r&#305;lamad&#305;; 14.186 ATR deste&#287;i kritik e&#351;ik.</span></div>' +
+    '<div style="margin-bottom:11px"><span style="color:#a78bfa;font-weight:700">&#128200; Momentum &amp; Uyumsuzluk</span><br>' +
+    '<span style="color:#94a3b8">RSI 48.4 &#8212; ne a&#351;&#305;r&#305; sat&#305;m ne al&#305;m b&#246;lgesinde, nötr. 5 g&#252;nl&#252;k RSI egimi yatay&#8211;a&#351;a&#287;&#305;; MACD histogrami negatif y&#246;nde geni&#351;liyor. OBV aktif al&#305;m sinyali verirken fiyat d&#252;&#351;&#252;yor &#8212; bu Bullish Divergence de&#287;il, kurumsal akumulasyon i&#351;areti; k&#305;sa vadeli y&#246;n&#252; de&#287;i&#351;tirmez, orta vadeli i&#231;in kritik.</span></div>' +
+    '<div style="margin-bottom:11px"><span style="color:#a78bfa;font-weight:700">&#128181; Hacim &amp; Ak&#305;ll&#305; Para (VSA)</span><br>' +
+    '<span style="color:#94a3b8">%3.95 d&#252;&#351;&#252;&#351; ortalamann&#305;n &#252;zerinde hacimle geldi &#8212; "Distribution" (da&#287;&#305;t&#305;m) i&#351;areti. OBV z&#305;t gidiyor &#8212; arka planda birikim var; bu &#231;eli&#351;ki &#231;&#246;z&#252;lmeden k&#305;sa pozisyon riskli. VWAP alt&#305;ndaki i&#351;lemler devam ediyor.</span></div>' +
     '<div><span style="color:#a78bfa;font-weight:700">&#127919; Okuma &amp; Plan</span><br>' +
-    '<span style="color:#94a3b8">Kisa: 14.538 direnci kırılamadikca satis baskisi devam, 14.266-14.246 alt havuza dogru cekilme ihtimali yuксek. Orta: 14.246 bolgesi test edilirse tepki alimi gelip gelmedigini ve hacimi izle. Uzun: SMA200 tutundugu surece buyuk yapisal bozulma yok; bu bir satis dalgasi, trend degisimi degil.</span></div>' +
+    '<span style="color:#94a3b8"><b style="color:#e2e8f0">K&#305;sa:</b> 14.897 direnci a&#351;&#305;lamad&#305;k&#231;a sat&#305;&#351; bask&#305;s&#305; s&#252;rer; 14.186 destek&#299;in kapan&#305;&#351;ta k&#305;r&#305;lmas&#305; 13.856&#8217;y&#305; a&#231;ar. <b style="color:#e2e8f0">Orta:</b> OBV birikimi do&#287;rulan&#305;rsa 14.186&#8211;13.856 b&#246;lgesinden g&#252;&#231;l&#252; tepki beklenir &#8212; hacmi takip et. <b style="color:#e2e8f0">Uzun:</b> SMA50 &#252;stünde tutundukça ana trend bozulmad&#305;; bu bir d&#252;zeltme dalgas&#305;.</span></div>' +
     '</div>' +
     '<div style="border-top:1px solid #1e293b;margin-top:12px;padding-top:8px;font-size:10px;color:#475569;line-height:1.7">' +
-    'SMR-ELİTE aboneleri icin derin uzman analizidir. Egitim amaclidir. Yatirim tavsiyesi degildir.<br>' +
+    'SMR-EL&#304;TE aboneleri i&#231;in derin uzman analizidir. E&#287;itim ama&#231;l&#305;d&#305;r. Yat&#305;r&#305;m tavsiyesi de&#287;ildir.<br>' +
     '<span style="color:#64748b">#SmartMoneyRadar #XU100</span></div>' +
     '</div>';
 
   document.getElementById('ex-tpl-free').innerHTML  = FREE_HTML;
   document.getElementById('ex-tpl-pro').innerHTML   = PRO_CARD + PRO_KART;
-  document.getElementById('ex-tpl-elite').innerHTML = ELITE_CHART + PRO_CARD_BODY + ELITE_KART;
+  document.getElementById('ex-tpl-elite').innerHTML = ELITE_CHART + ELITE_CARD_BODY + ELITE_KART;
 })();
 
 
