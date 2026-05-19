@@ -860,6 +860,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user  = msg.from_user
     uid   = user.id
     uname = (user.username or "").lower().strip()
+    if uname:
+        _save_uid_map(uid, uname)  # /addcredit için username→uid haritası
 
     # user_id ile ara, bulamazsa username ile ara (Shopier'den eklenmiş olabilir)
     sub = smr_core.sub_get(uid)
