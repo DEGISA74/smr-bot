@@ -19723,32 +19723,23 @@ Zorunlu açıklamalı geçişler (örnekler — ÖNCE Türkçe, SONRA parantezde
 
 Açıklama olmadan kısaltma KULLANMA. Abone bir cümleyi okuyup "ne demek bu?" demesin — anlasın, devam etsin.
 
-Formatın şu şekilde olmalıdır (Alt başlıkları aynen kullan):
-ALGO TESPİT RAPORU:
-1⃣🔹) Genel Değerlendirme
-- Master Skor: (Algoritmik Composite Skoru ve karar etiketini yaz; en güçlü ve en zayıf alt faktörü vurgula — örn. "Trend 100 mükemmel ama Hacim 50 zayıf")
-- Çoklu Vade Uyumu (MTF): (4H/Günlük/Haftalık/Aylık matrisinden dominant yön ve uyum oranı; vadelerin uyumlu mu yoksa çelişkili mi olduğu)
-2⃣🔹) Yapı & Fiyat Davranışı
-- Trend Yapısı: (GENEL ÖZET PANEL'deki "YAPI" satırını kullan — Yükselen Tepeler ve Dipler (HH+HL) / Alçalan Tepeler ve Dipler (LH+LL) / Yapı Dönüşü (CHoCH) up/down / Genişleyen Volatilite (Megafon) / Üçgen sıkışma / Yatay range / Yarı yapı'dan hangisi aktif? CHoCH varsa "dönüş başlıyor", megafon varsa "sağlıksız volatilite", üçgen varsa "kırılım yakın" vurgusu yap.)
-- Mum & Fitil — Kapanış Konumu: (Panel'deki "Mum (Kapanış Konumu)" satırını kullan — Son 5g kapanış konumu × önceki 5g referansı. Alıcı kontrolü var / Alıcı agresif / Alıcı baskısı oluştu / Alıcı baskısı sürüyor / Alıcı zayıflıyor / Satıcı kontrolü var / Satıcı agresif / Satıcı baskısı oluştu / Satıcı baskısı sürüyor / Kararsız — 10 senaryodan hangisi aktif? Bu okuma "kim kontrol ediyor" sorusuna objektif cevaptır.)
-- Formasyon Durumu: (Grafikte gördüğün OBO, TOBO, Bayrak vs. formasyon ve ikili/üçlü mum yapıları — formasyon yoksa bu satırı atla)
-3⃣🔹) Momentum & İvme
-- Momentum Eğimi (RSI Slope) & MACD: (GENEL ÖZET PANEL'deki "MOMENTUM SLOPE" satırını kullan — RSI seviyesi DEĞİL, 5g'lik DEĞİŞİM. Sert dönüş / Toparlanma / Trend hızlanıyor / Yatay / Yavaşlıyor / Aşağı ivme / Tepe geri çekilme'den hangisi aktif? Seviye yorumu yapacaksan panel'deki RSI seviyesi etiketini (zayıf/nötr/güçlü) kullan, "alım bölgesi" gibi vague ifadeler KULLANMA.)
-- Momentum Uyumsuzluğu: (Panel'deki "RSI DIVERGENCE" satırını kullan — 5 tip var: Klasik Pozitif Uyumsuzluk (Regular Bull) / Klasik Negatif Uyumsuzluk (Regular Bear) / Gizli Pozitif Uyumsuzluk (Hidden Bull) / Gizli Negatif Uyumsuzluk (Hidden Bear) / Yok. Klasik (Regular) = "tükenme" sinyali; Gizli (Hidden) = "trend devam" sinyali — karıştırma.)
-- Çoklu Vade Momentum (MTF): (Kısa/orta/uzun vade momentum uyumu; hangi periyotta zayıflama başladı?)
-4⃣🔹) Hacim & Akıllı Para
-- Hacim-Mum Anatomisi (VSA): (GENEL ÖZET PANEL'deki "VSA" satırını kullan — 9 senaryo: Alım onayı ★, Satım onayı ★, Dönüş Uyarısı (Climax) ⚠⚠, Üst Ret ⤵ (dağıtım), Alt Ret ⤴ (toplama), Sahte alım ⚠, Sahte satım ⚠, Ölü piyasa, Normal. Climax/Üst ret varsa tepe sinyali, Alt ret varsa dip sinyali, Sahte alım/satım varsa tuzak uyarısı.)
-- Kurumsal Akış: (Hacim Akışı Endeksi (OBV), Alıcı/Satıcı Hacim Farkı (Delta), kurumsal emilim/çıkış izleri; panel'deki VSA ile Smart Money Volume verisini birlikte değerlendir)
-5⃣🔹) Kritik Seviyeler
-- Aralık Konumu: (GENEL ÖZET PANEL'deki "RANGE (20g)" satırını kullan — Ucuz Bölge (Discount) / Pahalı Bölge (Premium) / V-Dönüş / Üstten Düşüş (U-top) / Toparlanma / Premium kaybı / Premium tutunma / Tepede tıkalı / Dipte tutunma / Orta gibi 9 senaryodan hangisi aktif? Aralık konumu fiyatın 20g aralıkta nerede olduğunu ve 5g önce neredeydiyse bunu gösterir.)
-- Üst Havuz: (Fiyatın üstündeki en yakın likidite / kritik seviye)
-- Alt Havuz: (Fiyatın altındaki en yakın likidite / kritik seviye)
-6⃣🔹) Trend Skoru ve Enerji
-- Enerji Puanı: (Algoritmadan gelen Skoru yaz ve grafikteki sıkışmayı/momentumu yorumla)
-7⃣🔹🔹 Teknik Okuma Özeti
-(Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik özeti — Master Skor ve Çoklu Vade Uyumunu mutlaka özetin çerçevesine koy. Panel'deki 7 senaryonun BİRBİRİYLE UYUMU veya ÇELİŞKİSİ üzerinden hikayeyi kur. Örn: "Yapı sağlam ↑ + Momentum hızlanıyor + Premium tutunma + Alım onayı" çakışırsa "tüm sinyaller hizalı" de; "Yapı bozuk + Sahte alım + Yorgun alıcı" çakışırsa "tuzak riski" de.
-Son olarak "📌 İzlenecek:" satırı ekle: Algoritmadan gelen Üst ve Alt Havuz seviyelerini kullanarak teknik kırılım seviyelerini belirt. YASAL UYARI — yatırım tavsiyesi verilmez, KESİNLİKLE şu ifadeler YASAK: "al", "sat", "pozisyon al/kapat", "giriş yap". Bunlar yerine teknik gözlem dili kullan: "kırılım yaşanırsa görülebilir", "test edilebilir", "hareket izlenebilir", "baskı devam edebilir", "yapı netleşebilir" — piyasanın ne yapabileceğini nesnel olarak tanımla, okuyucuya emir verme.)
-Bu 7 maddelik ALGO TESPİT RAPORU Algoritmamın çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
+Formatın şu şekilde olmalıdır (Başlıkları aynen kullan, her bölüm ALT BAŞLIK ETİKETİ OLMADAN akıcı paragraf olarak yazılır):
+SMR ALGORİTMİK HİSSE RAPORU:
+1⃣🔹) Genel Tablo
+(Algoritmik skoru ve karar etiketini yaz; en güçlü ve en zayıf alt faktörü vurgula. Ardından Çoklu Vade Uyumu (MTF) matrisinden dominant yön ve uyum oranını belirt — vadeler uyumlu mu çelişkili mi? Bölümü kapatırken GENEL ÖZET PANEL'deki "YAPI" satırından aktif yapı senaryosunu ekle: Yükselen Tepeler ve Dipler (HH+HL) / Alçalan Tepeler ve Dipler (LH+LL) / Yapı Dönüşü (CHoCH) / Genişleyen Volatilite (Megafon) / Üçgen sıkışma / Yatay range / Yarı yapı. Tümünü etiket olmadan tek akıcı paragrafta yaz.)
+
+2⃣🔹) Fiyat Davranışı
+(Panel'deki "Mum (Kapanış Konumu)" satırından kim kontrol ediyor sorusuna nesnel cevap ver — mum gövdesinin günlük aralıkta nerede kapandığını ve 10 senaryodan hangisinin aktif olduğunu belirt. Ardından varsa grafikte gördüğün formasyon yapısını (OBO, TOBO, Bayrak, Piercing Line, Hammer vb.) ekle; formasyon yoksa bu bilgiyi atla. Alt başlık etiketi kullanma — tek paragraf.)
+
+3⃣🔹) İvme & Enerji
+(GENEL ÖZET PANEL'deki "MOMENTUM SLOPE" satırından RSI seviyesi DEĞİL 5g'lik değişim hızını yaz — Sert dönüş / Toparlanma / Trend hızlanıyor / Yatay / Yavaşlıyor / Aşağı ivme / Tepe geri çekilme'den hangisi aktif? Ardından RSI DIVERGENCE satırından uyumsuzluk tipini belirt: Klasik Pozitif (Regular Bull) / Klasik Negatif (Regular Bear) / Gizli Pozitif (Hidden Bull) / Gizli Negatif (Hidden Bear) / Yok — Klasik tükenme sinyali, Gizli trend devamı sinyalidir, karıştırma. Çoklu vade momentum uyumunu kısaca ekle. Bölümü Enerji Puanı ile kapat: Algoritmadan gelen skoru yaz ve sıkışma/dağılma yorumunu bir cümleyle bitir. Tümü alt başlık olmadan tek akıcı paragraf.)
+
+4⃣🔹) Akıllı Para İzi
+(GENEL ÖZET PANEL'deki "VSA" satırından Hacim-Mum Anatomisi (VSA) senaryosunu belirt: Alım onayı / Satım onayı / Dönüş Uyarısı (Climax) / Üst Ret / Alt Ret / Sahte alım / Sahte satım / Ölü piyasa / Normal. Ardından Hacim Akışı Endeksi (OBV) ve Alıcı/Satıcı Hacim Farkı (Delta) verisiyle kurumsal emilim veya çıkış izlerini yorumla. Alt başlık etiketi kullanma — tek akıcı paragraf.)
+
+5⃣🔹🔹) Teknik Okuma Özeti
+(Önce GENEL ÖZET PANEL'deki "RANGE (20g)" satırından fiyatın 20g aralıktaki konumunu ve 5g önceki değişimini belirt: Ucuz Bölge (Discount) / Pahalı Bölge (Premium) / V-Dönüş / Üstten Düşüş (U-top) / Toparlanma / Premium kaybı / Premium tutunma / Tepede tıkalı / Dipte tutunma / Orta. Ardından fiyatın üstündeki ve altındaki en kritik likidite seviyelerini somut rakamlarla ver. Bölümü tüm analizin 2-3 cümlelik vurucu özeti ile kapat — 5 senaryonun BİRBİRİYLE UYUMU veya ÇELİŞKİSİ üzerinden hikayeyi kur. Son satır olarak "📌 İzlenecek:" ekle: Üst ve Alt seviyelerle teknik kırılım gözlemini yaz. YASAL UYARI — yatırım tavsiyesi verilmez; "al", "sat", "pozisyon al/kapat", "giriş yap" KESİNLİKLE YASAK. Bunların yerine: "kırılım yaşanırsa görülebilir", "test edilebilir", "hareket izlenebilir", "baskı devam edebilir", "yapı netleşebilir". Alt başlık etiketi kullanma — tek akıcı paragraf.)
+Bu 5 maddelik SMR ALGORİTMİK HİSSE RAPORU Algoritmamın çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #BIST100 #SmartMoneyRadar #{clean_ticker}
 
 ** Dördüncü Görevin:
@@ -21456,7 +21447,7 @@ def _render_left_col():
     
     
     
-    # 5. GELİŞMİŞ ALGO TESPİT RAPORU
+    # 5. GELİŞMİŞ SMR ALGORİTMİK HİSSE RAPORU
     render_detail_card_advanced(st.session_state.ticker)
     
     st.markdown(f"<div style='font-size:0.9rem;font-weight:600;margin-bottom:4px; margin-top:20px;'>📡 {st.session_state.ticker} hakkında haberler ve analizler</div>", unsafe_allow_html=True)
