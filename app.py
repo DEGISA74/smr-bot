@@ -15887,7 +15887,7 @@ def render_unified_signals_panel(ticker):
             elif _rphase == 3 and _p:     # Dağıtım fazında AL sinyali
                 _against = True
             if _against:
-                _t = f"{_t} ⚡Karşı Trend"
+                _t = f"{_t} ⚡Ana Trendin Tersinde"
                 _e = f"[Uyarı: {_regime['label']}] " + _e
                 # Gri değil — orijinal rengi koru, sadece italik + soluk badge
             gated_signals.append((_i, _t, _c, _e, _p, _d))
@@ -15923,11 +15923,11 @@ def render_unified_signals_panel(ticker):
             arr   = "↑" if is_pos else "↓"
             uid   = abs(hash(text)) % 999999
             color = "#38bdf8" if is_pos else "#f87171"
-            is_ct = "⚡Karşı Trend" in text
+            is_ct = "⚡Ana Trendin Tersinde" in text
             if is_ct:
-                _clean_text = text.replace(" ⚡Karşı Trend", "")
+                _clean_text = text.replace(" ⚡Ana Trendin Tersinde", "")
                 _ct_badge   = (" <span style='font-size:0.65rem;font-style:italic;"
-                               "color:#f59e0b;font-weight:700;opacity:0.85;'>⚡ karşı trend</span>")
+                               "color:#f59e0b;font-weight:700;opacity:0.85;'>⚡ ana trendin tersinde</span>")
                 _label_html = f"<span style='font-size:0.82rem;font-weight:600;line-height:1.3;flex:1;color:{color};'>{_clean_text}{_ct_badge}</span>"
             else:
                 _label_html = f"<span style='font-size:0.82rem;font-weight:600;line-height:1.3;flex:1;color:{color};'>{text}</span>"
