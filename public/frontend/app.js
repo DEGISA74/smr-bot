@@ -75,10 +75,7 @@ async function renderErkenRadarPreview() {
       </div>`;
     }).join('');
     const lockHtml = data.locked_count > 0
-      ? `<div class="erp-lock">
-           🔒 Diğer <b>${data.locked_count}</b> senaryo PRO üyelere açık.
-           <a href="#" onclick="openPlansModal();return false;" class="erp-cta">[PRO'ya geç]</a>
-         </div>`
+      ? `<div class="erp-lock">🔒 Daha fazlası için ELITE</div>`
       : '';
     body.innerHTML = `<div class="erp-wrap">${itemsHtml}${lockHtml}</div>`;
   } catch (err) {
