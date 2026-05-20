@@ -959,6 +959,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "SMR dünyasına adım atacaksın, beklemen yeterli.\n\n"
             "📊 *PRO* — Günde 3 analiz\n"
             "👑 *ELITE* — Günde 8 analiz + derin AI raporu\n\n"
+            "📩 *Önemli:* Bu bota /start gönderdiğin için analizlerin sana *özel DM* olarak gelecek — "
+            "kanal üyelerinin göremeyeceği şekilde, sadece sana.\n\n"
             "Henüz ödeme yapmadıysan: smartmoneyradar.app\n\n"
             "💡 _Hesabın aktifleşmediyse:_\n"
             "Shopier formuna girdiğin Telegram kullanıcı adını kontrol et. "
@@ -1583,7 +1585,10 @@ async def check_shopier_orders(context=None):
                                     text=(f"🎉 *Hoş geldin!* {_emoji} *{tier}* aboneliğin aktif.\n\n"
                                           f"Kanala katılmak için davet linkin hazır (24 saat geçerli, tek kullanımlık):\n"
                                           f"{_inv.invite_link}\n\n"
-                                          f"Bitiş tarihin: `{new_expiry}`"),
+                                          f"Bitiş tarihin: `{new_expiry}`\n\n"
+                                          f"📩 *Harika haber:* Bu bota /start gönderdiğin için "
+                                          f"kanalda isteyeceğin analizler sana *özel DM* olarak gelecek — "
+                                          f"başka kimse göremez."),
                                     parse_mode="Markdown"
                                 )
                                 auto_status += "\n🎉 Otomatik DM gönderildi (pending → aktif)"
