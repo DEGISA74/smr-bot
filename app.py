@@ -19724,7 +19724,7 @@ Zorunlu açıklamalı geçişler (örnekler — ÖNCE Türkçe, SONRA parantezde
 Açıklama olmadan kısaltma KULLANMA. Abone bir cümleyi okuyup "ne demek bu?" demesin — anlasın, devam etsin.
 
 Formatın şu şekilde olmalıdır (Alt başlıkları aynen kullan):
-TEKNİK KART:
+ALGO TESPİT RAPORU:
 1⃣🔹) Genel Değerlendirme
 - Master Skor: (Algoritmik Composite Skoru ve karar etiketini yaz; en güçlü ve en zayıf alt faktörü vurgula — örn. "Trend 100 mükemmel ama Hacim 50 zayıf")
 - Çoklu Vade Uyumu (MTF): (4H/Günlük/Haftalık/Aylık matrisinden dominant yön ve uyum oranı; vadelerin uyumlu mu yoksa çelişkili mi olduğu)
@@ -19748,7 +19748,7 @@ TEKNİK KART:
 7⃣🔹🔹 Teknik Okuma Özeti
 (Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik özeti — Master Skor ve Çoklu Vade Uyumunu mutlaka özetin çerçevesine koy. Panel'deki 7 senaryonun BİRBİRİYLE UYUMU veya ÇELİŞKİSİ üzerinden hikayeyi kur. Örn: "Yapı sağlam ↑ + Momentum hızlanıyor + Premium tutunma + Alım onayı" çakışırsa "tüm sinyaller hizalı" de; "Yapı bozuk + Sahte alım + Yorgun alıcı" çakışırsa "tuzak riski" de.
 Son olarak "📌 İzlenecek:" satırı ekle: Algoritmadan gelen Üst ve Alt Havuz seviyelerini kullanarak teknik kırılım seviyelerini belirt. YASAL UYARI — yatırım tavsiyesi verilmez, KESİNLİKLE şu ifadeler YASAK: "al", "sat", "pozisyon al/kapat", "giriş yap". Bunlar yerine teknik gözlem dili kullan: "kırılım yaşanırsa görülebilir", "test edilebilir", "hareket izlenebilir", "baskı devam edebilir", "yapı netleşebilir" — piyasanın ne yapabileceğini nesnel olarak tanımla, okuyucuya emir verme.)
-Bu 7 maddelik TEKNİK KART Algoritmamın çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
+Bu 7 maddelik ALGO TESPİT RAPORU Algoritmamın çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #BIST100 #SmartMoneyRadar #{clean_ticker}
 
 ** Dördüncü Görevin:
@@ -21456,7 +21456,7 @@ def _render_left_col():
     
     
     
-    # 5. GELİŞMİŞ TEKNİK KART
+    # 5. GELİŞMİŞ ALGO TESPİT RAPORU
     render_detail_card_advanced(st.session_state.ticker)
     
     st.markdown(f"<div style='font-size:0.9rem;font-weight:600;margin-bottom:4px; margin-top:20px;'>📡 {st.session_state.ticker} hakkında haberler ve analizler</div>", unsafe_allow_html=True)
