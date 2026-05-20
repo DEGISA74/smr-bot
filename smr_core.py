@@ -407,6 +407,15 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
         if df.index.tz is not None:
             df.index = df.index.tz_convert(None)
 
+        # HAFTA SONU FIX: yfinance bazen Cmt/Paz için Close=Cuma, Volume=0 sahte bar ekler.
+        # Hafta sonu ise ve son bar Volume=0 ise at — Cuma verisi kullanılsın.
+        from datetime import datetime as _dtnow, timezone as _tz
+        import pytz as _pytz
+        _tz_ist = _pytz.timezone("Europe/Istanbul")
+        _wknd = _dtnow.now(_tz_ist).weekday() >= 5
+        if _wknd and len(df) > 1 and float(df["Volume"].iloc[-1]) == 0:
+            df = df.iloc[:-1].copy()
+
         # isyatirimhisse hacim düzeltmesi (BIST hisseleri, endeks hariç)
         _is_bist = yf_sym.endswith(".IS") and not yf_sym.startswith(("XU", "XB", "XT"))
         if _is_bist:

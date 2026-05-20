@@ -6929,7 +6929,13 @@ def calculate_price_action_dna(ticker):
         df = get_safe_historical_data(ticker, period="6mo") 
         if df is None or len(df) < 50: return None
         # --- YENİ HACİM HESAPLAMALARI (ADIM 2) BURAYA EKLENDİ ---
-        df = df[df['Close'] > 0].copy() # Sadece hacmi olan günleri değil, fiyatı olan her günü al (Canlı mumu yakalamak için) 
+        df = df[df['Close'] > 0].copy() # Sadece hacmi olan günleri değil, fiyatı olan her günü al (Canlı mumu yakalamak için)
+        # HAFTA SONU / TATIL FIX: yfinance bazen Cumartesi/Pazar'a Close=Cuma, Volume=0 sahte bar ekler.
+        # Hafta sonu ise ve son bar Volume=0 ise o barı at — bir önceki gerçek işlem günü (Cuma) kullanılsın.
+        # Hafta içi seans saatlerinde bu filtreyi UYGULAMA — canlı mum Volume=0 ile başlar, geçerli.
+        _wknd_now = datetime.now(_TZ_ISTANBUL).weekday() >= 5  # 5=Cmt, 6=Paz
+        if _wknd_now and len(df) > 1 and float(df['Volume'].iloc[-1]) == 0:
+            df = df.iloc[:-1].copy()
         if len(df) < 20: return None
         df = calculate_volume_delta(df)
         _vp = calculate_full_volume_profile(df, lookback=20, bins=20)
