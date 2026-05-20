@@ -15486,12 +15486,13 @@ def render_unified_signals_panel(ticker):
             _hl = (-_hd.where(_hd < 0, 0)).rolling(14).mean().replace(0, 1e-5)
             _hr = (100 - 100 / (1 + _hg / _hl)).dropna().values
             if len(_hr) >= 3:
-                _ho2 = np.zeros(len(_hr)); _hc2 = np.zeros(len(_hr))
-                for _ii in range(len(_hr)):
-                    if _ii == 0: _ho2[_ii] = _hc2[_ii] = _hr[_ii]
+                _hr_use = _hr[-80:] if len(_hr) > 80 else _hr  # Sadece son 80 bar yeter (HA 30+ iterasyonda konverjans sağlar)
+                _ho2 = np.zeros(len(_hr_use)); _hc2 = np.zeros(len(_hr_use))
+                for _ii in range(len(_hr_use)):
+                    if _ii == 0: _ho2[_ii] = _hc2[_ii] = _hr_use[_ii]
                     else:
                         _ho2[_ii] = (_ho2[_ii-1] + _hc2[_ii-1]) / 2
-                        _hc2[_ii] = (_hr[_ii] + _ho2[_ii] + max(_hr[_ii], _ho2[_ii]) + min(_hr[_ii], _ho2[_ii])) / 4
+                        _hc2[_ii] = (_hr_use[_ii] + _ho2[_ii] + max(_hr_use[_ii], _ho2[_ii]) + min(_hr_use[_ii], _ho2[_ii])) / 4
                 _harsi_days = _streak([_hc2[i] > _ho2[i] for i in range(len(_hc2))])
         except: _harsi_days = 1
 
@@ -19685,67 +19686,69 @@ Yukarıdaki saf matematiksel verileri (Özellikle "Algoritmik 8 Maddelik Laborat
 
 *** JARGON FİLTRESİ — KRİTİK KURAL (HERKES ANLASIN!) ***
 Bu kart, teknik analizden anlamayan abonelere de gidiyor. Yani:
-- Teknik terim/kısaltma KULLANMAYI yasaklamıyorum — kullan ama YANINDA SADE TÜRKÇE AÇIKLAMASINI parantez veya tire ile mutlaka ekle.
-- Format: "TERİM (sade açıklama)" veya "TERİM — sade açıklama"
+- Teknik terim/kısaltma KULLANMAYI yasaklamıyorum — kullan ama YANINDA SADE TÜRKÇE AÇIKLAMASINI parantez ile mutlaka ekle.
+- Format: ÖNCE Türkçe adı/açıklama, SONRA İngilizce kısaltma parantezde → "Türkçe Adı (İNG_KISALTMA)"
+- "TERİM — yani açıklama" veya "TERİM (açıklama)" KULLANMA — çünkü okuyucu ilk kelimede takılıyor.
 - Aynı terim **ilk geçtiği yerde** açıklanır, sonra kısa kullanılır.
 
-Zorunlu açıklamalı geçişler (örnekler):
-- HH+HL → "HH+HL (yüksek dipler ve yüksek tepeler — klasik yükseliş yapısı)"
-- LH+LL → "LH+LL (alçalan tepeler ve dipler — klasik düşüş yapısı)"
-- CHoCH up/down → "CHoCH (yapı dönüşü — trend yön değiştiriyor)"
-- Megafon → "Megafon (genişleyen volatilite — sağlıksız sinyal)"
+Zorunlu açıklamalı geçişler (örnekler — ÖNCE Türkçe, SONRA parantezde kısaltma):
+- HH+HL → "Yükselen Tepeler ve Dipler (HH+HL) — klasik yükseliş yapısı"
+- LH+LL → "Alçalan Tepeler ve Dipler (LH+LL) — klasik düşüş yapısı"
+- CHoCH up/down → "Yapı Dönüşü (CHoCH) — trend yön değiştiriyor"
+- Megafon → "Genişleyen Volatilite (Megafon) — sağlıksız sinyal"
 - CP (Kapanış Konumu) → "Kapanış Konumu (mum gövdesinin günlük aralıkta nerede kapandığı — %75+ alıcı, %25- satıcı baskın demek)"
-- RSI Slope → "RSI Eğimi (momentum hızının yönü)"
-- MACD → "MACD (hızlı/yavaş ortalama farkı — momentum göstergesi)"
-- Regular Bear → "Klasik Negatif Uyumsuzluk (fiyat yeni tepe yaparken ivme yapmıyor — alıcı tükeniyor)"
-- Regular Bull → "Klasik Pozitif Uyumsuzluk (fiyat yeni dip yaparken ivme dip yapmıyor — satıcı tükeniyor)"
-- Hidden Bull / Bear → "Gizli Pozitif/Negatif Uyumsuzluk (trend devam sinyali)"
-- HARSI → "HARSI (Heikin Ashi RSI — gürültüden arınmış momentum)"
-- VSA → "VSA (Hacim-Mum Anatomisi)"
-- Climax → "Climax (zirvede yüksek hacim + doji — dönüş yakın)"
-- Üst/Alt rejekti → "Üst Rejekti (yüksek hacim + üst fitil — dağıtım) / Alt Rejekti (yüksek hacim + alt fitil — toplama)"
-- Sahte alım/satım → "Sahte Alım/Satım (düşük hacim — talep/arz yok demek)"
-- Delta → "Delta (alıcı/satıcı hacim farkı)"
-- Churning → "Churning (yüksek hacim ama yön yok — pasif emir oyunu)"
-- OBV → "OBV (hacim akışı endeksi)"
-- FVG → "FVG (fiyat boşluğu — geri dönüş seviyesi)"
-- Order Block (OB) → "Talep Bölgesi (büyük alıcının önce pozisyon aldığı seviye)" veya "Arz Bölgesi (satış yoğunluğu)"
-- EQH / EQL → "Eşit Tepe / Eşit Dip (likidite havuzu)"
-- BOS → "Yapı Kırılımı (önemli seviyenin aşılması)"
-- MTF → "Çoklu Vade Uyumu"
-- Discount/Premium → "Discount (ucuz bölge) / Premium (pahalı bölge)"
-- V-bottom → "V-Dönüş (sert toparlanma)"
+- RSI Slope → "Momentum Eğimi (RSI Slope) — ivmenin yönü"
+- MACD → "Momentum Göstergesi (MACD) — hızlı/yavaş ortalama farkı"
+- Regular Bear → "Klasik Negatif Uyumsuzluk (Regular Bear) — fiyat yeni tepe yaparken ivme yapamıyor, alıcı tükeniyor"
+- Regular Bull → "Klasik Pozitif Uyumsuzluk (Regular Bull) — fiyat yeni dip yaparken ivme dip yapmıyor, satıcı tükeniyor"
+- Hidden Bull / Bear → "Gizli Uyumsuzluk (Hidden Bull/Bear) — trend devam sinyali"
+- HARSI → "Gürültüsüz Momentum (HARSI) — Heikin Ashi RSI"
+- VSA → "Hacim-Mum Anatomisi (VSA)"
+- Climax → "Dönüş Uyarısı (Climax) — zirvede yüksek hacim + doji"
+- Üst/Alt rejekti → "Üst Ret (yüksek hacim + üst fitil — dağıtım) / Alt Ret (yüksek hacim + alt fitil — toplama)"
+- Sahte alım/satım → "Sahte Alım/Satım (düşük hacim — talep/arz yok)"
+- Delta → "Alıcı/Satıcı Hacim Farkı (Delta)"
+- Churning → "Pasif Emir Oyunu (Churning) — yüksek hacim ama yön yok"
+- OBV → "Hacim Akışı Endeksi (OBV)"
+- FVG → "Fiyat Boşluğu (FVG) — geri dönüş seviyesi"
+- Order Block (OB) → "Talep Bölgesi (OB) — büyük alıcının önce pozisyon aldığı seviye" veya "Arz Bölgesi (OB) — satış yoğunluğu"
+- EQH / EQL → "Eşit Tepe / Eşit Dip (EQH/EQL) — likidite havuzu"
+- BOS → "Yapı Kırılımı (BOS) — önemli seviyenin aşılması"
+- MTF → "Çoklu Vade Uyumu (MTF)"
+- Discount/Premium → "Ucuz Bölge (Discount) / Pahalı Bölge (Premium)"
+- V-bottom → "V-Dönüş — sert toparlanma"
 - U-top → "Üstten Düşüş"
-- VWAP → "VWAP (hacim ağırlıklı ortalama fiyat — kurumsal referans)"
-- Bollinger Band (BB) → "Bollinger Bandı (fiyat volatilite bandı)"
+- VWAP → "Hacim Ağırlıklı Ortalama Fiyat (VWAP) — kurumsal referans"
+- Bollinger Band (BB) → "Volatilite Bandı (Bollinger) — fiyat sıkışma/genişleme aralığı"
 
 Açıklama olmadan kısaltma KULLANMA. Abone bir cümleyi okuyup "ne demek bu?" demesin — anlasın, devam etsin.
 
 Formatın şu şekilde olmalıdır (Alt başlıkları aynen kullan):
 TEKNİK KART:
-1⃣🔹) Genel Sentez (Composite Skor + Vade Uyumu)
+1⃣🔹) Genel Değerlendirme
 - Master Skor: (Algoritmik Composite Skoru ve karar etiketini yaz; en güçlü ve en zayıf alt faktörü vurgula — örn. "Trend 100 mükemmel ama Hacim 50 zayıf")
-- Vade Uyumu (MTF): (4H/Günlük/Haftalık/Aylık matrisinden dominant yön ve uyum oranı; vadelerin uyumlu mu yoksa çelişkili mi olduğu)
+- Çoklu Vade Uyumu (MTF): (4H/Günlük/Haftalık/Aylık matrisinden dominant yön ve uyum oranı; vadelerin uyumlu mu yoksa çelişkili mi olduğu)
 2⃣🔹) Yapı & Fiyat Davranışı
-- Trend Yapısı: (GENEL ÖZET PANEL'deki "YAPI" satırını kullan — HH+HL / LH+LL / CHoCH up/down / Megafon / Üçgen sıkışma / Yatay range / Yarı yapı'dan hangisi aktif? CHoCH varsa "dönüş başlıyor", megafon varsa "sağlıksız volatilite", üçgen varsa "kırılım yakın" vurgusu yap.)
-- Mum & Fitil (Kapanış Konumu): (Panel'deki "Mum (Kapanış Konumu)" satırını kullan — Son 5g kapanış konumu × önceki 5g referansı. Alıcı kontrolü var / Alıcı agresif / Alıcı baskısı oluştu / Alıcı baskısı sürüyor / Alıcı zayıflıyor / Satıcı kontrolü var / Satıcı agresif / Satıcı baskısı oluştu / Satıcı baskısı sürüyor / Kararsız — 10 senaryodan hangisi aktif? Bu okuma "kim kontrol ediyor" sorusuna objektif cevaptır.)
+- Trend Yapısı: (GENEL ÖZET PANEL'deki "YAPI" satırını kullan — Yükselen Tepeler ve Dipler (HH+HL) / Alçalan Tepeler ve Dipler (LH+LL) / Yapı Dönüşü (CHoCH) up/down / Genişleyen Volatilite (Megafon) / Üçgen sıkışma / Yatay range / Yarı yapı'dan hangisi aktif? CHoCH varsa "dönüş başlıyor", megafon varsa "sağlıksız volatilite", üçgen varsa "kırılım yakın" vurgusu yap.)
+- Mum & Fitil — Kapanış Konumu: (Panel'deki "Mum (Kapanış Konumu)" satırını kullan — Son 5g kapanış konumu × önceki 5g referansı. Alıcı kontrolü var / Alıcı agresif / Alıcı baskısı oluştu / Alıcı baskısı sürüyor / Alıcı zayıflıyor / Satıcı kontrolü var / Satıcı agresif / Satıcı baskısı oluştu / Satıcı baskısı sürüyor / Kararsız — 10 senaryodan hangisi aktif? Bu okuma "kim kontrol ediyor" sorusuna objektif cevaptır.)
 - Formasyon Durumu: (Grafikte gördüğün OBO, TOBO, Bayrak vs. formasyon ve ikili/üçlü mum yapıları — formasyon yoksa bu satırı atla)
-3⃣🔹) Momentum & Vade Uyumu
-- RSI Slope & MACD: (GENEL ÖZET PANEL'deki "MOMENTUM SLOPE" satırını kullan — RSI seviyesi DEĞİL, 5g'lik DEĞİŞİM. Sert dönüş / Toparlanma / Trend hızlanıyor / Yatay / Yavaşlıyor / Aşağı ivme / Tepe geri çekilme'den hangisi aktif? Seviye yorumu yapacaksan panel'deki RSI seviyesi etiketini (zayıf/nötr/güçlü) kullan, "alım bölgesi" gibi vague ifadeler KULLANMA.)
-- Uyumsuzluk (Divergence): (Panel'deki "RSI DIVERGENCE" satırını kullan — 5 tip var: Regular Bull (dönüş yakın yukarı), Regular Bear (dönüş yakın aşağı), Hidden Bull (yükseliş trendi devam), Hidden Bear (düşüş trendi devam), Yok. Regular ve Hidden farklı şeyler — karıştırma. Regular "tükenme" sinyalidir, Hidden "trend devam ediyor" sinyalidir.)
-- MTF Momentum: (Kısa/orta/uzun vade momentum uyumu; hangi periyotta zayıflama başladı?)
-4⃣🔹) Hacim, Efor ve Akıllı Para İzi (VSA)
-- Hacim/Mum Uyumu (VSA): (GENEL ÖZET PANEL'deki "VSA" satırını kullan — 9 senaryo: Alım onayı ★, Satım onayı ★, Climax ⚠⚠ (dönüş yakın), Üst rejekti ⤵ (dağıtım), Alt rejekti ⤴ (toplama), Sahte alım ⚠ (no demand), Sahte satım ⚠ (no supply), Ölü piyasa, Normal. Climax/Üst rejekti varsa tepe sinyali, Alt rejekti varsa dip sinyali, Sahte alım/satım varsa tuzak uyarısı.)
-- Kurumsal Akış: (OBV, Delta, kurumsal emilim/çıkış izleri; panel'deki VSA ile Smart Money Volume verisini birlikte değerlendir)
-5⃣🔹) Likidite & Kritik Bantlar
-- Range Konumu: (GENEL ÖZET PANEL'deki "RANGE (20g)" satırını kullan — Discount / Premium / V-bottom / U-top / Toparlanma / Premium kaybı / Premium tutunma / Tepede tıkalı / Dipte tutunma / Orta gibi 9 senaryodan hangisi aktif? Range konumu fiyatın 20g aralıkta nerede olduğunu ve 5g önce neredeydiyse bunu gösterir.)
+3⃣🔹) Momentum & İvme
+- Momentum Eğimi (RSI Slope) & MACD: (GENEL ÖZET PANEL'deki "MOMENTUM SLOPE" satırını kullan — RSI seviyesi DEĞİL, 5g'lik DEĞİŞİM. Sert dönüş / Toparlanma / Trend hızlanıyor / Yatay / Yavaşlıyor / Aşağı ivme / Tepe geri çekilme'den hangisi aktif? Seviye yorumu yapacaksan panel'deki RSI seviyesi etiketini (zayıf/nötr/güçlü) kullan, "alım bölgesi" gibi vague ifadeler KULLANMA.)
+- Momentum Uyumsuzluğu: (Panel'deki "RSI DIVERGENCE" satırını kullan — 5 tip var: Klasik Pozitif Uyumsuzluk (Regular Bull) / Klasik Negatif Uyumsuzluk (Regular Bear) / Gizli Pozitif Uyumsuzluk (Hidden Bull) / Gizli Negatif Uyumsuzluk (Hidden Bear) / Yok. Klasik (Regular) = "tükenme" sinyali; Gizli (Hidden) = "trend devam" sinyali — karıştırma.)
+- Çoklu Vade Momentum (MTF): (Kısa/orta/uzun vade momentum uyumu; hangi periyotta zayıflama başladı?)
+4⃣🔹) Hacim & Akıllı Para
+- Hacim-Mum Anatomisi (VSA): (GENEL ÖZET PANEL'deki "VSA" satırını kullan — 9 senaryo: Alım onayı ★, Satım onayı ★, Dönüş Uyarısı (Climax) ⚠⚠, Üst Ret ⤵ (dağıtım), Alt Ret ⤴ (toplama), Sahte alım ⚠, Sahte satım ⚠, Ölü piyasa, Normal. Climax/Üst ret varsa tepe sinyali, Alt ret varsa dip sinyali, Sahte alım/satım varsa tuzak uyarısı.)
+- Kurumsal Akış: (Hacim Akışı Endeksi (OBV), Alıcı/Satıcı Hacim Farkı (Delta), kurumsal emilim/çıkış izleri; panel'deki VSA ile Smart Money Volume verisini birlikte değerlendir)
+5⃣🔹) Kritik Seviyeler
+- Aralık Konumu: (GENEL ÖZET PANEL'deki "RANGE (20g)" satırını kullan — Ucuz Bölge (Discount) / Pahalı Bölge (Premium) / V-Dönüş / Üstten Düşüş (U-top) / Toparlanma / Premium kaybı / Premium tutunma / Tepede tıkalı / Dipte tutunma / Orta gibi 9 senaryodan hangisi aktif? Aralık konumu fiyatın 20g aralıkta nerede olduğunu ve 5g önce neredeydiyse bunu gösterir.)
 - Üst Havuz: (Fiyatın üstündeki en yakın likidite / kritik seviye)
 - Alt Havuz: (Fiyatın altındaki en yakın likidite / kritik seviye)
 6⃣🔹) Trend Skoru ve Enerji
 - Enerji Puanı: (Algoritmadan gelen Skoru yaz ve grafikteki sıkışmayı/momentumu yorumla)
 7⃣🔹🔹 Teknik Okuma Özeti
-(Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik özeti — Composite Skor ve Vade Uyumunu mutlaka özetin çerçevesine koy. Panel'deki 7 senaryonun BİRBİRİYLE UYUMU veya ÇELİŞKİSİ üzerinden hikayeyi kur. Örn: "Yapı sağlam ↑ + Momentum hızlanıyor + Premium tutunma + Alım onayı" çakışırsa "tüm sinyaller hizalı" de; "Yapı bozuk + Sahte alım + Yorgun alıcı" çakışırsa "tuzak riski" de.)
-Bu 7 maddelik TEKNİK KART Algoritmamın çıktısıdır.Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
+(Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik özeti — Master Skor ve Çoklu Vade Uyumunu mutlaka özetin çerçevesine koy. Panel'deki 7 senaryonun BİRBİRİYLE UYUMU veya ÇELİŞKİSİ üzerinden hikayeyi kur. Örn: "Yapı sağlam ↑ + Momentum hızlanıyor + Premium tutunma + Alım onayı" çakışırsa "tüm sinyaller hizalı" de; "Yapı bozuk + Sahte alım + Yorgun alıcı" çakışırsa "tuzak riski" de.
+Son olarak "📌 İzlenecek:" satırı ekle: Algoritmadan gelen Üst ve Alt Havuz seviyelerini kullanarak teknik kırılım seviyelerini belirt. YASAL UYARI — yatırım tavsiyesi verilmez, KESİNLİKLE şu ifadeler YASAK: "al", "sat", "pozisyon al/kapat", "giriş yap". Bunlar yerine teknik gözlem dili kullan: "kırılım yaşanırsa görülebilir", "test edilebilir", "hareket izlenebilir", "baskı devam edebilir", "yapı netleşebilir" — piyasanın ne yapabileceğini nesnel olarak tanımla, okuyucuya emir verme.)
+Bu 7 maddelik TEKNİK KART Algoritmamın çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #BIST100 #SmartMoneyRadar #{clean_ticker}
 
 ** Dördüncü Görevin:
