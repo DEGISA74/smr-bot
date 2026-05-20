@@ -164,6 +164,84 @@ def _fetch_bist_volume_isyatirim(symbol, start_date, end_date):
         return None
 
 
+def _fetch_bist_ohlcv_isyatirim(symbol, start_date, end_date):
+    """
+    İş Yatırım API'sinden BIST hisse tam OHLCV verisi çeker.
+    yfinance'in bölünme/temettü adjusted price hatalarını giderir.
+    Volume = HGDG_HACIM (TL) / HGDG_AOF (ağırlıklı ort. fiyat) → hisse adedi
+    Returns: DataFrame (Open, High, Low, Close, Volume, DatetimeIndex) veya None
+    """
+    try:
+        from isyatirimhisse import fetch_stock_data
+        _sym = symbol.replace(".IS", "").replace(".is", "").upper()
+        from datetime import datetime as _dtime
+        _s = _dtime.strptime(start_date, "%Y-%m-%d").strftime("%d-%m-%Y")
+        _e = _dtime.strptime(end_date,   "%Y-%m-%d").strftime("%d-%m-%Y")
+        df_isy = fetch_stock_data(symbols=_sym, start_date=_s, end_date=_e)
+        if df_isy is None or df_isy.empty:
+            return None
+        required = {'HGDG_TARIH', 'HGDG_ACILIS', 'HGDG_MAX', 'HGDG_MIN', 'HGDG_KAPANIS', 'HGDG_AOF', 'HGDG_HACIM'}
+        if not required.issubset(df_isy.columns):
+            return None
+        df_isy = df_isy[df_isy['HGDG_AOF'] > 0].copy()
+        idx = pd.to_datetime(df_isy['HGDG_TARIH'])
+        idx = idx.dt.tz_localize(None) if idx.dt.tz is not None else idx
+        df_out = pd.DataFrame({
+            'Open':   df_isy['HGDG_ACILIS'].values,
+            'High':   df_isy['HGDG_MAX'].values,
+            'Low':    df_isy['HGDG_MIN'].values,
+            'Close':  df_isy['HGDG_KAPANIS'].values,
+            'Volume': (df_isy['HGDG_HACIM'] / df_isy['HGDG_AOF']).values,
+        }, index=idx)
+        df_out = df_out[df_out['Close'] > 0].dropna()
+        return df_out if not df_out.empty else None
+    except ImportError:
+        return None
+    except Exception as _e:
+        import logging as _lg
+        _lg.warning(f"[_fetch_bist_ohlcv_isyatirim] {symbol} hata: {_e}")
+        return None
+
+
+def _apply_split_adjustments(df):
+    """
+    BIST bedelsiz artırım / bölünme tespiti ve geriye dönük fiyat düzeltmesi.
+    BIST günlük fiyat limiti ±%10 → tek günde >%20 düşüş kesinlikle bölünme.
+    Birden fazla bölünme varsa hepsini kronolojik sırayla yakalar.
+    Volume ters yönde düzeltilir (daha fazla hisse = daha fazla volume).
+    """
+    if df is None or df.empty or len(df) < 5:
+        return df
+    df = df.copy().sort_index()
+    price_cols = [c for c in ['Open', 'High', 'Low', 'Close'] if c in df.columns]
+    if 'Close' not in df.columns:
+        return df
+    import logging as _lg
+    for _ in range(10):  # max 10 bölünme — sonsuz döngü koruması
+        closes = df['Close'].ffill().values
+        split_found = False
+        for i in range(1, len(closes)):
+            prev, curr = closes[i - 1], closes[i]
+            if prev <= 0 or curr <= 0:
+                continue
+            ratio = prev / curr
+            if ratio >= 1.20:  # >%20 tek günlük düşüş → bölünme/bedelsiz artırım
+                for col in price_cols:
+                    df.iloc[:i, df.columns.get_loc(col)] = (
+                        df.iloc[:i][col].values / ratio
+                    )
+                if 'Volume' in df.columns:
+                    df.iloc[:i, df.columns.get_loc('Volume')] = (
+                        df.iloc[:i]['Volume'].values * ratio
+                    )
+                _lg.info(f"[split_adj] Bölünme düzeltildi: satır={i} oran=x{ratio:.2f}")
+                split_found = True
+                break  # closes güncellendi, dışarı çık ve tekrar tara
+        if not split_found:
+            break
+    return df
+
+
 def _fix_stale_volume(df_base, clean_ticker, interval):
     """
     start/end ile gelen veride Volume=0 (bozuk) günler varsa,
@@ -1419,15 +1497,15 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 df_new = safe_clean_columns(df_new)
                 if df_new.index.tz is not None:
                     df_new.index = df_new.index.tz_convert(None)
-                # İSYATIRIM HACIM ENTEGRASYONU (BIST hisseleri, endeks hariç)
-                # yfinance Volume=0 bug'ını köklü çözer: Volume sütununu İş Yatırım'dan al.
+                # İSYATIRIM OHLCV ENTEGRASYONU (BIST hisseleri, endeks hariç)
+                # yfinance'in bölünme/temettü adjusted price + Volume=0 hatalarını giderir.
                 _is_bist_stock = (".IS" in ticker or "BIST" in ticker) and not ticker.startswith(("XU", "XB", "XT"))
                 if _is_bist_stock and interval == "1d":
-                    _isy_vol = _fetch_bist_volume_isyatirim(clean_ticker, _start, _end)
-                    if _isy_vol is not None and len(_isy_vol) > 0:
-                        _common = df_new.index.intersection(_isy_vol.index)
+                    _isy_ohlcv = _fetch_bist_ohlcv_isyatirim(clean_ticker, _start, _end)
+                    if _isy_ohlcv is not None and len(_isy_ohlcv) > 5:
+                        _common = df_new.index.intersection(_isy_ohlcv.index)
                         if len(_common) > 0:
-                            df_new.loc[_common, 'Volume'] = _isy_vol.loc[_common]
+                            df_new.loc[_common, ['Open', 'High', 'Low', 'Close', 'Volume']] = _isy_ohlcv.loc[_common]
                     else:
                         # isyatirimhisse başarısız → eski parquet hacim koruması
                         if 'Volume' in df_cached.columns:
@@ -1438,6 +1516,8 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                                 _rx = _ci[_nz & _ov]
                                 if len(_rx) > 0:
                                     df_new.loc[_rx, 'Volume'] = df_cached.loc[_rx, 'Volume']
+                if _is_bist_stock and interval == "1d":
+                    df_new = _apply_split_adjustments(df_new)
                 df_new.to_parquet(file_path)
                 return apply_volume_projection(df_new.tail(500).copy(), ticker)
 
@@ -1467,17 +1547,20 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 # tz-aware ise convert, tz-naive ise dokunma
                 if df_full.index.tz is not None:
                     df_full.index = df_full.index.tz_convert(None)
-                # İSYATIRIM HACIM ENTEGRASYONU (BIST hisseleri, endeks hariç)
+                # İSYATIRIM OHLCV ENTEGRASYONU (BIST hisseleri, endeks hariç)
+                # yfinance'in bölünme/temettü adjusted price + Volume=0 hatalarını giderir.
                 _is_bist_stock = (".IS" in ticker or "BIST" in ticker) and not ticker.startswith(("XU", "XB", "XT"))
                 if _is_bist_stock and interval == "1d":
-                    _isy_vol = _fetch_bist_volume_isyatirim(clean_ticker, _start, _end)
-                    if _isy_vol is not None and len(_isy_vol) > 0:
-                        _common = df_full.index.intersection(_isy_vol.index)
+                    _isy_ohlcv = _fetch_bist_ohlcv_isyatirim(clean_ticker, _start, _end)
+                    if _isy_ohlcv is not None and len(_isy_ohlcv) > 5:
+                        _common = df_full.index.intersection(_isy_ohlcv.index)
                         if len(_common) > 0:
-                            df_full.loc[_common, 'Volume'] = _isy_vol.loc[_common]
+                            df_full.loc[_common, ['Open', 'High', 'Low', 'Close', 'Volume']] = _isy_ohlcv.loc[_common]
                     # isyatirimhisse başarısız → _fix_stale_volume fallback
                     elif _volume_is_stale(df_full, ticker):
                         df_full = _fix_stale_volume(df_full, clean_ticker, interval)
+                if _is_bist_stock and interval == "1d":
+                    df_full = _apply_split_adjustments(df_full)
                 df_full.to_parquet(file_path)
                 return apply_volume_projection(df_full.tail(500).copy(), ticker)
             else:

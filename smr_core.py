@@ -431,6 +431,29 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
             except Exception:
                 pass
 
+        # Bölünme / bedelsiz artırım retroaktif düzeltme (BIST, günlük)
+        # BIST ±%10 devre kesici → tek günde >%20 düşüş kesinlikle bölünme
+        if _is_bist:
+            price_cols = [c for c in ["Open", "High", "Low", "Close"] if c in df.columns]
+            for _ in range(10):
+                closes = df["Close"].ffill().values
+                split_found = False
+                for i in range(1, len(closes)):
+                    prev_c, curr_c = closes[i - 1], closes[i]
+                    if prev_c <= 0 or curr_c <= 0:
+                        continue
+                    ratio = prev_c / curr_c
+                    if ratio >= 1.20:
+                        for col in price_cols:
+                            df.iloc[:i, df.columns.get_loc(col)] = df.iloc[:i][col].values / ratio
+                        if "Volume" in df.columns:
+                            df.iloc[:i, df.columns.get_loc("Volume")] = df.iloc[:i]["Volume"].values * ratio
+                        log.info(f"[split_adj] {yf_sym} bölünme düzeltildi: satır={i} oran=x{ratio:.2f}")
+                        split_found = True
+                        break
+                if not split_found:
+                    break
+
         log.info(f"get_data: {yf_sym} → {len(df)} bar")
         return df
 
