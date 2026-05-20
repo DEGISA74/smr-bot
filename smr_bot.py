@@ -531,7 +531,11 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── DM AKIŞI: PRO / ELİTE kanallarında analiz sadece isteyen kişiye DM gider ──
     # FREE kanalında veya DM hedefi belirlenemiyorsa kanal fallback kullanılır.
+    log.info(f"[DM-DEBUG] chat_id={chat_id} PRO={PRO_ID} ELITE={ELITE_ID} "
+             f"from_user={msg.from_user} user_id={user_id} "
+             f"is_channel_post={bool(update.channel_post)}")
     dm_target = user_id if (msg.from_user and chat_id in (PRO_ID, ELITE_ID)) else None
+    log.info(f"[DM-DEBUG] dm_target={dm_target}")
     dm_ok     = False
 
     if dm_target:
