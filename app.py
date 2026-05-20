@@ -15931,18 +15931,11 @@ def render_unified_signals_panel(ticker):
                 _label_html = f"<span style='font-size:0.82rem;font-weight:600;line-height:1.3;flex:1;color:{color};'>{_clean_text}{_ct_badge}</span>"
             else:
                 _label_html = f"<span style='font-size:0.82rem;font-weight:600;line-height:1.3;flex:1;color:{color};'>{text}</span>"
-            # Gün sayısı badge
+            # Gün sayısı badge — sinyal rengiyle aynı (color = mavi olumlu / kırmızı olumsuz)
             _d = max(int(days), 1)
-            if _d == 1:
-                _dc = "#38bdf8"; _dl = "yeni"
-            elif _d <= 5:
-                _dc = "#fbbf24"; _dl = f"{_d}g"
-            elif _d <= 14:
-                _dc = "#10b981"; _dl = f"{_d}g"
-            else:
-                _dc = "#4ade80"; _dl = f"{_d}g" if _d < 30 else "30g+"
-            _days_badge = (f"<span style='font-size:0.57rem;font-weight:800;color:{_dc};"
-                           f"background:{_dc}18;padding:1px 5px;border-radius:3px;"
+            _dl = "yeni" if _d == 1 else (f"{_d}g" if _d < 30 else "30g+")
+            _days_badge = (f"<span style='font-size:0.68rem;font-weight:800;color:{color};"
+                           f"background:{color}18;padding:1px 5px;border-radius:3px;"
                            f"flex-shrink:0;letter-spacing:0.02em;'>{_dl}</span>")
             return (
                 f"<div class='usp-row' id='ur{uid}' style='border-bottom:1px solid rgba(255,255,255,0.05);cursor:default;'>"
