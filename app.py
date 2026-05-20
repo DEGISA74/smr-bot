@@ -15435,7 +15435,7 @@ def render_unified_signals_panel(ticker):
         # Kısa vade — her zaman göster
         _kv_show = True
 
-        # signals: (icon, text, color, edu_note, is_positive)
+        # signals: (icon, text, color, edu_note, is_positive, days_active)
         signals = []
 
         bench_cat = st.session_state.get('category', 'BIST')
@@ -15465,20 +15465,74 @@ def render_unified_signals_panel(ticker):
         st.session_state["_last_regime"]     = _regime
         st.session_state["_last_conviction"] = _conviction
 
+        # ── Sinyal gün sayısı (streak) ön hesaplama ──────────────────
+        # Her sinyal için kaç gündür aynı yönde olduğu hesaplanır.
+        # STP: process_single_stock_stp'den gelir (stp['data']['Gun'])
+        # HARSI/OBV/RS: seri tabanlı — hızlı, doğru
+        # Diğerleri: 1 (nokta-in-time sinyal, geçmişe bakmak pahalı)
+        def _streak(bool_list, max_look=25):
+            """Sondaki ardışık aynı-durumlu bar sayısı (min 1)."""
+            if not bool_list: return 1
+            cur = bool_list[-1]; cnt = 0
+            for v in reversed(bool_list[-max_look:]):
+                if v == cur: cnt += 1
+                else: break
+            return max(cnt, 1)
+
+        _harsi_days = 1
+        try:
+            _hd = df['Close'].diff()
+            _hg = _hd.where(_hd > 0, 0).rolling(14).mean()
+            _hl = (-_hd.where(_hd < 0, 0)).rolling(14).mean().replace(0, 1e-5)
+            _hr = (100 - 100 / (1 + _hg / _hl)).dropna().values
+            if len(_hr) >= 3:
+                _ho2 = np.zeros(len(_hr)); _hc2 = np.zeros(len(_hr))
+                for _ii in range(len(_hr)):
+                    if _ii == 0: _ho2[_ii] = _hc2[_ii] = _hr[_ii]
+                    else:
+                        _ho2[_ii] = (_ho2[_ii-1] + _hc2[_ii-1]) / 2
+                        _hc2[_ii] = (_hr[_ii] + _ho2[_ii] + max(_hr[_ii], _ho2[_ii]) + min(_hr[_ii], _ho2[_ii])) / 4
+                _harsi_days = _streak([_hc2[i] > _ho2[i] for i in range(len(_hc2))])
+        except: _harsi_days = 1
+
+        _obv_days = 1
+        try:
+            _obv_s = (df['Volume'] * np.where(df['Close'] >= df['Close'].shift(1), 1, -1)).cumsum()
+            _obv_d = [bool(x) for x in (_obv_s.rolling(5).mean().diff() > 0).dropna().values]
+            _obv_days = _streak(_obv_d)
+        except: _obv_days = 1
+
+        _rs_days = 1
+        try:
+            if bench_s is not None and len(df) >= 7:
+                _bs = bench_s if isinstance(bench_s, pd.Series) else (bench_s['Close'] if 'Close' in bench_s else bench_s.iloc[:, 0])
+                _ci = df.index.intersection(_bs.index)
+                if len(_ci) >= 6:
+                    _sr5 = df['Close'].reindex(_ci).pct_change(5).dropna()
+                    _br5 = _bs.reindex(_ci).reindex(_sr5.index).dropna()
+                    _common2 = _sr5.index.intersection(_br5.index)
+                    if len(_common2) >= 3:
+                        _rsl = [bool(s > b) for s, b in zip(_sr5.reindex(_common2).values, _br5.reindex(_common2).values)]
+                        _rs_days = _streak(_rsl)
+        except: _rs_days = 1
+        # ─────────────────────────────────────────────────────────────
+
         # ── 1. STP ──────────────────────────────────────────────────
         try:
             stp = process_single_stock_stp(ticker, df)
             if stp:
                 if stp['type'] == 'cross_up':
-                    signals.append(("⚡","STP Yukarı Kesişim","#15803d","Kısa vadeli alıcılar iştahlandı. Fiyat denge noktasını yukarı kırdı, taze bir yükseliş ivmesi tetiklendi.",True))
+                    signals.append(("⚡","STP Yukarı Kesişim","#15803d","Kısa vadeli alıcılar iştahlandı. Fiyat denge noktasını yukarı kırdı, taze bir yükseliş ivmesi tetiklendi.",True,1))
                 elif stp['type'] == 'cross_down':
-                    signals.append(("🔻","STP Aşağı Kesişim","#f87171","Kısa vadeli satıcı baskısı taze. Denge noktası aşağı kırıldı — likidite çıkışı başladı.",False))
+                    signals.append(("🔻","STP Aşağı Kesişim","#f87171","Kısa vadeli satıcı baskısı taze. Denge noktası aşağı kırıldı — likidite çıkışı başladı.",False,1))
                 elif stp['type'] == 'trend_up':
                     g = stp['data'].get('Gun','?')
-                    signals.append(("📈",f"STP Yükseliş Trendi ({g} gün)","#0369a1",f"Alıcılar {g} gündür kontrolde. Trend devam ettiği sürece dip alımları geçerli strateji.",True))
+                    _g_days = int(g) if str(g).isdigit() else 1
+                    signals.append(("📈",f"STP Yükseliş Trendi","#0369a1",f"Alıcılar {g} gündür kontrolde. Trend devam ettiği sürece dip alımları geçerli strateji.",True,_g_days))
                 elif stp['type'] == 'trend_down':
                     g = stp['data'].get('Gun','?')
-                    signals.append(("📉",f"STP Düşüş Trendi ({g} gün)","#b91c1c",f"Satıcılar {g} gündür baskıda. Tepki rallileri kısa, ana trend aşağı.",False))
+                    _g_days = int(g) if str(g).isdigit() else 1
+                    signals.append(("📉",f"STP Düşüş Trendi","#b91c1c",f"Satıcılar {g} gündür baskıda. Tepki rallileri kısa, ana trend aşağı.",False,_g_days))
         except: pass
 
         # ── 2. HARSI ────────────────────────────────────────────────
@@ -15490,11 +15544,11 @@ def render_unified_signals_panel(ticker):
                 if harsi['is_green']:
                     signals.append(("🌊",f"HARSI: Boğa Momentumu","#0369a1",
                         f"Heikin Ashi RSI yukarı döndü{_ha_str}. Standart RSI'dan daha az gürültülü; "
-                        f"dönüş sinyalini daha erken yakalar. Alıcı baskısı artıyor, trend yukarı.",True))
+                        f"dönüş sinyalini daha erken yakalar. Alıcı baskısı artıyor, trend yukarı.",True,_harsi_days))
                 else:
                     signals.append(("🌊",f"HARSI: Ayı Momentumu","#b91c1c",
                         f"Heikin Ashi RSI aşağı döndü{_ha_str}. Momentum satıcıların kontrolünde. "
-                        f"Tepki rallileri kısa süreli olabilir — dip onaylanmadan alım riskli.",False))
+                        f"Tepki rallileri kısa süreli olabilir — dip onaylanmadan alım riskli.",False,_harsi_days))
         except: pass
 
 
@@ -15509,7 +15563,7 @@ def render_unified_signals_panel(ticker):
                         f"{'5g OBV yukarı döndü ama 14g hâlâ baskılı — erken toparlanma sinyali.' if _obv_is_recovery else '5g OBV zayıfladı ama 14g hâlâ pozitif — kısa vadeli yavaşlama.'} "
                         f"Mevcut durum: {obv_title}."
                     )
-                    signals.append(("📊", f"OBV: {obv_title}", obv_color, _obv_edu, _obv_is_recovery))
+                    signals.append(("📊", f"OBV: {obv_title}", obv_color, _obv_edu, _obv_is_recovery, _obv_days))
                 else:
                     is_obv_pos = any(k in obv_title.upper() for k in ["GİRİŞ","GÜÇLÜ","POZİTİF","ALIŞ","DİRENÇ","EMİLİM","BİRİKİM","SAĞLIKLI","TOPLAMA"])
                     if is_obv_pos:
@@ -15524,7 +15578,7 @@ def render_unified_signals_panel(ticker):
                             f"Kurumsal para sessizce çıkış yapıyor olabilir (dağıtım). "
                             f"Yükseliş sorgulanabilir. Mevcut durum: {obv_title}."
                         )
-                    signals.append(("📊", f"OBV: {obv_title}", obv_color, _obv_edu, is_obv_pos))
+                    signals.append(("📊", f"OBV: {obv_title}", obv_color, _obv_edu, is_obv_pos, _obv_days))
         except: pass
 
         # ── 5. ICT Sniper ───────────────────────────────────────────
@@ -15550,7 +15604,7 @@ def render_unified_signals_panel(ticker):
                         f"{'Yapı kırılımı aşağı — alıcı yapısı bozuldu.' if any(x in _ict_struct for x in ['BOS','MSS']) else ''} "
                         f"Bearish Order Block / FVG baskısı var."
                     ).strip()
-                signals.append((ict_res['İkon'],f"ICT Sniper: {_ict_yon} ({_ict_durum})",ict_res['Renk'],_ict_edu,is_ict_pos))
+                signals.append((ict_res['İkon'],f"ICT Sniper: {_ict_yon} ({_ict_durum})",ict_res['Renk'],_ict_edu,is_ict_pos,1))
         except: pass
 
         # ── 6. Altın Set-up ─────────────────────────────────────────
@@ -15561,7 +15615,7 @@ def render_unified_signals_panel(ticker):
                 c2 = "DISCOUNT" in ict_data.get('zone','')
                 c3 = "Güçlü" in ict_data.get('displacement','') or "Hacim" in sent_data.get('vol','') or sent_data.get('raw_rsi',0)>55
                 if c1 and c2 and c3:
-                    signals.append(("🏆","Altın Set-up (Güç+Konum+Enerji)","#a16207","3 bağımsız koşul aynı anda: RS güçlü, fiyat DISCOUNT bölgesinde, hacim momentum destekliyor.",True))
+                    signals.append(("🏆","Altın Set-up (Güç+Konum+Enerji)","#a16207","3 bağımsız koşul aynı anda: RS güçlü, fiyat DISCOUNT bölgesinde, hacim momentum destekliyor.",True,1))
         except: pass
 
         # ── 7. Royal Flush Nadir Fırsat (4/4) ───────────────────────────
@@ -15577,7 +15631,7 @@ def render_unified_signals_panel(ticker):
                     cv = _vd < 12
                 except: cv = True
                 if cs and ca and cr and cv:
-                    signals.append(("♠️","Royal Flush Nadir Fırsat (4/4)","#6d28d9","4 metodoloji aynı anda: ICT yapı kırılımı + RS gücü + VWAP yakınlığı + Hacim canlanması. En seçici set-up.",True))
+                    signals.append(("♠️","Royal Flush Nadir Fırsat (4/4)","#6d28d9","4 metodoloji aynı anda: ICT yapı kırılımı + RS gücü + VWAP yakınlığı + Hacim canlanması. En seçici set-up.",True,1))
         except: pass
 
         # ── 8. Platin Fırsat (Elit) — önce Altın kriterini geçmeli ──────
@@ -15601,7 +15655,7 @@ def render_unified_signals_panel(ticker):
                             f"RSI(14): {_rsi2:.0f} — aşırı alım sınırı (70) altında, hâlâ alan var. "
                             f"Altın kriterleri (RS güçlü + DISCOUNT + Enerji) + yapısal hizalama birlikte sağlandı."
                         )
-                        signals.append(("💎","Platin Fırsat (Elit): Yapısal Güç","#1d4ed8",_platin_edu,True))
+                        signals.append(("💎","Platin Fırsat (Elit): Yapısal Güç","#1d4ed8",_platin_edu,True,1))
         except: pass
 
         # ── 9. Harmonik Confluence ───────────────────────────────────
@@ -15609,7 +15663,7 @@ def render_unified_signals_panel(ticker):
             hc = calculate_harmonic_confluence(ticker, df)
             if hc:
                 is_hcp = hc.get('direction','') == 'Bullish'
-                signals.append(("⚡",f"Harmonik Confluence: {hc['pattern']} + ICT {hc['zone']} | PRZ:{hc['prz']:.2f}","#6d28d9","Fibonacci yapısı, ICT bölgesi ve RSI diverjansının aynı noktada çakışması. Üç metodoloji aynı dönüş seviyesini işaret ediyor.",is_hcp))
+                signals.append(("⚡",f"Harmonik Confluence: {hc['pattern']} + ICT {hc['zone']} | PRZ:{hc['prz']:.2f}","#6d28d9","Fibonacci yapısı, ICT bölgesi ve RSI diverjansının aynı noktada çakışması. Üç metodoloji aynı dönüş seviyesini işaret ediyor.",is_hcp,1))
         except: pass
 
         # ── 10. Güçlü Dönüş Adayı ───────────────────────────────────
@@ -15624,7 +15678,7 @@ def render_unified_signals_panel(ticker):
                     f"Fiyat yapısı dip oluşum bölgesinde — dönüş ihtimali matematiksel olarak yüksek. "
                     f"Kırılım veya hacim artışıyla konfirmasyon gel gelsin, erken giriş riskli."
                 )
-                signals.append(("🔄",f"Güçlü Dönüş Adayı (Z:{_gd_z})","#15803d",_gd_edu,True))
+                signals.append(("🔄",f"Güçlü Dönüş Adayı (Z:{_gd_z})","#15803d",_gd_edu,True,1))
         except: pass
 
         # ── 11. RS Momentum ──────────────────────────────────────────
@@ -15653,7 +15707,7 @@ def render_unified_signals_panel(ticker):
                             f"Hisse endeksin gerisinde kalıyor — göreli zayıflık var. "
                             f"{'Belirgin underperformance: endeks yükselirken hisse geri kaldı.' if alpha<-3 else 'Momentum endeksle kıyasla zayıf — dikkatli ol.'}"
                         )
-                    signals.append((ri,f"RS Momentum (5Gün): {rl}",rc,_rs_edu,is_rsp))
+                    signals.append((ri,f"RS Momentum (5Gün): {rl}",rc,_rs_edu,is_rsp,_rs_days))
         except: pass
 
         # ── 12. Akıllı Para ──────────────────────────────────────────
@@ -15661,7 +15715,7 @@ def render_unified_signals_panel(ticker):
             acc = process_single_accumulation(ticker, df, bench_s)
             if acc:
                 is_pp = acc.get('Pocket_Pivot', False)
-                signals.append(("⚡" if is_pp else "🤫","Akıllı Para: Pocket Pivot (Patlama)" if is_pp else "Akıllı Para: Sessiz Toplama","#7c3aed","Pocket Pivot: Büyük hacimle fiyat yükseldi — kurumsal alım izleri." if is_pp else "Fiyat yatay veya baskılı görünse de arka planda sinsi fon alımı var. Kırılım hazırlığı.",True))
+                signals.append(("⚡" if is_pp else "🤫","Akıllı Para: Pocket Pivot (Patlama)" if is_pp else "Akıllı Para: Sessiz Toplama","#7c3aed","Pocket Pivot: Büyük hacimle fiyat yükseldi — kurumsal alım izleri." if is_pp else "Fiyat yatay veya baskılı görünse de arka planda sinsi fon alımı var. Kırılım hazırlığı.",True,1))
         except: pass
 
         # ── 13. Breakout ─────────────────────────────────────────────
@@ -15678,7 +15732,7 @@ def render_unified_signals_panel(ticker):
                     f"{'Yeni yüksek alan açıldı, üstünde kaldıkça momentum hızlanır.' if is_fired else 'Hacimli bir mum bu seviyeyi geçerse güçlü momentum beklenir. '}"
                     f"{'Kırılım sonrası ilk geri çekilme alım fırsatı olabilir.' if is_fired else 'Haksız kırılım (fakeout) riskine karşı hacim teyidini bekle.'}"
                 )
-                signals.append(("🔨" if is_fired else "🔥",f"Breakout: {'KIRILIM Onaylandı' if is_fired else prox}",bc,_bo_edu,True))
+                signals.append(("🔨" if is_fired else "🔥",f"Breakout: {'KIRILIM Onaylandı' if is_fired else prox}",bc,_bo_edu,True,1))
         except: pass
 
         # ── 14. Minervini SEPA ───────────────────────────────────────
@@ -15694,7 +15748,7 @@ def render_unified_signals_panel(ticker):
                     f"Minervini SEPA: trend yönü, EMA düzeni, 52H yüksek yakınlığı ve RS gücü kontrol edilir. "
                     f"{'Tüm kriterler yeşil — Süper Performans adayı.' if _mini_sc >= 7 else ('Çoğu kriter olumlu — izleme listesine al.' if _mini_sc >= 5 else 'Bazı kriterler eksik — onay bekle.')}"
                 ).strip()
-                signals.append(("🦁",f"Minervini: {_mini_dur} ({_mini_sc} puan)","#ea580c",_mini_edu,True))
+                signals.append(("🦁",f"Minervini: {_mini_dur} ({_mini_sc} puan)","#ea580c",_mini_edu,True,1))
         except: pass
 
         # ── 15. Formasyon ────────────────────────────────────────────
@@ -15714,7 +15768,7 @@ def render_unified_signals_panel(ticker):
                     f"Güven puanı: {ps} ({_pconf}). "
                     f"Kırılım gerçekleşirse hacim teyidini mutlaka bekle — haksız kırılımlar sık görülür."
                 )
-                signals.append(("📐",f"Formasyon: {pn} (Puan: {ps})","#0f172a",_form_edu,True))
+                signals.append(("📐",f"Formasyon: {pn} (Puan: {ps})","#0f172a",_form_edu,True,1))
         except: pass
 
         # ── 16. Radar 1 ──────────────────────────────────────────────
@@ -15728,7 +15782,7 @@ def render_unified_signals_panel(ticker):
                     f"RSI yönü, MACD çaprazı, fiyat/EMA ilişkisi ve hacim akışı ölçülüyor. "
                     f"{'Çok güçlü momentum — 6/7 veya üzeri nadir.' if r1['Skor']>=6 else ('İyi momentum — trend devam etme ihtimali yüksek.' if r1['Skor']>=5 else 'Yeterli momentum — ama onay için daha fazla kriter bekle.')}"
                 )
-                signals.append(("🧠",f"Radar 1: Momentum ({r1['Skor']}/7)","#0369a1",_r1_edu,True))
+                signals.append(("🧠",f"Radar 1: Momentum ({r1['Skor']}/7)","#0369a1",_r1_edu,True,1))
         except: pass
 
         # ── 17. Radar 2 ──────────────────────────────────────────────
@@ -15743,7 +15797,7 @@ def render_unified_signals_panel(ticker):
                     f"SMA hizalaması, EMA düzeni, OBV yönü ve endekse göreli güç ölçülüyor. "
                     f"{'Mükemmel trend yapısı.' if r2['Skor']>=6 else ('Trend güçleniyor — devam etme ihtimali yüksek.' if r2['Skor']>=5 else 'Trend oluşum aşamasında — sabırlı ol.')}"
                 )
-                signals.append(("🚀",f"Radar 2: {sn} ({r2['Skor']}/7)","#15803d",_r2_edu,True))
+                signals.append(("🚀",f"Radar 2: {sn} ({r2['Skor']}/7)","#15803d",_r2_edu,True,1))
         except: pass
 
         # ── 18. RSI Uyumsuzluk + Smart Volume ───────────────────────
@@ -15751,14 +15805,14 @@ def render_unified_signals_panel(ticker):
             if pa:
                 div_type = pa.get('div',{}).get('type','neutral')
                 if div_type == 'bullish':
-                    signals.append(("💎","RSI Uyumsuzluk: POZİTİF (Gizli Güç)","#15803d","Fiyat yeni dip yaparken RSI yüksek dip yapıyor. Satıcıların gücü azalıyor — büyükler dipten topluyor olabilir.",True))
+                    signals.append(("💎","RSI Uyumsuzluk: POZİTİF (Gizli Güç)","#15803d","Fiyat yeni dip yaparken RSI yüksek dip yapıyor. Satıcıların gücü azalıyor — büyükler dipten topluyor olabilir.",True,1))
                 elif div_type == 'bearish':
-                    signals.append(("🐻","RSI Uyumsuzluk: NEGATİF (Yorgun Boğa)","#b91c1c","Fiyat yeni zirve yaparken RSI düşük zirve yapıyor. Yükseliş devam ediyor gibi görünse de içten çürüyor.",False))
+                    signals.append(("🐻","RSI Uyumsuzluk: NEGATİF (Yorgun Boğa)","#b91c1c","Fiyat yeni zirve yaparken RSI düşük zirve yapıyor. Yükseliş devam ediyor gibi görünse de içten çürüyor.",False,1))
                 sv = pa.get('smart_volume',{})
                 if sv.get('stopping','Yok') != 'Yok':
-                    signals.append(("🐋","Balina İzi: Stopping Volume","#15803d","Düşüş yüksek hacimle karşılandı. Kurumsal fren devrede, düşüş durduruluyor olabilir.",True))
+                    signals.append(("🐋","Balina İzi: Stopping Volume","#15803d","Düşüş yüksek hacimle karşılandı. Kurumsal fren devrede, düşüş durduruluyor olabilir.",True,1))
                 if sv.get('climax','Yok') != 'Yok':
-                    signals.append(("🌋","Balina İzi: Climax Volume","#ea580c","Rallinin zirvesinde anormal hacim. Akıllı para malı küçük yatırımcıya boşaltıyor olabilir.",False))
+                    signals.append(("🌋","Balina İzi: Climax Volume","#ea580c","Rallinin zirvesinde anormal hacim. Akıllı para malı küçük yatırımcıya boşaltıyor olabilir.",False,1))
         except: pass
 
         # ── 19. Z-Score (Professional Multi-Window) ──────────────────
@@ -15786,28 +15840,28 @@ def render_unified_signals_panel(ticker):
                              f"3 zaman dilimine göre [{_win_txt}] fiyat trendinden negatif sapmada. "
                              f"{_guc}istatistiksel dönüş bölgesi.{_atr_txt}{_filt_txt}")
                     signals.append(("🔥", f"{_guc}İstatistiksel DİP (Z: {z:.2f})",
-                                    "#059669", _desc, True))
+                                    "#059669", _desc, True, 1))
                 elif z <= -1.5:
                     _desc = (f"Kompozit Z={z:.2f} [{_win_txt}]. "
                              f"Fiyat trendinin altında birikim bölgesine yaklaşıyor.{_atr_txt}{_filt_txt}")
                     signals.append(("⚠️", f"Dibe Yaklaşıyor (Z: {z:.2f})",
-                                    "#d97706", _desc, True))
+                                    "#d97706", _desc, True, 1))
                 elif z >= 2.0:
                     _desc = (f"Arındırılmış kompozit Z={z:.2f}. "
                              f"3 zaman dilimine göre [{_win_txt}] fiyat trendinden pozitif sapmada. "
                              f"{_guc}matematiksel aşırı fiyatlanma — düzeltme riski var.{_atr_txt}{_filt_txt}")
                     signals.append(("🚨", f"{_guc}İstatistiksel TEPE (Z: {z:.2f})",
-                                    "#f87171", _desc, False))
+                                    "#f87171", _desc, False, 1))
                 elif z >= 1.5:
                     _desc = (f"Kompozit Z={z:.2f} [{_win_txt}]. "
                              f"Trend üstünde gerilim artıyor, düzeltme riski yükseliyor.{_atr_txt}{_filt_txt}")
                     signals.append(("⚠️", f"Tepeye Yaklaşıyor (Z: {z:.2f})",
-                                    "#ea580c", _desc, False))
+                                    "#ea580c", _desc, False, 1))
                 elif z >= 1.0:
                     _desc = (f"Kompozit Z={z:.2f} [{_win_txt}]. "
                              f"Fiyat trendinin üstünde — yeni alımlarda temkinli ol.{_atr_txt}{_filt_txt}")
                     signals.append(("📈", f"Pahalılanıyor (Z: {z:.2f})",
-                                    "#854d0e", _desc, False))
+                                    "#854d0e", _desc, False, 1))
         except: pass
 
         # ── 20. Harmonik (XABCD) ─────────────────────────────────────
@@ -15817,14 +15871,14 @@ def render_unified_signals_panel(ticker):
                 is_hmp = hm['direction'] == 'Bullish'
                 hmc = ("#15803d") if is_hmp else ("#b91c1c")
                 fk = abs(hm['curr_price']-hm['prz'])/(hm['prz']+1e-9)*100
-                signals.append(("🔮",f"Harmonik: {hm['pattern']} ({'Bullish' if is_hmp else 'Bearish'}) | PRZ:{hm['prz']:.2f} (%{fk:.1f} uzakta)",hmc,"Fibonacci XABCD oranlarıyla teyit edilmiş dönüş bölgesi. PRZ'ye yaklaşırken yapı ve hacim teyidini bekle.",is_hmp))
+                signals.append(("🔮",f"Harmonik: {hm['pattern']} ({'Bullish' if is_hmp else 'Bearish'}) | PRZ:{hm['prz']:.2f} (%{fk:.1f} uzakta)",hmc,"Fibonacci XABCD oranlarıyla teyit edilmiş dönüş bölgesi. PRZ'ye yaklaşırken yapı ve hacim teyidini bekle.",is_hmp,1))
         except: pass
 
         # ── Signal Gating (Regime'e göre karşı-trend etiketleme) ─────
         _rphase = _regime.get("phase", 0)
         gated_signals = []
         for _sig in signals:
-            _i, _t, _c, _e, _p = _sig
+            _i, _t, _c, _e, _p, _d = _sig
             _against = False
             if _rphase == 2 and not _p:   # Bull fazında SAT sinyali
                 _against = True
@@ -15836,7 +15890,7 @@ def render_unified_signals_panel(ticker):
                 _t = f"{_t} ⚡Karşı Trend"
                 _e = f"[Uyarı: {_regime['label']}] " + _e
                 # Gri değil — orijinal rengi koru, sadece italik + soluk badge
-            gated_signals.append((_i, _t, _c, _e, _p))
+            gated_signals.append((_i, _t, _c, _e, _p, _d))
 
         # ── Öncelik Sıralaması ────────────────────────────────────────
         # 0: Confluence  1: Yapı  2: Hacim/Akış  3: Momentum  4: İstatistik  5: Formasyon/Diğer
@@ -15857,14 +15911,14 @@ def render_unified_signals_panel(ticker):
         gated_signals.sort(key=lambda x: _sig_priority(x[1]))
 
         # ── Ayır & Render ────────────────────────────────────────────
-        pos_sigs = [(i,t,c,e) for i,t,c,e,p in gated_signals if p]
-        neg_sigs = [(i,t,c,e) for i,t,c,e,p in gated_signals if not p]
+        pos_sigs = [(i,t,c,e,d) for i,t,c,e,p,d in gated_signals if p]
+        neg_sigs = [(i,t,c,e,d) for i,t,c,e,p,d in gated_signals if not p]
 
         if not gated_signals:
             return
 
         edu_col    = "#cbd5e1"
-        def _row(icon, text, color, edu, is_pos, pos_idx=None):
+        def _row(icon, text, color, edu, is_pos, days=1, pos_idx=None):
             arr_c = "#4ade80" if is_pos else "#f87171"
             arr   = "↑" if is_pos else "↓"
             uid   = abs(hash(text)) % 999999
@@ -15877,11 +15931,25 @@ def render_unified_signals_panel(ticker):
                 _label_html = f"<span style='font-size:0.82rem;font-weight:600;line-height:1.3;flex:1;color:{color};'>{_clean_text}{_ct_badge}</span>"
             else:
                 _label_html = f"<span style='font-size:0.82rem;font-weight:600;line-height:1.3;flex:1;color:{color};'>{text}</span>"
+            # Gün sayısı badge
+            _d = max(int(days), 1)
+            if _d == 1:
+                _dc = "#38bdf8"; _dl = "yeni"
+            elif _d <= 5:
+                _dc = "#fbbf24"; _dl = f"{_d}g"
+            elif _d <= 14:
+                _dc = "#10b981"; _dl = f"{_d}g"
+            else:
+                _dc = "#4ade80"; _dl = f"{_d}g" if _d < 30 else "30g+"
+            _days_badge = (f"<span style='font-size:0.57rem;font-weight:800;color:{_dc};"
+                           f"background:{_dc}18;padding:1px 5px;border-radius:3px;"
+                           f"flex-shrink:0;letter-spacing:0.02em;'>{_dl}</span>")
             return (
                 f"<div class='usp-row' id='ur{uid}' style='border-bottom:1px solid rgba(255,255,255,0.05);cursor:default;'>"
                 f"<div style='display:flex;align-items:center;gap:5px;padding:4px 2px;'>"
                 f"<span style='font-size:0.95rem;width:18px;text-align:center;flex-shrink:0;line-height:1;'>{icon}</span>"
                 f"{_label_html}"
+                f"{_days_badge}"
                 f"<span style='font-size:0.82rem;font-weight:900;color:{arr_c};flex-shrink:0;'>{arr}</span>"
                 f"</div>"
                 f"<div style='font-size:0.80rem;color:{edu_col};line-height:1.45;"
@@ -15890,8 +15958,8 @@ def render_unified_signals_panel(ticker):
                 f"</div>"
             )
 
-        pos_html = "".join(_row(i,t,c,e,True,idx)  for idx,(i,t,c,e) in enumerate(pos_sigs)) or f"<div style='font-size:0.75rem;color:#64748b;font-style:italic;padding:4px 2px;'>Aktif olumlu sinyal yok.</div>"
-        neg_html = "".join(_row(i,t,c,e,False) for i,t,c,e in neg_sigs)
+        pos_html = "".join(_row(i,t,c,e,True,d,idx)  for idx,(i,t,c,e,d) in enumerate(pos_sigs)) or f"<div style='font-size:0.75rem;color:#64748b;font-style:italic;padding:4px 2px;'>Aktif olumlu sinyal yok.</div>"
+        neg_html = "".join(_row(i,t,c,e,False,d) for i,t,c,e,d in neg_sigs)
 
         pc = f"<span style='font-size:0.65rem;padding:0 6px;border-radius:999px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:800;'>{len(pos_sigs)}</span>" if pos_sigs else ""
         neg_sec = ""
