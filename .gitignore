@@ -44,6 +44,6 @@ bot_test.py
 # Backtest çıktısı (her gün yenilenir, commit gerekmez)
 backtest_results.json
 
-# Site (dinamik cron çıktısı)
+# Site (dinamik cron çıktısı — VPS'te üretilir)
 public/frontend/latest.json
-public/frontend/erken_radar_preview.json
+# erken_radar_preview.json — local Master Scan üretir, git ile deploy edilir (gitignore'dan çıkarıldı)

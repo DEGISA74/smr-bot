@@ -1373,6 +1373,63 @@ async def send_renewal_reminders(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+# ─── KANAL ÇIKARMA (00:05) — SÜRESİ DOLANLAR ────────────────────────────────
+async def kick_expired_users(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Her gece 00:05'te çalışır.
+    Süresi dolmuş PRO/ELITE aboneleri ilgili kanaldan çıkarır.
+    ban → unban: kalıcı ban değil, tekrar davet alabilsinler.
+    """
+    from datetime import date as _date
+    today = _date.today()
+    try:
+        expired = smr_core.sub_list_expired()
+    except Exception as e:
+        log.warning(f"[kick] sub_list_expired hata: {e}")
+        return
+
+    tier_channels = {'pro': PRO_ID, 'elite': ELITE_ID}
+    kicked, errors = [], []
+
+    for sub in expired:
+        user_id = sub.get('user_id', 0)
+        if not isinstance(user_id, int) or user_id <= 0:
+            continue
+        tier = (sub.get('tier') or '').lower()
+        channel_id = tier_channels.get(tier)
+        if not channel_id:
+            continue
+        uname    = sub.get('username') or str(user_id)
+        exp_date = sub.get('expiry_date', '')
+        try:
+            await context.bot.ban_chat_member(chat_id=channel_id, user_id=user_id)
+            await context.bot.unban_chat_member(chat_id=channel_id, user_id=user_id)
+            kicked.append(f"@{uname} ({tier.upper()}) — bitti: {exp_date}")
+            log.info(f"[kick] Kanaldan çıkarıldı: @{uname} ({tier.upper()}) uid={user_id}")
+        except Exception as e:
+            err_str = str(e)
+            if "not found" in err_str.lower() or "USER_NOT_PARTICIPANT" in err_str:
+                pass  # zaten kanalda değil, normal
+            else:
+                errors.append(f"@{uname}: {err_str[:60]}")
+                log.warning(f"[kick] Çıkarma hatası @{uname} uid={user_id}: {e}")
+
+    if kicked or errors:
+        adm = f"🚪 *Otomatik Kanal Çıkarma — {today}*\n\n"
+        if kicked:
+            adm += f"✅ Çıkarıldı ({len(kicked)}):\n"
+            adm += "\n".join(f"• {k}" for k in kicked[:12])
+            if len(kicked) > 12:
+                adm += f"\n...+{len(kicked) - 12} kişi"
+        if errors:
+            adm += f"\n\n⚠️ Hata ({len(errors)}):\n"
+            adm += "\n".join(f"• {e}" for e in errors[:5])
+        try:
+            await context.bot.send_message(chat_id=ADMIN_ID, text=adm, parse_mode='Markdown')
+        except Exception:
+            pass
+
+
 # ─── SHOPİER API — PERİYODİK SİPARİŞ KONTROLÜ ───────────────────────────────
 async def check_shopier_orders(context=None):
     """
@@ -1702,6 +1759,13 @@ def main():
         name="sunday_bulletin"
     )
 
+    # 00:05 — Süresi dolan aboneleri kanaldan çıkar
+    app.job_queue.run_daily(
+        kick_expired_users,
+        time=datetime.strptime("00:05", "%H:%M").time().replace(tzinfo=tz_istanbul),
+        name="kick_expired"
+    )
+
     # 10:00 — Renewal hatırlatma (T-3 / T-1 / T-0)
     app.job_queue.run_daily(
         send_renewal_reminders,
@@ -1719,7 +1783,7 @@ def main():
         )
         log.info("✅ Shopier sipariş kontrolü aktif (5dk)")
 
-    log.info("✅ Bot aktif. Bülten: Pzt-Cuma 19:00, Paz 21:00 | Renewal: 10:00 | Sıfırlama: 00:00")
+    log.info("✅ Bot aktif. Bülten: Pzt-Cuma 19:00, Paz 21:00 | Renewal: 10:00 | Sıfırlama: 00:00 | KickExpired: 00:05")
 
     # aiohttp — Shopier OSB endpoint
     web_app = web.Application()

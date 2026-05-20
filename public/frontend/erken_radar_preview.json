@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-05-19 18:35",
+  "category": "BIST 500 ",
+  "public_items": [
+    {
+      "ticker": "GUBRF",
+      "scenario_id": "C6",
+      "scenario_name": "Piyasa Lideri",
+      "category": "C",
+      "stars": 5,
+      "aging_days": 1
+    },
+    {
+      "ticker": "TOASO",
+      "scenario_id": "C6",
+      "scenario_name": "Piyasa Lideri",
+      "category": "C",
+      "stars": 5,
+      "aging_days": 1
+    }
+  ],
+  "locked_count": 335
+}
