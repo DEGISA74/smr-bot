@@ -1101,7 +1101,7 @@ function renderTgAdPanel() {
           <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 10 detaylı hisse/coin/emtia analizi
+          📊 Günde 8 detaylı hisse/coin/emtia analizi
         </div>
         <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
           📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
@@ -1148,7 +1148,7 @@ function renderCTA() {
     </div>
     <div class="cta-buttons">
       <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-pro">🔵 Telegram PRO — Günde 3 Analiz</a>
-      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-elite">♠️ Telegram ELITE — Günde 10 Analiz</a>
+      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-elite">♠️ Telegram ELITE — Günde 8 Analiz</a>
     </div>
   `;
   renderMobilePlans();
@@ -1220,7 +1220,7 @@ function renderMobilePlans() {
           <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 10 detaylı hisse/coin/emtia analizi
+          📊 Günde 8 detaylı hisse/coin/emtia analizi
         </div>
         <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
           📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
