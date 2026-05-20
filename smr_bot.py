@@ -529,21 +529,41 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.delete_message(chat_id=chat_id, message_id=wait_msg.message_id)
 
-    # Grafik + tam teknik özet tek mesajda
-    await context.bot.send_photo(
-        chat_id=chat_id,
-        photo=img_bytes,
-        caption=caption,
-        parse_mode="Markdown"
-    )
+    # ── DM AKIŞI: PRO / ELİTE kanallarında analiz sadece isteyen kişiye DM gider ──
+    # FREE kanalında veya DM hedefi belirlenemiyorsa kanal fallback kullanılır.
+    dm_target = user_id if (msg.from_user and chat_id in (PRO_ID, ELITE_ID)) else None
+    dm_ok     = False
 
-    # PRO / ELİTE: AI analiz ayrı mesaj olarak gönder
+    if dm_target:
+        try:
+            await context.bot.send_photo(
+                chat_id=dm_target,
+                photo=img_bytes,
+                caption=caption,
+                parse_mode="Markdown"
+            )
+            dm_ok = True
+        except Exception as _e_dm:
+            log.warning(f"DM foto gönderilemedi (user={dm_target}): {_e_dm}")
+            dm_ok = False
+
+    if not dm_ok:
+        # Fallback: DM başarısız veya FREE → kanala gönder
+        await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=img_bytes,
+            caption=caption,
+            parse_mode="Markdown"
+        )
+
+    # PRO / ELİTE: AI analiz (DM'e veya kanala)
     if tier_key in ("pro", "elite") and teknik_kart:
-        ai_parts = format_ai_message(raw_ticker, teknik_kart, tier=tier_key)
+        ai_parts  = format_ai_message(raw_ticker, teknik_kart, tier=tier_key)
+        dest      = dm_target if dm_ok else chat_id
         for part in ai_parts:
             try:
                 await context.bot.send_message(
-                    chat_id=chat_id,
+                    chat_id=dest,
                     text=part,
                     parse_mode="Markdown"
                 )
@@ -551,17 +571,34 @@ async def handle_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 log.warning(f"AI mesaj gönderim hatası (Markdown): {e}")
                 try:
                     await context.bot.send_message(
-                        chat_id=chat_id,
+                        chat_id=dest,
                         text=part.replace("*", "").replace("`", "").replace("_", "")
                     )
                 except Exception as e2:
                     log.error(f"AI mesaj düz metin de başarısız: {e2}")
 
+        # DM başarılıysa kanala kısa bildirim gönder
+        if dm_ok:
+            uname_display = f"@{username}" if username else f"kullanıcı #{user_id}"
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"📩 {uname_display} *#{raw_ticker}* analizi DM olarak iletildi.",
+                parse_mode="Markdown"
+            )
+
     elif tier_key in ("pro", "elite") and not teknik_kart and GEMINI_OK:
+        dest = dm_target if dm_ok else chat_id
         await context.bot.send_message(
-            chat_id=chat_id,
+            chat_id=dest,
             text="⚠️ AI analiz bu sefer üretilemedi.",
         )
+        if dm_ok:
+            uname_display = f"@{username}" if username else f"kullanıcı #{user_id}"
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"📩 {uname_display} *#{raw_ticker}* analizi DM olarak iletildi.",
+                parse_mode="Markdown"
+            )
 
 
 # ─── KANAL TEMİZLEYİCİ ───────────────────────────────────────────────────────
