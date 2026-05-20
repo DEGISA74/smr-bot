@@ -41,7 +41,7 @@ PRO_ID    = int(CFG["channels"]["pro"]["chat_id"])
 ELITE_ID  = int(CFG["channels"]["elite"]["chat_id"])
 CHAT_ID   = int(CFG["chat"]["chat_id"])
 
-DAILY_LIMITS = {FREE_ID: 1, PRO_ID: 3, ELITE_ID: 10}
+DAILY_LIMITS = {FREE_ID: 1, PRO_ID: 3, ELITE_ID: 8}
 
 # Shopier API
 SHOPIER_API_KEY = CFG.get("shopier_api_key", "")
@@ -921,7 +921,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👋 Merhaba. Az önce ödediysen 15 dk içinde otomatik link alacak ve "
             "SMR dünyasına adım atacaksın, beklemen yeterli.\n\n"
             "📊 *PRO* — Günde 3 analiz\n"
-            "👑 *ELITE* — Günde 10 analiz + derin AI raporu\n\n"
+            "👑 *ELITE* — Günde 8 analiz + derin AI raporu\n\n"
             "Henüz ödeme yapmadıysan: smartmoneyradar.app\n\n"
             "💡 _Hesabın aktifleşmediyse:_\n"
             "Shopier formuna girdiğin Telegram kullanıcı adını kontrol et. "
