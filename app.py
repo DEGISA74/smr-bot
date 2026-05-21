@@ -21186,7 +21186,7 @@ def _render_left_col():
                     f"{'  ·  ↑ ' + str(_weekly_cnt) + ' Haftalık' if _weekly_cnt else ''}"
                     f"</div>", unsafe_allow_html=True
                 )
-                with st.container(height=150, border=True):
+                with st.container(height=320, border=True):
                     for i, (_, row) in enumerate(df_gd.iterrows()):
                         sym    = row["Sembol"]
                         _zs    = row.get('Z-Score', 0)
