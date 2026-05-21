@@ -4605,19 +4605,19 @@ def calculate_prelaunch_bos(ticker, df, bist100_close=None):
         if len(sq_slice_close) < 10:
             return None
 
-        # Bollinger Bands
-        bb_mid = sq_slice_close.rolling(20).mean()
-        bb_std = sq_slice_close.rolling(20).std()
+        # Bollinger Bands (10 günlük — 25 günlük dilimden yeterli geçerli değer üretir)
+        bb_mid = sq_slice_close.rolling(10).mean()
+        bb_std = sq_slice_close.rolling(10).std()
         bb_upper = bb_mid + 2 * bb_std
         bb_lower = bb_mid - 2 * bb_std
-        bb_width = (bb_upper - bb_lower) / bb_mid
+        bb_width = (bb_upper - bb_lower) / bb_mid.replace(0, 1e-9)
 
         # Keltner Channel
-        atr_sq = (sq_slice_high - sq_slice_low).rolling(10).mean()
-        kc_width = (2 * atr_sq) / bb_mid
+        atr_sq = (sq_slice_high - sq_slice_low).rolling(5).mean()
+        kc_width = (2 * atr_sq) / bb_mid.replace(0, 1e-9)
 
         squeeze_days = int((bb_width < kc_width).sum())
-        if squeeze_days < 5:
+        if squeeze_days < 3:
             return None
 
         # ── 3. RSI: >70 elenme ────────────────────────────────────────────
@@ -17313,25 +17313,25 @@ def get_golden_trio_batch_scan(ticker_list):
     tekli_altin_candidates = [] # Tekli hisse kriterleri (Altın %65 Discount + Platin bayrağı)
 
     # 1. BİLGİLENDİRME & HAZIRLIK
-    st.toast("Veri Ambari İndiriliyor (1 Yıllık Derinlik)...", icon="⏳")
-    progress_text = "📡 Tüm Piyasa Verisi Tek Pakette İndiriliyor (Ban Korumalı Mod)..."
+    st.toast("Parquet önbellek kullanılıyor (Ban Korumalı Mod)...", icon="⚡")
+    progress_text = "📡 Veri Önbelleğinden Okunuyor (get_batch_data_cached)..."
     my_bar = st.progress(10, text=progress_text)
 
     # 2. ENDEKS VERİSİNİ AL (Hafızadan Çeker)
     index_close = fetch_index_data_cached()
 
-    # 3. TOPLU İNDİRME (Hafızadan Çeker - BAN Korumalı)
+    # 3. TOPLU VERİ — get_batch_data_cached (parquet önbellek, fetch_market_data_cached'den güvenilir)
     try:
-        data = fetch_market_data_cached(tuple(ticker_list))
+        data = get_batch_data_cached(ticker_list, period="1y")
     except Exception as e:
         st.error(f"Veri çekme hatası: {e}")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-    my_bar.progress(40, text="⚡ Hafızadaki Veriler İşleniyor (Çift Katmanlı Analiz)...")
+    my_bar.progress(40, text="⚡ Veriler İşleniyor (Çift Katmanlı Analiz)...")
 
     # 4. HIZLI ANALİZ DÖNGÜSÜ
     if isinstance(data.columns, pd.MultiIndex):
-        valid_tickers = [t for t in ticker_list if t in data.columns.levels[0]]
+        valid_tickers = [t for t in ticker_list if t in data.columns.get_level_values(0).unique()]
     else:
         valid_tickers = ticker_list if not data.empty else []
 
@@ -21237,9 +21237,11 @@ def _render_left_col():
                 _er_clean['_stars_n'] = _er_clean['Stars'].apply(_stars_int)
                 # Hisse başına en güçlü senaryoyu öne çıkar (primary öncelikli + yıldız desc)
                 _er_clean['_role_rank'] = _er_clean['Role'].map({'primary': 0, 'confirmation': 1})
-                _er_clean = _er_clean.sort_values(by=['_role_rank', '_stars_n', 'Sembol'], ascending=[True, False, True])
                 # Hisse başına senaryo sayısı (çoklu teyit tespiti — primary + confirmation toplamı)
                 _scenario_counts = _er_clean.groupby('Sembol').size().to_dict()
+                # Senaryo sayısını sıraya dahil et — çok teyitli hisseler öne, sonra yıldız desc, sonra isim
+                _er_clean['_sc_count'] = _er_clean['Sembol'].map(_scenario_counts).fillna(1).astype(int)
+                _er_clean = _er_clean.sort_values(by=['_role_rank', '_stars_n', '_sc_count', 'Sembol'], ascending=[True, False, False, True])
                 # Aging: her (sym, scenario) için ardışık gün sayısı
                 _aging_pairs = [(str(_r['Sembol']), str(_r['ScenarioId'])) for _, _r in _er_clean.iterrows()]
                 _aging_map = get_scenario_ages_batch(_aging_pairs, max_lookback=30)
@@ -21265,6 +21267,8 @@ def _render_left_col():
                         _ersym = str(_err.get('Sembol', '')).replace('.IS', '')
                         if _ersym in _shown_syms:
                             continue  # Bir hisse için sadece 1 satır (en güçlü senaryo)
+                        if len(_shown_syms) >= 25:
+                            break  # En fazla 25 benzersiz hisse göster
                         _shown_syms.add(_ersym)
                         _erprice = _err.get('Fiyat', 0)
                         _erprice_s = f"{int(_erprice)}" if _erprice >= 1000 else f"{_erprice:.2f}"
