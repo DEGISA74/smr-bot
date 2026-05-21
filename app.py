@@ -17368,10 +17368,14 @@ def get_golden_trio_batch_scan(ticker_list):
                     if stock_2d_ret < index_2d_ret:
                         continue # Ölü kedi sıçraması, endeksi yenemedi, ele.
 
-            # 3. %4 Çöküş Koruması
+            # 3. Göreceli Çöküş Koruması (endeks-bağıl — piyasa geneli düşüşte aşırı elenmesin)
             crash_2d = (today_c - day2_c) / day2_c
-            if crash_2d < -0.04:
-                continue # 2 günde %4'ten fazla düştüyse şelaledir, ele.
+            if index_close is not None and len(index_close) >= 3:
+                _idx_2d = (float(index_close.iloc[-1]) / float(index_close.iloc[-3])) - 1
+                if crash_2d < _idx_2d - 0.03:   # endeksten %3'ten fazla zayıfsa ele
+                    continue
+            elif crash_2d < -0.08:               # endeks yoksa mutlak %8 eşiği
+                continue
 
             # UYARI BAYRAKLARI (Shooting Star & Doji)
             has_warning = False
@@ -21218,9 +21222,13 @@ def _render_left_col():
         # ============ SOL: HAREKETE HAZIR (Erken Radar) ============
         with _sub_er:
             _er_df = st.session_state.get('erken_radar_data')
-            # Unique hisse = primary rolündeki satır sayısı (her hissenin 1 primary'si var)
+            # Unique hisse = primary rolündeki ≥3 yıldızlı satır sayısı (kalite filtresi)
             if _er_df is not None and hasattr(_er_df, 'empty') and not _er_df.empty:
-                _er_count = int((_er_df['Role'] == 'primary').sum())
+                def _stars_int_q(v):
+                    try: return int(v)
+                    except: return 0
+                _er_count = int(((_er_df['Role'] == 'primary') &
+                                 (_er_df['Stars'].apply(_stars_int_q) >= 3)).sum())
             else:
                 _er_count = 0
             st.markdown(f"<div style='background:linear-gradient(135deg,#3b82f618,#3b82f606);"
@@ -21235,6 +21243,8 @@ def _render_left_col():
                     try: return int(v)
                     except: return 0
                 _er_clean['_stars_n'] = _er_clean['Stars'].apply(_stars_int)
+                # Kalite filtresi: sadece ≥3 yıldızlı hisseler (1-2 yıldız çok gürültülü)
+                _er_clean = _er_clean[_er_clean['_stars_n'] >= 3]
                 # Hisse başına en güçlü senaryoyu öne çıkar (primary öncelikli + yıldız desc)
                 _er_clean['_role_rank'] = _er_clean['Role'].map({'primary': 0, 'confirmation': 1})
                 # Hisse başına senaryo sayısı (çoklu teyit tespiti — primary + confirmation toplamı)
