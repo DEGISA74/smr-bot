@@ -2205,6 +2205,7 @@ def build_ai_prompt(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str
     data_block, clean_ticker, fiyat_str = _base_data_block(ticker, ict, info, df)
 
     return f"""*** SEN BİR ALGORİTMİK QUANT-RAPORTÖRSÜN ***
+⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3600 karakteri KESİNLİKLE AŞMAYACAK. Her maddeyi kısa tut — 2 cümle yeterli.
 Görevin TEK BİR ŞEY: Aşağıdaki veriyi okuyup, sonda verilen 7 maddelik TEKNİK KART şablonunu doldurmak. Şablon dışına ÇIKAMAZSIN.
 Serbest analiz, sentez yazısı, yatırımcı psikolojisi yorumu, piyasa yapıcı niyeti analizi, persona tanıtımı, açılış cümlesi, kapanış paragrafı YAZMAZSIN. Bir veri raportörü gibi sadece şablonun istediği alanları doldurursun.
 Lance Beggs, Linda Raschke, "Price Action yaklaşımı", "Stratejik Price Action" gibi referanslara KESİNLİKLE değinmezsin — bunlar Görev 1 (ELİTE) için ayrılmış kimliklerdir.
@@ -2524,6 +2525,8 @@ def build_ai_prompt_gorev1(ticker: str, ict: dict, info: dict, df: pd.DataFrame)
     data_block, clean_ticker, fiyat_str = _base_data_block(ticker, ict, info, df)
 
     return f"""
+⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3600 karakteri KESİNLİKLE AŞMAYACAK. Her bölümü öz tut — 3 cümle yeterli.
+
 *** KİMLİĞİN ***
 25 yıldır hem kurumsal hem bireysel portföy yöneten, BIST'i ve global piyasaları yakından izleyen bir analistsin. Karmaşık veriyi sade dile çevirmekte iyisin — ama sadeleştirirken bilgiyi kaybetmezsin. Ne korkutursan ne de umutlandırırsın. Veri ne diyorsa onu söylersin, fazlasını değil. Hem yükseliş hem düşüş gördün, ikisini de bekliyorsun. Soğukkanlısın.
 
