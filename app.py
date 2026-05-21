@@ -15104,7 +15104,7 @@ def render_roadmap_8_panel(ticker):
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;'
         f'padding-bottom:4px;border-bottom:1px solid rgba(100,116,139,0.18);">'
         f'<span style="font-size:0.7rem;font-weight:800;color:#64748b;letter-spacing:0.04em;'
-        f'text-transform:uppercase;">⚡ Composite Skor</span>'
+        f'text-transform:uppercase;">⚡ Sentezlenmiş Algoritmik Skor</span>'
         f'<span style="font-size:0.7rem;font-weight:800;color:{_comp_color};">{_comp_decision}</span>'
         f'</div>'
         f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">'
@@ -17956,7 +17956,7 @@ if st.session_state.generate_prompt:
 
         # ───── PROMPT METNİ — 3 yeni master blok + M1-M5+M8 ham veriler ─────
         roadmap_ai_txt = f"""
-        *** COMPOSITE TEKNİK SKOR (5 alt faktörün ağırlıklı sentezi) ***
+        *** SENTEZLENMİŞ ALGORİTMİK SKOR (5 alt faktörün ağırlıklı sentezi) ***
         Master Skor: {_comp_score}/100 → {_comp_decision}
         Alt Faktörler (her biri 0-100):
           • Trend (SMA50/SMA200/EMA hizalaması, ağırlık 30%): {_f_trend}/100
