@@ -17470,6 +17470,9 @@ def get_golden_trio_batch_scan(ticker_list):
                     "Onay": "🏆 RS Gücü + Ucuz Konum + Güçlü Enerji",
                     "Warning": has_warning,
                     "RedCandle": has_red_candle,
+                    "RSI": round(rsi_now, 1),
+                    "Discount_Pct": round(((current_price - low_60) / range_diff) * 100, 1) if range_diff > 0 else 0,
+                    "is_platin": False,
                 })
 
             # === PLATİN HAZIR — Bağımsız Filtre ===
@@ -20921,7 +20924,19 @@ def _render_left_col():
         if _has_elite:
             _platin = st.session_state.platin_results
             _tekli  = st.session_state.tekli_altin_results
-    
+            # Altın Fırsat sonuçlarını tekli listesine ekle (panelde görünmeyenler)
+            _golden_state = st.session_state.get('golden_results')
+            if _golden_state is not None and not _golden_state.empty:
+                _tekli_syms_set = set(_tekli['Hisse'].values) if (_tekli is not None and not _tekli.empty) else set()
+                _extra_g = _golden_state[~_golden_state['Hisse'].isin(_tekli_syms_set)].copy()
+                if not _extra_g.empty:
+                    if 'is_platin' not in _extra_g.columns:
+                        _extra_g['is_platin'] = False
+                    _tekli = pd.concat(
+                        [_tekli if (_tekli is not None and not _tekli.empty) else pd.DataFrame(), _extra_g],
+                        ignore_index=True
+                    ).sort_values(by=['is_platin', 'Teknik_Skor'], ascending=[False, False])
+
             # ── İKİ SÜTUN ────────────────────────────────────────────
             _col_l, _col_r = st.columns(2)
     
