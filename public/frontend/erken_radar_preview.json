@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-05-19 18:35",
+  "generated_at": "2026-05-21 22:59",
   "category": "BIST 500 ",
   "public_items": [
     {
-      "ticker": "GUBRF",
+      "ticker": "AEFES",
       "scenario_id": "C6",
       "scenario_name": "Piyasa Lideri",
       "category": "C",
@@ -11,13 +11,13 @@
       "aging_days": 1
     },
     {
-      "ticker": "TOASO",
-      "scenario_id": "C6",
-      "scenario_name": "Piyasa Lideri",
-      "category": "C",
+      "ticker": "AYES",
+      "scenario_id": "B2",
+      "scenario_name": "Sessiz Birikim",
+      "category": "B",
       "stars": 5,
       "aging_days": 1
     }
   ],
-  "locked_count": 335
+  "locked_count": 332
 }
