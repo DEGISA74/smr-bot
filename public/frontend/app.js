@@ -834,6 +834,7 @@ function renderOneCikanlar(ozet) {
   });
 
   const top5 = liste.slice(0, 5);
+  window._ocStocks = top5;
   const kalan = liste.length - 5;
 
   const card = (h) => {
@@ -1641,28 +1642,58 @@ function closeTop3Popup() {
 
 // ── Hisse Arama ─────────────────────────────────────────────────────────────────────────────
 function handleStockSearch() {
-  var input  = document.getElementById('stock-search-input');
-  var result = document.getElementById('stock-search-result');
+  var input  = document.getElementById(‘stock-search-input’);
+  var result = document.getElementById(‘stock-search-result’);
   if (!input || !result) return;
-  var ticker = input.value.trim().toUpperCase().replace(/\.IS$/i, '');
-  if (!ticker) { result.innerHTML = ''; return; }
+  var ticker = input.value.trim().toUpperCase().replace(/\.IS$/i, ‘’);
+  if (!ticker) { result.innerHTML = ‘’; return; }
+
+  // 1. Günün Öne Çıkanları listesinde ara
+  var ocList = window._ocStocks || [];
+  var ocFound = ocList.find(function(h) {
+    return (h.ticker || ‘’).replace(‘.IS’,’’).toUpperCase() === ticker;
+  });
+  if (ocFound) {
+    var pos    = ocFound.degisim_pct >= 0;
+    var dSign  = pos ? ‘+’ : ‘’;
+    var chgClr = pos ? ‘#22c55e’ : ‘#ef4444’;
+    var rsiClr = ocFound.rsi >= 70 ? ‘#f97316’ : ocFound.rsi >= 55 ? ‘#22c55e’ : ‘#94a3b8’;
+    result.innerHTML =
+      ‘<div style="background:#0d1b2a;border:1px solid #1e3a5f;border-radius:7px;padding:8px 10px;margin-top:2px">’
+      + ‘<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">’
+      + ‘<span style="font-weight:800;color:#f1f5f9;font-size:14px">’ + ticker + ‘</span>’
+      + ‘<span style="font-size:13px;color:#cbd5e1">’ + (ocFound.close != null ? Number(ocFound.close).toLocaleString(‘tr-TR’,{minimumFractionDigits:2}) : ‘—‘) + ‘ TL</span>’
+      + ‘<span style="font-weight:700;color:’ + chgClr + ‘">’ + dSign + ocFound.degisim_pct + ‘%</span>’
+      + ‘</div>’
+      + ‘<div style="display:flex;gap:12px;margin-top:5px;flex-wrap:wrap">’
+      + ‘<span style="font-size:11px;color:’ + rsiClr + ‘">RSI: ‘ + ocFound.rsi + ‘</span>’
+      + ‘<span style="font-size:11px;color:#7dd3fc">⚡ Hacim: ‘ + ocFound.hacim_x + ‘×</span>’
+      + ‘<span style="font-size:11px;color:#fbbf24">★ Günün Öne Çıkanları</span>’
+      + ‘</div>’
+      + ‘</div>’;
+    return;
+  }
+
+  // 2. Erken Radar listesinde ara
   var erData = window._erkenRadarData;
   if (erData && erData.public_items) {
     var found = erData.public_items.find(function(it) {
-      return it.ticker.replace('.IS','').toUpperCase() === ticker;
+      return it.ticker.replace(‘.IS’,’’).toUpperCase() === ticker;
     });
     if (found) {
-      var catIcons = { A: '🔄', B: '📐', C: '🚀', D: '⚠️' };
-      var icon = catIcons[found.category] || '🎯';
-      result.innerHTML = icon + ' <strong>' + ticker + '</strong>'
-        + ' — <span style="color:#7dd3fc;">' + found.scenario_name + '</span>'
-        + ' <span style="color:#fbbf24;">★★★★★</span>';
+      var catIcons = { A: ‘🔄’, B: ‘📐’, C: ‘🚀’, D: ‘⚠️’ };
+      var icon = catIcons[found.category] || ‘🎯’;
+      result.innerHTML = icon + ‘ <strong>’ + ticker + ‘</strong>’
+        + ‘ — <span style="color:#7dd3fc;">’ + found.scenario_name + ‘</span>’
+        + ‘ <span style="color:#fbbf24;">★★★★★</span>’;
       return;
     }
   }
-  result.innerHTML = 'Detaylı analiz için Telegram bot’umuza <strong>#'
-    + ticker + '</strong> yazabilirsiniz.'
-    + ' ⏳ <span style="color:#f59e0b;font-weight:600;">Çok yakında başlıyoruz.</span>';
+
+  // 3. Listede yok
+  result.innerHTML = ‘Detaylı analiz için Telegram bot\’umuza <strong>#’
+    + ticker + ‘</strong> yazabilirsiniz.’
+    + ‘ ⏳ <span style="color:#f59e0b;font-weight:600;">Çok yakında başlıyoruz.</span>’;
 }
 
 
