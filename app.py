@@ -17476,47 +17476,38 @@ def get_golden_trio_batch_scan(ticker_list):
                 })
 
             # === PLATİN HAZIR — Bağımsız Filtre ===
-            # is_discount şartı YOK. Güçlü Yapı + Uçmamış + 3 Kapıdan 2'si.
+            # SMA200+50 üstünde + RSI 35-70 + Hacim aktif + Endeksten güçlü (VEYA'lı)
             try:
                 _c = df['Close']; _v = df['Volume']
                 _s200  = float(_c.rolling(200).mean().iloc[-1])
                 _s50   = float(_c.rolling(50).mean().iloc[-1])
                 _s50_5 = float(_c.rolling(50).mean().iloc[-5])
-                _dist  = (current_price / _s50 - 1) * 100 if _s50 > 0 else 999
-                _g20   = (current_price / float(_c.iloc[-20]) - 1) * 100 if len(_c) >= 20 else 999
 
                 if (current_price > _s200 and current_price > _s50 and
-                        _s50 > _s50_5 and 35 <= rsi_now <= 73 and
-                        _dist <= 22 and _g20 <= 20):
+                        _s50 > _s50_5 and 35 <= rsi_now < 70):
 
-                    _kapi = 0; _kapi_list = []
-
-                    # Kapı 1: Hacim Kuruması (son 5g < 20g ort. %80)
-                    _v5  = float(_v.iloc[-5:].mean())
                     _v20 = float(_v.rolling(20).mean().iloc[-1])
-                    if _v20 > 0 and _v5 < _v20 * 0.80:
-                        _kapi += 1; _kapi_list.append("Hacim Kurudu")
+                    _cur_vol = float(_v.iloc[-1])
 
-                    # Kapı 2: Endeksten Güçlü (son 10g)
+                    # Hacim: aktif mi? (ort.×1.05 VEYA RSI>45)
+                    _p_hacim = (_v20 > 0 and _cur_vol > _v20 * 1.05) or rsi_now > 45
+
+                    # Endeks kıyası: geçmiş mi? (son 10g VEYA RSI>50)
+                    _p_endeks = False
                     if index_close is not None and len(index_close) >= 10:
                         _sr = float(_c.iloc[-1]) / float(_c.iloc[-10]) - 1
                         _ir = float(index_close.iloc[-1]) / float(index_close.iloc[-10]) - 1
-                        if _sr > _ir:
-                            _kapi += 1; _kapi_list.append("Endeksten Güçlü")
+                        _p_endeks = (_sr > _ir) or rsi_now > 50
+                    else:
+                        _p_endeks = rsi_now > 50
 
-                    # Kapı 3: 10 Gün Sıkışma (bant ≤ %8)
-                    _h10 = float(df['High'].tail(10).max())
-                    _l10 = float(df['Low'].tail(10).min())
-                    if _l10 > 0 and (_h10 - _l10) / _l10 * 100 <= 8:
-                        _kapi += 1; _kapi_list.append("10g Sıkışma")
-
-                    if _kapi >= 2:
-                        _vr  = float(_v.iloc[-1]) / _v20 if _v20 > 0 else 1
+                    if _p_hacim and _p_endeks:
+                        _vr  = _cur_vol / _v20 if _v20 > 0 else 1
                         _rs  = 0.0
                         if index_close is not None and len(index_close) >= 10:
                             _rs = ((float(_c.iloc[-1]) / float(_c.iloc[-10]) - 1) -
                                    (float(index_close.iloc[-1]) / float(index_close.iloc[-10]) - 1)) * 100
-                        _skor = round(rsi_now + (_vr * 15) + _rs + (_kapi * 5), 2)
+                        _skor = round(rsi_now + (_vr * 15) + _rs, 2)
                         try:
                             _mcap_p = yf.Ticker(ticker).fast_info.get('marketCap', 0)
                         except:
@@ -17526,9 +17517,9 @@ def get_golden_trio_batch_scan(ticker_list):
                             "Fiyat":       round(current_price, 2),
                             "M.Cap":       _mcap_p,
                             "Teknik_Skor": _skor,
-                            "Hazırlık":    f"{_kapi}/3",
-                            "Kurulum":     " + ".join(_kapi_list),
-                            "Onay":        "💎 PLATİN HAZIR: " + " + ".join(_kapi_list),
+                            "Hazırlık":    "✓",
+                            "Kurulum":     "SMA200+50 Üstü · Hacim Aktif · Endeksten Güçlü",
+                            "Onay":        "💎 PLATİN HAZIR: Güçlü Trend + Hacim + Endeks",
                             "Warning":     has_warning,
                             "RedCandle":   has_red_candle,
                         })
@@ -20922,55 +20913,38 @@ def _render_left_col():
             (isinstance(st.session_state.tekli_altin_results, pd.DataFrame) and st.session_state.tekli_altin_results.empty)
         )
         if _has_elite:
-            _platin = st.session_state.platin_results
-            _tekli  = st.session_state.tekli_altin_results
-            # Altın Fırsat sonuçlarını tekli listesine ekle (panelde görünmeyenler)
-            _golden_state = st.session_state.get('golden_results')
-            if _golden_state is not None and not _golden_state.empty:
-                _tekli_syms_set = set(_tekli['Hisse'].values) if (_tekli is not None and not _tekli.empty) else set()
-                _extra_g = _golden_state[~_golden_state['Hisse'].isin(_tekli_syms_set)].copy()
-                if not _extra_g.empty:
-                    if 'is_platin' not in _extra_g.columns:
-                        _extra_g['is_platin'] = False
-                    _tekli = pd.concat(
-                        [_tekli if (_tekli is not None and not _tekli.empty) else pd.DataFrame(), _extra_g],
-                        ignore_index=True
-                    ).sort_values(by=['is_platin', 'Teknik_Skor'], ascending=[False, False])
+            _platin      = st.session_state.platin_results
+            _tekli       = st.session_state.tekli_altin_results
+            _golden_disp = st.session_state.get('golden_results')
 
             # ── İKİ SÜTUN ────────────────────────────────────────────
             _col_l, _col_r = st.columns(2)
-    
-            # ── SOL: HAREKETE HAZIR (3-kapı Platin tarama) ──────────
+
+            # ── SOL: PLATİN HAZIR ────────────────────────────────────
             with _col_l:
                 st.markdown(
                     "<div style='font-size:0.72rem;font-weight:700;color:#a78bfa;"
-                    "margin-bottom:4px;'>⚡ HAREKETE HAZIR</div>",
+                    "margin-bottom:4px;'>💎 Platin Hazır</div>",
                     unsafe_allow_html=True
                 )
-                with st.container(height=145, border=True):
+                with st.container(height=280, border=True):
                     if _platin is not None and not _platin.empty:
-                        # 3/3 kapı açık olanları önce göster, sonra Teknik_Skor
-                        _plt_s = _platin.copy()
-                        _plt_s['_gate_n'] = _plt_s['Hazırlık'].apply(
-                            lambda x: int(str(x).split('/')[0]) if '/' in str(x) else 0)
-                        _plt_s = _plt_s.sort_values(by=['_gate_n', 'Teknik_Skor'], ascending=[False, False])
-                        for _pi, _pr in _plt_s.head(8).iterrows():
+                        _plt_s = _platin.sort_values('Teknik_Skor', ascending=False)
+                        for _pi, _pr in _plt_s.head(10).iterrows():
                             _psym = _pr['Hisse']
                             _pd_  = get_display_name(_psym)
                             _pfv  = _pr['Fiyat']; _pfs = f"{int(_pfv)}" if _pfv >= 1000 else f"{_pfv:.2f}"
                             _pred = _pr.get('RedCandle', False)
                             _pkur = _pr.get('Kurulum', '')
-                            _phaz = _pr.get('Hazırlık', '')
-                            _pg_n = int(str(_phaz).split('/')[0]) if '/' in str(_phaz) else 0
                             _pdbl = _psym in _double_hit_syms
                             _psym_clean = str(_psym).replace('.IS', '')
                             _per5 = _psym_clean in _elit_x_er5_syms
                             _per5_meta = _er_5star_detail.get(_psym_clean, {}) if _per5 else {}
-                            _plbl = (f"{'🔥' if _pg_n == 3 else '💎'} {_pd_} ({_pfs}) {_phaz}"
+                            _plbl = (f"💎 {_pd_} ({_pfs})"
                                      + (" 🟠" if _pred else "")
                                      + (" 🚀" if _pdbl else "")
                                      + (" 🎯" if _per5 else ""))
-                            _ptip = (f"Kurulum: {_pkur} · {_phaz} kapı açık"
+                            _ptip = (f"Kurulum: {_pkur}"
                                      + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _pdbl else "")
                                      + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_per5_meta.get('id','5★')} ({_per5_meta.get('name','')})" if _per5 else ""))
                             if st.button(_plbl, key=f"elit_plt2_{_pi}", use_container_width=True, help=_ptip):
@@ -20981,17 +20955,55 @@ def _render_left_col():
                             "padding-top:22px;'>Bu kategoride Platin bulunamadı</div>",
                             unsafe_allow_html=True
                         )
-    
-            # ── SAĞ: ALTIN & PLATİN (tekli hisse kriterleri) ────────
+
+            # ── SAĞ: ALTIN FIRSAT + TEKLİ ALTIN & PLATİN ────────────
             with _col_r:
+                # ── Üst blok: Altın Fırsat ───────────────────────────
                 st.markdown(
                     "<div style='font-size:0.72rem;font-weight:700;color:#f59e0b;"
-                    "margin-bottom:4px;'>💎 ALTIN & PLATİN</div>",
+                    "margin-bottom:4px;'>🏆 Altın Fırsat</div>",
                     unsafe_allow_html=True
                 )
-                with st.container(height=145, border=True):
+                with st.container(height=130, border=True):
+                    if _golden_disp is not None and not _golden_disp.empty:
+                        _gld_s = _golden_disp.sort_values('Teknik_Skor', ascending=False)
+                        for _gi, _gr in _gld_s.head(6).iterrows():
+                            _gsym = _gr['Hisse']
+                            _gd_  = get_display_name(_gsym)
+                            _gfv  = _gr['Fiyat']; _gfs = f"{int(_gfv)}" if _gfv >= 1000 else f"{_gfv:.2f}"
+                            _gred = _gr.get('RedCandle', False)
+                            _grsi = _gr.get('RSI', 0)
+                            _gdisc = _gr.get('Discount_Pct', 0)
+                            _gdbl = _gsym in _double_hit_syms
+                            _gsym_clean = str(_gsym).replace('.IS', '')
+                            _ger5 = _gsym_clean in _elit_x_er5_syms
+                            _ger5_meta = _er_5star_detail.get(_gsym_clean, {}) if _ger5 else {}
+                            _glbl = (f"🏆 {_gd_} ({_gfs})"
+                                     + (" 🟠" if _gred else "")
+                                     + (" 🚀" if _gdbl else "")
+                                     + (" 🎯" if _ger5 else ""))
+                            _gtip = (f"Altın Fırsat · Discount %{_gdisc} · RSI {_grsi}"
+                                     + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _gdbl else "")
+                                     + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_ger5_meta.get('id','5★')} ({_ger5_meta.get('name','')})" if _ger5 else ""))
+                            if st.button(_glbl, key=f"elit_golden_{_gi}", use_container_width=True, help=_gtip):
+                                on_scan_result_click(_gsym); st.rerun()
+                    else:
+                        st.markdown(
+                            "<div style='color:#64748b;font-size:0.72rem;text-align:center;"
+                            "padding-top:18px;'>Altın Fırsat bulunamadı</div>",
+                            unsafe_allow_html=True
+                        )
+
+                # ── Alt blok: Tekli Altın & Platin ──────────────────
+                st.markdown(
+                    "<div style='font-size:0.72rem;font-weight:700;color:#e2e8f0;"
+                    "margin:6px 0 4px;'>🏆/💎 Tekli Altın & Platin</div>",
+                    unsafe_allow_html=True
+                )
+                with st.container(height=130, border=True):
                     if _tekli is not None and not _tekli.empty:
-                        for _ti, _tr in _tekli.head(12).iterrows():
+                        _tkl_s = _tekli.sort_values(by=['is_platin', 'Teknik_Skor'], ascending=[False, False])
+                        for _ti, _tr in _tkl_s.head(8).iterrows():
                             _tsym  = _tr['Hisse']
                             _td_   = get_display_name(_tsym)
                             _tfv   = _tr['Fiyat']; _tfs = f"{int(_tfv)}" if _tfv >= 1000 else f"{_tfv:.2f}"
@@ -21000,28 +21012,25 @@ def _render_left_col():
                             _tdisc = _tr.get('Discount_Pct', 0)
                             _trsi  = _tr.get('RSI', 0)
                             _tdbl  = _tsym in _double_hit_syms
-                            # ── Darvas badge (yıldızlı pekiyi) ─────────────
-                            _tdq  = _tr.get('Darvas_Quality', None)
-                            _tds  = _tr.get('Darvas_Status',  None)
-                            _tdc  = _tr.get('Darvas_Class',   None)
-                            _tda  = _tr.get('Darvas_Age',     None)
-                            _tdt  = _tr.get('Darvas_Top',     None)
-                            _tdb  = _tr.get('Darvas_Bottom',  None)
+                            _tdq   = _tr.get('Darvas_Quality', None)
+                            _tds   = _tr.get('Darvas_Status',  None)
+                            _tdc   = _tr.get('Darvas_Class',   None)
+                            _tda   = _tr.get('Darvas_Age',     None)
+                            _tdt   = _tr.get('Darvas_Top',     None)
+                            _tdb   = _tr.get('Darvas_Bottom',  None)
                             _darvas_lbl = ""
                             _darvas_tip = ""
                             if _tdq is not None and _tdq >= 75:
                                 if _tds == 'breakout' and _tdc == 'A':
                                     _darvas_lbl = " ⭐📦"
                                     _darvas_tip = (f" | ⭐ DARVAS A-SINYAL — {_tda} günlük kutu kırıldı!"
-                                                   f" ({_tdt}→{_tdb}) · 3/3 Kapı · Kalite:{_tdq}/100")
+                                                   f" ({_tdt}→{_tdb}) · Kalite:{_tdq}/100")
                                 elif _tds == 'breakout':
                                     _darvas_lbl = " 📦"
-                                    _darvas_tip = (f" | 📦 Darvas Kırılım — {_tda}g kutu"
-                                                   f" ({_tdt}) · Kalite:{_tdq}/100")
+                                    _darvas_tip = (f" | 📦 Darvas Kırılım — {_tda}g kutu ({_tdt}) · Kalite:{_tdq}/100")
                                 else:
                                     _darvas_lbl = " 🟦"
-                                    _darvas_tip = (f" | 🟦 Darvas Kutu Oluşuyor — {_tda}g"
-                                                   f" ({_tdt}→{_tdb}) · Kalite:{_tdq}/100")
+                                    _darvas_tip = (f" | 🟦 Darvas Kutu Oluşuyor — {_tda}g ({_tdt}→{_tdb}) · Kalite:{_tdq}/100")
                             _tsym_clean = str(_tsym).replace('.IS', '')
                             _ter5 = _tsym_clean in _elit_x_er5_syms
                             _ter5_meta = _er_5star_detail.get(_tsym_clean, {}) if _ter5 else {}
@@ -21038,7 +21047,7 @@ def _render_left_col():
                     else:
                         st.markdown(
                             "<div style='color:#64748b;font-size:0.72rem;text-align:center;"
-                            "padding-top:22px;'>Bu kategoride Altın/Platin bulunamadı</div>",
+                            "padding-top:18px;'>Tekli Altın/Platin bulunamadı</div>",
                             unsafe_allow_html=True
                         )
         elif _scan_ran_empty:
