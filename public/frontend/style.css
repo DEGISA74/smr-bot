@@ -774,7 +774,70 @@ a { color: inherit; text-decoration: none; }
 .bar-val { width: 38px; text-align: right; font-weight: 600; font-size: 11.5px; }
 
 /* ICT grid */
-/* ── Öne Çıkanlar ─────────────────────────────────────────────────────────── */
+/* ── Öne Çıkanlar Strip (kart bar) ──────────────────────────────────────── */
+.oc-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #1e3a5f transparent;
+}
+.oc-strip::-webkit-scrollbar { height: 4px; }
+.oc-strip::-webkit-scrollbar-track { background: transparent; }
+.oc-strip::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 2px; }
+.oc-card {
+  min-width: 88px;
+  flex-shrink: 0;
+  background: rgba(8,12,24,0.85);
+  border: 1px solid #1e3a5f;
+  border-top: 2px solid #22c55e;
+  border-radius: 8px;
+  padding: 10px 10px 8px;
+}
+.oc-ticker {
+  font-size: 13px;
+  font-weight: 800;
+  color: #f1f5f9;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+.oc-price {
+  font-size: 11.5px;
+  color: #cbd5e1;
+  margin-bottom: 2px;
+}
+.oc-change { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+.oc-change.pos { color: #22c55e; }
+.oc-change.neg { color: #ef4444; }
+.oc-meta { display: flex; flex-direction: column; gap: 3px; }
+.oc-badge {
+  font-size: 9.5px;
+  padding: 2px 5px;
+  background: rgba(30,58,95,0.5);
+  border-radius: 3px;
+  color: #93c5fd;
+  white-space: nowrap;
+}
+.oc-card-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 72px;
+  border-top-color: #7c3aed !important;
+  border-color: rgba(124,58,237,0.35);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+.oc-card-locked:hover {
+  border-color: #7c3aed;
+  background: rgba(124,58,237,0.08);
+}
+
+/* ── Öne Çıkanlar (eski satır stili — korunuyor) ────────────────────────── */
 .one-cikan-row {
   display: flex;
   align-items: center;

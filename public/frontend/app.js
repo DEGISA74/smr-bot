@@ -800,57 +800,77 @@ function renderSidebarRight(d, ozet) {
 
 
 // ── Günün Öne Çıkanları ───────────────────────────────────────────────────────
+
+// Piyasa değeri sıralaması (sabit, yılda 1 güncellenir)
+const BIST_MCAP_RANK = {
+  THYAO:1,  GARAN:2,  AKBNK:3,  ISCTR:4,  SAHOL:5,  KCHOL:6,  EREGL:7,
+  TCELL:8,  SISE:9,   TUPRS:10, BIMAS:11, FROTO:12, TOASO:13, HALKB:14,
+  VAKBN:15, YKBNK:16, ENKAI:17, TKFEN:18, PGSUS:19, ASELS:20, PETKM:21,
+  CCOLA:22, EKGYO:23, ARCLK:24, GUBRF:25, KRDMD:26, SASA:27,  TTKOM:28,
+  TTRAK:29, KOZAL:30, SKBNK:31, QNBFB:32, ALBRK:33, AGHOL:34, AEFES:35,
+  BRISA:36, DOAS:37,  LOGO:38,  MPARK:39, OTKAR:40
+};
+
+function _karmaSkoru(h) {
+  const rsiN  = Math.max(0, Math.min(100, (h.rsi - 50) / 22 * 100));
+  const hN    = Math.min(100, ((h.hacim_x - 1) / 4) * 100);
+  const dN    = Math.max(0, Math.min(100, (h.degisim_pct + 5) / 15 * 100));
+  return rsiN * 0.4 + hN * 0.4 + dN * 0.2;
+}
+
 function renderOneCikanlar(ozet) {
   const el = document.getElementById("one-cikanlar-panel");
   if (!el) return;
 
-  const liste = ozet?.one_cikanlar || [];
-  const acik  = liste.slice(0, 3);   // İlk 3 → ücretsiz görünür
-  const kilitli = liste.slice(3);    // Geri kalanlar → blur
+  const liste = [...(ozet?.one_cikanlar || [])];
+  if (!liste.length) { el.innerHTML = ''; return; }
 
-  const row = (h) => {
-    const dPct  = h.degisim_pct ?? 0;
-    const dCls  = dPct >= 0 ? "g" : "r";
-    const dSign = dPct >= 0 ? "+" : "";
-    const rsiCls = h.rsi >= 70 ? "r" : h.rsi >= 55 ? "g" : h.rsi >= 45 ? "o" : "r";
+  // Karma skor hesapla + sırala (eşit puanlılarda piyasa değerine göre)
+  liste.forEach(h => { h._karma = _karmaSkoru(h); });
+  liste.sort((a, b) => {
+    const diff = b._karma - a._karma;
+    if (Math.abs(diff) > 2) return diff;
+    return (BIST_MCAP_RANK[a.ticker] || 999) - (BIST_MCAP_RANK[b.ticker] || 999);
+  });
+
+  const top5 = liste.slice(0, 5);
+  const kalan = liste.length - 5;
+
+  const card = (h) => {
+    const pos   = h.degisim_pct >= 0;
+    const dSign = pos ? '+' : '';
+    const rsiClr = h.rsi >= 70 ? '#f97316' : h.rsi >= 55 ? '#22c55e' : '#94a3b8';
+    const topClr = pos ? '#22c55e' : '#ef4444';
     return `
-      <div class="one-cikan-row">
-        <div class="one-cikan-ticker">${h.ticker}</div>
-        <div class="one-cikan-price">${h.close?.toLocaleString("tr-TR", {minimumFractionDigits:2})}</div>
-        <div class="stat-val ${dCls}">${dSign}${dPct}%</div>
-        <div class="stat-val ${rsiCls}" style="min-width:52px">RSI ${h.rsi}</div>
-        <div class="stat-val g" style="min-width:58px;font-size:9.5px">Hacim ${h.hacim_x}×</div>
+      <div class="oc-card" style="border-top-color:${topClr}">
+        <div class="oc-ticker">${h.ticker}</div>
+        <div class="oc-price">${h.close?.toLocaleString('tr-TR',{minimumFractionDigits:2})}</div>
+        <div class="oc-change ${pos ? 'pos' : 'neg'}">${dSign}${h.degisim_pct}%</div>
+        <div class="oc-meta">
+          <span class="oc-badge" style="color:${rsiClr}">RSI ${h.rsi}</span>
+          <span class="oc-badge">⚡ ${h.hacim_x}×</span>
+        </div>
       </div>`;
   };
 
-  const acikHTML   = acik.map(row).join("");
-  const kilitliHTML = kilitli.length > 0 ? `
-    <div style="position:relative;margin-top:4px;border-radius:6px;overflow:hidden">
-      <div style="filter:blur(4px);user-select:none;pointer-events:none">
-        ${kilitli.map(row).join("")}
-      </div>
-      <div style="position:absolute;inset:0;background:rgba(10,13,26,0.6);
-                  display:flex;flex-direction:column;align-items:center;
-                  justify-content:center;gap:6px;cursor:pointer"
-           onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
-        <div class="elite-badge">ELITE</div>
-        <span style="font-size:10px;color:var(--text-dim)">Tüm liste için ELITE — ${kilitli.length} hisse daha</span>
-      </div>
-    </div>` : "";
-
   el.innerHTML = `
     <div class="panel-header green">
-      <div class="panel-title">🔍 Günün Öne Çıkanları</div>
-      <div class="panel-tag">${liste.length} Güçlü Sinyal · ${150} Hisse Tarandı</div>
+      <div class="panel-title">📊 Günün Öne Çıkanları</div>
+      <div class="panel-tag" style="color:#94a3b8">Her gün 18:45 güncellenir</div>
     </div>
     <div class="panel-body">
-      <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">
-        SMA200 üstü · RSI &gt; 52 · Hacim artışı — üç kriter bir arada
+      <div class="oc-strip">
+        ${top5.map(card).join('')}
+        <div class="oc-card oc-card-locked" onclick="openPlansModal()">
+          <div class="elite-badge" style="font-size:9px;padding:2px 7px">ELITE</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:6px">+${kalan}</div>
+          <div style="font-size:9px;color:#64748b">hisse daha</div>
+        </div>
       </div>
-      ${acik.length > 0 ? acikHTML : '<div style="color:var(--text-dim);font-size:11px">Bugün güçlü sinyal yok.</div>'}
-      ${kilitliHTML}
-    </div>
-  `;
+      <div style="font-size:10px;color:#475569;margin-top:6px">
+        Sıralama: RSI %40 · Hacim %40 · Momentum %20 · Eşitte piyasa değeri
+      </div>
+    </div>`;
 }
 
 
