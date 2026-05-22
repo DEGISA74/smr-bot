@@ -54,6 +54,7 @@ async function renderErkenRadarPreview() {
     const res = await fetch('erken_radar_preview.json?t=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) return; // sessizce gizli kalır
     const data = await res.json();
+    window._erkenRadarData = data;          // arama için global
     const items = data.public_items || [];
     if (items.length === 0) return;
     panel.style.display = '';
@@ -88,7 +89,19 @@ async function renderErkenRadarPreview() {
 function renderUpdateTime(meta) {
   if (!meta) return;
   const el = document.getElementById("update-time");
-  if (el) el.innerHTML = `${meta.tarih} · ${meta.guncelleme}`;
+  if (!el) return;
+  if (meta.canli_guncelleme) {
+    el.innerHTML = '🟢 Canlı · ' + meta.canli_guncelleme + ' güncellendi';
+  } else {
+    // meta.guncelleme UTC olarak gelir — İstanbul (+3) için 3 saat ekle
+    var saat = meta.guncelleme || '';
+    if (saat && saat.indexOf(':') !== -1) {
+      var parts = saat.split(':');
+      var h = (parseInt(parts[0], 10) + 3) % 24;
+      saat = (h < 10 ? '0' : '') + h + ':' + parts[1];
+    }
+    el.innerHTML = (meta.tarih || '') + ' · ' + saat;
+  }
 }
 
 
@@ -366,15 +379,14 @@ function renderTeknikSeviyeler(d) {
 
   const k = d.kapanis;
 
-  // Gerçek verilerden türetilmiş EMA/SMA yaklaşımları
-  // (scan_core.py'de EMA hesaplanmıyor; SMA50 ve SMA200 gerçek)
-  const ema5   = k * 0.9990;
-  const ema8   = k * 0.9974;
-  const ema13  = k * 0.9950;
+  // Gerçek EMA/SMA değerleri — latest.json'dan okunur (scan_core.py hesaplar)
+  const ema5   = d.ema5   || k;
+  const ema8   = d.ema8   || k;
+  const ema13  = d.ema13  || k;
   const sma50  = d.sma50;
-  const sma100 = d.sma50 ? (d.sma50 + d.sma200) / 2 : k * 0.968;
+  const sma100 = d.sma100 || (d.sma50 ? (d.sma50 + d.sma200) / 2 : k);
   const sma200 = d.sma200;
-  const ema144 = d.sma200 ? d.sma200 * 0.993 : k * 0.960;
+  const ema144 = d.ema144 || (d.sma200 ? d.sma200 : k);
 
   const dot = (v) => {
     const c = v ? (k > v ? "var(--green)" : "var(--red)") : "var(--text-muted)";
@@ -1606,6 +1618,33 @@ function closeTop3Popup() {
   if (ov) ov.style.display = "none";
   document.body.style.overflow = "";
 }
+
+// ── Hisse Arama ─────────────────────────────────────────────────────────────────────────────
+function handleStockSearch() {
+  var input  = document.getElementById('stock-search-input');
+  var result = document.getElementById('stock-search-result');
+  if (!input || !result) return;
+  var ticker = input.value.trim().toUpperCase().replace(/\.IS$/i, '');
+  if (!ticker) { result.innerHTML = ''; return; }
+  var erData = window._erkenRadarData;
+  if (erData && erData.public_items) {
+    var found = erData.public_items.find(function(it) {
+      return it.ticker.replace('.IS','').toUpperCase() === ticker;
+    });
+    if (found) {
+      var catIcons = { A: '🔄', B: '📐', C: '🚀', D: '⚠️' };
+      var icon = catIcons[found.category] || '🎯';
+      result.innerHTML = icon + ' <strong>' + ticker + '</strong>'
+        + ' — <span style="color:#7dd3fc;">' + found.scenario_name + '</span>'
+        + ' <span style="color:#fbbf24;">★★★★★</span>';
+      return;
+    }
+  }
+  result.innerHTML = 'Detaylı analiz için Telegram bot’umuza <strong>#'
+    + ticker + '</strong> yazabilirsiniz.'
+    + ' ⏳ <span style="color:#f59e0b;font-weight:600;">Çok yakında başlıyoruz.</span>';
+}
+
 
 // Modal click handler — MutationObserver ile dinamik elementleri yakala
 (function(){
