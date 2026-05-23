@@ -340,13 +340,81 @@ def scan_bist_health(ticker_list: list = None, limit: int = 150) -> dict:
                 # SMA200'e göre uzaklık %
                 s200_uzaklik = round((close - s200) / s200 * 100, 1) if s200 else None
 
+                # --- Detay alanları (hisse analiz paneli için) ---
+                # Rejim
+                if close > s200 * 1.03:
+                    rejim, rejim_renk = "Boğa Trendi", "green"
+                elif close < s200 * 0.97:
+                    rejim, rejim_renk = "Ayı Baskısı", "red"
+                else:
+                    rejim, rejim_renk = "Denge Bölgesi", "orange"
+
+                # 52 haftalık pozisyon
+                yl_yuksek = round(float(df["High"].max()), 2)
+                yl_dusuk  = round(float(df["Low"].min()),  2)
+                aralik    = yl_yuksek - yl_dusuk
+                poz_pct   = round((close - yl_dusuk) / aralik * 100, 1) if aralik > 0 else 50
+
+                # OBV yönü (son 5 bar)
+                obv_s5   = df["obv"].iloc[-5:].values.tolist()
+                obv_yonu = "yukari" if obv_s5[-1] > obv_s5[0] else "asagi"
+
+                # RSI trendi (son 3 bar)
+                rsi_s3    = df["rsi"].iloc[-3:].values.tolist()
+                rsi_trend = "yukari" if rsi_s3[-1] > rsi_s3[0] else "asagi"
+
+                # Destek / Direnç (20 günlük)
+                destek = round(float(df["Low"].iloc[-20:].min()),  2)
+                direnc = round(float(df["High"].iloc[-20:].max()), 2)
+
+                # EMA 5, 8, 13
+                ema5  = round(float(df["Close"].ewm(span=5,  adjust=False).mean().iloc[-1]), 2)
+                ema8  = round(float(df["Close"].ewm(span=8,  adjust=False).mean().iloc[-1]), 2)
+                ema13 = round(float(df["Close"].ewm(span=13, adjust=False).mean().iloc[-1]), 2)
+
+                # Chart data — DEMA6 momentum formülü (son 30 bar)
+                try:
+                    _typ  = (df["High"] + df["Low"] + df["Close"]) / 3
+                    _e1   = _typ.ewm(span=6, adjust=False).mean()
+                    _e2   = _e1.ewm(span=6, adjust=False).mean()
+                    _dema = 2 * _e1 - _e2
+                    _mf   = (_typ - _dema) / _dema * 1000
+                    _t    = df.tail(30).copy()
+                    _t["_MF"]  = _mf.values[-30:]
+                    _t["_STP"] = _e1.values[-30:]
+                    _t = _t.reset_index()
+                    _dc = next((c for c in ("Date","Datetime","date","datetime") if c in _t.columns), None)
+                    if _dc:
+                        _t["_d"] = pd.to_datetime(_t[_dc])
+                        chart_data = [{"date": r["_d"].strftime("%d %b"), "mf": round(float(r["_MF"]),4), "stp": round(float(r["_STP"]),2), "price": round(float(r["Close"]),2)} for _, r in _t.iterrows()]
+                    else:
+                        chart_data = []
+                except Exception:
+                    chart_data = []
+
                 one_cikanlar.append({
-                    "ticker":      ticker.replace(".IS", ""),
-                    "close":       round(close, 2),
-                    "degisim_pct": degisim,
-                    "rsi":         round(rsi_val, 1),
-                    "sma200_pct":  s200_uzaklik,
-                    "hacim_x":     round(vol_bugun / vol_avg10, 2) if vol_avg10 else None,
+                    "ticker":       ticker.replace(".IS", ""),
+                    "close":        round(close, 2),
+                    "degisim_pct":  degisim,
+                    "rsi":          round(rsi_val, 1),
+                    "sma200_pct":   s200_uzaklik,
+                    "hacim_x":      round(vol_bugun / vol_avg10, 2) if vol_avg10 else None,
+                    # detay alanları
+                    "sma50":        round(s50, 2) if s50 else None,
+                    "sma200":       round(s200, 2) if s200 else None,
+                    "rejim":        rejim,
+                    "rejim_renk":   rejim_renk,
+                    "yillik_yuksek": yl_yuksek,
+                    "yillik_dusuk":  yl_dusuk,
+                    "pozisyon_pct":  poz_pct,
+                    "obv_yonu":     obv_yonu,
+                    "rsi_trend":    rsi_trend,
+                    "destek":       destek,
+                    "direnc":       direnc,
+                    "ema5":         ema5,
+                    "ema8":         ema8,
+                    "ema13":        ema13,
+                    "chart_data":   chart_data,
                 })
 
             time.sleep(0.05)  # yfinance rate limit koruması

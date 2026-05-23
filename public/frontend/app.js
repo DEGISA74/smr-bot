@@ -834,6 +834,7 @@ function renderOneCikanlar(ozet) {
   });
 
   const top5 = liste.slice(0, 5);
+  window._ocStocks = top5;
   const kalan = liste.length - 5;
 
   const card = (h) => {
@@ -841,8 +842,9 @@ function renderOneCikanlar(ozet) {
     const dSign = pos ? '+' : '';
     const rsiClr = h.rsi >= 70 ? '#f97316' : h.rsi >= 55 ? '#22c55e' : '#94a3b8';
     const topClr = pos ? '#22c55e' : '#ef4444';
+    const hasDetail = h.chart_data && h.chart_data.length > 0;
     return `
-      <div class="oc-card" style="border-top-color:${topClr}">
+      <div class="oc-card" id="oc-card-${h.ticker}" style="border-top-color:${topClr};cursor:pointer" onclick="openHisseDetay('${h.ticker}')">
         <div class="oc-ticker">${h.ticker}</div>
         <div class="oc-price">${h.close?.toLocaleString('tr-TR',{minimumFractionDigits:2})}</div>
         <div class="oc-change ${pos ? 'pos' : 'neg'}">${dSign}${h.degisim_pct}%</div>
@@ -850,6 +852,7 @@ function renderOneCikanlar(ozet) {
           <span class="oc-badge" style="color:${rsiClr}">RSI ${h.rsi}</span>
           <span class="oc-badge">⚡ ${h.hacim_x}×</span>
         </div>
+        ${hasDetail ? '<div style="font-size:8px;color:#64748b;margin-top:4px;text-align:center">▼ detay</div>' : ''}
       </div>`;
   };
 
@@ -873,6 +876,141 @@ function renderOneCikanlar(ozet) {
     </div>`;
 }
 
+
+// ── Hisse Detay (Öne Çıkanlar tıklama) ───────────────────────────────────────
+function openHisseDetay(ticker) {
+  const h = (window._ocStocks || []).find(s => s.ticker === ticker);
+  if (!h) return;
+  const panel = document.getElementById('hisse-detay-panel');
+  if (!panel) return;
+  document.querySelectorAll('.oc-card').forEach(c => c.style.outline = '');
+  const aktifKart = document.getElementById('oc-card-' + ticker);
+  if (aktifKart) aktifKart.style.outline = '2px solid #22c55e';
+  panel.style.display = 'block';
+  renderHisseDetayPanel(h);
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeHisseDetay() {
+  const panel = document.getElementById('hisse-detay-panel');
+  if (panel) panel.style.display = 'none';
+  document.querySelectorAll('.oc-card').forEach(c => c.style.outline = '');
+}
+
+function renderHisseDetayPanel(h) {
+  const panel = document.getElementById('hisse-detay-panel');
+  if (!panel) return;
+
+  const pos     = h.degisim_pct >= 0;
+  const dSign   = pos ? '+' : '';
+  const clr     = pos ? '#22c55e' : '#ef4444';
+  const rc      = rsiClass(h.rsi);
+  const rejim   = h.rejim || '—';
+  const rRenk   = h.rejim_renk === 'green' ? '#22c55e' : h.rejim_renk === 'red' ? '#ef4444' : '#f97316';
+
+  // 52H pozisyon bar
+  const poz    = h.pozisyon_pct ?? 50;
+  const pozBar = `
+    <div style="position:relative;height:6px;background:#1e293b;border-radius:3px;margin:4px 0">
+      <div style="position:absolute;left:0;top:0;height:6px;width:${poz}%;background:${clr};border-radius:3px"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:9px;color:#64748b">
+      <span>${fmt(h.yillik_dusuk)}</span><span style="color:#94a3b8">${poz}%</span><span>${fmt(h.yillik_yuksek)}</span>
+    </div>`;
+
+  // EMA seviyeleri
+  const cl  = (v) => v && h.close ? (h.close > v ? 'g' : 'r') : 'c';
+  const dot = (v) => v && h.close ? (h.close > v ? '▲' : '▼') : '·';
+  const levelRow = (label, v) => v ? `
+    <tr>
+      <td style="color:#64748b;font-size:10px;padding:3px 6px">${label}</td>
+      <td class="${cl(v)}" style="font-size:10px;padding:3px 6px;text-align:right">${dot(v)} ${fmt(v)}</td>
+    </tr>` : '';
+
+  // OBV + RSI trend
+  const obvClr   = h.obv_yonu  === 'yukari' ? '#22c55e' : '#ef4444';
+  const obvTxt   = h.obv_yonu  === 'yukari' ? '↑ Alış Baskısı' : '↓ Satış Baskısı';
+  const rsiTrClr = h.rsi_trend === 'yukari' ? '#22c55e' : '#ef4444';
+  const rsiTrTxt = h.rsi_trend === 'yukari' ? '↑ Güçleniyor' : '↓ Zayıflıyor';
+
+  // Grafikler
+  const grafik = h.chart_data || [];
+  const hasSVG = grafik.length > 0;
+  const svgBok = hasSVG
+    ? `<div style="margin-top:10px">${makeMomentumSVG(grafik)}</div>
+       <div style="margin-top:6px">${makeSentimentSVG(grafik)}</div>`
+    : `<div style="color:#475569;font-size:11px;margin-top:10px;text-align:center;padding:12px 0">
+         Grafik verisi bir sonraki güncellemede hazır olacak (18:45)
+       </div>`;
+
+  panel.innerHTML = `
+    <div class="panel-header" style="background:linear-gradient(135deg,#0f172a,#1e293b);border-left:3px solid ${clr}">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <span style="font-size:15px;font-weight:700;color:#e2e8f0">${h.ticker}</span>
+          <span style="font-size:13px;color:${clr};margin-left:8px;font-weight:600">${dSign}${h.degisim_pct}%</span>
+          <span style="font-size:12px;color:#94a3b8;margin-left:6px">${fmt(h.close)} ₺</span>
+        </div>
+        <button onclick="closeHisseDetay()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:4px 8px">✕</button>
+      </div>
+      <div style="margin-top:4px">
+        <span style="font-size:10px;font-weight:600;color:${rRenk};background:${rRenk}20;padding:2px 8px;border-radius:10px">${rejim}</span>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div class="stat-chip">
+          <span class="stat-chip-label">SMA 50</span>
+          <span class="stat-chip-val ${cl(h.sma50)}">${fmt(h.sma50)}</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-chip-label">SMA 200</span>
+          <span class="stat-chip-val ${cl(h.sma200)}">${fmt(h.sma200)}</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-chip-label">RSI</span>
+          <span class="stat-chip-val ${rc}">${h.rsi}</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-chip-label">Hacim</span>
+          <span class="stat-chip-val" style="color:#f97316">⚡ ${h.hacim_x}×</span>
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:10px;color:#64748b;margin-bottom:2px">52 Haftalık Konum</div>
+        ${pozBar}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
+        <div style="background:#0f172a;border-radius:6px;padding:8px">
+          <div style="font-size:9px;color:#64748b;margin-bottom:3px">OBV Trendi</div>
+          <div style="font-size:11px;font-weight:600;color:${obvClr}">${obvTxt}</div>
+        </div>
+        <div style="background:#0f172a;border-radius:6px;padding:8px">
+          <div style="font-size:9px;color:#64748b;margin-bottom:3px">RSI Trendi</div>
+          <div style="font-size:11px;font-weight:600;color:${rsiTrClr}">${rsiTrTxt}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
+        <div style="background:#0f172a;border-radius:6px;padding:8px">
+          <div style="font-size:9px;color:#64748b;margin-bottom:3px">Destek (20g)</div>
+          <div style="font-size:12px;font-weight:600;color:#22c55e">${fmt(h.destek)}</div>
+        </div>
+        <div style="background:#0f172a;border-radius:6px;padding:8px">
+          <div style="font-size:9px;color:#64748b;margin-bottom:3px">Direnç (20g)</div>
+          <div style="font-size:12px;font-weight:600;color:#ef4444">${fmt(h.direnc)}</div>
+        </div>
+      </div>
+      <div style="background:#0f172a;border-radius:6px;padding:8px;margin-bottom:6px">
+        <div style="font-size:9px;color:#64748b;margin-bottom:6px">EMA Seviyeleri</div>
+        <table style="width:100%;border-collapse:collapse">
+          ${levelRow('EMA 5', h.ema5)}
+          ${levelRow('EMA 8', h.ema8)}
+          ${levelRow('EMA 13', h.ema13)}
+        </table>
+      </div>
+      ${svgBok}
+    </div>`;
+}
 
 // ── Kurumsal İlgi Paneli ──────────────────────────────────────────────────────
 function renderKurumsalPanel(xu100) {
