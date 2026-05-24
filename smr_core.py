@@ -2275,6 +2275,7 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             "",
             *([ rs_guc_line ] if rs_guc_line else [ f"📈 *RSI:* `{rsi_val:.1f}`" ]),
             "",
+            "*Algoritmik Teknik Analiz Özeti:*",
             f"💬 {ozet}",
             "━━━━━━━━━━━━━━━━━━━",
         ]
