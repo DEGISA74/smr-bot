@@ -2155,11 +2155,11 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         elif not is_macro_bull:
             if is_oversold or is_accumulation:
                 ozet = random.choice([
-                    f"Fiyat makro ortalamaların altında baskı altında, ancak RSI {rsi_val:.0f} aşırı satım bölgesini işaret ediyor. {_obv_txt} — gizli birikim ihtimali göz ardı edilmemeli. {fmt(_res1_val)} direncinin hacimle aşılması trendi tersine çevirebilir. {fmt(_sup1_val)} desteğinin tutması beklenmeli.",
-                    f"Düşüş trendi sürüyor ama RSI {rsi_val:.0f} ile aşırı satım/birikim emaresi var. {_obv_txt} — kurumsal alım sessizce gelmiş olabilir. {fmt(_res1_val)} direncinin hacimli aşılması yapısal bir dönüş tetikleyebilir. Önce {fmt(_sup1_val)} desteğinin tutması şart.",
-                    f"Makro baskı sürmesine karşın RSI {rsi_val:.0f} dipte. {_obv_txt} — birikim sinyali masada. {fmt(_res1_val)} hacimle aşılırsa yapıda tersine dönüş başlayabilir. {fmt(_sup1_val)} desteğinin tutması ilk şart.",
+                    f"Makro trend altında baskı var, ancak RSI {rsi_val:.0f} aşırı satım bölgesini işaret ediyor. {_macd_txt}, {_obv_txt} — gizli birikim ihtimali göz ardı edilmemeli. {fmt(_res1_val)} direncinin hacimle aşılması yapıyı tersine çevirebilir. {fmt(_sup1_val)} desteğinin tutması beklenmeli.",
+                    f"Düşüş trendi sürüyor ama RSI {rsi_val:.0f} ile aşırı satım/birikim emaresi var. {_macd_txt}, {_obv_txt} — kurumsal alım sessizce gelmiş olabilir. {fmt(_res1_val)} direncinin hacimli aşılması yapısal bir dönüş tetikleyebilir. Önce {fmt(_sup1_val)} desteğinin tutması şart.",
+                    f"Makro baskı sürmesine karşın RSI {rsi_val:.0f} dipte. {_macd_txt}; {_obv_txt} — birikim sinyali masada. {fmt(_res1_val)} hacimle aşılırsa yapıda tersine dönüş başlayabilir. {fmt(_sup1_val)} desteğinin tutması ilk şart.",
                     f"Aşırı satım bölgesinde ({_ac_txt}): {_macd_txt}; {_obv_txt}. {fmt(_sup1_val)} desteğinden teknik tepki potansiyeli var. {fmt(_res1_val)} kısa vadeli ilk direnç — bu seviye aşılmadan toparlanma teyit edilemez.",
-                    f"Düşüş baskısı var ama RSI {rsi_val:.0f} dip bölgesinde. {_obv_txt}; {_macd_txt}. {fmt(_sup1_val)} tutarsa ve {fmt(_res1_val)} hacimle geri alınırsa dönüş senaryosu güçlenir. Sabırsız hareket risklidir.",
+                    f"Düşüş baskısı var ama RSI {rsi_val:.0f} dip bölgesinde. {_macd_txt}; {_obv_txt}. {fmt(_sup1_val)} tutarsa ve {fmt(_res1_val)} hacimle geri alınırsa dönüş senaryosu güçlenir. Sabırsız hareket risklidir.",
                 ])
             elif enerji_skor > 6.5:
                 ozet = random.choice([
@@ -2213,11 +2213,11 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         else:  # is_macro_bull ama is_micro_bull değil
             if is_oversold:
                 ozet = random.choice([
-                    f"Uzun vade pozitif (SMA200 üstü) ancak kısa vadede sert düzeltme yaşandı. RSI {rsi_val:.0f} aşırı satım bölgesine yaklaşıyor; {_obv_txt}. {fmt(_sup1_val)} desteğinden teknik dönüş fırsatı sunabilir. Ani toparlanmada {fmt(_res1_val)} ilk direnç noktası olarak izlenmeli.",
-                    f"Ana trend yukarı ama kısa vadeli düzeltme derinleşti. RSI {rsi_val:.0f} aşırı satıma yaklaşıyor; {_obv_txt}. {fmt(_sup1_val)} desteği tutarsa teknik tepki gelebilir. {fmt(_res1_val)} kısa vadeli ilk eşik.",
-                    f"Makro pozitif yapı korunuyor ama kısa vade yorgun. RSI {rsi_val:.0f} aşırı satıma yaklaşıyor; {_obv_txt}. {fmt(_sup1_val)} destek olarak izlenmeli; {fmt(_res1_val)} ilk tepki eşiği olabilir.",
+                    f"Uzun vade pozitif ({_td_txt}) ancak kısa vadede sert düzeltme yaşandı. RSI {rsi_val:.0f} aşırı satıma yaklaşıyor; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} desteğinden teknik dönüş fırsatı sunabilir. Ani toparlanmada {fmt(_res1_val)} ilk direnç noktası olarak izlenmeli.",
+                    f"Ana trend yukarı ({_td_txt}) ama kısa vadeli düzeltme derinleşti. RSI {rsi_val:.0f} aşırı satıma yaklaşıyor; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} desteği tutarsa teknik tepki gelebilir. {fmt(_res1_val)} kısa vadeli ilk eşik.",
+                    f"Makro pozitif yapı korunuyor ({_td_txt}) ama kısa vade yorgun. RSI {rsi_val:.0f} aşırı satıma yaklaşıyor; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} destek olarak izlenmeli; {fmt(_res1_val)} ilk tepki eşiği olabilir.",
                     f"Kısa vade düzeltmesi derin — {_td_txt}, RSI {rsi_val:.0f} dipte. {_macd_txt}; {_obv_txt}. {fmt(_sup1_val)} tutarsa teknik yansıma potansiyeli var. {fmt(_res1_val)} ilk engel.",
-                    f"Uzun vade sağlam ama kısa vade baskı altında. RSI {rsi_val:.0f}; {_macd_txt}. {fmt(_sup1_val)} destek tutarsa makro trend yeniden devreye girebilir. {fmt(_res1_val)} üzeri kısa vade toparlanma onayı.",
+                    f"Uzun vade sağlam ({_td_txt}) ama kısa vade baskı altında. RSI {rsi_val:.0f}; {_macd_txt}, {_obv_txt}. {fmt(_sup1_val)} destek tutarsa makro trend yeniden devreye girebilir. {fmt(_res1_val)} üzeri kısa vade toparlanma onayı.",
                 ])
             else:
                 ozet = random.choice([
