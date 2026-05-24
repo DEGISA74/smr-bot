@@ -31,9 +31,15 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-CACHE_DIR = r"C:\Users\LENOVO\OneDrive\Desktop\Patron Terminal\veriler"
+# CACHE_DIR — environment variable ile override edilebilir (VPS deploy için portable)
+# Varsayılan: app.py'nin yanındaki "veriler" klasörü
+_DEFAULT_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "veriler")
+CACHE_DIR = os.environ.get("SMR_CACHE_DIR", _DEFAULT_CACHE)
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
+
+# Cache telemetri — bir oturum boyunca hit/miss sayacı (debug için)
+_CACHE_STATS = {'hit': 0, 'miss': 0, 'split_detected': 0}
 
 # ── TARAMA SONUCU AGRESİF CACHE (Piyasa Dışı Saatler) ───────────────────────
 SCAN_CACHE_DIR = os.path.join(CACHE_DIR, "scan_cache")
@@ -975,7 +981,15 @@ raw_bist_stocks = [
     "UFUK.IS", "ULAS.IS", "ULKER.IS", "ULUFA.IS", "ULUSE.IS", "ULUUN.IS", "UMPAS.IS", "UNLU.IS", "USAK.IS", "UZERB.IS", "TATEN.IS",
     "VAKBN.IS", "VAKFN.IS", "VAKKO.IS", "VANGD.IS", "VBTYZ.IS", "VERUS.IS", "VESBE.IS", "VESTL.IS", "VKFYO.IS", "VKGYO.IS", "VKING.IS", "VRGYO.IS",
     "YAPRK.IS", "YATAS.IS", "YAYLA.IS", "YBTAS.IS", "YEOTK.IS", "YESIL.IS", "YGGYO.IS", "YGYO.IS", "YKBNK.IS", "YKSLN.IS", "YONGA.IS", "YUNSA.IS", "YYAPI.IS", "YYLGD.IS",
-    "ZEDUR.IS", "ZOREN.IS", "ZRGYO.IS", "GIPTA.IS", "TEHOL.IS", "PAHOL.IS", "MARMR.IS", "BIGEN.IS", "GLRMK.IS", "TRHOL.IS", "AAGYO.IS"
+    "ZEDUR.IS", "ZOREN.IS", "ZRGYO.IS", "GIPTA.IS", "TEHOL.IS", "PAHOL.IS", "MARMR.IS", "BIGEN.IS", "GLRMK.IS", "TRHOL.IS", "AAGYO.IS",
+    # --- 2025-05 EKLENENler (resmi BIST listesinden eksik bulunanlar) ---
+    "AHSGY.IS", "AKFIS.IS", "AKFYE.IS", "AKHAN.IS", "ALKLC.IS", "ARMGD.IS", "ATATR.IS", "BAHKM.IS", "BALSU.IS", "BESLR.IS",
+    "BESTE.IS", "BIGTK.IS", "BLUME.IS", "BORSK.IS", "BULGS.IS", "CEMZY.IS", "CGCAM.IS", "DCTTR.IS", "DMRGD.IS", "DOFRB.IS",
+    "DSTKF.IS", "DUNYH.IS", "DURKN.IS", "ECOGR.IS", "EGEGY.IS", "EKOS.IS", "EMPAE.IS", "ENDAE.IS", "ENERY.IS", "ENPRA.IS",
+    "FRMPL.IS", "GATEG.IS", "GENKM.IS", "GRTHO.IS", "GUNDG.IS", "HOROZ.IS", "IHLAS.IS", "KARTN.IS", "KBORU.IS", "KLSYN.IS",
+    "KLYPV.IS", "LRSHO.IS", "LXGYO.IS", "LYDHO.IS", "LYDYE.IS", "MCARD.IS", "MEYSU.IS", "MHRGY.IS", "MOPAS.IS", "NTHOL.IS",
+    "OZYSR.IS", "PNSUT.IS", "QNBFK.IS", "QNBTR.IS", "RUZYE.IS", "SEGMN.IS", "SERNT.IS", "SKYLP.IS", "SMRVA.IS", "SVGYO.IS",
+    "TARKM.IS", "TCKRC.IS", "TRENJ.IS", "TRMET.IS", "UCAYM.IS", "VAKFA.IS", "VSNMD.IS", "YIGIT.IS", "ZERGY.IS", "ZGYO.IS"
 ]
 
 # Kopyaları Temizle ve Birleştir
@@ -1210,13 +1224,16 @@ def get_batch_data_cached(asset_list, period="1y"):
                         )
                         if _split_flag:
                             os.remove(file_path)
+                            _CACHE_STATS['split_detected'] += 1
                         else:
                             df_ready = df_cached.tail(500).copy()
                             combined_dict[sym] = apply_volume_projection(df_ready, sym)
                             needs_download = False
+                            _CACHE_STATS['hit'] += 1
             except: pass
         if needs_download:
             missing_assets.append(sym)
+            _CACHE_STATS['miss'] += 1
 
     if missing_assets:
         df_new = _yf_download_with_retry(
@@ -1264,6 +1281,55 @@ def get_batch_data_cached(asset_list, period="1y"):
     if combined_dict:
         return pd.concat(combined_dict.values(), axis=1, keys=combined_dict.keys())
     return pd.DataFrame()
+
+
+def get_cache_diagnostics():
+    """
+    Cache klasörünün durumunu raporlar — fetcher.py'nin doğru çalışıp çalışmadığını gösterir.
+    Returns: dict {total_files, fresh_files, stale_files, last_source, avg_age_minutes}
+    """
+    import datetime as _dt
+    diag = {
+        'cache_dir':       CACHE_DIR,
+        'total_files':     0,
+        'fresh_minutes':   0,    # 30 dk içinde güncellenen
+        'stale_hours':     0,    # 1 saat+ eski
+        'avg_age_minutes': None,
+        'newest_file':     None,
+        'oldest_file':     None,
+        'last_source':     None,
+        'cache_stats':     dict(_CACHE_STATS),
+    }
+    try:
+        last_src = os.path.join(CACHE_DIR, '.last_source')
+        if os.path.exists(last_src):
+            with open(last_src) as f: diag['last_source'] = f.read().strip()
+    except: pass
+
+    try:
+        now = _dt.datetime.now().timestamp()
+        ages = []
+        newest_t, newest_f = 0, None
+        oldest_t, oldest_f = float('inf'), None
+        for f in os.listdir(CACHE_DIR):
+            if not f.endswith('.parquet'): continue
+            fp = os.path.join(CACHE_DIR, f)
+            mtime = os.path.getmtime(fp)
+            age_min = (now - mtime) / 60
+            ages.append(age_min)
+            diag['total_files'] += 1
+            if age_min < 30:    diag['fresh_minutes'] += 1
+            if age_min > 60:    diag['stale_hours']   += 1
+            if mtime > newest_t: newest_t, newest_f = mtime, f
+            if mtime < oldest_t: oldest_t, oldest_f = mtime, f
+        if ages:
+            diag['avg_age_minutes'] = round(sum(ages)/len(ages), 1)
+            diag['newest_file']     = f"{newest_f} ({(now-newest_t)/60:.1f}dk önce)"
+            diag['oldest_file']     = f"{oldest_f} ({(now-oldest_t)/60:.1f}dk önce)"
+    except Exception as _e:
+        diag['error'] = str(_e)
+    return diag
+
 
 # ── BİNANCE VERİ ÇEKİCİ (KRİPTO PARALAR İÇİN) ──────────────────────
 def _fetch_from_binance(ticker, limit=730):
@@ -5522,27 +5588,23 @@ def fetch_technical_engine_data(ticker, sources_list):
     YENİ HİYERARŞİK TEKNİK MOTOR V5: "10 Gerçek Piyasa Senaryosu" Eklendi
     Hisse özel kombinasyonlar yakaladığında jenerik mesaj yerine stratejik tanım gösterir.
     """
-    # 1. ANA MODELLER (TABAN PUAN - BASE SCORES)
+    # TÜM TARAMALAR TEK TABLODA — her taramanın güç puanı
+    # Birincil model = en yüksek puanlı kaynak; diğerleri kendi puanının %20'si kadar bonus katar
     base_powers = {
-        '🔄 Güçlü Dönüş Adayları': 85,
-        '🦅 ICT Sniper': 85,
-        '🦁 Minervini': 80,
-        '💎 Platin Fırsat (Klasik)': 80,
-        '🔨 Breakout Yapan': 70,
-        '🏆 RS Lideri': 60
-    }
-
-    # 2. DESTEKLEYİCİ MODELLER (BONUS PUANLAR)
-    bonus_powers = {
-        '🏆 RS Lideri': 15,
-        '🤫 Sentiment (Akıllı Para)': 15,
-        '📈 RSI Pozitif Uyumsuzluk': 10,
-        '🔨 Breakout Yapan': 10,
-        '💎 Altın Set-up': 12,
-        '📊 VIP Formasyon': 10,
-        '🔥 Isınan (STP)': 8,
-        '📡 1-5 Günlük Yükseliş': 5,
-        '⭐ Yıldız Adayı': 5
+        '♠️ Royal Flush Nadir Fırsat':           93,
+        '🦅 ICT Sniper':                         88,
+        '🔄 Güçlü Dönüş Adayları':              85,
+        '🚀 Pre-Launch BOS':                     78,
+        '🦁 Minervini':                          76,
+        '⚡ Harmonik Confluence (3\'lü Teyit)':  75,
+        '🚀 Erken Radar (5★)':                   72,
+        '🏆 Altın Set-up':                       68,
+        '💎 Platin Set-up':                      73,
+        '🤫 Gizli Birikim':                      62,
+        '📈 RS Momentum Lideri':                 60,
+        '💎 VIP Formasyon':                      45,
+        '⭐ Yıldız Adayı':                       30,
+        '📡 1-5 Günlük Yükseliş':               20,
     }
 
     # 3. TABAN PUANI BELİRLE
@@ -5556,74 +5618,76 @@ def fetch_technical_engine_data(ticker, sources_list):
 
     current_score = max_base_score if max_base_score > 0 else 20
 
-    # 4. ÇOKLU ANA MODEL BONUSU VE YARDIMCI SİNYALLERİ EKLE
+    # 4. ÇOKLU TARAMA BONUSU — her ek kaynak kendi gücünün %20'sini katar
     for src in sources_list:
         if src == primary_model:
             continue
-            
         if src in base_powers:
-            current_score += 10  # Diğer her bir dev model için +10 Puan
-        elif src in bonus_powers:
-            current_score += bonus_powers[src]
+            current_score += round(base_powers[src] * 0.20)
 
-    # 5. KORUMA SİSTEMİ (KILL-SWITCH)
-    if '🦁 Minervini' in sources_list and '🤫 Sentiment (Akıllı Para)' not in sources_list:
-        current_score -= 15 # Hacim yoksa trend sahtedir, cezalandır.
+    total_score = int(current_score)  # cap yok — ham puan, ~85-150 arası
 
-    total_score = min(100, int(current_score))
-    
     # İkonları ayıkla
-    all_icons = ['🩸', '🦅', '🦁', '🏆', '📈', '🤫', '🔨', '📡', '♠️', '⭐']
+    all_icons = ['🩸', '🦅', '🦁', '🏆', '📈', '🤫', '🔨', '📡', '♠️', '⭐', '🔄', '💎', '🚀', '⚡']
     icons = [src.split(' ')[0] for src in sources_list if any(src.startswith(i) for i in all_icons)]
     icon_str = " ".join(icons)
 
-    # 👇 İŞTE EKSİK OLAN O SATIR (BUNU EKLE) 👇
     confluence_count = len(sources_list)
 
     # ====================================================================
     # 6. ÖZEL SENARYO DEDEKTÖRÜ (AĞIRLIKLI PUANLAMA MİMARİSİ)
     # Sistem tüm senaryoları okur ve hisse için en güçlü olanı seçer.
     # ====================================================================
-    
-    # Sinyallerin varlık kontrolü
-    has_dip = '🔄 Güçlü Dönüş Adayları' in sources_list
-    has_ict = '🦅 ICT Sniper' in sources_list
-    has_min = '🦁 Minervini' in sources_list
-    has_rfc = '💎 Platin Fırsat (Klasik)' in sources_list
-    has_break = '🔨 Breakout Yapan' in sources_list
-    has_rs = '🏆 RS Lideri' in sources_list
-    has_sent = '🤫 Sentiment (Akıllı Para)' in sources_list
-    has_div = '📈 RSI Pozitif Uyumsuzluk' in sources_list
-    has_1_5 = '📡 1-5 Günlük Yükseliş' in sources_list
-    has_star = '⭐ Yıldız Adayı' in sources_list
+
+    # Sinyallerin varlık kontrolü — compile_top_20_summary'nin gönderdiği gerçek isimler
+    has_dip      = '🔄 Güçlü Dönüş Adayları'            in sources_list
+    has_ict      = '🦅 ICT Sniper'                        in sources_list
+    has_min      = '🦁 Minervini'                         in sources_list
+    has_rfc      = '💎 Platin Set-up'                     in sources_list
+    has_royal    = '♠️ Royal Flush Nadir Fırsat'          in sources_list
+    has_prelaunch= '🚀 Pre-Launch BOS'                    in sources_list
+    has_harmonic = "⚡ Harmonik Confluence (3'lü Teyit)"  in sources_list
+    has_altin    = '🏆 Altın Set-up'                      in sources_list
+    has_star     = '⭐ Yıldız Adayı'                      in sources_list
+    has_1_5      = '📡 1-5 Günlük Yükseliş'              in sources_list
 
     # Hissenin uygun olduğu tüm senaryoları bu sepete atacağız
     gecerli_senaryolar = []
 
-    # 1. ZEHİRLİ KIRILIM (Acil Durum Kalkanı - Ağırlık: 999)
-    # Sadece tamamen desteksiz, sığ ve trendi olmayan sahte kırılımları avlar.
-    if has_break and not (has_sent or has_rs or has_min or has_rfc):
-        gecerli_senaryolar.append((999, "☠️ Zehirli Kırılım (Boğa Tuzağı): Direnç kırıldı ancak arkasında hiçbir trend, hacim veya RS gücü yok! Sahte kırılım (Fakeout) riski çok yüksek."))
+    # 1. MÜKEMMEL KURULUM (En Güçlü - Ağırlık: 95)
+    # Royal Flush + ICT veya Minervini + Pre-Launch → yapı + güç + tetikleyici üçlüsü
+    if has_royal and (has_ict or has_min) and has_prelaunch:
+        gecerli_senaryolar.append((95, "👑 Mükemmel Kurulum: Royal Flush yapısı + ICT/Minervini trend gücü + Pre-Launch BOS tetikleyicisi aynı anda. En nadir eşleşme."))
 
-    # 2. BÜYÜME PATLAMASI (En Güçlü Alım Fırsatı - Ağırlık: 90)
-    if (has_min or has_rfc) and has_break and (has_sent or has_rs):
-        gecerli_senaryolar.append((90, "🌪️ Büyüme Patlaması: Kusursuz ralli! Fiyat daralmayı tamamladı, arz kurudu ve kurumsal hacim/güç onayıyla direnci paramparça etti."))
+    # 2. BÜYÜME PATLAMASI (Ağırlık: 90)
+    # Minervini veya Platin + Pre-Launch BOS kırılım hazır
+    if (has_min or has_rfc) and has_prelaunch:
+        gecerli_senaryolar.append((90, "🌪️ Büyüme Patlaması: Trend gücü doğrulandı, Pre-Launch BOS kırılım fitilini ateşliyor. Fiyat daralmayı tamamladı, arz kurudu."))
 
-    # 3. KURUMSAL LİKİDİTE AVI (Dipten Dönüş - Ağırlık: 85)
-    if (has_ict or has_dip) and (has_div or has_sent):
-        gecerli_senaryolar.append((85, "🪤 Kurumsal Likidite Avı: Küçük yatırımcının stopları patlatıldı (Sweep). Akıllı para bu paniği fırsat bilip dipten malı topluyor olabilir, V-Dönüşü yapısı oluşuyor."))
+    # 3. KURUMSAL LİKİDİTE AVI (Ağırlık: 85)
+    # ICT veya Güçlü Dönüş + Harmonik → sweep + pattern teyiti
+    if (has_ict or has_dip) and has_harmonic:
+        gecerli_senaryolar.append((85, "🪤 Kurumsal Likidite Avı: Stop sweep + Harmonik PRZ teyiti. Akıllı para dipten malı topluyor, V-Dönüşü yapısı oluşuyor."))
 
-    # 4. TREND İÇİ İSKONTO (Düzeltme İçi Bölge - Ağırlık: 80)
-    if (has_rfc or has_min) and (has_ict or has_dip or has_div):
-        gecerli_senaryolar.append((80, "🌊 Trend İçi İskonto: Güçlü ana trendde, kurumsal maliyetlenme bölgesine (OTE/FVG) harika bir düzeltme (Pullback) yaşandı. Teknik koşulların örtüştüğü bölge."))
+    # 4. TREND İÇİ İSKONTO (Ağırlık: 82)
+    # Platin veya Minervini + ICT veya Güçlü Dönüş → doğru bölge + yapı
+    if (has_rfc or has_min) and (has_ict or has_dip):
+        gecerli_senaryolar.append((82, "🌊 Trend İçi İskonto: Güçlü ana trendde kurumsal maliyetlenme bölgesine (OTE/FVG) harika bir pullback. Teknik koşulların örtüştüğü bölge."))
 
-    # 5. SESSİZ FIRTINA (Kırılım Öncesi Pusu - Ağırlık: 75)
-    if has_star and has_sent and not has_break:
-        gecerli_senaryolar.append((75, "🤫 Sessiz Fırtına: Ekranda yaprak kıpırdamıyor gibi görünse de arka planda sinsi ve güçlü bir mal toplama (Akümülasyon) evresindeyiz. Patlama yakın."))
+    # 5. ROYAL FLUSH + ALTIN (Ağırlık: 80)
+    # Çok sıkı yapı filtresi + değer konumu bir arada
+    if has_royal and has_altin:
+        gecerli_senaryolar.append((80, "♠️🏆 Royal Flush + Altın Set-up: En sıkı yapısal filtre, doğru fiyat bölgesinde. Kurumsal ve teknik teyit çakışıyor."))
 
-    # 6. GÜVENLİ LİMAN (Piyasa Kötüyken Ayakta Kalanlar - Ağırlık: 70)
-    if has_rs and (has_rfc or has_min):
-        gecerli_senaryolar.append((70, "🛡️ Güvenli Liman: Piyasa kan ağlarken veya yatayken bu hisse endeksi eziyor (Alpha Pozitif). Kurumsal ilginin yüksek göründüğü hisse."))
+    # 6. SESSİZ FIRTINA (Ağırlık: 75)
+    # Yıldız Adayı + Altın Set-up → henüz kırılmamış, birikim evresinde
+    if has_star and has_altin and not has_prelaunch:
+        gecerli_senaryolar.append((75, "🤫 Sessiz Fırtına: Ekranda durgun görünse de arka planda birikim var. Pre-Launch henüz tetiklenmedi — erken pozisyon fırsatı."))
+
+    # 7. GÜVENLİ LİMAN (Ağırlık: 70)
+    # Minervini + Platin → trend gücü + değer konumu
+    if has_min and has_rfc:
+        gecerli_senaryolar.append((70, "🛡️ Güvenli Liman: Trend gücü (Minervini) + doğru fiyat bölgesi (Platin). Piyasa kötüyken ayakta kalan, kurumsal ilgisi yüksek hisse."))
 
 
     # --- EN GÜÇLÜ SENARYOYU SEÇME MOTORU ---
@@ -5636,11 +5700,11 @@ def fetch_technical_engine_data(ticker, sources_list):
 
     # Eğer hisse hiçbir spesifik senaryoya uymuyorsa, toplam puana göre genel durum ver:
     if not scenario_msg:
-        if total_score >= 90:
+        if total_score >= 110:
             scenario_msg = f"💎 NADİR KONFLUANS: {primary_model.split(' ')[1] if primary_model else 'Ana'} modeli ve {confluence_count-1} adet destekleyici teyit!"
-        elif total_score >= 75:
+        elif total_score >= 95:
             scenario_msg = f"🔥 GÜÇLÜ KURULUM: Kurumsal ayak izleri net. Strateji kurmak için güvenli bölge."
-        elif total_score >= 60:
+        elif total_score >= 80:
             scenario_msg = f"⚡ İYİ İVME: Destekleyici sinyaller toplanıyor. Yakından izlemeye değer."
         else:
             scenario_msg = "⚠️ RİSKLİ BÖLGE: Net bir kurumsal onay veya ana model desteği yok."
@@ -5668,7 +5732,7 @@ def compile_top_20_summary():
     # Yüksek hassasiyetli scanner'lar — limit 5 (az ama kaliteli sinyal)
     add_candidates(st.session_state.get('guclu_donus_data'), '🔄 Güçlü Dönüş Adayları', limit=5)
     add_candidates(st.session_state.get('prelaunch_bos_data'), '🚀 Pre-Launch BOS', limit=5)
-    add_candidates(st.session_state.get('platin_results'), '💎 Platin Fırsat (Klasik)', limit=5)
+    add_candidates(st.session_state.get('platin_results'), '💎 Platin Set-up', limit=5)
     add_candidates(st.session_state.get('nadir_firsat_scan_data'), '♠️ Royal Flush Nadir Fırsat', limit=5)
     add_candidates(st.session_state.get('ict_scan_data'), '🦅 ICT Sniper', limit=5)
     add_candidates(st.session_state.get('minervini_data'), '🦁 Minervini', limit=5)
@@ -5681,6 +5745,21 @@ def compile_top_20_summary():
     _gp_top20 = st.session_state.get('golden_pattern_data')
     if isinstance(_gp_top20, dict):
         add_candidates(_gp_top20.get('formations', pd.DataFrame()), '💎 VIP Formasyon', limit=5)
+
+    # Gizli Birikim — smart money tespiti
+    add_candidates(st.session_state.get('accum_data'), '🤫 Gizli Birikim', limit=5)
+
+    # RS Momentum Liderleri — endeksi geçen alpha hisseler
+    add_candidates(st.session_state.get('rs_leaders_data'), '📈 RS Momentum Lideri', limit=5)
+
+    # Erken Radar — sadece primary + yüksek yıldız (≥4) hisseler
+    _er_top20 = st.session_state.get('erken_radar_data')
+    if _er_top20 is not None and not (hasattr(_er_top20, 'empty') and _er_top20.empty):
+        _er_primary = _er_top20[
+            (_er_top20.get('Role', pd.Series()) == 'primary') &
+            (_er_top20.get('Stars', pd.Series(dtype=int)).apply(lambda x: isinstance(x, int) and x >= 4))
+        ] if 'Role' in _er_top20.columns and 'Stars' in _er_top20.columns else _er_top20
+        add_candidates(_er_primary, '🚀 Erken Radar (5★)', limit=5)
 
     candidate_list = [{'Sembol': k, **v} for k, v in candidates.items()]
     
@@ -5699,17 +5778,28 @@ def compile_top_20_summary():
 
 def compile_confluence_hits():
     """
-    Cross-Scanner Confluence Motoru.
-    3 bağımsız metodoloji grubunda her birinde kaç grupta çıktığını sayar.
-      Grup 1 — Yapısal : ICT, Royal Flush Nadir Fırsat
-      Grup 2 — Momentum: Minervini, RS Leaders, Radar1/2
-      Grup 3 — Formasyon/Değer: Altın Set-up, VIP Formasyon, Gizli Birikim, Confirmed Breakout
-    Sadece 2/3 veya 3/3 gruba giren hisseler döner.
+    Cross-Scanner Confluence Motoru V2 — 4 Grup + Ağırlıklı Skor.
+
+    4 metodoloji grubu ve ağırlıkları:
+      🏗️ Yapı    (40pt): ICT Sniper, Royal Flush               — kurumsal iz, en sıkı filtre
+      ⚡ Güç     (30pt): Minervini, Pre-Launch BOS, Harmonik   — hareket başlıyor
+      💡 Kurulum (20pt): Platin Set-up, Altın Set-up, Güçlü Dönüş — doğru fiyat bölgesi
+      🔍 Teyit   (10pt): VIP Formasyon, Gizli Birikim, Radar1, Radar2 — hacim/formasyon destekli
+
+    Geçiş şartı: min 2/4 gruptan + en az 1'i Yapı veya Güç'ten.
+    Sıralama: ağırlıklı puan ↓, beraberlikte total_scanners ↓.
     """
+    GROUP_WEIGHTS = {
+        'yapi':    40,
+        'guc':     30,
+        'kurulum': 20,
+        'teyit':   10,
+    }
     groups = {
-        'yapi':      {'label': '🏗️ Yapısal',   'scanned': False, 'sources': {}},
-        'momentum':  {'label': '📈 Momentum',   'scanned': False, 'sources': {}},
-        'formasyon': {'label': '💎 Formasyon',  'scanned': False, 'sources': {}},
+        'yapi':    {'label': '🏗️ Yapı',    'weight': 40, 'scanned': False, 'sources': {}},
+        'guc':     {'label': '⚡ Güç',     'weight': 30, 'scanned': False, 'sources': {}},
+        'kurulum': {'label': '💡 Kurulum', 'weight': 20, 'scanned': False, 'sources': {}},
+        'teyit':   {'label': '🔍 Teyit',   'weight': 10, 'scanned': False, 'sources': {}},
     }
 
     def add_to_group(g_key, df, source_name, limit=10):
@@ -5724,33 +5814,35 @@ def compile_confluence_hits():
             if source_name not in groups[g_key]['sources'][sym]['scanners']:
                 groups[g_key]['sources'][sym]['scanners'].append(source_name)
 
-    # --- GRUP 1: YAPISAL ---
+    # --- GRUP 1: YAPI (40pt) — Kurumsal iz, en sıkı filtre ---
     add_to_group('yapi', st.session_state.get('ict_scan_data'),          'ICT Sniper')
-    add_to_group('yapi', st.session_state.get('nadir_firsat_scan_data'), 'Royal Flush Nadir Fırsat')
-    add_to_group('yapi', st.session_state.get('platin_results'),         'Platin Fırsat')
-    add_to_group('yapi', st.session_state.get('guclu_donus_data'),       'Güçlü Dönüş')
+    add_to_group('yapi', st.session_state.get('nadir_firsat_scan_data'), 'Royal Flush')
 
-    # --- GRUP 2: MOMENTUM ---
-    add_to_group('momentum', st.session_state.get('minervini_data'),     'Minervini')
-    add_to_group('momentum', st.session_state.get('prelaunch_bos_data'),'Pre-Launch BOS')
-    add_to_group('momentum', st.session_state.get('radar2_data'),        'Radar2')
-    add_to_group('momentum', st.session_state.get('scan_data'),          'Radar1')
-
-    # --- GRUP 3: FORMASYON/DEĞER ---
-    add_to_group('formasyon', st.session_state.get('accum_data'),     'Gizli Birikim')
-    add_to_group('formasyon', st.session_state.get('golden_results'), 'Altın Set-up')
-    _gp_conf = st.session_state.get('golden_pattern_data')
-    if isinstance(_gp_conf, dict):
-        add_to_group('formasyon', _gp_conf.get('formations', pd.DataFrame()), 'VIP Formasyon')
-    # Harmonik Confluence = 3 bağımsız metodoloji (Harmonik + ICT + RSI) → her 3 gruba ekle
+    # --- GRUP 2: GÜÇ (30pt) — Hareket başlıyor ---
+    add_to_group('guc', st.session_state.get('minervini_data'),          'Minervini')
+    add_to_group('guc', st.session_state.get('prelaunch_bos_data'),      'Pre-Launch BOS')
+    add_to_group('guc', st.session_state.get('rs_leaders_data'),         'RS Momentum Lideri')
     _hconf_df = st.session_state.get('harmonic_confluence_data')
     if _hconf_df is not None and not (hasattr(_hconf_df, 'empty') and _hconf_df.empty):
-        add_to_group('yapi',      _hconf_df, 'Harmonik Confluence')
-        add_to_group('momentum',  _hconf_df, 'Harmonik Confluence')
-        add_to_group('formasyon', _hconf_df, 'Harmonik Confluence')
+        add_to_group('guc', _hconf_df, 'Harmonik Confluence')
 
-    # --- KAÇ GRUP TARANMIŞ ---
-    scanned_groups = [k for k, v in groups.items() if v['scanned']]
+    # --- GRUP 3: KURULUM (20pt) — Doğru fiyat bölgesi ---
+    add_to_group('kurulum', st.session_state.get('platin_results'),  'Platin Set-up')
+    add_to_group('kurulum', st.session_state.get('golden_results'),  'Altın Set-up')
+    add_to_group('kurulum', st.session_state.get('guclu_donus_data'),'Güçlü Dönüş')
+
+    # --- GRUP 4: TEYİT (10pt) — Hacim ve formasyon destekli ---
+    add_to_group('teyit', st.session_state.get('accum_data'),      'Gizli Birikim')
+    add_to_group('teyit', st.session_state.get('scan_data'),        'Radar1')
+    add_to_group('teyit', st.session_state.get('radar2_data'),      'Radar2')
+    # Erken Radar — sadece primary satırlar
+    _er_conf = st.session_state.get('erken_radar_data')
+    if _er_conf is not None and not (hasattr(_er_conf, 'empty') and _er_conf.empty):
+        if 'Role' in _er_conf.columns:
+            add_to_group('teyit', _er_conf[_er_conf['Role'] == 'primary'], 'Erken Radar')
+    _gp_conf = st.session_state.get('golden_pattern_data')
+    if isinstance(_gp_conf, dict):
+        add_to_group('teyit', _gp_conf.get('formations', pd.DataFrame()), 'VIP Formasyon')
 
     # --- CONFLUENCE HESABI ---
     all_syms = set()
@@ -5759,33 +5851,38 @@ def compile_confluence_hits():
 
     results = []
     for sym in all_syms:
-        hit_groups = []
+        hit_groups    = []
         missing_groups = []
         total_scanners = 0
+        weighted_score = 0
         price = 0
         for g_key, g_data in groups.items():
             if sym in g_data['sources']:
                 scanners = g_data['sources'][sym]['scanners']
                 hit_groups.append({'key': g_key, 'label': g_data['label'], 'scanners': scanners})
                 total_scanners += len(scanners)
+                weighted_score += GROUP_WEIGHTS[g_key]
                 if price == 0:
                     price = g_data['sources'][sym]['price']
             elif g_data['scanned']:
                 missing_groups.append(g_data['label'])
 
-        group_count = len(hit_groups)
-        if group_count >= 2:
+        group_count   = len(hit_groups)
+        hit_keys      = {hg['key'] for hg in hit_groups}
+        has_anchor    = bool(hit_keys & {'yapi', 'guc'})  # en az 1 üst grup şartı
+
+        if group_count >= 2 and has_anchor:
             results.append({
                 'Sembol':         sym,
                 'group_count':    group_count,
+                'weighted_score': weighted_score,
                 'total_scanners': total_scanners,
                 'hit_groups':     hit_groups,
                 'missing_groups': missing_groups,
-                'scanned_groups': len(scanned_groups),
                 'price':          price,
             })
 
-    results.sort(key=lambda x: (x['group_count'], x['total_scanners']), reverse=True)
+    results.sort(key=lambda x: (x['weighted_score'], x['total_scanners']), reverse=True)
     return results
 
 
@@ -17475,16 +17572,18 @@ def get_golden_trio_batch_scan(ticker_list):
                     "is_platin": False,
                 })
 
-            # === PLATİN HAZIR — Bağımsız Filtre ===
+            # === PLATİN SET-UP — Bağımsız Filtre ===
             # SMA200+50 üstünde + RSI 35-70 + Hacim aktif + Endeksten güçlü (VEYA'lı)
+            # SMA50 yükseliyor = hard filter DEĞİL, +10 bonus + 💎💎 marker
             try:
                 _c = df['Close']; _v = df['Volume']
                 _s200  = float(_c.rolling(200).mean().iloc[-1])
                 _s50   = float(_c.rolling(50).mean().iloc[-1])
                 _s50_5 = float(_c.rolling(50).mean().iloc[-5])
+                _sma50_rising = _s50 > _s50_5
 
                 if (current_price > _s200 and current_price > _s50 and
-                        _s50 > _s50_5 and 35 <= rsi_now < 70):
+                        35 <= rsi_now < 70):
 
                     _v20 = float(_v.rolling(20).mean().iloc[-1])
                     _cur_vol = float(_v.iloc[-1])
@@ -17507,53 +17606,86 @@ def get_golden_trio_batch_scan(ticker_list):
                         if index_close is not None and len(index_close) >= 10:
                             _rs = ((float(_c.iloc[-1]) / float(_c.iloc[-10]) - 1) -
                                    (float(index_close.iloc[-1]) / float(index_close.iloc[-10]) - 1)) * 100
-                        _skor = round(rsi_now + (_vr * 15) + _rs, 2)
+                        _skor = round(rsi_now + (_vr * 15) + _rs + (10 if _sma50_rising else 0), 2)
                         try:
                             _mcap_p = yf.Ticker(ticker).fast_info.get('marketCap', 0)
                         except:
                             _mcap_p = 0
                         platin_candidates.append({
-                            "Hisse":       ticker,
-                            "Fiyat":       round(current_price, 2),
-                            "M.Cap":       _mcap_p,
-                            "Teknik_Skor": _skor,
-                            "Hazırlık":    "✓",
-                            "Kurulum":     "SMA200+50 Üstü · Hacim Aktif · Endeksten Güçlü",
-                            "Onay":        "💎 PLATİN HAZIR: Güçlü Trend + Hacim + Endeks",
-                            "Warning":     has_warning,
-                            "RedCandle":   has_red_candle,
+                            "Hisse":         ticker,
+                            "Fiyat":         round(current_price, 2),
+                            "M.Cap":         _mcap_p,
+                            "Teknik_Skor":   _skor,
+                            "Hazırlık":      "✓",
+                            "Kurulum":       "SMA200+50 Üstü · Hacim Aktif · Endeksten Güçlü",
+                            "Onay":          "💎 PLATİN SET-UP: Güçlü Trend + Hacim + Endeks",
+                            "Warning":       has_warning,
+                            "RedCandle":     has_red_candle,
+                            "SMA50_Rising":  _sma50_rising,
                         })
             except:
                 pass
 
-            # === TEKLİ KRİTER TARAMA (Altın %65 Discount + Platin bayrağı) ===
+            # === TEKLİ KRİTER TARAMA (NEAR-MISS: Altın 2/3 veya Platin 4/6 - 5/6) ===
+            # ELİT eşiğinde duran "kıl payı kaçırmış" hisseler. Tam ELİT olanlar
+            # (Altın 3/3, Platin 6/6) zaten Altın/Platin Set-up listelerinde gözükür.
             try:
-                _t_loc = (current_price - low_60) / range_diff if range_diff > 0 else 1.0
-                _t_is_discount = _t_loc < 0.65
-                _t_is_powerful = False
-                if index_close is not None and len(index_close) > 10:
-                    _t_sr = (current_price / df['Close'].iloc[-10]) - 1
-                    _t_ir = (index_close.iloc[-1] / index_close.iloc[-10]) - 1
-                    if _t_sr > _t_ir or rsi_now > 45:
-                        _t_is_powerful = True
-                else:
-                    if rsi_now > 45:
-                        _t_is_powerful = True
-                _t_vol_sma20 = float(df['Volume'].rolling(20).mean().iloc[-1])
-                _t_cur_vol   = float(df['Volume'].iloc[-1])
-                _t_is_energy = (_t_cur_vol > _t_vol_sma20 * 1.05) or (rsi_now > 45)
-                if _t_is_powerful and _t_is_discount and _t_is_energy:
-                    _t_sma200    = float(df['Close'].rolling(200).mean().iloc[-1])
-                    _t_sma50     = float(df['Close'].rolling(50).mean().iloc[-1])
-                    _t_is_platin = (current_price > _t_sma200 and current_price > _t_sma50 and rsi_now < 70)
-                    _t_disc_pct  = round(_t_loc * 100, 1)
+                # 1) Altın 3 kriteri (yukarıda hesaplandı: is_powerful, is_discount, is_energy)
+                _alt_count = int(is_powerful) + int(is_discount) + int(is_energy)
+                _alt_missing = []
+                if not is_powerful: _alt_missing.append("Güç (endeks/RSI)")
+                if not is_discount: _alt_missing.append("Konum (üst aralık)")
+                if not is_energy:   _alt_missing.append("Enerji (hacim/momentum)")
+
+                # 2) Platin ek 3 kriteri (SMA200, SMA50, RSI<70)
+                _t_sma200_v = float(df['Close'].rolling(200).mean().iloc[-1])
+                _t_sma50_v  = float(df['Close'].rolling(50).mean().iloc[-1])
+                _ext_sma200 = current_price > _t_sma200_v
+                _ext_sma50  = current_price > _t_sma50_v
+                _ext_rsi    = rsi_now < 70
+                _ext_count  = int(_ext_sma200) + int(_ext_sma50) + int(_ext_rsi)
+                _ext_missing = []
+                if not _ext_sma200: _ext_missing.append("SMA200 altında")
+                if not _ext_sma50:  _ext_missing.append("SMA50 altında")
+                if not _ext_rsi:    _ext_missing.append(f"RSI {round(rsi_now)} (≥70)")
+
+                _total = _alt_count + _ext_count
+
+                # 3) Karar — sadece eşikteki near-miss'leri ekle
+                _tekli_lbl  = ""
+                _tekli_eks  = ""
+                _tekli_isp  = False
+                _tekli_tier = 0
+
+                if _alt_count == 3 and _total == 5:
+                    _tekli_lbl  = "Platin 5/6"
+                    _tekli_eks  = " · ".join(_ext_missing) if _ext_missing else ""
+                    _tekli_isp  = True
+                    _tekli_tier = 5
+                elif _alt_count == 3 and _total == 4:
+                    _tekli_lbl  = "Platin 4/6"
+                    _tekli_eks  = " · ".join(_ext_missing) if _ext_missing else ""
+                    _tekli_isp  = True
+                    _tekli_tier = 4
+                elif _alt_count == 2:
+                    _tekli_lbl  = "Altın 2/3"
+                    _tekli_eks  = " · ".join(_alt_missing) if _alt_missing else ""
+                    _tekli_isp  = False
+                    _tekli_tier = 2
+                # diğer durumlar (6/6 ELİT Platin, 3/6 sadece Altın, 0-1/3 eleme) → skip
+
+                if _tekli_lbl:
+                    _t_vol_sma20 = float(df['Volume'].rolling(20).mean().iloc[-1])
+                    _t_cur_vol   = float(df['Volume'].iloc[-1])
                     _t_vr        = (_t_cur_vol / _t_vol_sma20) if _t_vol_sma20 > 0 else 1
                     _t_rs        = 0.0
                     if index_close is not None and len(index_close) > 10:
                         _t_rs = ((current_price / df['Close'].iloc[-10] - 1) -
                                  (index_close.iloc[-1] / index_close.iloc[-10] - 1)) * 100
-                    _t_skor = round(rsi_now + (_t_vr * 15) + _t_rs + (20 if _t_is_platin else 0), 2)
-                    # ── Darvas kutu check ──────────────────────────────
+                    _t_skor = round(rsi_now + (_t_vr * 15) + _t_rs + (_total * 5), 2)
+                    _t_disc_pct = round(((current_price - low_60) / range_diff) * 100, 1) if range_diff > 0 else 0
+
+                    # Darvas kutu check
                     _t_dq = _t_ds = _t_dt = _t_db = _t_da = _t_dc = None
                     try:
                         _t_dbox = detect_darvas_box(df)
@@ -17566,11 +17698,15 @@ def get_golden_trio_batch_scan(ticker_list):
                             _t_dc = _t_dbox['breakout_class']
                     except:
                         pass
+
                     tekli_altin_candidates.append({
                         "Hisse":          ticker,
                         "Fiyat":          round(current_price, 2),
                         "Teknik_Skor":    _t_skor,
-                        "is_platin":      _t_is_platin,
+                        "Etiket":         _tekli_lbl,
+                        "Eksik":          _tekli_eks,
+                        "Tier":           _tekli_tier,
+                        "is_platin":      _tekli_isp,
                         "Discount_Pct":   _t_disc_pct,
                         "RSI":            round(rsi_now, 1),
                         "Warning":        has_warning,
@@ -17659,6 +17795,7 @@ with col_btn:
             # 3. ICT SNIPER AJANI --- %20
             my_bar.progress(20, text="🦅 ICT Sniper Kurulumları (Liquidity+MSS+FVG) Taranıyor...%20")
             st.session_state.ict_scan_data = scan_ict_batch(scan_list)
+            log_scan_signal("ict_sniper", st.session_state.ict_scan_data, category=_cat)
 
             # 3.5 ROYAL FLUSH NADİR FIRSAT AJANI --- %25
             my_bar.progress(25, text="♠️ Royal Flush Nadir Fırsat (BOS/MSS + AI + RS + VWAP) Taranıyor...%25")
@@ -17679,23 +17816,34 @@ with col_btn:
                 df_tekli.sort_values(by=["is_platin", "Teknik_Skor"], ascending=[False, False]).reset_index(drop=True)
                 if not df_tekli.empty else pd.DataFrame()
             )
+            log_scan_signal("altin_setup",  st.session_state.golden_results,       category=_cat)
+            log_scan_signal("platin_setup", st.session_state.platin_results,        category=_cat)
+            log_scan_signal("tekli_altin",  st.session_state.tekli_altin_results,   category=_cat)
 
             # 6. SENTIMENT (AKILLI PARA) AJANI - %40
             my_bar.progress(40, text="🤫 Gizli Toplama (Smart Money) Aranıyor...%40")
             st.session_state.accum_data = scan_hidden_accumulation(scan_list)
+            log_scan_signal("gizli_birikim", st.session_state.accum_data, category=_cat)
 
             # 8. RADAR 1 & RADAR 2 (GENEL TEKNİK) - %65
             my_bar.progress(65, text="🧠 Radar Sinyalleri İşleniyor...%65")
             st.session_state.scan_data = analyze_market_intelligence(scan_list, _cat)
+            log_scan_signal("radar1", st.session_state.scan_data, category=_cat)
             st.session_state.radar2_data = radar2_scan(scan_list)
+            log_scan_signal("radar2", st.session_state.radar2_data, category=_cat)
 
             # 11.7 HARMONİK CONFLUENCE AJANI - %86
             my_bar.progress(86, text="⚡ Harmonik Confluence (3'lü Teyit) Aranıyor...%86")
             st.session_state.harmonic_confluence_data = scan_harmonic_confluence_batch(scan_list)
+            log_scan_signal("harmonik_confluence", st.session_state.harmonic_confluence_data, category=_cat)
 
             # 12. MİNERVİNİ SEPA AJANI - %90
             my_bar.progress(90, text="🦁 Minervini Sepa Taranıyor...%90")
             st.session_state.minervini_data = scan_minervini_batch(scan_list)
+
+            # 12.5 RS MOMENTUM LİDERLERİ - %92
+            my_bar.progress(92, text="🚀 RS Momentum Liderleri (Alpha) Taranıyor...%92")
+            st.session_state.rs_leaders_data = scan_rs_momentum_leaders(scan_list)
 
             # 13. GÜÇLÜ DÖNÜŞ AJANI - %93
             my_bar.progress(93, text="🔄 Güçlü Dönüş Adayları (RSI Diverjans + Birikim) Taranıyor...%93")
@@ -17708,6 +17856,8 @@ with col_btn:
             # 15. ALTIN FIRSAT + VIP FORMASYON AJANI - %97
             my_bar.progress(97, text="💎 Altın Set-up + VIP Formasyon (Fincan-Kulp/TOBO/Üçgen) Taranıyor...%97")
             st.session_state.golden_pattern_data = scan_golden_pattern_agent(scan_list, _cat)
+            if isinstance(st.session_state.golden_pattern_data, dict):
+                log_scan_signal("vip_formasyon", st.session_state.golden_pattern_data.get('formations', pd.DataFrame()), category=_cat)
 
             # 16. ERKEN RADAR LOGLAMA + PANEL VERİSİ - %98
             my_bar.progress(98, text="🚀 Erken Radar Senaryoları Kaydediliyor...%98")
@@ -17749,7 +17899,7 @@ with col_btn:
                         })
                     # Aging'e göre sırala (uzun süredir aktif olanlar daha "sıkışmış" — öncelikli)
                     _preview_items.sort(key=lambda x: x['aging_days'], reverse=True)
-                    _show_n = 2
+                    _show_n = 3
                     _public_items   = _preview_items[:_show_n]
                     _locked_total   = max(0, len(_all_primary) - _show_n)
                     _preview_payload = {
@@ -17783,6 +17933,7 @@ with col_btn:
                 "radar2_data":              st.session_state.radar2_data,
                 "harmonic_confluence_data": st.session_state.harmonic_confluence_data,
                 "minervini_data":           st.session_state.minervini_data,
+                "rs_leaders_data":          st.session_state.get('rs_leaders_data'),
                 "guclu_donus_data":         st.session_state.guclu_donus_data,
                 "prelaunch_bos_data":       st.session_state.prelaunch_bos_data,
                 "top_20_summary":           st.session_state.top_20_summary,
@@ -20787,15 +20938,14 @@ def _render_left_col():
                         f"<span style='font-size:0.78rem;font-weight:900;color:#7c3aed;'>"
                         f"🔥 CONFLUENCE — {_conf_count} Hisse</span></div>", unsafe_allow_html=True)
             if _hits:
-                _hits_33 = [h for h in _hits if h['group_count'] == 3]
-                _hits_23 = [h for h in _hits if h['group_count'] == 2]
-                _conf_all = _hits_33 + _hits_23   # limit yok
                 with st.container(height=320, border=False):
-                    for _ci, _ch in enumerate(_conf_all):
+                    for _ci, _ch in enumerate(_hits):
                         _cs = _ch['Sembol'].replace('.IS','')
                         _cp = _ch.get('price', 0)
                         _cp_s = f"{int(_cp)}" if _cp >= 1000 else f"{_cp:.2f}"
-                        _icon = "🔥" if _ch.get('group_count',0) == 3 else "⚡"
+                        _gc = _ch.get('group_count', 0)
+                        _ws = _ch.get('weighted_score', 0)
+                        _icon = "🔥🔥" if _gc == 4 else "🔥" if _gc == 3 else "⚡"
                         # Açıklama: hangi metodoloji grupları ve scanner'lar buldu
                         _hg = _ch.get('hit_groups', [])
                         _conf_desc_parts = []
@@ -20803,7 +20953,7 @@ def _render_left_col():
                             _scanners_str = " + ".join(_hg_item.get('scanners', []))
                             _conf_desc_parts.append(f"{_hg_item['label']}: {_scanners_str}")
                         _conf_desc = " | ".join(_conf_desc_parts)
-                        if st.button(f"{_icon} {_cs} ({_cp_s})", key=f"conf_top_{_cs}_{_ci}", use_container_width=True):
+                        if st.button(f"{_icon} {_cs} ({_cp_s}) · {_ws}pt", key=f"conf_top_{_cs}_{_ci}", use_container_width=True):
                             st.session_state.ticker = _ch['Sembol']
                             on_scan_result_click(_ch['Sembol']); st.rerun()
                         if _conf_desc:
@@ -20920,89 +21070,18 @@ def _render_left_col():
             # ── İKİ SÜTUN ────────────────────────────────────────────
             _col_l, _col_r = st.columns(2)
 
-            # ── SOL: PLATİN HAZIR ────────────────────────────────────
+            # ── SOL: TEKLİ ALTIN & PLATİN ────────────────────────────
             with _col_l:
                 st.markdown(
-                    "<div style='font-size:0.72rem;font-weight:700;color:#a78bfa;"
-                    "margin-bottom:4px;'>💎 Platin Hazır</div>",
+                    "<div style='font-size:0.72rem;font-weight:700;color:#e2e8f0;"
+                    "margin-bottom:4px;'>🏆/💎 Tekli Altın & Platin</div>",
                     unsafe_allow_html=True
                 )
                 with st.container(height=280, border=True):
-                    if _platin is not None and not _platin.empty:
-                        _plt_s = _platin.sort_values('Teknik_Skor', ascending=False)
-                        for _pi, _pr in _plt_s.head(10).iterrows():
-                            _psym = _pr['Hisse']
-                            _pd_  = get_display_name(_psym)
-                            _pfv  = _pr['Fiyat']; _pfs = f"{int(_pfv)}" if _pfv >= 1000 else f"{_pfv:.2f}"
-                            _pred = _pr.get('RedCandle', False)
-                            _pkur = _pr.get('Kurulum', '')
-                            _pdbl = _psym in _double_hit_syms
-                            _psym_clean = str(_psym).replace('.IS', '')
-                            _per5 = _psym_clean in _elit_x_er5_syms
-                            _per5_meta = _er_5star_detail.get(_psym_clean, {}) if _per5 else {}
-                            _plbl = (f"💎 {_pd_} ({_pfs})"
-                                     + (" 🟠" if _pred else "")
-                                     + (" 🚀" if _pdbl else "")
-                                     + (" 🎯" if _per5 else ""))
-                            _ptip = (f"Kurulum: {_pkur}"
-                                     + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _pdbl else "")
-                                     + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_per5_meta.get('id','5★')} ({_per5_meta.get('name','')})" if _per5 else ""))
-                            if st.button(_plbl, key=f"elit_plt2_{_pi}", use_container_width=True, help=_ptip):
-                                on_scan_result_click(_psym); st.rerun()
-                    else:
-                        st.markdown(
-                            "<div style='color:#64748b;font-size:0.72rem;text-align:center;"
-                            "padding-top:22px;'>Bu kategoride Platin bulunamadı</div>",
-                            unsafe_allow_html=True
-                        )
-
-            # ── SAĞ: ALTIN FIRSAT + TEKLİ ALTIN & PLATİN ────────────
-            with _col_r:
-                # ── Üst blok: Altın Fırsat ───────────────────────────
-                st.markdown(
-                    "<div style='font-size:0.72rem;font-weight:700;color:#f59e0b;"
-                    "margin-bottom:4px;'>🏆 Altın Fırsat</div>",
-                    unsafe_allow_html=True
-                )
-                with st.container(height=130, border=True):
-                    if _golden_disp is not None and not _golden_disp.empty:
-                        _gld_s = _golden_disp.sort_values('Teknik_Skor', ascending=False)
-                        for _gi, _gr in _gld_s.head(6).iterrows():
-                            _gsym = _gr['Hisse']
-                            _gd_  = get_display_name(_gsym)
-                            _gfv  = _gr['Fiyat']; _gfs = f"{int(_gfv)}" if _gfv >= 1000 else f"{_gfv:.2f}"
-                            _gred = _gr.get('RedCandle', False)
-                            _grsi = _gr.get('RSI', 0)
-                            _gdisc = _gr.get('Discount_Pct', 0)
-                            _gdbl = _gsym in _double_hit_syms
-                            _gsym_clean = str(_gsym).replace('.IS', '')
-                            _ger5 = _gsym_clean in _elit_x_er5_syms
-                            _ger5_meta = _er_5star_detail.get(_gsym_clean, {}) if _ger5 else {}
-                            _glbl = (f"🏆 {_gd_} ({_gfs})"
-                                     + (" 🟠" if _gred else "")
-                                     + (" 🚀" if _gdbl else "")
-                                     + (" 🎯" if _ger5 else ""))
-                            _gtip = (f"Altın Fırsat · Discount %{_gdisc} · RSI {_grsi}"
-                                     + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _gdbl else "")
-                                     + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_ger5_meta.get('id','5★')} ({_ger5_meta.get('name','')})" if _ger5 else ""))
-                            if st.button(_glbl, key=f"elit_golden_{_gi}", use_container_width=True, help=_gtip):
-                                on_scan_result_click(_gsym); st.rerun()
-                    else:
-                        st.markdown(
-                            "<div style='color:#64748b;font-size:0.72rem;text-align:center;"
-                            "padding-top:18px;'>Altın Fırsat bulunamadı</div>",
-                            unsafe_allow_html=True
-                        )
-
-                # ── Alt blok: Tekli Altın & Platin ──────────────────
-                st.markdown(
-                    "<div style='font-size:0.72rem;font-weight:700;color:#e2e8f0;"
-                    "margin:6px 0 4px;'>🏆/💎 Tekli Altın & Platin</div>",
-                    unsafe_allow_html=True
-                )
-                with st.container(height=130, border=True):
                     if _tekli is not None and not _tekli.empty:
-                        _tkl_s = _tekli.sort_values(by=['is_platin', 'Teknik_Skor'], ascending=[False, False])
+                        # Sıralama: Tier varsa onu kullan (5/6 > 4/6 > 2/3), yoksa eski is_platin fallback
+                        _sort_col = 'Tier' if 'Tier' in _tekli.columns else 'is_platin'
+                        _tkl_s = _tekli.sort_values(by=[_sort_col, 'Teknik_Skor'], ascending=[False, False])
                         for _ti, _tr in _tkl_s.head(8).iterrows():
                             _tsym  = _tr['Hisse']
                             _td_   = get_display_name(_tsym)
@@ -21011,6 +21090,8 @@ def _render_left_col():
                             _tisp  = _tr.get('is_platin', False)
                             _tdisc = _tr.get('Discount_Pct', 0)
                             _trsi  = _tr.get('RSI', 0)
+                            _tetkt = _tr.get('Etiket', '')   # "Altın 2/3" / "Platin 4/6" / "Platin 5/6"
+                            _teks  = _tr.get('Eksik', '')    # eksik kriterler virgüllü
                             _tdbl  = _tsym in _double_hit_syms
                             _tdq   = _tr.get('Darvas_Quality', None)
                             _tds   = _tr.get('Darvas_Status',  None)
@@ -21034,11 +21115,15 @@ def _render_left_col():
                             _tsym_clean = str(_tsym).replace('.IS', '')
                             _ter5 = _tsym_clean in _elit_x_er5_syms
                             _ter5_meta = _er_5star_detail.get(_tsym_clean, {}) if _ter5 else {}
-                            _tlbl  = (f"{'💎 Platin' if _tisp else '🏆 Altın'} · {_td_} ({_tfs}){_darvas_lbl}"
+                            _tprefix = "💎" if _tisp else "🏆"
+                            # Etiket boşsa eski formata düş (legacy cache)
+                            _tdisp = _tetkt if _tetkt else ("Platin" if _tisp else "Altın")
+                            _tlbl  = (f"{_tprefix} {_tdisp} · {_td_} ({_tfs}){_darvas_lbl}"
                                       + (" 🟠" if _tred else "")
                                       + (" 🚀" if _tdbl else "")
                                       + (" 🎯" if _ter5 else ""))
-                            _ttip  = (f"{'💎 Platin' if _tisp else '🏆 Altın'} · Discount %{_tdisc} · RSI {_trsi}"
+                            _eks_part = f" · Eksik: {_teks}" if _teks else ""
+                            _ttip  = (f"{_tprefix} {_tdisp}{_eks_part} · Discount %{_tdisc} · RSI {_trsi}"
                                       + _darvas_tip
                                       + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _tdbl else "")
                                       + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_ter5_meta.get('id','5★')} ({_ter5_meta.get('name','')})" if _ter5 else ""))
@@ -21047,7 +21132,82 @@ def _render_left_col():
                     else:
                         st.markdown(
                             "<div style='color:#64748b;font-size:0.72rem;text-align:center;"
-                            "padding-top:18px;'>Tekli Altın/Platin bulunamadı</div>",
+                            "padding-top:22px;'>Tekli Altın/Platin bulunamadı</div>",
+                            unsafe_allow_html=True
+                        )
+
+            # ── SAĞ: ALTIN SET-UP + PLATİN SET-UP ────────────────────
+            with _col_r:
+                # ── Üst blok: Altın Set-up ───────────────────────────
+                st.markdown(
+                    "<div style='font-size:0.72rem;font-weight:700;color:#f59e0b;"
+                    "margin-bottom:4px;'>🏆 Altın Set-up</div>",
+                    unsafe_allow_html=True
+                )
+                with st.container(height=130, border=True):
+                    if _golden_disp is not None and not _golden_disp.empty:
+                        _gld_s = _golden_disp.sort_values('Teknik_Skor', ascending=False)
+                        for _gi, _gr in _gld_s.head(6).iterrows():
+                            _gsym = _gr['Hisse']
+                            _gd_  = get_display_name(_gsym)
+                            _gfv  = _gr['Fiyat']; _gfs = f"{int(_gfv)}" if _gfv >= 1000 else f"{_gfv:.2f}"
+                            _gred = _gr.get('RedCandle', False)
+                            _grsi = _gr.get('RSI', 0)
+                            _gdisc = _gr.get('Discount_Pct', 0)
+                            _gdbl = _gsym in _double_hit_syms
+                            _gsym_clean = str(_gsym).replace('.IS', '')
+                            _ger5 = _gsym_clean in _elit_x_er5_syms
+                            _ger5_meta = _er_5star_detail.get(_gsym_clean, {}) if _ger5 else {}
+                            _glbl = (f"🏆 {_gd_} ({_gfs})"
+                                     + (" 🟠" if _gred else "")
+                                     + (" 🚀" if _gdbl else "")
+                                     + (" 🎯" if _ger5 else ""))
+                            _gtip = (f"Altın Set-up · Discount %{_gdisc} · RSI {_grsi}"
+                                     + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _gdbl else "")
+                                     + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_ger5_meta.get('id','5★')} ({_ger5_meta.get('name','')})" if _ger5 else ""))
+                            if st.button(_glbl, key=f"elit_golden_{_gi}", use_container_width=True, help=_gtip):
+                                on_scan_result_click(_gsym); st.rerun()
+                    else:
+                        st.markdown(
+                            "<div style='color:#64748b;font-size:0.72rem;text-align:center;"
+                            "padding-top:18px;'>Altın Set-up bulunamadı</div>",
+                            unsafe_allow_html=True
+                        )
+
+                # ── Alt blok: Platin Set-up ──────────────────────────
+                st.markdown(
+                    "<div style='font-size:0.72rem;font-weight:700;color:#a78bfa;"
+                    "margin:6px 0 4px;'>💎 Platin Set-up</div>",
+                    unsafe_allow_html=True
+                )
+                with st.container(height=130, border=True):
+                    if _platin is not None and not _platin.empty:
+                        _plt_s = _platin.sort_values('Teknik_Skor', ascending=False)
+                        for _pi, _pr in _plt_s.head(10).iterrows():
+                            _psym = _pr['Hisse']
+                            _pd_  = get_display_name(_psym)
+                            _pfv  = _pr['Fiyat']; _pfs = f"{int(_pfv)}" if _pfv >= 1000 else f"{_pfv:.2f}"
+                            _pred = _pr.get('RedCandle', False)
+                            _pkur = _pr.get('Kurulum', '')
+                            _pdbl = _psym in _double_hit_syms
+                            _psym_clean = str(_psym).replace('.IS', '')
+                            _per5 = _psym_clean in _elit_x_er5_syms
+                            _per5_meta = _er_5star_detail.get(_psym_clean, {}) if _per5 else {}
+                            _ps50r = _pr.get('SMA50_Rising', False)
+                            _plbl = (f"{'💎💎' if _ps50r else '💎'} {_pd_} ({_pfs})"
+                                     + (" 🟠" if _pred else "")
+                                     + (" 🚀" if _pdbl else "")
+                                     + (" 🎯" if _per5 else ""))
+                            _ptip = (f"Kurulum: {_pkur}"
+                                     + (" | 💎💎 SMA50 yükseliyor — ekstra güç!" if _ps50r else "")
+                                     + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _pdbl else "")
+                                     + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_per5_meta.get('id','5★')} ({_per5_meta.get('name','')})" if _per5 else ""))
+                            if st.button(_plbl, key=f"elit_plt2_{_pi}", use_container_width=True, help=_ptip):
+                                on_scan_result_click(_psym); st.rerun()
+                    else:
+                        st.markdown(
+                            "<div style='color:#64748b;font-size:0.72rem;text-align:center;"
+                            "padding-top:18px;'>Platin Set-up bulunamadı</div>",
                             unsafe_allow_html=True
                         )
         elif _scan_ran_empty:
@@ -21636,26 +21796,71 @@ def _render_left_col():
                     _bt_df = pd.DataFrame(_bt_summary)
                     def _fmt_pct(v): return f"%{v}" if v is not None else "—"
                     def _fmt_ret(v): return f"%{v:+.2f}" if v is not None else "—"
-                    _bt_display = pd.DataFrame({
-                        'Tarama': _bt_df['label'],
-                        'Sinyal': _bt_df['total_signals'],
-                        'Hit 5G': _bt_df['hit_5g_pct'].apply(_fmt_pct),
-                        'Ort +5G': _bt_df['avg_5g_ret'].apply(_fmt_ret),
-                        'Hit 10G': _bt_df['hit_10g_pct'].apply(_fmt_pct),
-                        'Ort +10G': _bt_df['avg_10g_ret'].apply(_fmt_ret),
-                        'Hit 20G': _bt_df['hit_20g_pct'].apply(_fmt_pct),
-                        'Ort +20G': _bt_df['avg_20g_ret'].apply(_fmt_ret),
-                    })
+
+                    def _render_bt_html_table(df_src, title):
+                        """Backtest tablosunu özel HTML ile render eder.
+                        Hit değerleri 1 kademe büyük, Ort başlık+değer italik."""
+                        _cols = [
+                            ('Tarama',  'normal', False),
+                            ('Sinyal',  'normal', False),
+                            ('Hit 5G',  'hit',    False),
+                            ('Ort +5G', 'ort',    False),
+                            ('Hit 10G', 'hit',    False),
+                            ('Ort +10G','ort',    False),
+                            ('Hit 20G', 'hit',    False),
+                            ('Ort +20G','ort',    False),
+                        ]
+                        # Header
+                        hdr = ""
+                        for cname, ctype, _ in _cols:
+                            if ctype == 'ort':
+                                hdr += f"<th style='padding:6px 8px;text-align:center;font-style:italic;color:#64748b;font-size:0.78rem;border-bottom:1px solid rgba(148,163,184,0.2);'>{cname}</th>"
+                            elif ctype == 'hit':
+                                hdr += f"<th style='padding:6px 8px;text-align:center;color:#94a3b8;font-size:0.78rem;border-bottom:1px solid rgba(148,163,184,0.2);'>{cname}</th>"
+                            elif cname == 'Tarama':
+                                hdr += f"<th style='padding:6px 8px;text-align:left;color:#94a3b8;font-size:0.78rem;border-bottom:1px solid rgba(148,163,184,0.2);'>{cname}</th>"
+                            else:
+                                hdr += f"<th style='padding:6px 8px;text-align:center;color:#94a3b8;font-size:0.78rem;border-bottom:1px solid rgba(148,163,184,0.2);'>{cname}</th>"
+                        # Rows
+                        rows_html = ""
+                        for _, row in df_src.iterrows():
+                            label   = row.get('label', '')
+                            signals = row.get('total_signals', 0)
+                            vals = {
+                                'Hit 5G':  _fmt_pct(row.get('hit_5g_pct')),
+                                'Ort +5G': _fmt_ret(row.get('avg_5g_ret')),
+                                'Hit 10G': _fmt_pct(row.get('hit_10g_pct')),
+                                'Ort +10G':_fmt_ret(row.get('avg_10g_ret')),
+                                'Hit 20G': _fmt_pct(row.get('hit_20g_pct')),
+                                'Ort +20G':_fmt_ret(row.get('avg_20g_ret')),
+                            }
+                            r = f"<td style='padding:5px 8px;text-align:left;font-size:0.82rem;color:#e2e8f0;white-space:nowrap;'>{label}</td>"
+                            r += f"<td style='padding:5px 8px;text-align:center;font-size:0.82rem;color:#cbd5e1;'>{signals}</td>"
+                            for cname, ctype, _ in _cols[2:]:
+                                v = vals.get(cname, '—')
+                                if ctype == 'hit':
+                                    r += f"<td style='padding:5px 8px;text-align:center;font-size:0.92rem;color:#e2e8f0;font-weight:600;'>{v}</td>"
+                                else:  # ort — italic
+                                    r += f"<td style='padding:5px 8px;text-align:center;font-size:0.82rem;color:#94a3b8;font-style:italic;'>{v}</td>"
+                            rows_html += f"<tr style='border-bottom:1px solid rgba(148,163,184,0.08);'>{r}</tr>"
+
+                        st.markdown(f"**{title}**")
+                        st.markdown(
+                            f"<div style='overflow-x:auto;'>"
+                            f"<table style='width:100%;border-collapse:collapse;font-family:inherit;'>"
+                            f"<thead><tr>{hdr}</tr></thead>"
+                            f"<tbody>{rows_html}</tbody></table></div>",
+                            unsafe_allow_html=True
+                        )
+
                     # ER ve Klasik ayrı
                     _is_er = _bt_df['category'].isin(['A', 'B', 'C', 'D'])
-                    _er_view = _bt_display[_is_er.values]
-                    _classic_view = _bt_display[~_is_er.values]
-                    if not _er_view.empty:
-                        st.markdown("**🎯 Erken Radar Senaryoları**")
-                        st.dataframe(_er_view, use_container_width=True, hide_index=True)
-                    if not _classic_view.empty:
-                        st.markdown("**📊 Klasik Taramalar**")
-                        st.dataframe(_classic_view, use_container_width=True, hide_index=True)
+                    _er_data = _bt_df[_is_er.values]
+                    _classic_data = _bt_df[~_is_er.values]
+                    if not _er_data.empty:
+                        _render_bt_html_table(_er_data, "🎯 Erken Radar Senaryoları")
+                    if not _classic_data.empty:
+                        _render_bt_html_table(_classic_data, "📊 Klasik Taramalar")
 
                     # Top 5 vurgu
                     _top5 = _bt.get('top5_by_hit20', [])
@@ -21933,9 +22138,9 @@ def _render_right_col():
     # ALT SEKMELERİ YİNE ŞIK BİR ÇERÇEVE (CONTAINER) İÇİNE ALIYORUZ
     with st.container(border=True):
         
-        tab_radar, tab_top20, tab_perf = st.tabs([
-            "📡 RADARLAR",
+        tab_top20, tab_radar, tab_perf = st.tabs([
             "👑 TOP 20 MASTER",
+            "📡 RADARLAR",
             "📊 SİNYAL PERFORMANSI"
         ])
     # ---------------------------------------------------------
@@ -22024,60 +22229,77 @@ def _render_right_col():
     # ---------------------------------------------------------
     with tab_top20:
         if 'top_20_summary' in st.session_state and st.session_state.top_20_summary:
-            st.markdown('<div style="font-size:0.85rem; color:#64748b; margin-bottom:10px; text-align:center;">Tüm algoritmalardan en çok onay alan elit hisseler</div>', unsafe_allow_html=True)
-            # --- Clickable card CSS overlay ---
-            st.markdown("""<style>
-    .t20wrap { position:relative; margin-bottom:18px; cursor:pointer; }
-    .t20wrap:hover .t20card { opacity:0.88; transition:opacity 0.15s; }
-    /* Pull the Streamlit button immediately after .t20wrap up to cover the card */
-    .t20wrap + div[data-testid="element-container"] {
-    position:relative; z-index:10; margin-top:-120px; height:120px;
-    }
-    .t20wrap + div[data-testid="element-container"] button {
-    width:100% !important; height:120px !important;
-    background:transparent !important; border:none !important;
-    box-shadow:none !important; color:transparent !important;
-    cursor:pointer !important; position:absolute; top:0; left:0;
-    }
-    </style>""", unsafe_allow_html=True)
-            with st.container(height=500, border=True):
+
+            # --- Kaynak → okunabilir açıklama haritası ---
+            _SRC_DESC = {
+                '🔄 Güçlü Dönüş Adayları':            "RSI dip yaparken fiyat diplemiyor — akıllı para sessizce alım yapıyor",
+                '🦅 ICT Sniper':                        "Kurumsal order block veya FVG bölgesinde, yapısal bias yukarı yönlü",
+                '♠️ Royal Flush Nadir Fırsat':          "Yapısal kırılım + RS endeks liderliği + hacim canlanması: 4/4 kriter tam",
+                '🦁 Minervini':                         "52 hafta zirvesine yakın, hacim destekli yükselen trend — kurumsal ilgi var",
+                '💎 Platin Set-up':                     "SMA200 + SMA50 üstünde, iskontolu bölgede ve hacim artışı görülüyor",
+                '🚀 Pre-Launch BOS':                    "Kırılım öncesi sıkışma (squeeze) tamamlandı, enerji birikmiş, fitil hazır",
+                "⚡ Harmonik Confluence (3'lü Teyit)": "Harmonik fiyat formasyonu + ICT ucuz bölge + RSI diverjansı üçlüsü kesişiyor",
+                '🏆 Altın Set-up':                      "Son 10 günde endeksi geçmiş, 60 günlük bazda hâlâ iskontolu fiyat",
+                '💎 VIP Formasyon':                     "Fincan-kulp / TOBO / üçgen: teknik kırılım formasyonu olgunlaşıyor",
+                '⭐ Yıldız Adayı':                      "Teknik koşullar toplanıyor, henüz kırılmadı — erken pozisyon bölgesi",
+                '📡 1-5 Günlük Yükseliş':              "Kısa vadeli momentum ve teknik sinyal eşleşmesi var",
+                '🤫 Gizli Birikim':                     "Yüksek hacimli sessiz alım günleri — kurumsal birikim izleri görünüyor",
+                '📈 RS Momentum Lideri':                "Son 5 günde endeksten belirgin şekilde pozitif ayrışmış, alpha üretiyor",
+                '🚀 Erken Radar (5★)':                  "Özel senaryo motoru: 4-5 yıldızlı erken faz sinyali tetiklendi",
+            }
+
+            with st.container(height=520, border=False):
                 for i, item in enumerate(st.session_state.top_20_summary):
-                    sym = item['Sembol'].replace('.IS', '')
-                    score = int(item['score'])
-                    onay_sayisi = item.get('onay_sayisi', 0)
-                    price_val = float(item['price'])
-                    price_str = f"{int(price_val)}" if price_val >= 1000 else f"{price_val:.2f}"
-                    sources_str = ", ".join(item['sources'][:3])
-                    if len(item['sources']) > 3: sources_str += "..."
-                    if score >= 80:
-                        bg_color = "#fffbeb"; border_color = "#f59e0b"
-                        score_bg = "linear-gradient(90deg, #f59e0b 0%, #d97706 100%)"
-                    elif score >= 50:
-                        bg_color = "#f8fafc"; border_color = "#3b82f6"
-                        score_bg = "#3b82f6"
+                    sym          = item['Sembol'].replace('.IS', '')
+                    score        = int(item['score'])
+                    onay_sayisi  = item.get('onay_sayisi', 0)
+                    price_val    = float(item['price'])
+                    price_str    = f"{int(price_val)}" if price_val >= 1000 else f"{price_val:.2f}"
+                    katalizor    = item.get('katalizor', '')
+                    sources      = item.get('sources', [])
+
+                    # Senaryo kısa metin
+                    kat_parts = katalizor.split(':', 1)
+                    kat_icon  = kat_parts[0].strip() if len(kat_parts) > 1 else ''
+                    kat_short = kat_parts[1].strip()[:55] if len(kat_parts) > 1 else katalizor[:55]
+
+                    # Skor rengi ve sıralama ikonu
+                    if score >= 110:
+                        sc = "#f59e0b"; rank_icon = "🥇"
+                    elif score >= 95:
+                        sc = "#3b82f6"; rank_icon = "🥈"
+                    elif score >= 80:
+                        sc = "#10b981"; rank_icon = "🥉"
                     else:
-                        bg_color = "#ffffff"; border_color = "#475569"
-                        score_bg = "#64748b"
-                    sym_clr    = "#0f172a"
-                    detail_clr = "#0f172a"
-                    onay_badge = (f'<span style="background:linear-gradient(90deg,#7c3aed,#4f46e5);color:white;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:800;margin-left:6px;">🎖️ {onay_sayisi} Onay</span>'
-                                  if onay_sayisi >= 4 else
-                                  f'<span style="background:#0d1829;color:#cbd5e1;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;margin-left:6px;">✅ {onay_sayisi} Onay</span>')
-                    st.markdown(f"""
-    <div class="t20wrap">
-      <div class="t20card" style="background-color:{bg_color};padding:12px;border-radius:8px;border:2px solid {border_color};">
-    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid {border_color}44;padding-bottom:6px;margin-bottom:8px;">
-      <span style="font-weight:900;font-size:1.2rem;color:{sym_clr};">{sym} {onay_badge}</span>
-      <span style="background:{score_bg};color:white;padding:2px 10px;border-radius:12px;font-weight:800;font-size:0.8rem;">Skor: {score}/100</span>
-    </div>
-    <div style="font-size:0.8rem;color:{detail_clr};font-weight:600;line-height:1.4;padding:8px;background:rgba(255,255,255,0.07);border-radius:5px;border-left:4px solid {border_color};">{item['katalizor']}</div>
-    <div style="font-size:0.65rem;color:#94a3b8;margin-top:8px;font-weight:700;"><span style="color:#94a3b8;">Kesişen Sinyaller:</span> {sources_str}</div>
-      </div>
-    </div>""", unsafe_allow_html=True)
-                    if st.button(sym, key=f"top20b_btn_{sym}_{i}", use_container_width=True):
-                        st.session_state.ticker = item['Sembol']; st.rerun()
+                        sc = "#64748b"; rank_icon = "·"
+
+                    onay_str = f"{onay_sayisi}✓" if onay_sayisi < 4 else f"🎖️{onay_sayisi}✓"
+
+                    # --- Tooltip: her kaynak için plain-Türkçe açıklama ---
+                    _tip_lines = [f"📊 {sym} — {score}pt | {onay_sayisi} algoritma onayı | Fiyat: {price_str}\n"]
+                    for _src in sources:
+                        _desc = _SRC_DESC.get(_src)
+                        if _desc:
+                            _tip_lines.append(f"• {_desc}")
+                    _scenario_clean = katalizor.split('|')[-1].strip() if '|' in katalizor else katalizor
+                    _tip_lines.append(f"\n💡 {_scenario_clean}")
+                    _tooltip = "\n".join(_tip_lines)
+
+                    # Tıklanabilir buton
+                    btn_label = f"{rank_icon} {sym}  ·  {score}pt  ·  {onay_str}  ·  {price_str}"
+                    if st.button(btn_label, key=f"top20b_btn_{sym}_{i}",
+                                 use_container_width=True, help=_tooltip):
+                        on_scan_result_click(item['Sembol']); st.rerun()
+
+                    # Senaryo özeti butonun altında
+                    st.markdown(
+                        f"<div style='font-size:0.68rem;color:#94a3b8;margin:-6px 0 5px 6px;"
+                        f"line-height:1.3;border-left:2px solid {sc};padding-left:5px;'>"
+                        f"{kat_icon} {kat_short}{'…' if len(kat_short)==55 else ''}</div>",
+                        unsafe_allow_html=True
+                    )
         else:
-            st.info("Lütfen sol menüdeki 'TÜM PİYASAYI TARA' butonunu kullanarak listeyi oluşturun.")
+            st.info("Master Scan çalıştırıldığında liste burada oluşur.")
     
     # ---------------------------------------------------------
     # SEKME: 📊 SİNYAL PERFORMANSI

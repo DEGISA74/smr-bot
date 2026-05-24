@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>BIST verisi 10dk donusumlu yfinance/isyatirim kaynaktan ceker. Hafta ici 10:00-18:30.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-05-25T10:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT10M</Interval>
+        <Duration>PT8H30M</Duration>
+        <StopAtDurationEnd>true</StopAtDurationEnd>
+      </Repetition>
+      <ScheduleByWeek>
+        <DaysOfWeek>
+          <Monday/>
+          <Tuesday/>
+          <Wednesday/>
+          <Thursday/>
+          <Friday/>
+        </DaysOfWeek>
+        <WeeksInterval>1</WeeksInterval>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+  </Triggers>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Users\LENOVO\AppData\Local\Python\bin\pythonw.exe</Command>
+      <Arguments>fetcher.py</Arguments>
+      <WorkingDirectory>C:\Users\LENOVO\OneDrive\Desktop\Patron Terminal</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

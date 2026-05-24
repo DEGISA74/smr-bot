@@ -26,6 +26,16 @@ veriler/
 
 # Log dosyaları
 *.log
+logs/
+
+# Claude Code session dosyaları
+.claude/
+
+# Cloud worker state (rotasyon dosyası)
+.last_source
+
+# Backup dosyalar (cloud migration öncesi)
+app_BACKUP_*.py
 
 # OS
 .DS_Store
