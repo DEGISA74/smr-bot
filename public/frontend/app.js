@@ -1226,7 +1226,7 @@ function renderTgAdPanel() {
         <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Anlık sinyal değerlendirmesi</span></div>
         </div>
       </div>
@@ -1249,7 +1249,7 @@ function renderTgAdPanel() {
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Detaylı Teknik Kart</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her akşam 19:00 BIST100 Teknik Kartı</span></div>
         </div>
@@ -1276,7 +1276,7 @@ function renderTgAdPanel() {
         <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Uzman Analiz Raporu</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her akşam 19:00 detaylı BIST100 bülteni</span></div>
         </div>
@@ -1343,7 +1343,7 @@ function renderMobilePlans() {
         <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Anlık sinyal değerlendirmesi</span></div>
         </div>
       </div>
@@ -1367,7 +1367,7 @@ function renderMobilePlans() {
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Detaylı Teknik Kart</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her akşam 19:00 BIST100 Teknik Kartı</span></div>
         </div>
@@ -1395,7 +1395,7 @@ function renderMobilePlans() {
         <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>ICT Bottomline özeti</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Uzman Analiz Raporu</strong></span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her akşam 19:00 detaylı BIST100 bülteni</span></div>
         </div>
