@@ -14,12 +14,16 @@ Fonksiyonlar:
 from __future__ import annotations
 
 import io
+import os
+import time
 import random
 import logging
 import sqlite3
 import pathlib
 
 _SIGNALS_DB = pathlib.Path(__file__).parent / "signals.db"
+_CACHE_DIR   = pathlib.Path(os.environ.get("SMR_CACHE_DIR",
+                pathlib.Path(__file__).parent / "veriler"))
 
 def _init_db():
     con = sqlite3.connect(_SIGNALS_DB)
@@ -365,6 +369,21 @@ def _yf_ticker(ticker: str) -> str:
     return t
 
 
+# ─── PARQUET CACHE ────────────────────────────────────────────────────────────
+def _read_parquet_cache(yf_sym: str) -> "pd.DataFrame | None":
+    """VPS parquet cache'den okur. Dosya yoksa veya 48 saatten eskiyse None döner."""
+    p = _CACHE_DIR / f"{yf_sym}.parquet"
+    if not p.exists():
+        return None
+    if (time.time() - p.stat().st_mtime) > 172_800:   # 48 saat
+        return None
+    try:
+        df = pd.read_parquet(p)
+        return df if not df.empty else None
+    except Exception:
+        return None
+
+
 # ─── VERİ ÇEK ────────────────────────────────────────────────────────────────
 def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
     """
@@ -372,6 +391,14 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
     BIST hisseleri için hacim isyatirimhisse ile düzeltilir.
     """
     yf_sym = _yf_ticker(ticker)
+
+    # ── VPS parquet cache — önce buraya bak (ban riski sıfır, hız maksimum)
+    _cached = _read_parquet_cache(yf_sym)
+    if _cached is not None:
+        log.debug(f"get_data: {yf_sym} → parquet cache hit")
+        return _cached
+
+    # ── Fallback: yfinance (cache yok veya çok eski)
     try:
         df = None
         for _attempt in range(3):

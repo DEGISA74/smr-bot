@@ -8,10 +8,14 @@ Görev: BIST taraması → latest.json üretimi
 
 import json
 import os
+import pathlib
 import datetime
 import time
 import yfinance as yf
 import pandas as pd
+
+# VPS'te ~/smr/veriler/, local'de SMR_CACHE_DIR env var ile override
+_CACHE_DIR = pathlib.Path(os.environ.get("SMR_CACHE_DIR", "/home/wm11tr/smr/veriler"))
 
 # ==============================================================================
 # BÖLÜM 1 — BIST HİSSE LİSTESİ
@@ -85,12 +89,32 @@ BIST_STOCKS  = [t for t in BIST_TICKERS if not t.startswith("X")]
 # Marketstack'e geçince SADECE bu fonksiyon değişir.
 # ==============================================================================
 
+def _read_parquet_cache(ticker: str) -> "pd.DataFrame | None":
+    """VPS parquet cache'den okur. Dosya yoksa veya 48 saatten eskiyse None döner."""
+    p = _CACHE_DIR / f"{ticker}.parquet"
+    if not p.exists():
+        return None
+    if (time.time() - p.stat().st_mtime) > 172_800:   # 48 saat
+        return None
+    try:
+        df = pd.read_parquet(p)
+        return df if not df.empty else None
+    except Exception:
+        return None
+
+
 def fetch_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
     """
     OHLCV verisi çeker.
-    Şu an: yfinance
+    Önce VPS parquet cache'e bakar; yoksa yfinance'e düşer.
     Geçiş: Marketstack → sadece bu fonksiyon güncellenir.
     """
+    # ── VPS parquet cache
+    _cached = _read_parquet_cache(ticker)
+    if _cached is not None:
+        return _cached
+
+    # ── Fallback: yfinance
     try:
         df = yf.download(ticker, period=period, progress=False,
                          auto_adjust=True, prepost=False)
