@@ -83,10 +83,14 @@ def _usage_inc(chat_id: int, user_id: int, today: str):
     data = _load_usage()
     key  = f"{chat_id}:{user_id}:{today}"
     data[key] = data.get(key, 0) + 1
-    # Eski günleri temizle (7 günden eski)
+    # Eski günleri temizle (7 günden eski) — uid_map: gibi tarih içermeyen keyler korunur
     cutoff = (datetime.now().date().toordinal() - 7)
-    data = {k: v for k, v in data.items()
-            if datetime.strptime(k.split(":")[-1], "%Y-%m-%d").date().toordinal() >= cutoff}
+    def _keep(k):
+        try:
+            return datetime.strptime(k.split(":")[-1], "%Y-%m-%d").date().toordinal() >= cutoff
+        except ValueError:
+            return True  # tarih parse edilemiyorsa (uid_map: vb.) tut
+    data = {k: v for k, v in data.items() if _keep(k)}
     _save_usage(data)
 
 # ─── BONUS KREDİ HAVUZU ──────────────────────────────────────────────────────
