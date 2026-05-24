@@ -1498,7 +1498,7 @@ async def check_shopier_orders(context=None):
                     return
                 data = await resp.json()
 
-        orders = data.get("data", [])
+        orders = data if isinstance(data, list) else data.get("data", [])
         if not orders:
             return
 
