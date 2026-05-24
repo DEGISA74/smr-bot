@@ -1241,7 +1241,7 @@ function renderTgAdPanel() {
         <div style="font-size:9px;font-weight:700;color:#70a8ff;letter-spacing:1px;text-transform:uppercase">PRO</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin:2px 0 6px">
           <span style="font-size:20px;font-weight:900;color:#70a8ff">PRO</span>
-          <span style="font-size:11px;color:var(--text-muted)">₺299 /ay</span>
+          <span style="font-size:11px;color:var(--text-muted)">₺349 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
           📊 Günde 3 hisse/coin/emtia araştırma
@@ -1359,7 +1359,7 @@ function renderMobilePlans() {
         <div style="font-size:9px;font-weight:700;color:#70a8ff;letter-spacing:1px;text-transform:uppercase">PRO</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin:2px 0 6px">
           <span style="font-size:20px;font-weight:900;color:#70a8ff">PRO</span>
-          <span style="font-size:11px;color:var(--text-muted)">₺299 /ay</span>
+          <span style="font-size:11px;color:var(--text-muted)">₺349 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
           📊 Günde 3 hisse/coin/emtia araştırma
