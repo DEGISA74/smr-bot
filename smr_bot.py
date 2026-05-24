@@ -1489,7 +1489,7 @@ async def check_shopier_orders(context=None):
     try:
         async with _aiohttp.ClientSession() as session:
             async with session.get(
-                "https://api.shopier.com/v1/orders?sort=-id&per_page=5",
+                "https://api.shopier.com/v1/orders?sort=dateDesc&per_page=5",
                 headers=headers,
                 timeout=_aiohttp.ClientTimeout(total=30)
             ) as resp:
