@@ -1521,22 +1521,17 @@ async def check_shopier_orders(context=None):
 
         for order in reversed(new_orders):
             oid      = int(order.get("id", 0))
-            tutar    = order.get("total_price", "?")
-            musteri  = f"{order.get('customer', {}).get('name', '')} {order.get('customer', {}).get('surname', '')}".strip()
-            email    = order.get("customer", {}).get("email", "?")
+            tutar    = order.get("totals", {}).get("total", "?")
+            shipping = order.get("shippingInfo", {})
+            musteri  = f"{shipping.get('firstName', '')} {shipping.get('lastName', '')}".strip() or "?"
+            email    = shipping.get("email", "?")
 
             # Ürün adı
-            items    = order.get("items", [])
-            urun     = items[0].get("name", "?") if items else "?"
+            items    = order.get("lineItems", [])
+            urun     = items[0].get("title", "?") if items else "?"
 
-            # Telegram kullanıcı adı — özel alan
-            custom   = order.get("custom_fields", {}) or {}
-            tg_user  = (
-                custom.get("Telegram Kullanıcı Adı")
-                or custom.get("telegram_kullanici_adi")
-                or custom.get("telegram")
-                or "?"
-            ).strip().lstrip("@")
+            # Telegram kullanıcı adı — note alanında (@KyleButlerK formatında)
+            tg_user  = (order.get("note", "") or "").strip().lstrip("@") or "?"
 
             # Tier tespiti
             urun_up = urun.upper()
