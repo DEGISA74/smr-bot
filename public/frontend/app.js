@@ -28,8 +28,8 @@ async function loadData() {
   _lastDataStamp = (data.meta?.canli_guncelleme || '') + '|' + (data.meta?.tarih || '') + '|' + (data.meta?.guncelleme || '');
 
   hideLoading();
+  startAutoRefresh();   // renderAll'dan ÖNCE — render hatası olsa bile interval başlar
   renderAll(data);
-  startAutoRefresh();
 }
 
 function renderAll(data) {
