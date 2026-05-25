@@ -25,7 +25,7 @@ async function loadData() {
   if (!res.ok) throw new Error("JSON fetch failed: " + res.status);
   const data = await res.json();
 
-  _lastDataStamp = (data.meta?.tarih || '') + '|' + (data.meta?.guncelleme || '');
+  _lastDataStamp = (data.meta?.canli_guncelleme || '') + '|' + (data.meta?.tarih || '') + '|' + (data.meta?.guncelleme || '');
 
   hideLoading();
   renderAll(data);
@@ -61,7 +61,7 @@ function startAutoRefresh() {
       const res = await fetch(JSON_URL + "?t=" + Date.now());
       if (!res.ok) return;
       const data = await res.json();
-      const stamp = (data.meta?.tarih || '') + '|' + (data.meta?.guncelleme || '');
+      const stamp = (data.meta?.canli_guncelleme || '') + '|' + (data.meta?.tarih || '') + '|' + (data.meta?.guncelleme || '');
       if (stamp && stamp !== _lastDataStamp) {
         _lastDataStamp = stamp;
         renderAll(data);
