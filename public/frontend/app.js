@@ -1247,7 +1247,7 @@ function renderTgAdPanel() {
           <span style="font-size:11px;color:var(--text-muted)">₺0 /ay</span>
         </div>
         <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
-          📊 Günde 1 hisse
+          📊 Günde 1 hisse kartı · Aylık 30
         </div>
         <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
@@ -1270,7 +1270,7 @@ function renderTgAdPanel() {
           <span style="font-size:11px;color:var(--text-muted)">₺349 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 3 hisse/coin/emtia araştırma
+          📊 Günde 3 hisse/coin/emtia analizi · Aylık 90 analiz
         </div>
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
@@ -1294,7 +1294,7 @@ function renderTgAdPanel() {
           <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 8 detaylı hisse/coin/emtia analizi
+          📊 Günde 8 hisse/coin/emtia detaylı analizi · Aylık 240 analiz
         </div>
         <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
           📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
@@ -1340,8 +1340,8 @@ function renderCTA() {
       para akışı anomalileri ve haftalık TIER-1 tarama raporları.
     </div>
     <div class="cta-buttons">
-      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-pro">🔵 Telegram PRO — Günde 3 Analiz</a>
-      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-elite">♠️ Telegram ELITE — Günde 8 Analiz</a>
+      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-pro">🔵 Telegram PRO — Günde 3 · Aylık 90 Analiz</a>
+      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-elite">♠️ Telegram ELITE — Günde 8 · Aylık 240 Analiz</a>
     </div>
   `;
   renderMobilePlans();
@@ -1364,7 +1364,7 @@ function renderMobilePlans() {
           <span style="font-size:11px;color:var(--text-muted)">₺0 /ay</span>
         </div>
         <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
-          📊 Günde 1 hisse
+          📊 Günde 1 hisse kartı · Aylık 30
         </div>
         <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
@@ -1388,7 +1388,7 @@ function renderMobilePlans() {
           <span style="font-size:11px;color:var(--text-muted)">₺349 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 3 hisse/coin/emtia araştırma
+          📊 Günde 3 hisse/coin/emtia analizi · Aylık 90 analiz
         </div>
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
@@ -1413,7 +1413,7 @@ function renderMobilePlans() {
           <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 8 detaylı hisse/coin/emtia analizi
+          📊 Günde 8 hisse/coin/emtia detaylı analizi · Aylık 240 analiz
         </div>
         <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
           📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
