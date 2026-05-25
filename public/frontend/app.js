@@ -39,6 +39,7 @@ async function loadData() {
   renderRadarPanel();
   renderTgAdPanel();
   renderCTA();
+  renderUserCounter();
   updateTwitterLinks();
   renderBgDeco(data.xu100_grafik || []);
   renderErkenRadarPreview();
@@ -1823,3 +1824,15 @@ function handleStockSearch() {
   if(document.body){obs.observe(document.body,{childList:true,subtree:true});}
   else{document.addEventListener('DOMContentLoaded',function(){obs.observe(document.body,{childList:true,subtree:true});});}
 })();
+
+// ── ABONE SAYACI ──────────────────────────────────────────────────────────────
+function renderUserCounter() {
+  const el = document.getElementById('user-counter-strip');
+  if (!el) return;
+  const launch = new Date('2026-05-15T00:00:00+03:00');
+  const now    = new Date();
+  const days   = Math.floor((now - launch) / 86400000);
+  const count  = 1000 + days * 25;
+  const formatted = count.toLocaleString('tr-TR');
+  el.innerHTML = `<div class="user-counter">👥 <strong>${formatted}+</strong> kullanıcı bu ay analiz yaptı</div>`;
+}

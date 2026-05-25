@@ -1719,3 +1719,59 @@ footer {
   .hiw-arrow { transform: rotate(90deg); padding-top: 0; }
   .hiw-step  { width: 100%; max-width: 260px; }
 }
+
+/* ── Abone Sayacı ─────────────────────────────────────────────────────────── */
+.user-counter {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 8px 0 4px;
+  letter-spacing: 0.3px;
+}
+.user-counter strong {
+  color: var(--cyan);
+  font-size: 15px;
+}
+
+/* ── FAQ ──────────────────────────────────────────────────────────────────── */
+.faq-wrap {
+  max-width: 680px;
+  margin: 32px auto 0;
+  padding: 0 16px;
+}
+.faq-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 14px;
+  text-align: center;
+}
+.faq-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.faq-q {
+  display: block;
+  padding: 13px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  transition: background 0.15s;
+}
+.faq-q::-webkit-details-marker { display: none; }
+.faq-q::marker { display: none; }
+.faq-item[open] .faq-q { color: var(--cyan); }
+.faq-item[open] { border-color: var(--border2); }
+.faq-q:hover { background: rgba(0,212,255,0.04); }
+.faq-a {
+  padding: 0 16px 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.65;
+}

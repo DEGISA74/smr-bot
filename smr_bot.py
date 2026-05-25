@@ -916,6 +916,23 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sub and sub.get("tier", "").lower() == "pending":
         sub = None
 
+    # Deep link parametresi — t.me/SMRBorsaBot?start=pro / ?start=elite
+    _deep = (context.args[0].lower() if context.args else "").strip()
+    if _deep in ("pro", "elite") and not sub:
+        _tier_map = {
+            "pro":   ("💎", "PRO",   "349", "Günde 3 analiz · Grafik + Algoritmik Teknik Analiz Özeti · Her akşam 19:00 BIST100 bülteni"),
+            "elite": ("👑", "ELITE", "599", "Günde 8 analiz · Uzman AI Raporu · Haftalık tarama + bülten"),
+        }
+        _ico, _tn, _price, _feat = _tier_map[_deep]
+        await msg.reply_text(
+            f"{_ico} *{_tn} plan* için geldin!\n\n"
+            f"_{_feat}_\n\n"
+            f"₺{_price}/ay için: smartmoneyradar.app\n\n"
+            f"📌 Ödeme sonrası bu bota tekrar /start yaz — analizlerin sana özel DM olarak gelir.",
+            parse_mode="Markdown"
+        )
+        return
+
     if sub:
         from datetime import date
         tier   = sub["tier"].upper()
