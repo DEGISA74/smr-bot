@@ -669,8 +669,11 @@ CHAT_RULES = (
     "• Soru sorabilir, fikir alışverişi yapabilirsin\n"
     "• Diğer üyelerle deneyimlerini tartışabilirsin\n\n"
     "📊 *Algoritmik analiz için:* @SMRFreeKanal\n\n"
-    "🤝 _Saygılı bir ortam için reklam, pump ve hakaret içerikli mesajlardan kaçınmanı rica ederiz._\n"
-    "⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
+    "🤝 *Sağlıklı bir ortam için birkaç ricamız var:*\n"
+    "• \"Kesin çıkar\", \"mutlaka al/sat\" gibi iddialı ifadelerden kaçınalım — herkesin risk profili farklıdır\n"
+    "• Pump & koordinasyon mesajlarını paylaşmayalım\n"
+    "• Reklam ve dış grup linklerini paylaşmayalım\n"
+    "• Farklı görüşlere saygılı olalım — tartışmadan değil, diyalogdan yanayız"
 )
 
 async def handle_chat_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
