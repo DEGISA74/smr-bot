@@ -1634,6 +1634,54 @@ async def check_shopier_orders(context=None):
         log.error(f"[Shopier] API hatası: {e}", exc_info=True)
 
 
+# ─── SİTE MONİTÖR ────────────────────────────────────────────────────────────
+_site_alert_last_sent: float = 0.0   # cooldown: 30dk tekrar alert gönderme
+
+async def check_site_health(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Her 5 dakikada smartmoneyradar.app'i ping atar. Yanıt gelmezse admin'e DM."""
+    global _site_alert_last_sent
+    import time
+    import aiohttp as _aiohttp
+
+    SITE_URL  = "https://smartmoneyradar.app"
+    TIMEOUT   = 10      # saniye
+    COOLDOWN  = 1800    # 30dk — aynı alarmı tekrar gönderme süresi
+    ADMIN_ID  = next(iter(UNLIMITED_USERS))  # 1034525990
+
+    msg = None
+    try:
+        async with _aiohttp.ClientSession() as session:
+            async with session.get(
+                SITE_URL,
+                timeout=_aiohttp.ClientTimeout(total=TIMEOUT),
+                allow_redirects=True,
+            ) as resp:
+                if resp.status == 200:
+                    return  # ✅ site sağlıklı
+                msg = f"⚠️ Site erişilebilir ama hata kodu: {resp.status}\n{SITE_URL}"
+    except _aiohttp.ClientConnectorError:
+        msg = f"🔴 Site bağlantı hatası (DNS/network)\n{SITE_URL}"
+    except asyncio.TimeoutError:
+        msg = f"🔴 Site yanıt vermiyor — {TIMEOUT}sn timeout\n{SITE_URL}"
+    except Exception as e:
+        msg = f"🔴 Site kontrol hatası: {e}\n{SITE_URL}"
+
+    if msg is None:
+        return
+
+    now = time.time()
+    if now - _site_alert_last_sent < COOLDOWN:
+        log.warning(f"[Monitor] {msg} (cooldown aktif, DM gönderilmedi)")
+        return
+
+    _site_alert_last_sent = now
+    try:
+        await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
+        log.warning(f"[Monitor] Alert DM gönderildi: {msg}")
+    except Exception as e:
+        log.error(f"[Monitor] DM gönderilemedi: {e}")
+
+
 # ─── SHOPİER OSB WEBHOOK (eski — pasif) ──────────────────────────────────────
 async def shopier_osb(request: web.Request) -> web.Response:
     """
@@ -1823,6 +1871,15 @@ def main():
             name="shopier_check"
         )
         log.info("✅ Shopier sipariş kontrolü aktif (5dk)")
+
+    # Site monitor — her 5 dakikada smartmoneyradar.app ping
+    app.job_queue.run_repeating(
+        check_site_health,
+        interval=300,   # 5 dakika
+        first=60,       # İlk kontrol 60sn sonra
+        name="site_monitor"
+    )
+    log.info("✅ Site monitor aktif (5dk) — smartmoneyradar.app")
 
     log.info("✅ Bot aktif. Bülten: Pzt-Cuma 19:00, Paz 21:00 | Renewal: 10:00 | Sıfırlama: 00:00 | KickExpired: 00:05")
 
