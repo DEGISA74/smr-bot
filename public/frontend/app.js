@@ -3,10 +3,13 @@
  * Patron Terminal tasarımına uygun 3-kolon layout + grafikler.
  */
 
-const JSON_URL     = "./latest.json";
-const TG_PRO_URL   = "#planlar";
-const TG_ELITE_URL = "#planlar";
-const TWITTER_URL  = "https://x.com/SMRadar_2026";
+const JSON_URL        = "./latest.json";
+const TG_PRO_URL      = "#planlar";
+const TG_ELITE_URL    = "#planlar";
+const TWITTER_URL     = "https://x.com/SMRadar_2026";
+const AUTO_REFRESH_MS = 5 * 60 * 1000;   // 5 dakika
+
+let _lastDataStamp = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -22,7 +25,14 @@ async function loadData() {
   if (!res.ok) throw new Error("JSON fetch failed: " + res.status);
   const data = await res.json();
 
+  _lastDataStamp = (data.meta?.tarih || '') + '|' + (data.meta?.guncelleme || '');
+
   hideLoading();
+  renderAll(data);
+  startAutoRefresh();
+}
+
+function renderAll(data) {
   renderUpdateTime(data.meta);
   renderTop3Sinyaller(data.top3_sinyaller || []);
   renderXU100Panel(data.xu100, data.piyasa_ozeti, data.xu100_grafik || []);
@@ -43,6 +53,21 @@ async function loadData() {
   updateTwitterLinks();
   renderBgDeco(data.xu100_grafik || []);
   renderErkenRadarPreview();
+}
+
+function startAutoRefresh() {
+  setInterval(async () => {
+    try {
+      const res = await fetch(JSON_URL + "?t=" + Date.now());
+      if (!res.ok) return;
+      const data = await res.json();
+      const stamp = (data.meta?.tarih || '') + '|' + (data.meta?.guncelleme || '');
+      if (stamp && stamp !== _lastDataStamp) {
+        _lastDataStamp = stamp;
+        renderAll(data);
+      }
+    } catch (e) { /* sessiz başarısızlık */ }
+  }, AUTO_REFRESH_MS);
 }
 
 // ── ERKEN RADAR PREVIEW (Tadımlık — FREE) ────────────────────────────────────
