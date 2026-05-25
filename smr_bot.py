@@ -661,13 +661,15 @@ async def delete_non_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── SOHBET GRUBU MODERASYONU ────────────────────────────────────────────────
 CHAT_RULES = (
-    "👋 *SMR Sohbet Grubuna Hoş Geldin!*\n\n"
-    "📌 *Kurallar:*\n"
-    "• Reklam ve tanıtım yasaktır\n"
-    "• Hisse/kripto pump paylaşımı yasaktır\n"
-    "• PRO/ELİTE kanal içeriğini buraya iletmek yasaktır\n"
-    "• Hakaret ve küfür yasaktır\n"
-    "• Analiz için: @SMR_Free_Kanal\n\n"
+    "👋 *Hoş geldin!*\n\n"
+    "Burası SMR topluluğunun sohbet alanı. "
+    "Piyasalar, stratejiler, günlük gelişmeler — aklına ne takılırsa burada konuşabilirsin.\n\n"
+    "💬 *Burada neler yapabilirsin?*\n"
+    "• Piyasa görüşlerini paylaşabilirsin\n"
+    "• Soru sorabilir, fikir alışverişi yapabilirsin\n"
+    "• Diğer üyelerle deneyimlerini tartışabilirsin\n\n"
+    "📊 *Algoritmik analiz için:* @SMRFreeKanal\n\n"
+    "🤝 _Saygılı bir ortam için reklam, pump ve hakaret içerikli mesajlardan kaçınmanı rica ederiz._\n"
     "⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
 )
 
