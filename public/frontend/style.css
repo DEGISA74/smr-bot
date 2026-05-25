@@ -1651,17 +1651,17 @@ footer {
   background: rgba(255,255,255,0.03);
   border: 1px solid #1e293b;
   border-radius: 10px;
-  padding: 16px 18px;
-  margin-bottom: 12px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
 }
 .hiw-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: #64748b;
   letter-spacing: 1px;
   text-transform: uppercase;
   text-align: center;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 .hiw-steps {
   display: flex;
@@ -1673,32 +1673,28 @@ footer {
   text-align: center;
 }
 .hiw-num {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   background: #1e40af;
   border-radius: 50%;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 6px;
-}
-.hiw-icon {
-  font-size: 20px;
-  margin-bottom: 5px;
+  margin: 0 auto 4px;
 }
 .hiw-step-title {
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 700;
   color: #f1f5f9;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .hiw-step-desc {
-  font-size: 10px;
+  font-size: 9.5px;
   color: #94a3b8;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 .hiw-code {
   background: rgba(59,130,246,0.15);
@@ -1723,14 +1719,14 @@ footer {
 /* ── Abone Sayacı ─────────────────────────────────────────────────────────── */
 .user-counter {
   text-align: center;
-  font-size: 13px;
+  font-size: 11px;
   color: var(--text-dim);
-  padding: 8px 0 4px;
-  letter-spacing: 0.3px;
+  padding: 4px 0 2px;
+  letter-spacing: 0.2px;
 }
 .user-counter strong {
   color: var(--cyan);
-  font-size: 15px;
+  font-size: 12px;
 }
 
 /* ── FAQ ──────────────────────────────────────────────────────────────────── */

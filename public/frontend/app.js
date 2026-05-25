@@ -1834,5 +1834,5 @@ function renderUserCounter() {
   const days   = Math.floor((now - launch) / 86400000);
   const count  = 1000 + days * 25;
   const formatted = count.toLocaleString('tr-TR');
-  el.innerHTML = `<div class="user-counter">👥 <strong>${formatted}+</strong> kullanıcı bu ay analiz yaptı</div>`;
+  el.innerHTML = `<div class="user-counter">bu ay içinde <strong>${formatted}+</strong> kullanıcı siteyi ziyaret etti ve özet analizleri gördü</div>`;
 }
