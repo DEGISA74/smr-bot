@@ -49,7 +49,7 @@ function renderAll(data) {
   renderRadarPanel();
   renderTgAdPanel();
   renderCTA();
-  renderUserCounter();
+  renderUserCounter(data.meta);
   updateTwitterLinks();
   renderBgDeco(data.xu100_grafik || []);
   renderErkenRadarPreview();
@@ -1851,13 +1851,12 @@ function handleStockSearch() {
 })();
 
 // ── ABONE SAYACI ──────────────────────────────────────────────────────────────
-function renderUserCounter() {
+function renderUserCounter(meta) {
   const el = document.getElementById('user-counter-strip');
   if (!el) return;
-  const launch = new Date('2026-05-15T00:00:00+03:00');
-  const now    = new Date();
-  const days   = Math.floor((now - launch) / 86400000);
-  const count  = 1000 + days * 25;
-  const formatted = count.toLocaleString('tr-TR');
-  el.innerHTML = `<div class="user-counter">bu ay içinde <strong>${formatted}+</strong> kullanıcı siteyi ziyaret etti ve özet analizleri gördü</div>`;
+  let timeStr = '';
+  if (meta && meta.canli_guncelleme) {
+    timeStr = ' &nbsp;·&nbsp; Piyasa verisi <strong>' + meta.canli_guncelleme + '</strong> güncellendi';
+  }
+  el.innerHTML = `<div class="bot-status-strip">🟢 <strong>Bot aktif</strong>${timeStr}</div>`;
 }
