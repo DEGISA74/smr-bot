@@ -321,6 +321,16 @@ THEMES = {
 }
 current_theme = THEMES[st.session_state.theme]
 
+# ═══ FİYAT KARTI RENK PALETİ — kutucuğa tıkla, rengi değiştir ═══
+KART_RENK = {
+    "pos_bg":   "#02491f",   # pozitif zemin (koyu yeşil)
+    "neg_bg":   "#5E3C3C",   # negatif zemin (koyu kırmızı)
+    "text_pri": "#ffffff",   # fiyat numarası — tam beyaz
+    "text_sec": "#a8c4b0",   # label metni — soluk
+    "divider":  "#2d4a35",   # ayırıcı çizgi (pozitif)
+}
+# ═════════════════════════════════════════════════════════════════
+
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -20629,49 +20639,20 @@ def _render_left_col():
         except Exception:
             pass
 
-        # ── Chip yardımcı fonksiyonları ────────────────────────────────────────────
-        def _k1_chip(label, value, val_color, last=False):
-            _sep = "" if last else "border-right:1px solid #1e3a5f;"
-            return (
-                f"<div style='display:flex;flex-direction:column;align-items:center;"
-                f"padding:0 14px;{_sep}gap:2px;flex:1;'>"
-                f"<span style='font-size:0.60rem;color:#cbd5e1;font-weight:700;"
-                f"text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;'>{label}</span>"
-                f"<span style='font-size:0.88rem;font-weight:800;color:{val_color};"
-                f"font-family:\"JetBrains Mono\",monospace;white-space:nowrap;'>{value}</span>"
-                f"</div>"
-            )
+        # Sağ kolon kartı için değerleri session_state'e aktar
+        st.session_state['_k1_metrics'] = {
+            'yapi_lbl': _k1_bias_lbl, 'yapi_col': _k1_bias_col,
+            'rs_str':   _k1_rs_str,   'rs_col':   _k1_rs_col,
+            'mom_str':  _k1_mom_str,  'mom_col':  _k1_mom_col,
+            'rsi_val':  _k1_rsi_val,  'rsi_col':  _k1_rsi_col,
+            'vol_str':  _k1_vol_str,  'vol_col':  _k1_vol_col,
+            'beta_str': _k1_beta_str, 'beta_col': _k1_beta_col,
+            'conv_score': _k1_conv_score, 'conv_col': _k1_conv_col,
+            'is_bist_stock': _k1_is_bist_stock,
+            'is_idx':        _k1_is_idx,
+        }
 
-        st.markdown(f"""
-    <div style="border:1px solid #1e3a5f;border-radius:8px;
-                background:linear-gradient(90deg,#0d1829,#0f2040);
-                padding:8px 4px;margin-bottom:10px;
-                display:flex;align-items:center;justify-content:space-between;
-                box-shadow:0 4px 12px rgba(0,0,0,0.4);width:100%;">
-      <div style="display:flex;flex-direction:column;align-items:center;
-                  padding:0 16px;border-right:1px solid #1e3a5f;gap:2px;flex:1;">
-        <span style="font-size:0.60rem;color:#64748b;font-weight:600;
-                     text-transform:uppercase;letter-spacing:0.5px;color:#cbd5e1;font-weight:700;">HİSSE</span>
-        <span style="font-size:1.0rem;font-weight:900;color:#38bdf8;">{_k1_disp}</span>
-      </div>
-      {_k1_chip("FİYAT",    _k1_px_str,                     "#f1f5f9")}
-      {_k1_chip("DEĞİŞİM",  _k1_chg_str,                    _k1_chg_col)}
-      {_k1_chip("MOMENTUM", _k1_mom_str,                     _k1_mom_col)}
-      <div style="display:flex;flex-direction:column;align-items:center;
-                  padding:0 14px;border-right:1px solid #1e3a5f;gap:2px;flex:1;">
-        <span style="font-size:0.60rem;color:#64748b;font-weight:600;
-                     text-transform:uppercase;letter-spacing:0.5px;color:#cbd5e1;font-weight:700;">YAPI</span>
-        <span style="font-size:0.84rem;font-weight:800;color:{_k1_bias_col};
-                     background:{_k1_bias_bg};padding:2px 9px;border-radius:4px;
-                     font-family:'JetBrains Mono',monospace;white-space:nowrap;">{_k1_bias_lbl}</span>
-      </div>
-      {_k1_chip("RS GÜCÜ",  _k1_rs_str,                      _k1_rs_col)}
-      {_k1_chip("RSI",      f"{_k1_rsi_val:.0f}",            _k1_rsi_col)}
-      {_k1_chip("HACİM",    _k1_vol_str,                     _k1_vol_col)}
-      {_k1_chip("BETA",     _k1_beta_str,                    _k1_beta_col)}
-      {_k1_chip("GÜVEN",    f"{_k1_conv_score}/100",         _k1_conv_col, last=True)}
-    </div>
-    """, unsafe_allow_html=True)
+        # Üst şerit kaldırıldı — bilgiler sağ kolondaki fiyat kartına taşındı
 
     except Exception:
         pass
@@ -22020,33 +22001,111 @@ with col_left:
 def _render_right_col():
     info = fetch_stock_info(st.session_state.ticker)
     
-    # 1. Fiyat (YENİ TERMİNAL GÖRÜNÜMÜ)
+    # 1. Fiyat Kartı — 2 sütun hero tasarım
     if info and info.get('price'):
         display_ticker = get_display_name(st.session_state.ticker)
-        price_val = info.get('price', 0)
+        price_val  = info.get('price', 0)
         change_val = info.get('change_pct', 0)
-    
-        # Rengi Belirle
-        if change_val >= 0:
-            bg_color = "#81bb96"  # Yeşil
-            arrow = "▲"
-            shadow_color = "rgba(22, 163, 74, 0.4)"
-        else:
-            bg_color = "#9B7C99"  # Kırmızı
-            arrow = "▼"
-            shadow_color = "rgba(220, 38, 38, 0.4)"
-    
-        # HTML Kodları — %60 boyut (kompakt kart)
-        st.markdown(f"""<div style="background-color:{bg_color}; border-radius:8px; padding:8px 12px; color:white; text-align:center; box-shadow: 0 6px 10px -3px {shadow_color}; margin-bottom:8px; border: 1px solid rgba(255,255,255,0.2);">
-    <div style="font-size:0.72rem; font-weight:600; opacity:0.9; letter-spacing:1px; margin-bottom:3px; text-transform:uppercase;">FİYAT: {display_ticker}</div>
-    <div style="font-family:'JetBrains Mono', monospace; font-size:1.5rem; font-weight:800; line-height:1; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">{price_val:.2f}</div>
-    <div style="margin-top:6px;">
-    <span style="background:rgba(255,255,255,0.25); color:white; font-weight:700; font-size:0.82rem; padding:2px 8px; border-radius:20px; backdrop-filter: blur(4px);">
-    {arrow} %{change_val:.2f}
-    </span>
+        _tk        = st.session_state.ticker
+
+        # Renk paleti → satır ~322'deki KART_RENK dict'inden gelir (orada kutucuklarla düzenle)
+        _CLR_POS_BG   = KART_RENK["pos_bg"]
+        _CLR_NEG_BG   = KART_RENK["neg_bg"]
+        _CLR_TEXT_PRI = KART_RENK["text_pri"]
+        _CLR_TEXT_SEC = "rgba(255,255,255,0.58)"
+        _CLR_TEXT_VAL = "rgba(255,255,255,0.88)"
+        _CLR_DIVIDER  = "rgba(255,255,255,0.13)"
+
+        _bg     = _CLR_POS_BG if change_val >= 0 else _CLR_NEG_BG
+        _arrow  = "▲" if change_val >= 0 else "▼"
+        _shadow = "rgba(22,163,74,0.35)" if change_val >= 0 else "rgba(220,38,38,0.35)"
+
+        # Varlık tipi tespiti (beta/hacim görünürlüğü için)
+        _is_idx    = price_val > 1000 or "XU" in _tk.upper() or "^" in _tk
+        _is_emtia  = "=F" in _tk
+        _is_crypto = ("-USD" in _tk.upper() or "-EUR" in _tk.upper() or "-TRY" in _tk.upper())
+        _is_bist   = (not _is_idx and not _is_emtia and not _is_crypto and "-" not in _tk and "^" not in _tk)
+        _show_beta = _is_bist
+        _show_hacim = _is_bist or _is_crypto
+
+        # Metrik değerleri session_state'ten oku (sol kolon hesaplamış olur)
+        _m = st.session_state.get('_k1_metrics', {})
+        _yapi_lbl   = _m.get('yapi_lbl',   '—');  _yapi_col   = _m.get('yapi_col',   '#94a3b8')
+        _rs_str     = _m.get('rs_str',     '—');  _rs_col     = _m.get('rs_col',     '#94a3b8')
+        _mom_str    = _m.get('mom_str',    '—');  _mom_col    = _m.get('mom_col',    '#94a3b8')
+        _rsi_val    = _m.get('rsi_val',    50);   _rsi_col    = _m.get('rsi_col',    '#94a3b8')
+        _vol_str    = _m.get('vol_str',    '—');  _vol_col    = _m.get('vol_col',    '#94a3b8')
+        _beta_str   = _m.get('beta_str',   '—');  _beta_col   = _m.get('beta_col',   '#94a3b8')
+        _conv_score = _m.get('conv_score', 50);   _conv_col   = _m.get('conv_col',   '#94a3b8')
+
+        # Sağ sütun: 3 metrik satırı
+        def _mrow(lbl, val, vcol, border=True):
+            brd = f"border-bottom:1px solid {_CLR_DIVIDER};" if border else ""
+            return (f"<div style='padding:5px 8px;{brd}'>"
+                    f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+                    f"letter-spacing:0.5px;font-weight:700;'>{lbl}</div>"
+                    f"<div style='font-size:1.0rem;font-weight:800;color:{vcol};"
+                    f"font-family:\"JetBrains Mono\",monospace;'>{val}</div>"
+                    f"</div>")
+
+        _right_col_html = (
+            _mrow("YAPI",     _yapi_lbl,              _yapi_col, border=True) +
+            _mrow("RS GÜCÜ",  _rs_str,                _rs_col,   border=True) +
+            _mrow("MOMENTUM", _mom_str,               _mom_col,  border=False)
+        )
+
+        # Alt şerit: RSI + koşullu HACİM + koşullu BETA + GÜVEN
+        def _chip(lbl, val, vcol):
+            return (f"<div style='flex:1;text-align:center;padding:5px 3px;"
+                    f"border-right:1px solid {_CLR_DIVIDER};'>"
+                    f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+                    f"letter-spacing:0.5px;font-weight:700;'>{lbl}</div>"
+                    f"<div style='font-size:1.0rem;font-weight:800;color:{vcol};"
+                    f"font-family:\"JetBrains Mono\",monospace;'>{val}</div>"
+                    f"</div>")
+        def _chip_last(lbl, val, vcol):
+            return (f"<div style='flex:1;text-align:center;padding:5px 3px;'>"
+                    f"<div style='font-size:1.0rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+                    f"letter-spacing:0.5px;font-weight:700;'>{lbl}</div>"
+                    f"<div style='font-size:1.0rem;font-weight:800;color:{vcol};"
+                    f"font-family:\"JetBrains Mono\",monospace;'>{val}</div>"
+                    f"</div>")
+
+        _bottom_html = _chip("RSI", f"{_rsi_val:.0f}", _rsi_col)
+        if _show_hacim:
+            _bottom_html += _chip("HACİM", _vol_str, _vol_col)
+        if _show_beta:
+            _bottom_html += _chip("BETA", _beta_str, _beta_col)
+        _bottom_html += _chip_last("GÜVEN", f"{_conv_score}/100", _conv_col)
+
+        # Fiyat formatı (endeks için binlik ayırıcı)
+        _px_fmt = (f"{int(price_val):,}".replace(",", ".") if _is_idx else f"{price_val:.2f}")
+
+        st.markdown(f"""
+<div style="background:{_bg};border-radius:8px;padding:0;
+            box-shadow:0 6px 14px -3px {_shadow};
+            margin-bottom:8px;border:1px solid rgba(255,255,255,0.12);
+            overflow:hidden;">
+  <div style="display:flex;border-bottom:1px solid {_CLR_DIVIDER};">
+    <div style="flex:1.1;padding:10px 8px;border-right:1px solid {_CLR_DIVIDER};text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center;">
+      <div style="font-size:1.0rem;color:{_CLR_TEXT_SEC};font-weight:700;
+                  text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">FİYAT: {display_ticker}</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:2.5rem;
+                  font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;margin-bottom:6px;">{_px_fmt}</div>
+      <span style="background:rgba(0,0,0,0.22);color:{_CLR_TEXT_PRI};font-weight:700;
+                   font-size:1.0rem;padding:2px 8px;border-radius:20px;">
+        {_arrow} %{abs(change_val):.2f}
+      </span>
     </div>
-    </div>""", unsafe_allow_html=True)
-    
+    <div style="flex:1;display:flex;flex-direction:column;">
+      {_right_col_html}
+    </div>
+  </div>
+  <div style="display:flex;">
+    {_bottom_html}
+  </div>
+</div>""", unsafe_allow_html=True)
+
     else:
         st.warning("Fiyat verisi alınamadı.")
 
