@@ -529,9 +529,16 @@ st.markdown(f"""
     ::-webkit-scrollbar-thumb {{ background: #1e3a5f; border-radius: 3px; }}
     ::-webkit-scrollbar-thumb:hover {{ background: #10b981; }}
 
-    /* ── INFO KARTLARI (SMR DARK) ── */
+    /* ── INFO KARTLARI (SMR DARK) — Glassmorphism ── */
     .info-header {{ color: #38bdf8 !important; }}
-    .info-card {{ background: #0d1829 !important; border-color: #1e3a5f !important; }}
+    .info-card {{
+        background: rgba(9,18,35,0.65) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(56,189,248,0.14) !important;
+        border-radius: 10px !important;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+    }}
     .info-val {{ color: #f1f5f9 !important; }}
     .label-short, .label-long {{ color: #64748b !important; }}
     .edu-note {{ color: #cbd5e1 !important; }}
@@ -619,6 +626,45 @@ ul[role="listbox"] li[aria-selected="true"],
     background-color: rgba(56,189,248,0.18) !important;
     color: #38bdf8 !important;
     font-weight: 700 !important;
+}
+
+/* ── GLASSMORPHISM ── */
+/* Streamlit expander'ları */
+div[data-testid="stExpander"] {
+    background: rgba(9, 18, 35, 0.65) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(56,189,248,0.13) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+div[data-testid="stExpander"]:hover {
+    border-color: rgba(56,189,248,0.22) !important;
+}
+/* st.container(border=True) */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: rgba(9, 18, 35, 0.55) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(56,189,248,0.10) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4) !important;
+}
+/* Ana sidebar */
+section[data-testid="stSidebar"] > div:first-child {
+    background: rgba(6,12,26,0.80) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-right: 1px solid rgba(56,189,248,0.10) !important;
+}
+/* Yeniden kullanılabilir glass class — custom HTML kartlara */
+.glass {
+    background: rgba(9,18,35,0.60) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(56,189,248,0.14) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 28px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04) !important;
 }
 </style>""", unsafe_allow_html=True)
 
@@ -1049,6 +1095,8 @@ if 'radar2_data' not in st.session_state: st.session_state.radar2_data = None
 if 'watchlist' not in st.session_state: st.session_state.watchlist = load_watchlist_db()
 if 'accum_data' not in st.session_state: st.session_state.accum_data = None
 if 'minervini_data' not in st.session_state: st.session_state.minervini_data = None
+if 'sorgu_gecmisi' not in st.session_state: st.session_state.sorgu_gecmisi = []
+if 'son10_reset' not in st.session_state: st.session_state.son10_reset = 0
 
 # --- CALLBACKLER ---
 def on_category_change():
@@ -9829,10 +9877,10 @@ def _main_price_chart_plotly(symbol, dark_mode):
         smc = _compute_smc_elements(highs, lows, opens, closes, n_pivot=5)
 
         if dark_mode:
-            bg       = '#0e1628'
-            paper_bg = '#0e1628'
-            fg       = '#94a3b8'
-            grid     = 'rgba(255,255,255,0.04)'
+            bg       = '#060f1e'
+            paper_bg = '#060f1e'
+            fg       = '#7a92b0'
+            grid     = 'rgba(255,255,255,0.05)'
         else:
             bg       = '#ffffff'
             paper_bg = '#ffffff'
@@ -9853,8 +9901,8 @@ def _main_price_chart_plotly(symbol, dark_mode):
         fig.add_trace(go.Candlestick(
             x=dates, open=opens, high=highs, low=lows, close=closes,
             name='Fiyat',
-            increasing_line_color="#45B3E6", increasing_fillcolor='#26a69a',
-            decreasing_line_color="#7c3635", decreasing_fillcolor='#ef5350',
+            increasing_line_color='#00c896', increasing_fillcolor='#00c896',
+            decreasing_line_color='#ff4757', decreasing_fillcolor='#ff4757',
             line_width=1,
             hovertemplate=(
                 "<b>%{x|%d %b %Y}</b><br>"
@@ -9891,12 +9939,12 @@ def _main_price_chart_plotly(symbol, dark_mode):
             ), row=1, col=1)
 
         # ── Volume ────────────────────────────────────────────────────
-        vol_colors = ["#1872E9" if closes[i] >= opens[i] else "#f70606"
+        vol_colors = ["rgba(0,200,150,0.55)" if closes[i] >= opens[i] else "rgba(255,71,87,0.45)"
                       for i in range(n)]
         fig.add_trace(go.Bar(
             x=dates, y=df['Volume'].values,
             name='Hacim', marker_color=vol_colors,
-            marker_line_width=0, opacity=0.55,
+            marker_line_width=0, opacity=1.0,
             showlegend=False,
         ), row=2, col=1)
 
@@ -10127,18 +10175,17 @@ def _main_price_chart_plotly(symbol, dark_mode):
             annotations=annotations,
             paper_bgcolor=paper_bg,
             plot_bgcolor=bg,
-            font=dict(color=fg, size=10),
-            margin=dict(l=8, r=60, t=42, b=4),
-            height=480,
+            font=dict(color=fg, size=10, family="JetBrains Mono, monospace"),
+            margin=dict(l=8, r=68, t=46, b=4),
+            height=490,
             title=dict(
                 text=(
-                    f"<b style='color:{'#e2e8f0' if dark_mode else '#1e293b'}'>{disp}</b>"
-                    f"  ·  SMC  ·  Son {n} Gün"
-                    f"    <span style='color:#38bdf8; font-size:11px;'>▬ Fiyat</span>"
-                    f"  <span style='color:#ef5350; font-size:12px;'>— {_l50}</span>"
-                    f"  <span style='color:#38bdf8; font-size:12px;'>— {_l100}</span>"
-                    f"  <span style='color:#a78bfa; font-size:12px;'>— {_l144}</span>"
-                    f"  <span style='color:#fb923c; font-size:12px;'>— {_l200}</span>"
+                    f"<b style='color:{'#e2e8f0' if dark_mode else '#1e293b'};font-size:13px;'>{disp}</b>"
+                    f"  <span style='color:#475569;font-size:10px;'>· SMC · Son {n}G</span>"
+                    f"  &nbsp;<span style='color:#ef5350; font-size:10px;'>── {_l50}</span>"
+                    f"  <span style='color:#2196F3; font-size:10px;'>── {_l100}</span>"
+                    f"  <span style='color:#a78bfa; font-size:10px;'>── {_l144}</span>"
+                    f"  <span style='color:#fb923c; font-size:10px;'>── {_l200}</span>"
                 ),
                 font=dict(size=11, color=fg), x=0.01, xanchor='left'),
             showlegend=False,
@@ -13539,8 +13586,8 @@ def render_ict_deep_panel(ticker):
     c1, c2 = st.columns([1.4, 1])
     with c1:
         sc1, sc2 = st.columns(2)
-        with sc1: st.markdown(f"""<div style="border:2px solid {mc}; background:{bg}; border-radius:8px; padding:12px; height: 100%;"><div style="font-weight:800; color:{mc}; font-size:0.85rem; text-transform: uppercase; margin-bottom:6px;">{struct_title}</div><div style="font-size:0.8rem; color:#cbd5e1; line-height:1.4;">{struct_desc}</div></div>""", unsafe_allow_html=True)
-        with sc2: st.markdown(f"""<div style="border:2px solid #94a3b8; background:#0d1829; border-radius:8px; padding:12px; height: 100%;"><div style="font-weight:800; color:#7c3aed; font-size:0.85rem; text-transform: uppercase; margin-bottom:6px;">{energy_title}</div><div style="font-size:0.8rem; color:#cbd5e1; line-height:1.4;">{energy_desc}</div></div>""", unsafe_allow_html=True)
+        with sc1: st.markdown(f"""<div style="border:2px solid {mc}; background:rgba(9,18,35,0.65); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:8px; padding:12px; height: 100%; box-shadow:0 4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);"><div style="font-weight:800; color:{mc}; font-size:0.85rem; text-transform: uppercase; margin-bottom:6px;">{struct_title}</div><div style="font-size:0.8rem; color:#cbd5e1; line-height:1.4;">{struct_desc}</div></div>""", unsafe_allow_html=True)
+        with sc2: st.markdown(f"""<div style="border:2px solid #94a3b8; background:rgba(9,18,35,0.65); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:8px; padding:12px; height: 100%; box-shadow:0 4px 20px rgba(0,0,0,0.4);"><div style="font-weight:800; color:#7c3aed; font-size:0.85rem; text-transform: uppercase; margin-bottom:6px;">{energy_title}</div><div style="font-size:0.8rem; color:#cbd5e1; line-height:1.4;">{energy_desc}</div></div>""", unsafe_allow_html=True)
         hc1, hc2 = st.columns(2)
         with hc1: st.markdown(f"""<div style="background:rgba(245,158,11,0.07); border:2px solid #ea580c; border-left:6px solid #ea580c; padding:12px; margin-top:12px; margin-bottom:12px; border-radius:8px; height: 100%;"><div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;"><div style="font-weight:800; color:#fb923c; font-size:0.9rem;">🛡️ {mt_title}</div><div style="font-family:'JetBrains Mono'; font-weight:800; font-size:1.1rem; color:#fb923c; background:#0d1829; padding: 4px 8px; border-radius: 4px; margin-left: 8px; white-space:nowrap;">{data['mean_threshold']:.2f}</div></div><div style="font-size:0.75rem; color:#cbd5e1; line-height:1.5;">{mt_desc}</div></div>""", unsafe_allow_html=True)
         with hc2: st.markdown(f"""<div style="border:2px solid #f87171; background:rgba(248,113,113,0.06); padding:12px; border-radius:8px; margin-top:12px; margin-bottom:12px; height: 100%;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;"><div style="font-weight:800; color:#f87171; font-size:0.9rem; text-transform: uppercase;">🎯 Yakın Hedef</div><div style="font-weight:800; font-family:'JetBrains Mono'; font-size:1.2rem; color:#f87171; background:#0d1829; padding: 2px 8px; border-radius: 6px;">{data['target']:.2f}</div></div><div style="font-size:0.75rem; color:#cbd5e1; line-height:1.4; margin-bottom:10px;">{liq_desc}</div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; border-top:2px solid rgba(248,113,113,0.4); padding-top:6px;"><div style="font-weight:800; color:#fb923c; font-size:0.9rem;">{struct_target_label}</div><div style="font-weight:800; font-family:'JetBrains Mono'; font-size:1.1rem; color:#fb923c; background:#0d1829; padding: 2px 8px; border-radius: 6px;">{structural_target_val:.2f}</div></div><div style="font-size:0.75rem; color:#cbd5e1; line-height:1.4;">{struct_target_desc}</div></div>""", unsafe_allow_html=True)
@@ -17740,8 +17787,8 @@ def get_golden_trio_batch_scan(ticker_list):
 # Sekme yapısı, sonuç kartları ve kullanıcı etkileşimleri burada.
 # ==============================================================================
 
-# Üst Menü Düzeni: Kategori | Varlık | Master Scan
-col_cat, col_ass, col_btn = st.columns([1.0, 1.0, 1.25])
+# Üst Menü Düzeni: Kategori | Varlık | Son 10 | Master Scan
+col_cat, col_ass, col_hist, col_btn = st.columns([1.0, 1.0, 0.75, 1.0])
 
 # 2. Kategori Seçimi
 try: cat_index = list(ASSET_GROUPS.keys()).index(st.session_state.category)
@@ -17761,7 +17808,24 @@ with col_ass:
         except ValueError: asset_idx = 0
     st.selectbox("Varlık Listesi", current_opts, index=asset_idx, key="selected_asset_key", on_change=on_asset_change, label_visibility="collapsed", format_func=get_display_name)
 
-# 4. MASTER SCAN BUTONU
+# 4. SON 10 SORGU
+with col_hist:
+    _gecmis = [t for t in st.session_state.sorgu_gecmisi if t != st.session_state.ticker]
+    _son10_opts = ["🕐 Son 10"] + _gecmis[:9]
+    _son10_sel = st.selectbox(
+        "Son 10",
+        options=_son10_opts,
+        index=0,
+        key=f"son10_{st.session_state.son10_reset}",
+        label_visibility="collapsed",
+        format_func=lambda x: x if x == "🕐 Son 10" else get_display_name(x)
+    )
+    if _son10_sel and _son10_sel != "🕐 Son 10":
+        st.session_state.ticker = _son10_sel
+        st.session_state.son10_reset += 1
+        st.rerun()
+
+# 5. MASTER SCAN BUTONU
 with col_btn:
     if st.button("💎 TÜM PİYASAYI TARA (MASTER SCAN)", type="secondary", use_container_width=True):
 
@@ -20440,6 +20504,13 @@ col_left, col_right = st.columns([82, 20])
 # --- SOL SÜTUN ---
 
 def _render_left_col():
+    # geçmiş takibi — selectbox header'da, burada sadece state güncelle
+    _cur_ticker = st.session_state.ticker
+    _hist = st.session_state.sorgu_gecmisi
+    if not _hist or _hist[0] != _cur_ticker:
+        _hist = [_cur_ticker] + [t for t in _hist if t != _cur_ticker]
+        st.session_state.sorgu_gecmisi = _hist[:10]
+
     # ══════════════════════════════════════════════════════════════════════════════
     # KATMAN 1 — ÜST BİLGİ ŞERİDİ
     # Fiyat · Değişim · Bias · Güven Skoru · RSI · En Yakın Destek / Direnç
@@ -20612,8 +20683,13 @@ def _render_left_col():
             _c = 'Close' if 'Close' in _df_w52.columns else _df_w52.columns[0]
             _ps = _df_w52[_c] if not isinstance(_df_w52[_c], pd.DataFrame) else _df_w52[_c].iloc[:, 0]
             _cp   = float(_ps.iloc[-1])
-            _yh   = float(_ps.rolling(252).max().iloc[-1])
-            _yl   = float(_ps.rolling(252).min().iloc[-1])
+            # High/Low kolonlarından gerçek 52H yüksek/düşük
+            _h_s  = _df_w52["High"] if "High" in _df_w52.columns else _ps
+            _l_s  = _df_w52["Low"]  if "Low"  in _df_w52.columns else _ps
+            if isinstance(_h_s, pd.DataFrame): _h_s = _h_s.iloc[:, 0]
+            if isinstance(_l_s, pd.DataFrame): _l_s = _l_s.iloc[:, 0]
+            _yh   = float(_h_s.max())
+            _yl   = float(_l_s.min())
             _rng  = _yh - _yl
             _pct  = int(round((_cp - _yl) / _rng * 100)) if _rng > 0 else 0
             _pct  = max(1, min(99, _pct))  # dot taşmasın
@@ -20622,18 +20698,29 @@ def _render_left_col():
                 if _is_idx: return f"{int(v):,}".replace(",", ".")
                 return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             _lbl_color = "#94a3b8"
+            # 5 bölge — pozisyona göre solgun renk
+            if _pct < 20:
+                _bar_color = "#a05050"   # solgun kırmızı   — dip
+            elif _pct < 40:
+                _bar_color = "#a07040"   # solgun turuncu   — toparlanma
+            elif _pct < 60:
+                _bar_color = "#a09040"   # solgun sarı      — momentum
+            elif _pct < 80:
+                _bar_color = "#508a62"   # solgun yeşil     — güç bölgesi
+            else:
+                _bar_color = "#386b48"   # solgun koyu yeşil — zirve
             st.markdown(f"""
     <div style="border:1px solid #1e3a5f;border-radius:8px;background:#0d1829;
             padding:9px 14px 10px 14px;margin-bottom:8px;">
       <div style="position:relative;height:8px;border-radius:4px;
               background:#1e3a5f;margin-bottom:7px;">
     <div style="position:absolute;top:0;left:0;height:100%;width:{_pct}%;
-                background:#38bdf8;border-radius:4px;opacity:0.85;"></div>
+                background:{_bar_color};border-radius:4px;opacity:0.9;"></div>
     <div style="position:absolute;top:50%;left:{_pct}%;
                 transform:translate(-50%,-50%);
                 width:13px;height:13px;border-radius:50%;
-                background:#38bdf8;border:2px solid #0d1829;
-                box-shadow:0 0 8px rgba(56,189,248,0.6);"></div>
+                background:{_bar_color};border:2px solid #0d1829;
+                box-shadow:0 0 8px rgba(255,255,255,0.2);"></div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;">
     <span style="font-size:0.75rem;color:{_lbl_color};font-weight:600;font-family:'JetBrains Mono',monospace;">52H Düşük: {_fmt(_yl)}</span>
@@ -21705,24 +21792,19 @@ def _render_left_col():
                 st.toast(f"✅ {_ref_ok} güncellendi, {_ref_fail} başarısız.", icon="🔄")
                 st.rerun()
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # 🏆 BACKTEST PERFORMANS DASHBOARD — JSON'dan okur (sıfır gecikme)
-    # backtest_runner.py tarafından üretilen backtest_results.json'u render eder
-    # ═══════════════════════════════════════════════════════════════════════
-    st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
+    # ── TARAMA PERFORMANSI — Backtest (sol sütun EN ALT) ─────────────────────
     with st.expander("🏆 TARAMA PERFORMANSI — Backtest (Son 90 Gün)", expanded=False):
         import json as _bt_json
         from pathlib import Path as _bt_Path
         _bt_path = _bt_Path(__file__).parent / "backtest_results.json"
 
-        # ── Çalıştırma butonu (subprocess ile arka planda) ──────────────
         _bt_col1, _bt_col2 = st.columns([3, 1])
         with _bt_col2:
             if st.button("🔄 Şimdi Çalıştır", key="bt_run_btn", use_container_width=True,
-                         help="backtest_runner.py'yi arka planda çalıştırır. ~1-30 saniye sürer (sinyal sayısına bağlı)."):
+                         help="backtest_runner.py'yi arka planda çalıştırır. ~1-30 saniye sürer."):
                 import subprocess as _bt_sub
                 import sys as _bt_sys
-                with st.spinner("Backtest çalışıyor... (konsol penceresinde progress)"):
+                with st.spinner("Backtest çalışıyor..."):
                     try:
                         _bt_result = _bt_sub.run(
                             [_bt_sys.executable, str(_bt_Path(__file__).parent / "backtest_runner.py")],
@@ -21740,21 +21822,19 @@ def _render_left_col():
 
         if not _bt_path.exists():
             with _bt_col1:
-                st.info("Henüz backtest çalıştırılmadı. **🔄 Şimdi Çalıştır** butonuna bas — "
-                        "ya da `run_backtest.bat` dosyasına çift tıkla.")
+                st.info("Henüz backtest çalıştırılmadı. **🔄 Şimdi Çalıştır** butonuna bas.")
         else:
             try:
                 _bt = _bt_json.loads(_bt_path.read_text(encoding='utf-8'))
                 _bt_gen = _bt.get('generated_at', '—')
 
-                # Tazelik göstergesi
-                _bt_fresh_color = "#10b981"  # default yeşil
+                _bt_fresh_color = "#10b981"
                 _bt_fresh_label = "✓ güncel"
                 try:
                     _bt_dt = datetime.strptime(_bt_gen, "%Y-%m-%d %H:%M:%S")
                     _bt_age_h = (datetime.now() - _bt_dt).total_seconds() / 3600
-                    if _bt_age_h > 168:  # 7 gün
-                        _bt_fresh_color = "#ef4444"; _bt_fresh_label = "⚠️ 7+ gün eski, güncelle"
+                    if _bt_age_h > 168:
+                        _bt_fresh_color = "#ef4444"; _bt_fresh_label = "⚠️ 7+ gün eski"
                     elif _bt_age_h > 24:
                         _bt_fresh_color = "#f59e0b"; _bt_fresh_label = f"{int(_bt_age_h/24)} gün önce"
                     elif _bt_age_h > 1:
@@ -21775,129 +21855,160 @@ def _render_left_col():
                         f"</div>", unsafe_allow_html=True
                     )
 
-                # DB stats
                 _bt_stats = _bt.get('db_stats', {})
-                _bt_eval = _bt.get('eval_meta', {})
+                _bt_eval  = _bt.get('eval_meta', {})
                 st.markdown(
                     f"<div style='display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#94a3b8;"
                     f"background:rgba(125,211,252,0.04);border:1px solid rgba(125,211,252,0.18);"
                     f"border-radius:6px;padding:6px 10px;margin-top:6px;margin-bottom:10px;'>"
-                    f"<span>📊 <b style='color:#7dd3fc;'>{_bt_stats.get('total_signals',0):,}</b> toplam sinyal</span>"
+                    f"<span>📊 <b style='color:#7dd3fc;'>{_bt_stats.get('total_signals',0):,}</b> sinyal</span>"
                     f"<span>✓ <b style='color:#10b981;'>{_bt_eval.get('evaluated',0)}</b> değerlendirildi</span>"
-                    f"<span>⏳ <b style='color:#f59e0b;'>{_bt_eval.get('pending',0)}</b> bekleyen (henüz 5g geçmedi)</span>"
+                    f"<span>⏳ <b style='color:#f59e0b;'>{_bt_eval.get('pending',0)}</b> bekleyen</span>"
                     f"<span>🔖 <b style='color:#cbd5e1;'>{_bt_stats.get('unique_scan_types',0)}</b> tarama tipi</span>"
-                    f"<span>📅 <b style='color:#cbd5e1;'>{_bt_stats.get('first_date','—')}</b> → <b style='color:#cbd5e1;'>{_bt_stats.get('last_date','—')}</b></span>"
                     f"</div>", unsafe_allow_html=True
                 )
 
                 _bt_summary = _bt.get('summary', [])
                 if _bt_summary:
-                    # DataFrame'e çevir, format ayarla
                     _bt_df = pd.DataFrame(_bt_summary)
-                    def _fmt_pct(v): return f"%{v}" if v is not None else "—"
-                    def _fmt_ret(v): return f"%{v:+.2f}" if v is not None else "—"
 
                     def _render_bt_html_table(df_src, title):
-                        """Backtest tablosunu özel HTML ile render eder.
-                        Hit değerleri 1 kademe büyük, Ort başlık+değer italik."""
-                        _cols = [
-                            ('Tarama',  'normal', False),
-                            ('Sinyal',  'normal', False),
-                            ('Hit 5G',  'hit',    False),
-                            ('Ort +5G', 'ort',    False),
-                            ('Hit 10G', 'hit',    False),
-                            ('Ort +10G','ort',    False),
-                            ('Hit 20G', 'hit',    False),
-                            ('Ort +20G','ort',    False),
-                        ]
-                        # Header
-                        hdr = ""
-                        for cname, ctype, _ in _cols:
-                            if ctype == 'ort':
-                                hdr += f"<th style='padding:6px 8px;text-align:center;font-style:italic;color:#64748b;font-size:0.78rem;border-bottom:1px solid rgba(148,163,184,0.2);'>{cname}</th>"
-                            elif ctype == 'hit':
-                                hdr += f"<th style='padding:6px 8px;text-align:center;color:#94a3b8;font-size:0.78rem;border-bottom:1px solid rgba(148,163,184,0.2);'>{cname}</th>"
-                            elif cname == 'Tarama':
-                                hdr += f"<th style='padding:6px 8px;text-align:left;color:#94a3b8;font-size:0.78rem;border-bottom:1px solid rgba(148,163,184,0.2);'>{cname}</th>"
-                            else:
-                                hdr += f"<th style='padding:6px 8px;text-align:center;color:#94a3b8;font-size:0.78rem;border-bottom:1px solid rgba(148,163,184,0.2);'>{cname}</th>"
-                        # Rows
+                        """Backtest tablosu — Expectancy odaklı v2 + Alpha."""
+                        _th = lambda txt, align='center': (
+                            f"<th style='padding:4px 6px;text-align:{align};"
+                            f"color:#64748b;font-size:0.72rem;font-weight:600;"
+                            f"border-bottom:1px solid rgba(148,163,184,0.2);"
+                            f"word-break:break-word;line-height:1.3;'>{txt}</th>"
+                        )
+                        hdr = (_th('Tarama', 'left') +
+                               _th('Sinyal Sayısı') +
+                               _th('5G İsabet') +
+                               _th('10G İsabet') +
+                               _th('20G İsabet') +
+                               _th('10G Beklenti') +
+                               _th('Ort. Kazanç 10G') +
+                               _th('Ort. Kayıp 10G') +
+                               _th('Piyasa Farkı'))
+
                         rows_html = ""
                         for _, row in df_src.iterrows():
-                            label   = row.get('label', '')
-                            signals = row.get('total_signals', 0)
-                            vals = {
-                                'Hit 5G':  _fmt_pct(row.get('hit_5g_pct')),
-                                'Ort +5G': _fmt_ret(row.get('avg_5g_ret')),
-                                'Hit 10G': _fmt_pct(row.get('hit_10g_pct')),
-                                'Ort +10G':_fmt_ret(row.get('avg_10g_ret')),
-                                'Hit 20G': _fmt_pct(row.get('hit_20g_pct')),
-                                'Ort +20G':_fmt_ret(row.get('avg_20g_ret')),
-                            }
-                            r = f"<td style='padding:5px 8px;text-align:left;font-size:0.82rem;color:#e2e8f0;white-space:nowrap;'>{label}</td>"
-                            r += f"<td style='padding:5px 8px;text-align:center;font-size:0.82rem;color:#cbd5e1;'>{signals}</td>"
-                            for cname, ctype, _ in _cols[2:]:
-                                v = vals.get(cname, '—')
-                                if ctype == 'hit':
-                                    r += f"<td style='padding:5px 8px;text-align:center;font-size:0.92rem;color:#e2e8f0;font-weight:600;'>{v}</td>"
-                                else:  # ort — italic
-                                    r += f"<td style='padding:5px 8px;text-align:center;font-size:0.82rem;color:#94a3b8;font-style:italic;'>{v}</td>"
-                            rows_html += f"<tr style='border-bottom:1px solid rgba(148,163,184,0.08);'>{r}</tr>"
+                            label    = row.get('label', '')
+                            n        = row.get('total_signals', 0)
+                            hit10    = row.get('hit_10g_pct')
+                            exp10    = row.get('expectancy_10g')
+                            avg_win  = row.get('avg_win_10g')
+                            avg_loss = row.get('avg_loss_10g')
+                            hit5     = row.get('hit_5g_pct')
+                            hit20    = row.get('hit_20g_pct')
+                            n10      = row.get('eval_10g', 0)
+                            alpha10  = row.get('alpha_10g')
+                            xu100_10 = row.get('xu100_avg_10g')
+
+                            if exp10 is None:
+                                exp_col = '#64748b'; exp_str = '—'
+                            elif exp10 > 1:
+                                exp_col = '#4ade80'; exp_str = f'%{exp10:+.2f}'
+                            elif exp10 > 0:
+                                exp_col = '#86efac'; exp_str = f'%{exp10:+.2f}'
+                            elif exp10 > -2:
+                                exp_col = '#f59e0b'; exp_str = f'%{exp10:+.2f}'
+                            else:
+                                exp_col = '#f87171'; exp_str = f'%{exp10:+.2f}'
+
+                            def _hit_col(v):
+                                if v is None: return '#64748b'
+                                return '#4ade80' if v >= 60 else '#f59e0b' if v >= 40 else '#f87171'
+
+                            if alpha10 is None:
+                                alpha_col = '#64748b'; alpha_str = '—'
+                            elif alpha10 > 2:
+                                alpha_col = '#4ade80'; alpha_str = f'%{alpha10:+.1f}'
+                            elif alpha10 > 0:
+                                alpha_col = '#86efac'; alpha_str = f'%{alpha10:+.1f}'
+                            elif alpha10 > -2:
+                                alpha_col = '#f59e0b'; alpha_str = f'%{alpha10:+.1f}'
+                            else:
+                                alpha_col = '#f87171'; alpha_str = f'%{alpha10:+.1f}'
+                            alpha_title = f"XU100 ort: %{xu100_10:+.1f}" if xu100_10 is not None else "XU100 verisi yok"
+
+                            def _td(txt, col='#cbd5e1', bold=False, italic=False):
+                                fw = 'font-weight:700;' if bold else ''
+                                fi = 'font-style:italic;' if italic else ''
+                                return (f"<td style='padding:4px 6px;text-align:center;color:{col};"
+                                        f"font-size:0.77rem;{fw}{fi}'>{txt}</td>")
+
+                            r  = f"<td style='padding:4px 6px;text-align:left;font-size:0.75rem;color:#e2e8f0;'>{label}</td>"
+                            r += _td(f"{n10}/{n}", '#94a3b8')
+                            r += _td(f"%{hit5}"  if hit5  is not None else '—', _hit_col(hit5))
+                            r += _td(f"%{hit10}" if hit10 is not None else '—', _hit_col(hit10), bold=True)
+                            r += _td(f"%{hit20}" if hit20 is not None else '—', _hit_col(hit20))
+                            r += _td(exp_str, exp_col, bold=True)
+                            r += _td(f"%{avg_win:+.1f}"  if avg_win  is not None else '—', '#4ade80', italic=True)
+                            r += _td(f"%{avg_loss:+.1f}" if avg_loss is not None else '—', '#f87171', italic=True)
+                            _alpha_td = (f"<td style='padding:4px 6px;text-align:center;color:{alpha_col};"
+                                         f"font-size:0.77rem;font-weight:700;"
+                                         f"cursor:help;' title='{alpha_title}'>{alpha_str}</td>")
+                            r += _alpha_td
+                            rows_html += f"<tr style='border-bottom:1px solid rgba(148,163,184,0.06);'>{r}</tr>"
 
                         st.markdown(f"**{title}**")
                         st.markdown(
-                            f"<div style='overflow-x:auto;'>"
-                            f"<table style='width:100%;border-collapse:collapse;font-family:inherit;'>"
+                            f"<div style='font-size:0.8rem;'>"
+                            f"<table style='width:100%;border-collapse:collapse;font-family:inherit;table-layout:fixed;'>"
                             f"<thead><tr>{hdr}</tr></thead>"
                             f"<tbody>{rows_html}</tbody></table></div>",
                             unsafe_allow_html=True
                         )
 
-                    # ER ve Klasik ayrı
-                    _is_er = _bt_df['category'].isin(['A', 'B', 'C', 'D'])
-                    _er_data = _bt_df[_is_er.values]
+                    _is_er        = _bt_df['category'].isin(['A', 'B', 'C', 'D'])
+                    _er_data      = _bt_df[_is_er.values]
                     _classic_data = _bt_df[~_is_er.values]
-                    if not _er_data.empty:
-                        _render_bt_html_table(_er_data, "🎯 Erken Radar Senaryoları")
+
                     if not _classic_data.empty:
                         _render_bt_html_table(_classic_data, "📊 Klasik Taramalar")
 
-                    # Top 5 vurgu
-                    _top5 = _bt.get('top5_by_hit20', [])
+                    _top5 = _bt.get('top5_by_expectancy', [])
                     if _top5:
-                        st.markdown("**🥇 En Başarılı 5 (20G Hit Rate)**")
+                        st.markdown("**🥇 En Yüksek Expectancy (10G)**")
                         for _t in _top5:
+                            _exp = _t.get('expectancy_10g')
+                            _win = _t.get('avg_win_10g')
+                            _los = _t.get('avg_loss_10g')
                             st.markdown(
                                 f"- **{_t['label']}** — "
-                                f"Hit 20G: `%{_t['hit_20g_pct']}` · "
-                                f"Ort: `%{_t['avg_20g_ret']:+.2f}` · "
-                                f"`{_t['total_signals']}` sinyal"
+                                f"Exp: `%{_exp:+.2f}` · "
+                                f"Hit: `%{_t.get('hit_10g_pct','—')}` · "
+                                f"Kazanç: `%{_win:+.1f}` / Kayıp: `%{_los:+.1f}` · "
+                                f"`{_t.get('eval_10g',0)}/{_t['total_signals']}` sinyal"
                             )
 
-                    # Kategori bazlı en iyi
                     _best_cat = _bt.get('best_per_category', {})
                     if _best_cat:
-                        st.markdown("**🏆 Kategori Şampiyonları**")
+                        st.markdown("**🏆 Kategori Şampiyonları (Expectancy)**")
                         _cat_full = {'A': 'GERİ DÖNÜŞ', 'B': 'SIKIŞMA', 'C': 'TREND DEVAMI'}
                         for _ck, _cv in _best_cat.items():
-                            st.markdown(f"- **{_cat_full.get(_ck, _ck)}:** {_cv['label']} "
-                                        f"(hit %{_cv['hit_20g']} · ort %{_cv['avg_20g']:+.2f})")
+                            st.markdown(
+                                f"- **{_cat_full.get(_ck, _ck)}:** {_cv['label']} "
+                                f"(hit %{_cv.get('hit_10g','—')} · exp %{_cv.get('expectancy',0):+.2f})"
+                            )
 
-                    # En kötü 5 (eleme adayları)
                     _worst = _bt.get('worst_5', [])
                     if _worst:
-                        with st.expander("⚠️ En Düşük 5 (Eleme Adayları)", expanded=False):
+                        with st.expander("⚠️ Negatif Expectancy (Eleme Adayları)", expanded=False):
                             for _w in _worst:
                                 st.markdown(
                                     f"- **{_w['label']}** — "
-                                    f"Hit 20G: `%{_w['hit_20g_pct']}` · "
-                                    f"Ort: `%{_w['avg_20g_ret']:+.2f}` · "
-                                    f"`{_w['total_signals']}` sinyal"
+                                    f"Exp: `%{_w.get('expectancy_10g',0):+.2f}` · "
+                                    f"Hit: `%{_w.get('hit_10g_pct','—')}` · "
+                                    f"`{_w.get('eval_10g',0)}/{_w['total_signals']}` sinyal"
                                 )
+
+                    if not _er_data.empty:
+                        _render_bt_html_table(_er_data, "🎯 Erken Radar Senaryoları")
                 else:
                     st.info("Henüz değerlendirilebilir sinyal yok (min 5g geçmesi gerekir).")
-            except Exception as e:
-                st.warning(f"backtest_results.json okunamadı: {e}")
+            except Exception as _bt_e:
+                st.warning(f"backtest_results.json okunamadı: {_bt_e}")
 
     # --- SAĞ SÜTUN ---
     
@@ -21938,7 +22049,7 @@ def _render_right_col():
     
     else:
         st.warning("Fiyat verisi alınamadı.")
-    
+
     # --- FORMASYON BUTONU — fiyat paneli hemen altında ---
     _fcd = st.session_state.get('_formasyon_chart_data')
     if _fcd and isinstance(_fcd, dict):
@@ -22366,6 +22477,52 @@ def _render_right_col():
                     st.dataframe(styled, use_container_width=True, hide_index=True)
                 else:
                     st.caption("Değerlendirilebilir sinyal bulunamadı.")
+
+    # ── ALGORİTMA PERFORMANSI — sağ sütun en alt ──────────────────────────────
+    try:
+        import json as _json, os as _os
+        _bt_path = _os.path.join(_os.path.dirname(__file__), 'backtest_results.json')
+        with open(_bt_path, encoding='utf-8') as _f:
+            _bt = _json.load(_f)
+        _summary = _bt.get('summary', [])
+        if _summary:
+            with st.expander("📊 Algoritma Performansı", expanded=False):
+                _meta = _bt.get('eval_meta', {})
+                _gen  = _bt.get('generated_at', '')[:10]
+                st.caption(f"Değerlendirilen: {_meta.get('evaluated',0)} sinyal · {_gen}")
+                for _s in _summary:
+                    _lbl   = _s.get('label', _s['scan_type'])
+                    _h5    = _s.get('hit_5g_pct')
+                    _h10   = _s.get('hit_10g_pct')
+                    if _h5 is None and _h10 is None:
+                        continue
+                    _best    = _h10 if _h10 is not None else _h5
+                    _col     = "#4ade80" if _best >= 60 else "#f59e0b" if _best >= 40 else "#f87171"
+                    _exp     = _s.get('expectancy_10g')
+                    _win     = _s.get('avg_win_10g')
+                    _los     = _s.get('avg_loss_10g')
+                    _alpha   = _s.get('alpha_10g')
+                    _xu100   = _s.get('xu100_avg_10g')
+                    _h10_str = f"%{_h10:.0f}" if _h10 is not None else "—"
+                    _exp_str = f"exp {_exp:+.1f}%" if _exp is not None else ""
+                    _alp_str = (f"· α{_alpha:+.1f}% vs XU100({_xu100:+.1f}%)"
+                                if _alpha is not None and _xu100 is not None else "")
+                    _alp_col = "#4ade80" if (_alpha or 0) > 0 else "#f87171"
+                    st.markdown(
+                        f'<div style="padding:4px 0;border-bottom:1px solid #1e293b;">'
+                        f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+                        f'<span style="font-size:0.7rem;color:#cbd5e1;">{_lbl}</span>'
+                        f'<span style="font-size:0.73rem;font-weight:700;color:{_col};">Hit {_h10_str}</span>'
+                        f'</div>'
+                        f'<div style="display:flex;gap:6px;font-size:0.65rem;margin-top:1px;flex-wrap:wrap;">'
+                        f'<span style="color:#94a3b8;">{_exp_str}</span>'
+                        f'<span style="color:{_alp_col};">{_alp_str}</span>'
+                        f'</div></div>',
+                        unsafe_allow_html=True
+                    )
+    except Exception:
+        pass
+
 with col_right:
     with st.container(height=1800, border=False):
         _render_right_col()
