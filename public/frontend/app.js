@@ -428,7 +428,7 @@ function renderTeknikSeviyeler(d) {
           <th>EMA 5</th>
           <th>EMA 8</th>
           <th>EMA 13</th>
-          <th class="lv-current-th">ORTA<br>UZUN</th>
+          <th class="lv-current-th">XU100</th>
           <th>SMA 50</th>
           <th>SMA 100</th>
           <th>SMA 200</th>
