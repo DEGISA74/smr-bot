@@ -25,6 +25,24 @@ _SIGNALS_DB = pathlib.Path(__file__).parent / "signals.db"
 _CACHE_DIR   = pathlib.Path(os.environ.get("SMR_CACHE_DIR",
                 pathlib.Path(__file__).parent / "veriler"))
 
+# ── BIST Takvim Modülü (tatil / arefe / RVOL normalizer) ──────────────────────
+try:
+    from bist_calendar import (
+        is_trading_day   as _bist_is_trading_day,
+        is_half_day      as _bist_is_half_day,
+        is_closed        as _bist_is_closed,
+        get_rvol_day_factor as _bist_rvol_factor,
+        get_day_label       as _bist_day_label,
+    )
+    _BIST_CAL_OK = True
+except ImportError:
+    def _bist_is_trading_day(_dt=None): return True
+    def _bist_is_half_day(_dt=None):    return False
+    def _bist_is_closed(_dt=None):      return False
+    def _bist_rvol_factor(_dt=None):    return 1.0
+    def _bist_day_label(_dt=None):      return "✅ Normal Seans"
+    _BIST_CAL_OK = False
+
 def _init_db():
     con = sqlite3.connect(_SIGNALS_DB)
     con.execute("""
@@ -1340,8 +1358,14 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     # ── Hacim & RVOL ──────────────────────────────────────────────────────────
     avg_vol  = float(df["Volume"].rolling(20).mean().iloc[-1]) if "Volume" in df.columns else 0
     last_vol = float(df["Volume"].iloc[-1])                    if "Volume" in df.columns else 0
-    rvol     = last_vol / avg_vol if avg_vol > 0 else 0
-    rvol_tag = "🔥 Kurumsal Hacim" if rvol > 2.0 else "📈 Yüksek Hacim" if rvol > 1.5 else "Normal" if rvol > 0.7 else "⚠️ Düşük Hacim"
+    # Arefe günü normalizer: beklenen hacim avg_vol * 0.3125 → oran normalize et
+    _rvol_af = _bist_rvol_factor()
+    rvol     = last_vol / (avg_vol * _rvol_af) if avg_vol > 0 else 0
+    _arefe_tag = " (Arefe kısa seans)" if _bist_is_half_day() else ""
+    rvol_tag = ("🔥 Kurumsal Hacim" if rvol > 2.0
+                else "📈 Yüksek Hacim" if rvol > 1.5
+                else "Normal" if rvol > 0.7
+                else "⚠️ Düşük Hacim") + _arefe_tag
 
     # ── 5 Günlük Net Delta (alım/satış baskısı) ───────────────────────────────
     delta5_txt = "Hesaplanamadı"

@@ -31,6 +31,31 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+# ── BIST Takvim Modülü (tatil / arefe / RVOL normalizer) ──────────────────────
+try:
+    from bist_calendar import (
+        is_trading_day   as _bist_is_trading_day,
+        is_half_day      as _bist_is_half_day,
+        is_closed        as _bist_is_closed,
+        get_rvol_day_factor as _bist_rvol_factor,
+        get_session_hours   as _bist_session_hours,
+        get_day_label       as _bist_day_label,
+        get_day_status      as _bist_day_status,
+        AREFE_SESSION_RATIO as _AREFE_RATIO,
+    )
+    _BIST_CAL_OK = True
+except ImportError:
+    # bist_calendar.py yoksa güvenli fallback
+    def _bist_is_trading_day(_dt=None): return True
+    def _bist_is_half_day(_dt=None):    return False
+    def _bist_is_closed(_dt=None):      return False
+    def _bist_rvol_factor(_dt=None):    return 1.0
+    def _bist_session_hours(_dt=None):  return ("10:00", "18:00")
+    def _bist_day_label(_dt=None):      return "✅ Normal Seans"
+    def _bist_day_status(_dt=None):     return ("open", "Normal Seans")
+    _AREFE_RATIO = 0.3125
+    _BIST_CAL_OK = False
+
 # CACHE_DIR — environment variable ile override edilebilir (VPS deploy için portable)
 # Varsayılan: app.py'nin yanındaki "veriler" klasörü
 _DEFAULT_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "veriler")
@@ -323,8 +348,8 @@ current_theme = THEMES[st.session_state.theme]
 
 # ═══ FİYAT KARTI RENK PALETİ — kutucuğa tıkla, rengi değiştir ═══
 KART_RENK = {
-    "pos_bg":   "#02491f",   # pozitif zemin (koyu yeşil)
-    "neg_bg":   "#5E3C3C",   # negatif zemin (koyu kırmızı)
+    "pos_bg":   "#19442a",   # pozitif zemin (koyu yeşil)
+    "neg_bg":   "#755E5E",   # negatif zemin (koyu kırmızı)
     "text_pri": "#ffffff",   # fiyat numarası — tam beyaz
     "text_sec": "#a8c4b0",   # label metni — soluk
     "divider":  "#2d4a35",   # ayırıcı çizgi (pozitif)
@@ -1157,8 +1182,8 @@ def apply_volume_projection(df, ticker=""):
     except Exception:
         now = datetime.now()
 
-    # Hafta sonuysa projeksiyon yapma
-    if now.weekday() >= 5:
+    # Hafta sonu veya tam tatil günüyse projeksiyon yapma
+    if now.weekday() >= 5 or _bist_is_closed():
         return df
 
     # Elimizdeki son veri BUGÜNE mi ait? Değilse dokunma.
@@ -1201,8 +1226,24 @@ def apply_volume_projection(df, ticker=""):
             else:
                 progress = 0.65 + ((elapsed - 330) / 60) * 0.35
 
+    elif _bist_is_half_day():
+        # BIST Arefe Günü — 09:55-12:30 TR Saati (Toplam 155 dakika)
+        open_min  = 9 * 60 + 55
+        close_min = 12 * 60 + 30
+        if now_min < open_min:
+            return df
+        if now_min >= close_min:
+            progress = 1.0
+        else:
+            elapsed = now_min - open_min
+            # İlk 30 dk: çarpan çok büyük — güvenilmez, projeksiyon yapma
+            if elapsed < 30:
+                return df
+            # Arefe kısa seans → lineer ilerleme yeterli (U-shape gerek yok)
+            progress = elapsed / (close_min - open_min)
+
     else:
-        # BIST 09:55-18:15 TR Saati (Toplam 500 dakika)
+        # BIST Normal Gün — 09:55-18:15 TR Saati (Toplam 500 dakika)
         open_min = 9 * 60 + 55
         close_min = 18 * 60 + 15
         if now_min < open_min:
@@ -2123,6 +2164,28 @@ def get_obv_divergence_status(ticker):
         obv = (direction * df['Volume']).cumsum()
         obv_sma = obv.rolling(20).mean()  # Güç filtresi
 
+        # 1b. Chaikin Money Flow (20g) — OBV teyit katmanı
+        # OBV sadece kapanış yönüne bakar; CMF bar içi dinamiği de ölçer
+        # (fiyat günün üst yarısında mı kapandı, alt yarısında mı).
+        try:
+            _hl_range = df['High'] - df['Low']
+            _mfm = np.where(
+                _hl_range > 0,
+                ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / _hl_range,
+                0.0
+            )
+            _mfv = pd.Series(_mfm, index=df.index) * df['Volume']
+            _vol_sum_20 = float(df['Volume'].tail(20).sum())
+            cmf_20 = float(_mfv.tail(20).sum() / _vol_sum_20) if _vol_sum_20 > 0 else 0.0
+        except Exception:
+            cmf_20 = 0.0
+        # CMF eşikleri: ±0.05 standart (Chaikin'in orijinal önerisi)
+        cmf_strong_pos = cmf_20 > 0.05    # Güçlü alış baskısı (bar içi)
+        cmf_strong_neg = cmf_20 < -0.05   # Güçlü satış baskısı (bar içi)
+        cmf_txt = (f" | CMF: {cmf_20:+.3f}"
+                   + (" ✓ alış teyitli" if cmf_strong_pos else
+                      (" ✗ satış baskısı" if cmf_strong_neg else " (nötr)")))
+
         # 2. Dual-Window: 5g (kısa ivme) + 14g (RSI uyumlu orta vade)
         p_now     = float(df['Close'].iloc[-1])
         p_5       = float(df['Close'].iloc[-6])
@@ -2143,42 +2206,71 @@ def get_obv_divergence_status(ticker):
         if obv_5g_up and not obv_14g_up:
             return ("🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)", "#38bdf8",
                     "5 günlük OBV yönünü yukarı çevirdi ancak 14 günlük eğim hâlâ negatif. "
-                    "Kısa vadeli alım baskısı başlamış, orta vade henüz teyit vermedi — erken toparlanma sinyali.")
+                    "Kısa vadeli alım baskısı başlamış, orta vade henüz teyit vermedi — erken toparlanma sinyali."
+                    + cmf_txt)
         if not obv_5g_up and obv_14g_up:
             return ("🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)", "#f59e0b",
                     "14 günlük OBV trendi hâlâ yukarı ama 5 günlük eğim aşağıya döndü. "
-                    "Kısa vadede para çıkışı başlamış, orta vade bozulmadan önce erken uyarı.")
+                    "Kısa vadede para çıkışı başlamış, orta vade bozulmadan önce erken uyarı."
+                    + cmf_txt)
 
         # ── Güçlü sinyal: her iki pencere aynı yönde ─────────────────────
         if not price_5g_up and obv_5g_up and obv_14g_up:
             if is_obv_strong:
+                # CMF teyiti varsa güçlü; CMF negatifse "Şüpheli" downgrade
+                if cmf_strong_neg:
+                    return ("⚠️ ŞÜPHELİ GİRİŞ (CMF Çelişkili)", "#d97706",
+                            "OBV'ye göre birikim var (5g+14g+SMA20 yukarı) ama Chaikin Money Flow "
+                            "negatif — bar içi satış baskısı sürüyor. OBV'nin gördüğü 'giriş' büyük "
+                            "ihtimalle gece/açılış hacmi; gün içi gerçek alış yok."
+                            + cmf_txt)
                 return ("🔥 GÜÇLÜ GİZLİ GİRİŞ", "#16a34a",
                         "Hem 5 hem 14 günlük OBV yukarı — fiyat düşerken akıllı para iki periyotta da "
-                        "birikimi sürdürüyor. OBV 20 günlük ortalamasını da aştı: güçlü akümülasyon sinyali.")
+                        "birikimi sürdürüyor. OBV 20 günlük ortalamasını da aştı: güçlü akümülasyon sinyali."
+                        + cmf_txt)
             else:
                 return ("👀 Olası Toplama (Zayıf)", "#d97706",
                         "5 ve 14 günlük OBV fiyat düşüşüne rağmen yükseliyor, ancak henüz 20 günlük "
-                        "ortalamasını kesmedi. Birikim var ama büyük oyuncu onayı eksik.")
+                        "ortalamasını kesmedi. Birikim var ama büyük oyuncu onayı eksik."
+                        + cmf_txt)
 
         if price_5g_up and not obv_5g_up and not obv_14g_up:
             return ("⚠️ GİZLİ ÇIKIŞ (Dağıtım)", "#f87171",
                     "Hem 5 hem 14 günlük OBV fiyat yükselişini onaylamıyor. "
-                    "İki periyotta da para çıkışı sürüyor — yükseliş hacimsiz, dağıtım baskısı teyitli.")
+                    "İki periyotta da para çıkışı sürüyor — yükseliş hacimsiz, dağıtım baskısı teyitli."
+                    + cmf_txt)
 
         if is_obv_strong and obv_5g_up and obv_14g_up:
             p_yesterday = float(df['Close'].iloc[-2])
             if p_now < p_yesterday:
+                # CMF güçlü pozitif ise emilim teyitli; negatif ise "False Strength"
+                if cmf_strong_neg:
+                    return ("⚠️ SAHTE GÜÇ (OBV-CMF Çelişkisi)", "#f59e0b",
+                            "OBV güçlü görünüyor ama Chaikin Money Flow negatif. Mum içi satıcı "
+                            "baskın — OBV yanıltıcı (muhtemel gap/açılış etkisi). Gerçek bir "
+                            "emilim sinyali değil."
+                            + cmf_txt)
                 return ("🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "#d97706",
                         "Bugün fiyat geri çekilse de hem 5 hem 14 günlük OBV yukarı ve 20 günlük "
-                        "ortalamanın üzerinde. Panik satışları kurumsal alımla karşılanıyor.")
+                        "ortalamanın üzerinde. Panik satışları kurumsal alımla karşılanıyor."
+                        + cmf_txt)
             else:
+                # CMF teyitli sağlıklı trend; CMF negatifse "Zayıf Teyit"
+                if cmf_strong_neg:
+                    return ("⚠️ ZAYIF TEYİT (OBV güçlü, CMF zayıf)", "#f59e0b",
+                            "OBV her iki pencerede yukarı ama Chaikin Money Flow negatif. "
+                            "Yükselişin arkasında bar içi gerçek alıcı yok — kapanışlar günün "
+                            "alt yarısında. Trend kırılgan."
+                            + cmf_txt)
                 return ("✅ SAĞLIKLI TREND (Hacim Onaylı)", "#15803d",
                         "5 ve 14 günlük OBV fiyat yükselişini iki periyotta da teyit ediyor. "
-                        "Trendin arkasında tutarlı akıllı para desteği var.")
+                        "Trendin arkasında tutarlı akıllı para desteği var."
+                        + cmf_txt)
 
         return ("⚖️ ZAYIF İVME (Hacimsiz Bölge)", "#64748B",
                 "OBV 20 günlük ortalamasının altında; 5 ve 14 günlük pencerede net yön yok. "
-                "Fiyat hareketini destekleyecek kararlı bir para akışı görünmüyor.")
+                "Fiyat hareketini destekleyecek kararlı bir para akışı görünmüyor."
+                + cmf_txt)
             
     except: return ("Hesaplanamadı", "#64748B", "-")
 
@@ -3634,7 +3726,8 @@ def process_single_radar1(symbol, df, bench_series=None):
 
 @st.cache_data(ttl=3600)
 def analyze_market_intelligence(asset_list, category="S&P 500"):
-    data = get_batch_data_cached(asset_list, period="6mo")
+    # period="1y" — Master Scan preload ile cache key uyumu (mismatch fix)
+    data = get_batch_data_cached(asset_list, period="1y")
     if data.empty: return pd.DataFrame()
 
     bench = get_benchmark_data(category)
@@ -4189,14 +4282,31 @@ def process_single_breakout(symbol, df):
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rsi = 100 - (100 / (1 + (gain / loss))).iloc[-1]
         
+        # --- OMI (OBV Momentum Index) — Volume momentum filtresi ---
+        # OMI = EMA(OBV, 5) - EMA(OBV, 20), 50-bar StdDev ile normalize edilir.
+        # < -0.5σ ise: fiyat kırılmaya hazır gibi görünüyor ama hacim momentum
+        # negatif — fake breakout riski yüksek.
+        try:
+            _obv_change = close.diff()
+            _obv_dir = np.sign(_obv_change).fillna(0)
+            _obv_ser = (_obv_dir * volume).cumsum()
+            _obv_ema5  = _obv_ser.ewm(span=5,  adjust=False).mean()
+            _obv_ema20 = _obv_ser.ewm(span=20, adjust=False).mean()
+            _omi_ser = _obv_ema5 - _obv_ema20
+            _omi_std = float(_omi_ser.tail(50).std())
+            omi_norm = float(_omi_ser.iloc[-1] / _omi_std) if (_omi_std and not pd.isna(_omi_std) and _omi_std > 0) else 0.0
+        except Exception:
+            omi_norm = 0.0
+        omi_ok = omi_norm > -0.5   # -0.5σ altı = fake breakout riski
+
         # --- ŞARTLAR ---
         cond_ema = ema5.iloc[-1] > ema20.iloc[-1]
-        cond_vol = rvol > 1.2 
+        cond_vol = rvol > 1.2
         cond_prox = (curr_price > high_val * 0.90) and (curr_price <= high_val * 1.1)
         cond_rsi = rsi < 70
         sma_ok = sma20.iloc[-1] > sma50.iloc[-1]
-        
-        if cond_ema and cond_vol and cond_prox and cond_rsi:
+
+        if cond_ema and cond_vol and cond_prox and cond_rsi and omi_ok:
             
             sq_now, sq_prev = check_lazybear_squeeze_breakout(df)
             is_firing = sq_prev and not sq_now
@@ -4227,6 +4337,11 @@ def process_single_breakout(symbol, df):
                 rvol_text = "Hız Yüksek (Proj.) 📈"
             else:
                 rvol_text = "Olağanüstü 🐳" if rvol > 2.0 else "İlgi Artıyor 📈"
+            # OMI teyit rozeti
+            if omi_norm > 1.0:
+                rvol_text += " · OMI ⚡"   # Güçlü volume momentum
+            elif omi_norm > 0:
+                rvol_text += " · OMI ✓"   # Pozitif teyit
 
             return { 
                 "Sembol_Raw": symbol, 
@@ -4244,7 +4359,8 @@ def process_single_breakout(symbol, df):
 
 @st.cache_data(ttl=3600)
 def agent3_breakout_scan(asset_list):
-    data = get_batch_data_cached(asset_list, period="6mo")
+    # period="1y" — Master Scan preload ile cache key uyumu (mismatch fix)
+    data = get_batch_data_cached(asset_list, period="1y")
     if data.empty: return pd.DataFrame()
 
     results = []
@@ -4341,6 +4457,19 @@ def process_single_confirmed(symbol, df, bench_series=None):
             except: pass
         if mansfield_cb < -1.5: return None  # Kırılım yapıyor ama endeksin gerisinde = elenir
         if mansfield_cb > 0: breakout_type = breakout_type + " 📈RS"
+
+        # --- OMI (OBV Momentum Index) — Volume momentum filtresi ---
+        # Fiyat 20g zirvesini kırdı ama hacim momentumu negatifse fake breakout riski var.
+        try:
+            _obv_chg_c  = close.diff()
+            _obv_dir_c  = np.sign(_obv_chg_c).fillna(0)
+            _obv_ser_c  = (_obv_dir_c * volume).cumsum()
+            _omi_ser_c  = _obv_ser_c.ewm(span=5, adjust=False).mean() - _obv_ser_c.ewm(span=20, adjust=False).mean()
+            _omi_std_c  = float(_omi_ser_c.tail(50).std())
+            omi_norm_c  = float(_omi_ser_c.iloc[-1] / _omi_std_c) if (_omi_std_c and not pd.isna(_omi_std_c) and _omi_std_c > 0) else 0.0
+        except Exception:
+            omi_norm_c = 0.0
+        if omi_norm_c < -0.5: return None   # Volume momentum negatif — onaylı kırılım değil
 
         return {
             "Sembol": symbol,
@@ -5820,7 +5949,13 @@ def compile_top_20_summary():
         add_candidates(_er_primary, '🚀 Erken Radar (5★)', limit=5)
 
     candidate_list = [{'Sembol': k, **v} for k, v in candidates.items()]
-    
+
+    # 1b. TEK ONAY FİLTRESİ: Sadece 1 kaynaktan gelen hisse NADİR FIRSAT ise kabul edilir
+    candidate_list = [
+        item for item in candidate_list
+        if len(item['sources']) > 1 or '♠️ Royal Flush Nadir Fırsat' in item['sources']
+    ]
+
     # 2. TEKNİK SINAV (HİYERARŞİK SKORLAMA)
     for item in candidate_list:
         tot_score, msg, icons = fetch_technical_engine_data(item['Sembol'], item['sources'])
@@ -5993,8 +6128,9 @@ def scan_rs_momentum_leaders(asset_list):
     Hız Tuzağına Düşmeden, İşlemci Gücüyle Beta ve Sigma Hesabı Yapar.
     Profesyonel Fon Yöneticisi Mantığı: Beta Adjusted Alpha + Dynamic Sigma Safety Lock.
     """
-    # 1. Verileri Çek (3 ay yeterli, Beta için ideal)
-    data = get_batch_data_cached(asset_list, period="3mo")
+    # 1. Verileri Çek — Master Scan preload ile cache key uyumu (mismatch fix)
+    # (Fonksiyon period parametresini içsel olarak görmezden geliyor, sadece @st.cache_data anahtarı için)
+    data = get_batch_data_cached(asset_list, period="1y")
     if data.empty: return pd.DataFrame()
 
     # 2. Endeks Verisi
@@ -6744,6 +6880,31 @@ def calculate_ict_deep_analysis(ticker):
         # OB kalite değerlendirmesi için hacim ortalaması
         avg_vol_20 = df['Volume'].rolling(20).mean()
 
+        # ── OB GENİŞLİK FİLTRESİ — ATR bazlı ──────────────────────────────
+        # Gerçek kurumsal OB'lar dar ve spesifiktir. Volatilite günlerinde
+        # oluşan geniş mumlar (>1.8×ATR) gerçek OB değil, gürültüdür.
+        try:
+            _tr_h_l = df['High'] - df['Low']
+            _tr_h_c = (df['High'] - df['Close'].shift()).abs()
+            _tr_l_c = (df['Low']  - df['Close'].shift()).abs()
+            _true_range = pd.concat([_tr_h_l, _tr_h_c, _tr_l_c], axis=1).max(axis=1)
+            _atr14 = _true_range.rolling(14).mean()
+        except Exception:
+            _atr14 = None
+
+        def _ob_width_ok(ob_idx, ob_low, ob_high):
+            """OB genişliği ATR ile karşılaştırılır. Çok geniş ise False döner."""
+            if _atr14 is None:
+                return True
+            try:
+                _atr_i = float(_atr14.iloc[ob_idx])
+                if _atr_i <= 0 or pd.isna(_atr_i):
+                    return True
+                # OB genişliği ATR'nin 1.8 katından geniş ise gürültü
+                return (ob_high - ob_low) <= 1.8 * _atr_i
+            except Exception:
+                return True
+
         def _ob_quality(ob_idx, ob_low, ob_high, is_bullish_ob):
             """A: Hacim kalitesi  B: FVG çakışması  C: Tazelik"""
             tags = []
@@ -6790,6 +6951,9 @@ def calculate_ict_deep_analysis(ticker):
             for i in range(lowest_idx, max(0, lowest_idx-5), -1):
                 if df['Close'].iloc[i] < df['Open'].iloc[i]:
                     ob_low = df['Low'].iloc[i]; ob_high = df['High'].iloc[i]
+                    # Genişlik filtresi: ATR'den çok geniş mum gerçek OB değil
+                    if not _ob_width_ok(i, ob_low, ob_high):
+                        continue
                     ob_q = _ob_quality(i, ob_low, ob_high, True)
                     ob_q_txt = f" [{ob_q}]" if ob_q else ""
                     if ob_high >= curr_price:
@@ -6810,6 +6974,9 @@ def calculate_ict_deep_analysis(ticker):
             for i in range(highest_idx, max(0, highest_idx-5), -1):
                 if df['Close'].iloc[i] > df['Open'].iloc[i]:
                     ob_low = df['Low'].iloc[i]; ob_high = df['High'].iloc[i]
+                    # Genişlik filtresi: ATR'den çok geniş mum gerçek OB değil
+                    if not _ob_width_ok(i, ob_low, ob_high):
+                        continue
                     ob_q = _ob_quality(i, ob_low, ob_high, False)
                     ob_q_txt = f" [{ob_q}]" if ob_q else ""
                     if ob_low <= curr_price:
@@ -7280,7 +7447,9 @@ def calculate_price_action_dna(ticker):
 
         sma50 = c.rolling(50).mean().iloc[-1]
         # --- [YENİ] GELİŞMİŞ HACİM ANALİZİ DEĞİŞKENLERİ ---
-        rvol = raw_today_v / avg_v if avg_v > 0 else 1.0
+        # Arefe günü RVOL normalizer: beklenen hacim avg_vol * 0.3125 → oran normalize et
+        _rvol_af = _bist_rvol_factor()
+        rvol = raw_today_v / (avg_v * _rvol_af) if avg_v > 0 else 1.0
 
         # RSI Serisi
         delta = c.diff()
@@ -7667,6 +7836,19 @@ def calculate_price_action_dna(ticker):
         p_tr       = "YUKARI" if p_now > p_old else "AŞAĞI"
         is_obv_strong = obv_now > obv_sma_now
 
+        # CMF (20g) teyit katmanı — OBV ile çapraz kontrol
+        # OBV yönü ve CMF çelişirse sinyal downgrade yapılır.
+        try:
+            _hl_rng_dna = df['High'] - df['Low']
+            _mfm_dna    = np.where(_hl_rng_dna > 0,
+                                   ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / _hl_rng_dna, 0.0)
+            _mfv_dna    = pd.Series(_mfm_dna, index=df.index) * v
+            _vsum_dna   = float(v.tail(20).sum())
+            _cmf_dna    = float(_mfv_dna.tail(20).sum() / _vsum_dna) if _vsum_dna > 0 else 0.0
+        except Exception:
+            _cmf_dna = 0.0
+        _cmf_neg_dna = _cmf_dna < -0.05   # Bar içi satış baskısı — OBV'yi sorgula
+
         obv_data = {"title": "⚖️ ZAYIF İVME (Hacimsiz Bölge)", "desc": "Hacim akışı ortalamanın altında.", "color": "#64748B"}
 
         # Kafa çevirme: iki pencere zıt yön
@@ -7677,7 +7859,12 @@ def calculate_price_action_dna(ticker):
         # Senaryo 1: GİZLİ GİRİŞ (Fiyat Düşerken Mal Toplama)
         elif p_tr == "AŞAĞI" and obv_5g_up and obv_14g_up:
             if is_obv_strong:
-                obv_data = {"title": "🔥 GÜÇLÜ GİZLİ GİRİŞ", "desc": "Fiyat düşerken her iki OBV penceresi yukarı & ort. üstünde (Smart Money).", "color": "#16a34a"}
+                if _cmf_neg_dna:
+                    obv_data = {"title": "⚠️ ŞÜPHELİ GİRİŞ (CMF Çelişkili)",
+                                "desc": f"OBV birikim görüyor ama bar içi alıcı zayıf (CMF: {_cmf_dna:+.3f}) — gün içi gerçek talep yok.",
+                                "color": "#f59e0b"}
+                else:
+                    obv_data = {"title": "🔥 GÜÇLÜ GİZLİ GİRİŞ", "desc": "Fiyat düşerken her iki OBV penceresi yukarı & ort. üstünde (Smart Money).", "color": "#16a34a"}
             else:
                 obv_data = {"title": "👀 Olası Toplama (Zayıf)", "desc": "OBV artıyor ama henüz ortalamayı geçemedi.", "color": "#d97706"}
         # Senaryo 2: GİZLİ ÇIKIŞ
@@ -7687,9 +7874,19 @@ def calculate_price_action_dna(ticker):
         elif is_obv_strong and obv_5g_up and obv_14g_up:
             _p_yest = c.iloc[-2]
             if p_now < _p_yest:
-                obv_data = {"title": "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "desc": "Bugün fiyat kırmızı ama OBV her iki pencerede güçlü.", "color": "#0ea5e9"}
+                if _cmf_neg_dna:
+                    obv_data = {"title": "⚠️ SAHTE GÜÇ (OBV-CMF Çelişkisi)",
+                                "desc": f"OBV güçlü görünüyor ama bar içi satış baskısı var (CMF: {_cmf_dna:+.3f}) — kurumsal destek sorgulanabilir.",
+                                "color": "#f59e0b"}
+                else:
+                    obv_data = {"title": "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "desc": "Bugün fiyat kırmızı ama OBV her iki pencerede güçlü.", "color": "#0ea5e9"}
             else:
-                obv_data = {"title": "✅ SAĞLIKLI TREND (Hacim Onaylı)", "desc": "OBV her iki pencerede de ortalamasının üzerinde.", "color": "#15803d"}
+                if _cmf_neg_dna:
+                    obv_data = {"title": "⚠️ ZAYIF TEYİT (OBV güçlü, CMF zayıf)",
+                                "desc": f"OBV ortalamasının üzerinde ama CMF satış baskısı gösteriyor (CMF: {_cmf_dna:+.3f}) — trend kırılgan olabilir.",
+                                "color": "#f59e0b"}
+                else:
+                    obv_data = {"title": "✅ SAĞLIKLI TREND (Hacim Onaylı)", "desc": "OBV her iki pencerede de ortalamasının üzerinde.", "color": "#15803d"}
 
         # ======================================================
         # 6. RSI UYUMSUZLUK (DIVERGENCE) - GÜNCELLENMİŞ HASSASİYET
@@ -7793,7 +7990,9 @@ def calculate_price_action_dna(ticker):
         std_v_20 = float(v.rolling(20).std().iloc[-1])
         c_std = std_v_20 if std_v_20 > 0 else 1.0
         # raw_today_v: projeksiyon uygulanmış c1_v | avg_v: fast_info 3 aylık ortalama
-        rvol = raw_today_v / avg_v if avg_v > 0 else 1.0
+        # Arefe günü RVOL normalizer: beklenen hacim avg_vol * 0.3125 → oran normalize et
+        _rvol_af2 = _bist_rvol_factor()
+        rvol = raw_today_v / (avg_v * _rvol_af2) if avg_v > 0 else 1.0
         
         # Stopping Volume: Fiyat dipteyken gelen devasa karşılayıcı hacim
         stop_vol_msg = "Yok"
@@ -10851,6 +11050,10 @@ def render_smart_volume_panel(ticker):
         t3_pos = None
 
     # ── TILE 4: 20G Ortalamaya Göre Hacim (RVOL) ─────────────────
+    # Arefe günü etiketi — RVOL zaten normalize edildi (avg * 0.3125 böleni)
+    _t4_arefe = _bist_is_half_day()
+    _t4_arefe_sfx  = " (Arefe)" if _t4_arefe else ""
+    _t4_arefe_note = " · Arefe kısa seans normalizer uygulandı (÷0.31)" if _t4_arefe else ""
     if _vol_data_missing:  # Yahoo Finance bu dönem için hacim verisi sağlamıyor
         t4_ic   = "#94a3b8" if dark else "#9ca3af"
         t4_pct  = "Veri Eksik"
@@ -10887,23 +11090,23 @@ def render_smart_volume_panel(ticker):
     elif rvol >= 2.0:
         t4_ic  = "#10b981" if dark else "#15803d"
         _rvol_pct = (rvol - 1.0) * 100
-        t4_pct = f"+%{_rvol_pct:.0f}"; t4_lbl = "Yüksek Hacim"
-        t4_sub = f"Bugünün hacmi 20G ortalamanın %{_rvol_pct:.0f} üzerinde — kurumsal aktivite var."
+        t4_pct = f"+%{_rvol_pct:.0f}"; t4_lbl = f"Yüksek Hacim{_t4_arefe_sfx}"
+        t4_sub = f"Bugünün hacmi 20G ortalamanın %{_rvol_pct:.0f} üzerinde — kurumsal aktivite var.{_t4_arefe_note}"
         t4_pos = True; rvol_fill = min((rvol - 1.0) / 2.0 * 100, 100)
     elif rvol >= 0.8:
         t4_ic  = "#f59e0b" if dark else "#92400e"
         _rvol_pct = (rvol - 1.0) * 100
         _sign = "+%" if _rvol_pct >= 0 else "-%"
         t4_pct = f"{_sign}{abs(_rvol_pct):.0f}"
-        t4_lbl = "Normale Yakın Hacim"
+        t4_lbl = f"Normale Yakın Hacim{_t4_arefe_sfx}"
         _dir = "üzerinde" if _rvol_pct >= 0 else "altında"
-        t4_sub = f"Bugünün hacmi 20G ortalamanın %{abs(_rvol_pct):.0f} {_dir} — bekleme modu."
+        t4_sub = f"Bugünün hacmi 20G ortalamanın %{abs(_rvol_pct):.0f} {_dir} — bekleme modu.{_t4_arefe_note}"
         t4_pos = None; rvol_fill = 0
     else:
         t4_ic  = "#ef4444" if dark else "#f87171"
         _rvol_pct = (1.0 - rvol) * 100
-        t4_pct = f"-%{_rvol_pct:.0f}"; t4_lbl = "Düşük Hacim"
-        t4_sub = f"Bugünün hacmi 20G ortalamanın %{_rvol_pct:.0f} altında — piyasa ilgisiz, sinyal zayıf."
+        t4_pct = f"-%{_rvol_pct:.0f}"; t4_lbl = f"Düşük Hacim{_t4_arefe_sfx}"
+        t4_sub = f"Bugünün hacmi 20G ortalamanın %{_rvol_pct:.0f} altında — piyasa ilgisiz, sinyal zayıf.{_t4_arefe_note}"
         t4_pos = False; rvol_fill = min((1.0 - rvol) * 100, 100)
 
     # ── TILE 5: 5 Seans Kümülatif Delta ──────────────────────────
@@ -10971,6 +11174,133 @@ def render_smart_volume_panel(ticker):
 
     # Habersiz POC kaldırıldı — TILE 5 artık 5 Seans Baskı
 
+    # ─────────────────────────────────────────────────────────────
+    # EK VERİLER: OBV+CMF · VA Proximity · 5G RVOL Trend · Konsensüs
+    # ─────────────────────────────────────────────────────────────
+
+    # ── Tile 6: OBV + CMF ────────────────────────────────────────
+    try:
+        _t6_obv_title, _t6_obv_color, _t6_obv_desc = get_obv_divergence_status(ticker)
+    except Exception:
+        _t6_obv_title, _t6_obv_color, _t6_obv_desc = "Veri Yok", "#94a3b8", ""
+    _t6_label_map = {
+        "🔥 GÜÇLÜ GİZLİ GİRİŞ":                      "Gizli Giriş 🔥",
+        "👀 Olası Toplama (Zayıf)":                    "Zayıf Toplama",
+        "⚠️ GİZLİ ÇIKIŞ":                             "Gizli Çıkış ⚠️",
+        "⚠️ GİZLİ ÇIKIŞ (Dağıtım)":                   "Gizli Çıkış ⚠️",
+        "✅ SAĞLIKLI TREND (Hacim Onaylı)":            "Sağlıklı Trend ✅",
+        "✅ Hacim Destekli Trend":                     "Sağlıklı Trend ✅",
+        "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)":         "Direnç/Emilim 🛡️",
+        "⚖️ ZAYIF İVME (Hacimsiz Bölge)":             "Hacimsiz",
+        "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)":         "Kafa Çev. ↑",
+        "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)":          "Kafa Çev. ↓",
+        "⚠️ ŞÜPHELİ GİRİŞ (CMF Çelişkili)":          "Şüpheli ⚠️",
+        "⚠️ SAHTE GÜÇ (OBV-CMF Çelişkisi)":           "Sahte Güç ⚠️",
+        "⚠️ ZAYIF TEYİT (OBV güçlü, CMF zayıf)":      "Zayıf Teyit",
+    }
+    _t6_short = _t6_label_map.get(_t6_obv_title, (_t6_obv_title[:20] if _t6_obv_title else "—"))
+    try:
+        import re as _re_sv6
+        _cmf_m6 = _re_sv6.search(r'\|\s*(CMF:[^|]+)', _t6_obv_desc)
+        _t6_cmf_str = _cmf_m6.group(1).strip() if _cmf_m6 else ""
+    except Exception:
+        _t6_cmf_str = ""
+    _t6_short_desc = _t6_obv_desc.split(" | CMF:")[0][:80] if _t6_obv_desc else "—"
+    _t6_is_pos = (any(k in _t6_obv_title for k in ["GİRİŞ","TOPLAMA","SAĞLIKLI","DİRENÇ","TOPARLANMA"])
+                  and not any(k in _t6_obv_title for k in ["ŞÜPHELİ","SAHTE","ZAYIF TEYİT"]))
+    _t6_is_neg = any(k in _t6_obv_title for k in ["ÇIKIŞ","DAĞITIM","ŞÜPHELİ","SAHTE GÜÇ","ZAYIF TEYİT"])
+    _t6_tile_pos = True if _t6_is_pos else (False if _t6_is_neg else None)
+
+    # ── VA Proximity HTML (Tile 2 eki — sadece İÇİNDE) ───────────
+    _va_prox_html = ""
+    if va_pos == "İÇİNDE" and vah > val > 0 and _cp > 0:
+        _range_va  = vah - val
+        _pos_in_va = min(max((_cp - val) / _range_va * 100, 0), 100)
+        _dist_val  = (_cp - val)  / _cp * 100
+        _dist_vah  = (vah - _cp) / _cp * 100
+        if _pos_in_va < 30:
+            _prox_clr = "#f87171"; _prox_txt = f"VAL'e yakın (−%{_dist_val:.1f})"
+        elif _pos_in_va > 70:
+            _prox_clr = "#f59e0b"; _prox_txt = f"VAH'a yakın (+%{_dist_vah:.1f})"
+        else:
+            _prox_clr = "#94a3b8"; _prox_txt = "VA orta bölge"
+        _va_prox_html = (
+            f"<div style='margin-top:5px;border-top:1px solid {divider};padding-top:4px;'>"
+            f"<div style='display:flex;justify-content:space-between;font-size:0.60rem;"
+            f"color:{text_muted};margin-bottom:2px;'>"
+            f"<span>VAL {val:.2f}</span><span>VAH {vah:.2f}</span></div>"
+            f"<div style='position:relative;height:5px;background:{track_bg};border-radius:3px;'>"
+            f"<div style='position:absolute;left:{_pos_in_va:.0f}%;top:-3px;"
+            f"width:9px;height:11px;background:{_prox_clr};"
+            f"border-radius:2px;transform:translateX(-50%);'></div></div>"
+            f"<div style='font-size:0.70rem;color:{_prox_clr};font-weight:700;"
+            f"margin-top:3px;'>{_prox_txt}</div>"
+            f"</div>"
+        )
+
+    # ── 5G RVOL Trend HTML (Tile 4 eki) ──────────────────────────
+    _rvol_5d_html = ""
+    if not _vol_data_missing:
+        try:
+            _df_rv5 = get_safe_historical_data(ticker, period="3mo")
+            if _df_rv5 is not None and len(_df_rv5) >= 25:
+                _rvol_5d = []
+                _vma20_5 = _df_rv5['Volume'].rolling(20).mean()
+                for _bi5 in range(4, -1, -1):
+                    _vd5  = float(_df_rv5['Volume'].iloc[-(1 + _bi5)])
+                    _va5  = float(_vma20_5.iloc[-(1 + _bi5)])
+                    # Tarih bazlı arefe normalizer — o günün takvim faktörünü uygula
+                    try:
+                        _bar_dt5 = _df_rv5.index[-(1 + _bi5)].date()
+                        _af5     = _bist_rvol_factor(_bar_dt5)
+                    except Exception:
+                        _af5 = 1.0
+                    _rvol_5d.append(min(_vd5 / (_va5 * _af5), 3.0) if _va5 > 0 and _vd5 > 0 else 0.0)
+                _max_rv5 = max(_rvol_5d) if max(_rvol_5d) > 0 else 1.0
+                _bars5 = ""
+                for _rv5 in _rvol_5d:
+                    _bh5 = max(int(_rv5 / _max_rv5 * 18), 2)
+                    _bc5 = "#10b981" if _rv5 >= 1.5 else ("#f59e0b" if _rv5 >= 0.8 else "#f87171")
+                    _bars5 += (
+                        f"<div style='display:flex;flex-direction:column;align-items:center;"
+                        f"justify-content:flex-end;gap:1px;'>"
+                        f"<span style='font-size:0.56rem;color:{_bc5};'>{_rv5:.1f}</span>"
+                        f"<div style='width:7px;height:{_bh5}px;background:{_bc5};"
+                        f"border-radius:2px 2px 0 0;'></div>"
+                        f"</div>"
+                    )
+                _td5  = _rvol_5d[-1] - _rvol_5d[0]
+                _tdir = "↑ ivmeleniyor" if _td5 > 0.2 else ("↓ yavaşlıyor" if _td5 < -0.2 else "→ sabit")
+                _tcol = "#10b981" if "↑" in _tdir else ("#f87171" if "↓" in _tdir else "#94a3b8")
+                _rvol_5d_html = (
+                    f"<div style='margin-top:4px;border-top:1px solid {divider};padding-top:3px;'>"
+                    f"<div style='display:flex;align-items:flex-end;gap:3px;height:28px;'>"
+                    f"{_bars5}"
+                    f"</div>"
+                    f"<div style='font-size:0.68rem;color:{_tcol};font-weight:700;"
+                    f"margin-top:1px;'>5G {_tdir}</div>"
+                    f"</div>"
+                )
+        except Exception:
+            pass
+
+    # ── Konsensüs Skoru ───────────────────────────────────────────
+    _cs_va  = 1 if "ÜSTÜNDE" in va_pos else (-1 if "ALTINDA" in va_pos else 0)
+    _cs_d1  = (1 if t3_pos is True else (-1 if t3_pos is False else 0))
+    _cs_rv  = (1 if t4_pos is True else (-1 if t4_pos is False else 0))
+    _cs_5g  = (1 if t5_pos is True else (-1 if t5_pos is False else 0))
+    _cs_obv = (1 if _t6_tile_pos is True else (-1 if _t6_tile_pos is False else 0))
+    _cs_pos = sum(1 for s in [_cs_va, _cs_d1, _cs_rv, _cs_5g, _cs_obv] if s > 0)
+    _cs_neg = sum(1 for s in [_cs_va, _cs_d1, _cs_rv, _cs_5g, _cs_obv] if s < 0)
+    _cs_scr = max(0, min(100, _cs_pos * 20 - _cs_neg * 20 + 50))
+    # Eşikler: pos*20-neg*20+50 → 1 pozitif=70, 2 pozitif=90, 3+=100
+    # Makul sınırlar: 2+ pozitif → ALIM BASKISI (>=80), 1 pozitif → HAFİF ALIM (>=62)
+    if   _cs_scr >= 80: _cs_lbl, _cs_clr = "ALIM BASKISI",  "#10b981"
+    elif _cs_scr >= 62: _cs_lbl, _cs_clr = "HAFİF ALIM",    "#4ade80"
+    elif _cs_scr >  38: _cs_lbl, _cs_clr = "NÖTR",          "#94a3b8"
+    elif _cs_scr >= 20: _cs_lbl, _cs_clr = "HAFİF SATIŞ",   "#f87171"
+    else:               _cs_lbl, _cs_clr = "SATIŞ BASKISI", "#ef4444"
+
     # ── Ticker-fiyat badge — ICT paneli ile aynı stil ────────────
     if dark:
         _badge_css = ("font-family:'JetBrains Mono'; font-weight:800; color:#10b981; font-size:0.9rem;"
@@ -10990,13 +11320,17 @@ def render_smart_volume_panel(ticker):
         f'<span style="font-weight:800; font-size:1.0rem; color:{bc}; white-space:nowrap;">&#128202; SMART MONEY HACİM ANALİZİ</span>'
         f'<span style="flex:1; font-size:0.81rem; color:{text_main}; font-weight:700; text-align:center; padding:0 6px;">{sv["title"]}</span>'
         f'<span style="{_badge_css}">{display_ticker} — {_cp_str}</span>'
+        f'<span style="margin-left:6px;font-size:0.72rem;font-weight:800;color:{_cs_clr};'
+        f'background:rgba(0,0,0,0.28);padding:2px 8px;border-radius:4px;'
+        f'border:1px solid {_cs_clr};white-space:nowrap;opacity:0.92;">'
+        f'&#128176; {_cs_scr} — {_cs_lbl}</span>'
         f'</div>'
 
         # AÇIKLAMA (tek satır)
         f'<div style="padding:5px 12px; border-bottom:1px solid {divider}; font-size:0.9rem; color:{text_sub}; line-height:1.4;">{sv["desc"]}</div>'
 
-        # 5 TILE GRID
-        f'<div style="display:grid; grid-template-columns:0.85fr 0.75fr 1.0fr 1.0fr 1.1fr; gap:0;">'
+        # 6 TILE GRID
+        f'<div style="display:grid; grid-template-columns:0.75fr 0.8fr 0.95fr 1.0fr 1.0fr 0.95fr; gap:0;">'
 
         # — TILE 1: POC (Merkez) —
         f'<div style="padding:6px 8px; border-right:1px solid {divider}; background:{t2_bb};">'
@@ -11010,6 +11344,7 @@ def render_smart_volume_panel(ticker):
         f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:4px; text-transform:uppercase;">&#128205; Fiyat Konumu</div>'
         f'<div style="font-size:0.78rem; font-weight:900; color:{t1_ic}; margin-bottom:4px; line-height:1.2;">{t1_icon} {t1_label}</div>'
         f'<div style="font-size:0.80rem; color:{text_sub}; line-height:1.4;">{t1_sub}</div>'
+        f'{_va_prox_html}'
         f'</div>'
 
         # — TILE 3: Bugünkü Delta —
@@ -11030,16 +11365,25 @@ def render_smart_volume_panel(ticker):
         f'{bidir_bar(rvol_fill, t4_ic, t4_pos, track_bg)}'
         f'<div style="font-size:0.8rem; color:{text_main}; font-weight:700; margin-bottom:2px;">{t4_lbl}</div>'
         f'<div style="font-size:0.8rem; color:{text_sub}; line-height:1.35;">{t4_sub}</div>'
+        f'{_rvol_5d_html}'
         f'</div>'
 
         # — TILE 5: 5 Seans Delta —
-        f'<div style="padding:6px 8px; background:{t5_bb};">'
+        f'<div style="padding:6px 8px; border-right:1px solid {divider}; background:{t5_bb};">'
         f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:2px; text-transform:uppercase;">&#128200; Son 5 Günlük Alım-Satım</div>'
         f'<div style="display:flex; justify-content:{"flex-end" if t5_pos is True else "flex-start" if t5_pos is False else "center"}; margin-bottom:1px;">'
         f'<span style="font-size:0.92rem; font-weight:900; color:{t5_ic};">{t5_pct}</span></div>'
         f'{bidir_bar(cum_fill, t5_ic, t5_pos, track_bg)}'
         f'<div style="font-size:0.8rem; color:{text_main}; font-weight:700; margin-bottom:2px;">{t5_lbl}</div>'
         f'<div style="font-size:0.8rem; color:{text_sub}; line-height:1.35;">{t5_sub}</div>'
+        f'</div>'
+
+        # — TILE 6: OBV + CMF Durumu —
+        f'<div style="padding:6px 8px; background:{_tile_bg(_t6_tile_pos)};">'
+        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:3px; text-transform:uppercase;">&#128272; OBV Durumu</div>'
+        f'<div style="font-size:0.78rem; font-weight:900; color:{_t6_obv_color}; line-height:1.3; margin-bottom:3px;">{_t6_short}</div>'
+        f'<div style="font-size:0.70rem; color:{_t6_obv_color}; font-weight:700; opacity:0.9; margin-bottom:3px;">{_t6_cmf_str}</div>'
+        f'<div style="font-size:0.78rem; color:{text_sub}; line-height:1.35;">{_t6_short_desc}</div>'
         f'</div>'
 
         f'</div>'  # grid sonu
@@ -13591,6 +13935,7 @@ def render_ict_deep_panel(ticker):
     st.markdown(f"""
     <div class="info-card" style="border-top: 4px solid {mc}; margin-bottom:10px; border-radius: 8px;">
         <div class="info-header" style="color:#38bdf8; display:flex; justify-content:space-between; align-items:center; padding: 3px 12px;"><span style="font-size:1.15rem; font-weight: 800;">🧠 ICT Smart Money Analizi: {display_ticker}</span><span title="{_checks_tip}" style="cursor:default; font-family:monospace; color:{_sc}; font-size:0.88rem; font-weight:700; letter-spacing:2px; background:#0d1829; padding:3px 10px; border-radius:6px; border:2px solid {_sc};">{_blocks} &nbsp;{model_score}/5 · {_slabel}</span><span style="background:rgba(56,189,248,0.1); color:#38bdf8; padding:2px 10px; border-radius:4px; font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.9rem; border:1px solid rgba(30,58,138,0.2);">{display_ticker} <span style="opacity:0.6; margin:0 4px; font-weight:400;">—</span> <span style="color:#38bdf8;">{current_price_str}</span></span></div>
+        <div style="height:4px;background:rgba(30,58,95,0.5);"><div style="height:100%;width:{model_score * 20}%;background:{_sc};border-radius:0 2px 2px 0;"></div></div>
     </div>""", unsafe_allow_html=True)
 
     c1, c2 = st.columns([1.4, 1])
@@ -15488,12 +15833,15 @@ def render_roadmap_8_panel(ticker):
     {hover_css}
     </style>
     <div class="info-card" style="border-top:3px solid {title_col};margin-top:5px;margin-bottom:6px;padding:0;">
-        <div class="info-header" style="display:flex;justify-content:space-between;align-items:center;color:{title_col};font-size:1rem;padding:4px 8px;border-bottom:1px solid {header_border};background:{header_bg};margin-bottom:0;">
+        <div class="info-header" style="display:flex;justify-content:space-between;align-items:center;color:{title_col};font-size:1rem;padding:4px 8px;border-bottom:none;background:{header_bg};margin-bottom:0;">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-weight:800;">🗺️ Teknik Yol Haritası</span>
                 <span style="font-size:0.6rem;color:#64748b;font-family:'JetBrains Mono',monospace;">güncellendi {_now_str}</span>
             </div>
             <span style="background:{badge_bg};color:{badge_text};padding:2px 10px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:0.9rem;border:1px solid {header_border};">{display_ticker}&nbsp;<span style="opacity:0.6;margin:0 4px;font-weight:400;">—</span>&nbsp;<span style="color:{price_color};">{display_price}</span></span>
+        </div>
+        <div style="height:4px;background:rgba(30,58,95,0.5);margin-bottom:0;">
+            <div style="height:100%;width:{_comp_score}%;background:{'#22c55e' if _comp_score >= 67 else ('#f59e0b' if _comp_score >= 40 else '#ef4444')};border-radius:0 2px 2px 0;"></div>
         </div>
         {top_section_html}
         <div style="padding:5px;">
@@ -15720,19 +16068,31 @@ def render_unified_signals_panel(ticker):
                     )
                     signals.append(("📊", f"OBV: {obv_title}", obv_color, _obv_edu, _obv_is_recovery, _obv_days))
                 else:
-                    is_obv_pos = any(k in obv_title.upper() for k in ["GİRİŞ","GÜÇLÜ","POZİTİF","ALIŞ","DİRENÇ","EMİLİM","BİRİKİM","SAĞLIKLI","TOPLAMA"])
-                    if is_obv_pos:
+                    # CMF çelişkili durumlar negatif sayılır (ŞÜPHELİ/SAHTE/ZAYIF TEYİT)
+                    _obv_upper = obv_title.upper()
+                    _is_cmf_conflict = any(k in _obv_upper for k in ["ŞÜPHELİ", "SAHTE GÜÇ", "ZAYIF TEYİT", "ÇELİŞK"])
+                    if _is_cmf_conflict:
+                        is_obv_pos = False
                         _obv_edu = (
-                            f"OBV yukarı trendde ve fiyatla uyumlu hareket ediyor. "
-                            f"Kurumsal para fiyat düşüşlerinde bile birikim yapmaya devam ediyor — "
-                            f"bu güçlü bir akümülasyon sinyali. Mevcut durum: {obv_title}."
+                            f"OBV ve Chaikin Money Flow farklı şeyler söylüyor. OBV birikim/güç görüyor "
+                            f"ama bar içi alıcı-satıcı dengesi (CMF) bunu desteklemiyor — kapanışlar "
+                            f"günün alt yarısında. Bu durum genelde gap/açılış hacmiyle OBV'nin "
+                            f"yanılması sonucudur. Sinyal kırılgan. Mevcut durum: {obv_title}."
                         )
                     else:
-                        _obv_edu = (
-                            f"OBV aşağı trendde — fiyat yükselirken hacim desteği zayıflıyor. "
-                            f"Kurumsal para sessizce çıkış yapıyor olabilir (dağıtım). "
-                            f"Yükseliş sorgulanabilir. Mevcut durum: {obv_title}."
-                        )
+                        is_obv_pos = any(k in _obv_upper for k in ["GİRİŞ","GÜÇLÜ","POZİTİF","ALIŞ","DİRENÇ","EMİLİM","BİRİKİM","SAĞLIKLI","TOPLAMA"])
+                        if is_obv_pos:
+                            _obv_edu = (
+                                f"OBV yukarı trendde ve fiyatla uyumlu hareket ediyor. "
+                                f"Kurumsal para fiyat düşüşlerinde bile birikim yapmaya devam ediyor — "
+                                f"bu güçlü bir akümülasyon sinyali. Mevcut durum: {obv_title}."
+                            )
+                        else:
+                            _obv_edu = (
+                                f"OBV aşağı trendde — fiyat yükselirken hacim desteği zayıflıyor. "
+                                f"Kurumsal para sessizce çıkış yapıyor olabilir (dağıtım). "
+                                f"Yükseliş sorgulanabilir. Mevcut durum: {obv_title}."
+                            )
                     signals.append(("📊", f"OBV: {obv_title}", obv_color, _obv_edu, is_obv_pos, _obv_days))
         except: pass
 
@@ -16961,6 +17321,10 @@ def _render_genel_ozet_panel():
                     "⚖️ ZAYIF İVME (Hacimsiz Bölge)":               ("Hacimsiz",          _gs_neu,    "OBV ortalama altında — net para akışı yok"),
                     "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)":           ("Kafa çeviriyor ↑",  "#38bdf8",  "5g OBV yukarı döndü — 14g hâlâ baskılı, erken toparlanma sinyali"),
                     "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)":            ("Kafa çeviriyor ↓",  "#f59e0b",  "5g OBV zayıfladı ama 14g hâlâ pozitif — kısa vadeli yavaşlama"),
+                    # CMF çelişki başlıkları (calculate_price_action_dna downgrade senaryoları)
+                    "⚠️ ŞÜPHELİ GİRİŞ (CMF Çelişkili)":            ("Şüpheli giriş",     "#f59e0b",  "OBV birikim görüyor ama bar içi alıcı zayıf — CMF negatif, gün içi gerçek talep sorgulanabilir"),
+                    "⚠️ SAHTE GÜÇ (OBV-CMF Çelişkisi)":             ("Sahte güç ⚠️",      "#f59e0b",  "OBV güçlü görünüyor ama bar içi satış baskısı var — kurumsal destek sorgulanabilir"),
+                    "⚠️ ZAYIF TEYİT (OBV güçlü, CMF zayıf)":        ("Zayıf teyit",       "#f59e0b",  "OBV ortalamasının üzerinde ama CMF satış baskısı gösteriyor — trend kırılgan olabilir"),
                 }
                 _ov_lbl, _ov_clr, _ov_expl = _obv_map.get(
                     _obv_t, ("nötr", _gs_neu, "Akıllı para hareketi belirgin değil"))
@@ -17847,6 +18211,21 @@ with col_btn:
         # Eskiden burada cache load + st.rerun() vardı → Erken Radar adımı hiç
         # çalışmıyordu. Artık her buton tıklaması full Master Scan çalıştırır.
 
+        # ── BIST TAKVİM KONTROLÜ ─────────────────────────────────────────────
+        _ms_day_status, _ms_day_name = _bist_day_status()
+        if _ms_day_status == "closed":
+            st.warning(
+                f"⛔ **Bugün BIST kapalı — {_ms_day_name}.**  \n"
+                "Tarama çalışabilir ama yeni veri gelmeyecek; önceki seans verileri kullanılır.",
+                icon="📅"
+            )
+        elif _ms_day_status == "half":
+            st.info(
+                f"⚠️ **Arefe günü — {_ms_day_name} (10:00–12:30).**  \n"
+                "Kısa seans: RVOL değerleri arefe normalizer ile gösterilmektedir (÷0.31).",
+                icon="🕐"
+            )
+
         # ⚠️ BAN KORUMA FLAG: tüm batch tarama fonksiyonlarında live yfinance
         # API çağrılarını (get_live_price) atlamak için flag aç. Parquet'teki
         # kapanış verisi yeterli — 500 ticker × ban riski engellenir.
@@ -17994,6 +18373,9 @@ with col_btn:
             st.session_state.top_20_summary  = compile_top_20_summary()
             st.session_state.confluence_hits = compile_confluence_hits()
 
+            # --- BİTİŞ ---
+            my_bar.progress(100, text="✅ TARAMA TAMAMLANDI! Sonuçlar Yükleniyor...%100")
+
             # ── TARAMA SONUÇLARINI DİSKE KAYDET (agresif cache) ────────────
             import pickle, logging as _logging
             _master_snapshot = {
@@ -18037,9 +18419,6 @@ with col_btn:
                     _res = save_scan_result("master_scan", _clean_snapshot, _cat)
                     _save_ok = (_res is True)
             # ────────────────────────────────────────────────────────────────
-
-            # --- BİTİŞ ---
-            my_bar.progress(100, text="✅ TARAMA TAMAMLANDI! Sonuçlar Yükleniyor...%100")
 
             if _save_ok:
                 st.toast("💾 Tarama sonuçları diske kaydedildi.", icon="✅")
@@ -19705,6 +20084,27 @@ Eğer Erken Radar Kalite Skoru 65 veya üzerindeyse, ana senaryonun adını ve h
 *** KURUMSAL PARA İŞTAHI KARNESİ (Detaylı Puanlar) Ama bunların GECİKMELİ VERİLER olduğunu unutma. Analize ekleyeceksen 'son kaç günün verileri' olduğunu muhakkak belirt***
 - YAPI (Structure): {sent_yapi} (Market yapısı puanları şöyle: Son 20 günün %97-100 zirvesinde (12). Son 5 günün en düşük seviyesi, önceki 20 günün en düşük seviyesinden yukarıdaysa: HL (8))
 - HACİM (Volume): {sent_hacim} (Hacmin 20G ortalamaya oranını ve On-Balance Volume (OBV) denetler. Bugünün hacmi son 20G ort.üstünde (12) Para girişi var: 10G ortalamanın üstünde (8))
+
+*** OBV + CHAIKIN MONEY FLOW (CMF) ÇİFT KATMANLI YORUMLAMA REHBERİ ***
+Sistem artık OBV durumunu Chaikin Money Flow (20g) ile çapraz teyit ediyor. CMF, bar içi alıcı-satıcı dengesini ölçer: fiyat günün üst yarısında mı kapandı, alt yarısında mı?
+- CMF > +0.05: Bar içi alış baskısı güçlü — OBV birikimini onaylar.
+- CMF < -0.05: Bar içi satış baskısı güçlü — OBV birikimini sorgular.
+- OBV durumu açıklamasında "| CMF: ±X.XXX" göreceksin. Eğer OBV pozitif ama CMF negatifse, sistem bu çelişkiyi "ŞÜPHELİ GİRİŞ", "SAHTE GÜÇ" veya "ZAYIF TEYİT" başlığıyla işaretler.
+- Bu çelişki durumlarında: OBV'nin gördüğü "birikimin" muhtemelen gap/açılış hacminden kaynaklandığını, gün içi gerçek alıcının olmadığını analizinde belirt. "OBV güçlü ama bar içi alıcı zayıf" şeklinde dürüstçe yorumla.
+- Çelişki yoksa (her ikisi de aynı yönde): sinyali güçlendirilmiş olarak sun.
+
+*** KIRILIM KALİTESİ FİLTRESİ (OMI — OBV Momentum Index) ***
+Sistem kırılım sinyallerini (1-5 Günlük Yükseliş + Onaylı Kırılım taramaları) OMI kalite filtresiyle değerlendirir.
+OMI = EMA(OBV,5) − EMA(OBV,20), 50-bar standart sapmayla normalize edilir. Kısaca: kısa vadeli OBV ivmesinin orta vadeli OBV ivmesine göre gücü.
+- OMI < −0.5σ ise → Fiyat kırılıyor görünüyor ama hacim momentumu bunu desteklemiyor → sistem bu kırılımı ELER. Analizinde bu hisseye "OBV momentum eksik, kırılım henüz doğrulanmadı" notu ekle.
+- Tarama listesinde "OMI ✓" rozeti görürsen: Pozitif momentum teyidi var, kırılım güvenilir kabul et.
+- Tarama listesinde "OMI ⚡" rozeti görürsen: Güçlü momentum (>1σ) — kurumsal katılım kırılımı aktif olarak destekliyor, sinyal kalitesi yüksek.
+- OMI rozeti yoksa: Kırılım var ama momentum zayıf — pozisyon küçük tut, hacim artışını bekle.
+
+*** KURUMSAL İZ FİLTRESİ (OB ATR GENİŞLİK FİLTRESİ) ***
+Sistem Order Block (OB) tespitinde ATR genişlik filtresi uygular: OB genişliği > 1.8 × ATR(14) olan mumlar gürültü sayılıp elenir.
+- "Aktif Order Block: Yok" görüyorsan: Ya gerçek kurumsal iz yok, ya da bulunan tüm OB'lar ATR filtresiyle elendi (çok geniş/gürültülü mumlar).
+- OB varsa: Dar ve spesifik — gerçek kurumsal iz ihtimali yüksek. Fiyatın bu zona reaksiyon verip vermediğini özellikle yorumla.
 - TREND: {sent_trend} (Ortalamalara bakar. Hisse fiyatı SMA200 üstünde (8). EMA20 üstünde (8). Kısa vadeli ortalama, orta vadeli ortalamanın üzerinde, yani EMA20 > SMA50 (4))
 - MOMENTUM: {sent_mom} (RSI ve MACD ile itki gücünü ölçer. 50 üstü RSI (5) RSI ivmesi artıyor (5). MACD sinyal çizgisi üstünde (5))
 - VOLATİLİTE: {sent_vola} (Bollinger Bant genişliğini inceler. Bant genişliği son 20G ortalamasından dar (10))
@@ -19746,7 +20146,7 @@ Likidite havuzlarına bakarak, küçük yatırımcıların nerede 'terste kalmı
 - Balina Ayak İzi (Taze Arz-Talep Bölgesi): {sd_txt_ai}
 - Kısa Vadeli Trend Hassasiyeti (10G WMA): {para_akisi_txt} (Son günlerin fiyat hareketine daha fazla ağırlık vererek, trenddeki taze değişimleri ölçer.)
 - Aktif FVG: {ict_data.get('fvg_txt', 'Yok')}
-- Aktif Order Block: {ict_data.get('ob_txt', 'Yok')}
+- Aktif Order Block: {ict_data.get('ob_txt', 'Yok')} (NOT: Sistem artık ATR genişlik filtresi uyguluyor — sadece dar ve spesifik OB'lar gösterilir, gürültü mumlar elenir. "Yok" çıkıyorsa: gerçek kurumsal iz yok veya hepsi gürültü olarak filtrelendi.)
 - HEDEF LİKİDİTE (Mıknatıs): {ict_data.get('target', 0)}
 - Mum Formasyonu: {mum_desc}
 - Formasyon Güvenilirliği: {confidence_prompt if confidence_prompt else "Skor hesaplanamadı (nötr veya belirsiz formasyon)"}
@@ -21523,72 +21923,71 @@ def _render_left_col():
                         f"border-radius:6px;padding:4px 8px;margin-bottom:4px;'>{_multi_badge}</div>",
                         unsafe_allow_html=True
                     )
+                # Kart verilerini topla
+                _er_cards_data = []
+                _shown_syms = set()
+                for _eri, _err in _er_clean.iterrows():
+                    _ersym = str(_err.get('Sembol', '')).replace('.IS', '')
+                    if _ersym in _shown_syms: continue
+                    if len(_shown_syms) >= 20: break
+                    _shown_syms.add(_ersym)
+                    _erprice   = _err.get('Fiyat', 0)
+                    _erprice_s = f"{int(_erprice)}" if _erprice >= 1000 else f"{_erprice:.2f}"
+                    _erscid    = _err.get('ScenarioId', '')
+                    _ername    = _err.get('ScenarioName', '')
+                    _ercat     = _err.get('Category', '')
+                    _erstars_n = _err.get('_stars_n', 0)
+                    _erstars_s = '★' * _erstars_n + '☆' * (5 - _erstars_n)
+                    _ercat_icon = {'A': '🔄', 'B': '📐', 'C': '🚀', 'D': '⚠'}.get(_ercat, '•')
+                    _cat_col    = {'A': '#f59e0b', 'B': '#a78bfa', 'C': '#4ade80', 'D': '#f87171'}.get(_ercat, '#94a3b8')
+                    _sc_count  = _scenario_counts.get(_err.get('Sembol', ''), 1)
+                    _er_age    = _aging_map.get((_err.get('Sembol', ''), _erscid), 0)
+                    _er_in_elit = (_ersym in _elit_syms_clean) and (_erstars_n == 5)
+                    _other_scns = _er_clean[(_er_clean['Sembol'] == _err.get('Sembol', '')) &
+                                            (_er_clean['ScenarioId'] != _erscid)]['ScenarioId'].tolist()
+                    _er_cards_data.append({
+                        'eri': _eri, 'sym': _ersym, 'sembol': _err.get('Sembol', _ersym),
+                        'price': _erprice_s, 'scid': _erscid, 'name': _ername,
+                        'cat_icon': _ercat_icon, 'cat_col': _cat_col,
+                        'stars_n': _erstars_n, 'stars_s': _erstars_s,
+                        'age': _er_age, 'sc_count': _sc_count,
+                        'in_elit': _er_in_elit, 'other_scns': _other_scns,
+                    })
+
+                # CSS — kart görünümlü butonlar (sol kenar rengi = kategori rengi)
+                _er_css = "".join(
+                    f"div.st-key-er_card_{_cd['sym']}_{_cd['eri']} button{{"
+                    f"background:rgba(13,24,41,0.7)!important;"
+                    f"border:1px solid {_cd['cat_col']}44!important;"
+                    f"border-left:3px solid {_cd['cat_col']}!important;"
+                    f"border-radius:6px!important;text-align:left!important;"
+                    f"padding:5px 7px!important;white-space:normal!important;"
+                    f"height:auto!important;min-height:62px!important;"
+                    f"line-height:1.35!important;font-size:0.72rem!important;"
+                    f"color:#f1f5f9!important;}}"
+                    for _cd in _er_cards_data
+                )
+                st.markdown(f"<style>{_er_css}</style>", unsafe_allow_html=True)
+
+                # 2 kolonlu grid
                 with st.container(height=320, border=False):
-                    _shown_syms = set()
-                    for _eri, _err in _er_clean.iterrows():
-                        _ersym = str(_err.get('Sembol', '')).replace('.IS', '')
-                        if _ersym in _shown_syms:
-                            continue  # Bir hisse için sadece 1 satır (en güçlü senaryo)
-                        if len(_shown_syms) >= 25:
-                            break  # En fazla 25 benzersiz hisse göster
-                        _shown_syms.add(_ersym)
-                        _erprice = _err.get('Fiyat', 0)
-                        _erprice_s = f"{int(_erprice)}" if _erprice >= 1000 else f"{_erprice:.2f}"
-                        _erscid = _err.get('ScenarioId', '')
-                        _ername = _err.get('ScenarioName', '')
-                        _ercat = _err.get('Category', '')
-                        _erstars_n = _err.get('_stars_n', 0)
-                        _erstars_str = '★' * _erstars_n + '☆' * (5 - _erstars_n)
-                        _ercat_icon = {'A': '🔄', 'B': '📐', 'C': '🚀', 'D': '⚠'}.get(_ercat, '•')
-                        # Çoklu teyit sayısı
-                        _sc_count = _scenario_counts.get(_err.get('Sembol', ''), 1)
-                        _multi_suffix = ""
-                        if _sc_count >= 3:
-                            _multi_suffix = f" 🌟+{_sc_count-1}"
-                        elif _sc_count == 2:
-                            _multi_suffix = f" ✦+1"
-                        # Aging — kaç gündür aktif
-                        _er_age = _aging_map.get((_err.get('Sembol', ''), _erscid), 0)
-                        _age_suffix = ""
-                        if _er_age >= 5:
-                            _age_suffix = f" · {_er_age}g"   # uzun süredir aktif (potansiyel patlama)
-                        elif _er_age >= 2:
-                            _age_suffix = f" · {_er_age}g"
-                        # ELİTLER ile ÇİFT ALTIN ETİKET (5★ + ELİTLER)
-                        _er_in_elit = (_ersym in _elit_syms_clean) and (_erstars_n == 5)
-                        _elit_suffix = " 💎🎯" if _er_in_elit else (" 💎" if _ersym in _elit_syms_clean else "")
-                        _lbl = f"{_ercat_icon} {_ersym} ({_erprice_s}) | {_erscid} {_erstars_str}{_multi_suffix}{_age_suffix}{_elit_suffix}"
-                        if st.button(_lbl, key=f"er_btn_{_ersym}_{_eri}", use_container_width=True):
-                            on_scan_result_click(_err.get('Sembol', _ersym)); st.rerun()
-                        # Senaryo açıklaması + ek teyitler listesi + aging notu
-                        _erdesc = ERKEN_RADAR_SCENARIOS.get(_erscid, {}).get('description', '')
-                        _aging_note = ""
-                        if _er_age >= 5:
-                            _aging_note = (f" <span style='color:#fbbf24;font-weight:700;'>"
-                                           f"⏳ {_er_age} gündür aktif (sıkışma uzadıkça enerji birikiyor)</span>")
-                        elif _er_age >= 2:
-                            _aging_note = f" <span style='color:#94a3b8;font-style:italic;'>· {_er_age} gündür aktif</span>"
-                        # Bu hissenin diğer tetiklenen senaryolarını topla
-                        _other_scns = _er_clean[(_er_clean['Sembol'] == _err.get('Sembol', '')) &
-                                                (_er_clean['ScenarioId'] != _erscid)]['ScenarioId'].tolist()
-                        _confirm_suffix = ""
-                        if _other_scns:
-                            _confirm_suffix = (f" <span style='color:#a855f7;font-weight:600;'>+ Ek teyitler: "
-                                               f"{', '.join(_other_scns)}</span>")
-                        # ÇİFT ALTIN ETİKET vurgusu (Erken Radar 5★ + ELİTLER)
-                        _golden_badge = ""
-                        if _er_in_elit:
-                            _golden_badge = (" <span style='color:#fbbf24;font-weight:800;"
-                                             "background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);"
-                                             "border-radius:4px;padding:1px 6px;'>"
-                                             "💎🎯 ÇİFT ALTIN ETİKET (ELİTLER + ER 5★)</span>")
-                        if _erdesc:
-                            st.markdown(
-                                f"<div style='font-size:0.72rem;color:#cbd5e1;font-weight:500;"
-                                f"margin:-4px 0 6px 4px;line-height:1.4;'>"
-                                f"<b style='color:#7dd3fc;'>{_ername}:</b> {_erdesc}{_aging_note}{_confirm_suffix}{_golden_badge}</div>",
-                                unsafe_allow_html=True
-                            )
+                    for _ci in range(0, len(_er_cards_data), 2):
+                        _gc1, _gc2 = st.columns(2)
+                        for _gc, _cd in zip([_gc1, _gc2], _er_cards_data[_ci:_ci+2]):
+                            with _gc:
+                                # Rozetler
+                                _age_badge  = f" · {_cd['age']}g" if _cd['age'] >= 2 else ""
+                                _multi_badge = (f" +{_cd['sc_count']-1}✦" if _cd['sc_count'] >= 3
+                                                else (" +1✦" if _cd['sc_count'] == 2 else ""))
+                                _elit_badge  = " 💎🎯" if _cd['in_elit'] else (" 💎" if _cd['sym'] in _elit_syms_clean else "")
+                                _conf_badge  = f" +{','.join(_cd['other_scns'][:2])}" if _cd['other_scns'] else ""
+                                # 3 satır label: hisse+fiyat / yıldız+id+yaş / senaryo adı
+                                _lbl = (f"{_cd['cat_icon']} {_cd['sym']}  {_cd['price']}{_elit_badge}\n"
+                                        f"{_cd['stars_s']} {_cd['scid']}{_age_badge}{_multi_badge}{_conf_badge}\n"
+                                        f"{_cd['name'][:24]}")
+                                _key = f"er_card_{_cd['sym']}_{_cd['eri']}"
+                                if st.button(_lbl, key=_key, use_container_width=True):
+                                    on_scan_result_click(_cd['sembol']); st.rerun()
             else:
                 st.markdown(f"<div style='border:1px dashed #3b82f650;border-radius:7px;"
                             f"padding:18px 10px;text-align:center;color:#94a3b8;font-size:0.8rem;'>"
