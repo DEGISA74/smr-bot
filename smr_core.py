@@ -2352,7 +2352,50 @@ def build_ai_prompt(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str
         return ""
     data_block, clean_ticker, fiyat_str = _base_data_block(ticker, ict, info, df)
 
-    return f"""*** SEN BİR ALGORİTMİK QUANT-RAPORTÖRSÜN ***
+    # ── BIST Kapalı Gün — AI'ya kritik bağlam notu (prompt başına) ───
+    _bot_holiday_note = ""
+    try:
+        _is_bist_bot = ".IS" in ticker or ticker.startswith(("XU", "XB", "XT", "XY"))
+        if _BIST_CAL_OK and _is_bist_bot and _bist_is_closed():
+            from datetime import datetime as _dt_bot
+            _, _today_lbl_bot = _bist_day_status() if '_bist_day_status' in globals() else ("closed", "BIST kapalı")
+            _last_sess_bot = ""
+            _last_was_half_bot = False
+            try:
+                # df'in son satırının tarihi (calculate_price_action_dna gibi consumer'lar
+                # zaten 0-bar'ları droplar, ama burada güvenlik için kontrol)
+                _last_back_bot = 0
+                if 'Volume' in df.columns:
+                    for _b in range(1, min(15, len(df))):
+                        if float(df['Volume'].iloc[-_b]) > 0:
+                            _last_back_bot = _b
+                            break
+                if _last_back_bot >= 1:
+                    _last_idx_bot = df.index[-_last_back_bot]
+                    _last_sess_bot = _last_idx_bot.strftime("%d.%m.%Y") if hasattr(_last_idx_bot, 'strftime') else ""
+                    _last_dt_bot = _last_idx_bot.date() if hasattr(_last_idx_bot, 'date') else None
+                    if _last_dt_bot is not None:
+                        _last_was_half_bot = bool(_bist_is_half_day(_last_dt_bot))
+            except Exception:
+                pass
+            _arefe_note_bot = ""
+            if _last_was_half_bot:
+                _arefe_note_bot = (
+                    " ⚠️ AYRICA: Son işlem günü AREFEYDİ (yarım gün — 10:00–12:30, 150 dk vs normal 480 dk). "
+                    "RVOL değeri arefe normalizer ile düzeltilmiş (÷0.3125): '1.0x' = arefe günündeki normal hacim. "
+                    "'Düşük hacim' diyebileceğin değer aslında kısa seansa göre NORMAL olabilir. Yorumda buna dikkat et."
+                )
+            _bot_holiday_note = (
+                f"\n⛔ KRİTİK BAĞLAM — ÖNCE BUNU OKU: BUGÜN BIST KAPALI ({_today_lbl_bot}). "
+                f"Aşağıdaki TÜM hacim/delta/RVOL/OBV verileri SON İŞLEM GÜNÜNE aittir"
+                f"{f' ({_last_sess_bot})' if _last_sess_bot else ''}. "
+                f"'Bugün şu oldu' yazma — 'son işlem gününde...' veya 'son seansta...' diye ifade et."
+                f"{_arefe_note_bot}\n\n"
+            )
+    except Exception:
+        pass
+
+    return _bot_holiday_note + f"""*** SEN BİR ALGORİTMİK QUANT-RAPORTÖRSÜN ***
 ⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3600 karakteri KESİNLİKLE AŞMAYACAK. Her maddeyi kısa tut — 2 cümle yeterli.
 Görevin TEK BİR ŞEY: Aşağıdaki veriyi okuyup, sonda verilen 7 maddelik TEKNİK KART şablonunu doldurmak. Şablon dışına ÇIKAMAZSIN.
 Serbest analiz, sentez yazısı, yatırımcı psikolojisi yorumu, piyasa yapıcı niyeti analizi, persona tanıtımı, açılış cümlesi, kapanış paragrafı YAZMAZSIN. Bir veri raportörü gibi sadece şablonun istediği alanları doldurursun.
@@ -2672,7 +2715,48 @@ def build_ai_prompt_gorev1(ticker: str, ict: dict, info: dict, df: pd.DataFrame)
         return ""
     data_block, clean_ticker, fiyat_str = _base_data_block(ticker, ict, info, df)
 
-    return f"""
+    # ── BIST Kapalı Gün — AI'ya kritik bağlam notu (ELITE prompt başına) ──
+    _bot_holiday_note_g1 = ""
+    try:
+        _is_bist_g1 = ".IS" in ticker or ticker.startswith(("XU", "XB", "XT", "XY"))
+        if _BIST_CAL_OK and _is_bist_g1 and _bist_is_closed():
+            _, _today_lbl_g1 = _bist_day_status() if '_bist_day_status' in globals() else ("closed", "BIST kapalı")
+            _last_sess_g1 = ""
+            _last_was_half_g1 = False
+            try:
+                _last_back_g1 = 0
+                if 'Volume' in df.columns:
+                    for _b in range(1, min(15, len(df))):
+                        if float(df['Volume'].iloc[-_b]) > 0:
+                            _last_back_g1 = _b
+                            break
+                if _last_back_g1 >= 1:
+                    _last_idx_g1 = df.index[-_last_back_g1]
+                    _last_sess_g1 = _last_idx_g1.strftime("%d.%m.%Y") if hasattr(_last_idx_g1, 'strftime') else ""
+                    _last_dt_g1 = _last_idx_g1.date() if hasattr(_last_idx_g1, 'date') else None
+                    if _last_dt_g1 is not None:
+                        _last_was_half_g1 = bool(_bist_is_half_day(_last_dt_g1))
+            except Exception:
+                pass
+            _arefe_note_g1 = ""
+            if _last_was_half_g1:
+                _arefe_note_g1 = (
+                    " ⚠️ AYRICA: Son işlem günü AREFEYDİ (yarım gün — 10:00–12:30, 150 dk vs normal 480 dk). "
+                    "RVOL değeri arefe normalizer ile düzeltilmiş (÷0.3125): '1.0x' = arefe günündeki normal hacim. "
+                    "'Düşük hacim' diyebileceğin değer aslında kısa seansa göre NORMAL olabilir. Yorumda buna dikkat et."
+                )
+            _bot_holiday_note_g1 = (
+                f"\n⛔ KRİTİK BAĞLAM — ÖNCE BUNU OKU: BUGÜN BIST KAPALI ({_today_lbl_g1}). "
+                f"Aşağıdaki TÜM hacim/delta/RVOL/OBV/Smart Money verileri SON İŞLEM GÜNÜNE aittir"
+                f"{f' ({_last_sess_g1})' if _last_sess_g1 else ''}. "
+                f"'Bugün şu oldu' yazma — 'son işlem gününde...' veya 'son seansta...' diye ifade et. "
+                f"Yarın seans açıldığında tablonun değişebileceğini analizinin bir yerinde kısaca hatırlat."
+                f"{_arefe_note_g1}\n\n"
+            )
+    except Exception:
+        pass
+
+    return _bot_holiday_note_g1 + f"""
 ⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3600 karakteri KESİNLİKLE AŞMAYACAK. Her bölümü öz tut — 3 cümle yeterli.
 
 *** KİMLİĞİN ***
