@@ -1358,14 +1358,33 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     # ── Hacim & RVOL ──────────────────────────────────────────────────────────
     avg_vol  = float(df["Volume"].rolling(20).mean().iloc[-1]) if "Volume" in df.columns else 0
     last_vol = float(df["Volume"].iloc[-1])                    if "Volume" in df.columns else 0
+
+    # BIST kapalı gün (tatil/hafta sonu) → yfinance bugün için 0-hacim verebilir.
+    # Son volume>0 olan barı bul; AI prompt'a "son seans" verisi gitsin (0 değil).
+    _is_bist_tkr_sc  = ".IS" in ticker or ticker.startswith(("XU", "XB", "XT", "XY"))
+    _today_closed_sc = bool(_BIST_CAL_OK and _is_bist_tkr_sc and _bist_is_closed())
+    if _today_closed_sc and "Volume" in df.columns:
+        _last_back_sc = 0
+        for _b in range(1, min(15, len(df))):
+            if float(df["Volume"].iloc[-_b]) > 0:
+                _last_back_sc = _b
+                break
+        if _last_back_sc > 1:  # son geçerli bar bugün değil → bugünü dışla
+            last_vol = float(df["Volume"].iloc[-_last_back_sc])
+            _vh_sc = df["Volume"].iloc[max(0, len(df) - _last_back_sc - 19):len(df) - _last_back_sc + 1]
+            _vh_sc = _vh_sc[_vh_sc > 0]
+            if len(_vh_sc) > 0:
+                avg_vol = float(_vh_sc.mean())
+
     # Arefe günü normalizer: beklenen hacim avg_vol * 0.3125 → oran normalize et
     _rvol_af = _bist_rvol_factor()
     rvol     = last_vol / (avg_vol * _rvol_af) if avg_vol > 0 else 0
-    _arefe_tag = " (Arefe kısa seans)" if _bist_is_half_day() else ""
+    _arefe_tag  = " (Arefe kısa seans)" if _bist_is_half_day() else ""
+    _closed_tag = " (Son seans verisi — bugün BIST kapalı)" if _today_closed_sc else ""
     rvol_tag = ("🔥 Kurumsal Hacim" if rvol > 2.0
                 else "📈 Yüksek Hacim" if rvol > 1.5
                 else "Normal" if rvol > 0.7
-                else "⚠️ Düşük Hacim") + _arefe_tag
+                else "⚠️ Düşük Hacim") + _arefe_tag + _closed_tag
 
     # ── 5 Günlük Net Delta (alım/satış baskısı) ───────────────────────────────
     delta5_txt = "Hesaplanamadı"

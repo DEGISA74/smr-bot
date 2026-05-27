@@ -10941,6 +10941,45 @@ def render_smart_volume_panel(ticker):
             pass
     # ──────────────────────────────────────────────────────────────────────────
 
+    # ── BIST Kapalı Gün Fix — tatil/hafta sonu → son seans verisi ─────────────
+    # Bayram, milli tatil veya hafta sonu: bugün için veri yok → tile boş kalıyor.
+    # Son geçerli işlem gününün verisini al, "Son Seans" bağlamıyla göster.
+    _is_bist_tkr   = ".IS" in ticker or ticker.startswith(("XU", "XB", "XT", "XY"))
+    _today_closed  = bool(_BIST_CAL_OK and _is_bist_tkr and _bist_is_closed())
+    _today_label   = ""   # ör. "Kurban Bayramı 1. Gün" / "Cumartesi"
+    _last_sess_str = ""   # ör. "26.05"
+    if _today_closed:
+        try:
+            _, _today_label = _bist_day_status()
+            _df_cl = get_safe_historical_data(ticker, period="3mo")
+            if _df_cl is not None and len(_df_cl) >= 22:
+                _last_back = 0
+                for _b in range(1, min(15, len(_df_cl))):
+                    if float(_df_cl['Volume'].iloc[-_b]) > 0:
+                        _last_back = _b
+                        break
+                if _last_back > 0:
+                    _df_cl_d = calculate_volume_delta(_df_cl)
+                    _last_v  = float(_df_cl_d['Volume'].iloc[-_last_back])
+                    if _last_v > 0:
+                        _last_dv = float(_df_cl_d['Volume_Delta'].iloc[-_last_back])
+                        delta_val   = _last_dv
+                        delta_yuzde = abs((_last_dv / _last_v) * 100)
+                        _vol_hist = _df_cl['Volume'].iloc[max(0, len(_df_cl) - _last_back - 20):len(_df_cl) - _last_back]
+                        _vol_valid = _vol_hist[_vol_hist > 0]
+                        if len(_vol_valid) > 0:
+                            _avg_v = float(_vol_valid.mean())
+                            if _avg_v > 0:
+                                rvol = _last_v / _avg_v
+                        try:
+                            _last_sess_str = _df_cl.index[-_last_back].strftime("%d.%m")
+                        except Exception:
+                            _last_sess_str = ""
+                        _vol_data_missing = False
+        except Exception:
+            pass
+    # ──────────────────────────────────────────────────────────────────────────
+
     # Mevcut fiyat + display ticker — ICT paneli ile aynı kaynak (fetch_stock_info)
     display_ticker = get_display_name(ticker)
     try:
@@ -11125,6 +11164,31 @@ def render_smart_volume_panel(ticker):
         t5_pct = "%0"; t5_lbl = "5 Gün Dengede"; t5_sub = "Son 5 günde alım-satım dengede. Net sinyal yok."
         t5_pos = None
 
+    # ── BIST Kapalı Gün — Tile 3/4 etiketlerini "Son Seans" bağlamına çevir ──
+    _t3_header_text = "Son Seans Baskısı"           if _today_closed else "Bugünkü Baskı"
+    _t4_header_text = "20G Ort. Göre Son Seans Hacmi" if _today_closed else "20G Ort. Göre Bugünkü Hacim"
+    if _today_closed:
+        _sess_sfx = f" ({_last_sess_str})" if _last_sess_str else ""
+        # Tile 3 sub — son seans bağlamı
+        if t3_pos is True:
+            t3_sub = f"Son seans{_sess_sfx} kapanışında alıcılar baskındı."
+        elif t3_pos is False:
+            t3_sub = f"Son seans{_sess_sfx} kapanışında satıcılar baskındı."
+        # Tile 4 sub — son seans bağlamı (veri varsa)
+        if not _vol_data_missing and rvol >= 0.05:
+            if rvol >= 2.0:
+                t4_lbl = "Yüksek Hacim · Son Seans"
+                t4_sub = f"Son seans{_sess_sfx} hacmi 20G ortalamanın %{int((rvol-1)*100)} üzerindeydi — kurumsal aktivite."
+            elif rvol >= 0.8:
+                _pct = int(abs((rvol-1)*100))
+                _dir = "üzerinde" if rvol >= 1 else "altında"
+                t4_lbl = "Normal Hacim · Son Seans"
+                t4_sub = f"Son seans{_sess_sfx} hacmi 20G ortalamanın %{_pct} {_dir}ydı."
+            else:
+                _pct = int((1-rvol)*100)
+                t4_lbl = "Düşük Hacim · Son Seans"
+                t4_sub = f"Son seans{_sess_sfx} hacmi 20G ortalamanın %{_pct} altındaydı."
+
     # ── Tile arka plan renkleri (içeriğe göre) ───────────────────
     def _tile_bg(is_pos):
         if is_pos is True:
@@ -11191,9 +11255,9 @@ def render_smart_volume_panel(ticker):
         "✅ SAĞLIKLI TREND (Hacim Onaylı)":            "Sağlıklı Trend ✅",
         "✅ Hacim Destekli Trend":                     "Sağlıklı Trend ✅",
         "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)":         "Direnç/Emilim 🛡️",
-        "⚖️ ZAYIF İVME (Hacimsiz Bölge)":             "Hacimsiz",
-        "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)":         "Kafa Çev. ↑",
-        "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)":          "Kafa Çev. ↓",
+        "⚖️ ZAYIF İVME (Hacimsiz Bölge)":             "Zayıf İvme",
+        "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)":         "Yön Değiştiriyor ↑",
+        "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)":          "Yön Değiştiriyor ↓",
         "⚠️ ŞÜPHELİ GİRİŞ (CMF Çelişkili)":          "Şüpheli ⚠️",
         "⚠️ SAHTE GÜÇ (OBV-CMF Çelişkisi)":           "Sahte Güç ⚠️",
         "⚠️ ZAYIF TEYİT (OBV güçlü, CMF zayıf)":      "Zayıf Teyit",
@@ -11205,38 +11269,141 @@ def render_smart_volume_panel(ticker):
         _t6_cmf_str = _cmf_m6.group(1).strip() if _cmf_m6 else ""
     except Exception:
         _t6_cmf_str = ""
-    _t6_short_desc = _t6_obv_desc.split(" | CMF:")[0][:80] if _t6_obv_desc else "—"
+    _t6_short_desc = _t6_obv_desc.split(" | CMF:")[0] if _t6_obv_desc else "—"
     _t6_is_pos = (any(k in _t6_obv_title for k in ["GİRİŞ","TOPLAMA","SAĞLIKLI","DİRENÇ","TOPARLANMA"])
                   and not any(k in _t6_obv_title for k in ["ŞÜPHELİ","SAHTE","ZAYIF TEYİT"]))
     _t6_is_neg = any(k in _t6_obv_title for k in ["ÇIKIŞ","DAĞITIM","ŞÜPHELİ","SAHTE GÜÇ","ZAYIF TEYİT"])
     _t6_tile_pos = True if _t6_is_pos else (False if _t6_is_neg else None)
 
-    # ── VA Proximity HTML (Tile 2 eki — sadece İÇİNDE) ───────────
+    # ── VA Proximity HTML (Tile 2 eki — tüm pozisyonlar) ─────────
     _va_prox_html = ""
-    if va_pos == "İÇİNDE" and vah > val > 0 and _cp > 0:
-        _range_va  = vah - val
-        _pos_in_va = min(max((_cp - val) / _range_va * 100, 0), 100)
-        _dist_val  = (_cp - val)  / _cp * 100
-        _dist_vah  = (vah - _cp) / _cp * 100
-        if _pos_in_va < 30:
-            _prox_clr = "#f87171"; _prox_txt = f"VAL'e yakın (−%{_dist_val:.1f})"
-        elif _pos_in_va > 70:
-            _prox_clr = "#f59e0b"; _prox_txt = f"VAH'a yakın (+%{_dist_vah:.1f})"
-        else:
-            _prox_clr = "#94a3b8"; _prox_txt = "VA orta bölge"
-        _va_prox_html = (
+    if vah > val > 0 and _cp > 0:
+        if va_pos == "İÇİNDE":
+            _range_va  = vah - val
+            _pos_in_va = min(max((_cp - val) / _range_va * 100, 0), 100)
+            _dist_val  = (_cp - val)  / _cp * 100
+            _dist_vah  = (vah - _cp) / _cp * 100
+            if _pos_in_va < 30:
+                _prox_clr = "#f87171"; _prox_txt = f"VAL'e yakın (−%{_dist_val:.1f})"
+            elif _pos_in_va > 70:
+                _prox_clr = "#f59e0b"; _prox_txt = f"VAH'a yakın (+%{_dist_vah:.1f})"
+            else:
+                _prox_clr = "#94a3b8"; _prox_txt = "VA orta bölge"
+            _va_prox_html = (
+                f"<div style='margin-top:5px;border-top:1px solid {divider};padding-top:4px;'>"
+                f"<div style='display:flex;justify-content:space-between;font-size:0.60rem;"
+                f"color:{text_muted};margin-bottom:2px;'>"
+                f"<span>VAL {val:.2f}</span><span>VAH {vah:.2f}</span></div>"
+                f"<div style='position:relative;height:5px;background:{track_bg};border-radius:3px;'>"
+                f"<div style='position:absolute;left:{_pos_in_va:.0f}%;top:-3px;"
+                f"width:9px;height:11px;background:{_prox_clr};"
+                f"border-radius:2px;transform:translateX(-50%);'></div></div>"
+                f"<div style='font-size:0.70rem;color:{_prox_clr};font-weight:700;"
+                f"margin-top:3px;'>{_prox_txt}</div>"
+                f"</div>"
+            )
+        elif "ALTINDA" in va_pos:
+            _dist_pct_val = (val - _cp) / val * 100 if val > 0 else 0
+            _fill_w = min(_dist_pct_val * 3, 100)
+            _va_prox_html = (
+                f"<div style='margin-top:5px;border-top:1px solid {divider};padding-top:4px;'>"
+                f"<div style='display:flex;justify-content:space-between;font-size:0.60rem;"
+                f"color:{text_muted};margin-bottom:2px;'>"
+                f"<span>Fiyat</span><span>VAL {val:.2f}</span></div>"
+                f"<div style='height:5px;background:{track_bg};border-radius:3px;overflow:hidden;"
+                f"display:flex;align-items:stretch;justify-content:flex-end;'>"
+                f"<div style='width:{_fill_w:.0f}%;background:#f87171;opacity:0.75;'></div></div>"
+                f"<div style='font-size:0.70rem;color:#f87171;font-weight:700;margin-top:3px;'>"
+                f"↑ VAL'e %{_dist_pct_val:.1f} mesafe</div>"
+                f"</div>"
+            )
+        elif "ÜSTÜNDE" in va_pos:
+            _dist_pct_vah = (_cp - vah) / vah * 100 if vah > 0 else 0
+            _fill_w2 = min(_dist_pct_vah * 3, 100)
+            _va_prox_html = (
+                f"<div style='margin-top:5px;border-top:1px solid {divider};padding-top:4px;'>"
+                f"<div style='display:flex;justify-content:space-between;font-size:0.60rem;"
+                f"color:{text_muted};margin-bottom:2px;'>"
+                f"<span>VAH {vah:.2f}</span><span>Fiyat</span></div>"
+                f"<div style='height:5px;background:{track_bg};border-radius:3px;overflow:hidden;'>"
+                f"<div style='height:100%;width:{_fill_w2:.0f}%;background:#10b981;"
+                f"opacity:0.75;border-radius:3px;'></div></div>"
+                f"<div style='font-size:0.70rem;color:#10b981;font-weight:700;margin-top:3px;'>"
+                f"VAH'ın %{_dist_pct_vah:.1f} üzerinde</div>"
+                f"</div>"
+            )
+
+    # ── POC Mesafe Mini-Bar (Tile 1 eki) ────────────────────────
+    _poc_bar_html = ""
+    if poc > 0 and _cp > 0:
+        _poc_pct = (_cp - poc) / poc * 100
+        _poc_clamped = max(-15.0, min(15.0, _poc_pct))
+        _poc_dot_pos = (_poc_clamped + 15.0) / 30.0 * 100
+        _poc_clr = "#10b981" if _poc_pct > 2 else ("#f87171" if _poc_pct < -2 else "#f59e0b")
+        _poc_sign = "+" if _poc_pct > 0 else ""
+        _poc_bar_html = (
             f"<div style='margin-top:5px;border-top:1px solid {divider};padding-top:4px;'>"
             f"<div style='display:flex;justify-content:space-between;font-size:0.60rem;"
             f"color:{text_muted};margin-bottom:2px;'>"
-            f"<span>VAL {val:.2f}</span><span>VAH {vah:.2f}</span></div>"
+            f"<span>−15%</span><span>POC</span><span>+15%</span></div>"
             f"<div style='position:relative;height:5px;background:{track_bg};border-radius:3px;'>"
-            f"<div style='position:absolute;left:{_pos_in_va:.0f}%;top:-3px;"
-            f"width:9px;height:11px;background:{_prox_clr};"
+            f"<div style='position:absolute;left:50%;top:0;bottom:0;width:1px;"
+            f"background:{text_muted};opacity:0.4;'></div>"
+            f"<div style='position:absolute;left:{_poc_dot_pos:.0f}%;top:-3px;"
+            f"width:9px;height:11px;background:{_poc_clr};"
             f"border-radius:2px;transform:translateX(-50%);'></div></div>"
-            f"<div style='font-size:0.70rem;color:{_prox_clr};font-weight:700;"
-            f"margin-top:3px;'>{_prox_txt}</div>"
+            f"<div style='font-size:0.70rem;color:{_poc_clr};font-weight:700;"
+            f"margin-top:3px;'>{_poc_sign}{_poc_pct:.1f}% POC'tan</div>"
             f"</div>"
         )
+
+    # ── Delta Güç Barı (Tile 3 eki) ──────────────────────────────
+    _delta_strength_html = ""
+    if delta_val != 0 and t3_pos is not None and delta_yuzde > 0:
+        _ds_w = min(float(abs(delta_yuzde)), 100.0)
+        _ds_lbl = "Güçlü" if delta_yuzde >= 65 else ("Orta" if delta_yuzde >= 40 else "Zayıf")
+        _delta_strength_html = (
+            f"<div style='margin-top:4px;border-top:1px solid {divider};padding-top:3px;'>"
+            f"<div style='height:4px;background:{track_bg};border-radius:2px;overflow:hidden;'>"
+            f"<div style='height:100%;width:{_ds_w:.0f}%;background:{t3_ic};border-radius:2px;'></div>"
+            f"</div>"
+            f"<div style='font-size:0.68rem;color:{t3_ic};font-weight:700;margin-top:2px;'>"
+            f"{_ds_lbl} baskı · %{delta_yuzde:.0f}</div>"
+            f"</div>"
+        )
+
+    # ── 5 Günlük Kapanış Yönü Noktaları (Tile 5 eki) ─────────────
+    _delta_5d_dots_html = ""
+    try:
+        _df_d5 = get_safe_historical_data(ticker, period="3mo")
+        if _df_d5 is not None and len(_df_d5) >= 6:
+            _dirs_5 = []
+            for _i5 in range(4, -1, -1):
+                _c5i = float(_df_d5['Close'].iloc[-(1 + _i5)])
+                _o5i = float(_df_d5['Open'].iloc[-(1 + _i5)])
+                if _c5i > _o5i * 1.0015:
+                    _dirs_5.append("up")
+                elif _c5i < _o5i * 0.9985:
+                    _dirs_5.append("down")
+                else:
+                    _dirs_5.append("flat")
+            _up_cnt5 = sum(1 for _d5x in _dirs_5 if _d5x == "up")
+            _dn_cnt5 = sum(1 for _d5x in _dirs_5 if _d5x == "down")
+            _dots5_html = ""
+            for _d5i in _dirs_5:
+                _dc5 = "#10b981" if _d5i == "up" else ("#f87171" if _d5i == "down" else "#94a3b8")
+                _ds5 = "▲" if _d5i == "up" else ("▼" if _d5i == "down" else "●")
+                _dots5_html += f"<span style='color:{_dc5};font-size:0.78rem;margin-right:3px;'>{_ds5}</span>"
+            _sum_clr5 = "#10b981" if _up_cnt5 > _dn_cnt5 else ("#f87171" if _dn_cnt5 > _up_cnt5 else "#94a3b8")
+            _delta_5d_dots_html = (
+                f"<div style='margin-top:4px;border-top:1px solid {divider};padding-top:3px;'>"
+                f"<div style='margin-bottom:2px;'>{_dots5_html}</div>"
+                f"<div style='font-size:0.68rem;color:{_sum_clr5};font-weight:700;'>"
+                f"{_up_cnt5}↑ / {_dn_cnt5}↓ son 5 kapanış</div>"
+                f"</div>"
+            )
+    except Exception:
+        pass
 
     # ── 5G RVOL Trend HTML (Tile 4 eki) ──────────────────────────
     _rvol_5d_html = ""
@@ -11301,6 +11468,85 @@ def render_smart_volume_panel(ticker):
     elif _cs_scr >= 20: _cs_lbl, _cs_clr = "HAFİF SATIŞ",   "#f87171"
     else:               _cs_lbl, _cs_clr = "SATIŞ BASKISI", "#ef4444"
 
+    # ── 3 Büyük Kart — Verdict (mevcut değişkenlerden türetilir, yeni hesap yok) ──
+    # Kart 1: Fiyat Nerede?  → va_pos
+    if "ÜSTÜNDE" in va_pos:
+        c1_icon = "🟢"; c1_clr = "#10b981"; c1_lbl = "GÜÇLÜ BÖLGE"
+        c1_sub  = "Kurumların yoğun işlem bölgesinin üzerindeyiz — pozitif konum."
+    elif "ALTINDA" in va_pos:
+        c1_icon = "🔴"; c1_clr = "#f87171"; c1_lbl = "DESTEK ALTI"
+        c1_sub  = "Yoğun işlem bölgesinin altındayız — destek hattı veya dönüş bölgesi olabilir."
+    else:
+        c1_icon = "🟡"; c1_clr = "#f59e0b"; c1_lbl = "KARAR NOKTASI"
+        c1_sub  = "Kurumların en çok işlem yaptığı bölgenin tam içindeyiz — yön belirleyici an."
+
+    # Kart 2: Piyasa Aktif mi?  → rvol + cum5
+    if _vol_data_missing or rvol < 0.05:
+        c2_icon = "⚪"; c2_clr = "#94a3b8"; c2_lbl = "VERİ BEKLENİYOR"
+        c2_sub  = "Hacim verisi henüz alınamadı — seans ilerledikçe netleşir."
+    elif rvol >= 1.5 and cum5 > 0:
+        c2_icon = "🟢"; c2_clr = "#10b981"; c2_lbl = "GÜÇLÜ ALIM AKIMI"
+        c2_sub  = "Hacim ortalamanın üzerinde ve son 5 günde alıcılar baskın."
+    elif rvol >= 1.5:
+        c2_icon = "🟡"; c2_clr = "#f59e0b"; c2_lbl = "YÜKSEK HACİM (Karışık)"
+        c2_sub  = "Yüksek aktivite var ama yön karışık — dağıtım ihtimali."
+    elif rvol >= 0.8 and cum5 > 0:
+        c2_icon = "🟡"; c2_clr = "#f59e0b"; c2_lbl = "SAKİN ALIM"
+        c2_sub  = "Hacim normalde, alıcılar hafif önde — ısınma evresi."
+    elif rvol >= 0.8:
+        c2_icon = "🟡"; c2_clr = "#f59e0b"; c2_lbl = "NORMAL AKTİVİTE"
+        c2_sub  = "Hacim ortalamada, yön belirsiz — bekleme modu."
+    else:
+        c2_icon = "🔴"; c2_clr = "#f87171"; c2_lbl = "SESSİZ PİYASA"
+        c2_sub  = "Hacim ortalamanın altında — piyasa ilgisiz, sinyal zayıf."
+
+    # Kart 3: Akıllı Para Ne Yapıyor?  → _t6_obv_title + _t6_tile_pos
+    if "Toparlanma" in _t6_obv_title or "TOPARLANMA" in _t6_obv_title:
+        c3_icon = "🟡"; c3_clr = "#f59e0b"; c3_lbl = "TOPARLANMA"
+        c3_sub  = "OBV yukarı dönüyor ama henüz tam teyit yok — erken sinyal."
+    elif "Zayıflama" in _t6_obv_title or "ZAYIFLAMA" in _t6_obv_title:
+        c3_icon = "🟡"; c3_clr = "#f59e0b"; c3_lbl = "ZAYIFLAMA"
+        c3_sub  = "OBV yön değiştiriyor — momentum kaybı."
+    elif _t6_tile_pos is True:
+        c3_icon = "🟢"; c3_clr = "#10b981"; c3_lbl = "BİRİKİM"
+        c3_sub  = "Hacim göstergeleri alıcı yönünde uyumlu — kurumsal birikim sinyali."
+    elif _t6_tile_pos is False:
+        c3_icon = "🔴"; c3_clr = "#f87171"; c3_lbl = "DAĞITIM / DİKKAT"
+        c3_sub  = "Hacim göstergeleri satıcı yönünde — çıkış ya da şüpheli alım."
+    else:
+        c3_icon = "🟡"; c3_clr = "#f59e0b"; c3_lbl = "BELİRSİZ"
+        c3_sub  = "Hacim göstergeleri net bir yön vermiyor — bekleyiş."
+
+    # ── Büyük Kart HTML üretici ──────────────────────────────────
+    def _big_card_html(icon, clr, q_label, verdict, sub_text):
+        return (
+            f'<div style="padding:11px 14px 10px; border-radius:8px;'
+            f' background:linear-gradient(135deg, {clr}26 0%, {clr}0a 100%);'
+            f' border:1px solid {clr}66;'
+            f' box-shadow:0 1px 4px rgba(0,0,0,0.18);">'
+            f'<div style="font-size:0.64rem; color:{text_muted}; font-weight:800;'
+            f' letter-spacing:0.7px; text-transform:uppercase; margin-bottom:6px;">{q_label}</div>'
+            f'<div style="display:flex; align-items:center; gap:8px; margin-bottom:5px;">'
+            f'<span style="font-size:1.25rem; line-height:1;">{icon}</span>'
+            f'<span style="font-size:1.0rem; font-weight:900; color:{clr}; letter-spacing:0.3px;">{verdict}</span>'
+            f'</div>'
+            f'<div style="font-size:0.78rem; color:{text_sub}; line-height:1.45;">{sub_text}</div>'
+            f'</div>'
+        )
+
+    # ── Açıklama satırı — tatil günü chip'i (eğer kapalıysa) ─────
+    _desc_text = sv["desc"]
+    if _today_closed and _today_label:
+        _sess_note = f" — son seans ({_last_sess_str}) verisi gösteriliyor" if _last_sess_str else " — son seans verisi gösteriliyor"
+        _holiday_chip = (
+            f'<span style="background:rgba(239,68,68,0.18);color:#fca5a5;'
+            f'padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:800;'
+            f'border:1px solid rgba(239,68,68,0.38);margin-right:8px;'
+            f'white-space:nowrap;display:inline-block;">'
+            f'&#9940; {_today_label}{_sess_note}</span>'
+        )
+        _desc_text = _holiday_chip + sv["desc"]
+
     # ── Ticker-fiyat badge — ICT paneli ile aynı stil ────────────
     if dark:
         _badge_css = ("font-family:'JetBrains Mono'; font-weight:800; color:#10b981; font-size:0.9rem;"
@@ -11326,10 +11572,20 @@ def render_smart_volume_panel(ticker):
         f'&#128176; {_cs_scr} — {_cs_lbl}</span>'
         f'</div>'
 
-        # AÇIKLAMA (tek satır)
-        f'<div style="padding:5px 12px; border-bottom:1px solid {divider}; font-size:0.9rem; color:{text_sub}; line-height:1.4;">{sv["desc"]}</div>'
+        # AÇIKLAMA (tek satır) — tatil günü chip + senaryo açıklaması
+        f'<div style="padding:5px 12px; border-bottom:1px solid {divider}; font-size:0.9rem; color:{text_sub}; line-height:1.4;">{_desc_text}</div>'
 
-        # 6 TILE GRID
+        # ── 3 BÜYÜK KART (Birincil Sinyal Katmanı) ───────────────────
+        f'<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; padding:10px 12px; border-bottom:1px solid {divider};">'
+        f'{_big_card_html(c1_icon, c1_clr, "&#128205; Fiyat Nerede?", c1_lbl, c1_sub)}'
+        f'{_big_card_html(c2_icon, c2_clr, "&#128202; Piyasa Aktif mi?", c2_lbl, c2_sub)}'
+        f'{_big_card_html(c3_icon, c3_clr, "&#128269; Akıllı Para Ne Yapıyor?", c3_lbl, c3_sub)}'
+        f'</div>'
+
+        # ── Teknik Detay Başlığı ─────────────────────────────────────
+        f'<div style="padding:5px 12px; font-size:0.62rem; color:{text_muted}; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; background:rgba(0,0,0,0.18); border-bottom:1px solid {divider};">&#9881;&#65039; Teknik Detaylar</div>'
+
+        # 6 TILE GRID (ikincil katman — uzman kullanıcılar için tam detay)
         f'<div style="display:grid; grid-template-columns:0.75fr 0.8fr 0.95fr 1.0fr 1.0fr 0.95fr; gap:0;">'
 
         # — TILE 1: POC (Merkez) —
@@ -11337,6 +11593,7 @@ def render_smart_volume_panel(ticker):
         f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:4px; text-transform:uppercase;">&#127919; POC (Merkez)</div>'
         f'<div style="font-size:0.97rem; font-weight:900; color:{t2_ic}; margin-bottom:4px;">{poc:.2f}</div>'
         f'<div style="font-size:0.80rem; color:{text_sub}; line-height:1.4;">En yoğun işlem fiyatı.<br>{poc_vs}.</div>'
+        f'{_poc_bar_html}'
         f'</div>'
 
         # — TILE 2: Fiyat Konumu —
@@ -11349,17 +11606,18 @@ def render_smart_volume_panel(ticker):
 
         # — TILE 3: Bugünkü Delta —
         f'<div style="padding:6px 8px; border-right:1px solid {divider}; background:{t3_bb};">'
-        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:2px; text-transform:uppercase;">&#9889; Bugünkü Baskı</div>'
+        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:2px; text-transform:uppercase;">&#9889; {_t3_header_text}</div>'
         f'<div style="display:flex; justify-content:{"flex-end" if t3_pos is True else "flex-start" if t3_pos is False else "center"}; margin-bottom:1px;">'
         f'<span style="font-size:0.92rem; font-weight:900; color:{t3_ic};">{t3_pct}</span></div>'
         f'{bidir_bar(d1_fill, t3_ic, t3_pos, track_bg)}'
         f'<div style="font-size:0.8rem; color:{text_main}; font-weight:700; margin-bottom:2px;">{t3_lbl}</div>'
         f'<div style="font-size:0.8rem; color:{text_sub}; line-height:1.35;">{t3_sub}</div>'
+        f'{_delta_strength_html}'
         f'</div>'
 
         # — TILE 4: Ortalamaya Göre Hacim —
         f'<div style="padding:6px 8px; border-right:1px solid {divider}; background:{t4_bb};">'
-        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:2px; text-transform:uppercase;">&#128202; 20G Ort. Göre Bugünkü Hacim</div>'
+        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:2px; text-transform:uppercase;">&#128202; {_t4_header_text}</div>'
         f'<div style="display:flex; justify-content:{"flex-end" if t4_pos is True else "flex-start" if t4_pos is False else "center"}; margin-bottom:1px;">'
         f'<span style="font-size:0.92rem; font-weight:900; color:{t4_ic};">{t4_pct}</span></div>'
         f'{bidir_bar(rvol_fill, t4_ic, t4_pos, track_bg)}'
@@ -11376,6 +11634,7 @@ def render_smart_volume_panel(ticker):
         f'{bidir_bar(cum_fill, t5_ic, t5_pos, track_bg)}'
         f'<div style="font-size:0.8rem; color:{text_main}; font-weight:700; margin-bottom:2px;">{t5_lbl}</div>'
         f'<div style="font-size:0.8rem; color:{text_sub}; line-height:1.35;">{t5_sub}</div>'
+        f'{_delta_5d_dots_html}'
         f'</div>'
 
         # — TILE 6: OBV + CMF Durumu —
