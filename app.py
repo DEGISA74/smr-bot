@@ -7252,12 +7252,22 @@ def calculate_price_action_dna(ticker):
         if df is None or len(df) < 50: return None
         # --- YENİ HACİM HESAPLAMALARI (ADIM 2) BURAYA EKLENDİ ---
         df = df[df['Close'] > 0].copy() # Sadece hacmi olan günleri değil, fiyatı olan her günü al (Canlı mumu yakalamak için)
-        # HAFTA SONU / TATIL FIX: yfinance bazen Cumartesi/Pazar'a Close=Cuma, Volume=0 sahte bar ekler.
-        # Hafta sonu ise ve son bar Volume=0 ise o barı at — bir önceki gerçek işlem günü (Cuma) kullanılsın.
-        # Hafta içi seans saatlerinde bu filtreyi UYGULAMA — canlı mum Volume=0 ile başlar, geçerli.
+        # HAFTA SONU / TATİL / BAYRAM FIX: yfinance kapalı günlere Close=önceki kapanış,
+        # Volume=0 sahte bar ekler. Bugün BIST kapalıysa (hafta sonu VEYA milli/dini tatil),
+        # trailing 0-hacimli barları at — son geçerli işlem günü iloc[-1] olsun.
+        # Hafta içi normal seansta UYGULAMA — canlı mum Volume=0 ile başlar, geçerli.
         _wknd_now = datetime.now(_TZ_ISTANBUL).weekday() >= 5  # 5=Cmt, 6=Paz
-        if _wknd_now and len(df) > 1 and float(df['Volume'].iloc[-1]) == 0:
-            df = df.iloc[:-1].copy()
+        _bist_closed_now = False
+        try:
+            _is_bist_pa = ".IS" in ticker or ticker.startswith(("XU", "XB", "XT", "XY"))
+            if _BIST_CAL_OK and _is_bist_pa and _bist_is_closed():
+                _bist_closed_now = True
+        except Exception:
+            pass
+        if _wknd_now or _bist_closed_now:
+            # Çok günlü bayramlarda (örn. Kurban Bayramı 4 gün) birden fazla 0-bar olabilir
+            while len(df) > 1 and float(df['Volume'].iloc[-1]) == 0:
+                df = df.iloc[:-1].copy()
         if len(df) < 20: return None
         df = calculate_volume_delta(df)
         _vp = calculate_full_volume_profile(df, lookback=20, bins=20)
@@ -11517,20 +11527,25 @@ def render_smart_volume_panel(ticker):
         c3_icon = "🟡"; c3_clr = "#f59e0b"; c3_lbl = "BELİRSİZ"
         c3_sub  = "Hacim göstergeleri net bir yön vermiyor — bekleyiş."
 
-    # ── Büyük Kart HTML üretici ──────────────────────────────────
+    # ── Büyük Kart HTML üretici (kompakt: q_label + verdict tek satır, sonra desc) ──
     def _big_card_html(icon, clr, q_label, verdict, sub_text):
         return (
-            f'<div style="padding:11px 14px 10px; border-radius:8px;'
+            f'<div style="padding:8px 13px 9px; border-radius:8px;'
             f' background:linear-gradient(135deg, {clr}26 0%, {clr}0a 100%);'
             f' border:1px solid {clr}66;'
             f' box-shadow:0 1px 4px rgba(0,0,0,0.18);">'
-            f'<div style="font-size:0.64rem; color:{text_muted}; font-weight:800;'
-            f' letter-spacing:0.7px; text-transform:uppercase; margin-bottom:6px;">{q_label}</div>'
-            f'<div style="display:flex; align-items:center; gap:8px; margin-bottom:5px;">'
-            f'<span style="font-size:1.25rem; line-height:1;">{icon}</span>'
-            f'<span style="font-size:1.0rem; font-weight:900; color:{clr}; letter-spacing:0.3px;">{verdict}</span>'
+            # Üst satır: soru solda, verdict (icon + etiket) sağda
+            f'<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:5px;">'
+            f'<span style="font-size:0.64rem; color:{text_muted}; font-weight:800;'
+            f' letter-spacing:0.7px; text-transform:uppercase; white-space:nowrap;">{q_label}</span>'
+            f'<span style="display:inline-flex; align-items:center; gap:6px; flex-shrink:0;">'
+            f'<span style="font-size:1.1rem; line-height:1;">{icon}</span>'
+            f'<span style="font-size:0.92rem; font-weight:900; color:{clr};'
+            f' letter-spacing:0.3px; white-space:nowrap;">{verdict}</span>'
+            f'</span>'
             f'</div>'
-            f'<div style="font-size:0.78rem; color:{text_sub}; line-height:1.45;">{sub_text}</div>'
+            # Açıklama
+            f'<div style="font-size:0.78rem; color:{text_sub}; line-height:1.4;">{sub_text}</div>'
             f'</div>'
         )
 
@@ -11575,8 +11590,8 @@ def render_smart_volume_panel(ticker):
         # AÇIKLAMA (tek satır) — tatil günü chip + senaryo açıklaması
         f'<div style="padding:5px 12px; border-bottom:1px solid {divider}; font-size:0.9rem; color:{text_sub}; line-height:1.4;">{_desc_text}</div>'
 
-        # ── 3 BÜYÜK KART (Birincil Sinyal Katmanı) ───────────────────
-        f'<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; padding:10px 12px; border-bottom:1px solid {divider};">'
+        # ── 3 BÜYÜK KART (Birincil Sinyal Katmanı — kompakt 2 satırlı) ──
+        f'<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; padding:8px 12px; border-bottom:1px solid {divider};">'
         f'{_big_card_html(c1_icon, c1_clr, "&#128205; Fiyat Nerede?", c1_lbl, c1_sub)}'
         f'{_big_card_html(c2_icon, c2_clr, "&#128202; Piyasa Aktif mi?", c2_lbl, c2_sub)}'
         f'{_big_card_html(c3_icon, c3_clr, "&#128269; Akıllı Para Ne Yapıyor?", c3_lbl, c3_sub)}'
@@ -16898,6 +16913,55 @@ def _render_genel_ozet_panel():
                 _gs_rvol    = _gs_sv.get('rvol', 1.0)
                 _gs_cum5    = _gs_sv.get('cum_delta_5', 0)
                 _gs_cdpct   = _gs_sv.get('cum_delta_pct', 0.0)
+
+                # ── BIST Kapalı Gün Fix — tatil/hafta sonu → son seans verisi ─────
+                _gs_today_closed  = False
+                _gs_today_label   = ""
+                _gs_last_sess_str = ""
+                _gs_last_was_half = False
+                try:
+                    _gs_is_bist = ".IS" in _ticker or _ticker.startswith(("XU", "XB", "XT", "XY"))
+                    if _BIST_CAL_OK and _gs_is_bist and _bist_is_closed() and _gs_df is not None and len(_gs_df) >= 22:
+                        _gs_today_closed = True
+                        _, _gs_today_label = _bist_day_status()
+                        # Son volume>0 olan barı bul
+                        _gs_last_back = 0
+                        for _b in range(1, min(15, len(_gs_df))):
+                            if float(_gs_df['Volume'].iloc[-_b]) > 0:
+                                _gs_last_back = _b
+                                break
+                        if _gs_last_back >= 1:
+                            # bugün için 0-hacimli bar varsa truncate et (son geçerli bar son satır olsun)
+                            if _gs_last_back > 1:
+                                _gs_df = _gs_df.iloc[:-(_gs_last_back - 1)]
+                            # Son seans tarihi + arefe miydi kontrolü
+                            try:
+                                _last_dt_obj = _gs_df.index[-1].date() if hasattr(_gs_df.index[-1], 'date') else None
+                                _gs_last_sess_str = _gs_df.index[-1].strftime("%d.%m")
+                                if _last_dt_obj is not None:
+                                    _gs_last_was_half = bool(_bist_is_half_day(_last_dt_obj))
+                            except Exception:
+                                pass
+                            # RVOL yeniden hesapla (truncated df üzerinden)
+                            try:
+                                if 'Volume' in _gs_df.columns and len(_gs_df) >= 20:
+                                    _last_v = float(_gs_df['Volume'].iloc[-1])
+                                    _avg_v  = float(_gs_df['Volume'].rolling(20).mean().iloc[-1])
+                                    if _avg_v > 0 and _last_v > 0:
+                                        _gs_rvol = _last_v / _avg_v
+                            except Exception:
+                                pass
+                            # 5G kümülatif delta yeniden hesapla
+                            try:
+                                _gs_df_d  = calculate_volume_delta(_gs_df)
+                                _gs_cum5  = float(_gs_df_d['Volume_Delta'].iloc[-5:].sum())
+                                _tot5     = float(_gs_df_d['Volume'].iloc[-5:].sum())
+                                _gs_cdpct = abs(_gs_cum5 / _tot5 * 100) if _tot5 > 0 else 0.0
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
                 _gs_can     = _gs_dna.get('candle', {})
                 _gs_vol     = _gs_dna.get('vol', {})
                 _gs_obv     = _gs_dna.get('obv', {})
@@ -17787,6 +17851,21 @@ def _render_genel_ozet_panel():
 
         except Exception:
             _gs_items_html = "<div style='font-size:0.7rem;color:#64748b;padding:6px 2px;font-style:italic;'>Özet hesaplanamadı.</div>"
+
+        # ── Tatil günü chip'i — panel içeriğinin en başına yerleştir ─────
+        try:
+            if _gs_today_closed and _gs_today_label:
+                _half_note = " · Arefe (yarım gün, 10:00–12:30)" if _gs_last_was_half else ""
+                _sess_note = f" — son seans ({_gs_last_sess_str}{_half_note}) verisi gösteriliyor" if _gs_last_sess_str else " — son seans verisi gösteriliyor"
+                _gs_items_html = (
+                    f'<div style="background:rgba(239,68,68,0.18);color:#fca5a5;'
+                    f'padding:5px 10px;border-radius:4px;font-size:0.74rem;font-weight:700;'
+                    f'border:1px solid rgba(239,68,68,0.38);margin:0 0 7px;">'
+                    f'⛔ {_gs_today_label}{_sess_note}'
+                    f'</div>'
+                ) + _gs_items_html
+        except NameError:
+            pass
 
         _hdr_bg = "linear-gradient(90deg,#0d1829 0%,#0f2040 100%)"
         _hdr_txt = "#38bdf8"; _cnt_bg = "#060d1a"; _border = "#1e3a5f"
@@ -19558,8 +19637,60 @@ if st.session_state.generate_prompt:
     
     # --- 🚨 PROMPT'TAN HEMEN ÖNCE PAKETİ AÇIYORUZ ---
     # calculate_price_action_dna'dan dönen veriyi (örneğin dna değişkeni) kontrol ediyoruz:
-    df = get_safe_historical_data(t, period="6mo") 
+    df = get_safe_historical_data(t, period="6mo")
     dna = calculate_price_action_dna(t)
+
+    # ── BIST Kapalı Gün Fix — AI Prompt'a son seans verisi + arefe etiketi ────
+    # KRİTİK: Tatil/hafta sonu olduğunda smart_volume değerleri 0 olur → AI çöp analiz üretir.
+    # Burada son işlem gününün verisini hesaplayıp dna+pa_data smart_volume dict'lerine
+    # enjekte ediyoruz. Ayrıca son işlem günü arefe (yarım gün) ise prompt'a not düşülecek.
+    _ai_today_closed  = False
+    _ai_today_label   = ""
+    _ai_last_sess_str = ""
+    _ai_last_was_half = False
+    try:
+        _ai_is_bist = ".IS" in t or t.startswith(("XU", "XB", "XT", "XY"))
+        if _BIST_CAL_OK and _ai_is_bist and _bist_is_closed() and df is not None and len(df) >= 22:
+            _ai_today_closed = True
+            _, _ai_today_label = _bist_day_status()
+            _ai_last_back = 0
+            for _b in range(1, min(15, len(df))):
+                if float(df['Volume'].iloc[-_b]) > 0:
+                    _ai_last_back = _b
+                    break
+            if _ai_last_back >= 1:
+                if _ai_last_back > 1:
+                    df = df.iloc[:-(_ai_last_back - 1)]
+                try:
+                    _last_dt_ai = df.index[-1].date() if hasattr(df.index[-1], 'date') else None
+                    _ai_last_sess_str = df.index[-1].strftime("%d.%m.%Y")
+                    if _last_dt_ai is not None:
+                        _ai_last_was_half = bool(_bist_is_half_day(_last_dt_ai))
+                except Exception:
+                    pass
+                # Smart Volume yeniden hesapla — dna + pa_data dict'lerini override et
+                try:
+                    _df_d_ai = calculate_volume_delta(df)
+                    _last_v_ai = float(_df_d_ai['Volume'].iloc[-1])
+                    if _last_v_ai > 0:
+                        _last_dv_ai = float(_df_d_ai['Volume_Delta'].iloc[-1])
+                        _avg_v_ai   = float(_df_d_ai['Volume'].rolling(20).mean().iloc[-1]) if len(_df_d_ai) >= 20 else 0
+                        _cum5_ai    = float(_df_d_ai['Volume_Delta'].iloc[-5:].sum())
+                        _tot5_ai    = float(_df_d_ai['Volume'].iloc[-5:].sum())
+                        _new_rvol_ai = (_last_v_ai / _avg_v_ai) if _avg_v_ai > 0 else 1.0
+                        for _ref in (dna, pa_data):
+                            if isinstance(_ref, dict) and isinstance(_ref.get('smart_volume'), dict):
+                                _ref['smart_volume']['delta']            = _last_dv_ai
+                                _ref['smart_volume']['delta_yuzde']      = abs((_last_dv_ai / _last_v_ai) * 100)
+                                _ref['smart_volume']['rvol']             = _new_rvol_ai
+                                _ref['smart_volume']['cum_delta_5']      = _cum5_ai
+                                _ref['smart_volume']['cum_delta_pct']    = abs(_cum5_ai / _tot5_ai * 100) if _tot5_ai > 0 else 0
+                                _ref['smart_volume']['vol_data_missing'] = False
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     # Prompt oluşturulmadan hemen önce bu verileri çekiyoruz
     sv_extra = pa_data.get('smart_volume', {})
     rvol_val           = sv_extra.get('rvol', 1.0)
@@ -20050,7 +20181,33 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
         _panel_summary_str = "Veri yetersiz — panel okuması üretilemedi."
     # ────────────────────────────────────────────────────────────────
 
-    prompt = f"""*** KİMLİĞİN ***
+    # ── BIST Kapalı Gün / Arefe — AI'ya kritik bağlam notu ───────────
+    # Bu blok prompt'un en üstüne enjekte ediliyor — AI önce bunu okumalı.
+    _ai_holiday_note = ""
+    if _ai_today_closed and _ai_today_label:
+        _arefe_warn = ""
+        if _ai_last_was_half:
+            _arefe_warn = (
+                "\n⚠️ AYRICA — SON İŞLEM GÜNÜ AREFEYDİ: BIST son seans bir AREFE günüydü "
+                "(yarım gün — 10:00–12:30, toplam 150 dakika; normal seans 480 dakika). "
+                "Aşağıdaki RVOL değeri arefe normalizer ile düzeltilmiştir (÷0.3125), yani "
+                "'1.0x RVOL' = arefe gününde beklenen normal hacim demek (avg_vol × 0.31'e karşılık gelir). "
+                "Hacim yorumunda bunu unutma: 'düşük hacim' diyebileceğin değer aslında kısa seansa "
+                "göre NORMAL olabilir. RVOL 1.5x üstü gerçekten yüksek aktivite demek."
+            )
+        _ai_holiday_note = (
+            "\n\n*** ⛔ PİYASA DURUMU — ÖNCE BUNU OKU (KRİTİK) ***\n"
+            f"BUGÜN BIST KAPALI: {_ai_today_label}. Bugün için canlı işlem verisi YOK.\n"
+            f"Aşağıdaki TÜM hacim · delta · RVOL · baskınlık · OBV · Smart Money verileri "
+            f"SON İŞLEM GÜNÜNE AİT ({_ai_last_sess_str}). \n"
+            f"Bu yüzden analizinde 'bugün şu oldu' diyemezsin — bunun yerine "
+            f"'son işlem gününde ({_ai_last_sess_str})...' veya 'kapanış öncesi son seansta...' "
+            f"şeklinde ifade et. Yarın seans açıldığında tablonun değişebileceğini "
+            f"analizinin bir yerinde kısaca hatırlat."
+            f"{_arefe_warn}\n"
+        )
+
+    prompt = f"""{_ai_holiday_note}*** KİMLİĞİN ***
 25 yıldır hem kurumsal hem bireysel portföy yöneten, BIST'i ve global piyasaları yakından izleyen ve çok iyi analiz edebilen, çok değerli, çok bilgili ve çok deneyimli bir analistsin. Karmaşık veriyi sade dile çevirmekte iyisin — ama sadeleştirirken bilgiyi kaybetmezsin. Ne korkutursan ne de umutlandırırsın. Veri ne diyorsa onu söylersin, fazlasını değil. Hem yükseliş hem düşüş gördün, ikisini de bekliyorsun. Soğukkanlısın.
 
 Hem finans bilgisi olan hem olmayan aynı metni okuyacak. İkisi için ayrı analiz yazma — teknik terimleri aşağıdaki ANLATIM KURALI'na göre benzetmeyle ver, sonra devam et. Hız kesme. Doğru ton: bir konuyu gerçekten bilen birinin sohbet dili.
@@ -20795,6 +20952,19 @@ ZORUNLU: En sona "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." yaz (kü
 
 Uzunluk: Dördüncü görevden daha kısa. 4-5 paragraf yeterli.
 """
+    # ── BIST Kapalı Gün — statik "Bugüne ait" ifadelerini "Son seansa ait" ile değiştir ──
+    # Üst kısımdaki _ai_holiday_note AI'ya bağlamı zaten verdi; alttaki statik metinleri de
+    # aynı dile çekiyoruz ki AI'da çelişki algısı oluşmasın.
+    if _ai_today_closed:
+        prompt = (prompt
+            .replace("Bugüne ait Smart Money", "Son seansa ait Smart Money")
+            .replace("Bugüne ait Net Baskınlık", "Son seansa ait Net Baskınlık")
+            .replace("bugüne ait Net Baskınlık",  "son seansa ait Net Baskınlık")
+            .replace("tahtada bugün için",        "son seansta tahtada")
+            .replace("bugün için geçerli olabileceğini", "son seans için geçerli olabileceğini")
+            .replace("sadece bugünün durumunu",   "sadece son seansın durumunu")
+            .replace("Verininsadece bugünün",     "Verinin sadece son seansın")
+        )
     with st.sidebar:
         st.code(prompt, language="text")
         st.success("Prompt Güncellendi")
@@ -21552,16 +21722,12 @@ def _render_left_col():
     
                 st.markdown(f"""
     <div style="border:1px solid #1e3a5f;border-radius:8px;overflow:hidden;margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
-      <div style="background:linear-gradient(90deg,#0d1829,#0f2040);padding:5px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e3a5f;">
-    <span style="font-weight:700;font-size:0.82rem;color:#38bdf8;letter-spacing:0.5px;">📊 TEKNİK SEVİYELER</span>
-    <span style="background:{badge_bg};color:{badge_text};padding:2px 10px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:0.82rem;border:1px solid rgba(16,185,129,0.3);">{clean_ticker} — <span style="color:{price_color};">{display_price}</span></span>
-      </div>
       <div style="display:flex;align-items:stretch;padding:0;background:{bg_col};width:100%;">
-    {grp_label("📉", "KISA", "VADE", "#38bdf8")}
+    {grp_label("📉", "KISA VADE", "ORT.", "#38bdf8")}
     {ma_cell("EMA 5",   ema5,   current_price)}
     {ma_cell("EMA 8",   ema8,   current_price)}
     {ma_cell("EMA 13",  ema13,  current_price)}
-    {grp_label("🔭", "ORTA", "UZUN",  "#8b5cf6")}
+    {grp_label("🔭", "ORTA VADE", "ORT.",  "#8b5cf6")}
     {ma_cell("SMA 50",  sma50,  current_price)}
     {ma_cell("SMA 100", sma100, current_price)}
     {ma_cell("SMA 200", sma200, current_price)}
