@@ -729,6 +729,22 @@ def init_db():
         category    TEXT,
         UNIQUE(scan_date, symbol, scan_type)
     )''')
+    # ── Günlük getiri takip tablosu (1-20 işlem günü, backtest için) ─────────
+    # Her scan_signals satırına karşılık 20 satır — day_offset 1..20.
+    # close_price / return_pct başta NULL; backfill_signal_returns() doldurur.
+    c.execute('''CREATE TABLE IF NOT EXISTS signal_returns (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        signal_id   INTEGER NOT NULL,
+        scan_type   TEXT NOT NULL,
+        symbol      TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        entry_price REAL,
+        day_offset  INTEGER NOT NULL,
+        close_price REAL,
+        return_pct  REAL,
+        category    TEXT,
+        UNIQUE(signal_id, day_offset)
+    )''')
     conn.commit()
     conn.close()
 
@@ -929,6 +945,169 @@ def get_signal_performance_summary(lookback_days=90):
         summary.append(row)
 
     return pd.DataFrame(summary)
+
+
+def backfill_signal_returns():
+    """
+    scan_signals tablosundaki sinyallerin 1-20 günlük getirilerini hesaplar ve
+    signal_returns tablosuna yazar. INSERT — zaten varsa atlar (UNIQUE kısıt).
+    Master Scan başında otomatik çağrılır; parquet cache üzerinden çalışır,
+    internet isteği yapmaz. Her çalışmada en fazla 60 sembol işler.
+
+    Return: (dolduruldu, atlandı) tuple
+    """
+    from datetime import timedelta
+    today = datetime.now(_TZ_ISTANBUL).date()
+    MAX_SYMBOLS = 60
+
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        # signal_returns'te hiç satırı olmayan scan_signals satırlarını bul
+        pending = pd.read_sql('''
+            SELECT ss.id, ss.symbol, ss.scan_type, ss.scan_date,
+                   ss.entry_price, ss.category
+            FROM scan_signals ss
+            LEFT JOIN signal_returns sr ON ss.id = sr.signal_id
+            WHERE sr.signal_id IS NULL
+              AND date(ss.scan_date) <= date('now', '-1 day')
+            ORDER BY ss.scan_date DESC
+            LIMIT ?
+        ''', conn, params=(MAX_SYMBOLS,))
+        conn.close()
+    except Exception:
+        return (0, 0)
+
+    if pending.empty:
+        return (0, 0)
+
+    filled = 0
+    skipped = 0
+    for _, sig in pending.iterrows():
+        try:
+            signal_date = pd.to_datetime(sig['scan_date']).date()
+            if (today - signal_date).days < 1:
+                skipped += 1
+                continue
+
+            df_h = get_safe_historical_data(sig['symbol'], period='6mo', interval='1d')
+            if df_h is None or df_h.empty:
+                skipped += 1
+                continue
+            df_h = df_h.sort_index()
+
+            # Sinyal tarihine en yakın indeksi bul
+            sig_ts  = pd.Timestamp(sig['scan_date'])
+            idx_pos = int(df_h.index.searchsorted(sig_ts))
+            if idx_pos >= len(df_h):
+                skipped += 1
+                continue
+
+            # Giriş fiyatı
+            ep_raw = sig['entry_price']
+            entry  = float(ep_raw) if (ep_raw is not None and not pd.isna(ep_raw) and float(ep_raw) > 0) \
+                     else float(df_h['Close'].iloc[idx_pos])
+            if entry == 0:
+                skipped += 1
+                continue
+
+            conn = sqlite3.connect(DB_FILE)
+            c    = conn.cursor()
+            for day_offset in range(1, 21):
+                fwd_idx = idx_pos + day_offset
+                if fwd_idx >= len(df_h):
+                    break  # Henüz bu kadar işlem günü geçmemiş — ileride dolar
+                fwd_price  = float(df_h['Close'].iloc[fwd_idx])
+                ret_pct    = round((fwd_price - entry) / entry * 100, 4)
+                c.execute('''
+                    INSERT OR IGNORE INTO signal_returns
+                    (signal_id, scan_type, symbol, signal_date,
+                     entry_price, day_offset, close_price, return_pct, category)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (int(sig['id']), sig['scan_type'], sig['symbol'],
+                      sig['scan_date'], entry, day_offset,
+                      fwd_price, ret_pct, sig.get('category', '')))
+                filled += 1
+            conn.commit()
+            conn.close()
+        except Exception:
+            skipped += 1
+            continue
+
+    return (filled, skipped)
+
+
+def get_scanner_optimal_windows():
+    """
+    signal_returns tablosunu analiz eder. Her scan_type için:
+    - Gün bazlı ortalama getiri ve hit rate (return > 0)
+    - Peak gün: avg_return × hit_rate kompozit skorun en yüksek olduğu gün
+    - Minimum 5 sinyal şartı (az örnekle yanıltıcı sonuç olmasın)
+
+    Returns: {
+      scan_type: {
+        "peak_day":    N,        # optimal tutma süresi (işlem günü)
+        "peak_return": X.XX,     # o günde ort. getiri %
+        "hit_rate":    YY.Y,     # o günde hit rate %
+        "n_signals":   Z,        # toplam değerlendirilen sinyal sayısı
+        "daily": {               # tüm günlerin özeti
+          1: {"avg_return": x, "hit_rate": y, "n": z},
+          ...20
+        }
+      }
+    }
+    """
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        df = pd.read_sql('''
+            SELECT scan_type, day_offset, return_pct
+            FROM signal_returns
+            WHERE return_pct IS NOT NULL
+        ''', conn)
+        conn.close()
+    except Exception:
+        return {}
+
+    if df.empty:
+        return {}
+
+    results = {}
+    for scan_type, grp in df.groupby('scan_type'):
+        # Kaç benzersiz sinyal var? (day_offset=1 satır sayısını say)
+        n_signals = int((grp['day_offset'] == 1).sum())
+        if n_signals < 5:
+            continue  # Yetersiz veri
+
+        best_score  = -999.0
+        best_day    = None
+        daily_stats = {}
+
+        for day_offset, day_grp in grp.groupby('day_offset'):
+            rets = day_grp['return_pct'].dropna()
+            if len(rets) < 3:
+                continue
+            avg_ret  = float(rets.mean())
+            hit_rate = float((rets > 0).mean())
+            # Kompozit skor: pozitif getiri × tutarlılık
+            composite = avg_ret * hit_rate
+            daily_stats[int(day_offset)] = {
+                "avg_return": round(avg_ret, 2),
+                "hit_rate":   round(hit_rate * 100, 1),
+                "n":          int(len(rets))
+            }
+            if composite > best_score:
+                best_score = composite
+                best_day   = int(day_offset)
+
+        if best_day is not None:
+            results[scan_type] = {
+                "peak_day":    best_day,
+                "peak_return": daily_stats[best_day]["avg_return"],
+                "hit_rate":    daily_stats[best_day]["hit_rate"],
+                "n_signals":   n_signals,
+                "daily":       daily_stats
+            }
+
+    return results
 
 
 init_db()
@@ -18512,6 +18691,16 @@ with col_btn:
         my_bar = st.progress(0, text=progress_text)
 
         try:
+            # 0. GEÇMİŞ SİNYAL GETİRİLERİNİ DOLDUR (Backtest altyapısı) - %5
+            my_bar.progress(5, text="📊 Geçmiş sinyal getirileri güncelleniyor...%5")
+            try:
+                _bf_filled, _bf_skipped = backfill_signal_returns()
+                if _bf_filled > 0:
+                    import logging
+                    logging.info(f"[backfill] {_bf_filled} getiri satırı eklendi, {_bf_skipped} atlandı.")
+            except Exception:
+                pass  # Backfill hatası Master Scan'i durdurmasın
+
             # 1. ÖNCE VERİYİ ÇEK (Yahoo Koruması) - %10
             my_bar.progress(10, text="📡 Veriler İndiriliyor (Batch Download)...%10")
             # st.cache_data TTL'ini atla — master scan her zaman taze veri çekmeli
