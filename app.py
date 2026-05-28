@@ -15907,11 +15907,17 @@ def _formasyon_dialog(ticker, chart_data, current_price, display_ticker, pat_lab
 # ==============================================================================
 def _build_piyasa_ozeti_html(ticker, data):
     """
-    Mevcut roadmap verisinden 5 öncelikli madde üretir.
-    Yeni hesap yapmaz — data dict + session_state okur. 0 gecikme.
+    Tüm roadmap sinyallerini çapraz okuyarak uzman yorumu üretir.
+    Skor tekrarı değil — kombinasyonların ne anlama geldiği yorumlanır.
     """
     import re as _re
-    def _strip(txt): return _re.sub(r'<[^>]+>', '', str(txt or ''))
+    _emoji_re = _re.compile(
+        u'[\U0001F300-\U0001FFFF\U00002600-\U000027BF'
+        u'\U0000FE00-\U0000FE0F\U00002000-\U000023FF]+', flags=_re.UNICODE)
+    def _plain(s):
+        s = _re.sub(r'<[^>]+>', '', str(s or ''))
+        s = _emoji_re.sub('', s)
+        return s.strip(' :–-')
 
     _fs  = data.get('factor_scores', {})
     _cs  = data.get('composite_score', 50)
@@ -15922,129 +15928,135 @@ def _build_piyasa_ozeti_html(ticker, data):
     f_trend = _fs.get('trend', 50)
     f_mom   = _fs.get('momentum', 50)
     f_vol   = _fs.get('volume', 50)
+    f_yapi  = _fs.get('yapi', 50)
+    f_sen   = _fs.get('senaryo', 50)
 
-    m3_txt = _strip(data.get('M3', ''))
-    m5_txt = _strip(data.get('M5', ''))
-    m8_txt = _strip(data.get('M8', ''))
+    m1_txt = _plain(data.get('M1', ''))
+    m3_txt = _plain(data.get('M3', ''))
+    m5_txt = _plain(data.get('M5', ''))
+    m8_txt = _plain(data.get('M8', '')).replace("Piyasa Sentezi:", "").strip()
 
-    madde_list = []  # (öncelik, renk_hex, html_metin)
+    sentences = []  # her biri bağımsız analiz cümlesi
 
-    # ── 1. TATİL / PAZAR bağlamı ────────────────────────────────────
+    # ── 0. TATİL / PAZAR bağlamı (varsa ilk cümle) ──────────────────
     _bms     = st.session_state.get("bist_market_status", {})
     _closed  = bool(_bms.get("closed", False)) and _is_bist
     _bms_lbl = _bms.get("label", "")
-    _last_half = False
-    try:
-        from bist_calendar import is_half_day as _ihd
-        import datetime as _dtt
-        _yday = _dtt.date.today() - _dtt.timedelta(days=1)
-        _last_half = _ihd(_yday)
-    except Exception: pass
-
     if _closed:
-        if "arefe" in _bms_lbl.lower() or _last_half:
-            madde_list.append((10, "#f59e0b",
-                f"⚠️ <b>Arefe / yarım seans bağlamı:</b> Hacim ve delta verileri {_bms_lbl} normalizer'ı ile düzeltildi (÷0.3125). "
-                "'Düşük hacim' görünse de kısa seansa göre normal olabilir — yorumda bunu dikkate al."))
-        elif any(x in _bms_lbl.lower() for x in ("pazar", "cumartesi")):
-            madde_list.append((10, "#f59e0b",
-                f"📅 <b>Bugün {_bms_lbl} — BIST kapalı.</b> Gösterilen tüm veriler son işlem gününe ait (tam seans, normalizer uygulanmadı). "
-                "Seans açılışında tablo değişebilir."))
-        else:
-            madde_list.append((10, "#f87171",
-                f"⛔ <b>{_bms_lbl} — BIST kapalı.</b> Veriler son işlem gününe ait. "
-                "Bayram sonrası açılışta boşluk (gap) riski göz önünde bulundurulmalı."))
+        _is_weekend = any(x in _bms_lbl.lower() for x in ("pazar", "cumartesi"))
+        _is_bayram  = any(x in _bms_lbl.lower() for x in ("bayram", "tatil", "arefe"))
+        if _is_weekend:
+            sentences.append(
+                f"Bugün {_bms_lbl}, BIST kapalı; gösterilen veriler son işlem gününe ait ve "
+                "hafta sonu haberlerine göre pazartesi açılışı farklı seyredebilir.")
+        elif _is_bayram:
+            sentences.append(
+                f"{_bms_lbl} nedeniyle BIST kapalı; bayram sonrası açılışlarda gap riski "
+                "her zaman yüksektir, ilk mumlara dikkat edilmeli.")
 
-    # ── 2. TREND — MOMENTUM ÇELİŞKİSİ / UYUMU ──────────────────────
-    if f_trend >= 60 and f_mom <= 40:
-        madde_list.append((9, "#f59e0b",
-            f"⚠️ <b>Trend-Momentum çelişkisi:</b> Ana trend pozitif (skor {f_trend}) ama kısa vadeli momentum zayıf ({f_mom}). "
-            "Momentum teyidi gelmeden trend güvenilir değil — düzeltme veya yatay bant ihtimali yüksek."))
-    elif f_trend <= 40 and f_mom >= 60:
-        madde_list.append((9, "#38bdf8",
-            f"🔄 <b>Karşı-trend toparlanma:</b> Ana trend baskılı (skor {f_trend}) ama kısa vadeli ivme güçleniyor ({f_mom}). "
-            "Dip tepkisi veya erken dönüş sinyali olabilir — trend teyidi beklenmeli."))
-    elif f_trend >= 60 and f_mom >= 60:
-        madde_list.append((7, "#4ade80",
-            f"✅ <b>Trend ve momentum hizalı:</b> Ana trend ({f_trend}) ve kısa vade ({f_mom}) aynı yönde. "
-            "Teknik yapı sağlam, mevcut hareket teyit almış görünüyor."))
+    # ── 1. TREND + MOMENTUM — çapraz yorum ──────────────────────────
+    if f_trend >= 65 and f_mom >= 60:
+        sentences.append(
+            "Hem ana trend hem kısa vadeli ivme aynı yönde güçlü — bu hizalama, "
+            "mevcut hareketin rastgele değil gerçek alıcı baskısıyla oluştuğuna işaret ediyor.")
+    elif f_trend >= 65 and f_mom < 45:
+        sentences.append(
+            "Ana trend yukarı yönlü ama kısa vadeli ivme durma noktasında — "
+            "büyük olasılıkla bir konsolidasyon veya kısa düzeltme içindeyiz; "
+            "momentum geri dönene kadar aceleci giriş yapmamak daha sağlıklı.")
+    elif f_trend < 40 and f_mom >= 60:
+        sentences.append(
+            "Ana trend baskılı olmasına karşın kısa vadeli ivme toparlanıyor — "
+            "dip tepkisi deniyor olabilir ama trende karşı hareket olduğundan teyit "
+            "gelmeden güvenilir değil; stop mesafesi dar tutulmalı.")
+    elif f_trend < 40 and f_mom < 40:
+        sentences.append(
+            "Hem ana trend hem kısa vade aşağı baskılı — hisse henüz yapı kurmamış, "
+            "alıcı ilgisi görünmüyor; bu tablo düzelene kadar bekleme modu mantıklı.")
+    elif f_trend >= 55 and 45 <= f_mom <= 60:
+        sentences.append(
+            "Trend pozitif tarafta ama momentum nötr — hareket ivme kazanmayı bekliyor; "
+            "hacim artışı gelirse trendin devamı, gelmezse yatay sıkışma ihtimali daha yüksek.")
     else:
-        madde_list.append((5, "#94a3b8",
-            f"⚖️ <b>Yön belirsizliği:</b> Trend ({f_trend}) ve momentum ({f_mom}) net sinyal üretmiyor. "
-            "Kırılım yönü belirleyici olacak."))
+        sentences.append(
+            "Trend ve momentum net yön vermeden bekleme modunda — piyasa kararsız, "
+            "önümüzdeki birkaç seansta kırılım yönü belirleyici olacak.")
 
-    # ── 3. PARA AKIŞI / HACİM ───────────────────────────────────────
-    _dagilim  = "dağıtım" in m5_txt.lower() or "algoritmik dağıtım" in m5_txt.lower()
-    _churning = "churning" in m3_txt.lower() or "hacimsiz" in m3_txt.lower()
-    _saglikli = "sağlıklı" in m3_txt.lower() or "agresif kurumsal" in m5_txt.lower()
+    # ── 2. PARA AKIŞI / HACİM — gerçek yorum ────────────────────────
+    _dagilim  = any(k in m5_txt.lower() for k in ("algoritmik dağıtım", "dağıtım izleri"))
+    _emisyon  = any(k in m5_txt.lower() for k in ("agresif kurumsal", "emilim", "sessiz birikim"))
+    _churning = any(k in m3_txt.lower() for k in ("churning", "hacimsiz yükseliş"))
+    _effort_ok = any(k in m3_txt.lower() for k in ("sağlıklı", "güçlü efor", "teyit"))
 
     if _dagilim:
-        madde_list.append((8, "#f87171",
-            "🚨 <b>Akıllı para çıkış sinyali:</b> Hacim analizi algoritmik dağıtım izleri taşıyor. "
-            "Fiyat yükseliyorsa sahte rally olabilir — OBV ve delta yakından izlenmeli."))
+        sentences.append(
+            "Hacim profili algoritmik dağıtım izleri taşıyor — fiyat yükselirken "
+            "büyük oyuncu arka planda mal veriyor olabilir, OBV ve delta yakından izlenmeli.")
     elif _churning:
-        madde_list.append((7, "#f59e0b",
-            "🌀 <b>Churning (Enerji kaybı):</b> Yüksek hacme karşın fiyat hareket etmiyor. "
-            "Büyük oyuncular malı dağıtıyor olabilir — yön kırılımı öncesi tuzak riski var."))
-    elif _saglikli and f_vol >= 65:
-        madde_list.append((6, "#4ade80",
-            f"💰 <b>Sağlıklı para akışı (skor {f_vol}):</b> Hacim trendi fiyatı destekliyor, kurumsal alım izleri görünüyor. "
-            "Trendin arkasında gerçek alıcı var."))
+        sentences.append(
+            "Yüksek hacme rağmen fiyat anlamlı ilerleyemiyor — churning sinyali; "
+            "bu tablo genellikle büyük oyuncuların dağıtım yaptığı dönemlerde görülür.")
+    elif _emisyon and f_vol >= 60:
+        sentences.append(
+            "Hacim akışında kurumsal emilim izleri var — sessiz ve sürekli birikimle "
+            "fiyat destekleniyor; bu tür hareketler güçlü bir yükselişin öncüsü olabilir.")
+    elif _effort_ok and f_vol >= 60:
+        sentences.append(
+            "Efor ve sonuç dengeli, hacim fiyatı destekliyor — mevcut hareketin "
+            "güvenilir olduğunu gösteriyor, herhangi bir geri çekilme fırsat olarak değerlendirilebilir.")
     elif f_vol <= 35:
-        madde_list.append((6, "#94a3b8",
-            f"📉 <b>Zayıf hacim (skor {f_vol}):</b> Para akışı yetersiz. "
-            "Fiyat hareketi hacimle desteklenmiyor — kırılımlar güvenilmez."))
+        sentences.append(
+            "Hacim oldukça zayıf — fiyat hareketi altyapısız; bu koşullarda oluşan "
+            "kırılımlar sıklıkla geri döner, teyit beklemek kritik.")
     else:
-        madde_list.append((4, "#94a3b8",
-            f"⚖️ <b>Hacim nötr (skor {f_vol}):</b> Para akışı belirgin yön göstermiyor. "
-            "Trend devamı için hacim artışı beklenmeli."))
+        sentences.append(
+            "Para akışı belirgin yön göstermiyor, hacim ortada seyrediyor — "
+            "trend devamı için net bir hacim artışı beklenmeli.")
 
-    # ── 4. YAPI — HACİM ÇELİŞKİSİ / KRİTİK SENARYO ─────────────────
+    # ── 3. YAPI kalitesi + senaryo ──────────────────────────────────
     yapi_s  = _S[0] if len(_S) > 0 else "neutral"
     hacim_s = _S[3] if len(_S) > 3 else "neutral"
     _conflict = (yapi_s == "bull" and hacim_s == "bear") or (yapi_s == "bear" and hacim_s == "bull")
 
     if _conflict:
-        madde_list.append((8, "#f59e0b",
-            "⚡ <b>Yapı-Hacim çelişkisi:</b> Fiyat yapısı ve hacim sinyalleri ters yönde. "
-            "Sistem aynı anda hem alım hem satım baskısı görüyor — net teyit gelene kadar bekleme modu."))
-    elif _cd == "POZİTİF" and _cs >= 70:
-        madde_list.append((7, "#4ade80",
-            f"🏆 <b>Güçlü teknik set-up ({_cs}/100 POZİTİF):</b> 5 faktör sentezi yükseliş senaryosunu destekliyor. "
-            "Mevcut yapı teknik olarak giriş için uygun görünüyor."))
+        sentences.append(
+            "Fiyat yapısı ve hacim sinyalleri birbirine zıt konuşuyor — "
+            "sistem aynı anda hem alım hem satım baskısı görüyor; net teyit gelene "
+            "kadar pozisyon büyütmek riskli.")
+    elif f_yapi >= 65 and f_sen >= 60:
+        sentences.append(
+            "Fiyat yapısı sağlam ve senaryo örüntüsü olumlu — "
+            "teknik set-up olgunlaşmış görünüyor, risk/ödül oranı makul.")
+    elif f_yapi <= 35:
+        sentences.append(
+            "Fiyat yapısı bozuk veya belirsiz — destek seviyeleri ya kırılmış ya "
+            "da henüz oluşmamış; bu yapıda giriş yapmak risk/ödül açısından dezavantajlı.")
+    elif _cd == "POZİTİF" and _cs >= 68:
+        sentences.append(
+            "Beş faktör sentezi güçlü pozitif — sistem genelinin olumlu okuması "
+            "giriş koşullarının olgunlaştığına işaret ediyor.")
     elif _cd == "NEGATİF" and _cs <= 35:
-        madde_list.append((8, "#f87171",
-            f"🔴 <b>Zayıf teknik tablo ({_cs}/100 NEGATİF):</b> Beş faktörün sentezi baskılı. "
-            "Long set-up koşulları oluşmadı — sistem 'bekle' diyor."))
+        sentences.append(
+            "Beş faktör sentezi baskılı — sistemin tamamı bekle diyor; "
+            "düşüşe karşı yeni alım yapmak yerine mevcut pozisyonları gözden geçirmek öncelikli.")
     else:
-        madde_list.append((5, "#f59e0b",
-            f"📊 <b>Karma tablo ({_cs}/100 {_cd}):</b> Bazı faktörler pozitif bazıları negatif. "
-            "Kırılım yönü veya hacim teyidi netleşene kadar net sinyal yok."))
+        sentences.append(
+            "Teknik tablo karma — bazı faktörler olumlu bazıları değil; "
+            "kırılım yönü netleşene kadar küçük pozisyon veya bekleme daha sağlıklı.")
 
-    # ── 5. GENEL SENTEZ (M8'den özet) ───────────────────────────────
-    m8_short = m8_txt.replace("Piyasa Sentezi:", "").strip()
-    if len(m8_short) > 130: m8_short = m8_short[:127] + "..."
-    _col_s = "#4ade80" if _cd == "POZİTİF" else ("#f87171" if _cd == "NEGATİF" else "#f59e0b")
-    madde_list.append((3, _col_s, f"📌 <b>Genel sentez:</b> {m8_short}"))
+    # ── 4. M8 genel sentezi — kendi cümlesiyle ──────────────────────
+    if m8_txt:
+        _m8 = m8_txt
+        if len(_m8) > 140: _m8 = _m8[:_m8.rfind(' ', 0, 140)] + '...'
+        sentences.append(_m8)
 
-    # ── Öncelik sıralaması ───────────────────────────────────────────
-    madde_list.sort(key=lambda x: x[0], reverse=True)
+    # ── 5. M1 fiyat yapısından bağlam (varsa kısa) ──────────────────
+    if m1_txt and len(sentences) < 5:
+        _m1 = m1_txt
+        if len(_m1) > 110: _m1 = _m1[:_m1.rfind(' ', 0, 110)] + '...'
+        sentences.append(_m1)
 
-    # ── Prose render — 5 cümle tek akıcı metin bloğu ──────────────────
-    import re as _re2
-    _emoji_re = _re2.compile(
-        u'[\U0001F300-\U0001FFFF'
-        u'\U00002600-\U000027BF'
-        u'\U0000FE00-\U0000FE0F'
-        u'\U00002000-\U000023FF]+', flags=_re2.UNICODE)
-    def _plain(s):
-        s = _re2.sub(r'<b>(.*?)</b>', r'\1', s)
-        s = _re2.sub(r'<[^>]+>', '', s)
-        s = _emoji_re.sub('', s)
-        return s.strip(' :–-')
-
-    sentences = [_plain(txt) for (_, _, txt) in madde_list[:5]]
-    prose = '  '.join(s for s in sentences if s)
+    prose = '  '.join(s for s in sentences[:5] if s)
 
     return (
         f'<div style="background:rgba(168,85,247,0.07);border-left:3px solid #a855f7;'
