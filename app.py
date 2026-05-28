@@ -16137,7 +16137,7 @@ def _fetch_gemini_ozeti(ticker, data, mtf_ctx, mkt_ctx):
     from google.genai import types
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     if not api_key:
-        return _build_piyasa_ozeti_fallback(ticker, data)
+        raise ValueError("GEMINI_API_KEY bulunamadı (.streamlit/secrets.toml)")
     client = genai.Client(api_key=api_key)
     cfg = types.GenerateContentConfig(
         system_instruction=sys_prompt,
@@ -16148,7 +16148,9 @@ def _fetch_gemini_ozeti(ticker, data, mtf_ctx, mkt_ctx):
     resp = client.models.generate_content(
         model="gemini-2.5-flash", contents=ctx, config=cfg)
     txt = (resp.text or "").strip()
-    return txt if txt else _build_piyasa_ozeti_fallback(ticker, data)
+    if not txt:
+        raise ValueError("Gemini boş yanıt döndü")
+    return txt
 
 
 def render_roadmap_8_panel(ticker):
@@ -16552,15 +16554,18 @@ def render_roadmap_8_panel(ticker):
         _mkt_ctx = (f"BIST KAPALI ({_bms.get('label','')}) — veriler son işlem gününe ait"
                     if (_bms.get("closed") and (".IS" in ticker or ticker.startswith(("XU", "XB"))))
                     else "Normal seans")
+        _ai_ok = False
         try:
             _po_txt = _fetch_gemini_ozeti(ticker, data, _mtf_ctx, _mkt_ctx)
+            _ai_ok = True
         except Exception:
             _po_txt = _build_piyasa_ozeti_fallback(ticker, data)
-        _po_cache[_po_sig] = _po_txt
+        if _ai_ok:
+            _po_cache[_po_sig] = _po_txt   # sadece AI başarılıysa cache'le (fallback'ta tekrar dene)
 
         # 3) Placeholder'ı gerçek analizle yerinde değiştir
         _po_ph.markdown(
-            _compose_card(_po_box_html(_po_txt, loading=False, ai_ok=True)).replace('\n', ''),
+            _compose_card(_po_box_html(_po_txt, loading=False, ai_ok=_ai_ok)).replace('\n', ''),
             unsafe_allow_html=True)
 
     # --- Formasyon mini grafiği — butonu fiyat paneli altında göster (col_right) ---
