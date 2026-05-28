@@ -22816,6 +22816,7 @@ def _render_left_col():
                                _th('10G İsabet') +
                                _th('20G İsabet') +
                                _th('10G Beklenti') +
+                               _th('Profit Factor') +
                                _th('Ort. Kazanç 10G') +
                                _th('Ort. Kayıp 10G') +
                                _th('Piyasa Farkı'))
@@ -22826,6 +22827,7 @@ def _render_left_col():
                             n        = row.get('total_signals', 0)
                             hit10    = row.get('hit_10g_pct')
                             exp10    = row.get('expectancy_10g')
+                            pf10     = row.get('profit_factor_10g')
                             avg_win  = row.get('avg_win_10g')
                             avg_loss = row.get('avg_loss_10g')
                             hit5     = row.get('hit_5g_pct')
@@ -22844,6 +22846,17 @@ def _render_left_col():
                                 exp_col = '#f59e0b'; exp_str = f'%{exp10:+.2f}'
                             else:
                                 exp_col = '#f87171'; exp_str = f'%{exp10:+.2f}'
+
+                            if pf10 is None:
+                                pf_col = '#64748b'; pf_str = '—'
+                            elif pf10 >= 2.0:
+                                pf_col = '#4ade80'; pf_str = f'{pf10:.2f}'
+                            elif pf10 >= 1.5:
+                                pf_col = '#86efac'; pf_str = f'{pf10:.2f}'
+                            elif pf10 >= 1.0:
+                                pf_col = '#f59e0b'; pf_str = f'{pf10:.2f}'
+                            else:
+                                pf_col = '#f87171'; pf_str = f'{pf10:.2f}'
 
                             def _hit_col(v):
                                 if v is None: return '#64748b'
@@ -22873,6 +22886,7 @@ def _render_left_col():
                             r += _td(f"%{hit10}" if hit10 is not None else '—', _hit_col(hit10), bold=True)
                             r += _td(f"%{hit20}" if hit20 is not None else '—', _hit_col(hit20))
                             r += _td(exp_str, exp_col, bold=True)
+                            r += _td(pf_str, pf_col, bold=True)
                             r += _td(f"%{avg_win:+.1f}"  if avg_win  is not None else '—', '#4ade80', italic=True)
                             r += _td(f"%{avg_loss:+.1f}" if avg_loss is not None else '—', '#f87171', italic=True)
                             _alpha_td = (f"<td style='padding:4px 6px;text-align:center;color:{alpha_col};"

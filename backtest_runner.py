@@ -402,6 +402,11 @@ def summarize(df):
                 miss_pct    = 1.0 - (hit_pct / 100)
                 expectancy  = round((hit_pct / 100) * avg_win + miss_pct * avg_loss, 2)
 
+                # Profit Factor: toplam kazanç / toplam kayıp (abs)
+                gross_profit   = float(pos_rets.sum()) if len(pos_rets) > 0 else 0.0
+                gross_loss_abs = float(abs(neg_rets.sum())) if len(neg_rets) > 0 else 0.0
+                profit_factor  = round(gross_profit / gross_loss_abs, 2) if gross_loss_abs > 0 else None
+
                 stop_hit_pct = round(float(stops.mean()) * 100, 1) if len(stops) >= 3 else None
 
                 # Alpha vs XU100
@@ -413,27 +418,29 @@ def summarize(df):
                 xu100s    = grp[xu100col].dropna() if xu100col in grp.columns else pd.Series(dtype=float)
                 xu100_avg = round(float(xu100s.mean()), 2) if len(xu100s) >= 3 else None
 
-                row[f'hit_{fwd}g_pct']      = hit_pct
-                row[f'avg_{fwd}g_ret']      = avg_ret
-                row[f'std_{fwd}g']          = std_dev
-                row[f'avg_win_{fwd}g']      = avg_win
-                row[f'avg_loss_{fwd}g']     = avg_loss
-                row[f'expectancy_{fwd}g']   = expectancy
-                row[f'stop_hit_{fwd}g_pct'] = stop_hit_pct
-                row[f'eval_{fwd}g']         = int(len(hits))
-                row[f'alpha_{fwd}g']        = alpha_avg
-                row[f'xu100_avg_{fwd}g']    = xu100_avg
+                row[f'hit_{fwd}g_pct']       = hit_pct
+                row[f'avg_{fwd}g_ret']       = avg_ret
+                row[f'std_{fwd}g']           = std_dev
+                row[f'avg_win_{fwd}g']       = avg_win
+                row[f'avg_loss_{fwd}g']      = avg_loss
+                row[f'expectancy_{fwd}g']    = expectancy
+                row[f'profit_factor_{fwd}g'] = profit_factor
+                row[f'stop_hit_{fwd}g_pct']  = stop_hit_pct
+                row[f'eval_{fwd}g']          = int(len(hits))
+                row[f'alpha_{fwd}g']         = alpha_avg
+                row[f'xu100_avg_{fwd}g']     = xu100_avg
             else:
-                row[f'hit_{fwd}g_pct']      = None
-                row[f'avg_{fwd}g_ret']      = None
-                row[f'std_{fwd}g']          = None
-                row[f'avg_win_{fwd}g']      = None
-                row[f'avg_loss_{fwd}g']     = None
-                row[f'expectancy_{fwd}g']   = None
-                row[f'stop_hit_{fwd}g_pct'] = None
-                row[f'eval_{fwd}g']         = int(len(hits))
-                row[f'alpha_{fwd}g']        = None
-                row[f'xu100_avg_{fwd}g']    = None
+                row[f'hit_{fwd}g_pct']       = None
+                row[f'avg_{fwd}g_ret']       = None
+                row[f'std_{fwd}g']           = None
+                row[f'avg_win_{fwd}g']       = None
+                row[f'avg_loss_{fwd}g']      = None
+                row[f'expectancy_{fwd}g']    = None
+                row[f'profit_factor_{fwd}g'] = None
+                row[f'stop_hit_{fwd}g_pct']  = None
+                row[f'eval_{fwd}g']          = int(len(hits))
+                row[f'alpha_{fwd}g']         = None
+                row[f'xu100_avg_{fwd}g']     = None
 
         out.append(row)
 

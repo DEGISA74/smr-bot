@@ -1,10 +1,10 @@
 # Patron Terminal — CLAUDE.md
-# app.py için hızlı navigasyon haritası (~22900+ satır — 27 May 2026 BIST takvim + Smart Money 3-kart + tatil fix sonrası)
+# app.py için hızlı navigasyon haritası (~23100+ satır — 28 May 2026: max_workers×10 + tatil tek kaynak + fund.score dedup + backtest altyapısı)
 # Bu dosyayı GÜNCELLEMEYİ UNUTMA: app.py'ye büyük değişiklik yapınca ilgili satır numarasını buraya yaz.
 
 ## Genel Mimari
 - **Dil/Framework**: Python + Streamlit
-- **Ana dosya**: `app.py` (~22900+ satır)
+- **Ana dosya**: `app.py` (~23100+ satır)
 - **Yardımcı modül**: `bist_calendar.py` — BIST işlem takvimi (tatil/arefe/RVOL normalizer) — app.py + smr_core.py her ikisi de import eder
 - **Veri kaynağı**: Yahoo Finance (`yfinance`), parquet cache (`get_batch_data_cached`)
 - **DB**: SQLite (watchlist)
@@ -62,7 +62,9 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 | Fonksiyon | Satır | Açıklama |
 |---|---|---|
 | `is_yahoo_update_needed` | 23 | Parquet cache stale mi? |
-| `init_db` / `load_watchlist_db` | 203–228 | SQLite watchlist |
+| `init_db` / `load_watchlist_db` | 203–228 | SQLite watchlist — **signal_returns tablosu da burada** (28 May 2026) |
+| `backfill_signal_returns` | ~235 | Geçmiş sinyaller için 1–20G getiri hesaplama ve signal_returns'e yazma (Master Scan step 0) |
+| `get_scanner_optimal_windows` | ~295 | Tarama bazlı en iyi tutma süresi: avg_return × hit_rate composite score, peak_day dönderir |
 | `apply_volume_projection` | ~1170 | Hacim projeksiyon — **arefe** aware (27 May 2026): tatil→projeksiyon yok, arefe→12:30 close_min + lineer progress (30dk guard) |
 | `get_benchmark_data` | 482 | Benchmark (BIST100 vs S&P) |
 | `get_batch_data_cached` | 501 | **Ana veri çekme** — parquet cache + yfinance |
@@ -87,7 +89,7 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 | `calculate_volume_delta` | ~2416 | Delta hacim |
 | `calculate_volume_profile_poc` | ~2432 | POC hesabı |
 | `calculate_volume_profile` | ~2484 | Hacim profili |
-| `get_fundamental_score` | ~2819 / ~3111 | Temel analiz skoru (2 versiyon!) |
+| `get_fundamental_score` | ~4539 | Temel analiz skoru — **TEK geçerli tanım: V2 Kademeli Puanlama** (28 May 2026: eski IBD/Buffett sürümü ~5036'dan silindi) |
 | `calculate_master_score` | ~3162 | Master skor |
 | `detect_supply_demand_zones` | ~3325 | Arz/Talep bölgeleri |
 | `calculate_supertrend` | **8725** | SuperTrend (B26) |
@@ -239,6 +241,7 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 
 ### Master Scan sırası (satır 17789–17904):
 ```
+0.  backfill_signal_returns()               (~17789) — %5  [28 May 2026 eklendi]
 1.  get_batch_data_cached.clear() + reload  (~17792)
 2.  scan_ict_batch                          (~17797)
 3.  scan_nadir_firsat_batch                 (~17802)
@@ -261,8 +264,8 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 
 ### Performans
 - `get_batch_data_cached`: parquet dosyasına cache eder, Yahoo'dan sadece eksik/stale tickerlar çeker
-- `max_workers=5` (ThreadPoolExecutor) — scanner içi paralel işlem, güvenle 10'a çıkarılabilir
-- Master Scan 14 adım sıralı çalışıyor → paralel gruplara bölünebilir
+- `max_workers=10` (ThreadPoolExecutor) — **TAMAMLANDI 28 May 2026** (önceki: 5; scan_nadir_firsat_batch özel 8→10 dahil, 10 konum)
+- Master Scan 15 adım sıralı çalışıyor (step 0 = backfill_signal_returns eklendi) → paralel gruplara bölünebilir
 
 ### ICT Mantığı
 - **Demand OB (Talep)**: mutlaka fiyatın ALTINDA olmalı (`ob_high >= curr_price` → gösterme)
@@ -326,9 +329,15 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 - **Neden:** Sistemin temel amacı dönüşleri yakalamak. Market regime filtresi, bir hisse çok zayıf rejimdeyken harekete başladığında (ki genelde tam da o zaman başlar) sinyali ezer → hareketin önemli kısmı kaçırılır. Bu fonksiyon UI/analiz amaçlı kullanılabilir ama scanner giriş filtresi olarak ASLA kullanılmaz.
 - `detect_market_regime` fonksiyonu B27'de (satır 8984) kalabilir, silinmesine gerek yok. Sadece scanner filtresi yapılmaz.
 
+### Çözülen Sorunlar (28 May 2026 — Oturum 6: Teknik Borç + Backtest Altyapısı)
+- ✅ **max_workers 5→10** — Tüm ThreadPoolExecutor çağrıları 10'a yükseltildi (10 konum, scan_nadir_firsat_batch özel 8→10 dahil). IO-bound → GIL etkisi yok, güvenli.
+- ✅ **Tatil günü tek kaynak** — `session_state["bist_market_status"]` B5'te bir kez hesaplanıp 3 tüketici (`render_smart_volume_panel`, `_render_genel_ozet_panel`, `build_ai_prompt`) aynı dict'ten okuyor. Önceki: her fonksiyon `_bist_is_closed()` ayrı ayrı çağırıyordu.
+- ✅ **`get_fundamental_score` tekleştirme** — İki tanım vardı (~4539 V2 Kademeli + ~5036 eski IBD). Eski ~5036 tanımı kaldırıldı. Python son-tanım-kazanır → önceden yanlış sürüm aktifti. V2 artık tek ve geçerli.
+- ✅ **`signal_returns` tablosu + backtest altyapısı** — `init_db()` içine `signal_returns` tablosu eklendi (id, signal_id, scan_type, symbol, signal_date, entry_price, day_offset 1-20, close_price, return_pct, category, UNIQUE(signal_id, day_offset)). `backfill_signal_returns()` fonksiyonu Master Scan step 0'da çalışır, geçmiş sinyallerin 1-20 günlük kapanış getirilerini doldurur. `get_scanner_optimal_windows()` tarama bazlı peak_day hesaplar (composite: avg_return × hit_rate).
+- ✅ **app.js plan kartları** — 4 lokasyonda ELITE→PRO→FREE sıralaması, ELITE rengi #70a8ff→#8b5cf6 (purple), per-report maliyet badge, özellik metinleri güncellendi. `index.html` v=41. Commit: ef2249a.
+
 ### Bilinen Sorunlar / Eksikler
 - Weinstein Stage Analysis: henüz eklenmedi
-- Option 1 (max_workers 5→10): henüz uygulanmadı
-- Master Scan paralelizasyonu: 14 adım sıralı, bağımsız olanlar gruplanabilir
-- Backtesting motoru: signals.db'de sinyal geçmişi var ama hit rate hesaplanmıyor
+- Master Scan paralelizasyonu: 15 adım sıralı, bağımsız olanlar gruplanabilir
+- **Backtest veri birikimi (DEVAM EDİYOR)**: signal_returns tablosu var, veriler dolmaya başladı (3 tarama). 20G dolunca `get_scanner_optimal_windows()` peak_day'leri hesaplayabilecek.
 - **TOP 20 `base_powers` reranking (BEKLEYEN)**: Backtestler tamamlandığında, `fetch_technical_engine_data` (~satır 5726) içindeki `base_powers` dict'i her taramanın gerçek hit rate'ine göre yeniden sıralanacak. Şu an skor ağırlıkları tahmini; en iyi backtest sonucu olan tarama en yüksek puanı alacak şekilde güncellenecek.

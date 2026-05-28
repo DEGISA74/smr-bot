@@ -1,23 +1,31 @@
 {
-  "generated_at": "2026-05-21 22:59",
+  "generated_at": "2026-05-27 08:21",
   "category": "BIST 500 ",
   "public_items": [
     {
-      "ticker": "AEFES",
-      "scenario_id": "C6",
-      "scenario_name": "Piyasa Lideri",
+      "ticker": "ARDYZ",
+      "scenario_id": "C1",
+      "scenario_name": "İdeal Pullback",
       "category": "C",
       "stars": 5,
-      "aging_days": 1
+      "aging_days": 3
     },
     {
-      "ticker": "AYES",
-      "scenario_id": "B2",
-      "scenario_name": "Sessiz Birikim",
-      "category": "B",
+      "ticker": "DARDL",
+      "scenario_id": "C1",
+      "scenario_name": "İdeal Pullback",
+      "category": "C",
       "stars": 5,
-      "aging_days": 1
+      "aging_days": 3
+    },
+    {
+      "ticker": "DESPC",
+      "scenario_id": "C1",
+      "scenario_name": "İdeal Pullback",
+      "category": "C",
+      "stars": 5,
+      "aging_days": 3
     }
   ],
-  "locked_count": 332
+  "locked_count": 421
 }
