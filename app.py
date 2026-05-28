@@ -16120,17 +16120,18 @@ def _fetch_gemini_ozeti(ticker, data, mtf_ctx, mkt_ctx):
     )
 
     sys_prompt = (
-        "Sen 20 yıllık deneyimli, sakin ve net konuşan bir teknik analiz uzmanısın. "
-        "Sana bir hissenin teknik göstergeleri veriliyor. Bu verilerin RÖNTGENİNİ çek: "
-        "en kritik 4-5 noktayı tespit et, sayısal değerleri TEKRARLAMAK yerine NE ANLAMA "
-        "geldiklerini yorumla, faktörler arasındaki ÇELİŞKİ veya UYUMU vurgula, ve sonunda "
-        "net bir kanaat ver (girilir mi, beklenir mi, riskli mi).\n\n"
-        "KURALLAR:\n"
-        "- Madde/numara/başlık KULLANMA. Birbirine bağlı akıcı cümlelerle, tek paragraf yaz.\n"
-        "- EMOJI KULLANMA.\n"
-        "- 'Skor 30' gibi çıplak sayı tekrarı yapma; '...zayıf' / '...baskılı' gibi yorumla.\n"
-        "- Türkçe, uzman ama anlaşılır. Maksimum 5 cümle.\n"
-        "- Sadece verilen verilere dayan, uydurma."
+        "Sen 20 yıllık deneyimli, keskin ve öz konuşan bir teknik analiz uzmanısın. "
+        "Sana bir hissenin teknik göstergeleri veriliyor. Bu verilerin RÖNTGENİNİ çek ve "
+        "EN KRİTİK noktaları yoğun, vurucu bir özetle ver: sayısal değerleri tekrarlama, "
+        "NE ANLAMA geldiklerini yorumla, faktörler arasındaki ÇELİŞKİ/UYUMU vurgula, "
+        "sonunda net kanaat ver (girilir mi, beklenir mi, riskli mi).\n\n"
+        "KURALLAR (KATI):\n"
+        "- ÇOK KISA YAZ: en fazla 3 cümle, toplam 55-65 kelime. Tek paragraf.\n"
+        "- Her cümle bir bilgi taşısın; dolgu/giriş cümlesi, 'genel olarak', 'mevcut durumda' "
+        "gibi boş ifadeler YASAK. Doğrudan konuya gir.\n"
+        "- Madde/numara/başlık/EMOJI KULLANMA.\n"
+        "- Çıplak sayı tekrarı yapma ('...zayıf', '...baskılı' diye yorumla).\n"
+        "- Türkçe, uzman ama net. Sadece verilen verilere dayan, uydurma."
     )
 
     from google import genai
@@ -16143,7 +16144,7 @@ def _fetch_gemini_ozeti(ticker, data, mtf_ctx, mkt_ctx):
         system_instruction=sys_prompt,
         thinking_config=types.ThinkingConfig(thinking_budget=0),
         temperature=0.4,
-        max_output_tokens=400,
+        max_output_tokens=250,
     )
     resp = client.models.generate_content(
         model="gemini-2.5-flash", contents=ctx, config=cfg)
@@ -16525,7 +16526,7 @@ def render_roadmap_8_panel(ticker):
     """
 
     # ── COLUMN 3: Piyasa Özeti — Gemini AI yorumu (placeholder + cache) ──
-    _po_sig    = f"{ticker}|{_comp_score}|{_comp_decision}"
+    _po_sig    = f"v2|{ticker}|{_comp_score}|{_comp_decision}"
     _po_cache  = st.session_state.setdefault("_po_gemini_cache", {})
     _po_cached = _po_cache.get(_po_sig)
     _po_ph     = st.empty()
