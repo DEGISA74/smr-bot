@@ -16030,18 +16030,21 @@ def _build_piyasa_ozeti_html(ticker, data):
     # ── Öncelik sıralaması ───────────────────────────────────────────
     madde_list.sort(key=lambda x: x[0], reverse=True)
 
-    # ── Prose render — 5 cümle, akıcı paragraf formatı ────────────────
-    # Renk açıklamalarını strip ederek düz metin cümleler oluştur
+    # ── Prose render — 5 cümle tek akıcı metin bloğu ──────────────────
     import re as _re2
+    _emoji_re = _re2.compile(
+        u'[\U0001F300-\U0001FFFF'
+        u'\U00002600-\U000027BF'
+        u'\U0000FE00-\U0000FE0F'
+        u'\U00002000-\U000023FF]+', flags=_re2.UNICODE)
     def _plain(s):
         s = _re2.sub(r'<b>(.*?)</b>', r'\1', s)
         s = _re2.sub(r'<[^>]+>', '', s)
-        return s.strip()
+        s = _emoji_re.sub('', s)
+        return s.strip(' :–-')
 
     sentences = [_plain(txt) for (_, _, txt) in madde_list[:5]]
-    prose_html = ""
-    for sent in sentences:
-        prose_html += f'<p style="margin:0 0 7px 0;font-size:0.72rem;color:#cbd5e1;line-height:1.5;">{sent}</p>'
+    prose = '  '.join(s for s in sentences if s)
 
     return (
         f'<div style="background:rgba(168,85,247,0.07);border-left:3px solid #a855f7;'
@@ -16052,7 +16055,7 @@ def _build_piyasa_ozeti_html(ticker, data):
         f'display:flex;align-items:center;gap:4px;">'
         f'<span style="width:6px;height:6px;border-radius:50%;background:#a855f7;'
         f'display:inline-block;box-shadow:0 0 3px #a855f7;"></span>Piyasa Özeti</div>'
-        f'{prose_html}'
+        f'<div style="font-size:0.72rem;color:#cbd5e1;line-height:1.6;">{prose}</div>'
         f'</div>'
     )
 
