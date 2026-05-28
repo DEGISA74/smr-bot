@@ -16151,7 +16151,6 @@ def _fetch_gemini_ozeti(ticker, data, mtf_ctx, mkt_ctx):
     return txt if txt else _build_piyasa_ozeti_fallback(ticker, data)
 
 
-@st.fragment
 def render_roadmap_8_panel(ticker):
     data = calculate_8_point_roadmap(ticker)
     if not data: return
@@ -16484,20 +16483,8 @@ def render_roadmap_8_panel(ticker):
         make_box(num, title, content, "", edu, tf, status=_statuses[i], box_idx=i)
         for i, (num, title, content, edu, tf) in enumerate(_box_defs)
     ]
-    # ── COLUMN 3: Piyasa Özeti — Gemini AI yorumu (deferred / cache'li) ──
-    _po_sig       = f"{ticker}|{_comp_score}|{_comp_decision}"
-    _po_cache     = st.session_state.setdefault("_po_gemini_cache", {})
-    _po_cached    = _po_cache.get(_po_sig)
-    if _po_cached:
-        _piyasa_ozeti_html = _po_box_html(_po_cached, loading=False, ai_ok=True)
-    else:
-        _piyasa_ozeti_html = _po_box_html(
-            "Sizin için uzman analizi raporu hazırlıyorum — tüm sinyaller çapraz okunuyor…",
-            loading=True)
-
     # 3-sütun grid: col1 = Trend + Hacim alt alta | col2 = Teknik Özet | col3 = Piyasa Özeti
     _col1 = f'<div style="display:flex;flex-direction:column;gap:5px;">{boxes[0]}{boxes[1]}</div>'
-    grid_html = _col1 + boxes[2] + _piyasa_ozeti_html
 
     top_section_html = (
         f'<div style="padding:5px 5px 0 5px;">'
@@ -16506,7 +16493,9 @@ def render_roadmap_8_panel(ticker):
         f'</div></div>'
     )
 
-    html_content = f"""
+    def _compose_card(_col3_html):
+        _grid = _col1 + boxes[2] + _col3_html
+        return f"""
     <style>
     .dark-text-fix {{ color: #cbd5e1 !important; }}
     .dark-text-fix b, .dark-text-fix strong {{ color: #f1f5f9 !important; }}
@@ -16527,41 +16516,52 @@ def render_roadmap_8_panel(ticker):
         {top_section_html}
         <div style="padding:5px;">
             <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;">
-                {grid_html}
+                {_grid}
             </div>
         </div>
     </div>
     """
-    st.markdown(html_content.replace('\n', ''), unsafe_allow_html=True)
 
-    # ── Piyasa Özeti — Gemini fetch (sayfa paint olduktan SONRA, fragment scope) ──
-    if not _po_cached:
-        _po_flag = f"_po_fetching::{_po_sig}"
-        if not st.session_state.get(_po_flag):
-            # 1. geçiş: yükleniyor gösterildi, fetch'i sonraki fragment-rerun'a ertele
-            st.session_state[_po_flag] = True
-            st.rerun(scope="fragment")
-        else:
-            # 2. geçiş (fragment-only): Gemini'ye git
-            try:
-                if _mtf and _mtf.get('matrix'):
-                    _mtf_ctx = (f"Dominant {_mtf['dominant']} (uyum %{_mtf['overall_pct']}), "
-                                f"{_mtf['bull_cnt']} hücre yukarı / {_mtf['bear_cnt']} hücre aşağı")
-                else:
-                    _mtf_ctx = "Veri yok"
-            except Exception:
+    # ── COLUMN 3: Piyasa Özeti — Gemini AI yorumu (placeholder + cache) ──
+    _po_sig    = f"{ticker}|{_comp_score}|{_comp_decision}"
+    _po_cache  = st.session_state.setdefault("_po_gemini_cache", {})
+    _po_cached = _po_cache.get(_po_sig)
+    _po_ph     = st.empty()
+
+    if _po_cached:
+        _po_ph.markdown(
+            _compose_card(_po_box_html(_po_cached, loading=False, ai_ok=True)).replace('\n', ''),
+            unsafe_allow_html=True)
+    else:
+        # 1) Önce "hazırlanıyor" ile boya — placeholder anında paint olur
+        _loading_box = _po_box_html(
+            "Sizin için uzman analizi raporu hazırlıyorum — tüm sinyaller çapraz okunuyor…",
+            loading=True)
+        _po_ph.markdown(_compose_card(_loading_box).replace('\n', ''), unsafe_allow_html=True)
+
+        # 2) Gemini'ye git (~2 sn) — kart yükleniyor olarak görünürken
+        try:
+            if _mtf and _mtf.get('matrix'):
+                _mtf_ctx = (f"Dominant {_mtf['dominant']} (uyum %{_mtf['overall_pct']}), "
+                            f"{_mtf['bull_cnt']} hücre yukarı / {_mtf['bear_cnt']} hücre aşağı")
+            else:
                 _mtf_ctx = "Veri yok"
-            _bms = st.session_state.get("bist_market_status", {})
-            _mkt_ctx = (f"BIST KAPALI ({_bms.get('label','')}) — veriler son işlem gününe ait"
-                        if (_bms.get("closed") and (".IS" in ticker or ticker.startswith(("XU", "XB"))))
-                        else "Normal seans")
-            try:
-                _po_txt = _fetch_gemini_ozeti(ticker, data, _mtf_ctx, _mkt_ctx)
-            except Exception:
-                _po_txt = _build_piyasa_ozeti_fallback(ticker, data)
-            _po_cache[_po_sig] = _po_txt
-            st.session_state[_po_flag] = False
-            st.rerun(scope="fragment")
+        except Exception:
+            _mtf_ctx = "Veri yok"
+        _bms = st.session_state.get("bist_market_status", {})
+        _mkt_ctx = (f"BIST KAPALI ({_bms.get('label','')}) — veriler son işlem gününe ait"
+                    if (_bms.get("closed") and (".IS" in ticker or ticker.startswith(("XU", "XB"))))
+                    else "Normal seans")
+        try:
+            _po_txt = _fetch_gemini_ozeti(ticker, data, _mtf_ctx, _mkt_ctx)
+        except Exception:
+            _po_txt = _build_piyasa_ozeti_fallback(ticker, data)
+        _po_cache[_po_sig] = _po_txt
+
+        # 3) Placeholder'ı gerçek analizle yerinde değiştir
+        _po_ph.markdown(
+            _compose_card(_po_box_html(_po_txt, loading=False, ai_ok=True)).replace('\n', ''),
+            unsafe_allow_html=True)
 
     # --- Formasyon mini grafiği — butonu fiyat paneli altında göster (col_right) ---
     _m2_chart = data.get('M2_chart_data')
