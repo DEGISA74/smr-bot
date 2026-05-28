@@ -20320,6 +20320,13 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
                 "Hacim yorumunda bunu unutma: 'düşük hacim' diyebileceğin değer aslında kısa seansa "
                 "göre NORMAL olabilir. RVOL 1.5x üstü gerçekten yüksek aktivite demek."
             )
+        else:
+            _arefe_warn = (
+                f"\nℹ️ SON İŞLEM GÜNÜ NORMAL SEANSTI: {_ai_last_sess_str} tarihli seans "
+                "tam gün işlem gördü (10:00–18:00, 480 dakika). "
+                "Aşağıdaki hacim · RVOL · delta verileri tam seans verisine dayanıyor — "
+                "normalizer uygulanmadı, veriler güvenilir ve karşılaştırılabilir."
+            )
         _ai_holiday_note = (
             "\n\n*** ⛔ PİYASA DURUMU — ÖNCE BUNU OKU (KRİTİK) ***\n"
             f"BUGÜN BIST KAPALI: {_ai_today_label}. Bugün için canlı işlem verisi YOK.\n"
