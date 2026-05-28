@@ -15905,9 +15905,9 @@ def _formasyon_dialog(ticker, chart_data, current_price, display_ticker, pat_lab
 # BÖLÜM 31 — ROADMAP VE BİRLEŞİK SİNYAL PANELİ
 # 8 maddelik yol haritasını ve tüm sinyalleri tek bir panelde birleştirerek kullanıcıya sunan render fonksiyonları.
 # ==============================================================================
-def _build_piyasa_ozeti_html(ticker, data):
+def _build_piyasa_ozeti_fallback(ticker, data):
     """
-    Tüm roadmap sinyallerini çapraz okuyarak uzman yorumu üretir.
+    Kural-bazlı yedek (Gemini erişilemezse). Düz analiz metni döndürür.
     Skor tekrarı değil — kombinasyonların ne anlama geldiği yorumlanır.
     """
     import re as _re
@@ -16057,21 +16057,101 @@ def _build_piyasa_ozeti_html(ticker, data):
         sentences.append(_m1)
 
     prose = '  '.join(s for s in sentences[:5] if s)
+    return prose
 
+
+def _po_box_html(inner_text, loading=False, ai_ok=False):
+    """Piyasa Özeti kutusunun mor kabuğu. inner_text = düz analiz metni veya yükleniyor mesajı."""
+    if loading:
+        badge = ('<span style="font-size:0.55rem;font-weight:700;color:#a855f7;'
+                 'background:rgba(168,85,247,0.12);padding:1px 5px;border-radius:3px;'
+                 'border:1px solid rgba(168,85,247,0.3);">analiz ediliyor…</span>')
+        body = (f'<div style="font-size:0.72rem;color:#94a3b8;line-height:1.6;font-style:italic;'
+                f'display:flex;align-items:flex-start;gap:6px;">'
+                f'<span style="display:inline-block;width:11px;height:11px;border:2px solid #a855f7;'
+                f'border-top-color:transparent;border-radius:50%;flex-shrink:0;margin-top:2px;'
+                f'animation:po-spin 0.8s linear infinite;"></span>'
+                f'<span>{inner_text}</span></div>'
+                f'<style>@keyframes po-spin{{to{{transform:rotate(360deg);}}}}</style>')
+    else:
+        badge = ('<span style="font-size:0.55rem;font-weight:700;color:#a855f7;'
+                 'background:rgba(168,85,247,0.12);padding:1px 5px;border-radius:3px;'
+                 'border:1px solid rgba(168,85,247,0.3);">' + ('AI yorumu' if ai_ok else 'özet') + '</span>')
+        body = f'<div style="font-size:0.72rem;color:#cbd5e1;line-height:1.6;">{inner_text}</div>'
     return (
         f'<div style="background:rgba(168,85,247,0.07);border-left:3px solid #a855f7;'
         f'padding:8px 10px;border-radius:4px;display:flex;flex-direction:column;'
         f'justify-content:flex-start;height:100%;position:relative;">'
-        f'<div style="font-size:0.75rem;font-weight:800;color:#a855f7;margin-bottom:7px;'
-        f'padding-bottom:4px;border-bottom:1px solid rgba(168,85,247,0.25);'
-        f'display:flex;align-items:center;gap:4px;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;'
+        f'padding-bottom:4px;border-bottom:1px solid rgba(168,85,247,0.25);">'
+        f'<div style="font-size:0.75rem;font-weight:800;color:#a855f7;display:flex;align-items:center;gap:4px;">'
         f'<span style="width:6px;height:6px;border-radius:50%;background:#a855f7;'
         f'display:inline-block;box-shadow:0 0 3px #a855f7;"></span>Piyasa Özeti</div>'
-        f'<div style="font-size:0.72rem;color:#cbd5e1;line-height:1.6;">{prose}</div>'
+        f'{badge}</div>'
+        f'{body}'
         f'</div>'
     )
 
 
+def _fetch_gemini_ozeti(ticker, data, mtf_ctx, mkt_ctx):
+    """Gemini ile uzman cross-signal yorumu üretir. Hata olursa kural-bazlı fallback'e düşer."""
+    import re as _re
+    def _clean(s):
+        return _re.sub(r'<[^>]+>', ' ', str(s or '')).replace('  ', ' ').strip()
+
+    _fs = data.get('factor_scores', {})
+    _cs = data.get('composite_score', 50)
+    _cd = data.get('comp_decision', 'BEKLEMEDE')
+    name = get_display_name(ticker)
+
+    ctx = (
+        f"HİSSE: {name}\n"
+        f"Sentezlenmiş Algoritmik Skor: {_cs}/100 ({_cd})\n"
+        f"Alt faktör skorları (0-100): Trend={_fs.get('trend',50)}, "
+        f"Momentum={_fs.get('momentum',50)}, Hacim={_fs.get('volume',50)}, "
+        f"Yapı={_fs.get('yapi',50)}, Senaryo={_fs.get('senaryo',50)}\n"
+        f"Fiyat Davranışı (PA): {_clean(data.get('M1'))}\n"
+        f"Efor vs Sonuç (VSA): {_clean(data.get('M3'))}\n"
+        f"Trend Analizi: {_clean(data.get('M4'))}\n"
+        f"Hacim Algoritması: {_clean(data.get('M5'))}\n"
+        f"Genel Sentez: {_clean(data.get('M8'))}\n"
+        f"Çoklu Zaman Dilimi (MTF): {mtf_ctx}\n"
+        f"Piyasa Durumu: {mkt_ctx}\n"
+    )
+
+    sys_prompt = (
+        "Sen 20 yıllık deneyimli, sakin ve net konuşan bir teknik analiz uzmanısın. "
+        "Sana bir hissenin teknik göstergeleri veriliyor. Bu verilerin RÖNTGENİNİ çek: "
+        "en kritik 4-5 noktayı tespit et, sayısal değerleri TEKRARLAMAK yerine NE ANLAMA "
+        "geldiklerini yorumla, faktörler arasındaki ÇELİŞKİ veya UYUMU vurgula, ve sonunda "
+        "net bir kanaat ver (girilir mi, beklenir mi, riskli mi).\n\n"
+        "KURALLAR:\n"
+        "- Madde/numara/başlık KULLANMA. Birbirine bağlı akıcı cümlelerle, tek paragraf yaz.\n"
+        "- EMOJI KULLANMA.\n"
+        "- 'Skor 30' gibi çıplak sayı tekrarı yapma; '...zayıf' / '...baskılı' gibi yorumla.\n"
+        "- Türkçe, uzman ama anlaşılır. Maksimum 5 cümle.\n"
+        "- Sadece verilen verilere dayan, uydurma."
+    )
+
+    from google import genai
+    from google.genai import types
+    api_key = st.secrets.get("GEMINI_API_KEY", "")
+    if not api_key:
+        return _build_piyasa_ozeti_fallback(ticker, data)
+    client = genai.Client(api_key=api_key)
+    cfg = types.GenerateContentConfig(
+        system_instruction=sys_prompt,
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
+        temperature=0.4,
+        max_output_tokens=400,
+    )
+    resp = client.models.generate_content(
+        model="gemini-2.5-flash", contents=ctx, config=cfg)
+    txt = (resp.text or "").strip()
+    return txt if txt else _build_piyasa_ozeti_fallback(ticker, data)
+
+
+@st.fragment
 def render_roadmap_8_panel(ticker):
     data = calculate_8_point_roadmap(ticker)
     if not data: return
@@ -16404,7 +16484,17 @@ def render_roadmap_8_panel(ticker):
         make_box(num, title, content, "", edu, tf, status=_statuses[i], box_idx=i)
         for i, (num, title, content, edu, tf) in enumerate(_box_defs)
     ]
-    _piyasa_ozeti_html = _build_piyasa_ozeti_html(ticker, data)
+    # ── COLUMN 3: Piyasa Özeti — Gemini AI yorumu (deferred / cache'li) ──
+    _po_sig       = f"{ticker}|{_comp_score}|{_comp_decision}"
+    _po_cache     = st.session_state.setdefault("_po_gemini_cache", {})
+    _po_cached    = _po_cache.get(_po_sig)
+    if _po_cached:
+        _piyasa_ozeti_html = _po_box_html(_po_cached, loading=False, ai_ok=True)
+    else:
+        _piyasa_ozeti_html = _po_box_html(
+            "Sizin için uzman analizi raporu hazırlıyorum — tüm sinyaller çapraz okunuyor…",
+            loading=True)
+
     # 3-sütun grid: col1 = Trend + Hacim alt alta | col2 = Teknik Özet | col3 = Piyasa Özeti
     _col1 = f'<div style="display:flex;flex-direction:column;gap:5px;">{boxes[0]}{boxes[1]}</div>'
     grid_html = _col1 + boxes[2] + _piyasa_ozeti_html
@@ -16443,6 +16533,35 @@ def render_roadmap_8_panel(ticker):
     </div>
     """
     st.markdown(html_content.replace('\n', ''), unsafe_allow_html=True)
+
+    # ── Piyasa Özeti — Gemini fetch (sayfa paint olduktan SONRA, fragment scope) ──
+    if not _po_cached:
+        _po_flag = f"_po_fetching::{_po_sig}"
+        if not st.session_state.get(_po_flag):
+            # 1. geçiş: yükleniyor gösterildi, fetch'i sonraki fragment-rerun'a ertele
+            st.session_state[_po_flag] = True
+            st.rerun(scope="fragment")
+        else:
+            # 2. geçiş (fragment-only): Gemini'ye git
+            try:
+                if _mtf and _mtf.get('matrix'):
+                    _mtf_ctx = (f"Dominant {_mtf['dominant']} (uyum %{_mtf['overall_pct']}), "
+                                f"{_mtf['bull_cnt']} hücre yukarı / {_mtf['bear_cnt']} hücre aşağı")
+                else:
+                    _mtf_ctx = "Veri yok"
+            except Exception:
+                _mtf_ctx = "Veri yok"
+            _bms = st.session_state.get("bist_market_status", {})
+            _mkt_ctx = (f"BIST KAPALI ({_bms.get('label','')}) — veriler son işlem gününe ait"
+                        if (_bms.get("closed") and (".IS" in ticker or ticker.startswith(("XU", "XB"))))
+                        else "Normal seans")
+            try:
+                _po_txt = _fetch_gemini_ozeti(ticker, data, _mtf_ctx, _mkt_ctx)
+            except Exception:
+                _po_txt = _build_piyasa_ozeti_fallback(ticker, data)
+            _po_cache[_po_sig] = _po_txt
+            st.session_state[_po_flag] = False
+            st.rerun(scope="fragment")
 
     # --- Formasyon mini grafiği — butonu fiyat paneli altında göster (col_right) ---
     _m2_chart = data.get('M2_chart_data')
