@@ -1133,6 +1133,29 @@ if 'minervini_data' not in st.session_state: st.session_state.minervini_data = N
 if 'sorgu_gecmisi' not in st.session_state: st.session_state.sorgu_gecmisi = []
 if 'son10_reset' not in st.session_state: st.session_state.son10_reset = 0
 
+# ── BIST Piyasa Durum Kaşesi — TEK KAYNAK (tatil/arefe/hafta sonu) ────────
+# Her oturum başında BİR KEZ hesaplanır. render_smart_volume_panel,
+# _render_genel_ozet_panel ve build_ai_prompt bu değeri okur;
+# _bist_is_closed() üç ayrı yerde çağrılmaz.
+# Değiştirmek gerekirse SADECE bu blok güncellenir.
+if "bist_market_status" not in st.session_state:
+    try:
+        from datetime import date as _bist_date_cls
+        _bms_today = _bist_date_cls.today()
+        _bms_closed = bool(_BIST_CAL_OK and _bist_is_closed())
+        _bms_half   = bool(_BIST_CAL_OK and _bist_is_half_day(_bms_today))
+        _, _bms_lbl = _bist_day_status() if _BIST_CAL_OK else (None, "")
+        st.session_state["bist_market_status"] = {
+            "closed":   _bms_closed,
+            "half_day": _bms_half,
+            "label":    _bms_lbl,
+            "date":     str(_bms_today),
+        }
+    except Exception:
+        st.session_state["bist_market_status"] = {
+            "closed": False, "half_day": False, "label": "", "date": "",
+        }
+
 # --- CALLBACKLER ---
 def on_category_change():
     new_cat = st.session_state.get("selected_category_key")
@@ -2980,7 +3003,7 @@ def scan_chart_patterns(asset_list):
         return None
 
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_single_pattern, sym) for sym in asset_list]
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
@@ -3432,7 +3455,7 @@ def scan_stp_signals(asset_list):
                     stock_dfs.append((symbol, data))
         except: continue
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_single_stock_stp, sym, df) for sym, df in stock_dfs]
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
@@ -3603,7 +3626,7 @@ def scan_hidden_accumulation(asset_list):
         except: continue
 
     # 3. Paralel İşlem (Benchmark'ı da gönderiyoruz)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         # benchmark serisini her fonksiyona argüman olarak geçiyoruz
         futures = [executor.submit(process_single_accumulation, sym, df, benchmark) for sym, df in stock_dfs]
         for future in concurrent.futures.as_completed(futures):
@@ -3742,7 +3765,7 @@ def analyze_market_intelligence(asset_list, category="S&P 500"):
                 if len(asset_list) == 1: stock_dfs.append((symbol, data))
         except: continue
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_single_radar1, sym, df, bench) for sym, df in stock_dfs]
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
@@ -4236,7 +4259,7 @@ def radar2_scan(asset_list, min_price=5, max_price=5000, min_avg_vol_m=0.5):
                 if len(asset_list) == 1: stock_dfs.append((symbol, data))
         except: continue
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_single_radar2, sym, df, idx, min_price, max_price, min_avg_vol_m) for sym, df in stock_dfs]
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
@@ -4373,7 +4396,7 @@ def agent3_breakout_scan(asset_list):
                 if len(asset_list) == 1: stock_dfs.append((symbol, data))
         except: continue
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_single_breakout, sym, df) for sym, df in stock_dfs]
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
@@ -4499,7 +4522,7 @@ def scan_confirmed_breakouts(asset_list, category="S&P 500"):
                 if len(asset_list) == 1: stock_dfs.append((symbol, data))
         except: continue
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_single_confirmed, sym, df, bench) for sym, df in stock_dfs]
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
@@ -5006,59 +5029,10 @@ def scan_prelaunch_bos(asset_list):
     return df_out
 
 # ==============================================================================
-# YENİ: TEMEL ANALİZ VE MASTER SKOR MOTORU (GLOBAL STANDART)
+# TEMEL ANALİZ VE MASTER SKOR MOTORU
+# NOT: get_fundamental_score'un TEK ve geçerli tanımı satır ~4539'dadır (V2 Kademeli
+# Puanlama). Buradaki eski sürüm (IBD/Buffett basit) kaldırıldı — 28 May 2026.
 # ==============================================================================
-
-@st.cache_data(ttl=3600)
-def get_fundamental_score(ticker):
-    """
-    GLOBAL STANDART: IBD, Stockopedia ve Buffett Kriterlerine Göre Puanlama.
-    Veri Kaynağı: yfinance
-    """
-    # Endeks veya Kripto ise Temel Analiz Yoktur
-    if ticker.startswith("^") or "XU" in ticker or "-USD" in ticker:
-        return {"score": 0, "details": [], "valid": False}
-
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        
-        if not info: return {"score": 50, "details": ["Veri Yok"], "valid": False}
-        
-        score = 0
-        details = []
-        
-        # 1. KALİTE (QUALITY) - %40 Etki (Warren Buffett Kriterleri)
-        # ROE (Özkaynak Kârlılığı) - Şirketin verimliliği
-        roe = info.get('returnOnEquity', 0)
-        if roe and roe > 0.20: score += 20; details.append(f"Müthiş ROE: %{roe*100:.1f}")
-        elif roe and roe > 0.12: score += 10
-            
-        # Net Kâr Marjı (Profit Margins) - Rekabet gücü
-        margin = info.get('profitMargins', 0)
-        if margin and margin > 0.20: score += 20; details.append(f"Yüksek Marj: %{margin*100:.1f}")
-        elif margin and margin > 0.10: score += 10
-
-        # 2. BÜYÜME (GROWTH) - %40 Etki (IBD / CANSLIM Kriterleri)
-        # Çeyreklik Ciro Büyümesi
-        rev_growth = info.get('revenueGrowth', 0)
-        if rev_growth and rev_growth > 0.25: score += 20; details.append(f"Ciro Patlaması: %{rev_growth*100:.1f}")
-        elif rev_growth and rev_growth > 0.15: score += 10
-            
-        # Çeyreklik Kâr Büyümesi
-        earn_growth = info.get('earningsGrowth', 0)
-        if earn_growth and earn_growth > 0.20: score += 20; details.append(f"Kâr Büyümesi: %{earn_growth*100:.1f}")
-        elif earn_growth and earn_growth > 0.10: score += 10
-
-        # 3. SAHİPLİK (SMART MONEY) - %20 Etki
-        inst_own = info.get('heldPercentInstitutions', 0)
-        if inst_own and inst_own > 0.40: score += 20; details.append("Fonlar Topluyor")
-        elif inst_own and inst_own > 0.20: score += 10
-            
-        return {"score": min(score, 100), "details": details, "valid": True}
-        
-    except Exception:
-        return {"score": 50, "details": ["Veri Hatası"], "valid": False}
 
 @st.cache_data(ttl=900)
 def calculate_master_score(ticker):
@@ -5488,7 +5462,7 @@ def scan_ict_batch(asset_list):
         except: continue
 
     # 2. Paralel İşleme (Dedektörü Çalıştır)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_single_ict_setup, sym, df) for sym, df in stock_dfs]
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
@@ -5591,7 +5565,7 @@ def scan_nadir_firsat_batch(asset_list):
     """
     Royal Flush Nadir Fırsat — batch veri + paralel (ThreadPoolExecutor).
     Eski sürüm: 500 sembol × ~2sn sıralı = ~17 dakika.
-    Yeni sürüm: batch indir + 8 paralel thread = ~30 saniye.
+    Yeni sürüm: batch indir + 10 paralel thread = ~25 saniye.
     """
     # Adım 1: Batch veriyi al (zaten master scan'de indirildi, cache'den gelir)
     data = get_batch_data_cached(asset_list, period="1y")
@@ -5613,9 +5587,9 @@ def scan_nadir_firsat_batch(asset_list):
         except Exception:
             continue
 
-    # Adım 3: Paralel işle (8 thread, sembol başı 5sn timeout)
+    # Adım 3: Paralel işle (10 thread, sembol başı 5sn timeout)
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
             executor.submit(_nadir_firsat_single_fast, sym, df): sym
             for sym, df in stock_dfs
@@ -6103,7 +6077,7 @@ def scan_minervini_batch(asset_list):
         except: continue
 
     # 3. Paralel Tarama (Yukarıdaki sertleştirilmiş fonksiyonu çağırır)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         # provided_df argümanını kullanarak internetten tekrar indirmeyi engelliyoruz
         futures = [executor.submit(calculate_minervini_sepa, sym, bench, df) for sym, df in stock_dfs]
         for future in concurrent.futures.as_completed(futures):
@@ -10955,12 +10929,14 @@ def render_smart_volume_panel(ticker):
     # Bayram, milli tatil veya hafta sonu: bugün için veri yok → tile boş kalıyor.
     # Son geçerli işlem gününün verisini al, "Son Seans" bağlamıyla göster.
     _is_bist_tkr   = ".IS" in ticker or ticker.startswith(("XU", "XB", "XT", "XY"))
-    _today_closed  = bool(_BIST_CAL_OK and _is_bist_tkr and _bist_is_closed())
-    _today_label   = ""   # ör. "Kurban Bayramı 1. Gün" / "Cumartesi"
+    # ── Tek Kaynak: session_state["bist_market_status"] (B5'te hesaplanır) ─────
+    _bms           = st.session_state.get("bist_market_status", {})
+    _today_closed  = bool(_bms.get("closed", False) and _is_bist_tkr)
+    _today_label   = _bms.get("label", "")  # ör. "Kurban Bayramı 1. Gün" / "Cumartesi"
     _last_sess_str = ""   # ör. "26.05"
     if _today_closed:
         try:
-            _, _today_label = _bist_day_status()
+            pass  # _today_label zaten session_state'ten geldi
             _df_cl = get_safe_historical_data(ticker, period="3mo")
             if _df_cl is not None and len(_df_cl) >= 22:
                 _last_back = 0
@@ -16915,15 +16891,16 @@ def _render_genel_ozet_panel():
                 _gs_cdpct   = _gs_sv.get('cum_delta_pct', 0.0)
 
                 # ── BIST Kapalı Gün Fix — tatil/hafta sonu → son seans verisi ─────
-                _gs_today_closed  = False
-                _gs_today_label   = ""
+                # Tek Kaynak: session_state["bist_market_status"] (B5'te hesaplanır)
+                _gs_bms          = st.session_state.get("bist_market_status", {})
+                _gs_is_bist      = ".IS" in _ticker or _ticker.startswith(("XU", "XB", "XT", "XY"))
+                _gs_today_closed  = bool(_gs_bms.get("closed", False) and _gs_is_bist)
+                _gs_today_label   = _gs_bms.get("label", "")
                 _gs_last_sess_str = ""
                 _gs_last_was_half = False
                 try:
-                    _gs_is_bist = ".IS" in _ticker or _ticker.startswith(("XU", "XB", "XT", "XY"))
-                    if _BIST_CAL_OK and _gs_is_bist and _bist_is_closed() and _gs_df is not None and len(_gs_df) >= 22:
-                        _gs_today_closed = True
-                        _, _gs_today_label = _bist_day_status()
+                    if _gs_today_closed and _gs_df is not None and len(_gs_df) >= 22:
+                        pass  # _gs_today_label zaten session_state'ten geldi
                         # Son volume>0 olan barı bul
                         _gs_last_back = 0
                         for _b in range(1, min(15, len(_gs_df))):
@@ -18073,49 +18050,7 @@ with st.sidebar:
     # --- GENEL ÖZET — başlığın hemen altında ---
     _render_genel_ozet_panel()
 
-    # --- TEKNİK GÖRÜNÜM (GAUGE) ---
-    _render_health_signals_panel()
-
-    # --- ICT BOTTOM LINE (SONUÇ) ---
-    try:
-        if st.session_state.get('ticker'):
-            _bl_data = calculate_ict_deep_analysis(st.session_state.ticker)
-            _bl_text = _bl_data.get('bottom_line', '') if _bl_data else ''
-            if _bl_text:
-                _bl_ticker = get_display_name(st.session_state.ticker)
-                _bl_info = fetch_stock_info(st.session_state.ticker)
-                _bl_price = _bl_info.get('price', 0) if _bl_info else 0
-                _bl_price_str = f"{int(_bl_price):,}" if _bl_price >= 1000 else f"{_bl_price:.2f}"
-                st.markdown(f"""
-<style>
-@keyframes ict-bl-pulse {{
-    0%,100% {{ box-shadow:0 0 0 0 rgba(13,148,136,0.7),0 4px 12px rgba(0,0,0,0.4); }}
-    50%     {{ box-shadow:0 0 0 7px rgba(13,148,136,0),0 4px 12px rgba(0,0,0,0.4); }}
-}}
-.ict-bl-wrap {{
-    margin-bottom:8px;
-    border-radius:10px;
-    overflow:hidden;
-    border:3px solid #0d9488;
-    animation:ict-bl-pulse 3s ease-in-out 5;
-}}
-</style>
-<div class="ict-bl-wrap">
-  <div style="padding:8px 13px;
-              background:linear-gradient(90deg,#071e20 0%,#0d2020 100%);
-              display:flex;align-items:center;gap:8px;
-              font-size:1rem;font-weight:800;color:#2dd4bf;
-              letter-spacing:0.05em;
-              border-bottom:1px solid #0d9488;">
-    <span style="font-size:1.1rem;line-height:1;">🖥️</span>
-    ICT BOTTOM LINE / SONUÇ
-  </div>
-  <div style="background:linear-gradient(135deg,#071e20,#0a1215);padding:10px 12px;text-align:center;">
-    <div style="display:inline-block;background:rgba(45,212,191,0.1);border:1px solid rgba(45,212,191,0.25);border-radius:5px;padding:3px 14px;margin-bottom:7px;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:0.95rem;color:#2dd4bf;letter-spacing:0.03em;">{_bl_ticker}&nbsp;&nbsp;—&nbsp;&nbsp;{_bl_price_str}</div>
-    <div style="font-size:0.78rem;color:#cbd5e1;font-style:italic;line-height:1.55;">"{_bl_text}"</div>
-  </div>
-</div>""", unsafe_allow_html=True)
-    except: pass
+    # (TEKNİK GÖRÜNÜM + ICT BOTTOM LINE → sağ sütuna CANLI SİNYALLER altına taşındı)
 
     # 🚀 ERKEN RADAR — Hareket öncesi senaryolu tespit motoru (eski Long Radar yerine)
     if st.session_state.get('ticker'):
@@ -19644,15 +19579,16 @@ if st.session_state.generate_prompt:
     # KRİTİK: Tatil/hafta sonu olduğunda smart_volume değerleri 0 olur → AI çöp analiz üretir.
     # Burada son işlem gününün verisini hesaplayıp dna+pa_data smart_volume dict'lerine
     # enjekte ediyoruz. Ayrıca son işlem günü arefe (yarım gün) ise prompt'a not düşülecek.
-    _ai_today_closed  = False
-    _ai_today_label   = ""
+    # Tek Kaynak: session_state["bist_market_status"] (B5'te hesaplanır)
+    _ai_bms           = st.session_state.get("bist_market_status", {})
+    _ai_is_bist       = ".IS" in t or t.startswith(("XU", "XB", "XT", "XY"))
+    _ai_today_closed  = bool(_ai_bms.get("closed", False) and _ai_is_bist)
+    _ai_today_label   = _ai_bms.get("label", "")
     _ai_last_sess_str = ""
     _ai_last_was_half = False
     try:
-        _ai_is_bist = ".IS" in t or t.startswith(("XU", "XB", "XT", "XY"))
-        if _BIST_CAL_OK and _ai_is_bist and _bist_is_closed() and df is not None and len(df) >= 22:
-            _ai_today_closed = True
-            _, _ai_today_label = _bist_day_status()
+        if _ai_today_closed and df is not None and len(df) >= 22:
+            pass  # _ai_today_label zaten session_state'ten geldi
             _ai_last_back = 0
             for _b in range(1, min(15, len(df))):
                 if float(df['Volume'].iloc[-_b]) > 0:
@@ -22993,7 +22929,51 @@ def _render_right_col():
     
     # --- BİRLEŞİK SİNYAL PANELİ (Canlı Sinyaller + Tarama Sonuçları) ---
     render_unified_signals_panel(st.session_state.ticker)
-    
+
+    # --- TEKNİK GÖRÜNÜM (GAUGE) — sidebar'dan taşındı ---
+    _render_health_signals_panel()
+
+    # --- ICT BOTTOM LINE (SONUÇ) — sidebar'dan taşındı ---
+    try:
+        if st.session_state.get('ticker'):
+            _bl_data = calculate_ict_deep_analysis(st.session_state.ticker)
+            _bl_text = _bl_data.get('bottom_line', '') if _bl_data else ''
+            if _bl_text:
+                _bl_ticker = get_display_name(st.session_state.ticker)
+                _bl_info = fetch_stock_info(st.session_state.ticker)
+                _bl_price = _bl_info.get('price', 0) if _bl_info else 0
+                _bl_price_str = f"{int(_bl_price):,}" if _bl_price >= 1000 else f"{_bl_price:.2f}"
+                st.markdown(f"""
+<style>
+@keyframes ict-bl-pulse {{
+    0%,100% {{ box-shadow:0 0 0 0 rgba(13,148,136,0.7),0 4px 12px rgba(0,0,0,0.4); }}
+    50%     {{ box-shadow:0 0 0 7px rgba(13,148,136,0),0 4px 12px rgba(0,0,0,0.4); }}
+}}
+.ict-bl-wrap {{
+    margin-bottom:8px;
+    border-radius:10px;
+    overflow:hidden;
+    border:3px solid #0d9488;
+    animation:ict-bl-pulse 3s ease-in-out 5;
+}}
+</style>
+<div class="ict-bl-wrap">
+  <div style="padding:8px 13px;
+              background:linear-gradient(90deg,#071e20 0%,#0d2020 100%);
+              display:flex;align-items:center;gap:8px;
+              font-size:1rem;font-weight:800;color:#2dd4bf;
+              letter-spacing:0.05em;
+              border-bottom:1px solid #0d9488;">
+    <span style="font-size:1.1rem;line-height:1;">🖥️</span>
+    ICT BOTTOM LINE / SONUÇ
+  </div>
+  <div style="background:linear-gradient(135deg,#071e20,#0a1215);padding:10px 12px;text-align:center;">
+    <div style="display:inline-block;background:rgba(45,212,191,0.1);border:1px solid rgba(45,212,191,0.25);border-radius:5px;padding:3px 14px;margin-bottom:7px;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:0.95rem;color:#2dd4bf;letter-spacing:0.03em;">{_bl_ticker}&nbsp;&nbsp;—&nbsp;&nbsp;{_bl_price_str}</div>
+    <div style="font-size:0.78rem;color:#cbd5e1;font-style:italic;line-height:1.55;">"{_bl_text}"</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+    except: pass
+
     # 2. Price Action Paneli
     render_price_action_panel(st.session_state.ticker)
     
@@ -23407,5 +23387,5 @@ def _render_right_col():
         pass
 
 with col_right:
-    with st.container(height=1800, border=False):
+    with st.container(height=2300, border=False):
         _render_right_col()
