@@ -15905,6 +15905,161 @@ def _formasyon_dialog(ticker, chart_data, current_price, display_ticker, pat_lab
 # BÖLÜM 31 — ROADMAP VE BİRLEŞİK SİNYAL PANELİ
 # 8 maddelik yol haritasını ve tüm sinyalleri tek bir panelde birleştirerek kullanıcıya sunan render fonksiyonları.
 # ==============================================================================
+def _build_piyasa_ozeti_html(ticker, data):
+    """
+    Mevcut roadmap verisinden 5 öncelikli madde üretir.
+    Yeni hesap yapmaz — data dict + session_state okur. 0 gecikme.
+    """
+    import re as _re
+    def _strip(txt): return _re.sub(r'<[^>]+>', '', str(txt or ''))
+
+    _fs  = data.get('factor_scores', {})
+    _cs  = data.get('composite_score', 50)
+    _cd  = data.get('comp_decision', 'BEKLEMEDE')
+    _S   = data.get('S', ['neutral'] * 8)
+    _is_bist = ".IS" in ticker or ticker.startswith(("XU", "XB"))
+
+    f_trend = _fs.get('trend', 50)
+    f_mom   = _fs.get('momentum', 50)
+    f_vol   = _fs.get('volume', 50)
+
+    m3_txt = _strip(data.get('M3', ''))
+    m5_txt = _strip(data.get('M5', ''))
+    m8_txt = _strip(data.get('M8', ''))
+
+    madde_list = []  # (öncelik, renk_hex, html_metin)
+
+    # ── 1. TATİL / PAZAR bağlamı ────────────────────────────────────
+    _bms     = st.session_state.get("bist_market_status", {})
+    _closed  = bool(_bms.get("closed", False)) and _is_bist
+    _bms_lbl = _bms.get("label", "")
+    _last_half = False
+    try:
+        from bist_calendar import is_half_day as _ihd
+        import datetime as _dtt
+        _yday = _dtt.date.today() - _dtt.timedelta(days=1)
+        _last_half = _ihd(_yday)
+    except Exception: pass
+
+    if _closed:
+        if "arefe" in _bms_lbl.lower() or _last_half:
+            madde_list.append((10, "#f59e0b",
+                f"⚠️ <b>Arefe / yarım seans bağlamı:</b> Hacim ve delta verileri {_bms_lbl} normalizer'ı ile düzeltildi (÷0.3125). "
+                "'Düşük hacim' görünse de kısa seansa göre normal olabilir — yorumda bunu dikkate al."))
+        elif any(x in _bms_lbl.lower() for x in ("pazar", "cumartesi")):
+            madde_list.append((10, "#f59e0b",
+                f"📅 <b>Bugün {_bms_lbl} — BIST kapalı.</b> Gösterilen tüm veriler son işlem gününe ait (tam seans, normalizer uygulanmadı). "
+                "Seans açılışında tablo değişebilir."))
+        else:
+            madde_list.append((10, "#f87171",
+                f"⛔ <b>{_bms_lbl} — BIST kapalı.</b> Veriler son işlem gününe ait. "
+                "Bayram sonrası açılışta boşluk (gap) riski göz önünde bulundurulmalı."))
+
+    # ── 2. TREND — MOMENTUM ÇELİŞKİSİ / UYUMU ──────────────────────
+    if f_trend >= 60 and f_mom <= 40:
+        madde_list.append((9, "#f59e0b",
+            f"⚠️ <b>Trend-Momentum çelişkisi:</b> Ana trend pozitif (skor {f_trend}) ama kısa vadeli momentum zayıf ({f_mom}). "
+            "Momentum teyidi gelmeden trend güvenilir değil — düzeltme veya yatay bant ihtimali yüksek."))
+    elif f_trend <= 40 and f_mom >= 60:
+        madde_list.append((9, "#38bdf8",
+            f"🔄 <b>Karşı-trend toparlanma:</b> Ana trend baskılı (skor {f_trend}) ama kısa vadeli ivme güçleniyor ({f_mom}). "
+            "Dip tepkisi veya erken dönüş sinyali olabilir — trend teyidi beklenmeli."))
+    elif f_trend >= 60 and f_mom >= 60:
+        madde_list.append((7, "#4ade80",
+            f"✅ <b>Trend ve momentum hizalı:</b> Ana trend ({f_trend}) ve kısa vade ({f_mom}) aynı yönde. "
+            "Teknik yapı sağlam, mevcut hareket teyit almış görünüyor."))
+    else:
+        madde_list.append((5, "#94a3b8",
+            f"⚖️ <b>Yön belirsizliği:</b> Trend ({f_trend}) ve momentum ({f_mom}) net sinyal üretmiyor. "
+            "Kırılım yönü belirleyici olacak."))
+
+    # ── 3. PARA AKIŞI / HACİM ───────────────────────────────────────
+    _dagilim  = "dağıtım" in m5_txt.lower() or "algoritmik dağıtım" in m5_txt.lower()
+    _churning = "churning" in m3_txt.lower() or "hacimsiz" in m3_txt.lower()
+    _saglikli = "sağlıklı" in m3_txt.lower() or "agresif kurumsal" in m5_txt.lower()
+
+    if _dagilim:
+        madde_list.append((8, "#f87171",
+            "🚨 <b>Akıllı para çıkış sinyali:</b> Hacim analizi algoritmik dağıtım izleri taşıyor. "
+            "Fiyat yükseliyorsa sahte rally olabilir — OBV ve delta yakından izlenmeli."))
+    elif _churning:
+        madde_list.append((7, "#f59e0b",
+            "🌀 <b>Churning (Enerji kaybı):</b> Yüksek hacme karşın fiyat hareket etmiyor. "
+            "Büyük oyuncular malı dağıtıyor olabilir — yön kırılımı öncesi tuzak riski var."))
+    elif _saglikli and f_vol >= 65:
+        madde_list.append((6, "#4ade80",
+            f"💰 <b>Sağlıklı para akışı (skor {f_vol}):</b> Hacim trendi fiyatı destekliyor, kurumsal alım izleri görünüyor. "
+            "Trendin arkasında gerçek alıcı var."))
+    elif f_vol <= 35:
+        madde_list.append((6, "#94a3b8",
+            f"📉 <b>Zayıf hacim (skor {f_vol}):</b> Para akışı yetersiz. "
+            "Fiyat hareketi hacimle desteklenmiyor — kırılımlar güvenilmez."))
+    else:
+        madde_list.append((4, "#94a3b8",
+            f"⚖️ <b>Hacim nötr (skor {f_vol}):</b> Para akışı belirgin yön göstermiyor. "
+            "Trend devamı için hacim artışı beklenmeli."))
+
+    # ── 4. YAPI — HACİM ÇELİŞKİSİ / KRİTİK SENARYO ─────────────────
+    yapi_s  = _S[0] if len(_S) > 0 else "neutral"
+    hacim_s = _S[3] if len(_S) > 3 else "neutral"
+    _conflict = (yapi_s == "bull" and hacim_s == "bear") or (yapi_s == "bear" and hacim_s == "bull")
+
+    if _conflict:
+        madde_list.append((8, "#f59e0b",
+            "⚡ <b>Yapı-Hacim çelişkisi:</b> Fiyat yapısı ve hacim sinyalleri ters yönde. "
+            "Sistem aynı anda hem alım hem satım baskısı görüyor — net teyit gelene kadar bekleme modu."))
+    elif _cd == "POZİTİF" and _cs >= 70:
+        madde_list.append((7, "#4ade80",
+            f"🏆 <b>Güçlü teknik set-up ({_cs}/100 POZİTİF):</b> 5 faktör sentezi yükseliş senaryosunu destekliyor. "
+            "Mevcut yapı teknik olarak giriş için uygun görünüyor."))
+    elif _cd == "NEGATİF" and _cs <= 35:
+        madde_list.append((8, "#f87171",
+            f"🔴 <b>Zayıf teknik tablo ({_cs}/100 NEGATİF):</b> Beş faktörün sentezi baskılı. "
+            "Long set-up koşulları oluşmadı — sistem 'bekle' diyor."))
+    else:
+        madde_list.append((5, "#f59e0b",
+            f"📊 <b>Karma tablo ({_cs}/100 {_cd}):</b> Bazı faktörler pozitif bazıları negatif. "
+            "Kırılım yönü veya hacim teyidi netleşene kadar net sinyal yok."))
+
+    # ── 5. GENEL SENTEZ (M8'den özet) ───────────────────────────────
+    m8_short = m8_txt.replace("Piyasa Sentezi:", "").strip()
+    if len(m8_short) > 130: m8_short = m8_short[:127] + "..."
+    _col_s = "#4ade80" if _cd == "POZİTİF" else ("#f87171" if _cd == "NEGATİF" else "#f59e0b")
+    madde_list.append((3, _col_s, f"📌 <b>Genel sentez:</b> {m8_short}"))
+
+    # ── Öncelik sıralaması ───────────────────────────────────────────
+    madde_list.sort(key=lambda x: x[0], reverse=True)
+
+    # ── HTML render ─────────────────────────────────────────────────
+    items_html = ""
+    for i, (_, clr, txt) in enumerate(madde_list[:5], 1):
+        items_html += (
+            f'<div style="display:flex;gap:5px;margin-bottom:5px;padding-bottom:4px;'
+            f'border-bottom:1px dashed rgba(100,116,139,0.18);align-items:flex-start;">'
+            f'<div style="min-width:15px;height:15px;border-radius:50%;background:{clr};'
+            f'color:#0f172a;font-size:0.52rem;font-weight:900;display:flex;align-items:center;'
+            f'justify-content:center;flex-shrink:0;margin-top:2px;">{i}</div>'
+            f'<div style="font-size:0.67rem;color:#cbd5e1;line-height:1.35;">{txt}</div>'
+            f'</div>'
+        )
+
+    return (
+        f'<div style="background:rgba(168,85,247,0.07);border-left:3px solid #a855f7;'
+        f'padding:5px 7px;border-radius:4px;display:flex;flex-direction:column;'
+        f'justify-content:flex-start;height:100%;position:relative;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;'
+        f'margin-bottom:5px;border-bottom:1px solid rgba(168,85,247,0.25);padding-bottom:4px;">'
+        f'<div style="font-size:0.75rem;font-weight:800;color:#a855f7;display:flex;align-items:center;gap:4px;">'
+        f'<span style="width:6px;height:6px;border-radius:50%;background:#a855f7;'
+        f'display:inline-block;box-shadow:0 0 3px #a855f7;"></span>4. Piyasa Özeti</div>'
+        f'<div style="font-size:0.55rem;font-weight:700;color:#64748b;background:rgba(100,116,139,0.1);'
+        f'padding:1px 3px;border-radius:3px;border:1px solid rgba(100,116,139,0.2);">⏱️ Genel Bakış</div>'
+        f'</div>'
+        f'{items_html}'
+        f'</div>'
+    )
+
+
 def render_roadmap_8_panel(ticker):
     data = calculate_8_point_roadmap(ticker)
     if not data: return
@@ -15957,32 +16112,27 @@ def render_roadmap_8_panel(ticker):
         rank = {"bull": 3, "warning": 2, "bear": 2, "neutral": 1}
         return a if rank.get(a, 0) >= rank.get(b, 0) else b
     _statuses = [
-        _stronger_status(_statuses_orig[0], _statuses_orig[1]),  # M1+M2 birleşik
-        _statuses_orig[2],  # M3 VSA
         _statuses_orig[3],  # M4 Trend
         _statuses_orig[4],  # M5 Hacim
         _statuses_orig[7],  # M8 Sentez
+        "neutral",          # Piyasa Özeti (içerik-güdümlü renk)
     ]
     _now_str = datetime.now().strftime("%H:%M")
 
-    # M1+M2 birleştirilmiş içerik (Fiyat Davranışı + Formasyon Tespiti)
-    _m1_plus_m2 = (
+    # M1+M3 birleştirilmiş içerik (Fiyat Davranışı + Efor vs Sonuç/VSA — Formasyon bölümü kaldırıldı)
+    _m1_plus_m3 = (
         f'{data["M1"]}'
         f'<div style="margin-top:6px;padding-top:5px;border-top:1px dashed rgba(100,116,139,0.25);">'
-        f'<span style="font-size:0.68rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">Formasyon:</span><br>'
-        f'{data["M2"]}'
+        f'<span style="font-size:0.68rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">Efor vs Sonuç (VSA):</span><br>'
+        f'{data["M3"]}'
         f'</div>'
     )
 
     _box_defs = [
-        ("1", "Fiyat & Formasyon",   _m1_plus_m2, "Günlük mum yapısı + Price Action dizilimi + geometrik formasyonlar (kısa-orta vade).", "Kısa-Orta Vade"),
-        ("2", "Efor vs Sonuç (VSA)", data['M3'],  "Hacmin fiyata yansıma kalitesi (Churning kontrolü).",                                  "Son 3 Gün"),
-        ("3", "Trend Skoru",         data['M4'],  "Sıkışma, hacim daralması ve hareketli ortalama yakınsaması.",                          "1-3 Ay"),
-        ("4", "Hacim Algoritması",   data['M5'],  "Kurumsal emilim (Absorption) ve agresif piyasa akışı.",                                "Son 20 Gün"),
-        ("5", "Teknik Özet",         data['M8'],  "Tüm verilerin genel sentezi ve piyasa beklentisi.",                                    "Genel Bakış"),
+        ("1", "Trend Skoru",       data['M4'],  "Sıkışma, hacim daralması ve hareketli ortalama yakınsaması.", "1-3 Ay"),
+        ("2", "Hacim Algoritması", data['M5'],  "Kurumsal emilim (Absorption) ve agresif piyasa akışı.",       "Son 20 Gün"),
+        ("3", "Teknik Özet",       data['M8'],  "Tüm verilerin genel sentezi ve piyasa beklentisi.",            "Genel Bakış"),
     ]
-    # Not: Eski Card 6 (Yön Beklentisi) → üstteki Composite Skor kartında (Momentum alt faktörü)
-    #      Eski Card 7 (Ayı/Boğa Senaryoları) → üstteki Trade Plan kartında (Stop/TP1/TP2)
 
     boxes = [
         make_box(num, title, content, "", edu, tf, status=_statuses[i], box_idx=i)
@@ -15994,7 +16144,7 @@ def render_roadmap_8_panel(ticker):
     # CSS: hover ile edu tooltip görünür hale gelir
     hover_css = "".join(
         f".rm-box-{i}:hover .rm-edu-tip-{i}{{opacity:1!important;max-height:80px!important;}}"
-        for i in range(5)
+        for i in range(3)
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -16214,7 +16364,7 @@ def render_roadmap_8_panel(ticker):
         f'<span style="font-size:0.7rem;font-weight:800;color:{_fp_hex};letter-spacing:0.04em;">🕯️ Fiyat & Formasyon</span>'
         f'<span style="font-size:0.55rem;font-weight:700;color:#64748b;background:rgba(100,116,139,0.1);padding:1px 4px;border-radius:3px;border:1px solid rgba(100,116,139,0.2);">⏱️ Kısa-Orta Vade</span>'
         f'</div>'
-        f'<div style="font-size:0.7rem;line-height:1.3;" class="dark-text-fix">{_m1_plus_m2}</div>'
+        f'<div style="font-size:0.7rem;line-height:1.3;" class="dark-text-fix">{_m1_plus_m3}</div>'
         f'</div>'
     )
 
@@ -16238,14 +16388,12 @@ def render_roadmap_8_panel(ticker):
             f'Composite skor düşük ({_comp_score}/100) — long set-up uygun değil.</div>'
         )
 
-    # _box_defs[0] ve _statuses[0]'ı Trade Plan ile değiştir, grid'i yeniden kur
-    _box_defs[0] = ("1", "Olası Trade Plan", _tp_box_inner, "Giriş, stop, TP1, TP2 ve R/R kalitesi.", _tp_box_tf)
-    _statuses[0] = _tp_box_status
     boxes = [
         make_box(num, title, content, "", edu, tf, status=_statuses[i], box_idx=i)
         for i, (num, title, content, edu, tf) in enumerate(_box_defs)
     ]
-    grid_html = "".join(boxes)
+    _piyasa_ozeti_html = _build_piyasa_ozeti_html(ticker, data)
+    grid_html = "".join(boxes) + _piyasa_ozeti_html
 
     top_section_html = (
         f'<div style="padding:5px 5px 0 5px;">'
@@ -16274,7 +16422,7 @@ def render_roadmap_8_panel(ticker):
         </div>
         {top_section_html}
         <div style="padding:5px;">
-            <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;">
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;">
                 {grid_html}
             </div>
         </div>
