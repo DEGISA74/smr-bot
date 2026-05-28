@@ -1238,22 +1238,35 @@ function renderTgAdPanel() {
       <div style="font-size:12px;font-weight:700;color:var(--text);line-height:1.4">Hisse adını yaz,<br>analiz önüne gelsin.</div>
     </div>
 
-    <!-- FREE -->
+    <!-- ELITE -->
     <div class="tg-tier-card">
       <div style="padding:8px 10px 0">
-        <div style="font-size:9px;font-weight:700;color:#00e676;letter-spacing:1px;text-transform:uppercase">ÜCRETSİZ</div>
+        <div style="font-size:9px;font-weight:700;color:#8b5cf6;letter-spacing:1px;text-transform:uppercase">ELİTE</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin:2px 0 6px">
-          <span style="font-size:20px;font-weight:900;color:#00e676">FREE</span>
-          <span style="font-size:11px;color:var(--text-muted)">₺0 /ay</span>
+          <span style="font-size:20px;font-weight:900;color:#8b5cf6">ELITE</span>
+          <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
         </div>
-        <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
-          📊 Günde 1 hisse kartı · Aylık 30
+        <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#8b5cf6;margin-bottom:5px">
+          👑 Günde 8 · Aylık 240 rapor (~2.50₺ / rapor)
         </div>
-        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Anlık sinyal değerlendirmesi</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Momentum-Para Akışı &amp; Sentiment Grafikleri</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Tam sayfa Derinlemesine AI uzman analizi</strong></span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Kapsamlı SMR yapı-anatomi-kurumsal ayak izi değerlendirmesi</strong></span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her işlem günü 19:00 bülteni (XU100)</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>631 BIST · 84 kripto · 6 emtia</span></div>
+        </div>
+        <!-- HER HAFTA SONU -->
+        <div style="margin-top:8px;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2);border-radius:4px;padding:7px 8px">
+          <div style="font-size:9px;font-weight:800;color:#8b5cf6;letter-spacing:0.8px;margin-bottom:3px">🗓 HER HAFTA SONU</div>
+          <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:2px">Hafta Sonu Özel Tarama Özeti</div>
+          <div style="font-size:9.5px;color:var(--text-muted);margin-bottom:8px;line-height:1.4">Tüm BIST taranır — yalnızca en sıkı filtreden geçenler listelenir.</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#ffd700;font-weight:700">⭐ CONFLUENCE TARAMA</div>
+            <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#8b5cf6;font-weight:700">✦ ELİTE SET-UP'LAR</div>
+            <div style="background:rgba(255,100,50,0.1);border:1px solid rgba(255,100,50,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#ff8c5a;font-weight:700">🎯 ICT SNIPER TARAMA</div>
+          </div>
         </div>
       </div>
       <div style="padding:8px 10px">
@@ -1270,14 +1283,15 @@ function renderTgAdPanel() {
           <span style="font-size:11px;color:var(--text-muted)">₺349 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 3 hisse/coin/emtia analizi · Aylık 90 analiz
+          📊 Günde 3 · Aylık 90 rapor (~3.88₺ / rapor)
         </div>
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Momentum-Para Akışı &amp; Sentiment Grafikleri</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Detaylı Teknik Kart</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her akşam 19:00 BIST100 Teknik Kartı</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Tam sayfa 7 maddelik Detaylı Teknik Analiz (PA + ICT) Kart</strong></span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her işlem günü 19:00 bülteni (XU100)</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>631 BIST · 84 kripto · 6 emtia</span></div>
         </div>
       </div>
       <div style="padding:8px 10px">
@@ -1285,37 +1299,21 @@ function renderTgAdPanel() {
       </div>
     </div>
 
-    <!-- ELITE -->
+    <!-- FREE -->
     <div class="tg-tier-card">
       <div style="padding:8px 10px 0">
-        <div style="font-size:9px;font-weight:700;color:#70a8ff;letter-spacing:1px;text-transform:uppercase">ELİTE</div>
+        <div style="font-size:9px;font-weight:700;color:#00e676;letter-spacing:1px;text-transform:uppercase">ÜCRETSİZ</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin:2px 0 6px">
-          <span style="font-size:20px;font-weight:900;color:#70a8ff">ELITE</span>
-          <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
+          <span style="font-size:20px;font-weight:900;color:#00e676">FREE</span>
+          <span style="font-size:11px;color:var(--text-muted)">₺0 /ay</span>
         </div>
-        <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 8 hisse/coin/emtia detaylı analizi · Aylık 240 analiz
+        <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
+          📊 Günde 1 hisse kartı (aylık 30)
         </div>
-        <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
-          📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
-        </div>
-        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Momentum-Para Akışı &amp; Sentiment Grafikleri</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Uzman Analiz Raporu</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her akşam 19:00 detaylı BIST100 bülteni</span></div>
-        </div>
-        <!-- HER HAFTA SONU -->
-        <div style="margin-top:8px;background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.2);border-radius:4px;padding:7px 8px">
-          <div style="font-size:9px;font-weight:800;color:#70a8ff;letter-spacing:0.8px;margin-bottom:3px">🗓 HER HAFTA SONU</div>
-          <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:2px">TIER 1 Tarama Raporu</div>
-          <div style="font-size:9.5px;color:var(--text-muted);margin-bottom:8px;line-height:1.4">Tüm BIST taranır — yalnızca en sıkı filtreden geçenler listelenir.</div>
-          <div style="display:flex;flex-direction:column;gap:4px">
-            <div style="background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#ffd700;font-weight:700">⭐ CONFLUENCE TARAMA</div>
-            <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#70a8ff;font-weight:700">✦ ELİTE SET-UP'LAR</div>
-            <div style="background:rgba(255,100,50,0.1);border:1px solid rgba(255,100,50,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#ff8c5a;font-weight:700">🎯 ICT SNIPER TARAMA</div>
-          </div>
         </div>
       </div>
       <div style="padding:8px 10px">
@@ -1340,8 +1338,8 @@ function renderCTA() {
       para akışı anomalileri ve haftalık TIER-1 tarama raporları.
     </div>
     <div class="cta-buttons">
-      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-pro">🔵 Telegram PRO — Günde 3 · Aylık 90 Analiz</a>
-      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-elite">♠️ Telegram ELITE — Günde 8 · Aylık 240 Analiz</a>
+      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-elite">👑 Telegram ELITE — Günde 8 · Aylık 240 Rapor</a>
+      <a href="#" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';return false;" class="btn-pro">🔵 Telegram PRO — Günde 3 · Aylık 90 Rapor</a>
     </div>
   `;
   renderMobilePlans();
@@ -1358,19 +1356,31 @@ function renderMobilePlans() {
 
     <div class="tg-tier-card">
       <div style="padding:8px 10px 0">
-        <div style="font-size:9px;font-weight:700;color:#00e676;letter-spacing:1px;text-transform:uppercase">ÜCRETSİZ</div>
+        <div style="font-size:9px;font-weight:700;color:#8b5cf6;letter-spacing:1px;text-transform:uppercase">ELİTE</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin:2px 0 6px">
-          <span style="font-size:20px;font-weight:900;color:#00e676">FREE</span>
-          <span style="font-size:11px;color:var(--text-muted)">₺0 /ay</span>
+          <span style="font-size:20px;font-weight:900;color:#8b5cf6">ELITE</span>
+          <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
         </div>
-        <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
-          📊 Günde 1 hisse kartı · Aylık 30
+        <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#8b5cf6;margin-bottom:5px">
+          👑 Günde 8 · Aylık 240 rapor (~2.50₺ / rapor)
         </div>
-        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Anlık sinyal değerlendirmesi</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Momentum-Para Akışı &amp; Sentiment Grafikleri</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Tam sayfa Derinlemesine AI uzman analizi</strong></span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Kapsamlı SMR yapı-anatomi-kurumsal ayak izi değerlendirmesi</strong></span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her işlem günü 19:00 bülteni (XU100)</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>631 BIST · 84 kripto · 6 emtia</span></div>
+        </div>
+        <div style="margin-top:8px;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2);border-radius:4px;padding:7px 8px">
+          <div style="font-size:9px;font-weight:800;color:#8b5cf6;letter-spacing:0.8px;margin-bottom:3px">🗓 HER HAFTA SONU</div>
+          <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:2px">Hafta Sonu Özel Tarama Özeti</div>
+          <div style="font-size:9.5px;color:var(--text-muted);margin-bottom:8px;line-height:1.4">Tüm BIST taranır — yalnızca en sıkı filtreden geçenler listelenir.</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#ffd700;font-weight:700">⭐ CONFLUENCE TARAMA</div>
+            <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#8b5cf6;font-weight:700">✦ ELİTE SET-UP'LAR</div>
+            <div style="background:rgba(255,100,50,0.1);border:1px solid rgba(255,100,50,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#ff8c5a;font-weight:700">🎯 ICT SNIPER TARAMA</div>
+          </div>
         </div>
       </div>
       <div style="padding:8px 10px">
@@ -1388,14 +1398,15 @@ function renderMobilePlans() {
           <span style="font-size:11px;color:var(--text-muted)">₺349 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 3 hisse/coin/emtia analizi · Aylık 90 analiz
+          📊 Günde 3 · Aylık 90 rapor (~3.88₺ / rapor)
         </div>
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Momentum-Para Akışı &amp; Sentiment Grafikleri</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Detaylı Teknik Kart</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her akşam 19:00 BIST100 Teknik Kartı</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Tam sayfa 7 maddelik Detaylı Teknik Analiz (PA + ICT) Kart</strong></span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her işlem günü 19:00 bülteni (XU100)</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>631 BIST · 84 kripto · 6 emtia</span></div>
         </div>
       </div>
       <div style="padding:8px 10px">
@@ -1407,33 +1418,18 @@ function renderMobilePlans() {
 
     <div class="tg-tier-card">
       <div style="padding:8px 10px 0">
-        <div style="font-size:9px;font-weight:700;color:#70a8ff;letter-spacing:1px;text-transform:uppercase">ELİTE</div>
+        <div style="font-size:9px;font-weight:700;color:#00e676;letter-spacing:1px;text-transform:uppercase">ÜCRETSİZ</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin:2px 0 6px">
-          <span style="font-size:20px;font-weight:900;color:#70a8ff">ELITE</span>
-          <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
+          <span style="font-size:20px;font-weight:900;color:#00e676">FREE</span>
+          <span style="font-size:11px;color:var(--text-muted)">₺0 /ay</span>
         </div>
-        <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 8 hisse/coin/emtia detaylı analizi · Aylık 240 analiz
+        <div style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#00e676;margin-bottom:5px">
+          📊 Günde 1 hisse kartı (aylık 30)
         </div>
-        <div style="background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.18);border-radius:3px;padding:3px 7px;font-size:9.5px;color:var(--text-dim);margin-bottom:7px">
-          📖 3 aylık abone olana "SMART MONEY RADAR — Profesyonel Dönüşüm: Küçük yatırımcıdan, uzmana" kitabı
-        </div>
-        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-bottom:7px;background:#00c853;border:none;border-radius:4px;padding:6px;color:#000;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Para Akışı görüntüsü</span></div>
+          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Momentum-Para Akışı &amp; Sentiment Grafikleri</span></div>
           <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Algoritmik Teknik Analiz Özeti</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span><strong>Uzman Analiz Raporu</strong></span></div>
-          <div class="tg-feature-row"><span class="tg-feature-icon">•</span><span>Her akşam 19:00 detaylı BIST100 bülteni</span></div>
-        </div>
-        <div style="margin-top:8px;background:rgba(70,130,255,0.06);border:1px solid rgba(70,130,255,0.2);border-radius:4px;padding:7px 8px">
-          <div style="font-size:9px;font-weight:800;color:#70a8ff;letter-spacing:0.8px;margin-bottom:3px">🗓 HER HAFTA SONU</div>
-          <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:2px">TIER 1 Tarama Raporu</div>
-          <div style="font-size:9.5px;color:var(--text-muted);margin-bottom:8px;line-height:1.4">Tüm BIST taranır — yalnızca en sıkı filtreden geçenler listelenir.</div>
-          <div style="display:flex;flex-direction:column;gap:4px">
-            <div style="background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#ffd700;font-weight:700">⭐ CONFLUENCE TARAMA</div>
-            <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#70a8ff;font-weight:700">✦ ELİTE SET-UP'LAR</div>
-            <div style="background:rgba(255,100,50,0.1);border:1px solid rgba(255,100,50,0.25);border-radius:3px;padding:3px 7px;font-size:9.5px;color:#ff8c5a;font-weight:700">🎯 ICT SNIPER TARAMA</div>
-          </div>
         </div>
       </div>
       <div style="padding:8px 10px">
