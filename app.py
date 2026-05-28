@@ -16030,32 +16030,29 @@ def _build_piyasa_ozeti_html(ticker, data):
     # ── Öncelik sıralaması ───────────────────────────────────────────
     madde_list.sort(key=lambda x: x[0], reverse=True)
 
-    # ── HTML render ─────────────────────────────────────────────────
-    items_html = ""
-    for i, (_, clr, txt) in enumerate(madde_list[:5], 1):
-        items_html += (
-            f'<div style="display:flex;gap:5px;margin-bottom:5px;padding-bottom:4px;'
-            f'border-bottom:1px dashed rgba(100,116,139,0.18);align-items:flex-start;">'
-            f'<div style="min-width:15px;height:15px;border-radius:50%;background:{clr};'
-            f'color:#0f172a;font-size:0.52rem;font-weight:900;display:flex;align-items:center;'
-            f'justify-content:center;flex-shrink:0;margin-top:2px;">{i}</div>'
-            f'<div style="font-size:0.67rem;color:#cbd5e1;line-height:1.35;">{txt}</div>'
-            f'</div>'
-        )
+    # ── Prose render — 5 cümle, akıcı paragraf formatı ────────────────
+    # Renk açıklamalarını strip ederek düz metin cümleler oluştur
+    import re as _re2
+    def _plain(s):
+        s = _re2.sub(r'<b>(.*?)</b>', r'\1', s)
+        s = _re2.sub(r'<[^>]+>', '', s)
+        return s.strip()
+
+    sentences = [_plain(txt) for (_, _, txt) in madde_list[:5]]
+    prose_html = ""
+    for sent in sentences:
+        prose_html += f'<p style="margin:0 0 7px 0;font-size:0.72rem;color:#cbd5e1;line-height:1.5;">{sent}</p>'
 
     return (
         f'<div style="background:rgba(168,85,247,0.07);border-left:3px solid #a855f7;'
-        f'padding:5px 7px;border-radius:4px;display:flex;flex-direction:column;'
+        f'padding:8px 10px;border-radius:4px;display:flex;flex-direction:column;'
         f'justify-content:flex-start;height:100%;position:relative;">'
-        f'<div style="display:flex;justify-content:space-between;align-items:center;'
-        f'margin-bottom:5px;border-bottom:1px solid rgba(168,85,247,0.25);padding-bottom:4px;">'
-        f'<div style="font-size:0.75rem;font-weight:800;color:#a855f7;display:flex;align-items:center;gap:4px;">'
+        f'<div style="font-size:0.75rem;font-weight:800;color:#a855f7;margin-bottom:7px;'
+        f'padding-bottom:4px;border-bottom:1px solid rgba(168,85,247,0.25);'
+        f'display:flex;align-items:center;gap:4px;">'
         f'<span style="width:6px;height:6px;border-radius:50%;background:#a855f7;'
-        f'display:inline-block;box-shadow:0 0 3px #a855f7;"></span>4. Piyasa Özeti</div>'
-        f'<div style="font-size:0.55rem;font-weight:700;color:#64748b;background:rgba(100,116,139,0.1);'
-        f'padding:1px 3px;border-radius:3px;border:1px solid rgba(100,116,139,0.2);">⏱️ Genel Bakış</div>'
-        f'</div>'
-        f'{items_html}'
+        f'display:inline-block;box-shadow:0 0 3px #a855f7;"></span>Piyasa Özeti</div>'
+        f'{prose_html}'
         f'</div>'
     )
 
@@ -16393,7 +16390,9 @@ def render_roadmap_8_panel(ticker):
         for i, (num, title, content, edu, tf) in enumerate(_box_defs)
     ]
     _piyasa_ozeti_html = _build_piyasa_ozeti_html(ticker, data)
-    grid_html = "".join(boxes) + _piyasa_ozeti_html
+    # 3-sütun grid: col1 = Trend + Hacim alt alta | col2 = Teknik Özet | col3 = Piyasa Özeti
+    _col1 = f'<div style="display:flex;flex-direction:column;gap:5px;">{boxes[0]}{boxes[1]}</div>'
+    grid_html = _col1 + boxes[2] + _piyasa_ozeti_html
 
     top_section_html = (
         f'<div style="padding:5px 5px 0 5px;">'
@@ -16422,7 +16421,7 @@ def render_roadmap_8_panel(ticker):
         </div>
         {top_section_html}
         <div style="padding:5px;">
-            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;">
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;">
                 {grid_html}
             </div>
         </div>
