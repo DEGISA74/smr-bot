@@ -66,6 +66,25 @@ if not os.path.exists(CACHE_DIR):
 # Cache telemetri — bir oturum boyunca hit/miss sayacı (debug için)
 _CACHE_STATS = {'hit': 0, 'miss': 0, 'split_detected': 0}
 
+# ── HATA GÜNLÜĞÜ (W9) ─────────────────────────────────────────────────────────
+# Sessizce yutulan hataları görünür kılmak için tek kaynak.
+# Kullanım: except Exception as e: log_error("scan_ict_batch", e, symbol)
+# Dosya: proje kökünde errors.log (gitignore'a eklenmeli).
+_ERROR_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "errors.log")
+
+def log_error(where, exc, context=""):
+    """Yakalanan istisnayı errors.log'a tek satır olarak yazar.
+    where: fonksiyon/konum adı | exc: Exception nesnesi | context: opsiyonel ek bilgi (örn. ticker).
+    Loglamanın kendisi asla uygulamayı bozmamalı → tüm yazma try/except içinde."""
+    try:
+        _ts = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d %H:%M:%S")
+        _ctx = f" [{context}]" if context else ""
+        _line = f"{_ts} | {where}{_ctx} | {type(exc).__name__}: {exc}\n"
+        with open(_ERROR_LOG_PATH, "a", encoding="utf-8") as _f:
+            _f.write(_line)
+    except Exception:
+        pass  # log yazımı başarısızsa sessizce geç — uygulama akışı korunur
+
 # ── TARAMA SONUCU AGRESİF CACHE (Piyasa Dışı Saatler) ───────────────────────
 SCAN_CACHE_DIR = os.path.join(CACHE_DIR, "scan_cache")
 if not os.path.exists(SCAN_CACHE_DIR):
@@ -1793,6 +1812,7 @@ def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd
     except Exception as _pe:
         import logging
         logging.warning(f"[patch_live_price] {ticker} — {_pe}")
+        log_error("patch_live_price", _pe, ticker)
     return df
 
 # --- SINGLE STOCK CACHE (DETAY SAYFASI İÇİN) ---
@@ -1943,6 +1963,7 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
     except Exception as e:
         import logging
         logging.warning(f"[get_safe_historical_data] {ticker} hata: {e}")
+        log_error("get_safe_historical_data", e, ticker)
         return None
 
 def _ensure_parquet_on_disk(ticker: str, interval: str = "1d") -> None:
@@ -2349,6 +2370,25 @@ def calculate_synthetic_sentiment(ticker):
         return plot_df
     except Exception: return None
 
+def compute_cmf(df, period=20, vol_series=None):
+    """Chaikin Money Flow (varsayılan 20g) — OBV teyit katmanı için tek kaynak.
+    df: 'High','Low','Close' içermeli. vol_series verilmezse df['Volume'] kullanılır.
+    Money Flow Multiplier × Volume → period toplamı / hacim toplamı.
+    Hata / sıfır hacimde 0.0 döner."""
+    try:
+        _vol = df['Volume'] if vol_series is None else vol_series
+        _hl_range = df['High'] - df['Low']
+        _mfm = np.where(
+            _hl_range > 0,
+            ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / _hl_range,
+            0.0
+        )
+        _mfv = pd.Series(_mfm, index=df.index) * _vol
+        _vol_sum = float(_vol.tail(period).sum())
+        return float(_mfv.tail(period).sum() / _vol_sum) if _vol_sum > 0 else 0.0
+    except Exception:
+        return 0.0
+
 @st.cache_data(ttl=600)
 def get_obv_divergence_status(ticker):
     """
@@ -2369,18 +2409,7 @@ def get_obv_divergence_status(ticker):
         # 1b. Chaikin Money Flow (20g) — OBV teyit katmanı
         # OBV sadece kapanış yönüne bakar; CMF bar içi dinamiği de ölçer
         # (fiyat günün üst yarısında mı kapandı, alt yarısında mı).
-        try:
-            _hl_range = df['High'] - df['Low']
-            _mfm = np.where(
-                _hl_range > 0,
-                ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / _hl_range,
-                0.0
-            )
-            _mfv = pd.Series(_mfm, index=df.index) * df['Volume']
-            _vol_sum_20 = float(df['Volume'].tail(20).sum())
-            cmf_20 = float(_mfv.tail(20).sum() / _vol_sum_20) if _vol_sum_20 > 0 else 0.0
-        except Exception:
-            cmf_20 = 0.0
+        cmf_20 = compute_cmf(df, period=20)
         # CMF eşikleri: ±0.05 standart (Chaikin'in orijinal önerisi)
         cmf_strong_pos = cmf_20 > 0.05    # Güçlü alış baskısı (bar içi)
         cmf_strong_neg = cmf_20 < -0.05   # Güçlü satış baskısı (bar içi)
@@ -8001,15 +8030,7 @@ def calculate_price_action_dna(ticker):
 
         # CMF (20g) teyit katmanı — OBV ile çapraz kontrol
         # OBV yönü ve CMF çelişirse sinyal downgrade yapılır.
-        try:
-            _hl_rng_dna = df['High'] - df['Low']
-            _mfm_dna    = np.where(_hl_rng_dna > 0,
-                                   ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / _hl_rng_dna, 0.0)
-            _mfv_dna    = pd.Series(_mfm_dna, index=df.index) * v
-            _vsum_dna   = float(v.tail(20).sum())
-            _cmf_dna    = float(_mfv_dna.tail(20).sum() / _vsum_dna) if _vsum_dna > 0 else 0.0
-        except Exception:
-            _cmf_dna = 0.0
+        _cmf_dna     = compute_cmf(df, period=20, vol_series=v)
         _cmf_neg_dna = _cmf_dna < -0.05   # Bar içi satış baskısı — OBV'yi sorgula
 
         obv_data = {"title": "⚖️ ZAYIF İVME (Hacimsiz Bölge)", "desc": "Hacim akışı ortalamanın altında.", "color": "#64748B"}
@@ -16559,7 +16580,8 @@ def render_roadmap_8_panel(ticker):
         try:
             _po_txt = _fetch_gemini_ozeti(ticker, data, _mtf_ctx, _mkt_ctx)
             _ai_ok = True
-        except Exception:
+        except Exception as _po_exc:
+            log_error("_fetch_gemini_ozeti", _po_exc, ticker)
             _po_txt = _build_piyasa_ozeti_fallback(ticker, data)
         if _ai_ok:
             _po_cache[_po_sig] = _po_txt   # sadece AI başarılıysa cache'le (fallback'ta tekrar dene)
@@ -18994,14 +19016,41 @@ with col_btn:
             get_batch_data_cached.clear()
             get_batch_data_cached(scan_list, period="1y")
 
-            # 3. ICT SNIPER AJANI --- %20
-            my_bar.progress(20, text="🦅 ICT Sniper Kurulumları (Liquidity+MSS+FVG) Taranıyor...%20")
-            st.session_state.ict_scan_data = scan_ict_batch(scan_list)
-            log_scan_signal("ict_sniper", st.session_state.ict_scan_data, category=_cat)
+            # 3 + 3.5 PARALEL: ICT SNIPER + ROYAL FLUSH NADİR FIRSAT --- %20-25
+            # Bu iki tarama birbirinden tamamen bağımsız: ortak veri cache'i,
+            # ayrı session_state anahtarı, UI yan etkisi yok. Veri adım 1'de
+            # cache'e yüklendiğinden thread'ler doğrudan cache'ten okur →
+            # eşzamanlı çalıştırılarak Master Scan süresi kısaltılır (W3/O2).
+            # add_script_run_ctx: worker thread'lere ana script context'i eklenir
+            # ki st.cache_data ve st.session_state okumaları doğru çalışsın.
+            my_bar.progress(20, text="🦅 ICT Sniper + ♠️ Royal Flush Nadir Fırsat (paralel) Taranıyor...%20")
+            try:
+                import threading as _threading
+                from streamlit.runtime.scriptrunner import (
+                    add_script_run_ctx as _add_ctx,
+                    get_script_run_ctx as _get_ctx,
+                )
+                _ms_ctx = _get_ctx()
 
-            # 3.5 ROYAL FLUSH NADİR FIRSAT AJANI --- %25
-            my_bar.progress(25, text="♠️ Royal Flush Nadir Fırsat (BOS/MSS + AI + RS + VWAP) Taranıyor...%25")
-            st.session_state.nadir_firsat_scan_data = scan_nadir_firsat_batch(scan_list)
+                def _run_ctx(_fn, *_a):
+                    if _ms_ctx is not None:
+                        _add_ctx(_threading.current_thread(), _ms_ctx)
+                    return _fn(*_a)
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as _ms_ex:
+                    _fut_ict   = _ms_ex.submit(_run_ctx, scan_ict_batch, scan_list)
+                    _fut_nadir = _ms_ex.submit(_run_ctx, scan_nadir_firsat_batch, scan_list)
+                    st.session_state.ict_scan_data          = _fut_ict.result()
+                    st.session_state.nadir_firsat_scan_data = _fut_nadir.result()
+            except Exception as _par_exc:
+                # Paralel yol herhangi bir nedenle patlarsa → güvenli sıralı fallback
+                log_error("master_scan_parallel(ict+nadir)", _par_exc, _cat)
+                st.session_state.ict_scan_data          = scan_ict_batch(scan_list)
+                st.session_state.nadir_firsat_scan_data = scan_nadir_firsat_batch(scan_list)
+
+            my_bar.progress(25, text="✅ ICT + Nadir Fırsat tamamlandı...%25")
+            # nadir_firsat kendi içinde log_scan_signal çağırır; ict'i burada logla
+            log_scan_signal("ict_sniper", st.session_state.ict_scan_data, category=_cat)
 
             # 4. ELİTLER (Altın Set-up + Platin Fırsat) - %30
             my_bar.progress(30, text="💎 ELİTLER Taranıyor (Platin + Altın Set-up)...%30")
