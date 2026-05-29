@@ -9,14 +9,10 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import feedparser
-import urllib.parse
 from ta.volume import VolumeWeightedAveragePrice
-from textblob import TextBlob
 from datetime import datetime, timedelta
 import pytz
 _TZ_ISTANBUL = pytz.timezone("Europe/Istanbul")
-import streamlit.components.v1 as components
 import numpy as np
 import sqlite3
 import os
@@ -24,7 +20,6 @@ import concurrent.futures
 import re
 import altair as alt
 import random
-import os
 import io
 import base64
 import matplotlib
@@ -941,7 +936,6 @@ def backfill_signal_returns():
 
     Return: (dolduruldu, atlandı) tuple
     """
-    from datetime import timedelta
     today = datetime.now(_TZ_ISTANBUL).date()
     MAX_SYMBOLS = 60
 
@@ -2458,9 +2452,6 @@ def process_single_stock_stp(symbol, df):
             
         return result
     except Exception: return None
-
-import pandas as pd
-import numpy as np
 
 def find_smart_sr_levels(df, window=5, cluster_tolerance=0.015, min_touches=3, recency_limit=120):
     """
@@ -13982,8 +13973,6 @@ def calculate_multi_timeframe_alignment(ticker):
     Returns: dict with 'matrix' (3x4 yön matrisi) ve 'overall_pct' (toplam uyum %)
     """
     try:
-        import yfinance as yf
-
         # Vade verileri çek
         timeframes = {}
         try:
@@ -15840,17 +15829,12 @@ def render_unified_signals_panel(ticker):
                 _kv_warnings.append(f"Z={_zd_kv['composite']:.1f} Tepe")
         except: pass
         try:
-            if pa:
-                _sv = pa.get('smart_volume', {})
-                if _sv.get('climax', 'Yok') != 'Yok':
-                    _kv_warnings.append("Climax Hacim")
-        except: pass
-        try:
             if df is not None and len(df) >= 6:
                 _mom5 = float(df['Close'].iloc[-1]) / float(df['Close'].iloc[-6]) - 1
                 if _mom5 < -0.02:   # son 5 günde -%2 den fazla düşüş
                     _kv_warnings.append(f"Momentum ↓ %{_mom5*100:.1f}")
         except: pass
+        # NOT: "Climax Hacim" kontrolü pa hesaplandıktan SONRA çalışır (aşağıda, ~pa tanımı).
 
         # Kısa vade — her zaman göster
         _kv_show = True
@@ -15876,6 +15860,14 @@ def render_unified_signals_panel(ticker):
         except: pass
         try: pa = calculate_price_action_dna(ticker)
         except: pass
+
+        # ── Climax Hacim uyarısı (pa hazır olduktan sonra — sıralama fix) ──
+        try:
+            if pa:
+                _sv = pa.get('smart_volume', {})
+                if _sv.get('climax', 'Yok') != 'Yok':
+                    _kv_warnings.append("Climax Hacim")
+        except Exception: pass
 
         # ── Regime Engine + Conviction Score ────────────────────────
         _regime     = detect_market_regime(df, pa)
@@ -16051,21 +16043,9 @@ def render_unified_signals_panel(ticker):
                     signals.append(("🏆","Altın Set-up (Güç+Konum+Enerji)","#a16207","3 bağımsız koşul aynı anda: RS güçlü, fiyat DISCOUNT bölgesinde, hacim momentum destekliyor.",True,1))
         except: pass
 
-        # ── 7. Royal Flush Nadir Fırsat (4/4) ───────────────────────────
-        try:
-            if ict_data and sent_data and lor and lor['votes'] >= 7:
-                cs = "BOS (Yükseliş" in ict_data.get('structure','') or "MSS" in ict_data.get('structure','')
-                ca = lor['signal'] == "YÜKSELİŞ"
-                rs2 = sent_data.get('rs','').lower()
-                cr = "artıda" in rs2 or "lider" in rs2 or "pozitif" in rs2 or sent_data.get('total',0)>=50
-                try:
-                    _vw = VolumeWeightedAveragePrice(high=df['High'],low=df['Low'],close=df['Close'],volume=df['Volume'],window=14)
-                    _vd = abs((float(df['Close'].iloc[-1]) - float(_vw.volume_weighted_average_price().iloc[-1])) / (float(_vw.volume_weighted_average_price().iloc[-1])+1e-9) * 100)
-                    cv = _vd < 12
-                except: cv = True
-                if cs and ca and cr and cv:
-                    signals.append(("♠️","Royal Flush Nadir Fırsat (4/4)","#6d28d9","4 metodoloji aynı anda: ICT yapı kırılımı + RS gücü + VWAP yakınlığı + Hacim canlanması. En seçici set-up.",True,1))
-        except: pass
+        # NOT: "Royal Flush Nadir Fırsat (4/4)" sinyali kaldırıldı — Lorentzian (lor)
+        # modülü tamamen silindiği için bu dal hiçbir zaman çalışmıyordu (NameError → sessiz).
+        # Royal Flush Nadir Fırsat sinyali zaten scan_nadir_firsat_batch tarafından üretiliyor.
 
         # ── 8. Platin Fırsat (Elit) — önce Altın kriterini geçmeli ──────
         try:
@@ -18461,7 +18441,6 @@ if st.session_state.generate_prompt:
     roadmap_ai_txt = "Veri Yok"
 
     if roadmap_data_ai:
-        import re
         def clean_html(raw_html):
             cleanr = re.compile('<.*?>')
             return re.sub(cleanr, ' ', str(raw_html)).strip()
@@ -21341,12 +21320,6 @@ def _render_left_col():
                 badge_bg   = "rgba(16,185,129,0.15)"
                 badge_text = "#10b981"
                 price_color = "#10b981"
-    
-                def ma_cell(label, val, price):
-                    return (f'<div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:0 8px;border-right:1px solid {border_col};">'
-                            f'<span style="font-size:0.66rem;color:{lbl_col};font-weight:600;white-space:nowrap;">{label}</span>'
-                            f'<span style="font-size:0.8rem;color:{text_col};font-family:\'JetBrains Mono\',monospace;font-weight:700;">{ma_status(val, price)}</span>'
-                            f'</div>')
     
                 def ma_cell_last(label, val, price):
                     return (f'<div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:0 8px;">'
