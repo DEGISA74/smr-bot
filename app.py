@@ -178,40 +178,6 @@ def _volume_is_stale(df, ticker):
     except Exception:
         return False
 
-def _fetch_bist_volume_isyatirim(symbol, start_date, end_date):
-    """
-    İş Yatırım API'sinden BIST hisse günlük hacim verisini çeker.
-    Hisse adedi = HGDG_HACIM (TL cinsinden işlem hacmi) / HGDG_AOF (ağırlıklı ort. fiyat)
-    Bu veri yfinance'in Volume=0 bug'ından tamamen bağımsızdır.
-
-    symbol    : 'SASA' veya 'SASA.IS' — .IS suffix otomatik temizlenir
-    start_date: 'yyyy-mm-dd'
-    end_date  : 'yyyy-mm-dd'
-    Returns   : pd.Series (DatetimeIndex, Volume adet cinsinden) veya None
-    """
-    try:
-        from isyatirimhisse import fetch_stock_data
-        _sym = symbol.replace(".IS", "").replace(".is", "")
-        # isyatirimhisse dd-mm-yyyy formatı ister
-        from datetime import datetime as _dtime
-        _s = _dtime.strptime(start_date, "%Y-%m-%d").strftime("%d-%m-%Y")
-        _e = _dtime.strptime(end_date,   "%Y-%m-%d").strftime("%d-%m-%Y")
-        df_isy = fetch_stock_data(symbols=_sym, start_date=_s, end_date=_e)
-        if df_isy is None or df_isy.empty:
-            return None
-        if 'HGDG_HACIM' not in df_isy.columns or 'HGDG_AOF' not in df_isy.columns:
-            return None
-        # TL hacmini hisse adedine çevir
-        df_isy = df_isy[df_isy['HGDG_AOF'] > 0].copy()
-        df_isy['_vol_shares'] = df_isy['HGDG_HACIM'] / df_isy['HGDG_AOF']
-        df_isy['_date'] = pd.to_datetime(df_isy['HGDG_TARIH'])
-        df_isy = df_isy.set_index('_date')
-        df_isy.index = df_isy.index.tz_localize(None) if df_isy.index.tz else df_isy.index
-        return df_isy['_vol_shares'].rename('Volume')
-    except ImportError:
-        return None   # paket yüklü değil → sessizce yfinance'e düş
-    except Exception:
-        return None
 
 
 def _fetch_bist_ohlcv_isyatirim(symbol, start_date, end_date):
@@ -1368,22 +1334,10 @@ def on_asset_change():
     new_asset = st.session_state.get("selected_asset_key")
     if new_asset: st.session_state.ticker = new_asset
 
-def on_manual_button_click():
-    if st.session_state.manual_input_key:
-        st.session_state.ticker = st.session_state.manual_input_key.upper()
 
 def on_scan_result_click(symbol): 
     st.session_state.ticker = symbol
 
-def toggle_watchlist(symbol):
-    wl = st.session_state.watchlist
-    if symbol in wl:
-        remove_watchlist_db(symbol)
-        wl.remove(symbol)
-    else:
-        add_watchlist_db(symbol)
-        wl.append(symbol)
-    st.session_state.watchlist = wl
 
 # ==============================================================================
 # BÖLÜM 6 — VERİ ÇEKME VE ÖNBELLEKLEME MOTORU
@@ -1603,52 +1557,6 @@ def get_batch_data_cached(asset_list, period="1y"):
     return pd.DataFrame()
 
 
-def get_cache_diagnostics():
-    """
-    Cache klasörünün durumunu raporlar — fetcher.py'nin doğru çalışıp çalışmadığını gösterir.
-    Returns: dict {total_files, fresh_files, stale_files, last_source, avg_age_minutes}
-    """
-    import datetime as _dt
-    diag = {
-        'cache_dir':       CACHE_DIR,
-        'total_files':     0,
-        'fresh_minutes':   0,    # 30 dk içinde güncellenen
-        'stale_hours':     0,    # 1 saat+ eski
-        'avg_age_minutes': None,
-        'newest_file':     None,
-        'oldest_file':     None,
-        'last_source':     None,
-        'cache_stats':     dict(_CACHE_STATS),
-    }
-    try:
-        last_src = os.path.join(CACHE_DIR, '.last_source')
-        if os.path.exists(last_src):
-            with open(last_src) as f: diag['last_source'] = f.read().strip()
-    except: pass
-
-    try:
-        now = _dt.datetime.now().timestamp()
-        ages = []
-        newest_t, newest_f = 0, None
-        oldest_t, oldest_f = float('inf'), None
-        for f in os.listdir(CACHE_DIR):
-            if not f.endswith('.parquet'): continue
-            fp = os.path.join(CACHE_DIR, f)
-            mtime = os.path.getmtime(fp)
-            age_min = (now - mtime) / 60
-            ages.append(age_min)
-            diag['total_files'] += 1
-            if age_min < 30:    diag['fresh_minutes'] += 1
-            if age_min > 60:    diag['stale_hours']   += 1
-            if mtime > newest_t: newest_t, newest_f = mtime, f
-            if mtime < oldest_t: oldest_t, oldest_f = mtime, f
-        if ages:
-            diag['avg_age_minutes'] = round(sum(ages)/len(ages), 1)
-            diag['newest_file']     = f"{newest_f} ({(now-newest_t)/60:.1f}dk önce)"
-            diag['oldest_file']     = f"{oldest_f} ({(now-oldest_t)/60:.1f}dk önce)"
-    except Exception as _e:
-        diag['error'] = str(_e)
-    return diag
 
 
 # ── BİNANCE VERİ ÇEKİCİ (KRİPTO PARALAR İÇİN) ──────────────────────
@@ -2153,40 +2061,6 @@ def check_lazybear_squeeze_breakout(df):
     except Exception:
         return False, False
 
-@st.cache_data(ttl=900)
-def get_ma_data_for_ui(ticker):
-    """Arayüzdeki 4. sütun için hızlıca EMA ve SMA verilerini hesaplar."""
-    try:
-        # Son 1 yıllık veriyi hızlıca çek
-        df = yf.download(ticker, period="1y", interval="1d", progress=False, auto_adjust=True, prepost=False)
-        if df.empty: 
-            return None
-        
-        # yfinance bazen MultiIndex döndürebilir, bunu güvenli hale getirelim
-        if isinstance(df.columns, pd.MultiIndex):
-            close_col = df['Close'][ticker] if ticker in df['Close'] else df['Close'].iloc[:, 0]
-        else:
-            close_col = df['Close']
-            
-        close = float(close_col.iloc[-1])
-        
-        # EMA Hesaplamaları
-        ema5 = float(close_col.ewm(span=5, adjust=False).mean().iloc[-1])
-        ema8 = float(close_col.ewm(span=8, adjust=False).mean().iloc[-1])
-        ema13 = float(close_col.ewm(span=13, adjust=False).mean().iloc[-1])
-        
-        # SMA Hesaplamaları
-        sma50 = float(close_col.rolling(window=50).mean().iloc[-1])
-        sma100 = float(close_col.rolling(window=100).mean().iloc[-1])
-        sma200 = float(close_col.rolling(window=200).mean().iloc[-1])
-        
-        return {
-            "close": close,
-            "ema5": ema5, "ema8": ema8, "ema13": ema13,
-            "sma50": sma50, "sma100": sma100, "sma200": sma200
-        }
-    except Exception as e:
-        return None
     
 @st.cache_data(ttl=600)
 def fetch_stock_info(ticker):
@@ -2256,22 +2130,6 @@ def get_tech_card_data(ticker):
         }
     except: return None
 
-@st.cache_data(ttl=1200)
-def fetch_google_news(ticker):
-    try:
-        clean = ticker.replace(".IS", "").replace("=F", "")
-        rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote_plus(f'{clean} stock news site:investing.com OR site:seekingalpha.com')}&hl=tr&gl=TR&ceid=TR:tr"
-        feed = feedparser.parse(rss_url)
-        news = []
-        for entry in feed.entries[:6]:
-            try: dt = datetime(*entry.published_parsed[:6])
-            except: dt = datetime.now()
-            if dt < datetime.now() - timedelta(days=10): continue
-            pol = TextBlob(entry.title).sentiment.polarity
-            color = "#16A34A" if pol > 0.1 else "#DC2626" if pol < -0.1 else "#64748B"
-            news.append({'title': entry.title, 'link': entry.link, 'date': dt.strftime('%d %b'), 'source': entry.source.title, 'color': color})
-        return news
-    except: return []
 
 def check_lazybear_squeeze(df):
     """
@@ -3640,45 +3498,6 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
 # Supertrend + Price Action kombinasyonu. Momentum sinyallerini
 # batch olarak işleyen scanner.
 # ==============================================================================
-@st.cache_data(ttl=900)
-def scan_stp_signals(asset_list):
-    """
-    Optimize edilmiş STP tarayıcı.
-    """
-    data = get_batch_data_cached(asset_list, period="1y")
-    if data.empty: return [], [], []
-
-    cross_signals = []
-    trend_signals = []
-    filtered_signals = []
-
-    stock_dfs = []
-    for symbol in asset_list:
-        try:
-            if isinstance(data.columns, pd.MultiIndex):
-                if symbol in data.columns.levels[0]:
-                    stock_dfs.append((symbol, data[symbol]))
-            else:
-                if len(asset_list) == 1:
-                    stock_dfs.append((symbol, data))
-        except: continue
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(process_single_stock_stp, sym, df) for sym, df in stock_dfs]
-        for future in concurrent.futures.as_completed(futures):
-            res = future.result()
-            if res:
-                if res["type"] == "cross_up":
-                    cross_signals.append(res["data"])
-                    if res.get("is_filtered"):
-                        filtered_signals.append(res["data"])
-                elif res["type"] == "trend_up":
-                    trend_signals.append(res["data"])
-
-    cross_signals.sort(key=lambda x: x.get("Hacim_Kat", 0), reverse=True)
-    filtered_signals.sort(key=lambda x: x.get("Hacim_Kat", 0), reverse=True) 
-    trend_signals.sort(key=lambda x: x["Gun"], reverse=False) # Trend olanları hala gün sayısına göre sıralamak mantıklı
-    return cross_signals, trend_signals, filtered_signals
 
 # ==============================================================================
 # BÖLÜM 10 — GİZLİ BİRİKİM TARAMASI (HIDDEN ACCUMULATION)
@@ -4360,59 +4179,6 @@ def detect_naked_poc(df, lookback=20, bins=20, n_windows=4):
             naked.append(poc)
     return naked
 
-def calculate_volume_profile(df, lookback=50, bins=20):
-    """
-    Son 'lookback' kadar mumu alır, fiyatı 'bins' kadar parçaya böler 
-    ve en çok hacmin döndüğü fiyatı (Point of Control) orantısal dağılımla bulur.
-    """
-    if len(df) < lookback:
-        lookback = len(df)
-        
-    recent_df = df.tail(lookback).copy()
-    
-    # Fiyatı min ve max arasında belirle
-    min_price = float(recent_df['Low'].min())
-    max_price = float(recent_df['High'].max())
-    
-    if min_price == max_price: 
-        return min_price
-        
-    # Fiyat dilimlerini oluştur
-    price_bins = np.linspace(min_price, max_price, bins + 1)
-    volume_profile = np.zeros(bins)
-    
-    # Typical_Price yerine Orantısal Dağılım Döngüsü
-    for _, row in recent_df.iterrows():
-        high = float(row['High'])
-        low = float(row['Low'])
-        vol = float(row['Volume'])
-        candle_range = high - low
-        
-        if candle_range <= 0:
-            idx = np.digitize((high + low) / 2, price_bins) - 1
-            idx = min(max(idx, 0), bins - 1)
-            volume_profile[idx] += vol
-            continue
-            
-        for i in range(bins):
-            bin_bottom = price_bins[i]
-            bin_top = price_bins[i+1]
-            
-            if high >= bin_bottom and low <= bin_top:
-                overlap_top = min(high, bin_top)
-                overlap_bottom = max(low, bin_bottom)
-                overlap_range = overlap_top - overlap_bottom
-                
-                if overlap_range > 0:
-                    volume_profile[i] += vol * (overlap_range / candle_range)
-                    
-    # En yüksek hacme sahip dilimi (POC) bul
-    poc_index = np.argmax(volume_profile)
-    
-    # POC Fiyatını belirle
-    poc_price = (price_bins[poc_index] + price_bins[poc_index + 1]) / 2.0
-        
-    return poc_price
     
 # ==============================================================================
 # 🧠 MERKEZİ VERİ ÖNBELLEĞİ (BAN KORUMASI VE SÜPER HIZ)
@@ -4588,155 +4354,8 @@ def process_single_breakout(symbol, df):
         return None
     except: return None
 
-@st.cache_data(ttl=3600)
-def agent3_breakout_scan(asset_list):
-    # period="1y" — Master Scan preload ile cache key uyumu (mismatch fix)
-    data = get_batch_data_cached(asset_list, period="1y")
-    if data.empty: return pd.DataFrame()
 
-    results = []
-    stock_dfs = []
-    for symbol in asset_list:
-        try:
-            if isinstance(data.columns, pd.MultiIndex):
-                if symbol in data.columns.levels[0]: stock_dfs.append((symbol, data[symbol]))
-            else:
-                if len(asset_list) == 1: stock_dfs.append((symbol, data))
-        except: continue
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(process_single_breakout, sym, df) for sym, df in stock_dfs]
-        for future in concurrent.futures.as_completed(futures):
-            res = future.result()
-            if res: results.append(res)
-    
-    return pd.DataFrame(results).sort_values(by="Hacim", ascending=False) if results else pd.DataFrame()
-
-def process_single_confirmed(symbol, df, bench_series=None):
-    try:
-        if df.empty or 'Close' not in df.columns: return None
-        df = df.dropna(subset=['Close'])
-        if len(df) < 100: return None
-
-        # DÜZELTME 1: open_ eklendi (Aşağıda Gap hesabı hata vermesin diye)
-        close = df['Close']; high = df['High']; open_ = df['Open']; volume = df['Volume'] if 'Volume' in df.columns else pd.Series([1]*len(df))
-        
-        # --- 1. ADIM: ZİRVE KONTROLÜ (Son 20 İş Günü) ---
-        # 👑 DÜZELTME 2: Artık iğnelere (high) değil, mum kapanışlarına (close) bakıyoruz!
-        high_val = close.iloc[:-1].tail(20).max()
-        curr_close = float(close.iloc[-1])
-        
-        # Eğer bugünkü fiyat, geçmiş 20 günün zirvesini geçmediyse ELE.
-        if curr_close <= high_val: return None 
-
-        # --- 2. ADIM: GÜVENLİ HACİM HESABI ---
-        # Geçmiş 20 günün ortalama hacmi (Bugün hariç)
-        avg_vol_20 = volume.rolling(20).mean().shift(1).iloc[-1]
-        curr_vol = float(volume.iloc[-1]) # Bu hacim zaten ana merkezde güncellendi!
-        
-        # PERFORMANS ORANI
-        if avg_vol_20 > 0:
-            performance_ratio = curr_vol / avg_vol_20
-        else:
-            performance_ratio = 0
-            
-        # Filtre: Eğer o saate kadar yapması gereken hacmi yapmadıysa ELE.
-        if performance_ratio < 0.6: return None
-       
-        # --- GÜVENLİK 3: GAP (BOŞLUK) TUZAĞI ---
-        prev_close = float(close.iloc[-2])
-        curr_open = float(open_.iloc[-1])
-        gap_pct = (curr_open - prev_close) / prev_close
-        if gap_pct > 0.03: return None # %3'ten fazla GAP'li açıldıysa tren kaçmıştır.
-       
-        # --- GÖRSEL ETİKETLEME ---
-        # Kullanıcıya "Günlük ortalamanın kaç katına gidiyor" bilgisini verelim
-        # Bu 'Projected Volume' (Tahmini Gün Sonu Hacmi) mantığıdır.
-        vol_display = f"{performance_ratio:.1f}x (Hız)"
-        
-        if performance_ratio > 1.5: vol_display = f"{performance_ratio:.1f}x (Patlama🔥)"
-        elif performance_ratio >= 1.0: vol_display = f"{performance_ratio:.1f}x (Güçlü✅)"
-        else: vol_display = f"{performance_ratio:.1f}x (Yeterli🆗)"
-
-        # --- 3. DİĞER TEKNİK FİLTRELER ---
-        sma20 = close.rolling(20).mean()
-        std20 = close.rolling(20).std()
-        bb_upper = sma20 + (2 * std20); bb_lower = sma20 - (2 * std20)
-        bb_width = (bb_upper - bb_lower) / sma20
-        avg_width = bb_width.rolling(20).mean().iloc[-1]
-        
-        is_range_breakout = bb_width.iloc[-2] < avg_width * 0.9 
-        breakout_type = "📦 RANGE" if is_range_breakout else "🏔️ ZİRVE"
-        
-        delta = close.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rsi = 100 - (100 / (1 + (gain / loss))).iloc[-1]
-        
-        if rsi > 85: return None
-
-        # --- MANSFIELD RS (Endekse Göre Göreceli Güç) ---
-        mansfield_cb = 0.0
-        if bench_series is not None and len(close) > 60:
-            try:
-                common = close.index.intersection(bench_series.index)
-                if len(common) > 55:
-                    rs_r = close.reindex(common) / bench_series.reindex(common)
-                    rs_m = rs_r.rolling(50).mean()
-                    m = ((rs_r / rs_m) - 1) * 10
-                    mansfield_cb = float(m.iloc[-1]) if not np.isnan(m.iloc[-1]) else 0.0
-            except: pass
-        if mansfield_cb < -1.5: return None  # Kırılım yapıyor ama endeksin gerisinde = elenir
-        if mansfield_cb > 0: breakout_type = breakout_type + " 📈RS"
-
-        # --- OMI (OBV Momentum Index) — Volume momentum filtresi ---
-        # Fiyat 20g zirvesini kırdı ama hacim momentumu negatifse fake breakout riski var.
-        try:
-            _obv_chg_c  = close.diff()
-            _obv_dir_c  = np.sign(_obv_chg_c).fillna(0)
-            _obv_ser_c  = (_obv_dir_c * volume).cumsum()
-            _omi_ser_c  = _obv_ser_c.ewm(span=5, adjust=False).mean() - _obv_ser_c.ewm(span=20, adjust=False).mean()
-            _omi_std_c  = float(_omi_ser_c.tail(50).std())
-            omi_norm_c  = float(_omi_ser_c.iloc[-1] / _omi_std_c) if (_omi_std_c and not pd.isna(_omi_std_c) and _omi_std_c > 0) else 0.0
-        except Exception:
-            omi_norm_c = 0.0
-        if omi_norm_c < -0.5: return None   # Volume momentum negatif — onaylı kırılım değil
-
-        return {
-            "Sembol": symbol,
-            "Fiyat": f"{curr_close:.2f}",
-            "Kirim_Turu": breakout_type,
-            "Hacim_Kati": vol_display,
-            "RSI": int(rsi),
-            "SortKey": performance_ratio,
-            "Hacim": curr_vol
-        }
-    except: return None
-
-@st.cache_data(ttl=3600)
-def scan_confirmed_breakouts(asset_list, category="S&P 500"):
-    data = get_batch_data_cached(asset_list, period="1y")
-    if data.empty: return pd.DataFrame()
-
-    bench = get_benchmark_data(category)
-
-    results = []
-    stock_dfs = []
-    for symbol in asset_list:
-        try:
-            if isinstance(data.columns, pd.MultiIndex):
-                if symbol in data.columns.levels[0]: stock_dfs.append((symbol, data[symbol]))
-            else:
-                if len(asset_list) == 1: stock_dfs.append((symbol, data))
-        except: continue
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(process_single_confirmed, sym, df, bench) for sym, df in stock_dfs]
-        for future in concurrent.futures.as_completed(futures):
-            res = future.result()
-            if res: results.append(res)
-    
-    return pd.DataFrame(results).sort_values(by="Hacim", ascending=False).head(20) if results else pd.DataFrame()
 
 # ==============================================================================
 # BÖLÜM 14 — TEMEL SKOR VE MASTER SKOR
@@ -6642,19 +6261,6 @@ def calculate_sentiment_score(ticker):
         }
     except: return None
         
-def get_deep_xray_data(ticker):
-    sent = calculate_sentiment_score(ticker)
-    if not sent: return None
-    def icon(cond): return "✅" if cond else "❌"
-    return {
-        "mom_rsi": f"{icon(sent['raw_rsi']>50)} RSI Trendi",
-        "mom_macd": f"{icon(sent['raw_macd']>0)} MACD Hist",
-        "vol_obv": f"{icon('OBV ↑' in sent['vol'])} OBV Akışı",
-        "tr_ema": f"{icon('GoldCross' in sent['tr'])} EMA Dizilimi",
-        "tr_adx": f"{icon('P > SMA50' in sent['tr'])} Trend Gücü",
-        "vola_bb": f"{icon('BB Break' in sent['vola'])} BB Sıkışması",
-        "str_bos": f"{icon('BOS ↑' in sent['str'])} Yapı Kırılımı"
-    }
 
 # ==============================================================================
 # BÖLÜM 22 — ICT DERİN ANALİZ VE FİYAT HAREKETİ DNA
@@ -8774,66 +8380,6 @@ def calculate_harmonic_patterns(ticker, df):
         return None
 
 
-@st.cache_data(ttl=900)
-def scan_harmonic_patterns_batch(asset_list):
-    """
-    🔮 Harmonik Formasyon Toplu Taraması
-    Tüm listede XABCD Fibonacci formasyonu arar, PRZ yakınındakileri döndürür.
-    """
-    data = get_batch_data_cached(asset_list, period="1y")
-    if data is None or (hasattr(data, 'empty') and data.empty):
-        return pd.DataFrame()
-
-    results = []
-    _PATTERN_EMOJI = {'Gartley': '🦋', 'Butterfly': '🦋', 'Bat': '🦇', 'Crab': '🦀', 'Shark': '🦈'}
-    _DIR_EMOJI = {'Bullish': '🟢', 'Bearish': '🔴'}
-
-    for symbol in asset_list:
-        try:
-            if isinstance(data.columns, pd.MultiIndex):
-                if symbol not in data.columns.levels[0]:
-                    continue
-                df = data[symbol].dropna()
-            else:
-                df = data.dropna()
-
-            if len(df) < 60:
-                continue
-
-            avg_vol = df['Volume'].iloc[-20:].mean()
-            if avg_vol < 500_000:
-                continue
-
-            res = calculate_harmonic_patterns(symbol, df)
-            if res:
-                fiyat = res['curr_price']
-                emoji = _PATTERN_EMOJI.get(res['pattern'], '🔮')
-                dir_e = _DIR_EMOJI.get(res['direction'], '')
-                results.append({
-                    'Sembol': symbol,
-                    'Fiyat': round(fiyat, 2),
-                    'Pattern': f"{emoji} {res['pattern']}",
-                    'Yön': f"{dir_e} {res['direction']}",
-                    'PRZ': round(res['prz'], 2),
-                    'PRZ_Fark%': round(abs(fiyat - res['prz']) / res['prz'] * 100, 1),
-                    'AB_XA': res['AB_XA'],
-                    'XD_XA': res['XD_XA'],
-                    'Bar_Önce': res['bars_ago'],
-                    'Durum': '📍 Yaklaşıyor' if res.get('state') == 'approaching' else '✅ Taze',
-                })
-        except Exception:
-            continue
-
-    if not results:
-        return pd.DataFrame()
-
-    df_out = pd.DataFrame(results)
-    # Önce yeni oluşanlar (bars_ago küçük), sonra PRZ'ye yakın olanlar
-    df_out['_yon_sira'] = df_out['Yön'].apply(lambda x: 0 if 'Bullish' in x else 1)
-    df_out.sort_values(['_yon_sira', 'Bar_Önce', 'PRZ_Fark%'], inplace=True)
-    df_out.drop(columns=['_yon_sira'], inplace=True)
-    df_out.reset_index(drop=True, inplace=True)
-    return df_out
 
 
 def render_harmonic_banner(ticker):
@@ -9104,60 +8650,6 @@ def scan_harmonic_confluence_batch(asset_list):
 
 
 # --- ROYAL FLUSH NADİR FIRSAT HESAPLAYICI ---
-def render_nadir_firsat_banner(ict_data, sent_data, ticker):
-    if not ict_data or not sent_data: return
-
-    # --- KRİTER 1: YAPI (ICT) ---
-    # BOS veya MSS (Bullish) olmalı
-    cond_struct = "BOS (Yükseliş" in ict_data.get('structure', '') or "MSS (Market Structure Shift) 🐂" in ict_data.get('structure', '')
-    
-    # --- KRİTER 2: GÜÇ (RS MOMENTUM) ---
-    alpha_val = 0
-    pa_data = calculate_price_action_dna(ticker)
-    if pa_data:
-        alpha_val = pa_data.get('rs', {}).get('alpha', 0)
-    cond_rs = alpha_val > 0
-
-    # --- KRİTER 3: MALİYET (VWAP) ---
-    v_diff = pa_data.get('vwap', {}).get('diff', 0) if pa_data else 0
-    cond_vwap = v_diff < 12
-
-    # --- KRİTER 3: HACİM CANLANMASI ---
-    try:
-        df_vol = get_safe_historical_data(ticker)
-        if df_vol is not None and len(df_vol) >= 22:
-            vol      = df_vol['Volume']
-            ort20    = vol.iloc[-22:-2].mean()
-            son3_ort = vol.iloc[-3:].mean()
-            son2_ort = vol.iloc[-2:].mean()
-            onc5_ort = vol.iloc[-7:-2].mean()
-            cond_vol = (son3_ort > ort20 * 1.2) or (son2_ort > onc5_ort * 1.3)
-        else:
-            cond_vol = False
-    except:
-        cond_vol = False
-
-    # --- FİLTRE (YA HEP YA HİÇ - 4/4) ---
-    if not (cond_struct and cond_rs and cond_vwap and cond_vol):
-        return
-
-    # --- HTML ÇIKTISI ---
-    bg = "linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%)"
-    border = "#1e40af"
-    txt = "#ffffff"
-
-    st.markdown(f"""<div style="background:{bg}; border:1px solid {border}; border-radius:8px; padding:12px; margin-top:5px; margin-bottom:15px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
-<div style="display:flex; justify-content:space-between; align-items:center;">
-<div style="display:flex; align-items:center; gap:10px;">
-<span style="font-size:1.6rem;">♠️</span>
-<div style="line-height:1.2;">
-<div style="font-weight:800; color:{txt}; font-size:1rem; letter-spacing:0.5px;">ROYAL FLUSH NADİR SET-UP</div>
-<div style="font-size:0.75rem; color:{txt}; opacity:0.95;">ICT Yapı + RS Liderliği + VWAP Uyumu + Hacim Canlanması: En Yüksek Olasılık.</div>
-</div>
-</div>
-<div style="font-family:'JetBrains Mono'; font-weight:800; font-size:1.2rem; color:{txt}; background:rgba(255,255,255,0.25); padding:4px 10px; border-radius:6px;">4/4</div>
-</div>
-</div>""", unsafe_allow_html=True)
 
 # ==============================================================================
 # BÖLÜM 26 — SUPERTREND, FİBONACCİ VE Z-SCORE MOTORLARİ
@@ -9881,14 +9373,6 @@ def _gauge_chart_b64(score, dark_mode):
     return base64.b64encode(buf.read()).decode()
 
 
-def render_gauge_chart(score):
-    b64 = _gauge_chart_b64(int(score), True)
-    if b64:
-        st.markdown(
-            f"<img src='data:image/png;base64,{b64}' "
-            f"style='width:100%;display:block;margin:0 auto;'/>",
-            unsafe_allow_html=True
-        )
 
 
 def _compute_smc_elements(highs_arr, lows_arr, opens_arr, closes_arr, n_pivot=5):
@@ -10043,197 +9527,6 @@ def _compute_smc_elements(highs_arr, lows_arr, opens_arr, closes_arr, n_pivot=5)
     return result
 
 
-@st.cache_data(ttl=900, show_spinner=False)
-def _main_price_chart_b64(symbol, dark_mode):
-    """1y candlestick + SMC (FVG/OB/BOS/EQH/EQL/zones) + EMA144 + SMA50/100/200 + volume."""
-    try:
-        from matplotlib.patches import Rectangle as MplRect
-
-        df = get_safe_historical_data(symbol, period="1y")
-        if df is None or len(df) < 10:
-            return None
-
-        close_s   = df['Close']
-        sma50_arr  = close_s.rolling(50).mean().values
-        sma100_arr = close_s.rolling(100).mean().values
-        sma200_arr = close_s.rolling(200).mean().values
-        ema144_arr = close_s.ewm(span=144, adjust=False).mean().values
-
-        #HESAPLAMALAR BİTTİ, GÖSTERİLECEK 90 GÜNE KISALTIYORUZ
-        show_bars = 90
-        df = df.tail(show_bars)
-        sma50_arr = sma50_arr[-show_bars:]
-        sma100_arr = sma100_arr[-show_bars:]
-        sma200_arr = sma200_arr[-show_bars:]
-        ema144_arr = ema144_arr[-show_bars:]
-        # ========================================
-
-        n      = len(df)
-        opens  = df['Open'].values.astype(float)
-        highs  = df['High'].values.astype(float)
-        lows   = df['Low'].values.astype(float)
-        closes = df['Close'].values.astype(float)
-
-        smc = _compute_smc_elements(highs, lows, opens, closes, n_pivot=5)
-
-        bg   = '#ffffff'
-        fg   = '#1e293b'
-        grid = '#f1f5f9'
-        c_up   = "#228dbb"
-        c_down = "#d36664"
-
-        fig = plt.figure(figsize=(14, 5.5), facecolor=bg)
-        ax1 = fig.add_axes([0.04, 0.28, 0.93, 0.67])
-        ax2 = fig.add_axes([0.04, 0.04, 0.93, 0.20], sharex=ax1)
-        for ax in [ax1, ax2]:
-            ax.set_facecolor(bg)
-            ax.tick_params(colors=fg, labelsize=7)
-            for spine in ax.spines.values():
-                spine.set_edgecolor(grid)
-
-        # ── LAYER 0: Premium / Discount / Equilibrium zones ─────────
-        sh = smc['swing_high']
-        sl = smc['swing_low']
-        if sh is not None and sl is not None and sh > sl:
-            rng     = sh - sl
-            disc_hi = sl + rng * 0.30
-            prem_lo = sh - rng * 0.30
-            eq_lo   = sl + rng * 0.45
-            eq_hi   = sl + rng * 0.55
-            ax1.axhspan(sl,      disc_hi, facecolor='#26a69a', alpha=0.06, zorder=0)
-            ax1.axhspan(prem_lo, sh,      facecolor='#ef5350', alpha=0.06, zorder=0)
-            ax1.axhspan(eq_lo,   eq_hi,   facecolor='#a78bfa', alpha=0.08, zorder=0)
-            ax1.axhline(eq_lo, color='#a78bfa', lw=0.6, linestyle=':', alpha=0.45, zorder=1)
-            ax1.axhline(eq_hi, color='#a78bfa', lw=0.6, linestyle=':', alpha=0.45, zorder=1)
-            _zx = n + 0.6
-            ax1.text(_zx, (sl + disc_hi) / 2, 'DISCOUNT', fontsize=7,
-                     color='#26a69a', va='center', ha='left', alpha=0.85)
-            ax1.text(_zx, (prem_lo + sh) / 2, 'PREMIUM', fontsize=7,
-                     color='#ef5350', va='center', ha='left', alpha=0.85)
-            ax1.text(_zx, (eq_lo + eq_hi) / 2, 'EQ', fontsize=7,
-                     color='#a78bfa', va='center', ha='left', alpha=0.85)
-
-        # ── LAYER 1: Fair Value Gaps ──────────────────────────────────
-        for (x0, p_lo, p_hi) in smc['fvg_bull']:
-            ax1.add_patch(MplRect((x0, p_lo), n - x0, p_hi - p_lo,
-                                  facecolor='#26a69a', alpha=0.11,
-                                  edgecolor='#26a69a', linewidth=0.5, zorder=1))
-            ax1.text(x0 + 0.5, p_hi, 'FVG', fontsize=5,
-                     color='#26a69a', va='bottom', alpha=0.85)
-        for (x0, p_lo, p_hi) in smc['fvg_bear']:
-            ax1.add_patch(MplRect((x0, p_lo), n - x0, p_hi - p_lo,
-                                  facecolor='#ef5350', alpha=0.11,
-                                  edgecolor='#ef5350', linewidth=0.5, zorder=1))
-            ax1.text(x0 + 0.5, p_lo, 'FVG', fontsize=5,
-                     color='#ef5350', va='top', alpha=0.85)
-
-        # ── LAYER 2: Order Blocks ─────────────────────────────────────
-        for (bi, o, c, h, l) in smc['ob_bull']:
-            ax1.add_patch(MplRect((bi - 0.5, l), min(4.0, n - bi + 0.5), h - l,
-                                  facecolor='#26a69a', alpha=0.17,
-                                  edgecolor='#26a69a', linewidth=1.0,
-                                  linestyle='--', zorder=2))
-            ax1.text(bi + 0.3, h, 'OB', fontsize=5.5, color='#26a69a',
-                     va='bottom', fontweight='bold', alpha=0.9)
-        for (bi, o, c, h, l) in smc['ob_bear']:
-            ax1.add_patch(MplRect((bi - 0.5, l), min(4.0, n - bi + 0.5), h - l,
-                                  facecolor='#ef5350', alpha=0.17,
-                                  edgecolor='#ef5350', linewidth=1.0,
-                                  linestyle='--', zorder=2))
-            ax1.text(bi + 0.3, l, 'OB', fontsize=5.5, color='#ef5350',
-                     va='top', fontweight='bold', alpha=0.9)
-
-        # ── LAYER 3: BOS / CHoCH ─────────────────────────────────────
-        for (bi, price, kind) in smc['bos_lines']:
-            col = '#38bdf8' if kind == 'BOS' else '#f472b6'
-            ax1.axhline(price, color=col, lw=0.85, linestyle=':', alpha=0.75, zorder=3)
-            ax1.text(bi, price, f' {kind}', fontsize=6, color=col,
-                     va='bottom', fontweight='bold', alpha=0.9)
-
-        # ── LAYER 3b: Equal Highs / Equal Lows ───────────────────────
-        for (ba, bb, price) in smc['eqh']:
-            ax1.plot([ba, bb], [price, price], color='#ffd600', lw=0.85,
-                     linestyle=':', alpha=0.75, zorder=3)
-            ax1.text(bb + 0.5, price, 'EQH', fontsize=5.5,
-                     color='#ffd600', va='bottom', alpha=0.88)
-        for (ba, bb, price) in smc['eql']:
-            ax1.plot([ba, bb], [price, price], color='#fb923c', lw=0.85,
-                     linestyle=':', alpha=0.75, zorder=3)
-            ax1.text(bb + 0.5, price, 'EQL', fontsize=5.5,
-                     color='#fb923c', va='top', alpha=0.88)
-
-        # ── LAYER 4-5: Candlesticks ───────────────────────────────────
-        for i in range(n):
-            col = c_up if closes[i] >= opens[i] else c_down
-            ax1.plot([i, i], [lows[i], highs[i]], color=col, linewidth=0.5, zorder=4)
-            bot = min(opens[i], closes[i])
-            ht  = max(abs(closes[i] - opens[i]), (highs[i] - lows[i]) * 0.005)
-            ax1.add_patch(MplRect((i - 0.35, bot), 0.70, ht,
-                                  facecolor=col, edgecolor='none', zorder=5))
-
-        # ── LAYER 6: MA lines ─────────────────────────────────────────
-        x = np.arange(n)
-        ma_cfg = [
-            (sma50_arr,  "#df460a", 'SMA 50',  0.5),
-            (sma100_arr, "#0790ca", 'SMA 100', 0.5),
-            (ema144_arr, '#a78bfa', 'EMA 144', 0.5),
-            (sma200_arr, "#eb920c", 'SMA 200', 0.5),
-        ]
-        legend_handles = []
-        for arr, color, label, lw in ma_cfg:
-            valid = ~np.isnan(arr)
-            if valid.any():
-                ax1.plot(x[valid], arr[valid], color=color, lw=lw,
-                         alpha=0.88, zorder=6)
-                legend_handles.append(
-                    plt.Line2D([0], [0], color=color, lw=1.5, label=label))
-
-        # ── LAYER 7: Current price ────────────────────────────────────
-        curr = closes[-1]
-        ax1.axhline(curr, color=fg, lw=0.7, linestyle='--', alpha=0.50, zorder=7)
-        price_str = f"{int(curr)}" if curr >= 1000 else f"{curr:.2f}"
-        ax1.text(n + 0.3, curr, price_str, va='center', ha='left',
-                 fontsize=7.5, color=fg, fontfamily='monospace', fontweight='bold')
-
-        ax1.set_xlim(-0.8, n + 6)
-        ax1.yaxis.set_major_formatter(
-            plt.FuncFormatter(lambda v, _: f"{int(v)}" if v >= 1000 else f"{v:.1f}"))
-        ax1.grid(True, axis='y', color=grid, linewidth=0.5, alpha=0.5)
-        ax1.set_xticklabels([])
-
-        if legend_handles:
-            ax1.legend(handles=legend_handles, loc='upper left', fontsize=6.5,
-                       facecolor=bg, edgecolor=grid, labelcolor=fg,
-                       framealpha=0.85, ncol=4)
-
-        # Tarih ekseni (5 tick)
-        ticks = [0, n // 4, n // 2, 3 * n // 4, n - 1]
-        ax2.set_xticks(ticks)
-        ax2.set_xticklabels(
-            [df.index[t].strftime("%b '%y") for t in ticks],
-            fontsize=6.5, color=fg)
-
-        # Hacim
-        vols  = df['Volume'].values.astype(float)
-        vcols = [c_up if closes[i] >= opens[i] else c_down for i in range(n)]
-        ax2.bar(x, vols, color=vcols, alpha=0.50, width=0.8)
-        ax2.yaxis.set_major_formatter(
-            plt.FuncFormatter(lambda v, _: f"{v/1e6:.0f}M" if v >= 1e6 else f"{v/1e3:.0f}K"))
-        ax2.grid(True, axis='y', color=grid, linewidth=0.4, alpha=0.4)
-        ax2.tick_params(colors=fg, labelsize=6)
-
-        disp = TICKER_DISPLAY_NAMES.get(symbol,
-               symbol.split('.')[0].replace('=F', '').replace('-USD', ''))
-        ax1.set_title(f"  {disp}  ·  {n} Bar  ·  SMC",
-                      fontsize=9, color=fg, fontweight='bold', loc='left', pad=5)
-
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor=bg)
-        plt.close(fig)
-        buf.seek(0)
-        return base64.b64encode(buf.read()).decode()
-    except Exception:
-        return None
 
 
 def _main_price_chart_plotly(symbol, dark_mode):
@@ -10628,41 +9921,6 @@ def _main_price_chart_plotly(symbol, dark_mode):
         return str(_e), {}   # hata mesajını döndür, None değil
 
 
-@st.cache_data(ttl=900, show_spinner=False)
-def _sparkline_b64(symbol, dark_mode):
-    """5-bar kapanış fiyatı sparkline — scan result kartları için."""
-    try:
-        df = get_safe_historical_data(symbol)
-        if df is None or len(df) < 5:
-            return None
-        closes = df['Close'].iloc[-5:].values.astype(float)
-
-        bg    = '#f8fafc'
-        up    = closes[-1] >= closes[0]
-        color = '#26a69a' if up else '#ef5350'
-
-        fig, ax = plt.subplots(figsize=(1.8, 0.55))
-        fig.patch.set_facecolor(bg)
-        ax.set_facecolor(bg)
-        ax.axis('off')
-
-        x = list(range(5))
-        ax.plot(x, closes, color=color, linewidth=2.0,
-                solid_capstyle='round', solid_joinstyle='round')
-        ax.fill_between(x, closes, closes.min() * 0.998,
-                        alpha=0.18, color=color)
-        # Son nokta belirgin
-        ax.scatter([4], [closes[-1]], color=color, s=18, zorder=5)
-
-        plt.tight_layout(pad=0.1)
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=90,
-                    bbox_inches='tight', facecolor=bg)
-        plt.close(fig)
-        buf.seek(0)
-        return base64.b64encode(buf.read()).decode()
-    except Exception:
-        return None
 
 def _rsi_bar_html(rsi_val):
     """Yatay RSI progress bar (30=kırmızı, 50=yeşil, 70=sarı)."""
@@ -10772,48 +10030,6 @@ def render_sentiment_card(sent):
     
     st.markdown(final_html, unsafe_allow_html=True)
 
-def render_deep_xray_card(xray):
-    if not xray: return
-    
-    display_ticker = get_display_name(st.session_state.ticker)
-    
-    html_icerik = f"""
-    <div class="info-card">
-        <div class="info-header">🔍 Derin Teknik Röntgen: {display_ticker}</div>
-        
-        <div class="info-row">
-            <div class="label-long">1. Momentum:</div>
-            <div class="info-val">{xray['mom_rsi']} | {xray['mom_macd']}</div>
-        </div>
-        <div class="edu-note">RSI 50 üstü ve MACD pozitif bölgedeyse ivme alıcıların kontrolündedir. RSI 50 üstünde? MACD 0'dan büyük?</div>
-
-        <div class="info-row">
-            <div class="label-long">2. Hacim Akışı:</div>
-            <div class="info-val">{xray['vol_obv']}</div>
-        </div>
-        <div class="edu-note">Para girişinin (OBV) fiyat hareketini destekleyip desteklemediğini ölçer. OBV, 5 günlük ortalamasının üzerinde?</div>
-
-        <div class="info-row">
-            <div class="label-long">3. Trend Sağlığı:</div>
-            <div class="info-val">{xray['tr_ema']} | {xray['tr_adx']}</div>
-        </div>
-        <div class="edu-note">Fiyatın EMA50 ve EMA200 üzerindeki kalıcılığını ve trendin gücünü denetler. 1. EMA50 EMA200'ü yukarı kesmiş? 2. Zaten üstünde?</div>
-
-        <div class="info-row">
-            <div class="label-long">4. Volatilite:</div>
-            <div class="info-val">{xray['vola_bb']}</div>
-        </div>
-        <div class="edu-note">Bollinger Bantlarındaki daralma, yakında bir patlama olabileceğini gösterir. Fiyat üst bandı yukarı kırdı?</div>
-
-        <div class="info-row">
-            <div class="label-long">5. Piyasa Yapısı:</div>
-            <div class="info-val">{xray['str_bos']}</div>
-        </div>
-        <div class="edu-note">Kritik direnç seviyelerinin kalıcı olarak aşılması (BOS) yükselişin devamı için şarttır. Fiyat son 20 günün en yüksek seviyesini aştı?</div>
-    </div>
-    """.replace("\n", "")
-    
-    st.markdown(html_icerik, unsafe_allow_html=True)
 
 # ==============================================================================
 # BÖLÜM 29 — DETAY KARTI VE PANEL RENDER SİSTEMİ
@@ -12181,6 +11397,7 @@ def render_price_action_panel(ticker):
     st.markdown(html_content.replace("\n", ""), unsafe_allow_html=True)
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def calculate_smart_money_score(ticker):
     """
     Backwards-compatible wrapper:
@@ -13627,35 +12844,9 @@ def _er_rs_pct(close, bench_close, days, _aligned=None):
     except Exception:
         return 0.0
 
-def _er_rs_turning(close, bench_close):
-    """20g negatif ama 5g pozitife döndü"""
-    if bench_close is None:
-        return False
-    return _er_rs_pct(close, bench_close, 20) < 0 and _er_rs_pct(close, bench_close, 5) > 0
 
-def _er_rs_crossover(close, bench_close):
-    """20g negatif ama 10g pozitife döndü (orta vade crossover)"""
-    if bench_close is None:
-        return False
-    return _er_rs_pct(close, bench_close, 20) < 0 and _er_rs_pct(close, bench_close, 10) > 0
 
-def _er_rs_persistent_positive(close, bench_close):
-    """5g+10g+20g+60g hepsi pozitif"""
-    if bench_close is None:
-        return False
-    for d in (5, 10, 20, 60):
-        if _er_rs_pct(close, bench_close, d) <= 0:
-            return False
-    return True
 
-def _er_rs_accelerating(close, bench_close):
-    """RS 5g > 10g > 20g (eğim artıyor) ve 5g pozitif"""
-    if bench_close is None:
-        return False
-    rs5 = _er_rs_pct(close, bench_close, 5)
-    rs10 = _er_rs_pct(close, bench_close, 10)
-    rs20 = _er_rs_pct(close, bench_close, 20)
-    return rs5 > rs10 > rs20 and rs5 > 0
 
 def _er_rs_new_high(close, bench_close, lookback=20):
     """RS oranı son N gün'ün en yüksek %98'inde"""
@@ -13674,19 +12865,7 @@ def _er_rs_new_high(close, bench_close, lookback=20):
     except Exception:
         return False
 
-def _er_rs_healthy_pullback(close, bench_close):
-    """RS 20g pozitif ama son 5g hafif düşüyor (-3% < rs5 < 0)"""
-    if bench_close is None:
-        return False
-    rs20 = _er_rs_pct(close, bench_close, 20)
-    rs5 = _er_rs_pct(close, bench_close, 5)
-    return rs20 > 0 and -3 < rs5 < 0
 
-def _er_rs_negative_60(close, bench_close):
-    """60g'de RS %5'ten fazla negatif"""
-    if bench_close is None:
-        return False
-    return _er_rs_pct(close, bench_close, 60) < -5
 
 def _er_index_falling(bench_close, days=10):
     """Endeks son N gün'de düşmüş"""
@@ -14897,8 +14076,12 @@ def calculate_multi_timeframe_alignment(ticker):
         return None
 
 
-def calculate_8_point_roadmap(ticker):
-    """Fiyat davranışı (PA), VSA, Hacim ve Trend algoritmalarını birleştiren sentez model."""
+@st.cache_data(ttl=600, show_spinner=False)
+def calculate_8_point_roadmap(ticker, cat=None):
+    """Fiyat davranışı (PA), VSA, Hacim ve Trend algoritmalarını birleştiren sentez model.
+    cat: RS karşılaştırması için kategori (benchmark seçimi). @st.cache_data anahtarına
+    dahil edilsin diye parametre olarak alınır; None ise 'BIST' varsayılır (session_state
+    okuması cache'li gövde içine sızmasın)."""
     try:
         df = get_safe_historical_data(ticker, period="1y")
         if df is None or len(df) < 200: return None
@@ -15060,7 +14243,7 @@ def calculate_8_point_roadmap(ticker):
         boga_w += 5 if _obv.iloc[-1] > _obv_sma.iloc[-1] else -5
         # RS katkısı (±5): son 20 günde endekse göre göreli güç
         try:
-            _cat = st.session_state.get('category', 'BIST')
+            _cat = cat if cat is not None else 'BIST'
             _bench = get_benchmark_data(_cat)
             if _bench is not None and len(_bench) >= 21:
                 _bench_ret = float(_bench.iloc[-1]) / float(_bench.iloc[-21]) - 1
@@ -15222,9 +14405,6 @@ def calculate_8_point_roadmap(ticker):
     except Exception as e:
         return None
 
-def _pattern_side_info_html(chart_data, curr_price, dark_mode):
-    """Geriye dönük uyumluluk için korundu — dialog artık _build_pattern_analysis kullanır."""
-    return ""
 
 
 def _build_pattern_analysis(chart_data, curr_price, ticker):
@@ -16176,7 +15356,7 @@ def _fetch_gemini_ozeti(ticker, data, mtf_ctx, mkt_ctx):
 
 
 def render_roadmap_8_panel(ticker):
-    data = calculate_8_point_roadmap(ticker)
+    data = calculate_8_point_roadmap(ticker, st.session_state.get('category', 'BIST'))
     if not data: return
 
     display_ticker = get_display_name(ticker)
@@ -19277,7 +18457,7 @@ if st.session_state.generate_prompt:
     synth_data = calculate_synthetic_sentiment(t)
 
     # --- TEKNİK YOL HARİTASI VERİSİNİ AI İÇİN HAZIRLA (Composite + MTF + Trade Plan + Alt kartlar) ---
-    roadmap_data_ai = calculate_8_point_roadmap(t)
+    roadmap_data_ai = calculate_8_point_roadmap(t, st.session_state.get('category', 'BIST'))
     roadmap_ai_txt = "Veri Yok"
 
     if roadmap_data_ai:
