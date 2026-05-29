@@ -26,6 +26,15 @@ from telegram.error import Conflict, NetworkError, TimedOut
 from smr_tickers import resolve_ticker
 import smr_core
 
+# ─── BIST Takvim (tatil/arefe notu için) ─────────────────────────────────────
+# Bülten kapalı günlerde de gider ama "son seans" notuyla işaretlenir.
+try:
+    from bist_calendar import get_day_status as _bist_day_status
+    _BIST_CAL_OK = True
+except ImportError:
+    def _bist_day_status(_dt=None): return ("open", "Normal Seans")
+    _BIST_CAL_OK = False
+
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 CFG_PATH  = os.path.join(BASE_DIR, "telegram_config.json")
@@ -1239,10 +1248,12 @@ async def reset_daily_limits(context: ContextTypes.DEFAULT_TYPE):
 
 # ─── GÜNLÜK BÜLTEN (Pzt-Cuma 19:00, Paz 21:00) ───────────────────────────────
 async def _send_bulletin_to_channel(
-    context, chat_id: int, tier: str, now_str: str, is_sunday: bool = False
+    context, chat_id: int, tier: str, now_str: str, is_sunday: bool = False,
+    market_note: str = ""
 ):
     """Verilen kanala XU100 bülteni gönder (tier: 'pro' veya 'elite').
     is_sunday=True ise başlık "Pazar Hatırlatması" olarak işaretlenir.
+    market_note doluysa (tatil/arefe) başlığa "son seans" uyarısı eklenir.
     """
     tier_label = tier.upper()
     log.info(f"[{tier_label}] Bülten hazırlanıyor (chat_id={chat_id})...")
@@ -1257,6 +1268,8 @@ async def _send_bulletin_to_channel(
             header = f"📅 *SMR Pazar Hatırlatması — {now_str}*\n_↩️ Cuma analizinin tekrarı_"
         else:
             header = f"📅 *SMR Günlük Bülten — {now_str}*"
+        if market_note:
+            header += f"\n🔒 _{market_note}_"
 
         if ict_text:
             caption = (
@@ -1331,14 +1344,29 @@ async def send_daily_bulletin(context: ContextTypes.DEFAULT_TYPE):
     now_str   = datetime.now().strftime("%d.%m.%Y")
     gun_adi   = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"][weekday]
 
+    # ── BIST tatil/arefe kontrolü ───────────────────────────────────────────
+    # Kapalı günde (resmî tatil/bayram) bülten yine gider — çünkü abone
+    # sessizlikten "servis bozuldu" sanıyor — ama başlığa "son seans" notu eklenir.
+    market_note = ""
+    try:
+        _status, _name = _bist_day_status()
+        if _status == "closed" and not is_sunday:
+            market_note = f"Piyasa kapalı ({_name}) — son seans verileriyle özet"
+            log.info(f"BIST kapalı ({_name}) — bülten son-seans notuyla gönderilecek.")
+        elif _status == "half":
+            market_note = f"Arefe / yarım gün ({_name})"
+            log.info(f"BIST arefe ({_name}) — bülten arefe notuyla gönderilecek.")
+    except Exception as e:
+        log.warning(f"[bulletin] BIST takvim kontrolü atlandı: {e}")
+
     log.info(
         f"{'Pazar Hatırlatması' if is_sunday else 'Günlük Bülten'} "
         f"gönderiliyor ({gun_adi}) — PRO + ELITE..."
     )
 
     # PRO önce, ELITE ardından (sequential — semaphore çakışması olmaz)
-    await _send_bulletin_to_channel(context, PRO_ID,   tier="pro",   now_str=now_str, is_sunday=is_sunday)
-    await _send_bulletin_to_channel(context, ELITE_ID, tier="elite", now_str=now_str, is_sunday=is_sunday)
+    await _send_bulletin_to_channel(context, PRO_ID,   tier="pro",   now_str=now_str, is_sunday=is_sunday, market_note=market_note)
+    await _send_bulletin_to_channel(context, ELITE_ID, tier="elite", now_str=now_str, is_sunday=is_sunday, market_note=market_note)
 
 
 # ─── RENEWAL HATIRLATMA (T-3, T-1, T-0) ──────────────────────────────────────
