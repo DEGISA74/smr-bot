@@ -2585,6 +2585,61 @@ def _validate_tobo_shape(sl1_i, sl1_v, sl2_i, sl2_v, sl3_i, sl3_v,
     return True, neck_now
 
 
+def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
+                          eq_tol=0.05, min_depth=0.10, min_dur=25, max_dur=180):
+    """Çift Dip (W) tespiti — swing tabanlı (30 May 2026).
+
+    W formasyonu: Dip1 → Orta Tepe (boyun) → Dip2 (≈Dip1). İki ~eşit dip ve
+    aralarındaki belirgin tepe; boyun kırılımı yukarı dönüş sinyalidir. Fincan
+    ve TOBO ile örtüşmez (onlar tek dip / 3 dip; bu 2 dip).
+
+    Şekil garantileri (sahte W'leri eler):
+    - İki dip birbirine ±%5 yakın (eq_tol) — kademeli düşüşü W sanmayı önler
+    - Orta tepe diplerden ≥%10 yukarıda (min_depth) — düz tabanı elemek için
+    - Süre 25–180 bar; ikinci dip son 60 günde (taze)
+    - Fiyat ikinci dibin üstünde + R/R ≥ 1.0
+
+    Döndürür: dict(d1_i,d1_v,neck_i,neck_v,d2_i,d2_v,target,state,dist,dur)
+              veya None.  state: 'break' (boyun kırılımı) / 'form' (oluşuyor).
+    """
+    if len(sw_l_y) < 2 or len(sw_h_y) < 1:
+        return None
+    for j in range(len(sw_l_y) - 1, 0, -1):
+        d2_i, d2_v = sw_l_y[j]
+        if bar_total - d2_i > 60:            # ikinci dip taze olmalı
+            continue
+        for k in range(j - 1, -1, -1):
+            d1_i, d1_v = sw_l_y[k]
+            dur = d2_i - d1_i
+            if not (min_dur <= dur <= max_dur):
+                continue
+            if abs(d1_v - d2_v) / d1_v > eq_tol:   # iki dip ~eşit
+                continue
+            mid_h = [(i, v) for i, v in sw_h_y if d1_i < i < d2_i]
+            if not mid_h:
+                continue
+            neck_i, neck_v = max(mid_h, key=lambda x: x[1])
+            base = min(d1_v, d2_v)
+            depth = (neck_v - base) / base
+            if depth < min_depth:                   # orta tepe belirgin mi
+                continue
+            if curr_price < d2_v * 0.98:            # fiyat ikinci dibin altında değil
+                continue
+            target = neck_v + (neck_v - base)
+            risk = max(curr_price - d2_v * 0.98, 0.01)
+            if (target - curr_price) / risk < 1.0:
+                continue
+            breaking = neck_v * 0.97 <= curr_price <= neck_v * 1.10
+            forming  = curr_price > d2_v * 1.01 and curr_price < neck_v * 0.97
+            if not (breaking or forming):
+                continue
+            dist = ((neck_v - curr_price) / neck_v * 100) if curr_price < neck_v else 0
+            return dict(d1_i=d1_i, d1_v=d1_v, neck_i=neck_i, neck_v=neck_v,
+                        d2_i=d2_i, d2_v=d2_v, target=target,
+                        state="break" if breaking else "form", dist=dist, dur=dur)
+    return None
+
+
 def scan_chart_patterns(asset_list):
     """
     V6: ZIGZAG TABANLI FORMASYON MOTORU
@@ -3101,7 +3156,8 @@ def scan_chart_patterns(asset_list):
             # ---------------------------------------------------------------
             if pattern_found:
                 q_score = base_score
-                if "FİNCAN" in pattern_name or "TOBO" in pattern_name or "QML" in pattern_name:
+                if ("FİNCAN" in pattern_name or "TOBO" in pattern_name
+                        or "QML" in pattern_name or "ÇİFT DİP" in pattern_name):
                     q_score += 15
                 avg_vol   = float(volume.iloc[-20:].mean())
                 vol_ratio = float(volume.iloc[-1]) / avg_vol if avg_vol > 0 else 1
@@ -3446,6 +3502,31 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                                 base_score = 72
                             pattern_found = True
                             break
+
+            # B.5) ÇİFT DİP (W) — İki ~eşit dip + orta tepe (boyun) kırılımı
+            if not pattern_found:
+                _db = _detect_double_bottom(_swl_y, _swh_y, curr_price, _bt)
+                if _db:
+                    # Wick/Body filtresi SADECE iki dip cevresinde (±6 bar) —
+                    # uzun W span'inde tum bar filtresi gercek W'leri eler.
+                    def _zone_clean(ci):
+                        _s = max(0, ci - 6); _e = min(ci + 7, _bt)
+                        if _e - _s < 5: return True
+                        o_z = open_.iloc[_s:_e].values.astype(float)
+                        c_z = close.iloc[_s:_e].values.astype(float)
+                        h_z = high.iloc[_s:_e].values.astype(float)
+                        l_z = low.iloc[_s:_e].values.astype(float)
+                        _bd = np.abs(c_z - o_z); _wk = (h_z - l_z) - _bd
+                        return not (np.median(_bd) > 1e-9 and np.median(_wk) > 2.0 * np.median(_bd))
+                    if _zone_clean(_db["d1_i"]) and _zone_clean(_db["d2_i"]):
+                        dur_months = max(1, round(_db["dur"] / 21))
+                        if _db["state"] == "break":
+                            p_name = f"🔷 ÇİFT DİP (W) ({dur_months} Ay) — Kırılım Bölgesinde"
+                            base_score = 90
+                        else:
+                            p_name = f"⏳ OLUŞAN ÇİFT DİP (W) ({dur_months} Ay) — %{_db['dist']:.1f} kaldı"
+                            base_score = 72
+                        pattern_found = True
 
             # C) YÜKSELEN ÜÇGEN — Düz direnç + yükselen destek
             if not pattern_found and len(_swh_y) >= 2 and len(_swl_y) >= 2:
