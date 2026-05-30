@@ -2512,6 +2512,39 @@ def find_smart_sr_levels(df, window=5, cluster_tolerance=0.015, min_touches=3, r
 # Çift dip, omuz baş omuz, bayrak, üçgen, fincan-kulp vb.
 # Tüm klasik formasyon tespit algoritmaları bu bölümdedir.
 # ==============================================================================
+def _validate_cup_shape(cup_arr, left_i, dip_i, right_i, r2, min_r2=0.78):
+    """Fincan-kulp gövde (fincan) şekil doğrulaması — Dengeli profil (30 May 2026).
+
+    Gerçek bir fincan: (1) dip yaklaşık ORTADA, (2) sol yarı inişli + sağ yarı
+    çıkışlı, (3) güçlü U-fit (R²). Bu üçü sağlanmazsa düşüş-sonrası-sıçrama veya
+    asimetrik salınım 'fincan' diye etiketlenir (SISE tipi sahte pozitif).
+
+    cup_arr   : sol rim'den sağ rim'e kapanış dizisi (offset 0 = left_i)
+    left_i/dip_i/right_i : mutlak bar indeksleri (sol rim / dip / sağ rim)
+    r2        : çağıran tarafça hesaplanmış polinom U-fit R²
+    Döndürür  : True = geçerli fincan gövdesi.
+    """
+    if r2 < min_r2:
+        return False
+    span = right_i - left_i
+    if span <= 0:
+        return False
+    # 1) Dip merkeziyeti — kenardaki dip fincan değildir
+    cent = (dip_i - left_i) / span
+    if not (0.30 <= cent <= 0.70):
+        return False
+    # 2) Sol yarı inişli + sağ yarı çıkışlı (V/sürüklenme eler)
+    rel = dip_i - left_i
+    lh = cup_arr[:max(2, rel + 1)]
+    rh = cup_arr[rel:]
+    if len(lh) >= 3 and len(rh) >= 3:
+        lslope = np.polyfit(np.arange(len(lh)), lh, 1)[0]
+        rslope = np.polyfit(np.arange(len(rh)), rh, 1)[0]
+        if not (lslope < 0 and rslope > 0):
+            return False
+    return True
+
+
 def scan_chart_patterns(asset_list):
     """
     V6: ZIGZAG TABANLI FORMASYON MOTORU
@@ -2714,9 +2747,10 @@ def scan_chart_patterns(asset_list):
                             ss_res = np.sum((cup_arr - yp) ** 2)
                             ss_tot = np.sum((cup_arr - cup_arr.mean()) ** 2)
                             r2  = 1 - ss_res / ss_tot if ss_tot > 0 else 0
-                            # FIX 1: R² eşiği yükseltildi (0.55 → 0.72) — V-shape ve asimetrik şekilleri eler
-                            if r2 < 0.72 or cf[0] <= 0: continue  # Konkav yukarı zorunlu
+                            if cf[0] <= 0: continue  # Konkav yukarı zorunlu
                         except: continue
+                        # FIX (30 May 2026): Şekil doğrulaması — dip ortada + sol iniş/sağ çıkış + R²≥0.78
+                        if not _validate_cup_shape(cup_arr, sh1_i, sl_i, sh2_i, r2): continue
                         # Wick/Body filtresi: fincan bölgesi gürültülü değil mi?
                         if not is_clean_zone(sh1_i, sh2_i): continue
                         # Handle: sh2'den sonraki ilk swing low
@@ -3269,7 +3303,8 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         sl_i, sl_v = min(cup_lows, key=lambda x: x[1])
                         depth = (sh1_v - sl_v) / sh1_v
                         if not (0.12 <= depth <= 0.55): continue
-                        if abs(sh1_v - sh2_v) / sh1_v > 0.12: continue
+                        # FIX (30 May 2026): Rim hizalaması scan_chart_patterns ile eşitlendi (0.12 → 0.06)
+                        if abs(sh1_v - sh2_v) / sh1_v > 0.06: continue
                         try:
                             cup_arr = close.iloc[sh1_i:sh2_i + 1].values.astype(float)
                             if len(cup_arr) < 10: continue
@@ -3279,8 +3314,10 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             ss_res = np.sum((cup_arr - yp) ** 2)
                             ss_tot = np.sum((cup_arr - cup_arr.mean()) ** 2)
                             r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0
-                            if r2 < 0.55 or cf[0] <= 0: continue
+                            if cf[0] <= 0: continue
                         except: continue
+                        # FIX (30 May 2026): Şekil doğrulaması — iki fonksiyon ortak helper (R²≥0.78 dahil)
+                        if not _validate_cup_shape(cup_arr, sh1_i, sl_i, sh2_i, r2): continue
                         # Wick/Body filtresi: fincan bölgesi gürültülü değil mi?
                         o_z = open_.iloc[sh1_i:sh2_i+1].values.astype(float)
                         c_z = close.iloc[sh1_i:sh2_i+1].values.astype(float)
