@@ -1343,6 +1343,14 @@ def apply_volume_projection(df, ticker=""):
     if df is None or df.empty or 'Volume' not in df.columns:
         return df
 
+    # FIX (30 May 2026): Merkezi tatil 'hayalet bar' temizliği — TÜM okuma yolları
+    # (get_safe_historical_data + get_batch_data_cached) buradan geçer. Sondaki
+    # O=H=L=C, V=0 kapalı-gün barlarını söker → panellerin/taramaların hepsi
+    # otomatik düzelir. Detay: _strip_holiday_bars docstring.
+    df = _strip_holiday_bars(df, ticker)
+    if df is None or df.empty:
+        return df
+
     # Türkiye saatini güvenli şekilde al
     try:
         from datetime import timezone, timedelta
@@ -1642,6 +1650,48 @@ def get_live_price(ticker: str) -> float:
     except Exception:
         return 0.0
 
+def _strip_holiday_bars(df: pd.DataFrame, ticker: str = "") -> pd.DataFrame:
+    """SONDAKİ tatil/kapalı-gün 'hayalet barları'nı söker (30 May 2026).
+
+    Sorun: BIST resmi tatil/bayram günlerinde (hafta içine denk gelse bile)
+    veri katmanı O=H=L=C=önceki kapanış, Volume=0 olan sahte barlar üretip
+    parquet'e yazıyordu (bkz. _patch_live_price hafta-içi dalı + holiday padding).
+    Sonuç: 610 BIST hissesinin ~%17'si günlerce %0 değişimle 'donmuş' görünüyordu
+    (her panel ve taramaya yayılan veri katmanı hatası).
+
+    Çözüm: serinin SONUNDAN başlayarak, hacmi 0 OLAN ve OHLC'si düz (O==H==L==C)
+    barları sök. İki koşul birlikte → gerçek 'işlem olmayan kapalı gün' imzası.
+    Sadece düz-trailing barlara dokunur; geçmişteki gerçek 0-hacim tek barına veya
+    gerçek seans barına dokunmaz. Tüm okuma yollarında merkezi çağrılır.
+
+    Not: gömülü (ortadaki) tatil barları nadirdir ve sonraki gerçek seans onları
+    'düz değil' yapar; bu fonksiyon kasıtlı olarak yalnız trailing'i hedefler ki
+    geçmiş seri bütünlüğü bozulmasın.
+    """
+    try:
+        if df is None or df.empty or 'Volume' not in df.columns:
+            return df
+        o = df['Open'].values; h = df['High'].values
+        l = df['Low'].values;  c = df['Close'].values
+        v = df['Volume'].values
+        i = len(df) - 1
+        cut = len(df)
+        while i >= 1:   # en az 1 gerçek bar kalsın
+            _flat = (abs(o[i] - c[i]) < 1e-9 and abs(h[i] - c[i]) < 1e-9
+                     and abs(l[i] - c[i]) < 1e-9)
+            _zero = (not (v[i] > 0))   # 0, NaN veya negatif → işlem yok
+            if _flat and _zero:
+                cut = i; i -= 1
+            else:
+                break
+        if cut < len(df):
+            return df.iloc[:cut]
+        return df
+    except Exception as _e:
+        log_error("_strip_holiday_bars", _e, ticker)
+        return df
+
+
 def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd.DataFrame:
     """
     Günlük veri için son satırın Close fiyatını canlı fiyatla günceller.
@@ -1668,6 +1718,18 @@ def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd
         _today = _now.date()
         # Cumartesi=5, Pazar=6 → hafta sonu
         _is_weekend = (_now.weekday() >= 5)
+        # FIX (30 May 2026): BIST resmi tatil/bayram günü de "kapalı gün" sayılır.
+        # Eskiden sadece hafta sonu kontrol ediliyordu → bayram hafta-içine
+        # denk gelince (örn. Kurban Bayramı 27-28-29 May) "yeni bar ekle" dalı
+        # ateşlenip O=H=L=C, V=0 hayalet bar üretiyordu. Sadece BIST için.
+        _is_bist = (".IS" in ticker or "BIST" in ticker or ticker.startswith("XU"))
+        _is_holiday = False
+        if _is_bist:
+            try:
+                _is_holiday = _bist_is_closed(_today)
+            except Exception:
+                _is_holiday = False
+        _is_closed_day = _is_weekend or _is_holiday
 
         _last_date = df.index[-1]
         if hasattr(_last_date, "date"):
@@ -1680,9 +1742,9 @@ def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd
             df.loc[df.index[-1], "High"]  = max(float(df.loc[df.index[-1], "High"]),  _live)
             df.loc[df.index[-1], "Low"]   = min(float(df.loc[df.index[-1], "Low"]),   _live)
 
-        elif _is_weekend:
-            # ── HAFTA SONU: Sahte cumartesi/pazar barı EKLEME ──
-            # Piyasa kapalı; son barın (Cuma) kapanışını gerçek son fiyatla güncelle.
+        elif _is_closed_day:
+            # ── KAPALI GÜN (hafta sonu VEYA BIST tatil/bayram): Sahte bar EKLEME ──
+            # Piyasa kapalı; son gerçek seansın kapanışını canlı fiyatla güncelle.
             # Bu sayede parquet gün içinde yazılmışsa eksik kapanış düzelir.
             df = df.copy()
             df.loc[df.index[-1], "Close"] = _live
