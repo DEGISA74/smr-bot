@@ -2586,7 +2586,8 @@ def _validate_tobo_shape(sl1_i, sl1_v, sl2_i, sl2_v, sl3_i, sl3_v,
 
 
 def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
-                          eq_tol=0.05, min_depth=0.10, min_dur=25, max_dur=180):
+                          eq_tol=0.04, min_depth=0.12, max_depth=0.40,
+                          min_dur=25, max_dur=180, max_form_dist=12.0):
     """Çift Dip (W) tespiti — swing tabanlı (30 May 2026).
 
     W formasyonu: Dip1 → Orta Tepe (boyun) → Dip2 (≈Dip1). İki ~eşit dip ve
@@ -2594,10 +2595,13 @@ def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
     ve TOBO ile örtüşmez (onlar tek dip / 3 dip; bu 2 dip).
 
     Şekil garantileri (sahte W'leri eler):
-    - İki dip birbirine ±%5 yakın (eq_tol) — kademeli düşüşü W sanmayı önler
-    - Orta tepe diplerden ≥%10 yukarıda (min_depth) — düz tabanı elemek için
+    - İki dip birbirine ±%4 yakın (eq_tol) — kademeli düşüşü W sanmayı önler
+    - Orta tepe diplerden %12–%40 arası (min/max_depth) — düz taban VE
+      "büyük çöküş + toparlanma"yı (W değil) birlikte eler
     - Süre 25–180 bar; ikinci dip son 60 günde (taze)
     - Fiyat ikinci dibin üstünde + R/R ≥ 1.0
+    - OLUŞAN durumda fiyat boyna ≤%12 uzakta (max_form_dist): "erken ama alakalı".
+      Bu, W'yi nadir/kaliteli tutan ANA filtredir (yoksa ~%35 hisse W görünür).
 
     Döndürür: dict(d1_i,d1_v,neck_i,neck_v,d2_i,d2_v,target,state,dist,dur)
               veya None.  state: 'break' (boyun kırılımı) / 'form' (oluşuyor).
@@ -2621,7 +2625,7 @@ def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
             neck_i, neck_v = max(mid_h, key=lambda x: x[1])
             base = min(d1_v, d2_v)
             depth = (neck_v - base) / base
-            if depth < min_depth:                   # orta tepe belirgin mi
+            if not (min_depth <= depth <= max_depth):  # orta tepe belirgin ama aşırı değil
                 continue
             if curr_price < d2_v * 0.98:            # fiyat ikinci dibin altında değil
                 continue
@@ -2629,11 +2633,12 @@ def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
             risk = max(curr_price - d2_v * 0.98, 0.01)
             if (target - curr_price) / risk < 1.0:
                 continue
+            dist = ((neck_v - curr_price) / neck_v * 100) if curr_price < neck_v else 0
             breaking = neck_v * 0.97 <= curr_price <= neck_v * 1.10
-            forming  = curr_price > d2_v * 1.01 and curr_price < neck_v * 0.97
+            forming  = (curr_price > d2_v * 1.01 and curr_price < neck_v * 0.97
+                        and dist <= max_form_dist)   # erken ama boyna yakın
             if not (breaking or forming):
                 continue
-            dist = ((neck_v - curr_price) / neck_v * 100) if curr_price < neck_v else 0
             return dict(d1_i=d1_i, d1_v=d1_v, neck_i=neck_i, neck_v=neck_v,
                         d2_i=d2_i, d2_v=d2_v, target=target,
                         state="break" if breaking else "form", dist=dist, dur=dur)
@@ -2962,6 +2967,36 @@ def scan_chart_patterns(asset_list):
                             pattern_found = True
                             pattern_name  = p_name; desc = p_desc
                             break
+
+            # ---------------------------------------------------------------
+            # 3.5 ÇİFT DİP (W) — İki ~eşit dip + orta tepe (boyun) kırılımı
+            # ---------------------------------------------------------------
+            if not pattern_found:
+                _db = _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total)
+                # Wick temizliği SADECE iki dip çevresinde (±6 bar) — uzun W span'i
+                # doğal gürültü içerir; tam-span filtresi gerçek W'leri eler.
+                _db_clean = bool(_db) and is_clean_zone(_db["d1_i"] - 6, _db["d1_i"] + 6) \
+                                       and is_clean_zone(_db["d2_i"] - 6, _db["d2_i"] + 6)
+                if _db and _db_clean:
+                    dur_months = max(1, round(_db["dur"] / 21))
+                    if _db["state"] == "break":
+                        pattern_name = f"🔷 ÇİFT DİP (W) ({dur_months} Ay) — Kırılım Bölgesinde"
+                        base_score   = 90
+                    else:
+                        pattern_name = f"⏳ OLUŞAN ÇİFT DİP (W) ({dur_months} Ay) — %{_db['dist']:.1f} kaldı"
+                        base_score   = 72
+                    desc = (f"Dip1: {_db['d1_v']:.2f} | Boyun: {_db['neck_v']:.2f} | "
+                            f"Dip2: {_db['d2_v']:.2f} | Hedef: {_db['target']:.2f}")
+                    chart_d = {
+                        "pivot_dates":  [str(close.index[_db['d1_i']].date()),
+                                         str(close.index[_db['neck_i']].date()),
+                                         str(close.index[_db['d2_i']].date())],
+                        "pivot_prices": [_db['d1_v'], _db['neck_v'], _db['d2_v']],
+                        "pivot_types":  ["L", "H", "L"],
+                        "neck": float(_db['neck_v']),
+                        "type": "double_bottom",
+                    }
+                    pattern_found = True
 
             # ---------------------------------------------------------------
             # 4. YÜKSELEN ÜÇGEN — Düz direnç + yükselen destek (linregress)
@@ -14034,6 +14069,16 @@ def _mini_pattern_chart_b64(symbol, chart_data, dark_mode):
             for px, py, pt in zip(piv_x, piv_y, piv_t):
                 _lbl(px, py, pt, col, pt == 'H')
 
+        elif pat_type == "double_bottom":
+            piv_x = [d2x(d) for d in chart_data['pivot_dates']]
+            piv_y = chart_data['pivot_prices']
+            piv_t = chart_data['pivot_types']
+            col   = "#3b82f6"
+            ax.plot(piv_x, piv_y, color=col, lw=2.2, marker='o', ms=5, zorder=5)
+            _hline(chart_data['neck'], "#f59e0b", f"{chart_data['neck']:.2f}")
+            for px, py, pt in zip(piv_x, piv_y, piv_t):
+                _lbl(px, py, pt, col, pt == 'H')
+
         elif pat_type == "flag":
             fh, fl = chart_data['flag_h'], chart_data['flag_l']
             pe_x   = d2x(chart_data['pole_end_date'])
@@ -14576,6 +14621,7 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
     _LABELS = {
         "cup":         ("☕", "Fincan & Kulp"),
         "tobo":        ("📐", "Ters OBO (TOBO)"),
+        "double_bottom": ("🔷", "Çift Dip (W)"),
         "flag":        ("🚩", "Boğa Bayrağı"),
         "triangle":    ("📈", "Yükselen Üçgen"),
         "range":       ("↔️", "Range / Konsolidasyon"),
@@ -14617,6 +14663,19 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
         conclusion = (f"Boyun çizgisi <b>{fp(neck)}</b> kırılırsa formasyon tamamlanır, hedef <b>{fp(target)}</b> ({pct(target, curr_price)}). "
                       f"Stop için <b>{fp(invalid)}</b> altı kullanılabilir. "
                       f"Bu formasyon özellikle uzun bir düşüş trendinin sonunda görünce anlamlıdır.")
+
+    elif pat_type == "double_bottom":
+        neck = chart_data['neck']; bottom = chart_data['pivot_prices'][2]
+        target = neck + (neck - bottom); invalid = bottom * 0.98
+        levels = [("Boyun Çizgisi (Kırılım)", neck, "#f59e0b"), ("İkinci Dip", bottom, "#38bdf8")]
+        stage = 3 if curr_price > neck * 0.97 else 2
+        stage_label = "Boyun Yaklaşıyor" if stage == 3 else "Sağ Taraf Oluşuyor"
+        story = (f"Fiyat <b>{fp(bottom)}</b> civarında iki kez dip yaptı ve satıcılar bu seviyeyi "
+                 f"kıramadı. İki dibin arasındaki tepe — boyun çizgisi <b>{fp(neck)}</b> — kırılırsa "
+                 f"klasik 'W' dönüş formasyonu tamamlanır.")
+        conclusion = (f"Boyun çizgisi <b>{fp(neck)}</b> üzerinde kapanış formasyonu aktive eder, "
+                      f"hedef <b>{fp(target)}</b> ({pct(target, curr_price)}). "
+                      f"<b>{fp(invalid)}</b> altına kapanış (ikinci dibin altı) formasyonu geçersiz kılar.")
 
     elif pat_type == "flag":
         fh, fl = chart_data['flag_h'], chart_data['flag_l']
