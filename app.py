@@ -2545,6 +2545,46 @@ def _validate_cup_shape(cup_arr, left_i, dip_i, right_i, r2, min_r2=0.78):
     return True
 
 
+def _validate_tobo_shape(sl1_i, sl1_v, sl2_i, sl2_v, sl3_i, sl3_v,
+                         sh1_i, sh1_v, sh2_i, sh2_v, bar_total):
+    """TOBO (Ters OBO) şekil doğrulaması — Dengeli profil (30 May 2026).
+
+    Gerçek bir TOBO: (1) baş omuzlardan belirgin derin, (2) sol ve sağ kanat
+    zamanca orantılı (tek yana sıkışmış değil), (3) boyun çizgisi yatay
+    OLMAK ZORUNDA değil — hafif eğimli boyunlar da geçerlidir.
+
+    Eski mantık boyunu ±%6 YATAY olmaya zorluyordu → eğimli boyunlu gerçek
+    TOBO'lar reddediliyordu. Ayrıca 5-bar sol + 60-bar sağ omuz gibi aşırı
+    asimetrik yapılar geçebiliyordu.
+
+    Döndürür: (ok, neck_now)
+      ok       : True = geçerli TOBO iskeleti
+      neck_now : eğimli boyun çizgisinin SON bardaki (kırılım referansı) değeri
+    """
+    # 1) Baş derinlik tabanı — baş omuzlardan en az %8 daha derin
+    if not (sl2_v < sl1_v * 0.92 and sl2_v < sl3_v * 0.92):
+        return False, None
+    # 2) Zaman simetrisi — sol kanat / sağ kanat oranı 0.4–2.5
+    t_left  = sl2_i - sl1_i
+    t_right = sl3_i - sl2_i
+    if t_left <= 0 or t_right <= 0:
+        return False, None
+    ratio = t_left / t_right
+    if not (0.4 <= ratio <= 2.5):
+        return False, None
+    # 3) Eğimli boyun desteği — boyun yatay zorunlu DEĞİL; sadece aşırı eğim eler
+    if abs(sh1_v - sh2_v) / sh1_v > 0.15:
+        return False, None
+    # Boyun çizgisi: iki boyun tepesinden geçen doğru, son bara ekstrapole edilir
+    nslope = (sh2_v - sh1_v) / (sh2_i - sh1_i) if sh2_i != sh1_i else 0.0
+    neck_now = sh2_v + nslope * (bar_total - 1 - sh2_i)
+    # Ekstrapolasyon güvenliği — boyun iki tepe aralığından çok sapmasın
+    nmin = min(sh1_v, sh2_v) * 0.90
+    nmax = max(sh1_v, sh2_v) * 1.12
+    neck_now = max(nmin, min(nmax, neck_now))
+    return True, neck_now
+
+
 def scan_chart_patterns(asset_list):
     """
     V6: ZIGZAG TABANLI FORMASYON MOTORU
@@ -2822,8 +2862,12 @@ def scan_chart_patterns(asset_list):
                             if not sh1_cands or not sh2_cands: continue
                             sh1_i, sh1_v = max(sh1_cands, key=lambda x: x[1])
                             sh2_i, sh2_v = max(sh2_cands, key=lambda x: x[1])
-                            neck = (sh1_v + sh2_v) / 2
-                            if abs(sh1_v - sh2_v) / sh1_v > 0.06: continue  # Boyun yatay
+                            # FIX (30 May 2026): TOBO şekil doğrulaması — zaman simetrisi +
+                            # eğimli boyun desteği + baş derinlik tabanı (ortak helper)
+                            _tok, neck = _validate_tobo_shape(
+                                sl1_i, sl1_v, sl2_i, sl2_v, sl3_i, sl3_v,
+                                sh1_i, sh1_v, sh2_i, sh2_v, bar_total)
+                            if not _tok: continue
                             if abs(sl1_v - sl3_v) / sl1_v > 0.15: continue  # Omuz simetrisi
                             recovery = (sl3_v - sl2_v) / (neck - sl2_v) if (neck - sl2_v) > 0 else 0
                             if recovery < 0.45: continue
@@ -3371,8 +3415,11 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             if not sh1_c or not sh2_c: continue
                             sh1_i, sh1_v = max(sh1_c, key=lambda x: x[1])
                             sh2_i, sh2_v = max(sh2_c, key=lambda x: x[1])
-                            neck = (sh1_v + sh2_v) / 2
-                            if abs(sh1_v - sh2_v) / sh1_v > 0.06: continue
+                            # FIX (30 May 2026): TOBO şekil doğrulaması (ortak helper)
+                            _tok, neck = _validate_tobo_shape(
+                                sl1_i, sl1_v, sl2_i, sl2_v, sl3_i, sl3_v,
+                                sh1_i, sh1_v, sh2_i, sh2_v, _bt)
+                            if not _tok: continue
                             if abs(sl1_v - sl3_v) / sl1_v > 0.15: continue
                             recovery = (sl3_v - sl2_v) / (neck - sl2_v) if (neck - sl2_v) > 0 else 0
                             if recovery < 0.45: continue
