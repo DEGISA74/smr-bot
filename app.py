@@ -2733,6 +2733,64 @@ def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
     return None
 
 
+def _detect_double_top(sw_h_y, sw_l_y, curr_price, bar_total,
+                       eq_tol=0.04, min_depth=0.12, max_depth=0.40,
+                       min_dur=25, max_dur=180, max_form_dist=12.0):
+    """İkili Tepe (M) tespiti — Çift Dip'in (W) AYI simetriği (30 May 2026).
+
+    M formasyonu: Tepe1 → Orta Vadi (boyun) → Tepe2 (≈Tepe1). İki ~eşit tepe ve
+    aralarındaki belirgin vadi; boyun çizgisi AŞAĞI kırılınca düşüş dönüşü
+    (tepe/satış uyarısı). Çift Dip ile örtüşmez (o boğa, bu ayı).
+
+    Şekil garantileri (sahte M'leri eler):
+    - İki tepe birbirine ±%4 yakın (kademeli yükselişi M sanmayı önler)
+    - Orta vadi tepelerden %12–%40 aşağıda (düz tavanı VE aşırı V'yi eler)
+    - Süre 25–180 bar; ikinci tepe son 60 günde (taze)
+    - Fiyat ikinci tepenin altında + R/R ≥ 1.0 (aşağı hedef)
+    - OLUŞAN durumda fiyat boyna ≤%12 uzakta (erken ama alakalı)
+
+    Döndürür: dict(t1_i,t1_v,neck_i,neck_v,t2_i,t2_v,target,state,dist,dur)
+              veya None.  state: 'break' (boyun aşağı kırıldı) / 'form' (oluşuyor).
+    """
+    if len(sw_h_y) < 2 or len(sw_l_y) < 1:
+        return None
+    for j in range(len(sw_h_y) - 1, 0, -1):
+        t2_i, t2_v = sw_h_y[j]
+        if bar_total - t2_i > 60:            # ikinci tepe taze olmalı
+            continue
+        for k in range(j - 1, -1, -1):
+            t1_i, t1_v = sw_h_y[k]
+            dur = t2_i - t1_i
+            if not (min_dur <= dur <= max_dur):
+                continue
+            if abs(t1_v - t2_v) / t1_v > eq_tol:   # iki tepe ~eşit
+                continue
+            mid_l = [(i, v) for i, v in sw_l_y if t1_i < i < t2_i]
+            if not mid_l:
+                continue
+            neck_i, neck_v = min(mid_l, key=lambda x: x[1])   # orta vadi = en düşük
+            top = max(t1_v, t2_v)
+            depth = (top - neck_v) / top
+            if not (min_depth <= depth <= max_depth):  # orta vadi belirgin ama aşırı değil
+                continue
+            if curr_price > t2_v * 1.02:            # fiyat ikinci tepenin üstünde değil
+                continue
+            target = neck_v - (top - neck_v)        # aşağı hedef
+            risk = max(t2_v * 1.02 - curr_price, 0.01)
+            if (curr_price - target) / risk < 1.0:
+                continue
+            dist = ((curr_price - neck_v) / neck_v * 100) if curr_price > neck_v else 0
+            breaking = neck_v * 0.90 <= curr_price <= neck_v * 1.03
+            forming  = (curr_price < t2_v * 0.99 and curr_price > neck_v * 1.03
+                        and dist <= max_form_dist)   # erken ama boyna yakın
+            if not (breaking or forming):
+                continue
+            return dict(t1_i=t1_i, t1_v=t1_v, neck_i=neck_i, neck_v=neck_v,
+                        t2_i=t2_i, t2_v=t2_v, target=float(max(target, 0.01)),
+                        state="break" if breaking else "form", dist=dist, dur=dur)
+    return None
+
+
 def _detect_wedge(sw_h_y, sw_l_y, close, high, low, volume, curr_price, bar_total,
                   min_dur=25, max_dur=200, min_r2=0.50, conv_ratio=0.66):
     """Düşen Kama (boğa) / Yükselen Kama (ayı) tespiti — regresyon tabanlı (30 May 2026).
@@ -3259,6 +3317,34 @@ def scan_chart_patterns(asset_list):
                         "up_line":    float(_wd["up_line"]),
                         "lo_line":    float(_wd["lo_line"]),
                         "break_line": float(_wline),
+                    }
+                    pattern_found = True
+
+            # ---------------------------------------------------------------
+            # 3.8 İKİLİ TEPE (M) — İki ~eşit tepe + orta vadi (boyun) aşağı kırılım (AYI)
+            # ---------------------------------------------------------------
+            if not pattern_found:
+                _dt = _detect_double_top(sw_h_y, sw_l_y, curr_price, bar_total)
+                _dt_clean = bool(_dt) and is_clean_zone(_dt["t1_i"] - 6, _dt["t1_i"] + 6) \
+                                       and is_clean_zone(_dt["t2_i"] - 6, _dt["t2_i"] + 6)
+                if _dt and _dt_clean:
+                    dur_months = max(1, round(_dt["dur"] / 21))
+                    if _dt["state"] == "break":
+                        pattern_name = f"🔻 İKİLİ TEPE (M) ({dur_months} Ay) — Aşağı Kırılım (AYI)"
+                        base_score   = 72
+                    else:
+                        pattern_name = f"⏳ OLUŞAN İKİLİ TEPE (M) ({dur_months} Ay) — Tepe Riski %{_dt['dist']:.1f}"
+                        base_score   = 55
+                    desc = (f"Tepe1: {_dt['t1_v']:.2f} | Boyun (Vadi): {_dt['neck_v']:.2f} | "
+                            f"Tepe2: {_dt['t2_v']:.2f} | Aşağı Hedef: {_dt['target']:.2f}")
+                    chart_d = {
+                        "pivot_dates":  [str(close.index[_dt['t1_i']].date()),
+                                         str(close.index[_dt['neck_i']].date()),
+                                         str(close.index[_dt['t2_i']].date())],
+                        "pivot_prices": [_dt['t1_v'], _dt['neck_v'], _dt['t2_v']],
+                        "pivot_types":  ["H", "L", "H"],
+                        "neck": float(_dt['neck_v']),
+                        "type": "double_top",
                     }
                     pattern_found = True
 
@@ -3848,6 +3934,19 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         else:
                             p_name = f"⏳ OLUŞAN YÜKSELEN KAMA ({dur_months} Ay) — Tepe Riski"
                             base_score = 45
+                    pattern_found = True
+
+            # B.8) İKİLİ TEPE (M) — iki ~eşit tepe + orta vadi aşağı kırılım (AYI)
+            if not pattern_found:
+                _dt = _detect_double_top(_swh_y, _swl_y, curr_price, _bt)
+                if _dt:
+                    dur_months = max(1, round(_dt["dur"] / 21))
+                    if _dt["state"] == "break":
+                        p_name = f"🔻 İKİLİ TEPE (M) ({dur_months} Ay) — Aşağı Kırılım (AYI)"
+                        base_score = 50
+                    else:
+                        p_name = f"⏳ OLUŞAN İKİLİ TEPE (M) ({dur_months} Ay) — Tepe Riski"
+                        base_score = 45
                     pattern_found = True
 
             # C) YÜKSELEN ÜÇGEN — Düz direnç + yükselen destek
@@ -14366,6 +14465,16 @@ def _mini_pattern_chart_b64(symbol, chart_data, dark_mode):
             for px, py, pt in zip(piv_x, piv_y, piv_t):
                 _lbl(px, py, pt, col, pt == 'H')
 
+        elif pat_type == "double_top":
+            piv_x = [d2x(d) for d in chart_data['pivot_dates']]
+            piv_y = chart_data['pivot_prices']
+            piv_t = chart_data['pivot_types']
+            col   = "#ef4444"
+            ax.plot(piv_x, piv_y, color=col, lw=2.2, marker='o', ms=5, zorder=5)
+            _hline(chart_data['neck'], "#f59e0b", f"{chart_data['neck']:.2f}")
+            for px, py, pt in zip(piv_x, piv_y, piv_t):
+                _lbl(px, py, pt, col, pt == 'H')
+
         elif pat_type == "flag":
             fh, fl = chart_data['flag_h'], chart_data['flag_l']
             pe_x   = d2x(chart_data['pole_end_date'])
@@ -14928,6 +15037,7 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
         "three_drive": ("3️⃣", "3 Drive"),
         "sr_level":    ("🧱", "Destek / Direnç"),
         "wedge":       ("📉", "Kama (Wedge)"),
+        "double_top":  ("🔻", "İkili Tepe (M)"),
     }
     emoji, name = _LABELS.get(pat_type, ("📊", "Formasyon"))
 
@@ -14975,6 +15085,19 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
         conclusion = (f"Boyun çizgisi <b>{fp(neck)}</b> üzerinde kapanış formasyonu aktive eder, "
                       f"hedef <b>{fp(target)}</b> ({pct(target, curr_price)}). "
                       f"<b>{fp(invalid)}</b> altına kapanış (ikinci dibin altı) formasyonu geçersiz kılar.")
+
+    elif pat_type == "double_top":
+        neck = chart_data['neck']; top = chart_data['pivot_prices'][0]
+        target = neck - (top - neck); invalid = top * 1.02
+        levels = [("Boyun (Vadi) — Kırılım", neck, "#ef4444"), ("Tepe Bandı", top, "#94a3b8")]
+        stage = 3 if curr_price < neck * 1.03 else 2
+        stage_label = "Boyun Yaklaşıyor" if stage == 3 else "İkinci Tepe Oluştu"
+        story = (f"Fiyat <b>{fp(top)}</b> civarında iki kez tepe yaptı ama alıcılar bu seviyeyi "
+                 f"ikinci kez aşamadı. İki tepe arasındaki vadi — boyun çizgisi <b>{fp(neck)}</b> — "
+                 f"aşağı kırılırsa klasik 'M' (ikili tepe) <b>düşüş dönüşü</b> aktive olur. Tepe/satış uyarısı.")
+        conclusion = (f"Boyun <b>{fp(neck)}</b> altına kapanış sat/kâr-al sinyali, "
+                      f"aşağı hedef <b>{fp(max(target,0.01))}</b>. "
+                      f"<b>{fp(invalid)}</b> üzerine çıkış (ikinci tepenin üstü) formasyonu geçersiz kılar.")
 
     elif pat_type == "flag":
         fh, fl = chart_data['flag_h'], chart_data['flag_l']
