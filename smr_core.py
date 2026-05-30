@@ -402,6 +402,40 @@ def _read_parquet_cache(yf_sym: str) -> "pd.DataFrame | None":
         return None
 
 
+def _strip_holiday_bars(df: "pd.DataFrame", sym: str = "") -> "pd.DataFrame":
+    """SONDAKİ tatil/kapalı-gün 'hayalet barları'nı söker (30 May 2026).
+
+    app.py'deki aynı isimli fonksiyonun bot karşılığı. BIST resmi tatil/bayram
+    günlerinde (hafta içine denk gelse bile) veri katmanı O=H=L=C=önceki kapanış,
+    Volume=0 olan sahte barlar üretebiliyor; bunlar hisseyi günlerce %0 değişimle
+    'donmuş' gösteriyordu. Serinin SONUNDAN, hacmi 0 OLAN ve OHLC'si düz
+    (O==H==L==C) barları söker. İki koşul birlikte = gerçek kapalı-gün imzası.
+    Sadece trailing'e dokunur; geçmiş seri bütünlüğü korunur.
+    """
+    try:
+        if df is None or df.empty or "Volume" not in df.columns:
+            return df
+        o = df["Open"].values; h = df["High"].values
+        l = df["Low"].values;  c = df["Close"].values
+        v = df["Volume"].values
+        i = len(df) - 1
+        cut = len(df)
+        while i >= 1:   # en az 1 gerçek bar kalsın
+            _flat = (abs(o[i] - c[i]) < 1e-9 and abs(h[i] - c[i]) < 1e-9
+                     and abs(l[i] - c[i]) < 1e-9)
+            _zero = (not (v[i] > 0))
+            if _flat and _zero:
+                cut = i; i -= 1
+            else:
+                break
+        if cut < len(df):
+            return df.iloc[:cut]
+        return df
+    except Exception as _e:
+        log.warning(f"_strip_holiday_bars [{sym}]: {_e}")
+        return df
+
+
 # ─── VERİ ÇEK ────────────────────────────────────────────────────────────────
 def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
     """
@@ -414,7 +448,9 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
     _cached = _read_parquet_cache(yf_sym)
     if _cached is not None:
         log.debug(f"get_data: {yf_sym} → parquet cache hit")
-        return _cached
+        # FIX (30 May 2026): cache-hit yolu da tatil hayalet-barlarından temizlensin
+        # (eskiden ham dönüyordu → kapalı günlerde donmuş veri).
+        return _strip_holiday_bars(_cached, yf_sym)
 
     # ── Fallback: yfinance (cache yok veya çok eski)
     try:
@@ -452,14 +488,12 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
         if df.index.tz is not None:
             df.index = df.index.tz_convert(None)
 
-        # HAFTA SONU FIX: yfinance bazen Cmt/Paz için Close=Cuma, Volume=0 sahte bar ekler.
-        # Hafta sonu ise ve son bar Volume=0 ise at — Cuma verisi kullanılsın.
-        from datetime import datetime as _dtnow, timezone as _tz
-        import pytz as _pytz
-        _tz_ist = _pytz.timezone("Europe/Istanbul")
-        _wknd = _dtnow.now(_tz_ist).weekday() >= 5
-        if _wknd and len(df) > 1 and float(df["Volume"].iloc[-1]) == 0:
-            df = df.iloc[:-1].copy()
+        # TATİL/HAFTA SONU FIX (30 May 2026): yfinance kapalı günler için
+        # Close=önceki, Volume=0 sahte 'hayalet bar' ekleyebilir. Eskiden yalnız
+        # hafta sonu + tek bar siliniyordu; bayram (hafta-içi Kurban/Ramazan) bunu
+        # kaçırıyordu. Artık merkezi _strip_holiday_bars: sondaki tüm düz+0-hacim
+        # barları söker (gün/hafta sonu farkı gözetmeden, imza yeterli).
+        df = _strip_holiday_bars(df, yf_sym)
 
         # isyatirimhisse hacim düzeltmesi (BIST hisseleri, endeks hariç)
         _is_bist = yf_sym.endswith(".IS") and not yf_sym.startswith(("XU", "XB", "XT"))
@@ -540,6 +574,32 @@ def get_stock_info(ticker: str) -> dict:
             result["day_change_pct"] = (result["curr_price"] - prev) / prev * 100
     except Exception as e:
         log.warning(f"get_stock_info [{yf_sym}]: {e}")
+
+    # FIX (30 May 2026): Kapalı günde (hafta sonu/BIST tatil) fast_info
+    # last_price == previous_close veriyor → day_change_pct %0 görünüyordu.
+    # Bu durumda değişimi temizlenmiş cache'in son iki GERÇEK seansından hesapla.
+    try:
+        _is_bist = yf_sym.endswith(".IS") or yf_sym.startswith("XU")
+        _closed_now = False
+        try:
+            import pytz as _pytz
+            from datetime import datetime as _dtnow
+            _now_tr = _dtnow.now(_pytz.timezone("Europe/Istanbul"))
+            _closed_now = (_now_tr.weekday() >= 5) or (
+                _is_bist and _BIST_CAL_OK and _bist_is_closed(_now_tr.date()))
+        except Exception:
+            _closed_now = False
+        if abs(result["day_change_pct"]) < 1e-6 or _closed_now:
+            _hist = get_data(ticker, period="3mo")
+            if _hist is not None and len(_hist) >= 2:
+                _rc = _hist["Close"].dropna()
+                if len(_rc) >= 2 and float(_rc.iloc[-2]) > 0:
+                    _last = float(_rc.iloc[-1]); _prev = float(_rc.iloc[-2])
+                    result["day_change_pct"] = (_last - _prev) / _prev * 100
+                    if _closed_now and _last > 0:
+                        result["curr_price"] = _last
+    except Exception as e:
+        log.warning(f"get_stock_info change-fix [{yf_sym}]: {e}")
     return result
 
 
