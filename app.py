@@ -2160,6 +2160,32 @@ def fetch_stock_info(ticker):
                 return None
 
         change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0
+
+        # FIX (30 May 2026): Kapalı günde (hafta sonu/BIST tatil) Yahoo fast_info
+        # last_price == previous_close veriyor → değişim %0.00 görünüyordu.
+        # Bu durumda günlük değişimi TEMİZLENMİŞ cache'in son iki GERÇEK seansından
+        # hesapla (hayalet barlar zaten _strip_holiday_bars ile sökülmüş olur).
+        _is_bist = (".IS" in ticker or "BIST" in ticker or ticker.startswith("XU"))
+        _closed_now = False
+        try:
+            _now_tr = datetime.now(_TZ_ISTANBUL)
+            _closed_now = (_now_tr.weekday() >= 5) or (_is_bist and _bist_is_closed(_now_tr.date()))
+        except Exception:
+            _closed_now = False
+        if abs(change_pct) < 1e-6 or _closed_now:
+            try:
+                _hist = get_safe_historical_data(ticker, period="1mo")
+                if _hist is not None and len(_hist) >= 2:
+                    _rc = _hist['Close'].dropna()
+                    if len(_rc) >= 2 and float(_rc.iloc[-2]) > 0:
+                        _last = float(_rc.iloc[-1]); _prev = float(_rc.iloc[-2])
+                        change_pct = (_last - _prev) / _prev * 100
+                        # Fiyat kutusu kapalı günde son gerçek kapanışı göstersin
+                        if _closed_now:
+                            price = _last
+            except Exception:
+                pass
+
         return { "price": price, "change_pct": change_pct, "volume": volume or 0, "sector": "-", "target": "-" }
     except: return None
 
