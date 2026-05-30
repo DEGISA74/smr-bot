@@ -2733,6 +2733,140 @@ def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
     return None
 
 
+def _detect_wedge(sw_h_y, sw_l_y, close, high, low, volume, curr_price, bar_total,
+                  min_dur=25, max_dur=200, min_r2=0.50, conv_ratio=0.66):
+    """Düşen Kama (boğa) / Yükselen Kama (ayı) tespiti — regresyon tabanlı (30 May 2026).
+
+    BIST'te en çok kazandıran formasyonlardan biri ama yanlış tespiti kolay.
+    KAMA'yı kanaldan/üçgenden ayıran kritik özellik = YAKINSAMA (convergence):
+    iki trend çizgisi aynı yöne eğimli AMA birbirine yaklaşır.
+
+    Düşen Kama (boğa dönüş): üst & alt çizgi AŞAĞI eğimli; üst daha hızlı düşer
+      (s_hi < s_lo < 0). Daralan kanal, düşen tepeler+dipler. Kırılım YUKARI.
+    Yükselen Kama (ayı dönüş): üst & alt çizgi YUKARI eğimli; alt daha hızlı
+      yükselir (s_lo > s_hi > 0). Kırılım AŞAĞI.
+
+    Sahte eleme garantileri:
+    - En az 3 tepe + 3 dip (2 nokta gürültüye açık)
+    - Her iki çizgi R² ≥ 0.50 (dağınık pivot = kama değil)
+    - Yakınsama: son genişlik ≤ baş genişlik × conv_ratio (paralel kanalı eler)
+    - Eğim işaretleri net (yatay çizgi = üçgen, kama değil)
+    - Süre 25–200 bar; son pivot 60 günden taze
+    - Hacim oluşum boyunca düşer (kama imzası) → bonus, zorunlu değil
+
+    Döndürür: dict(kind, slope_hi, slope_lo, up_line, lo_line, target, state,
+                   dist, dur, r2_hi, r2_lo, vol_drop) veya None.
+      kind: 'falling' (boğa) | 'rising' (ayı)
+      state: 'break' (kırılım gerçekleşti) | 'form' (oluşuyor, kırılıma yakın)
+    """
+    if len(sw_h_y) < 3 or len(sw_l_y) < 3:
+        return None
+
+    def _fit(points):
+        x = np.array([i for i, _ in points], dtype=float)
+        y = np.array([v for _, v in points], dtype=float)
+        if len(x) < 2 or x.max() == x.min():
+            return None
+        coef = np.polyfit(x, y, 1)
+        yp = np.polyval(coef, x)
+        ss_res = np.sum((y - yp) ** 2)
+        ss_tot = np.sum((y - y.mean()) ** 2)
+        r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0
+        return coef, r2
+
+    # Formasyon penceresi: son pivotlardan geriye, 25–200 bar
+    last_h_i = sw_h_y[-1][0]; last_l_i = sw_l_y[-1][0]
+    last_piv = max(last_h_i, last_l_i)
+    if bar_total - 1 - last_piv > 60:
+        return None
+    win_start = last_piv - max_dur
+    hi_pts = [(i, v) for i, v in sw_h_y if i >= win_start]
+    lo_pts = [(i, v) for i, v in sw_l_y if i >= win_start]
+    if len(hi_pts) < 3 or len(lo_pts) < 3:
+        return None
+
+    first_i = min(hi_pts[0][0], lo_pts[0][0])
+    dur = last_piv - first_i
+    if not (min_dur <= dur <= max_dur):
+        return None
+
+    fit_hi = _fit(hi_pts); fit_lo = _fit(lo_pts)
+    if fit_hi is None or fit_lo is None:
+        return None
+    (coef_hi, r2_hi) = fit_hi
+    (coef_lo, r2_lo) = fit_lo
+    if r2_hi < min_r2 or r2_lo < min_r2:
+        return None
+    s_hi = coef_hi[0]; s_lo = coef_lo[0]
+
+    # Çizgi değerleri: baş ve son
+    x_start = first_i; x_end = bar_total - 1
+    hi_start = np.polyval(coef_hi, x_start); hi_end = np.polyval(coef_hi, x_end)
+    lo_start = np.polyval(coef_lo, x_start); lo_end = np.polyval(coef_lo, x_end)
+    w_start = hi_start - lo_start
+    w_end   = hi_end - lo_end
+    if w_start <= 0 or w_end <= 0:
+        return None
+    # Yakınsama zorunlu: aralık daralmalı (kanal değil)
+    if not (w_end <= w_start * conv_ratio):
+        return None
+
+    # Hacim oluşum boyunca düşüyor mu? (kama imzası, bonus)
+    vol_drop = False
+    try:
+        _seg = volume.iloc[first_i:bar_total]
+        if len(_seg) >= 10:
+            _half = len(_seg) // 2
+            vol_drop = float(_seg.iloc[_half:].mean()) < float(_seg.iloc[:_half].mean())
+    except Exception:
+        pass
+
+    _slope_eps = 1e-9
+    if s_hi < -_slope_eps and s_lo < -_slope_eps and s_hi < s_lo:
+        # DÜŞEN KAMA (boğa) — üst direnç çizgisi kırılımı yukarı
+        kind = "falling"
+        up_line = float(hi_end)   # kırılım çizgisi = üst
+        lo_line = float(lo_end)
+        # Hedef: kama tabanının yüksekliği kadar (ilk genişlik), üst çizgiden
+        target = up_line + w_start
+        dist = ((up_line - curr_price) / up_line * 100) if curr_price < up_line else 0
+        breaking = curr_price >= up_line * 0.985 and curr_price <= up_line * 1.10
+        forming  = (curr_price < up_line * 0.985 and curr_price > lo_line * 0.98
+                    and dist <= 12.0)
+        if not (breaking or forming):
+            return None
+        risk = max(curr_price - lo_line * 0.98, 0.01)
+        if (target - curr_price) / risk < 1.0:
+            return None
+        return dict(kind=kind, slope_hi=s_hi, slope_lo=s_lo,
+                    up_line=up_line, lo_line=lo_line, target=float(target),
+                    up_start=float(hi_start), lo_start=float(lo_start),
+                    state="break" if breaking else "form", dist=dist, dur=dur,
+                    r2_hi=r2_hi, r2_lo=r2_lo, vol_drop=vol_drop,
+                    first_i=first_i)
+
+    if s_hi > _slope_eps and s_lo > _slope_eps and s_lo > s_hi:
+        # YÜKSELEN KAMA (ayı) — alt destek çizgisi kırılımı aşağı
+        kind = "rising"
+        up_line = float(hi_end)
+        lo_line = float(lo_end)   # kırılım çizgisi = alt
+        target = lo_line - w_start   # aşağı hedef
+        dist = ((curr_price - lo_line) / lo_line * 100) if curr_price > lo_line else 0
+        breaking = curr_price <= lo_line * 1.015 and curr_price >= lo_line * 0.90
+        forming  = (curr_price > lo_line * 1.015 and curr_price < up_line * 1.02
+                    and dist <= 12.0)
+        if not (breaking or forming):
+            return None
+        return dict(kind=kind, slope_hi=s_hi, slope_lo=s_lo,
+                    up_line=up_line, lo_line=lo_line, target=float(max(target, 0.01)),
+                    up_start=float(hi_start), lo_start=float(lo_start),
+                    state="break" if breaking else "form", dist=dist, dur=dur,
+                    r2_hi=r2_hi, r2_lo=r2_lo, vol_drop=vol_drop,
+                    first_i=first_i)
+
+    return None
+
+
 def scan_chart_patterns(asset_list):
     """
     V6: ZIGZAG TABANLI FORMASYON MOTORU
@@ -3087,6 +3221,48 @@ def scan_chart_patterns(asset_list):
                     pattern_found = True
 
             # ---------------------------------------------------------------
+            # 3.7 KAMA (Düşen=boğa / Yükselen=ayı) — yakınsayan trend çizgileri
+            # Üçgenden ÖNCE: üçgen daha gevşek, kamayı yutmasın.
+            # ---------------------------------------------------------------
+            if not pattern_found:
+                _wd = _detect_wedge(sw_h_y, sw_l_y, close, high, low, volume,
+                                    curr_price, bar_total)
+                if _wd and is_clean_zone(_wd["first_i"], bar_total - 1):
+                    dur_months = max(1, round(_wd["dur"] / 21))
+                    if _wd["kind"] == "falling":
+                        if _wd["state"] == "break":
+                            pattern_name = f"📉 DÜŞEN KAMA ({dur_months} Ay) — Yukarı Kırılım"
+                            base_score   = 90
+                        else:
+                            pattern_name = f"⏳ OLUŞAN DÜŞEN KAMA ({dur_months} Ay) — %{_wd['dist']:.1f} kaldı"
+                            base_score   = 74
+                        desc = (f"Üst Direnç: {_wd['up_line']:.2f} | Alt Destek: {_wd['lo_line']:.2f} | "
+                                f"Hedef: {_wd['target']:.2f} | R²: {_wd['r2_hi']:.2f}/{_wd['r2_lo']:.2f}"
+                                + (" | 📉 Hacim daralıyor" if _wd['vol_drop'] else ""))
+                        _wline = _wd["up_line"]
+                    else:  # rising — ayı
+                        if _wd["state"] == "break":
+                            pattern_name = f"📈 YÜKSELEN KAMA ({dur_months} Ay) — Aşağı Kırılım (AYI)"
+                            base_score   = 70
+                        else:
+                            pattern_name = f"⏳ OLUŞAN YÜKSELEN KAMA ({dur_months} Ay) — Tepe Riski %{_wd['dist']:.1f}"
+                            base_score   = 55
+                        desc = (f"Üst Direnç: {_wd['up_line']:.2f} | Alt Destek: {_wd['lo_line']:.2f} | "
+                                f"Aşağı Hedef: {_wd['target']:.2f} | R²: {_wd['r2_hi']:.2f}/{_wd['r2_lo']:.2f}")
+                        _wline = _wd["lo_line"]
+                    chart_d = {
+                        "type":       "wedge",
+                        "kind":       _wd["kind"],
+                        "date_start": str(close.index[max(0, _wd['first_i'])].date()),
+                        "up_start":   float(_wd["up_start"]),
+                        "lo_start":   float(_wd["lo_start"]),
+                        "up_line":    float(_wd["up_line"]),
+                        "lo_line":    float(_wd["lo_line"]),
+                        "break_line": float(_wline),
+                    }
+                    pattern_found = True
+
+            # ---------------------------------------------------------------
             # 4. YÜKSELEN ÜÇGEN — Düz direnç + yükselen destek (linregress)
             # En az 2 tepe (≤%4 fark), en az 2 dip (yükselen eğim), Max 252 bar
             # R/R >= 1.0, son pivot 60 günden yeni
@@ -3280,7 +3456,8 @@ def scan_chart_patterns(asset_list):
             if pattern_found:
                 q_score = base_score
                 if ("FİNCAN" in pattern_name or "TOBO" in pattern_name
-                        or "QML" in pattern_name or "ÇİFT DİP" in pattern_name):
+                        or "QML" in pattern_name or "ÇİFT DİP" in pattern_name
+                        or "DÜŞEN KAMA" in pattern_name):
                     q_score += 15
                 avg_vol   = float(volume.iloc[-20:].mean())
                 vol_ratio = float(volume.iloc[-1]) / avg_vol if avg_vol > 0 else 1
@@ -3650,6 +3827,28 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             p_name = f"⏳ OLUŞAN ÇİFT DİP (W) ({dur_months} Ay) — %{_db['dist']:.1f} kaldı"
                             base_score = 72
                         pattern_found = True
+
+            # B.7) KAMA (Düşen=boğa / Yükselen=ayı) — yakınsayan trend çizgileri
+            if not pattern_found:
+                _wd = _detect_wedge(_swh_y, _swl_y, close, high, low, volume,
+                                    curr_price, _bt)
+                if _wd:
+                    dur_months = max(1, round(_wd["dur"] / 21))
+                    if _wd["kind"] == "falling":
+                        if _wd["state"] == "break":
+                            p_name = f"📉 DÜŞEN KAMA ({dur_months} Ay) — Yukarı Kırılım"
+                            base_score = 90
+                        else:
+                            p_name = f"⏳ OLUŞAN DÜŞEN KAMA ({dur_months} Ay) — %{_wd['dist']:.1f} kaldı"
+                            base_score = 74
+                    else:  # rising — ayı (golden set-up boğa odaklı; düşük puan)
+                        if _wd["state"] == "break":
+                            p_name = f"📈 YÜKSELEN KAMA ({dur_months} Ay) — Aşağı Kırılım (AYI)"
+                            base_score = 50
+                        else:
+                            p_name = f"⏳ OLUŞAN YÜKSELEN KAMA ({dur_months} Ay) — Tepe Riski"
+                            base_score = 45
+                    pattern_found = True
 
             # C) YÜKSELEN ÜÇGEN — Düz direnç + yükselen destek
             if not pattern_found and len(_swh_y) >= 2 and len(_swl_y) >= 2:
@@ -14189,6 +14388,17 @@ def _mini_pattern_chart_b64(symbol, chart_data, dark_mode):
                     ax.plot([lows_x[0], lows_x[-1]], [lows_y[0], lows_y[-1]],
                             color="#38bdf8", lw=1, ls='--', alpha=0.5)
 
+        elif pat_type == "wedge":
+            _x0 = d2x(chart_data['date_start']); _x1 = n - 1
+            _us, _ls = chart_data['up_start'], chart_data['lo_start']
+            _ue, _le = chart_data['up_line'],  chart_data['lo_line']
+            _falling = chart_data.get('kind') == 'falling'
+            _bc = "#10b981" if _falling else "#ef4444"  # boğa yeşil / ayı kırmızı
+            ax.plot([_x0, _x1], [_us, _ue], color="#94a3b8", lw=1.5, zorder=5)
+            ax.plot([_x0, _x1], [_ls, _le], color="#94a3b8", lw=1.5, zorder=5)
+            _bl = chart_data['break_line']
+            _hline(_bl, _bc, f"{_bl:.2f}", lw=1.8)
+
         elif pat_type == "range":
             res, sup = chart_data['resistance'], chart_data['support']
             ax.axhspan(sup, res, alpha=0.05, color='#94a3b8')
@@ -14717,6 +14927,7 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
         "qml":         ("🎯", "Quasimodo (QML)"),
         "three_drive": ("3️⃣", "3 Drive"),
         "sr_level":    ("🧱", "Destek / Direnç"),
+        "wedge":       ("📉", "Kama (Wedge)"),
     }
     emoji, name = _LABELS.get(pat_type, ("📊", "Formasyon"))
 
@@ -14788,6 +14999,32 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
                  f"Direnç kırılırsa birikmiş enerji serbest kalır.")
         conclusion = (f"<b>{fp(res)}</b> üzerinde kapanış kırılım sayılır. Stop için <b>{fp(invalid)}</b> altı mantıklı. "
                       f"Kırılım ne kadar hacimli olursa formasyon o kadar güvenilirdir.")
+
+    elif pat_type == "wedge":
+        _up = chart_data['up_line']; _lo = chart_data['lo_line']
+        _falling = chart_data.get('kind') == 'falling'
+        if _falling:
+            # Düşen Kama = boğa: üst direnç kırılımı yukarı
+            target = _up + (_up - _lo); invalid = _lo * 0.98
+            levels = [("Üst Direnç (Kırılım)", _up, "#10b981"), ("Alt Destek", _lo, "#ef4444")]
+            stage = 3 if curr_price > _up * 0.985 else 2
+            stage_label = "Kırılıma Yakın" if stage == 3 else "Kama Daralıyor"
+            story = (f"Fiyat giderek daralan ve aşağı eğimli iki çizgi arasında sıkışıyor (düşen kama). "
+                     f"Satış baskısı azalıyor; üst direnç <b>{fp(_up)}</b> yukarı kırılırsa bu klasik "
+                     f"boğa dönüş formasyonu tamamlanır. BIST'te en çok kazandıran kurulumlardan biridir.")
+            conclusion = (f"<b>{fp(_up)}</b> üzerinde hacimli kapanış al sinyali, hedef <b>{fp(target)}</b> ({pct(target, curr_price)}). "
+                          f"<b>{fp(invalid)}</b> altına kapanış formasyonu geçersiz kılar.")
+        else:
+            # Yükselen Kama = ayı: alt destek kırılımı aşağı
+            target = _lo - (_up - _lo); invalid = _up * 1.02
+            levels = [("Alt Destek (Kırılım)", _lo, "#ef4444"), ("Üst Direnç", _up, "#94a3b8")]
+            stage = 3 if curr_price < _lo * 1.015 else 2
+            stage_label = "Kırılıma Yakın" if stage == 3 else "Kama Yükseliyor"
+            story = (f"Fiyat yukarı eğimli ama daralan iki çizgi arasında yükseliyor (yükselen kama). "
+                     f"Yükseliş ivmesi zayıflıyor; alt destek <b>{fp(_lo)}</b> aşağı kırılırsa bu "
+                     f"<b>ayı (satış) dönüş</b> formasyonu aktive olur — tepe riski.")
+            conclusion = (f"<b>{fp(_lo)}</b> altına kapanış sat/kâr-al sinyali, aşağı hedef <b>{fp(max(target,0.01))}</b>. "
+                          f"<b>{fp(invalid)}</b> üzerine çıkış riski geçersiz kılar.")
 
     elif pat_type == "range":
         res, sup = chart_data['resistance'], chart_data['support']
