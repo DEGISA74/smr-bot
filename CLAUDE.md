@@ -1,10 +1,12 @@
 # Patron Terminal — CLAUDE.md
-# app.py için hızlı navigasyon haritası (~23100+ satır — 28 May 2026: max_workers×10 + tatil tek kaynak + fund.score dedup + backtest altyapısı)
+# app.py için hızlı navigasyon haritası (~23600 satır — 30 May 2026 Oturum 8: formasyon şekil doğrulama [_validate_cup_shape/_validate_tobo_shape ~2515] + YENİ formasyonlar: Çift Dip W [_detect_double_bottom], Düşen/Yükselen Kama [_detect_wedge], İkili Tepe M [_detect_double_top] + tatil hayalet-bar fix [_strip_holiday_bars ~1645, _patch_live_price tatil guard, fetch_stock_info kapalı-gün değişim]. Simetrik/Düşen Üçgen test edildi→faydasız→eklenmedi. Hidden Accumulation güçlendirme [process_single_accumulation ~4084: Force Index span 2→13, skor çarpım→toplamsal 0-100, CMF(20) teyit, pocket pivot 3→10g — commit 397d262]. smr_core.py'de de aynı tatil fix — commit 85f7d9a deploy edildi)
 # Bu dosyayı GÜNCELLEMEYİ UNUTMA: app.py'ye büyük değişiklik yapınca ilgili satır numarasını buraya yaz.
+#
+# ⚠️ 30 MAY 2026 NOTU: Aşağıdaki tablolardaki satır numaralarının BÜYÜK BİR KISMI silme/cache eklemesi sonrası ~50-300 satır AŞAĞI KAYDI. Kritik bir kullanım öncesi `grep -nE "^def FONKSIYON" app.py` ile doğrula. Bölüm Haritası (B1-B37) satırları daha güvenilir; aşağıdaki detaylı fonksiyon tabloları kayma yaşadı.
 
 ## Genel Mimari
 - **Dil/Framework**: Python + Streamlit
-- **Ana dosya**: `app.py` (~23100+ satır)
+- **Ana dosya**: `app.py` (~23090 satır, 30 May 2026)
 - **Yardımcı modül**: `bist_calendar.py` — BIST işlem takvimi (tatil/arefe/RVOL normalizer) — app.py + smr_core.py her ikisi de import eder
 - **Veri kaynağı**: Yahoo Finance (`yfinance`), parquet cache (`get_batch_data_cached`)
 - **DB**: SQLite (watchlist)
@@ -62,6 +64,7 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 | Fonksiyon | Satır | Açıklama |
 |---|---|---|
 | `is_yahoo_update_needed` | 23 | Parquet cache stale mi? |
+| `log_error` | **~75** | **(30 May 2026)** Sessizce yutulan hataları `errors.log`'a yazan helper. Wire edilen yerler: Gemini Piyasa Özeti fallback, `get_safe_historical_data`, `patch_live_price`, Master Scan paralel. |
 | `init_db` / `load_watchlist_db` | 203–228 | SQLite watchlist — **signal_returns tablosu da burada** (28 May 2026) |
 | `backfill_signal_returns` | ~235 | Geçmiş sinyaller için 1–20G getiri hesaplama ve signal_returns'e yazma (Master Scan step 0) |
 | `get_scanner_optimal_windows` | ~295 | Tarama bazlı en iyi tutma süresi: avg_return × hit_rate composite score, peak_day dönderir |
@@ -84,7 +87,8 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 | `fetch_stock_info` | ~766 | Temel bilgi |
 | `get_tech_card_data` | ~791 | Teknik kart verisi |
 | `calculate_synthetic_sentiment` | ~874 | Sentetik sentiment |
-| `get_obv_divergence_status` | **2110** | OBV diverjans + **Chaikin MF (20g) teyit** (27 May 2026) — 3 yeni çelişki başlığı (ŞÜPHELİ/SAHTE GÜÇ/ZAYIF TEYİT) |
+| `compute_cmf` | **~2351** | **(30 May 2026)** Chaikin Money Flow ortak helper. `get_obv_divergence_status` ve `calculate_price_action_dna` kopyalanmış CMF bloklarını tek kaynağa indirdi. |
+| `get_obv_divergence_status` | **2110** | OBV diverjans + **Chaikin MF (20g) teyit** (27 May 2026) — 3 yeni çelişki başlığı (ŞÜPHELİ/SAHTE GÜÇ/ZAYIF TEYİT). 30 May: `compute_cmf` çağırıyor. |
 | `find_smart_sr_levels` | ~1205 | Destek/Direnç seviyeleri |
 | `calculate_volume_delta` | ~2416 | Delta hacim |
 | `calculate_volume_profile_poc` | ~2432 | POC hesabı |
@@ -108,18 +112,17 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 
 | Fonksiyon | Satır | Açıklama |
 |---|---|---|
-| `process_single_stock_stp` | ~3260 | STP tek hisse işleme (B9) |
-| `scan_stp_signals` | ~3285 | **STP tarama** |
+| `process_single_stock_stp` | ~3260 | STP tek hisse işleme (B9) — paylaşımlı helper, scan_stp_signals SİLİNDİ (30 May 2026) ama bu kullanımda |
 | `process_single_accumulation` | ~3305 | Akümülasyon tek hisse (B10) |
 | `scan_hidden_accumulation` | ~3430 | **Gizli akümülasyon tarama** |
 | `process_single_radar1` | ~3473 | Radar1 tek hisse (B11) |
 | `analyze_market_intelligence` | **3636** | **Radar1 tarama** (period "1y" — cache key uyumlu) |
 | `process_single_radar2` | ~3640 | Radar2 tek hisse |
 | `radar2_scan` | ~3840 | **Radar2 tarama** |
-| `process_single_breakout` | ~4158 | Breakout tek hisse (B13) — **OMI filtresi** (27 May 2026): OBV momentum < -0.5σ ise breakout reddedilir |
-| `agent3_breakout_scan` | **4247** | **Breakout tarama** (period "1y" — cache key uyumlu) |
-| `process_single_confirmed` | ~4235 | Onaylı kırılım tek hisse |
-| `scan_confirmed_breakouts` | ~4295 | **Onaylı kırılım tarama** |
+| `process_single_breakout` | ~4158 | Breakout tek hisse (B13) — **OMI filtresi** (27 May 2026): OBV momentum < -0.5σ ise breakout reddedilir. Paylaşımlı helper. |
+| ~~`agent3_breakout_scan`~~ | SİLİNDİ | 30 May 2026 — orphan scanner, 0 çağrı |
+| ~~`process_single_confirmed`~~ | SİLİNDİ | 30 May 2026 — sadece scan_confirmed_breakouts çağırıyordu |
+| ~~`scan_confirmed_breakouts`~~ | SİLİNDİ | 30 May 2026 — orphan scanner |
 | `calculate_royal_flush_3_0_setup` | ~5319 | RF3 hesaplama (B19) |
 | `scan_rf3_batch` | ~5380 | **RF3 toplu tarama** |
 | `scan_nadir_firsat_batch` | ~5345 | **Royal Flush Nadir Fırsat** (B19) |
@@ -138,6 +141,7 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 | `compile_top_20_summary` | ~4200 | TOP20 derleme |
 | `compile_confluence_hits` | ~4260 | Confluence derleme |
 | `scan_harmonic_confluence_batch` | **8612** | **Harmonik Confluence tarama** (B25) |
+| ~~`scan_harmonic_patterns_batch`~~ | SİLİNDİ | 30 May 2026 — confluence sürümü kullanılıyor, bu orphan'dı |
 | `scan_erken_radar_batch` | **12157** | **Erken Radar toplu tarama** (B37) |
 
 ---
@@ -146,7 +150,7 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 
 | Fonksiyon | Satır | Açıklama |
 |---|---|---|
-| `get_deep_xray_data` | ~6560 | X-Ray veri |
+| ~~`get_deep_xray_data`~~ | SİLİNDİ | 30 May 2026 — 0 çağrı |
 | `detect_ict_reversal` | ~6580 | ICT reversal tespiti |
 | `detect_price_action_with_context` | ~6640 | Price action tespiti |
 | `calculate_ict_deep_analysis` | **~6810** | **ANA ICT analiz fonksiyonu** — OB, FVG, bias, zone, model_score, ob_age, fvg_age, struct_age |
@@ -174,19 +178,19 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 | `render_royal_flush_banner` | ~7950 | B23 | RF banner |
 | `calculate_harmonic_confluence` | 8494 | B25 | Harmonik confluence hesabı |
 | `render_harmonic_confluence_banner` | 8562 | B25 | Harmonik banner |
-| `render_nadir_firsat_banner` | 8666 | B25 | Royal Flush Nadir Fırsat banner |
+| ~~`render_nadir_firsat_banner`~~ | SİLİNDİ | B25 | 30 May 2026 — 0 çağrı |
 | `_gauge_chart_b64` | 9347 | B28 | Gauge chart PNG üretici |
-| `render_gauge_chart` | 9443 | B28 | Gauge chart Streamlit render |
-| `_main_price_chart_b64` | 9606 | B28 | Ana fiyat grafiği (PNG) |
-| `_main_price_chart_plotly` | 9798 | B28 | Ana fiyat grafiği (Plotly/SMC) |
-| `_sparkline_b64` | 10192 | B28 | Mini sparkline grafik |
+| ~~`render_gauge_chart`~~ | SİLİNDİ | B28 | 30 May 2026 — 0 çağrı |
+| ~~`_main_price_chart_b64`~~ | SİLİNDİ | B28 | 30 May 2026 — Plotly sürümüne geçilmiş (`_main_price_chart_plotly`), matplotlib versiyonu orphan'dı (191 satır) |
+| `_main_price_chart_plotly` | 9798 | B28 | Ana fiyat grafiği (Plotly/SMC) — TEK GEÇERLİ |
+| ~~`_sparkline_b64`~~ | SİLİNDİ | B28 | 30 May 2026 — 0 çağrı |
 | `render_sentiment_card` | 10258 | B28 | Kurumsal ilgi (sentiment) kartı |
-| `render_deep_xray_card` | 10335 | B28 | Derin teknik röntgen kartı |
+| ~~`render_deep_xray_card`~~ | SİLİNDİ | B28 | 30 May 2026 — 0 çağrı (get_deep_xray_data ile birlikte) |
 | `render_detail_card_advanced` | 10384 | B29 | Detay kartı |
 | `render_synthetic_sentiment_panel` | 10505 | B29 | Sentetik sentiment paneli |
 | `render_smart_volume_panel` | 10635 | B29 | Smart Hacim Paneli |
 | `render_price_action_panel` | 10994 | B29 | Price Action paneli |
-| `calculate_smart_money_score` | 11333 | B29 | Smart Money skoru hesabı |
+| `calculate_smart_money_score` | 11333 | B29 | Smart Money skoru hesabı — **30 May 2026: `@st.cache_data(ttl=600)` eklendi** |
 | `render_erken_radar_panel` | 11870 | B29 | Erken Radar panel (hisse detayı) |
 | `render_ict_certification_card` | 12093 | B29 | ICT sertifikasyon kartı |
 | `render_lorentzian_panel` | ~3889 | B12 | Lorentzian panel |
@@ -204,7 +208,7 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 | `render_minervini_panel_v2` | 13673 | B37 | Minervini paneli |
 | `_mini_pattern_chart_b64` | 13753 | B37 | Formasyon mini grafik |
 | `calculate_multi_timeframe_alignment` | 13947 | B30 | MTF (Çok Zaman Dilimi) hizalama |
-| `calculate_8_point_roadmap` | 14048 | B30 | 8-nokta roadmap hesabı |
+| `calculate_8_point_roadmap` | 14048 | B30 | 8-nokta roadmap hesabı — **30 May 2026: `@st.cache_data(ttl=600)` + `cat` param eklendi** (session_state okuması cache anahtarına dahil olsun diye) |
 | `_mini_harmonic_chart_b64` | 14574 | B30 | Harmonik mini grafik |
 | `_build_harmonic_analysis` | 14668 | B30 | Harmonik analiz builder |
 | `_harmonik_dialog` | 14800 | B30 | Harmonik formasyon popup |
@@ -336,8 +340,65 @@ Kaynak kodda `# BÖLÜM N —` yorumlarıyla işaretlendi. Satır numaraları KE
 - ✅ **`signal_returns` tablosu + backtest altyapısı** — `init_db()` içine `signal_returns` tablosu eklendi (id, signal_id, scan_type, symbol, signal_date, entry_price, day_offset 1-20, close_price, return_pct, category, UNIQUE(signal_id, day_offset)). `backfill_signal_returns()` fonksiyonu Master Scan step 0'da çalışır, geçmiş sinyallerin 1-20 günlük kapanış getirilerini doldurur. `get_scanner_optimal_windows()` tarama bazlı peak_day hesaplar (composite: avg_return × hit_rate).
 - ✅ **app.js plan kartları** — 4 lokasyonda ELITE→PRO→FREE sıralaması, ELITE rengi #70a8ff→#8b5cf6 (purple), per-report maliyet badge, özellik metinleri güncellendi. `index.html` v=41. Commit: ef2249a.
 
+### Çözülen Sorunlar (29-30 May 2026 — Oturum 7: SWOT W3/W5/W9 + Ölü Kod + Sessiz Bug Avı)
+**5 commit: `224ad4d`, `4b908a1`, `fb6a9d2`, `07d880d`, `27cdca4`. Net: 23937 → 23090 satır (-847 net).**
+- ✅ **W5 — `compute_cmf` ortak helper'ı** (~2351): `get_obv_divergence_status` ve `calculate_price_action_dna` içindeki iki kopyalanmış CMF(20) bloğu tek kaynağa indirildi. Davranış birebir aynı.
+- ✅ **W9 — `log_error(where, exc, ctx)` helper'ı** (~75): `errors.log` (gitignore'da `*.log`). Wire edilen yerler: Gemini Piyasa Özeti fallback, `get_safe_historical_data`, `patch_live_price`, Master Scan paralel hata. 141 bare `except:` hala duruyor (ileride taranabilir); en kritik 4 yer şu an log'a düşüyor.
+- ✅ **W3/O2 — Master Scan ICT + Nadir Fırsat paralel** (Master Scan adım 3-3.5): `add_script_run_ctx` ile worker thread'lere ana script context'i ekleniyor → `st.cache_data` ve `st.session_state` doğru çalışıyor. Hata olursa sıralı fallback + `log_error`. Golden Trio UI çağrıları (st.toast/progress) içerdiğinden bilinçli olarak sıralı bırakıldı.
+- ✅ **Ölü kod temizliği — 830 satır silindi** (AST tabanlı, çapraz dosya doğrulamalı): `_main_price_chart_b64` (191 satır — plotly sürümüne geçilmiş), `scan_stp_signals`, `scan_confirmed_breakouts` + `process_single_confirmed`, `agent3_breakout_scan`, `scan_harmonic_patterns_batch`, `calculate_volume_profile`, `render_nadir_firsat_banner`, `get_deep_xray_data` + `render_deep_xray_card`, `get_cache_diagnostics`, `get_ma_data_for_ui`, `fetch_google_news`, `_sparkline_b64`, `render_gauge_chart`, `_fetch_bist_volume_isyatirim`, 6× `_er_rs_*` (eski, `_fast` ile değişmiş), `toggle_watchlist`, `on_manual_button_click`, `_pattern_side_info_html`. **Bilinçli korunanlar:** `process_single_stock_stp` (5 çağrı) ve `process_single_breakout` (3 çağrı) — orphan scanner'ları öldü ama bu helper'ları canlı kod paylaşıyor. `get_scanner_optimal_windows` (253 satır, 0 çağrı) — teknik olarak ölü ama backtest peak_day fonksiyonu, monetizasyon planının çekirdeği. **Bağlanmamış, useless değil.**
+- ✅ **2 fonksiyona `@st.cache_data(ttl=600)`**: `calculate_smart_money_score` (5 çağrı) ve `calculate_8_point_roadmap` (2 çağrı). Roadmap'in `category` session_state okuması cache anahtarına dahil olsun diye `cat` parametresine taşındı; 2 çağrı yeri güncellendi.
+- ✅ **2 sessiz bug düzeldi** (pyflakes "undefined name" → bare `except:` yutuyordu):
+  - **Bug A (sıralama)**: `render_unified_signals_panel`'de "Climax Hacim" uyarısı `pa` hesaplanmadan ÖNCE kullanılıyordu → `UnboundLocalError` → swallowed. Blok `pa` tanımından sonraya taşındı. **Uyarı artık çalışıyor.**
+  - **Bug B (orphan referans)**: aynı panelde "Royal Flush Nadir Fırsat (4/4)" sinyali silinmiş Lorentzian modülünün `lor` değişkenine bakıyordu → her seferinde NameError → swallowed. **Ölü dal kaldırıldı** (sinyal zaten `scan_nadir_firsat_batch`'te üretiliyor, kullanıcıya kayıp yok).
+- ✅ **Import hijyeni**: 4 unused module import (`feedparser`, `urllib.parse`, `TextBlob`, `components`) + duplicate `os` + 5 gereksiz tekrar-import (pd/np/timedelta/yf/re) + ölü `ma_cell` ilk tanımı silindi. pyflakes: **0 undefined / 0 unused-import / 0 redefinition**.
+- ✅ **smr_bot.py BIST tatil/arefe guard'ı** — `send_daily_bulletin` yalnızca haftagününe bakıyordu (Cmt atla / Paz tekrar / Pzt-Cuma gönder); resmî tatil/bayramı bilmiyordu. Artık `bist_calendar` ile kapalı/arefe tespiti yapılıyor ve bülten başlığa "🔒 Piyasa kapalı (X) — son seans verileriyle özet" notuyla **atlanmadan** gidiyor. ImportError fallback'li.
+- ✅ **VPS operasyonel**: Bot systemd servisine geri alındı (`Restart=always`, `RestartSec=10`, StartLimit koruma, kalıcı log). `patron.db` git tracking'den çıkarıldı. Detay: `project_vps_architecture.md` + `project_bot_status.md`.
+
+### Çözülen Sorunlar (31 May 2026 — Oturum 9: AI Prompt Sistemi Tam Refactor)
+**Tek oturum, kapsamlı iyileştirme: app.py B35 AI Prompt sistemi + smr_core.py `_base_data_block`.**
+
+**app.py — B35 AI Prompt Sistemi yeniden mimari (≈satır 20148–21400):**
+- ✅ **OBV Divergence Status text + CMF değeri** — `get_obv_divergence_status` çağrısı eklendi, çıktısı `obv_div_txt` ile YAML.obv_cmf.durum'a basıldı.
+- ✅ **Master Score `cons` listesi** — Eskiden pros gönderiliyordu, cons unutulmuştu. `cons_txt` Varlık Kimliği bloğuna eklendi.
+- ✅ **Pattern adı + Skor + Detay kombosu** — `pattern_full_txt` ICT bloğuna "Aktif Grafik Formasyonu" olarak. (`pat_df.iloc[0]` → Formasyon + Skor + Detay)
+- ✅ **OB/FVG/Yapı yaşları** — `ict_age_txt` ICT bloğuna Taze (0-5g) / Orta (6-15g) / Eski (16g+) tier sistemiyle.
+- ✅ **Persona `is_golden` dalı** — Eskiden Altın Üçlü + Z>=2 durumu fallback "konsolidasyon" personasına düşüyordu (yanlış ton). Şimdi 2 yeni dal: `is_golden + z≥2` (momentum) ve `is_golden` (trend takipçisi).
+- ✅ **Null format standardize** — Prompt post-process regex'i: `Veri Yok` / `Bilinmiyor` / `Hesaplanamadı` → `(veri eksik)` tek sentinel.
+- ✅ **VOLATİLİTE BAĞLAMI** yeni bloğu: ATR(14) + Squeeze + Hidden Accumulation skor.
+- ✅ **#10 YAML restructure** — 200+ satırlık dağınık "- LABEL: değer" formatı tek YAML `meta/asset/volatility/scenario/regime/conviction/sentiment_karne/flow/trend_indicators/moving_averages/ict_pa/obv_cmf/smart_money/institutional_ref/targets` bloğuna konsolide. Bütün yorum kuralları YAML.alt_dal referanslarına dönüştü.
+- ✅ **Yasak konsolidasyon (#8)** — Duplicate "KRİTİK EMİR VWAP/POC" ve "YANILTICI VERİ TUZAKLARI" yasak blokları kısa referanslara indirildi.
+- ✅ **Smart Money Score market_note** — `_sms.get('market_note')` → BIST100 endeks bağlamı YAML.meta.endeks_baglami'na.
+- ✅ **Veri tazeliği damgası** — `data_timestamp_txt` (son bar tarihi) YAML.meta.son_veri_tarihi'ne.
+- ✅ **Endeks koşullu blok** — "ENDEKSLERİ ANALİZ EDERKEN HACİM YASAK" sabit metni `{... if _is_index_t else ""}` ile koşullu. Hisse analizinde ~250 token tasarruf.
+- ✅ **Görev sıralaması sadeleştir** — 30 satırlık dinamik sıralama tablosu → 10 satırlık "sıra sabit, ton senaryoya göre" direktife.
+- ✅ **Few-shot referans örnek** — BEŞ GÖREV öncesi tek tonlu Aselsan örneği (~200 token).
+- ✅ **5 ek veri:**
+  - 52H Yıllık konum (asset.yillik_konum_52h)
+  - **Master Score Breakdown** — `calculate_master_score` opsiyonel `return_breakdown=True` parametresi eklendi, geriye uyumlu (3 eski çağrı dokunulmadı). Trend/Momentum/ICT/Radar2 alt skorlar + ağırlık + katkı.
+  - OMI Sigma (obv_cmf.omi_sigma) — OBV Momentum Index σ değeri
+  - Sıkışma süresi (volatility.sikisma_suresi) — BB ⊂ Keltner kaç gündür
+  - HVN/LVN (smart_money.hvn_lvn) — Volume profile derinliği, POC'a ek 3+3 seviye
+
+**Token bilançosu:** 24.855 → 22.110 (-%11 net). Endeks analizinde -%12 ek tasarruf.
+
+**smr_core.py — `_base_data_block` (~satır 1607-1860) iyileştirmesi:**
+Bot'un hem PRO hem ELITE prompt'larını besleyen ortak veri kaynağı zenginleştirildi:
+- 52H Yıllık Konum + BB-Keltner Sıkışma süresi → 🌍 MAKRO KONUM bloğu
+- OMI Sigma → 📦 PARA AKIŞI bloğu
+- HVN/LVN Volume Profile → 🕯️ PRICE ACTION bloğu
+- OBV + CMF Teyit (ŞÜPHELİ GİRİŞ / SAHTE GÜÇ / ZAYIF TEYİT başlıklı) → 📦 PARA AKIŞI
+- ICT Bölge Yaşları (OB/FVG/Yapı) → 🔬 ICT YAPI bloğu
+- Veri Tazeliği Damgası → Başlık altına "📅 Veri Tarihi: DD.MM.YYYY"
+- Null standardize regex post-process (Hesaplanamadı/Veri Yok/Bilinmiyor → (veri eksik))
+- 3095 → 3282 satır (+187, tüm yeni veri hesaplama)
+- Tek yere eklendi, iki tier (PRO + ELITE) birden kazandı
+
+**Bot tarafında atlanan (ayrı oturum gerek):** YAML restructure, few-shot örnekleri, persona `is_golden` dalı, yasak konsolidasyon — bot prompt'larının (build_ai_prompt PRO + build_ai_prompt_gorev1 ELITE, ~600 satır × 2) yapısı app.py'den farklı, Telegram 3600 char limit'iyle optimize edilmiş, koordineli refactor gerekli.
+
 ### Bilinen Sorunlar / Eksikler
-- Weinstein Stage Analysis: henüz eklenmedi
-- Master Scan paralelizasyonu: 15 adım sıralı, bağımsız olanlar gruplanabilir
+- Weinstein Stage Analysis: ❌ **YAPILMAYACAK KARAR (30 May 2026)** — kullanıcı "analysis paralysis" gerekçesiyle eklemeyi reddetti. SWOT W6/O3 maddesi rafa kaldırıldı.
+- `get_scanner_optimal_windows` (~satır 1058) **bağlanmamış** — backtest peak_day fonksiyonu var ama hiçbir yere bağlı değil. Veri 20G dolunca TOP 20 veya bot'a bağlanması gerek.
+- 141 bare `except:` blok hala duruyor — en kritik 4'üne `log_error` bağlandı, gerisi (özellikle per-ticker `except: return None` blokları) bilinçli olarak dokunulmadı (gürültü riski).
+- Cache fragmentasyonu — aynı ticker için `1y` + `3mo`/`6mo`/`1mo` ayrı cache girdileri (14 çağrı). Yüksek değer değil, geçildi (29 May 2026 oturum kararı).
 - **Backtest veri birikimi (DEVAM EDİYOR)**: signal_returns tablosu var, veriler dolmaya başladı (3 tarama). 20G dolunca `get_scanner_optimal_windows()` peak_day'leri hesaplayabilecek.
 - **TOP 20 `base_powers` reranking (BEKLEYEN)**: Backtestler tamamlandığında, `fetch_technical_engine_data` (~satır 5726) içindeki `base_powers` dict'i her taramanın gerçek hit rate'ine göre yeniden sıralanacak. Şu an skor ağırlıkları tahmini; en iyi backtest sonucu olan tarama en yüksek puanı alacak şekilde güncellenecek.

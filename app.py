@@ -5466,7 +5466,7 @@ def scan_prelaunch_bos(asset_list):
 # ==============================================================================
 
 @st.cache_data(ttl=900)
-def calculate_master_score(ticker):
+def calculate_master_score(ticker, return_breakdown=False):
     """
     MASTER SKOR V2:
     - Temel analiz kaldırıldı (BIST için güvenilir veri yok)
@@ -5474,6 +5474,8 @@ def calculate_master_score(ticker):
     - Radar2: session_state yerine anlık hesaplama
     - Momentum eşiği 60 → 50'ye indirildi
     - Yeni ağırlıklar: Trend %40, Momentum %30, ICT %15, Radar2 %15
+
+    return_breakdown=True → (final, pros, cons, breakdown_dict) — alt skorları döndürür
     """
     # 1. VERİLERİ TOPLA
     mini_data = calculate_minervini_sepa(ticker)
@@ -5623,6 +5625,15 @@ def calculate_master_score(ticker):
     # FİNAL HESAPLAMA
     # ---------------------------------------------------
     final = (s_trend * w_trend) + (s_mom * w_mom) + (s_ict * w_ict) + (s_r2_norm * w_r2)
+
+    if return_breakdown:
+        breakdown = {
+            'trend':    {'score': int(s_trend),   'weight': w_trend, 'contribution': round(s_trend * w_trend, 1)},
+            'momentum': {'score': int(s_mom),     'weight': w_mom,   'contribution': round(s_mom * w_mom, 1)},
+            'ict':      {'score': int(s_ict),     'weight': w_ict,   'contribution': round(s_ict * w_ict, 1)},
+            'radar2':   {'score': int(s_r2_norm), 'weight': w_r2,    'contribution': round(s_r2_norm * w_r2, 1)},
+        }
+        return int(final), pros, cons, breakdown
 
     return int(final), pros, cons
 
@@ -19258,8 +19269,8 @@ if st.session_state.generate_prompt:
     else:
         # Veri gelmezse AI hata almasın diye varsayılan değerler
         guncel_ivme = 0; guncel_stp = 0; guncel_fiyat = 0; denge_sapmasi = 0; ivme_yonu = "Bilinmiyor"
-    mini_data = calculate_minervini_sepa(t) or {} 
-    master_score, pros, cons = calculate_master_score(t)
+    mini_data = calculate_minervini_sepa(t) or {}
+    master_score, pros, cons, master_breakdown = calculate_master_score(t, return_breakdown=True)
     # --- YENİ: AI İÇİN S&D VE LİKİDİTE VERİLERİ ---
     try: 
         sd_data = detect_supply_demand_zones(df_hist)
@@ -20102,6 +20113,30 @@ if st.session_state.generate_prompt:
     except Exception:
         _sms_str = "Hesaplanamadı"
 
+    # XU100 Endeks Bağlamı (Smart Money Score'dan — sadece BIST hisseleri için anlamlı)
+    try:
+        if _sms and _sms.get('market_score') is not None:
+            _mkt_score = _sms.get('market_score', 0)
+            _mkt_note  = _sms.get('market_note', '')
+            endeks_baglam_txt = f"BIST100 Skoru: {_mkt_score}/100 — {_mkt_note}" if _mkt_note else f"BIST100 Skoru: {_mkt_score}/100"
+        elif _is_index_t:
+            endeks_baglam_txt = "Bu zaten endeks/emtia — kendi puanı yukarıda"
+        else:
+            endeks_baglam_txt = "(veri eksik)"
+    except Exception:
+        endeks_baglam_txt = "(veri eksik)"
+
+    # Veri tazeliği damgası
+    try:
+        import datetime as _dt
+        _last_bar_dt = df_hist.index[-1] if df_hist is not None and len(df_hist) > 0 else None
+        if _last_bar_dt is not None and hasattr(_last_bar_dt, 'strftime'):
+            data_timestamp_txt = _last_bar_dt.strftime("%d.%m.%Y")
+        else:
+            data_timestamp_txt = "bilinmiyor"
+    except Exception:
+        data_timestamp_txt = "bilinmiyor"
+
     # ── Piyasa Fazı + Kanaat Skoru (session_state'ten) ───────────────
     try:
         _ss_regime = st.session_state.get("_last_regime", {})
@@ -20143,6 +20178,233 @@ if st.session_state.generate_prompt:
         )
     except Exception:
         _conviction_prompt_str = "Hesaplanamadı"
+
+    # ── EK VERİ AKTARIMI (AI Prompt iyileştirmesi — 31 May 2026) ──────
+    # Algoritmada hesaplanan ama prompt'a girmeyen 7 kritik bilgi.
+    # Tek null sentineli: "(veri eksik)"
+
+    # 1) Master Score eksiler — pros zaten gönderiliyordu, cons unutulmuştu
+    cons_txt = ", ".join(cons[:5]) if cons else "(veri eksik)"
+
+    # 2) OBV Divergence Status (CMF teyitli — ŞÜPHELİ GİRİŞ / SAHTE GÜÇ / ZAYIF TEYİT)
+    try:
+        _obv_status = get_obv_divergence_status(t)
+        if _obv_status and _obv_status[0] != "Veri Yok":
+            obv_div_txt = f"{_obv_status[0]} — {_obv_status[2]}"
+        else:
+            obv_div_txt = "(veri eksik)"
+    except Exception:
+        obv_div_txt = "(veri eksik)"
+
+    # 3) Formasyon adı + güven skoru (pat_df'ten — Skor = q_score, 0-100)
+    try:
+        if pat_df is not None and not pat_df.empty:
+            _pat0 = pat_df.iloc[0]
+            _p_name = str(_pat0.get('Formasyon', '—'))
+            _p_skor = int(_pat0.get('Skor', 0))
+            _p_detay = str(_pat0.get('Detay', ''))[:80]
+            pattern_full_txt = f"{_p_name} (güven: {_p_skor}/100) | {_p_detay}"
+        else:
+            pattern_full_txt = "Aktif formasyon yok"
+    except Exception:
+        pattern_full_txt = "(veri eksik)"
+
+    # 4) ICT bölge yaşları — Taze/Orta/Eski katmanları
+    try:
+        _ob_age  = int(ict_data.get('ob_age', 0) or 0)
+        _fvg_age = int(ict_data.get('fvg_age', 0) or 0)
+        _str_age = int(ict_data.get('struct_age', 0) or 0)
+        def _age_tier(d):
+            if d <= 0: return "yok"
+            if d <= 5: return f"{d}g (taze)"
+            if d <= 15: return f"{d}g (orta)"
+            return f"{d}g (eski)"
+        ict_age_txt = f"OB: {_age_tier(_ob_age)} | FVG: {_age_tier(_fvg_age)} | Yapı: {_age_tier(_str_age)}"
+    except Exception:
+        ict_age_txt = "(veri eksik)"
+
+    # 7a) ATR(14) — günlük volatilite bandı
+    try:
+        _tr1 = df_hist['High'] - df_hist['Low']
+        _tr2 = (df_hist['High'] - df_hist['Close'].shift()).abs()
+        _tr3 = (df_hist['Low']  - df_hist['Close'].shift()).abs()
+        _tr  = pd.concat([_tr1, _tr2, _tr3], axis=1).max(axis=1)
+        _atr14 = float(_tr.rolling(14).mean().iloc[-1])
+        _atr_pct = (_atr14 / float(df_hist['Close'].iloc[-1])) * 100
+        atr_txt = f"{_atr14:.2f} (fiyatın %{_atr_pct:.2f}'si) — tipik günlük bant"
+    except Exception:
+        atr_txt = "(veri eksik)"
+
+    # 7b) Bollinger-Keltner Squeeze (kırılım enerjisi)
+    try:
+        _sq_now, _sq_yest = check_lazybear_squeeze_breakout(df_hist)
+        if _sq_now and _sq_yest:
+            squeeze_txt = "AKTİF SIKIŞMA (2+ gün BB ⊂ Keltner) — kırılım enerjisi birikiyor"
+        elif _sq_now:
+            squeeze_txt = "Yeni sıkışmaya girdi (1g)"
+        elif _sq_yest and not _sq_now:
+            squeeze_txt = "Sıkışma bitti, volatilite serbest — kırılım potansiyeli"
+        else:
+            squeeze_txt = "Sıkışma yok (normal volatilite)"
+    except Exception:
+        squeeze_txt = "(veri eksik)"
+
+    # 8) 52 Haftalık Menzil Konumu (yıllık bağlam)
+    try:
+        _yearly = df_hist['Close'].iloc[-252:] if len(df_hist) >= 252 else df_hist['Close']
+        _y_high = float(_yearly.max())
+        _y_low  = float(_yearly.min())
+        _curr_p = float(df_hist['Close'].iloc[-1])
+        if _y_high > _y_low:
+            _y_pos = (_curr_p - _y_low) / (_y_high - _y_low) * 100
+        else:
+            _y_pos = 50.0
+        _from_high = ((_curr_p / _y_high) - 1) * 100
+        _from_low  = ((_curr_p / _y_low) - 1) * 100
+        range_52h_txt = (f"Yıllık menzilin %{_y_pos:.0f} konumunda | "
+                        f"52H zirvesi: {_y_high:.2f} ({_from_high:+.1f}%) | "
+                        f"52H dibi: {_y_low:.2f} ({_from_low:+.1f}%)")
+    except Exception:
+        range_52h_txt = "(veri eksik)"
+
+    # 9) OMI Sigma değeri (OBV Momentum Index)
+    try:
+        _omi_close = df_hist['Close']
+        _omi_vol   = df_hist['Volume']
+        _omi_dir   = np.sign(_omi_close.diff()).fillna(0)
+        _omi_obv   = (_omi_dir * _omi_vol).cumsum()
+        _omi_ema_s = _omi_obv.ewm(span=5, adjust=False).mean()
+        _omi_ema_l = _omi_obv.ewm(span=20, adjust=False).mean()
+        _omi_raw   = _omi_ema_s - _omi_ema_l
+        _omi_std   = _omi_raw.rolling(50).std()
+        _omi_z     = float(_omi_raw.iloc[-1] / _omi_std.iloc[-1]) if float(_omi_std.iloc[-1] or 0) != 0 else 0.0
+        if _omi_z >= 1.0:
+            _omi_label = "⚡ GÜÇLÜ (>1σ) — kurumsal momentum aktif"
+        elif _omi_z >= 0.5:
+            _omi_label = "✓ POZİTİF — momentum sağlam"
+        elif _omi_z <= -1.0:
+            _omi_label = "⚠ ÇOK ZAYIF (<-1σ) — OBV momentum çökmüş"
+        elif _omi_z <= -0.5:
+            _omi_label = "ELENMİŞ (<-0.5σ) — kırılım doğrulanmadı"
+        else:
+            _omi_label = "Nötr (0σ civarı)"
+        omi_txt = f"{_omi_z:+.2f}σ — {_omi_label}"
+    except Exception:
+        omi_txt = "(veri eksik)"
+
+    # 10) Sıkışma süresi (BB Keltner — kaç gündür)
+    try:
+        _sq_close = df_hist['Close']
+        _sq_high  = df_hist['High']
+        _sq_low   = df_hist['Low']
+        _sq_sma20 = _sq_close.rolling(20).mean()
+        _sq_std20 = _sq_close.rolling(20).std()
+        _sq_bb_u  = _sq_sma20 + 2.0 * _sq_std20
+        _sq_bb_l  = _sq_sma20 - 2.0 * _sq_std20
+        _sq_tr1   = _sq_high - _sq_low
+        _sq_tr2   = (_sq_high - _sq_close.shift()).abs()
+        _sq_tr3   = (_sq_low  - _sq_close.shift()).abs()
+        _sq_tr    = pd.concat([_sq_tr1, _sq_tr2, _sq_tr3], axis=1).max(axis=1)
+        _sq_atr20 = _sq_tr.rolling(20).mean()
+        _sq_kc_u  = _sq_sma20 + 1.5 * _sq_atr20
+        _sq_kc_l  = _sq_sma20 - 1.5 * _sq_atr20
+        _sq_active = (_sq_bb_u < _sq_kc_u) & (_sq_bb_l > _sq_kc_l)
+        if bool(_sq_active.iloc[-1]):
+            _sq_count = 0
+            for _ii in range(len(_sq_active) - 1, -1, -1):
+                if bool(_sq_active.iloc[_ii]):
+                    _sq_count += 1
+                else:
+                    break
+            squeeze_duration_txt = f"{_sq_count}g sıkışma sürüyor (BB ⊂ Keltner)"
+        else:
+            _sq_count = 0
+            for _ii in range(len(_sq_active) - 1, -1, -1):
+                if not bool(_sq_active.iloc[_ii]):
+                    _sq_count += 1
+                else:
+                    break
+            if _sq_count <= 3:
+                squeeze_duration_txt = f"Sıkışma {_sq_count}g önce bitti — kırılım taze, volatilite serbest"
+            else:
+                squeeze_duration_txt = f"Sıkışma yok ({_sq_count}g önce son sıkışma bitmiş)"
+    except Exception:
+        squeeze_duration_txt = "(veri eksik)"
+
+    # 11) Volume Profile — HVN/LVN (yüksek/düşük hacim düğümleri = ek S/D)
+    try:
+        _vp_lookback = min(20, len(df_hist))
+        _vp_df  = df_hist.tail(_vp_lookback)
+        _vp_min = float(_vp_df['Low'].min())
+        _vp_max = float(_vp_df['High'].max())
+        if _vp_max > _vp_min:
+            _vp_bins  = 20
+            _vp_edges = np.linspace(_vp_min, _vp_max, _vp_bins + 1)
+            _vp_prof  = np.zeros(_vp_bins)
+            for _, _r in _vp_df.iterrows():
+                _rh, _rl, _rv = float(_r['High']), float(_r['Low']), float(_r['Volume'])
+                _rng = _rh - _rl
+                if _rng <= 0:
+                    _idx = min(max(np.digitize((_rh + _rl) / 2, _vp_edges) - 1, 0), _vp_bins - 1)
+                    _vp_prof[_idx] += _rv
+                    continue
+                for _i in range(_vp_bins):
+                    _bb, _bt = _vp_edges[_i], _vp_edges[_i + 1]
+                    if _rh >= _bb and _rl <= _bt:
+                        _ov = min(_rh, _bt) - max(_rl, _bb)
+                        if _ov > 0:
+                            _vp_prof[_i] += _rv * (_ov / _rng)
+            _vp_max_v = float(_vp_prof.max()) if _vp_prof.max() > 0 else 1.0
+            _vp_avg_v = float(_vp_prof.mean()) if _vp_prof.mean() > 0 else 1.0
+            # HVN: hacim ortalamanın 1.5x üstü olan diller (POC hariç ilk 3'ü)
+            # LVN: hacim ortalamanın 0.3x altı olan diller (boş bölgeler — hızlı geçilir)
+            _vp_centers = [(_vp_edges[_i] + _vp_edges[_i + 1]) / 2 for _i in range(_vp_bins)]
+            _poc_idx = int(np.argmax(_vp_prof))
+            _hvn_idx = sorted(
+                [_i for _i in range(_vp_bins) if _i != _poc_idx and _vp_prof[_i] >= _vp_avg_v * 1.5],
+                key=lambda _i: _vp_prof[_i], reverse=True
+            )[:3]
+            _lvn_idx = sorted(
+                [_i for _i in range(_vp_bins) if _vp_prof[_i] <= _vp_avg_v * 0.3 and _vp_prof[_i] > 0],
+                key=lambda _i: _vp_prof[_i]
+            )[:3]
+            _hvn_levels = sorted([round(_vp_centers[_i], 2) for _i in _hvn_idx])
+            _lvn_levels = sorted([round(_vp_centers[_i], 2) for _i in _lvn_idx])
+            hvn_lvn_txt = (
+                f"HVN (yoğun hacim — doğal destek/direnç): {', '.join(map(str, _hvn_levels)) if _hvn_levels else 'yok'} | "
+                f"LVN (boş bölge — hızlı geçilir): {', '.join(map(str, _lvn_levels)) if _lvn_levels else 'yok'}"
+            )
+        else:
+            hvn_lvn_txt = "(yatay fiyat, profil çıkarılamadı)"
+    except Exception:
+        hvn_lvn_txt = "(veri eksik)"
+
+    # 12) Master Score Breakdown — alt skorlar prompt için tek satır
+    try:
+        _mb = master_breakdown
+        master_breakdown_txt = (
+            f"Trend {_mb['trend']['score']}/100 (ağr %{int(_mb['trend']['weight']*100)} → katkı {_mb['trend']['contribution']:.1f}) | "
+            f"Momentum {_mb['momentum']['score']}/100 (ağr %{int(_mb['momentum']['weight']*100)} → {_mb['momentum']['contribution']:.1f}) | "
+            f"ICT {_mb['ict']['score']}/100 (ağr %{int(_mb['ict']['weight']*100)} → {_mb['ict']['contribution']:.1f}) | "
+            f"Radar2 {_mb['radar2']['score']}/100 (ağr %{int(_mb['radar2']['weight']*100)} → {_mb['radar2']['contribution']:.1f})"
+        )
+    except Exception:
+        master_breakdown_txt = "(veri eksik)"
+
+    # 7c) Hidden Accumulation skor (varsa scan sonucu — patron.db cache)
+    try:
+        _ha_df = st.session_state.get('hidden_accumulation_data')
+        if _ha_df is not None and not _ha_df.empty and 'Sembol' in _ha_df.columns:
+            _ha_row = _ha_df[_ha_df['Sembol'] == t]
+            if not _ha_row.empty:
+                _ha_skor = _ha_row.iloc[0].get('Skor', _ha_row.iloc[0].get('skor', 0))
+                hidden_acc_txt = f"AKTİF — Skor: {_ha_skor}/100 (Force Index + CMF + pocket pivot teyitli birikim)"
+            else:
+                hidden_acc_txt = "Hisse Gizli Birikim listesinde değil"
+        else:
+            hidden_acc_txt = "Tarama yapılmamış"
+    except Exception:
+        hidden_acc_txt = "(veri eksik)"
 
 # ==============================================================================
 # BÖLÜM 35 — AI PROMPT SİSTEMİ
@@ -20187,6 +20449,33 @@ if st.session_state.generate_prompt:
             "Bugün piyasada kurumsal bir oyun oynandığına dair izler var. "
             "Analizini o oyunun senaryosu üzerine kur — kim kimi tuzağa düşürdü, "
             "nerede mal toplandı, bir sonraki hamle ne olabilir?"
+        )
+    elif "EVET" in str(is_golden) and _z >= 2.0:
+        # Altın Üçlü + yüksek Z-Score = momentum + uzama (tehlike değil, ivme).
+        # Bu kombinasyonu defansif personaya yönlendirmek yanlış olur.
+        persona_kimlik = (
+            "Sen güçlü trend setup'larını yakaladıktan sonra ivmeyi soğukkanlılıkla takip eden, "
+            "izleyen stop disiplinini hiç bozmayan bir momentum yatırımcısısın. "
+            "Altın Üçlü hizalanması + Z-Score şişkinliği klasik 'sürüklenmeli trend' anatomisidir; "
+            "sen bunu tehlike değil, ivme göstergesi olarak ele alırsın."
+        )
+        persona_ton = (
+            "Bugün hem 3-bağımsız kanıtın hizalanması hem de güçlü ivme bir arada. "
+            "Tonun ne aşırı temkinli ne aşırı coşkulu — 'trend sağlam, izleyen stop yükselmeli' "
+            "tonunda yaz. Z-Score'u tehlike olarak değil, 'stop yaklaştırma noktası' olarak ele al."
+        )
+    elif "EVET" in str(is_golden):
+        # Altın Üçlü EVET, Z-Score uçta değil → ideal trend takipçisi senaryosu
+        persona_kimlik = (
+            "Sen 3 bağımsız kriterin (RS gücü + iskontolu konum + ivme) aynı anda hizalandığı "
+            "nadir 'Altın Üçlü' setup'larını avlayan, trend takipçisi pozisyon yatırımcısısın. "
+            "Bu konfigürasyon ayda birkaç kez gelir; sen onu erken yakalamak ve disiplinli "
+            "yönetmek için buradasın."
+        )
+        persona_ton = (
+            "Bugün üç bağımsız kanıt aynı yöne işaret ediyor. Analizini bu hizalanma üzerine kur — "
+            "her bir kriter ne söylüyor, kombinasyonları neden anlamlı? Tonun dengeli ama net olsun; "
+            "FOMO üretme, ama hizalanmanın değerini de küçümseme."
         )
     elif _z >= 2.0:
         persona_kimlik = (
@@ -20563,8 +20852,7 @@ Sana ekte sunduğum GRAFİK GÖRSELİNİ (Röntgen) kendi görsel zekanla derinl
 Bu iki veriyi (grafikte gördüklerini ve aşağıda okuduklarını) birleştirerek o kusursuz analizi çıkar. Grafiği okuyamıyorsan analizinin en altına "Grafik görünmemektedir" yaz, ama teknik verilerle analiz yap. Grafik görünüyorsa analizinin merkezine Price Action'ı koy; algoritmik veriler bu analizi destekleyen veya sorgulayan kanıtlar olarak kullan.
 Aşağıdaki herhangi bir veri noktası 'Bilinmiyor' veya 'Yok' olarak gelmişse, o alanı yorumlamaya zorlama — mevcut diğer verilerle sentezini yap.
 
-*** ENDEKSLERİ ANALİZ EDERKEN HACİM VERİSİ KULLANMA ***
-Analiz ettiğin sembol bir endeks ise (XU100, XU030, S&P500, Nasdaq, DAX, vb.) — hacim verisini HİÇBİR ŞEKİLDE analize dahil etme ve hacim bazlı yorum yapma. Sebebi teknik: Endeksler bizzat alınıp satılan enstrümanlar değil, hesaplanan değerlerdir. Yahoo Finance ve benzeri veri sağlayıcılar endeksler için güvenilir hacim verisi sunmaz — dönen rakam ya 0'dır ya da anlamsız bir toplamdan ibarettir. Bu yüzden endeks analizlerinde OBV, hacim trendi, hacim momentumu, "hacim destekli hareket", "hacim kuruyor/artıyor" gibi ifadeler kullanma. Bunların yerine fiyat momentumunu, EMA hizalamasını, RSI'ı, Fibonacci seviyelerini ve price action yapısını (BOS, CHoCH, HH/HL döngüleri) ön plana çıkar.
+{("*** ENDEKS ANALİZİ — HACİM YORUMU YASAK ***" + chr(10) + "Bu sembol bir endeks/emtia (XU100, ^GSPC vb.). Hacim verisini analizinde KULLANMA — Yahoo Finance endeksler için güvenilir hacim sağlamaz (genelde 0 veya anlamsız toplam). OBV, hacim trendi, 'hacim destekli', 'hacim kuruyor' gibi ifadeler yazma. Yerine: fiyat momentumu, EMA hizalaması, RSI, Fibonacci, price action yapısı (BOS, CHoCH, HH/HL) ön plana çıksın." + chr(10)) if _is_index_t else ""}
 
 Görevin veriyi sadece raporlamak değil, içindeki akıllı para niyetini deşifre etmektir. Steril değil, anlaşılır bir dille konuş. Arada "Dostlar" diyerek başlayabilirsin.
 Yapacağın analizin vadesi 3 gün ile 3 hafta arasında değişebilir — bu bir "anlık röntgen" değil, "görünmez elin niyetini deşifre eden bir piyasa pusulası" olacak. 
@@ -20753,215 +21041,264 @@ Bağımsız kanıt YOKSA → bu cümleyi yazma.
 Bu kuralların ihlali = analizinin profesyonelliğinin sıfırlanması demektir.
 ═══════════════════════════════════════════════════════════════════════
 
-*** YANILTICI VERİ TUZAKLARI — BUNLARI YANLIŞ OKUMA ***
-Aşağıdaki veriler trendin yan ürünüdür, trendin kendisi değildir. Hisse yükseliyorsa bu verileri tehlike olarak çerçeveleme:
-→ Z-Score yüksekliği → Yükselen bir hissede Z-Score'un +2 veya üzerine çıkması normaldir. "Yükseldi ama Z-Score tehlikeli" deme. Sadece "bu seviyede izleyen stop mantıklı olabilir" diyebilirsin.
-→ VWAP sapması → Ralli yapan hissede fiyatın VWAP'tan uzaklaşması ivmenin sonucudur. "VWAP'tan çok koptu, düzeltme gelebilir" yerine "VWAP bu noktada olası bir geri çekilmede destek olabilir" de.
-→ RSI aşırı alım → Güçlü trendlerde RSI haftalarca 70 üzerinde kalabilir. RSI'ı tek başına uyarı olarak öne çıkarma; OBV veya hacimle çelişmiyorsa dipnot geç.
-
-Gerçek çelişki bunlardır — bunları mutlaka belirt ama "yükseldik, şuna da dikkat edelim" tonuyla:
+*** GERÇEK ÇELİŞKİ LİSTESİ — Bunları kaçırma ***
+(Yukarıdaki Z-Score / VWAP / POC / RSI yasakları zaten okudun — tekrar etmeye gerek yok.
+Şimdi *gerçek* çelişki örnekleri — bunları gördüğünde dipnot olarak belirt,
+ama analizin merkezine alma. Ton: "yükseliş devam ederken şunu da gözden kaçırmayalım".)
 → Fiyat yukarı giderken OBV aşağı (gizli dağıtım olabilir)
 → Hacim düşerken fiyat yükseliyor (zayıf el yükselişi)
 → HARSI kırmızıyken fiyat tavan yapıyor (momentum tükenebilir)
 → Stopping Volume veya Climax Volume tespit edilmişse (dönüş ihtimali artar)
-Bu çelişkiler varsa tek bir paragrafta "yükseliş devam ederken şunu da gözden kaçırmayalım" şeklinde sun — analizin merkezine alma.
+→ OBV durumu "ŞÜPHELİ / SAHTE GÜÇ / ZAYIF TEYİT" başlıklı geldiyse (bar içi alıcı OBV'yi sorguluyor)
 
 Şimdi, kendi kimliğini iyice tanıdığına göre, analizinin için gerekli veriler aşağıda.  Verileri yorumlarken yukarıdaki kurallara ve dil yönergelerine kesinlikle uyduğundan emin ol.
 
-*** VARLIK KİMLİĞİ ***
-- Sembol: {t}
-- GÜNCEL FİYAT: {fiyat_str}
-- GÜNLÜK DEĞİŞİM: {degisim_str}
-- GENEL SAĞLIK: {master_txt} (Algoritmik Puan)
-- Temel Artılar: {pros_txt}
-- ALTIN SET-UP (GOLDEN TRIO) DURUMU: {is_golden}
-- ROYAL FLUSH NADİR SET-UP: {is_nadir}
+═══════════════════════════════════════════════════════════════════════
+📊 VERİ BLOĞU (YAML) — Tüm sistem çıktıları tek yapılandırılmış kaynakta
+═══════════════════════════════════════════════════════════════════════
+(Aşağıdaki YAML, analizinin TEK ham veri kaynağıdır. Her görevde bu bloktan
+çek ve çapraz oku. Sonraki bölümler sadece YORUM KURALLARI içerir — veri
+tekrarı yoktur, kurallar nereye uygulanacağını YAML.alt_dal formatıyla söyler.)
 
-*** 🚨 ALGORİTMİK DURUM RAPORU VE GÖRSEL ÇAPRAZ SORGU (CROSS-EXAMINATION) TALEBİ: {ai_scenario_title} ***
-Mevcut Özet: {ai_mood_instruction}
-Kurumsal Özet (Bottom Line): {ict_data.get('bottom_line', 'Özel bir durum belirtilmedi.')}
-— Makro Yön (Bias): {bias} | Konum (Zone): {zone} | Güncel Fiyat: {fiyat_str}
-(Yukarıdaki senaryo, sistemimizin arka planda hesapladığı salt matematiksel bir "Ön Tanı"dır. Şimdi bir Baş Analist olarak en büyük görevin; bu algoritmik verileri, ekte sunduğum GRAFİK (Röntgen) ile çapraz sorguya almandır. Lütfen grafiği incelerken şu 3 aşamalı testi uygula:
-1. ONAY VE DERİNLEŞTİRME (CONFLUENCE): 
-Algoritma ve Grafik birbiriyle uyumlu mu? Örneğin; algoritma "Boğa" diyorsa, grafikte net bir şekilde Yükselen Tepeler/Dipler (HH/HL), güçlü yeşil momentum mumları (Displacement) veya doldurulmamış fiyat boşlukları (FVG) görüyor musun? Uyumluysa, bu senaryoyu kendi görsel kanıtlarınla destekleyerek derinleştir.
-2. ÇAPRAZ SORGULAMA:
-Algoritma ve grafik uyumluysa — teyit et ve derinleştir.
-Grafikte algoritmanın yansıtmadığı belirgin bir yapı görüyorsan (direnç bölgesinde uzun üst fitil, yüksek hacimli yutan kırmızı mum gibi) — bunu "algoritma şunu söylüyor, ama grafik şunu gösteriyor" şeklinde sun.
-KURAL: Çelişkiyi ancak 2+ bağımsız kanıt aynı yönü işaret ediyorsa öne çıkar. Tek bir grafik yapısı çelişki saymaz — dipnot olarak geç.)
-*** 🧭 ANALİZİN BİRİNCİL MERCEĞİ — AKILLI PARA NE YAPIYOR? ***
-Tüm analizi şu tek soruya göre çerçevele: "Akıllı para (kurumsal oyuncular) şu an mal mı topluyor, mal mı dağıtıyor, yoksa bekliyor mu?"
-Bu sorunun cevabı diğer her sinyalden önce gelir. Örneğin fiyat SMA200'ün altında 100 gündür seyrediyorsa ama OBV artıyorsa, bu durum SMA200 altında olmaktan daha kritiktir — zira kurumların sessizce mal topladığına işaret edebilir. Her veriyi bu birincil mercekten geçirerek yorumla.
-Birikim (Accumulation) işaretleri: Fiyat yatay/aşağı + OBV yukarı, düşük hacimli dip testleri, stopping volume, pozitif delta yüksekken fiyatın sakin kalması.
-Dağıtım (Distribution) işaretleri: Fiyat yukarı + OBV aşağı, yüksek hacimli tepki satışları, climax volume, negatif delta yüksekken fiyatın sahte yükselmesi.
+```yaml
+meta:
+  son_veri_tarihi: {data_timestamp_txt}
+  endeks_baglami: {endeks_baglam_txt}
 
-*** PİYASA FAZI VE ALGORİTMİK KANAAT (REJİM + CONVICTION) ***
-(Bu iki veri, sistemin tüm sinyalleri sentezleyerek ürettiği makro çerçevedir. Analizinde bu çerçeveyi arka plan bağlamı olarak kullan; sinyalleri bu faza göre ağırlıklandır.)
-- Piyasa Yapısı (20-200 Gün — SMA50/200 bazlı): {_regime_prompt_str}
-- Algoritmik Kanaat Skoru: {_conviction_prompt_str}
-Kural: Faz 3 (Dağıtım) veya Faz 4 (Düşüş) iken gelen AL sinyallerini "karşı-trend" olarak işaretle ve riskini vurgula. Faz 2 (Yükseliş) iken SAT sinyali varsa aynı şekilde dikkat çek. Kanaat skoru 45 altında (SHORT/GÜÇLÜ SHORT) iken pozitif senaryo çiziyorsan bunu açıkça "algoritmanın genel eğilimiyle çelişiyor" diye belirt.
+asset:
+  ticker: {t}
+  fiyat: {fiyat_str}
+  gunluk_degisim: {degisim_str}
+  master_score: {master_txt}
+  master_breakdown: {master_breakdown_txt}
+  pros: {pros_txt}
+  cons: {cons_txt}
+  golden_trio: {is_golden}
+  royal_flush: {is_nadir}
+  hidden_accumulation: {hidden_acc_txt}
+  yillik_konum_52h: {range_52h_txt}
+
+volatility:
+  atr14: {atr_txt}
+  bb_keltner_squeeze: {squeeze_txt}
+  sikisma_suresi: {squeeze_duration_txt}
+
+scenario:
+  algoritmik_baslik: {ai_scenario_title}
+  ozet: {ai_mood_instruction}
+  bias: {bias}
+  zone: {zone}
+  bottom_line: {ict_data.get('bottom_line', '(veri eksik)')}
+
+regime: |
+  {_regime_prompt_str}
+
+conviction: |
+  {_conviction_prompt_str}
+
+sentiment_karne:
+  yapi: {sent_yapi}
+  hacim: {sent_hacim}
+  trend: {sent_trend}
+  momentum: {sent_mom}
+  volatilite: {sent_vola}
+  momentum_ozel: {momentum_analiz_txt}
+
+flow:
+  para_akis_ivmesi: {guncel_ivme:.4f} ({ivme_yonu})
+  stp_denge_seviyesi: {guncel_stp:.2f}
+  fiyat_denge_sapmasi_pct: {denge_sapmasi:.2f}
+  para_akisi_10g_wma: {para_akisi_txt}
+
+trend_indicators:
+  harsi: {harsi_txt}
+  ema_8_13: {ema_txt}
+  supertrend_60g: {st_txt}
+  minervini: {mini_txt}
+  radar1_momentum_hacim: {r1_txt}
+  radar2_trend_setup: {r2_txt}
+
+moving_averages:
+  sma50: {sma50_str} (seviye: {sma50_val:.2f})
+  sma100: {sma100_val:.2f}
+  sma200: {sma200_str} (seviye: {sma200_val:.2f})
+  ema144: {ema144_val:.2f}
+
+ict_pa:
+  pa_signal: {pa_signal}
+  pa_confluence_yer: {pa_context}
+  mss_yapi_kirilimi: {reversal_signal}
+  structure: {ict_data.get('structure', '(veri eksik)')}
+  fvg: {ict_data.get('fvg_txt', 'Yok')}
+  ob: {ict_data.get('ob_txt', 'Yok')}
+  zone_ages: {ict_age_txt}
+  likidite_havuzu: {havuz_ai}
+  sweep_silkeleme: {sweep_ai}
+  sd_taze_bolge: {sd_txt_ai}
+  hedef_likidite_seviye: {ict_data.get('target', 0)}
+  mum_formasyonu: {mum_desc}
+  chart_formasyon: {pattern_full_txt}
+  formasyon_guvenilirligi: {confidence_prompt if confidence_prompt else "(veri eksik)"}
+  rsi_divergence: {pa_div}
+  sfp_tuzak: {sfp_desc}
+  harmonik_xabcd: {harm_txt}
+
+obv_cmf:
+  durum: {obv_div_txt}
+  omi_sigma: {omi_txt}
+
+smart_money:
+  delta_durumu: {delta_durumu}
+  poc_20g: {poc_price}
+  va_pos: {va_pos_txt}
+  vah: {vah_txt}
+  val: {val_txt}
+  hvn_lvn: {hvn_lvn_txt}
+  cum_delta_5g: {cum5_txt}
+  guncel_fiyat: {guncel_fiyat}
+  rvol: {"VERİ EKSİK" if _vol_missing_flag else f"{rvol_val}x"}
+  stopping_volume: {stop_vol_val}
+  climax_volume: {climax_vol_val}
+
+institutional_ref:
+  vwap: {v_val:.2f}
+  fiyat_vwap_uzaklik_pct: {v_diff:.1f}
+  vwap_etiket: {vwap_ai_txt}
+  rs_piyasa_gucu: {rs_ai_txt}
+  alpha: {alpha_val:.1f}
+
+targets:
+  direnc_fib: {fib_res}
+  destek_fib: {fib_sup}
+  hedef_likidite: {liq_str}
+```
+═══════════════════════════════════════════════════════════════════════
+
+*** YORUM KURALLARI — Her bölüm YAML'ın belirli bir alt-dalını okur ***
+
+🚨 ALGORİTMİK DURUM RAPORU + GÖRSEL ÇAPRAZ SORGU (YAML.scenario):
+YAML.scenario.algoritmik_baslik sistem ön-tanısıdır. Baş analist olarak şu 3 testi uygula:
+1. CONFLUENCE: Algoritma "Boğa" diyorsa grafikte HH/HL, displacement, FVG var mı? Uyumluysa kendi görsel kanıtlarınla derinleştir.
+2. ÇAPRAZ SORGU: Grafikte algoritmanın yansıtmadığı yapı görüyorsan (uzun üst fitil, yutan kırmızı mum vb.) → "algoritma X diyor, ama grafik Y gösteriyor" diye sun.
+3. KURAL: Çelişki ancak 2+ bağımsız kanıt aynı yönü işaret ediyorsa öne çıkar. Tek grafik yapısı çelişki saymaz — dipnot geç.
+
+🧭 ANALİZİN BİRİNCİL MERCEĞİ — AKILLI PARA NE YAPIYOR?
+Tüm analizi şu soruya göre çerçevele: "Akıllı para mal mı topluyor, mal mı dağıtıyor, yoksa bekliyor mu?"
+Bu sorunun cevabı diğer her sinyalden önce gelir. Örneğin fiyat SMA200 altında 100 gündür seyrediyor ama OBV artıyorsa → bu, SMA200 altında olmaktan daha kritiktir (sessiz birikim ihtimali).
+- Birikim işaretleri: fiyat yatay/aşağı + OBV yukarı + düşük hacimli dip testleri + stopping volume + pozitif delta yüksekken sakin fiyat.
+- Dağıtım işaretleri: fiyat yukarı + OBV aşağı + yüksek hacimli tepki satışları + climax volume + negatif delta yüksekken sahte yükseliş.
+
+📊 PİYASA FAZI + KONVİKSİYON KURALI (YAML.regime + YAML.conviction):
+- Faz 3 (Dağıtım) / Faz 4 (Düşüş) iken gelen AL sinyalleri "karşı-trend"dir → riskini vurgula.
+- Faz 2 (Yükseliş) iken SAT sinyali için de aynı şey geçerli.
+- Konviksiyon skoru 45 altında (SHORT/GÜÇLÜ SHORT) iken pozitif senaryo çiziyorsan → "algoritmanın genel eğilimiyle çelişiyor" diye açıkça belirt.
 
 *** ERKEN RADAR — 36 SENARYOLU HAREKET ÖNCESİ TESPİT MOTORU ***
 {_sms_str}
 
-*** ERKEN RADAR YORUMLAMA REHBERİ ***
-- **A kategorisi (Geri Dönüş):** Hisse düşmüş, dönüş arayışı. Risk yüksek ama potansiyel de büyük.
-- **B kategorisi (Sıkışma):** Yatay konsolidasyondan kırılım hazırlığı. Pre-move setup'ları.
-- **C kategorisi (Trend Devamı):** Yukarı trendde sağlıklı pullback. Düşük risk, orta potansiyel.
-- **D kategorisi (Uyarılar):** Risk sinyalleri — alım kararına dikkat.
-- **5★ senaryolar:** En güvenilir setup'lar. Bunu öne çıkar.
-- **Çoklu teyit (3+ senaryo aynı anda):** Çok daha güçlü sinyal — analizinde vurgula.
-- **Ana senaryo + risk uyarısı birlikte:** Tablo karışık — fırsatı kabul et ama uyarıyı da yaz.
-- **Skor 75+:** Güçlü Erken Radar — analizin merkezine al.
-- **Skor 50-75:** Orta güç — destekleyici bağlam olarak kullan.
-- **Skor 30 altı veya 0:** Erken Radar bu hisseyi seçmiyor — ya zaten hareket etti ya da pre-move değil. Bunu açıkça belirt, "Erken Radar henüz yeşil yakmadı" gibi bağla.
-- **Hidden divergence yok bu sistemde** — sadece Güçlü/Orta/Zayıf Pozitif divergence değerlendirilir.
-- ASLA "Mansfield", "VCP", "Pocket Pivot" gibi teknik jargon kullanma. Senaryo isimleri zaten sade Türkçe — onları olduğu gibi kullan.
+ERKEN RADAR YORUMLAMA REHBERİ:
+- A (Geri Dönüş): risk yüksek, potansiyel büyük · B (Sıkışma): kırılım hazırlığı, pre-move
+- C (Trend Devamı): düşük risk, sağlıklı pullback · D (Uyarılar): risk sinyalleri
+- 5★ senaryolar: en güvenilir, öne çıkar · Çoklu teyit (3+): vurgula
+- Skor 75+: merkeze al · 50-75: destekleyici · <30 veya 0: "henüz yeşil yakmadı"
+- Bu sistemde Hidden divergence YOK, sadece Güçlü/Orta/Zayıf Pozitif değerlendirilir.
+- ASLA "Mansfield/VCP/Pocket Pivot" jargonu — senaryo adları Türkçe, olduğu gibi kullan.
 
 *** CANLI TARAMA SONUÇLARI (SİNYAL KUTUSU) ***
-(Burası sistemin tespit ettiği en sıcak sinyallerdir, )
 {scan_summary_str}
-Eğer sinyal kutusunda "AKILLI PARA BİRİKİMİ" sinyali varsa: Bu sinyalin ne anlama geldiğini aboneye düz dille açıkla (Force Index, fiyat yataylığı), ardından ICT bölgesi (OB/FVG/bias) ile bağla — "kurumsal birikim + ICT alım bölgesi çakışması" varsa bunu öne çıkar.
-Eğer Erken Radar Kalite Skoru 65 veya üzerindeyse, ana senaryonun adını ve hikayesini analizinin merkezine al — "Erken Radar bu hissede [senaryo adı] tespit etti" şeklinde bağla. Çoklu teyit varsa "birden fazla bağımsız sinyal aynı yöne işaret ediyor" diye vurgula.
+- "AKILLI PARA BİRİKİMİ" sinyali varsa: düz dille açıkla (Force Index, fiyat yataylığı) + ICT bölgesi (OB/FVG/bias) ile bağla; kurumsal birikim + ICT çakışması varsa öne çıkar.
+- Erken Radar Kalite Skoru 65+: ana senaryo adını ve hikayesini analizinin merkezine al. Çoklu teyit varsa "birden fazla bağımsız sinyal aynı yöne işaret ediyor" diye vurgula.
 
-*** KURUMSAL PARA İŞTAHI KARNESİ (Detaylı Puanlar) Ama bunların GECİKMELİ VERİLER olduğunu unutma. Analize ekleyeceksen 'son kaç günün verileri' olduğunu muhakkak belirt***
-- YAPI (Structure): {sent_yapi} (Market yapısı puanları şöyle: Son 20 günün %97-100 zirvesinde (12). Son 5 günün en düşük seviyesi, önceki 20 günün en düşük seviyesinden yukarıdaysa: HL (8))
-- HACİM (Volume): {sent_hacim} (Hacmin 20G ortalamaya oranını ve On-Balance Volume (OBV) denetler. Bugünün hacmi son 20G ort.üstünde (12) Para girişi var: 10G ortalamanın üstünde (8))
+*** SENTİMENT KARNESİ YORUM KURALI (YAML.sentiment_karne) ***
+Bunlar GECİKMELİ verilerdir — kullanırken "son kaç günün verisi" olduğunu mutlaka belirt.
+Sayısal puanları ham aktarma; ne anlama geldiğini hikayeleştir.
+Puan açıklamaları (referans):
+- Yapı: 20g %97-100 zirvesi (12pt), son 5g dip > önceki 20g dip = HL (8pt)
+- Hacim: 20g ort üstü (12pt), 10g ort üstü (8pt)
+- Trend: SMA200 üstü (8pt), EMA20 üstü (8pt), EMA20 > SMA50 (4pt)
+- Momentum: 50 üstü RSI (5pt), RSI ivme artışı (5pt), MACD sinyal üstü (5pt)
+- Volatilite: BB bant genişliği 20g ort'tan dar (10pt)
+- Momentum özel (RS): Mansfield > 0 (5pt), RS 5g yükseliş (5pt), Alpha pozitif (5pt)
 
-*** OBV + CHAIKIN MONEY FLOW (CMF) ÇİFT KATMANLI YORUMLAMA REHBERİ ***
-Sistem artık OBV durumunu Chaikin Money Flow (20g) ile çapraz teyit ediyor. CMF, bar içi alıcı-satıcı dengesini ölçer: fiyat günün üst yarısında mı kapandı, alt yarısında mı?
-- CMF > +0.05: Bar içi alış baskısı güçlü — OBV birikimini onaylar.
-- CMF < -0.05: Bar içi satış baskısı güçlü — OBV birikimini sorgular.
-- OBV durumu açıklamasında "| CMF: ±X.XXX" göreceksin. Eğer OBV pozitif ama CMF negatifse, sistem bu çelişkiyi "ŞÜPHELİ GİRİŞ", "SAHTE GÜÇ" veya "ZAYIF TEYİT" başlığıyla işaretler.
-- Bu çelişki durumlarında: OBV'nin gördüğü "birikimin" muhtemelen gap/açılış hacminden kaynaklandığını, gün içi gerçek alıcının olmadığını analizinde belirt. "OBV güçlü ama bar içi alıcı zayıf" şeklinde dürüstçe yorumla.
-- Çelişki yoksa (her ikisi de aynı yönde): sinyali güçlendirilmiş olarak sun.
+*** OBV + CMF YORUMLAMA REHBERİ (YAML.obv_cmf.durum okuyacaksın) ***
+YAML.obv_cmf.durum başlığı "ŞÜPHELİ / SAHTE GÜÇ / ZAYIF TEYİT" içeriyorsa → OBV göründüğü kadar güçlü değil, gün içi alıcı/satıcı bar dengesi OBV'yi sorguluyor → "OBV güçlü ama bar içi alıcı zayıf" şeklinde dürüstçe yansıt; muhtemelen gap/açılış hacminden kaynaklı.
+- CMF > +0.05: bar içi alış güçlü → OBV birikimini onaylar.
+- CMF < -0.05: bar içi satış baskısı → OBV birikimini sorgular.
+- Çelişki yoksa (aynı yön): sinyali güçlendirilmiş sun.
 
 *** KIRILIM KALİTESİ FİLTRESİ (OMI — OBV Momentum Index) ***
-Sistem kırılım sinyallerini (1-5 Günlük Yükseliş + Onaylı Kırılım taramaları) OMI kalite filtresiyle değerlendirir.
-OMI = EMA(OBV,5) − EMA(OBV,20), 50-bar standart sapmayla normalize edilir. Kısaca: kısa vadeli OBV ivmesinin orta vadeli OBV ivmesine göre gücü.
-- OMI < −0.5σ ise → Fiyat kırılıyor görünüyor ama hacim momentumu bunu desteklemiyor → sistem bu kırılımı ELER. Analizinde bu hisseye "OBV momentum eksik, kırılım henüz doğrulanmadı" notu ekle.
-- Tarama listesinde "OMI ✓" rozeti görürsen: Pozitif momentum teyidi var, kırılım güvenilir kabul et.
-- Tarama listesinde "OMI ⚡" rozeti görürsen: Güçlü momentum (>1σ) — kurumsal katılım kırılımı aktif olarak destekliyor, sinyal kalitesi yüksek.
-- OMI rozeti yoksa: Kırılım var ama momentum zayıf — pozisyon küçük tut, hacim artışını bekle.
+OMI = EMA(OBV,5) − EMA(OBV,20), 50-bar std ile normalize → kısa vadeli OBV ivmesinin orta vadeye göre gücü.
+- OMI < -0.5σ: kırılım eleniyor → "OBV momentum eksik, doğrulanmadı" notu.
+- Tarama "OMI ✓": pozitif momentum teyidi, güvenilir · "OMI ⚡": güçlü (>1σ), kurumsal aktif.
+- Rozet yok: kırılım var ama momentum zayıf → pozisyon küçük, hacim teyidi bekle.
 
-*** KURUMSAL İZ FİLTRESİ (OB ATR GENİŞLİK FİLTRESİ) ***
-Sistem Order Block (OB) tespitinde ATR genişlik filtresi uygular: OB genişliği > 1.8 × ATR(14) olan mumlar gürültü sayılıp elenir.
-- "Aktif Order Block: Yok" görüyorsan: Ya gerçek kurumsal iz yok, ya da bulunan tüm OB'lar ATR filtresiyle elendi (çok geniş/gürültülü mumlar).
-- OB varsa: Dar ve spesifik — gerçek kurumsal iz ihtimali yüksek. Fiyatın bu zona reaksiyon verip vermediğini özellikle yorumla.
-- TREND: {sent_trend} (Ortalamalara bakar. Hisse fiyatı SMA200 üstünde (8). EMA20 üstünde (8). Kısa vadeli ortalama, orta vadeli ortalamanın üzerinde, yani EMA20 > SMA50 (4))
-- MOMENTUM: {sent_mom} (RSI ve MACD ile itki gücünü ölçer. 50 üstü RSI (5) RSI ivmesi artıyor (5). MACD sinyal çizgisi üstünde (5))
-- VOLATİLİTE: {sent_vola} (Bollinger Bant genişliğini inceler. Bant genişliği son 20G ortalamasından dar (10))
-- MOMENTUM DURUMU (Özel Sinyal): {momentum_analiz_txt} (Hissenin Endekse göre relatif gücünü (RS) ölçer. Mansfield RS göstergesi 0'ın üzerinde (5). RS trendi son 5 güne göre yükselişte (5). Endeks düşerken hisse artıda (Alpha) (5))
-*** GELİŞMİŞ MOMENTUM VE FİYAT DENGESİ (GRAFİK VERİLERİ) ***
-- Para Akış İvmesi Değeri: {guncel_ivme:.4f} ({ivme_yonu}) -> (Not: Bu değer 0'ın ne kadar üzerindeyse kurumsal momentum o kadar tazedir.. Tam tersi durum için ise durum kötüdür)
-- Fiyat Dengesi (Denge Seviyesi): {guncel_stp:.2f}
-- Fiyat/Denge Sapması: %{denge_sapmasi:.2f} -> (Not: Eğer fiyat sarı denge çizgisinden (STP) %5'ten fazla uzaklaşmışsa 'anormalleşme' uyarısı yap.)
+*** KURUMSAL İZ FİLTRESİ (OB ATR GENİŞLİK FİLTRESİ — YAML.ict_pa.ob) ***
+OB genişliği > 1.8 × ATR(14) → gürültü sayılıp eleniyor.
+- YAML.ict_pa.ob = "Yok": ya gerçek iz yok, ya hepsi gürültü olarak filtrelendi.
+- OB varsa: dar ve spesifik, gerçek kurumsal iz ihtimali yüksek → fiyatın bu zona reaksiyonunu özellikle yorumla.
+- YAML.ict_pa.zone_ages'a bak: 0-5g taze (kurumsal hafıza aktif), 6-15g orta, 16g+ eski (geçerlilik azalıyor).
+
 *** ALGORİTMİK 8 MADDELİK LABORATUVAR VERİSİ ***
-(Aşağıdaki 8 madde, sistemin fiyat, hacim ve volatiliteyi matematiksel olarak hesapladığı ham verilerdir. 3. Görevindeki Teknik Kartı doldururken BİREBİR bu verileri kullan.)
+(3. Görevindeki Teknik Kartı doldururken BİREBİR bu verileri kullan.)
 {roadmap_ai_txt}
-*** 1. TREND VE GÜÇ ***
-KISA VADELİ TREND GÖSTERGELERİ:
-- HARSI Durumu (Heikin Ashi RSI): {harsi_txt} (Bu veri, son 14 günlük hafızayı kullanır; RSI üzerindeki gürültüyü temizleyerek, momentumun mevcut trend yönünü ve kalıcılığını ölçer.)
-- EMA Durumu (8/13): {ema_txt} (Gün sayısına çok dikkat et! Fiyat günlerdir bu kısa vadeli EMA'ların altındaysa bu devam eden bir 'Kurumsal Satış Baskısı' olabilir. Üstündeyse güçlü bir 'Momentum Rallisi' gibi görünmektedir. HARSI de negatifse kısa vadeli trend tamamen kırılmış olabilir.)
-ORTA VADELİ TEKNİK GÖSTERGELER ve KURUMSAL SEVİYELER:
-- SuperTrend (son 60 günlük Yön): {st_txt}
-- Minervini Durumu: {mini_txt}
-HAREKETLİ ORTALAMALAR VE KURUMSAL SEVİYELER (ZAMAN ANALİZİ):
-- SMA50 Durumu (Orta Vade): {sma50_str} (Seviye: {sma50_val:.2f}) -> (Fiyatın kaç gündür üstünde/altında olduğu trendin olgunluğunu gösterir.)
-- SMA200 Durumu (Makro Trend): {sma200_str} (Seviye: {sma200_val:.2f})
-- SMA 100 (Ara Destek/Direnç): {sma100_val:.2f}
-- EMA 144 (Fibonacci/Robotik Seviye): {ema144_val:.2f}
-Son birkaç gündür bu hareketli ortalamalardan en az birinden tepki alıp almadığını incele. Bu desteklerin/dirençlerin tamamı Kurumsal yatırımcıların yakından takip ettiği kritik seviyelerdir. Eğer fiyat bu seviyelerden tepki alıyorsa, ya da bu hareketli ortalamaların civarında bir süredir takılıyorsa, bu seviyelerin geçerliliği ve gücü hakkında yorum yap.
-- RADAR 1 (Momentum/Hacim): {r1_txt}
-- RADAR 2 (Trend/Setup): {r2_txt}
-Kısa vadeli momentumun (HARSI/EMA8), ana trend (SMA200/SuperTrend) ile uyumunu kontrol et. Eğer kısa vadeli sinyal ana trendin tersineyse, bunu bir 'Trend Dönüş Başlangıcı' mı yoksa 'Yüksek Riskli Bir Tepki Yükselişi' mi olduğunu netleştir.
-*** 2. PRICE ACTION / ARZ-TALEP BÖLGELERİ / SMART MONEY LİKİDİTE & ICT YAPISI ***
-{_pa_priority_str}
-- ⚡ ANLIK DÖNÜŞ SİNYALİ (Price Action V-Dönüşü): {pa_signal} -> (Eğer Bullish ise dipten, Bearish ise tepeden anlık dönüş var demektir. Nötr ise hareket yoktur.)
-- 🎯 DÖNÜŞÜN GELDİĞİ YER (Confluence): {pa_context} -> (Yukarıdaki dönüş sinyali Nötr değilse, fiyatın tam olarak hangi kurumsal destek/dirençten döndüğünü gösterir. Analizinde bu seviyenin gücünü mutlaka vurgula!)
-- 🔄 ICT YAPI KIRILIMI (Trend Dönüşü - MSS): {reversal_signal} -> (Eğer Bullish_MSS veya Bearish_MSS yazıyorsa, piyasanın ana yönü az önce kırıldı demektir. Bu en güçlü trend dönüş sinyallerinden biridir, analizinin en başına koy!)
-- MAKRO YÖN (Bias): {bias} -> (AI DİKKAT: Eğilimin Boğa mı Ayı mı olduğunu gösterir. Analizlerini her zaman bu ana trend yönüyle uyumlu yap.)
-- KONUM (Zone): {zone} -> (AI DİKKAT: Eğer konum 'Discount' ise fiyatın ucuzladığını ve Smart Money alım bölgesi olabileceğini; 'Premium' ise fiyatın şiştiğini ve kar satışı / dağıtım (Distribution) riski taşıdığını mutlaka yorumlarına kat.)
-- Market Yapısı (Structure): {ict_data.get('structure', 'Bilinmiyor')}
-- LİKİDİTE HAVUZLARI (Mıknatıs): {havuz_ai} (Eğer veri varsa, bu likidite havuzlarının fiyatın hangi seviyelerinde olduğunu ve bu seviyelerin neden önemli olduğunu yorumla. Akıllı Para'nın bu havuzları nasıl kullanabileceğini, örneğin stopları temizleyip (Sweep) yukarı yönlü hareket için bir sıçrama tahtası olarak kullanabileceğini açıklamaya çalış.)
-- LİKİDİTE AVI (Sweep/Silkeleme): {sweep_ai}
-Likidite havuzlarına bakarak, küçük yatırımcıların nerede 'terste kalmış' olabileceğini ve Akıllı Para'nın bu likiditeyi nasıl kullanmak isteyebileceğini yorumla
-- Balina Ayak İzi (Taze Arz-Talep Bölgesi): {sd_txt_ai}
-- Kısa Vadeli Trend Hassasiyeti (10G WMA): {para_akisi_txt} (Son günlerin fiyat hareketine daha fazla ağırlık vererek, trenddeki taze değişimleri ölçer.)
-- Aktif FVG: {ict_data.get('fvg_txt', 'Yok')}
-- Aktif Order Block: {ict_data.get('ob_txt', 'Yok')} (NOT: Sistem artık ATR genişlik filtresi uyguluyor — sadece dar ve spesifik OB'lar gösterilir, gürültü mumlar elenir. "Yok" çıkıyorsa: gerçek kurumsal iz yok veya hepsi gürültü olarak filtrelendi.)
-- HEDEF LİKİDİTE (Mıknatıs): {ict_data.get('target', 0)}
-- Mum Formasyonu: {mum_desc}
-- Formasyon Güvenilirliği: {confidence_prompt if confidence_prompt else "Skor hesaplanamadı (nötr veya belirsiz formasyon)"}
-- RSI Uyumsuzluğu: {pa_div} (Varsa çok dikkat et!)
-- TUZAK DURUMU (SFP): {sfp_desc}
-- HARMONİK FORMASYON (XABCD Fibonacci): {harm_txt} (Varsa: harmonik PRZ + ICT bölgesi çakışmasını özellikle vurgula)
-- NİHAİ KARAR VE AKSİYON PLANI (THE BOTTOM LINE): {ict_data.get('bottom_line', 'Veri Yok')}
 
-*** 🎯 GENEL ÖZET PANELİ — 3-30 GÜN TAKTİKSEL OKUMA (DETAYLI SENARYO HARİTASI) ***
-(Bu blok, GENEL ÖZET panelinde abonenin gördüğü genişletilmiş senaryo motorunun çıktısıdır. Her satır, fiyat-hacim-momentum dinamiklerinin tek bir boyutunu özetler. AI olarak bu okumayı **3-30 günlük taktiksel çerçeve** olarak kullan; analizinde yorumlarken bu sinyallerin birbirleriyle uyumunu veya çelişkisini öne çıkar. Statik veri değil, fiyat hareketinin canlı bir okumasıdır.)
+*** PRICE ACTION ÖNCELİK SİNYALLERİ (aktif tetikleyiciler) ***
+{_pa_priority_str}
+
+*** TREND VE GÜÇ YORUM KURALI (YAML.trend_indicators + moving_averages) ***
+- HARSI (Heikin Ashi RSI): RSI'taki gürültüyü temizler, son 14g hafıza. Yeşil bar = gerçek yükseliş ivmesi, kırmızı bar = momentum kayboluyor.
+- EMA 8/13: fiyat günlerdir altındaysa "Kurumsal Satış Baskısı", üstündeyse "Momentum Rallisi". HARSI negatif + EMA altı = kısa vade tamamen kırılmış olabilir.
+- SMA50/100/200 ve EMA144: "fiyatın kaç gündür üstünde/altında olduğu" trendin olgunluğunu gösterir; kurumsalların takip ettiği kritik seviyeler. Son birkaç gündür bu MA'lardan tepki var mı, civarında takılma var mı — yorumla.
+- KURAL: Kısa vade momentumu (HARSI/EMA8) ile ana trend (SMA200/SuperTrend) uyuşmuyorsa → bu "Trend Dönüş Başlangıcı" mı yoksa "Yüksek Riskli Tepki Yükselişi" mi olduğunu netleştir.
+
+*** PRICE ACTION / ICT YORUM KURALI (YAML.ict_pa) ***
+- YAML.ict_pa.pa_signal: Bullish ise dipten, Bearish ise tepeden anlık dönüş. Nötr = hareket yok.
+- pa_confluence_yer: dönüş Nötr değilse, fiyat hangi kurumsal destek/dirençten döndü — seviyenin gücünü vurgula.
+- mss_yapi_kirilimi: Bullish_MSS/Bearish_MSS = piyasanın ana yönü az önce kırıldı, en güçlü trend dönüş sinyallerinden biri → analizin başına koy.
+- bias (Boğa/Ayı): analizini hep bu ana trendle uyumlu yap.
+- zone: 'Discount' = ucuzlama + Smart Money alım bölgesi; 'Premium' = şişme + dağıtım/kar satışı riski.
+- likidite_havuzu / sweep: küçük yatırımcılar nerede terste kalmış olabilir, Akıllı Para bu likiditeyi nasıl kullanır (stop temizleme → sıçrama tahtası).
+- harmonik: PRZ + ICT bölgesi çakışması varsa özellikle vurgula.
+
+*** 🎯 GENEL ÖZET PANELİ — 3-30 GÜN TAKTİKSEL OKUMA ***
+(GENEL ÖZET panelinin canlı çıktısı — 3-30g taktiksel çerçeve. Sinyallerin birbirleriyle uyumunu veya çelişkisini öne çıkar.)
 {_panel_summary_str}
 
 YORUMLAMA REHBERİ:
-- YAPI: Klasik HH+HL veya LH+LL net trend söyler; CHoCH "dönüş başlıyor" demektir; Megafon ve Üçgen sıkışma "geçiş dönemi"dir.
-- MOMENTUM SLOPE: Seviye değil, RSI'ın 5g'lik değişim hızı. "Sert dönüş" ve "Tepe geri çekilme" en yüksek bilgi taşır.
-- RANGE: 20g aralığın neresinde + 5g önce neredeydi. V-bottom/U-top gibi sert hareketler dağıtım/toplama izi olabilir.
-- VSA: O günkü mum + hacim kombinasyonu. "Climax/Üst rejekti" tepe sinyali; "Alt rejekti/Alım onayı" dip sinyali. "Sahte alım/satım" tuzak uyarısıdır.
-- RSI DIVERGENCE: Regular = dönüş yakın; Hidden = trend devam ediyor. İkisi karıştırılmamalı.
-- MUM (CP): Son 5g kapanışının günlük aralıkta ortalama konumu. "Satıcı baskısı oluştu" + "Premium" çakışırsa dağıtım, "Alıcı agresif" + "Discount" çakışırsa toplama olabilir.
+- YAPI: HH+HL/LH+LL net trend; CHoCH dönüş başlangıcı; Megafon/Üçgen geçiş dönemi.
+- MOMENTUM SLOPE: RSI'ın 5g değişim hızı (seviye değil). "Sert dönüş" ve "Tepe geri çekilme" en bilgi yoğun.
+- RANGE: 20g aralık konumu + 5g önce. V-bottom/U-top sert hareketler dağıtım/toplama izi olabilir.
+- VSA: Climax/Üst rejekti tepe; Alt rejekti/Alım onayı dip; Sahte alım/satım tuzak.
+- RSI DIV: Regular = dönüş yakın; Hidden = trend devam (karıştırma).
+- MUM CP: Son 5g kapanış konumu. "Satıcı baskısı"+"Premium" → dağıtım; "Alıcı agresif"+"Discount" → toplama.
+KURAL: 7 satırın çakıştığı bölgeyi bul → çakışma varsa öne çıkar; çelişki varsa "X diyor ama Y sorguluyor" şeklinde dürüst söyle.
 
-KURAL: Bu 7 satırın birbiriyle çakıştığı bölgeyi bul. Çakışma varsa o senaryoyu öne çıkar. Çelişki varsa "veri X diyor ama Y bunu sorguluyor" şeklinde dürüstçe söyle.
+*** ALGORİTMİK ANALİZ STANDARTLARI (BİLGİ NOTU) ***
+1. MUM (H1/L1 hassasiyeti):
+   - "Three Inside Up/Down": 3. mum 1. mumun tepesini/dibini resmen kırdı → dönüş onaylı.
+   - "Morning Star": orta yıldız C1 altında gap + 3. mum güçlü geri dönüş.
+2. DOW TEORİSİ:
+   - "Yükselen Dip (HL)": son 15g dibi korundu, yapısal güçlenme kesin.
+   - "Yeni Dip (LL)": dönüş formasyonu gelse bile yapısal LL → "Riskli Tepki" vurgula.
+3. ICT KESİŞİMİ: "Confluence" alanı = PA'nın SMA/Fib OTE/PDH/PDL gibi kurumsal seviyeden sektiği → güvenilirliği ~%80 artırır.
 
-*** 3. ALGORİTMİK ANALİZ STANDARTLARI (BİLGİ NOTU) ***
-Analiz yaparken algoritmamızın şu katı kuralları uyguladığını bil ve yorumlarını bu temel üzerine inşa et:
-1. MUM FORMASYONLARI (H1/L1 Hassasiyeti): 
-   - "Three Inside Up/Down" tespit edilmişse; bu, 3. mumun 1. mumun tepesini (H1) veya dibini (L1) resmen kırdığı ve dönüşün onaylandığı anlamına gelir.
-   - "Morning Star" tespit edilmişse; ortadaki yıldızın 1. mumun kapanış seviyesinin (C1) altında oluştuğu (Gap/Aşağı sarkma) ve 3. mumun güçlü bir geri dönüş yaptığı teyit edilmiştir.
-2. DOW TEORİSİ VE TREND ZİNCİRİ:
-   - Eğer "Yükselen Dip (HL)" etiketi varsa; fiyatın son 15 günlük en düşük seviyesini koruduğu ve yapısal olarak güçlendiği kesinleşmiştir.
-   - Eğer "Yeni Dip (LL)" uyarısı varsa; dönüş formasyonu gelse bile fiyatın yapısal olarak yeni bir düşük yaptığı, bu yüzden bu dönüşün "Riskli bir tepki" olduğu vurgulanmalıdır.
-3. SMART MONEY (ICT) KESİŞİMİ:
-   - "Confluence (Kesişim)" alanı; PA formasyonunun tesadüfen değil, tam olarak SMA, Fibonacci OTE veya PDH/PDL gibi kurumsal bir seviyeden sektiğini gösterir. Bu durum sinyalin güvenilirliğini %80 artırır.
-*** 4. HEDEFLER VE RİSK ***
-- Direnç (Hedef): {fib_res}
-- Destek (Stop): {fib_sup}
-- Hedef Likidite: {liq_str}
-- İptal Seviyesi (Invalidation Point): Bu teknik tezin (Boğa/Ayı) tamamen çökeceği, piyasanın 'yanıldık' diyeceği o kritik likidite seviyesi veya yapı kırılımı (BOS) noktası neresidir? Tüm verilere bakarak net bir fiyat seviyesi olarak belirle.
-*** 5. EK TEKNİK VERİLER (SMART MONEY METRİKLERİ) ***
-- Bugüne ait Smart Money Hacim Durumu: {delta_durumu}
-- POC Alanı — Son 20 Günlük Hacim Ağırlıklı Kontrol Noktası: {poc_price}
-- POC Alanı Konumu (VAH Üst Sınır / VAL Alt Sınır): {va_pos_txt} | VAH: {vah_txt} | VAL: {val_txt}
-- 5 Seans Kümülatif Delta: {cum5_txt}
-- Güncel Fiyat: {guncel_fiyat}
-- Fiyat POC Alanının altındaysa bunun bir "Ucuzluk" (Discount) bölgesi mi yoksa "Düşüş Trendi" onayı mı olduğunu yorumla. Fiyat POC üzerindeyse bir "Pahalı" (Premium) bölge riski var mı, değerlendir.
-- Bugüne ait Smart Money Hacim Durumundaki "Bugüne ait Net Baskınlık" yüzdesine dikkat et! Eğer bu oran %40'ın üzerindeyse, tahtada bugün için ciddi bir "Smart Money (Balina/Kurumsal)" müdahalesi olabileceğini belirt.
--"Net Baskınlık" sadece bugüne ait veridir, bunu unutma. Fiyat hareketi arasında bir uyumsuzluk var mı kontrol et. Fiyat artarken bugüne ait Net Baskınlık EKSİ (-) yönde yüksekse, "Tepeden mal dağıtımı (Distribution) yapılıyor olabilir, Boğa Tuzağı riski yüksek!" şeklinde kullanıcıyı uyar. Ama bu durumum bugün için geçerli olabileceğini, yarın her şeyin değişebileceğini unutmadan yorumla. Verininsadece bugünün durumunu yansıttığını hatırlat.
-Veriler arasındaki uyumu (Confluence) ve çelişkiyi (Divergence) sorgula. Eğer Momentum (RSI/MACD) yükselirken Akıllı Para Hacmi (Delta) düşüyorsa, bunu 'Zayıf El Alımı' olarak işaretleyebilirsin. Fiyat VWAP'tan çok uzaksa (Parabolik), Golden Trio olsa bile kurumsalın küçük yatırımcıyı 'Çıkış Likiditesi' (Exit Liquidity) olarak kullanıp kullanmadığını dürüstçe değerlendir.
-*** AKILLI PARA HACİM ANOMALİLERİ ***
-- 20 Günlük Ortalamaya Göre Hacim (RVOL): {"VERİ EKSİK — bu dönem için kaynak hacim verisi yok, RVOL hesaplanamadı; hacim bazlı yorum yapma." if _vol_missing_flag else f"{rvol_val}x (1.0 = normal, 2.0+ = kurumsal aktivite, 0.5 altı = ilgisiz piyasa)"}
-- Stopping Volume (Frenleme): {stop_vol_val}
-- Climax Volume (Tahliye): {climax_vol_val}
-{"" if _vol_missing_flag else "RVOL 2.0x üzerindeyken fiyatın hareket etmemesi (Churning) bir dağıtım (Distribution) sinyali olması ihtimalini gösterir; RVOL yüksekken bir kırılım gelmesi ise gerçek bir kurumsal katılımdır. Bu ikisi arasındaki farkı mutlaka analiz et.\nHacim artarken (RVOL > 1.5x) fiyatın dar bir bantta kalması 'Sessiz Birikim' veya 'Dağıtım' olabilir. Hacim düşerken (RVOL < 0.8x) fiyatın yükselmesi 'Zayıf El Yükselişi'dir. Bu uyumsuzlukları mutlaka vurgula."}
-*** 6. KURUMSAL REFERANS MALİYETİ VE ALPHA GÜCÜ ***
-- VWAP: {v_val:.2f} (Hacim ağırlıklı ortalama fiyat — kurumsal execution benchmark'ı. "Adil değer" DEĞİL, sadece bir referans seviyedir; trendde fiyatın bu seviyeden uzaklaşması beklenen durumdur.)
-- Fiyat Konumu: VWAP'ın %{v_diff:.1f} üzerinde/altında (Bu sadece konum bilgisi — yön sinyali değildir; tek başına alım/satım kararına çevirme).
-- VWAP DURUMU: {vwap_ai_txt} (Bağlamsal etiket — fiyatın VWAP'a göre konumunu gösterir, sinyal değil. POC/VWAP Bağlam Rehberi'ne göre yorumla.)
-- RS (Piyasa Gücü): {rs_ai_txt} (Alpha: {alpha_val:.1f}) (Hissenin endeksten ayrışma gücü; pozitif Alpha, piyasa düşerken bile ayakta kalan lider hisseyi gösterir.)
-(NOT: VWAP'tan uzaklığı TEK BAŞINA "düzeltme/dönüş" tezi olarak ASLA kullanma. "VWAP'tan AŞIRI UZAK" etiketi sadece momentum ölçüsüdür; OBV/Hacim çelişkisi olmadıkça yorgunluk demek değildir. "VWAP ÜSTÜNDE" ise trendin sağlam olduğunu gösterir, "Ralli sürer mi?" değerlendirmesi için akıllı para hareketine bak.)
+*** HEDEFLER, İPTAL SEVİYESİ (YAML.targets) ***
+İPTAL SEVİYESİ (Invalidation Point): boğa/ayı tezinin tamamen çökeceği, piyasanın "yanıldık" diyeceği o kritik likidite veya BOS noktası — YAML.targets ve YAML.ict_pa verilerine bakarak net bir fiyat seviyesi olarak belirle.
 
-⚠️ KRİTİK EMİR — VWAP/POC YORUMLAMA KURALI ⚠️
-Bu blokta verilen "{vwap_ai_txt}" etiketini ve %{v_diff:.1f} uzaklığı bir analiz cümlesinin TEK GEREKÇESİ olarak ASLA kullanmayacaksın. Aşağıdaki cümleler KESİNLİKLE YASAKTIR — yazarsan kuralı ihlal etmiş olursun:
-   ❌ "Fiyat VWAP'tan %X uzaklaştığı için düzeltme yakın"
-   ❌ "VWAP'a göre pahalı bölgede"
-   ❌ "Kurumsal maliyetten kopması düzeltme ihtiyacı doğuruyor"
-   ❌ "Adil değerden saptı, geri gelmeli"
+*** SMART MONEY YORUM KURALI (YAML.smart_money) ***
+- Net Baskınlık %40+ → "ciddi Smart Money müdahalesi" belirt; sadece bugüne ait, yarın değişebilir notu da düş.
+- Fiyat artarken Net Baskınlık eksi yönde yüksekse → "Tepeden mal dağıtımı, Boğa Tuzağı riski yüksek" uyarısı (bugün için geçerli, yarın değişebilir).
+- Fiyat POC altında: Ucuzluk (Discount) mı yoksa Düşüş Trendi onayı mı? POC üstünde: Pahalı (Premium) riski mi?
+- Momentum (RSI/MACD) yükselirken Delta düşüyorsa → "Zayıf El Alımı".
+- Fiyat VWAP'tan çok uzak (Parabolik) + Golden Trio → kurumsalın küçük yatırımcıyı "Çıkış Likiditesi" olarak kullanıp kullanmadığını dürüst değerlendir.
 
-VWAP/POC uzaklığını ANCAK şu durumlarda mean-reversion bağlamında yorumlayabilirsin:
-   ✓ OBV düşüyor + uzaklık birlikte → "yorgunluk emaresi olabilir" (kesin değil, ihtimal)
-   ✓ Stopping/Climax Volume + uzaklık → "kurumsal kar satışı belirebilir"
-   ✓ Yatay piyasada +2 std → "range içinde mean reversion ihtimali"
-Bunlar dışında VWAP/POC sadece SEVİYE bilgisidir; analizin diğer bölümlerinde "destek/direnç", "stop seviyesi", "geri çekilme bölgesi" olarak kullan.
+*** HACİM ANOMALİLERİ (YAML.smart_money.rvol/stopping/climax) ***
+{("VERİ EKSİK — kaynak hacim verisi yok, RVOL hesaplanmamış. Hacim bazlı yorum yapma." if _vol_missing_flag else "- RVOL referans: 1.0=normal, 2.0+=kurumsal aktivite, <0.5=ilgisiz piyasa.\n- RVOL 2.0x+ iken fiyat hareketsizse → Churning (dağıtım ihtimali).\n- RVOL yüksek + kırılım = gerçek kurumsal katılım.\n- RVOL>1.5x + dar bant = Sessiz Birikim veya Dağıtım.\n- RVOL<0.8x + fiyat yükselişi = Zayıf El Yükselişi.")}
 
-EĞER analizin sonunda yukarıdaki yasak cümlelerden BİRİNİ yazdıysan, geri dön ve sil — yerine OBV/Delta/Hacim çelişkisi VARsa onunla birlikte yaz, YOKsa cümleyi tamamen çıkar.
+*** KURUMSAL REFERANS (YAML.institutional_ref) ***
+VWAP "Adil değer" DEĞİL, sadece kurumsal execution benchmark'ı; trendde fiyatın bu seviyeden uzaklaşması beklenen durumdur.
+RS Alpha pozitif = lider hisse (piyasa düşerken bile ayakta); negatif = piyasa altında.
+⚠️ VWAP/POC UZAKLIĞI yorumu için yukarıdaki "🚫 KESİN YASAK CÜMLE KALIPLARI — YASAK 1" kuralları geçerli. Yasak cümle yazdığını fark edersen sil — yerine OBV/Delta/Hacim çelişkisi VARsa onunla birlikte yaz, YOKsa cümleyi tamamen çıkar.
 
 *** SIFIRINCI GÖREV (ZORUNLU — EN BAŞA YAZ, SONRA DİĞERLERİNE GEÇ) ***
 "KURAL: Kancayı (Hook) bir tahmine değil, bir çelişkiyi teşhis etmeye dayandır. Zeki takipçi tahmine değil, analitik tespite güvenir.
@@ -20990,6 +21327,29 @@ Detaylı algoritma kuralları için aşağıda Dördüncü Görev'deki "X / TWIT
    - 180-220 karakter ideal, max 280
 
 Bu başlığı "📌 " ile işaretle. Sonra diğer görevlere geç.
+
+*** REFERANS ÇIKTI ÖRNEĞİ — Bu tonu yakala (içerik farklı olabilir, ÜSLUP aynı kalsın) ***
+
+İşte iyi bir Birinci Görev maddesinin nasıl yazıldığına dair örnek (BAŞKA bir hisseden, sadece üslup için):
+
+📌 #ASELS 78.50 (-0.8%) | TOPLAMA BÖLGESİ: OBV yükseliyor, fiyat neden düşüyor? 👇📸
+
+Aselsan'da bugünkü tablo ilginç bir resim çiziyor. Fiyat sakin sakin geri çekilirken para akışı sessizce yukarı doğru sızıyor — bu kombinasyon genelde kurumsal toplama anlatısının habercisidir. Şimdi maddelere bakalım.
+
+✅ (9/10) Akıllı Para Birikimi (OBV + CMF Çakışması):
+On Balance Volume son 5 günde belirgin bir yükseliş gösterirken Chaikin Money Flow değeri +0.08 seviyesinde tutunuyor. Yani sadece kapanış yönü değil, gün içi bar dinamiği de alıcının daha ısrarcı olduğunu söylüyor. Fiyatın yatay seyrettiği bir dönemde bu sessiz birikim, genellikle bir sonraki hamlenin yakıtını biriktiriyor — peki bu yakıt nereye taşıyacak?
+
+✅ (8/10) İskontolu Bölge + Discount Konum (ICT):
+Algoritma şu an "Discount" konumunda diyor ve fiyat son 20 günlük menzilin %32'sinde. Kurumsal alıcılar için bu tipik bir hazırlık bölgesidir. Önceki maddedeki birikim sinyaliyle birleştiğinde, yapının iki bağımsız kanıtla aynı yöne işaret ettiğini görüyoruz.
+
+Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlıklara da bakmak gerekiyor:
+
+📍 (6/10) RSI Henüz Soğuk (47):
+Momentum tarafında RSI 47 seviyesinde — yön arıyor ama henüz net bir kararlılık yok. Bu birikim hikayesinin gerçek olup olmadığını anlamak için RSI'ın 50 üstüne kalıcı geçişi izlenebilir. Eğer önümüzdeki günlerde RSI 55+ seviyesini görürsek, hikaye doğrulanmış olur.
+
+(Yukarıdaki sadece tonu göstermek için — fiyatlar/değerler gerçek hisseyle alakasız. Sen şu an analiz ettiğin hissenin GERÇEK verilerini kullan.)
+
+═══════════════════════════════════════════════════════════════════════
 
 *** BEŞ GÖREVİN VAR ***
 
@@ -21229,35 +21589,15 @@ UYARI: Sadece gerçek bir risk varsa yaz — RSI uyumsuzluğu, stopping volume, 
 
 Analizin sonuna "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." yaz (küçük harf, noktalı) ve altına "#SmartMoneyRadar #BIST100" yaz.
 
-*****GÖREVLERİN SUNUŞ SIRALAMASI (DİNAMİK)*****
-Görevlerin sunuş sırası bugünkü en baskın sinyale göre değişiyor. Görev sıralaması yaparken en başa neden o görevi aldığını aşağıdaki argümanlarla açıkla:
-
-EĞER Royal Flush Nadir Set-up sinyali tetiklendiyse:
-→ Sıralama: Dördüncü (Abone özeti) → İkinci (Twitter) → Birinci (Detaylı analiz) → Üçüncü (Teknik kart)
-→ Tüm analizi o nadir sinyal üzerine kurgula. Diğer veriler destekleyici.
-
-EĞER Quasimodo tetiklendiyse:
-→ Sıralama: Dördüncü → Birinci → Üçüncü → İkinci
-→ Analizi likidite avı hikayesi üzerine kur. Kurumsal oyun anlatısını öne çıkar.
-
-EĞER Z-Score >= 2.0 VE aynı zamanda OBV düşüyorsa VEYA hacim zayıfsa (gerçek zayıf el yükselişi):
-→ Sıralama: Birinci (Detaylı analiz, risk odaklı) → Dördüncü → Üçüncü → İkinci
-→ Analizi risk yönetimi ve ihtiyat üzerine kur. Uyarıları öne çıkar.
-EĞER Z-Score >= 2.0 ama kurumsal alım devam ediyorsa (OBV yükseliyor, hacim güçlü):
-→ Z-Score'u analizin merkezine koyma. Normal sırayı koru, Z-Score'u sadece risk yönetimi notunda kısaca geç.
-EĞER Z-Score <= -2.0 (Kapitülasyon):
-→ Sıralama: Birinci (Detaylı analiz, risk odaklı) → Dördüncü → Üçüncü → İkinci
-→ Analizi dip arayışı ve olası toparlanma şartları üzerine kur.
-
-EĞER TOBO, Fincan-Kulp veya Yükselen Üçgen kırılımı varsa:
-→ Sıralama: Dördüncü → Birinci → İkinci → Üçüncü
-→ Analizi büyük yapısal formasyonun tamamlanması üzerine kur.
-
-EĞER yukarıdakilerin hiçbiri yoksa (Nötr/Konsolidasyon):
-→ Sıralama: Dördüncü → Üçüncü → Birinci → İkinci
-→ Analizi "neden beklemek gerekir" ve kırılım şartları üzerine kur.
-NOT: Hangi sırayı seçersen seç, tüm 5 görevi eksiksiz tamamla.
-Sadece sunum sırası değişiyor. Beşinci Görev her zaman en sona yazılır.
+*****GÖREVLERİN SUNUŞ SIRALAMASI*****
+Sabit sıra: 1 → 2 → 3 → 4 → 5. Beşinci Görev daima en sonda.
+ANCAK her görevin İÇERİĞİNİ bugünün baskın senaryosuna göre çerçevele:
+- Royal Flush, Quasimodo, TOBO/Fincan-Kulp kırılımı veya 5★ Erken Radar varsa → o senaryoyu tüm görevlerin merkezine al, diğer veriler destekleyici.
+- Z-Score ≥ 2.0 + OBV düşüyor/hacim zayıf → risk yönetimi tonu baskın olsun.
+- Z-Score ≥ 2.0 + kurumsal alım devam ediyor → ivme tonu, Z-Score sadece izleyen stop notu.
+- Z-Score ≤ -2.0 → dip arayışı ve toparlanma şartları teması.
+- Hiçbiri yoksa → konsolidasyon, "neden beklemek gerekir + kırılım şartları" teması.
+NOT: Hepsi 5 görevde eksiksiz, sıra sabit; sadece tonu/odağı senaryoya göre ayarla.
 
 * Beşinci Görevin:
 Dördüncü görevinde yazdığın abone özetini al ve TAMAMEN YENİDEN YAZ. Aynı bilgiler, ama farklı bir insan gibi. Bu sefer hiçbir sabit başlık yok, hiçbir bölüm adı yok — sadece akıcı paragraflar.
@@ -21278,6 +21618,20 @@ ZORUNLU: En sona "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." yaz (kü
 
 Uzunluk: Dördüncü görevden daha kısa. 4-5 paragraf yeterli.
 """
+    # ── NULL FORMAT STANDARDİZASYONU — tek sentinel "(veri eksik)" ─────
+    # Farklı fonksiyonlar 5 farklı null formatı dönderiyordu (Veri Yok / Bilinmiyor /
+    # Hesaplanamadı / —). AI tutarlılığı için tek formata indiriyoruz.
+    # NOT: "Yok" tek başına replace EDİLMEZ — gerçek anlam taşıyor olabilir
+    # (örn. "Aktif Order Block: Yok", "Sıkışma yok", "harm_txt: Yok").
+    import re as _re_null
+    _null_patterns = [
+        (r"\bVeri Yok\b",       "(veri eksik)"),
+        (r"\bBilinmiyor\b",     "(veri eksik)"),
+        (r"\bHesaplanamadı\b",  "(veri eksik)"),
+    ]
+    for _pat, _rep in _null_patterns:
+        prompt = _re_null.sub(_pat, _rep, prompt)
+
     # ── BIST Kapalı Gün — statik "Bugüne ait" ifadelerini "Son seansa ait" ile değiştir ──
     # Üst kısımdaki _ai_holiday_note AI'ya bağlamı zaten verdi; alttaki statik metinleri de
     # aynı dile çekiyoruz ki AI'da çelişki algısı oluşmasın.

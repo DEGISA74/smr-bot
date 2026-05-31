@@ -1604,6 +1604,171 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
                     rs_txt = f"XU100'ün %{rs_abs:.1f} GERİSİNDE 📉 (Zayıf RS — kurumsal ilgisizlik)"
     except: pass
 
+    # ── 52 HAFTALIK MENZIL KONUMU (yıllık bağlam) ────────────────────────────
+    range_52h_txt = "(veri eksik)"
+    try:
+        _yearly = close.iloc[-252:] if n >= 252 else close
+        _y_high = float(_yearly.max())
+        _y_low  = float(_yearly.min())
+        if _y_high > _y_low:
+            _y_pos = (curr - _y_low) / (_y_high - _y_low) * 100
+            _from_high = ((curr / _y_high) - 1) * 100
+            _from_low  = ((curr / _y_low) - 1) * 100
+            range_52h_txt = (f"Yıllık %{_y_pos:.0f} konumunda | "
+                            f"Zirve: {_fmt(_y_high)} ({_from_high:+.1f}%) | "
+                            f"Dip: {_fmt(_y_low)} ({_from_low:+.1f}%)")
+    except Exception: pass
+
+    # ── BOLLINGER-KELTNER SQUEEZE + SÜRE ─────────────────────────────────────
+    squeeze_txt = "(veri eksik)"
+    try:
+        if n >= 22:
+            _sq_sma = close.rolling(20).mean()
+            _sq_std = close.rolling(20).std()
+            _sq_bb_u = _sq_sma + 2.0 * _sq_std
+            _sq_bb_l = _sq_sma - 2.0 * _sq_std
+            _sq_tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+            _sq_atr20 = _sq_tr.rolling(20).mean()
+            _sq_kc_u = _sq_sma + 1.5 * _sq_atr20
+            _sq_kc_l = _sq_sma - 1.5 * _sq_atr20
+            _sq_active = (_sq_bb_u < _sq_kc_u) & (_sq_bb_l > _sq_kc_l)
+            if bool(_sq_active.iloc[-1]):
+                _sq_count = 0
+                for _ii in range(len(_sq_active) - 1, -1, -1):
+                    if bool(_sq_active.iloc[_ii]): _sq_count += 1
+                    else: break
+                squeeze_txt = f"AKTİF — {_sq_count}g sıkışma sürüyor (BB ⊂ Keltner, kırılım enerjisi birikiyor)"
+            else:
+                _sq_count = 0
+                for _ii in range(len(_sq_active) - 1, -1, -1):
+                    if not bool(_sq_active.iloc[_ii]): _sq_count += 1
+                    else: break
+                if _sq_count <= 3:
+                    squeeze_txt = f"Sıkışma {_sq_count}g önce bitti — kırılım taze, volatilite serbest"
+                else:
+                    squeeze_txt = f"Sıkışma yok (son sıkışma {_sq_count}g önce bitmiş)"
+    except Exception: pass
+
+    # ── OMI SIGMA (OBV Momentum Index) ───────────────────────────────────────
+    omi_txt = "(veri eksik)"
+    try:
+        if n >= 50 and "Volume" in df.columns:
+            _omi_dir = np.sign(close.diff()).fillna(0)
+            _omi_obv = (_omi_dir * df["Volume"]).cumsum()
+            _omi_ema_s = _omi_obv.ewm(span=5, adjust=False).mean()
+            _omi_ema_l = _omi_obv.ewm(span=20, adjust=False).mean()
+            _omi_raw = _omi_ema_s - _omi_ema_l
+            _omi_std = _omi_raw.rolling(50).std()
+            _omi_std_v = float(_omi_std.iloc[-1] or 0)
+            _omi_z = float(_omi_raw.iloc[-1] / _omi_std_v) if _omi_std_v != 0 else 0.0
+            if _omi_z >= 1.0:
+                _omi_lbl = "⚡ GÜÇLÜ (>1σ) — kurumsal momentum aktif"
+            elif _omi_z >= 0.5:
+                _omi_lbl = "✓ POZİTİF — momentum sağlam"
+            elif _omi_z <= -1.0:
+                _omi_lbl = "⚠ ÇOK ZAYIF (<-1σ) — OBV momentum çökmüş"
+            elif _omi_z <= -0.5:
+                _omi_lbl = "ELENMİŞ (<-0.5σ) — kırılım doğrulanmadı"
+            else:
+                _omi_lbl = "Nötr (0σ civarı)"
+            omi_txt = f"{_omi_z:+.2f}σ — {_omi_lbl}"
+    except Exception: pass
+
+    # ── HVN / LVN (Volume Profile — ek S/D katmanı) ──────────────────────────
+    hvn_lvn_txt = "(veri eksik)"
+    try:
+        if "Volume" in df.columns and n >= 20:
+            _vp_lb = min(20, n)
+            _vp_df = df.tail(_vp_lb)
+            _vp_min = float(_vp_df['Low'].min())
+            _vp_max = float(_vp_df['High'].max())
+            if _vp_max > _vp_min:
+                _vp_bins = 20
+                _vp_edges = np.linspace(_vp_min, _vp_max, _vp_bins + 1)
+                _vp_prof = np.zeros(_vp_bins)
+                for _, _r in _vp_df.iterrows():
+                    _rh, _rl, _rv = float(_r['High']), float(_r['Low']), float(_r['Volume'])
+                    _rng = _rh - _rl
+                    if _rng <= 0:
+                        _idx = min(max(np.digitize((_rh + _rl) / 2, _vp_edges) - 1, 0), _vp_bins - 1)
+                        _vp_prof[_idx] += _rv
+                        continue
+                    for _i in range(_vp_bins):
+                        _bb, _bt = _vp_edges[_i], _vp_edges[_i + 1]
+                        if _rh >= _bb and _rl <= _bt:
+                            _ov = min(_rh, _bt) - max(_rl, _bb)
+                            if _ov > 0: _vp_prof[_i] += _rv * (_ov / _rng)
+                _vp_avg = float(_vp_prof.mean()) if _vp_prof.mean() > 0 else 1.0
+                _vp_centers = [(_vp_edges[_i] + _vp_edges[_i + 1]) / 2 for _i in range(_vp_bins)]
+                _poc_idx = int(np.argmax(_vp_prof))
+                _hvn_idx = sorted(
+                    [_i for _i in range(_vp_bins) if _i != _poc_idx and _vp_prof[_i] >= _vp_avg * 1.5],
+                    key=lambda _i: _vp_prof[_i], reverse=True
+                )[:3]
+                _lvn_idx = sorted(
+                    [_i for _i in range(_vp_bins) if _vp_prof[_i] <= _vp_avg * 0.3 and _vp_prof[_i] > 0],
+                    key=lambda _i: _vp_prof[_i]
+                )[:3]
+                _hvn_lvls = sorted([round(_vp_centers[_i], 2) for _i in _hvn_idx])
+                _lvn_lvls = sorted([round(_vp_centers[_i], 2) for _i in _lvn_idx])
+                hvn_lvn_txt = (
+                    f"HVN (doğal S/D): {', '.join(map(_fmt, _hvn_lvls)) if _hvn_lvls else 'yok'} | "
+                    f"LVN (hızlı geçilir): {', '.join(map(_fmt, _lvn_lvls)) if _lvn_lvls else 'yok'}"
+                )
+            else:
+                hvn_lvn_txt = "(yatay fiyat)"
+    except Exception: pass
+
+    # ── OBV + CMF (Bar içi alış/satış teyit katmanı) ─────────────────────────
+    obv_cmf_txt = "(veri eksik)"
+    try:
+        if "Volume" in df.columns and n >= 20:
+            _hl = (high - low).replace(0, np.nan)
+            _mfv = (((close - low) - (high - close)) / _hl) * df["Volume"]
+            _cmf20 = float(_mfv.rolling(20).sum().iloc[-1] / df["Volume"].rolling(20).sum().iloc[-1])
+            _cmf_strong_pos = _cmf20 > 0.05
+            _cmf_strong_neg = _cmf20 < -0.05
+            # OBV genel yön (basit)
+            _obv_pos_5d = float(close.iloc[-1]) > float(close.iloc[-6]) if n >= 6 else True
+            # Çelişki tespiti — para_akisi (yukarıda) Gizli Giriş/Çıkış tespit ediyor
+            _is_pos_div = "Pozitif Ayrışma" in para_akisi
+            _is_neg_div = "Negatif Ayrışma" in para_akisi
+            if _is_pos_div and _cmf_strong_neg:
+                obv_cmf_txt = f"ŞÜPHELİ GİRİŞ (CMF: {_cmf20:+.3f} ✗) — OBV birikim diyor ama bar içi satış baskısı var"
+            elif _is_neg_div and _cmf_strong_pos:
+                obv_cmf_txt = f"ZAYIF TEYİT (CMF: {_cmf20:+.3f} ✓) — OBV çıkış diyor ama bar içi alıcı dirençli"
+            elif _cmf_strong_pos and not _obv_pos_5d:
+                obv_cmf_txt = f"SAHTE GÜÇ İHTİMALİ (CMF: {_cmf20:+.3f} ✓ ama fiyat 5g aşağı) — bar içi alıcı var, momentum yok"
+            elif _cmf_strong_pos:
+                obv_cmf_txt = f"TEYİTLİ ALIM (CMF: {_cmf20:+.3f} ✓) — bar içi alıcı baskısı güçlü"
+            elif _cmf_strong_neg:
+                obv_cmf_txt = f"TEYİTLİ SATIŞ (CMF: {_cmf20:+.3f} ✗) — bar içi satıcı baskısı güçlü"
+            else:
+                obv_cmf_txt = f"NÖTR BAR (CMF: {_cmf20:+.3f}) — bar içi denge"
+    except Exception: pass
+
+    # ── ICT BÖLGE YAŞLARI (Taze/Orta/Eski) ───────────────────────────────────
+    ict_age_txt = "(veri eksik)"
+    try:
+        _ob_a  = int(ict.get('ob_age', 0) or 0)
+        _fvg_a = int(ict.get('fvg_age', 0) or 0)
+        _str_a = int(ict.get('struct_age', 0) or 0)
+        def _age_tier(d):
+            if d <= 0: return "yok"
+            if d <= 5: return f"{d}g (taze)"
+            if d <= 15: return f"{d}g (orta)"
+            return f"{d}g (eski)"
+        ict_age_txt = f"OB: {_age_tier(_ob_a)} | FVG: {_age_tier(_fvg_a)} | Yapı: {_age_tier(_str_a)}"
+    except Exception: pass
+
+    # ── VERİ TAZELİĞİ DAMGASI ────────────────────────────────────────────────
+    data_timestamp_txt = "bilinmiyor"
+    try:
+        _last_bar = df.index[-1]
+        if hasattr(_last_bar, 'strftime'):
+            data_timestamp_txt = _last_bar.strftime("%d.%m.%Y")
+    except Exception: pass
+
     chg       = info.get("day_change_pct", 0)
     sign      = "+" if chg >= 0 else ""
     fiyat_str = f"{_fmt(curr)} ({sign}{chg:.2f}%)"
@@ -1612,6 +1777,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     rs_line   = f"\n• RS vs XU100 : {rs_txt}" if rs_txt else ""
     data_block = f"""═══════════════════════════════════════
 📊 HİSSE: {ticker} | Fiyat: {fiyat_str}
+📅 Veri Tarihi: {data_timestamp_txt}
 ═══════════════════════════════════════
 🔬 ICT YAPI ANALİZİ
 • Yapı   : {ict.get('structure', '-')}
@@ -1620,6 +1786,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • Model Skoru : {ict.get('model_score', 0)}/5
 • Order Block : {ict.get('ob_txt', 'Yok')}
 • FVG         : {ict.get('fvg_txt', 'Yok')}
+• Bölge Yaşları (Taze/Orta/Eski): {ict_age_txt}
 • EQH/EQL     : {ict.get('eqh_eql_txt', 'Yok')}
 • Sweep       : {ict.get('sweep_txt', 'Yok')}
 📐 SETUP
@@ -1635,6 +1802,9 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • HARSI(14): {harsi_txt}
 • ATR(14) : {atr_txt}
 • RVOL    : {rvol:.2f}x — {rvol_tag}
+🌍 MAKRO KONUM
+• 52H Menzil : {range_52h_txt}
+• BB-Keltner Sıkışma : {squeeze_txt}
 🕯️ FİYAT DAVRANIŞI (PRICE ACTION)
 • PDH: {pdh_txt}
 • PDL: {pdl_txt}
@@ -1642,12 +1812,29 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • VWAP(20G): {vwap_txt}
 • Piyasa Fazı: {faz_txt}
 • Smart S/R: {smart_sr_txt}
+• Volume Profile HVN/LVN: {hvn_lvn_txt}
 📦 PARA AKIŞI & HACİM
 • OBV Durumu     : {para_akisi}
+• OBV + CMF Teyit: {obv_cmf_txt}
+• OMI (OBV Momentum Index): {omi_txt}
 • 5G Kümülatif Delta: {delta5_txt}
 • Hacim Kalitesi : {hacim_kal_txt}{rs_line}
 💡 ICT SONUÇ: {ict.get('bottom_line', '-')}
 ═══════════════════════════════════════"""
+
+    # ── NULL FORMAT STANDARDİZASYONU — tek sentinel "(veri eksik)" ─────
+    # Farklı fonksiyonlar farklı null formatları döndürüyor; AI tutarlılığı için
+    # tek formata indiriyoruz. "Yok" / "-" tek başına replace EDİLMEZ —
+    # gerçek anlam taşıyor olabilir (örn. "FVG: Yok", "EQH/EQL: Yok").
+    import re as _re_null_sc
+    _null_pats_sc = [
+        (r"\bVeri Yok\b",      "(veri eksik)"),
+        (r"\bBilinmiyor\b",    "(veri eksik)"),
+        (r"\bHesaplanamadı\b", "(veri eksik)"),
+    ]
+    for _p, _r in _null_pats_sc:
+        data_block = _re_null_sc.sub(_p, _r, data_block)
+
     return data_block, clean, fiyat_str
 
 
