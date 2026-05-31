@@ -4105,9 +4105,12 @@ def process_single_accumulation(symbol, df, benchmark_series):
         volume_for_check = float(volume.iloc[-1])
 
         # --- 3. MEVCUT MANTIK (TOPLAMA & FORCE INDEX) ---
+        # FIX (30 May 2026): span 2 → 13 (Elder klasik Force Index). span=2 neredeyse
+        # ham veriydi; tek günlük fiyat×hacim sıçraması skoru domine edip dağıtımı
+        # toplama gibi gösterebiliyordu. 13 EMA gerçek birikimli baskıyı yansıtır.
         delta = close.diff()
-        force_index = delta * volume 
-        mf_smooth = force_index.ewm(span=2, adjust=False).mean()
+        force_index = delta * volume
+        mf_smooth = force_index.ewm(span=13, adjust=False).mean()
 
         last_10_mf = mf_smooth.tail(10)
         last_10_close = close.tail(10)
@@ -4161,7 +4164,9 @@ def process_single_accumulation(symbol, df, benchmark_series):
         
         is_down_day = close < open_
         down_volumes = volume.where(is_down_day, 0)
-        max_down_vol_10 = down_volumes.iloc[-4:-1].max()
+        # FIX (30 May 2026): 3 gün → 10 gün (O'Neil klasik Pocket Pivot tanımı).
+        # Bugünkü up-day hacmi, son 10 günün en yüksek düşüş-günü hacmini aşmalı.
+        max_down_vol_10 = down_volumes.iloc[-11:-1].max()
         
         is_up_day = float(close.iloc[-1]) > float(open_.iloc[-1])
         
@@ -4171,37 +4176,59 @@ def process_single_accumulation(symbol, df, benchmark_series):
                 pp_desc = "⚡ PIVOT (Hacim Hızı Yüksek)"
             else:
                 pp_desc = "⚡ POCKET PIVOT (Onaylı)"
-            rs_score += 3 
 
         # --- YENİ EKLENEN: LAZYBEAR SQUEEZE KONTROLÜ ---
         is_sq = check_lazybear_squeeze(df)
-        
-        # Kalite Etiketi Belirleme
         if is_sq:
             quality_label = "A KALİTE (Sıkışmış)"
-            # Squeeze varsa skoru ödüllendir (Listede üste çıksın)
-            rs_score += 5 
         else:
             quality_label = "B KALİTE (Normal)"
 
-        # --- SKORLAMA ---
-        base_score = avg_mf * (10.0 if change_pct < 0 else 5.0)
-        final_score = base_score * (1 + rs_score) 
+        # --- CMF(20) TEYİT KATMANI (FIX 30 May 2026) ---
+        # Force Index momentum ölçer; CMF birikim (bar-içi alıcı baskısı) ölçer.
+        # İkisi de pozitifse toplama güçlü; çelişirse şüpheli → skor downgrade.
+        cmf_20 = compute_cmf(df, period=20)
+        cmf_confirms = cmf_20 > 0.05
+        cmf_conflict = cmf_20 < -0.05
+
+        # --- SKORLAMA (FIX 30 May 2026: çarpım → toplamsal 0-100 normalize) ---
+        # Eski: avg_mf × 5/10 × (1+rs_score) → bonuslar skoru 11× şişiriyordu,
+        # tek yüksek-hacim barı olan hisse gerçek toplama yapandan üste çıkıyordu.
+        # Yeni: her bileşen sabit aralıkta, toplamı ~0-100.
+        # 1) Israr (pozitif MF gün sayısı 7-10) → 0-30
+        s_israr = max(0.0, min(30.0, (pos_days_count - 6) * 7.5))
+        # 2) Gizlilik (yatay/aşağıyken giriş daha değerli) → 10 veya 20
+        s_gizli = 20.0 if change_pct < 0 else 10.0
+        # 3) Mansfield RS → 0/8/15
+        s_rs = 15.0 if rs_score >= 2 else (8.0 if rs_score >= 1 else 0.0)
+        # 4) Pocket Pivot → 0/10/15
+        if is_pocket_pivot:
+            s_pivot = 15.0 if "Onaylı" in pp_desc else 10.0
+        else:
+            s_pivot = 0.0
+        # 5) Squeeze → 0/10
+        s_squeeze = 10.0 if is_sq else 0.0
+        # 6) CMF teyit/çelişki → +10 / -15
+        s_cmf = 10.0 if cmf_confirms else (-15.0 if cmf_conflict else 0.0)
+
+        final_score = s_israr + s_gizli + s_rs + s_pivot + s_squeeze + s_cmf
+        final_score = max(0.0, min(100.0, final_score))
+
         if avg_mf > 1_000_000: mf_str = f"{avg_mf/1_000_000:.1f}M"
         elif avg_mf > 1_000: mf_str = f"{avg_mf/1_000:.0f}K"
         else: mf_str = f"{int(avg_mf)}"
-        squeeze_score = final_score  # Bölme kaldırıldı: sıfır değişim ödüllendirme hatası düzeltildi
 
         return {
             "Sembol": symbol,
             "Fiyat": f"{price_now:.2f}",
             "Degisim_Raw": change_pct,
             "Degisim_Str": f"%{change_pct*100:.1f}",
-            "MF_Gucu_Goster": mf_str, 
+            "MF_Gucu_Goster": mf_str,
             "Gun_Sayisi": f"{pos_days_count}/10",
-            "Skor": squeeze_score,
-            "RS_Durumu": rs_status,       
-            "Pivot_Sinyali": pp_desc,     
+            "Skor": final_score,
+            "CMF": round(cmf_20, 3),
+            "RS_Durumu": rs_status,
+            "Pivot_Sinyali": pp_desc,
             "Pocket_Pivot": is_pocket_pivot,
             "Kalite": quality_label,
             "Hacim": float(volume.iloc[-1])
