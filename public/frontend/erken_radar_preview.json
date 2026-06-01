@@ -1,31 +1,31 @@
 {
-  "generated_at": "2026-05-27 08:21",
+  "generated_at": "2026-06-01 19:41",
   "category": "BIST 500 ",
   "public_items": [
     {
-      "ticker": "ARDYZ",
-      "scenario_id": "C1",
-      "scenario_name": "İdeal Pullback",
-      "category": "C",
+      "ticker": "TTRAK",
+      "scenario_id": "B1",
+      "scenario_name": "Mükemmel Sıkışma",
+      "category": "B",
       "stars": 5,
-      "aging_days": 3
+      "aging_days": 2
     },
     {
-      "ticker": "DARDL",
-      "scenario_id": "C1",
-      "scenario_name": "İdeal Pullback",
-      "category": "C",
+      "ticker": "BURVA",
+      "scenario_id": "B1",
+      "scenario_name": "Mükemmel Sıkışma",
+      "category": "B",
       "stars": 5,
-      "aging_days": 3
+      "aging_days": 2
     },
     {
-      "ticker": "DESPC",
-      "scenario_id": "C1",
-      "scenario_name": "İdeal Pullback",
-      "category": "C",
+      "ticker": "DERIM",
+      "scenario_id": "A1",
+      "scenario_name": "Dipte Sessizlik",
+      "category": "A",
       "stars": 5,
-      "aging_days": 3
+      "aging_days": 2
     }
   ],
-  "locked_count": 421
+  "locked_count": 445
 }

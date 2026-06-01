@@ -12714,6 +12714,18 @@ def render_erken_radar_panel(ticker):
     red_flags    = er.get('red_flags', []) or []
     matched_n    = er.get('matched_count', 0)
 
+    # 5g önceki skor — evrim göstergesi (anlık yeniden hesap; yeterli veri yoksa atlanır)
+    quality_5g = None
+    try:
+        if df is not None and len(df) >= 65:
+            _df_5g = df.iloc[:-5]
+            _bench_5g = bench_df.iloc[:-5] if (bench_df is not None and len(bench_df) >= 5) else bench_df
+            _er_5g = evaluate_erken_radar(ticker, _df_5g, _bench_5g)
+            if _er_5g is not None:
+                quality_5g = int(_er_5g.get('overall_quality', 0))
+    except Exception:
+        pass
+
     # Renkler (kaliteye göre)
     if red_flags and not primary:
         s_color = "#ef4444"      # tamamen risk
@@ -12853,7 +12865,8 @@ def render_erken_radar_panel(ticker):
         f'</div>'
         f'<div style="text-align:right;flex-shrink:0;margin-left:8px;">'
         f'<div style="font-family:JetBrains Mono,monospace;font-size:2.0rem;font-weight:900;color:{s_color};line-height:1;">{quality}<span style="font-size:1rem;font-weight:600;color:{text_muted}">/100</span></div>'
-        f'</div>'
+        + (f'<div style="font-size:0.66rem;font-style:italic;color:{text_muted};margin-top:3px;line-height:1;">5G önce: {quality_5g}/100</div>' if quality_5g is not None else '')
+        + f'</div>'
         f'</div>'
         # Status şeridi
         f'<div style="background:rgba({",".join(str(int(s_color.lstrip("#")[i:i+2],16)) for i in (0,2,4))},0.12);'
