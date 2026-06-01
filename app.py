@@ -709,6 +709,11 @@ def init_db():
         category    TEXT,
         UNIQUE(scan_date, symbol, scan_type)
     )''')
+    # B4-1 (1 Haz 2026): OBV+CMF durumu kalibrasyon için. Eski tablo varsa idempotent ekle.
+    try:
+        c.execute('ALTER TABLE scan_signals ADD COLUMN obv_status TEXT')
+    except sqlite3.OperationalError:
+        pass  # kolon zaten var
     # ── Günlük getiri takip tablosu (1-20 işlem günü, backtest için) ─────────
     # Her scan_signals satırına karşılık 20 satır — day_offset 1..20.
     # close_price / return_pct başta NULL; backfill_signal_returns() doldurur.
@@ -758,11 +763,14 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 stop_level = float(str(stop_raw).replace(',', '.')) if stop_raw is not None else None
             except Exception:
                 stop_level = None
+            # B4-1: scanner df'inde OBV_Status varsa yaz, yoksa NULL — geriye uyumlu
+            obv_status_raw = row.get('OBV_Status', row.get('obv_status', None))
+            obv_status = str(obv_status_raw) if obv_status_raw is not None else None
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
-                   (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category)
+                   (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status)
             )
         conn.commit()
         conn.close()
@@ -2290,6 +2298,15 @@ def calculate_synthetic_sentiment(ticker):
         df = get_safe_historical_data(ticker, period="6mo")
         if df is None or df.empty: return None
 
+        # Hayalet bar temizliği (1 Haz 2026): BIST tatil günlerinde V=0 sahte barlar
+        # grafiği yatay yatay donduruyordu. Tarama hesaplamaları için _strip_holiday_bars
+        # sadece trailing barları siliyor; bu fonksiyon CHART için tüm V=0 günleri eler.
+        # Endeksler etkilenmez (XU100/SPX kapalı günlerde zaten satır üretmez).
+        if 'Volume' in df.columns:
+            df = df[df['Volume'].fillna(0) > 0].copy()
+            if df.empty:
+                return None
+
         close = df['Close']; high = df['High']; low = df['Low']; volume = df['Volume']
 
         # --- DEMA6 (Orijinal Formül) ---
@@ -2339,7 +2356,7 @@ def calculate_synthetic_sentiment(ticker):
     except Exception: return None
 
 def compute_cmf(df, period=20, vol_series=None):
-    """Chaikin Money Flow (varsayılan 20g) — OBV teyit katmanı için tek kaynak.
+    """Para Akışı (varsayılan 20g) — OBV teyit katmanı için tek kaynak.
     df: 'High','Low','Close' içermeli. vol_series verilmezse df['Volume'] kullanılır.
     Money Flow Multiplier × Volume → period toplamı / hacim toplamı.
     Hata / sıfır hacimde 0.0 döner."""
@@ -2374,14 +2391,14 @@ def get_obv_divergence_status(ticker):
         obv = (direction * df['Volume']).cumsum()
         obv_sma = obv.rolling(20).mean()  # Güç filtresi
 
-        # 1b. Chaikin Money Flow (20g) — OBV teyit katmanı
+        # 1b. Para Akışı (20g) — OBV teyit katmanı
         # OBV sadece kapanış yönüne bakar; CMF bar içi dinamiği de ölçer
         # (fiyat günün üst yarısında mı kapandı, alt yarısında mı).
         cmf_20 = compute_cmf(df, period=20)
         # CMF eşikleri: ±0.05 standart (Chaikin'in orijinal önerisi)
         cmf_strong_pos = cmf_20 > 0.05    # Güçlü alış baskısı (bar içi)
         cmf_strong_neg = cmf_20 < -0.05   # Güçlü satış baskısı (bar içi)
-        cmf_txt = (f" | CMF: {cmf_20:+.3f}"
+        cmf_txt = (f" | Para Akışı: {cmf_20:+.3f}"
                    + (" ✓ alış teyitli" if cmf_strong_pos else
                       (" ✗ satış baskısı" if cmf_strong_neg else " (nötr)")))
 
@@ -2418,8 +2435,8 @@ def get_obv_divergence_status(ticker):
             if is_obv_strong:
                 # CMF teyiti varsa güçlü; CMF negatifse "Şüpheli" downgrade
                 if cmf_strong_neg:
-                    return ("⚠️ ŞÜPHELİ GİRİŞ (CMF Çelişkili)", "#d97706",
-                            "OBV'ye göre birikim var (5g+14g+SMA20 yukarı) ama Chaikin Money Flow "
+                    return ("⚠️ ŞÜPHELİ GİRİŞ (Para Akışı Çelişkili)", "#d97706",
+                            "OBV'ye göre birikim var (5g+14g+SMA20 yukarı) ama Para Akışı "
                             "negatif — bar içi satış baskısı sürüyor. OBV'nin gördüğü 'giriş' büyük "
                             "ihtimalle gece/açılış hacmi; gün içi gerçek alış yok."
                             + cmf_txt)
@@ -2444,8 +2461,8 @@ def get_obv_divergence_status(ticker):
             if p_now < p_yesterday:
                 # CMF güçlü pozitif ise emilim teyitli; negatif ise "False Strength"
                 if cmf_strong_neg:
-                    return ("⚠️ SAHTE GÜÇ (OBV-CMF Çelişkisi)", "#f59e0b",
-                            "OBV güçlü görünüyor ama Chaikin Money Flow negatif. Mum içi satıcı "
+                    return ("⚠️ SAHTE GÜÇ (OBV-Para Akışı Çelişkisi)", "#f59e0b",
+                            "OBV güçlü görünüyor ama Para Akışı negatif. Mum içi satıcı "
                             "baskın — OBV yanıltıcı (muhtemel gap/açılış etkisi). Gerçek bir "
                             "emilim sinyali değil."
                             + cmf_txt)
@@ -2456,8 +2473,8 @@ def get_obv_divergence_status(ticker):
             else:
                 # CMF teyitli sağlıklı trend; CMF negatifse "Zayıf Teyit"
                 if cmf_strong_neg:
-                    return ("⚠️ ZAYIF TEYİT (OBV güçlü, CMF zayıf)", "#f59e0b",
-                            "OBV her iki pencerede yukarı ama Chaikin Money Flow negatif. "
+                    return ("⚠️ ZAYIF TEYİT (OBV güçlü, Para Akışı zayıf)", "#f59e0b",
+                            "OBV her iki pencerede yukarı ama Para Akışı negatif. "
                             "Yükselişin arkasında bar içi gerçek alıcı yok — kapanışlar günün "
                             "alt yarısında. Trend kırılgan."
                             + cmf_txt)
@@ -6897,7 +6914,7 @@ def calculate_sentiment_score(ticker):
             pass
 
         # =========================================================
-        # 5. HACİM KALİTESİ (Chaikin Money Flow mantığı)
+        # 5. HACİM KALİTESİ (Para Akışı mantığı)
         # =========================================================
         score_vola = 0; reasons_vola = []
         try:
@@ -8357,8 +8374,8 @@ def calculate_price_action_dna(ticker):
         elif p_tr == "AŞAĞI" and obv_5g_up and obv_14g_up:
             if is_obv_strong:
                 if _cmf_neg_dna:
-                    obv_data = {"title": "⚠️ ŞÜPHELİ GİRİŞ (CMF Çelişkili)",
-                                "desc": f"OBV birikim görüyor ama bar içi alıcı zayıf (CMF: {_cmf_dna:+.3f}) — gün içi gerçek talep yok.",
+                    obv_data = {"title": "⚠️ ŞÜPHELİ GİRİŞ (Para Akışı Çelişkili)",
+                                "desc": f"OBV birikim görüyor ama bar içi alıcı zayıf (Para Akışı: {_cmf_dna:+.3f}) — gün içi gerçek talep yok.",
                                 "color": "#f59e0b"}
                 else:
                     obv_data = {"title": "🔥 GÜÇLÜ GİZLİ GİRİŞ", "desc": "Fiyat düşerken her iki OBV penceresi yukarı & ort. üstünde (Smart Money).", "color": "#16a34a"}
@@ -8372,15 +8389,15 @@ def calculate_price_action_dna(ticker):
             _p_yest = c.iloc[-2]
             if p_now < _p_yest:
                 if _cmf_neg_dna:
-                    obv_data = {"title": "⚠️ SAHTE GÜÇ (OBV-CMF Çelişkisi)",
-                                "desc": f"OBV güçlü görünüyor ama bar içi satış baskısı var (CMF: {_cmf_dna:+.3f}) — kurumsal destek sorgulanabilir.",
+                    obv_data = {"title": "⚠️ SAHTE GÜÇ (OBV-Para Akışı Çelişkisi)",
+                                "desc": f"OBV güçlü görünüyor ama bar içi satış baskısı var (Para Akışı: {_cmf_dna:+.3f}) — kurumsal destek sorgulanabilir.",
                                 "color": "#f59e0b"}
                 else:
                     obv_data = {"title": "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "desc": "Bugün fiyat kırmızı ama OBV her iki pencerede güçlü.", "color": "#0ea5e9"}
             else:
                 if _cmf_neg_dna:
-                    obv_data = {"title": "⚠️ ZAYIF TEYİT (OBV güçlü, CMF zayıf)",
-                                "desc": f"OBV ortalamasının üzerinde ama CMF satış baskısı gösteriyor (CMF: {_cmf_dna:+.3f}) — trend kırılgan olabilir.",
+                    obv_data = {"title": "⚠️ ZAYIF TEYİT (OBV güçlü, Para Akışı zayıf)",
+                                "desc": f"OBV ortalamasının üzerinde ama CMF satış baskısı gösteriyor (Para Akışı: {_cmf_dna:+.3f}) — trend kırılgan olabilir.",
                                 "color": "#f59e0b"}
                 else:
                     obv_data = {"title": "✅ SAĞLIKLI TREND (Hacim Onaylı)", "desc": "OBV her iki pencerede de ortalamasının üzerinde.", "color": "#15803d"}
@@ -11367,18 +11384,18 @@ def render_smart_volume_panel(ticker):
         "⚖️ ZAYIF İVME (Hacimsiz Bölge)":             "Zayıf İvme",
         "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)":         "Yön Değiştiriyor ↑",
         "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)":          "Yön Değiştiriyor ↓",
-        "⚠️ ŞÜPHELİ GİRİŞ (CMF Çelişkili)":          "Şüpheli ⚠️",
-        "⚠️ SAHTE GÜÇ (OBV-CMF Çelişkisi)":           "Sahte Güç ⚠️",
-        "⚠️ ZAYIF TEYİT (OBV güçlü, CMF zayıf)":      "Zayıf Teyit",
+        "⚠️ ŞÜPHELİ GİRİŞ (Para Akışı Çelişkili)":          "Şüpheli ⚠️",
+        "⚠️ SAHTE GÜÇ (OBV-Para Akışı Çelişkisi)":           "Sahte Güç ⚠️",
+        "⚠️ ZAYIF TEYİT (OBV güçlü, Para Akışı zayıf)":      "Zayıf Teyit",
     }
     _t6_short = _t6_label_map.get(_t6_obv_title, (_t6_obv_title[:20] if _t6_obv_title else "—"))
     try:
         import re as _re_sv6
-        _cmf_m6 = _re_sv6.search(r'\|\s*(CMF:[^|]+)', _t6_obv_desc)
+        _cmf_m6 = _re_sv6.search(r'\|\s*((?:Para Akışı|CMF):[^|]+)', _t6_obv_desc)
         _t6_cmf_str = _cmf_m6.group(1).strip() if _cmf_m6 else ""
     except Exception:
         _t6_cmf_str = ""
-    _t6_short_desc = _t6_obv_desc.split(" | CMF:")[0] if _t6_obv_desc else "—"
+    _t6_short_desc = _t6_obv_desc.split(" | Para Akışı:")[0] if _t6_obv_desc else "—"
     _t6_is_pos = (any(k in _t6_obv_title for k in ["GİRİŞ","TOPLAMA","SAĞLIKLI","DİRENÇ","TOPARLANMA"])
                   and not any(k in _t6_obv_title for k in ["ŞÜPHELİ","SAHTE","ZAYIF TEYİT"]))
     _t6_is_neg = any(k in _t6_obv_title for k in ["ÇIKIŞ","DAĞITIM","ŞÜPHELİ","SAHTE GÜÇ","ZAYIF TEYİT"])
@@ -16812,8 +16829,8 @@ def render_unified_signals_panel(ticker):
                     if _is_cmf_conflict:
                         is_obv_pos = False
                         _obv_edu = (
-                            f"OBV ve Chaikin Money Flow farklı şeyler söylüyor. OBV birikim/güç görüyor "
-                            f"ama bar içi alıcı-satıcı dengesi (CMF) bunu desteklemiyor — kapanışlar "
+                            f"OBV ve Para Akışı farklı şeyler söylüyor. OBV birikim/güç görüyor "
+                            f"ama bar içi alıcı-satıcı dengesi (Para Akışı) bunu desteklemiyor — kapanışlar "
                             f"günün alt yarısında. Bu durum genelde gap/açılış hacmiyle OBV'nin "
                             f"yanılması sonucudur. Sinyal kırılgan. Mevcut durum: {obv_title}."
                         )
@@ -17349,6 +17366,11 @@ def _render_genel_ozet_panel():
             _gs_df = None
             try:
                 _gs_df = get_safe_historical_data(_ticker, period="3mo")
+                # Hayalet bar temizliği (1 Haz 2026): BIST tatil günlerinde V=0 sahte
+                # barlar Vol_Avg20/RVOL/5g net %'i çarpıtıyor. Sadece bu panel tüketimi
+                # için filter; endeks (V hep >0) etkilenmez.
+                if _gs_df is not None and 'Volume' in _gs_df.columns:
+                    _gs_df = _gs_df[_gs_df['Volume'].fillna(0) > 0].copy()
                 if _gs_df is not None and len(_gs_df) >= 3:
                     _gs_cc = _gs_df['Close'].values; _gs_co = _gs_df['Open'].values
                     _gs_bull = _gs_cc[-1] > _gs_co[-1]; _gs_cnt = 1
@@ -17450,7 +17472,7 @@ def _render_genel_ozet_panel():
                             _interp = "Köklü yükseliş" if _cnt >= 20 else ("Yükseliş trendi" if _cnt >= 5 else "Yeni kırılım ↑")
                         else:
                             _interp = "Köklü düşüş" if _cnt >= 20 else ("Düşüş trendi" if _cnt >= 5 else "Yeni kırılım ↓")
-                        _gs_sma50_txt = f"SMA50 {_side} · {_cnt} gün · {_interp}"
+                        _gs_sma50_txt = f"50 günlük ortalamanın {_cnt} gündür {_side} · {_interp}"
                 except Exception:
                     _gs_sma50_txt = ""
 
@@ -17596,7 +17618,7 @@ def _render_genel_ozet_panel():
                     "Momentum":     "⚡",
                 }
 
-                def _gs_section(title):
+                def _gs_section(title, badge_html=""):
                     _ic = _sec_icons.get(title, "•")
                     return (f"<div style='margin-top:10px;padding-top:7px;"
                             f"border-top:1px solid {_gs_line};"
@@ -17604,7 +17626,97 @@ def _render_genel_ozet_panel():
                             f"color:{_gs_lbl_col};text-transform:uppercase;margin-bottom:3px;"
                             f"display:flex;align-items:center;gap:6px;'>"
                             f"<span style='font-size:0.88rem;line-height:1;'>{_ic}</span>"
-                            f"<span>{title}</span></div>")
+                            f"<span>{title}</span>"
+                            f"{badge_html}</div>")
+
+                # --- Kurumsal seviye yedirmeler (1 Haz 2026) ---
+                def _sm_consensus_calc():
+                    """5 sinyal SM oylaması (Hacim/OBV/CMF/Delta5g/POC) → (score 0-100, pos_list)."""
+                    if _gs_df is None or len(_gs_df) < 20:
+                        return None, []
+                    pos = []
+                    try:
+                        _v20 = float(_gs_df['Volume'].tail(20).mean())
+                        if _v20 > 0 and float(_gs_df['Volume'].iloc[-1]) > _v20 * 1.2:
+                            pos.append("Hacim")
+                    except Exception: pass
+                    try:
+                        _obv = (np.sign(_gs_df['Close'].diff()) * _gs_df['Volume']).fillna(0).cumsum()
+                        if float(_obv.iloc[-1]) > float(_obv.tail(20).mean()):
+                            pos.append("OBV")
+                    except Exception: pass
+                    try:
+                        _cmf = compute_cmf(_gs_df, period=20)
+                        if _cmf is not None and float(_cmf) > 0.05:
+                            pos.append("CMF")
+                    except Exception: pass
+                    try:
+                        _r5 = _gs_df.tail(5)
+                        _d5 = float(((_r5['Close'] - _r5['Open']) * _r5['Volume']).sum())
+                        if _d5 > 0:
+                            pos.append("Delta")
+                    except Exception: pass
+                    try:
+                        _poc_p = calculate_volume_profile_poc(_gs_df, lookback=20)
+                        if _poc_p is not None and float(_gs_df['Close'].iloc[-1]) > float(_poc_p):
+                            pos.append("POC")
+                    except Exception: pass
+                    return len(pos) * 20, pos
+
+                def _vp_zone_calc(lookback=20):
+                    """Value Area POC/VAH/VAL hesabı + fiyat konumu (Premium/Discount/Value Area)."""
+                    if _gs_df is None or len(_gs_df) < lookback:
+                        return None
+                    try:
+                        _dv = _gs_df.tail(lookback)
+                        _lo = float(_dv['Low'].min()); _hi = float(_dv['High'].max())
+                        if _hi <= _lo: return None
+                        _bins = 20
+                        _edges = np.linspace(_lo, _hi, _bins + 1)
+                        _prof = np.zeros(_bins)
+                        for _, _r in _dv.iterrows():
+                            _rh, _rl, _rv = float(_r['High']), float(_r['Low']), float(_r['Volume'])
+                            _rng = _rh - _rl
+                            if _rng <= 0:
+                                _i = min(max(np.digitize((_rh + _rl) / 2, _edges) - 1, 0), _bins - 1)
+                                _prof[_i] += _rv
+                            else:
+                                for _i in range(_bins):
+                                    _bb, _bt = _edges[_i], _edges[_i + 1]
+                                    if _rh >= _bb and _rl <= _bt:
+                                        _ov = min(_rh, _bt) - max(_rl, _bb)
+                                        if _ov > 0:
+                                            _prof[_i] += _rv * (_ov / _rng)
+                        if _prof.sum() <= 0: return None
+                        _poc_i = int(np.argmax(_prof))
+                        _total = float(_prof.sum())
+                        _order = sorted(range(_bins), key=lambda i: -_prof[i])
+                        _va = set(); _acc = 0.0
+                        for _i in _order:
+                            _va.add(_i); _acc += _prof[_i]
+                            if _acc / _total >= 0.70: break
+                        _val = float(_edges[min(_va)])
+                        _vah = float(_edges[max(_va) + 1])
+                        _poc = float((_edges[_poc_i] + _edges[_poc_i + 1]) / 2)
+                        _curr = float(_gs_df['Close'].iloc[-1])
+                        # Konum: fiyat VA'ya göre nerede? (Türkçe etiketler)
+                        if _curr > _vah: _zone = "Pahalı Bölge"
+                        elif _curr < _val: _zone = "Ucuz Bölge"
+                        else: _zone = "Değer Bölgesi"
+                        # Şekil: POC VA içinde nerede? (Akümülasyon=alt yarı, Dağıtım=üst yarı, Denge=orta)
+                        _va_mid = (_val + _vah) / 2.0
+                        _va_w = max(_vah - _val, 1e-9)
+                        _poc_offset = (_poc - _va_mid) / _va_w  # -0.5 ... +0.5
+                        if _poc_offset < -0.15:
+                            _shape = "Akümülasyon"
+                        elif _poc_offset > 0.15:
+                            _shape = "Dağıtım"
+                        else:
+                            _shape = "Denge"
+                        return {"zone": _zone, "poc": _poc, "vah": _vah, "val": _val,
+                                "curr": _curr, "shape": _shape}
+                    except Exception:
+                        return None
 
                 def _gs_explain(text):
                     return (f"<div style='font-size:0.69rem;color:{_gs_expl_col};"
@@ -17799,27 +17911,28 @@ def _render_genel_ozet_panel():
                         _rsi_5   = float(_rsi_ser.iloc[-6])
                         _rsi_dlt = _rsi_n - _rsi_5
 
+                        # Tek satır template: RSI son 5 günde X yükseldi/düştü/sabit
+                        if _rsi_dlt > 0.5:
+                            _mom_act = "yükseldi"
+                        elif _rsi_dlt < -0.5:
+                            _mom_act = "düştü"
+                        else:
+                            _mom_act = "değişmedi"
                         if _rsi_dlt > 10 and _rsi_n < 50:
                             _mom_lbl = "Sert dönüş ↗↗"; _mom_clr = _gs_up_clr
-                            _mom_expl = f"RSI 5g'de +{_rsi_dlt:.1f} — aşırı satımdan güçlü dönüş"
                         elif _rsi_dlt > 5 and _rsi_n < 50:
                             _mom_lbl = "Toparlanma ↗"; _mom_clr = _gs_up_clr
-                            _mom_expl = f"RSI 5g'de +{_rsi_dlt:.1f} — düşük seviyeden toparlanıyor"
                         elif _rsi_dlt > 5 and _rsi_n >= 50:
                             _mom_lbl = "Trend hızlanıyor ↑"; _mom_clr = _gs_up_clr
-                            _mom_expl = f"RSI 5g'de +{_rsi_dlt:.1f} — momentum bölgesinde ivmeleniyor"
                         elif _rsi_dlt < -10 and _rsi_n > 60:
                             _mom_lbl = "Tepe geri çekilme ⤵"; _mom_clr = _gs_dn_clr
-                            _mom_expl = f"RSI 5g'de {_rsi_dlt:.1f} — yüksek seviyeden sert geri çekilme"
                         elif _rsi_dlt < -5 and _rsi_n > 50:
                             _mom_lbl = "Yavaşlıyor ↘"; _mom_clr = _gs_dn_clr
-                            _mom_expl = f"RSI 5g'de {_rsi_dlt:.1f} — yükseliş yorgun"
                         elif _rsi_dlt < -5 and _rsi_n <= 50:
                             _mom_lbl = "Aşağı ivme ↓↓"; _mom_clr = _gs_dn_clr
-                            _mom_expl = f"RSI 5g'de {_rsi_dlt:.1f} — düşüş hızlanıyor"
                         else:
                             _mom_lbl = "Yatay →"; _mom_clr = _gs_neu
-                            _mom_expl = f"RSI 5g'de {_rsi_dlt:+.1f} — yön belirsiz"
+                        _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act}"
                 except Exception:
                     pass
 
@@ -17846,7 +17959,7 @@ def _render_genel_ozet_panel():
                             _rng_prev_pct = (_close_5g - _l20) / (_h20 - _l20) * 100
                             _drng         = _rng_pos_pct - _rng_prev_pct
 
-                            _rng_pos_str = f"5 gün önce fiyat son 20 günlük aralığın %{_rng_prev_pct:.0f}'sindeydi, şimdi %{_rng_pos_pct:.0f}'sinde"
+                            _rng_pos_str = f"5 gün önce fiyat 20 günlük aralığının %{_rng_prev_pct:.0f}'sindeydi, şimdi %{_rng_pos_pct:.0f}'inde"
                             if _rng_pos_pct < 20 and _rng_prev_pct < 20:
                                 _rng_lbl  = f"%{_rng_pos_pct:.0f} · Dipte tutunma"; _rng_clr = _gs_dn_clr
                                 _rng_expl = f"{_rng_pos_str} — sürekli dipte tutunma, düşüş baskısı sürüyor"
@@ -17876,7 +17989,7 @@ def _render_genel_ozet_panel():
                                 _rng_expl = f"{_rng_pos_str} — premium'dan düşüş, alıcı baskısı zayıflıyor"
                             else:
                                 _rng_lbl  = f"%{_rng_pos_pct:.0f} · Orta — yatay"; _rng_clr = _gs_neu
-                                _rng_expl = f"{_rng_pos_str} — orta bölgede yatay sıkışma, yön belirsiz"
+                                _rng_expl = f"{_rng_pos_str} — orta bölgede (ne dipte ne tepede)"
                 except Exception:
                     pass
 
@@ -17906,6 +18019,37 @@ def _render_genel_ozet_panel():
 
                 # V-dönüş, Üstten düşüş, Tepede tıkalı → pulse (kritik range sinyalleri)
                 _rng_pulse = any(k in _rng_lbl for k in ("V-dönüş", "Üstten düşüş", "Tepede tıkalı"))
+                # Volume Profile zone chip yedirmesi (Premium/Discount/Value Area + POC)
+                try:
+                    _vpz = _vp_zone_calc(lookback=20)
+                    if _vpz:
+                        _vpz_clr = (_gs_dn_clr if _vpz['zone'] == "Pahalı Bölge"
+                                    else (_gs_up_clr if _vpz['zone'] == "Ucuz Bölge" else _gs_neu))
+                        _vpz_rgb = _hex_to_rgb(_vpz_clr)
+                        _vpz_chip = (f"<span style='margin-left:6px;font-size:0.66rem;"
+                                     f"font-weight:700;padding:1px 6px;border-radius:6px;"
+                                     f"background:rgba({_vpz_rgb},0.15);color:{_vpz_clr};"
+                                     f"border:1px solid rgba({_vpz_rgb},0.35);'>"
+                                     f"{_vpz['zone']}</span>")
+                        _rng_value = _rng_value + _vpz_chip
+                        # Şekil chip'i (Akümülasyon / Dağıtım / Denge)
+                        _shape = _vpz.get('shape')
+                        if _shape:
+                            if _shape == "Akümülasyon":
+                                _shp_clr = _gs_up_clr
+                            elif _shape == "Dağıtım":
+                                _shp_clr = _gs_dn_clr
+                            else:
+                                _shp_clr = _gs_neu
+                            _shp_rgb = _hex_to_rgb(_shp_clr)
+                            _rng_value = _rng_value + (
+                                f"<span style='margin-left:4px;font-size:0.66rem;"
+                                f"font-weight:700;padding:1px 6px;border-radius:6px;"
+                                f"background:rgba({_shp_rgb},0.15);color:{_shp_clr};"
+                                f"border:1px solid rgba({_shp_rgb},0.35);'>{_shape}</span>"
+                            )
+                except Exception:
+                    pass
                 _gs_items_html += _gs_row(
                     "Son 20G Range",
                     _rng_value,
@@ -17932,9 +18076,9 @@ def _render_genel_ozet_panel():
                         _trend_txt_clean = (_gs_sma50_txt
                                             .replace("Köklü yükseliş", "Yükseliş trendi")
                                             .replace("Köklü düşüş", "Düşüş trendi"))
-                        _ana_expl = "Orta vade (2–3 ay) · " + _trend_txt_clean
+                        _ana_expl = _trend_txt_clean
                     else:
-                        _ana_expl = ("Orta vade (2–3 ay) · " + _gs_sma50_txt +
+                        _ana_expl = (_gs_sma50_txt +
                                      (" · sağlam" if _gs_sma50_above else " · baskılı"))
                     _gs_items_html += _gs_row(
                         "Ana trend",
@@ -17974,7 +18118,28 @@ def _render_genel_ozet_panel():
                 )
 
                 # ── GRUP 2: PARA AKIŞI ────────────────────────────────────────
-                _gs_items_html += _gs_section("Para akışı")
+                # SM Konsensüs rozeti (5 sinyal: Hacim/OBV/CMF/Delta5g/POC)
+                _sm_badge_html = ""
+                try:
+                    _sm_score, _sm_pos = _sm_consensus_calc()
+                    if _sm_score is not None:
+                        if _sm_score >= 80:   _sm_clr = _gs_up_clr
+                        elif _sm_score >= 60: _sm_clr = "#22c55e"
+                        elif _sm_score >= 40: _sm_clr = _gs_neu
+                        else:                  _sm_clr = _gs_dn_clr
+                        _sm_rgb = _hex_to_rgb(_sm_clr)
+                        _sm_badge_html = (
+                            f"<span title='Hacim/OBV/CMF/Delta5g/POC oylaması — pozitif: "
+                            f"{', '.join(_sm_pos) if _sm_pos else 'yok'}' "
+                            f"style='margin-left:auto;font-size:0.64rem;font-weight:700;"
+                            f"padding:1px 7px;border-radius:8px;"
+                            f"background:rgba({_sm_rgb},0.15);color:{_sm_clr};"
+                            f"border:1px solid rgba({_sm_rgb},0.35);text-transform:none;"
+                            f"letter-spacing:0;'>SM {_sm_score}/100</span>"
+                        )
+                except Exception:
+                    pass
+                _gs_items_html += _gs_section("Para akışı", badge_html=_sm_badge_html)
 
                 if _gs_cdpct > 0:
                     _bp = 50 + _gs_cdpct / 2; _sp = 50 - _gs_cdpct / 2
@@ -18098,9 +18263,9 @@ def _render_genel_ozet_panel():
                     "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)":           ("Kafa çeviriyor ↑",  "#38bdf8",  "5g OBV yukarı döndü — 14g hâlâ baskılı, erken toparlanma sinyali"),
                     "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)":            ("Kafa çeviriyor ↓",  "#f59e0b",  "5g OBV zayıfladı ama 14g hâlâ pozitif — kısa vadeli yavaşlama"),
                     # CMF çelişki başlıkları (calculate_price_action_dna downgrade senaryoları)
-                    "⚠️ ŞÜPHELİ GİRİŞ (CMF Çelişkili)":            ("Şüpheli giriş",     "#f59e0b",  "OBV birikim görüyor ama bar içi alıcı zayıf — CMF negatif, gün içi gerçek talep sorgulanabilir"),
-                    "⚠️ SAHTE GÜÇ (OBV-CMF Çelişkisi)":             ("Sahte güç ⚠️",      "#f59e0b",  "OBV güçlü görünüyor ama bar içi satış baskısı var — kurumsal destek sorgulanabilir"),
-                    "⚠️ ZAYIF TEYİT (OBV güçlü, CMF zayıf)":        ("Zayıf teyit",       "#f59e0b",  "OBV ortalamasının üzerinde ama CMF satış baskısı gösteriyor — trend kırılgan olabilir"),
+                    "⚠️ ŞÜPHELİ GİRİŞ (Para Akışı Çelişkili)":            ("Şüpheli giriş",     "#f59e0b",  "OBV birikim görüyor ama bar içi alıcı zayıf — Para Akışı negatif, gün içi gerçek talep sorgulanabilir"),
+                    "⚠️ SAHTE GÜÇ (OBV-Para Akışı Çelişkisi)":             ("Sahte güç ⚠️",      "#f59e0b",  "OBV güçlü görünüyor ama bar içi satış baskısı var — kurumsal destek sorgulanabilir"),
+                    "⚠️ ZAYIF TEYİT (OBV güçlü, Para Akışı zayıf)":        ("Zayıf teyit",       "#f59e0b",  "OBV ortalamasının üzerinde ama Para Akışı satış baskısı gösteriyor — trend kırılgan olabilir"),
                 }
                 _ov_lbl, _ov_clr, _ov_expl = _obv_map.get(
                     _obv_t, ("nötr", _gs_neu, "Akıllı para hareketi belirgin değil"))
@@ -18229,72 +18394,53 @@ def _render_genel_ozet_panel():
                         pulse=_rsi_pulse
                     )
 
-                # Mum — Kapanış Konumu (CP) matrisi (9 senaryo)
-                # Son 5g günlük aralık içinde kapanış konumu × önceki 5g referansı
+                # Kapanış, o günkü mumun neresinde — CP × 5g net fiyat değişimi matrisi
+                # CP tek başına yanıltıcı (gap-grind örneği): mum tepede AMA fiyat aşağı olabilir.
+                # 7 senaryo: A) sağlıklı uyum (yukarı/aşağı), B) yanıltıcı çift (CP↑/fiyat↓ ve tersi),
+                # C) tek-taraflı baskı (yatay fiyat), D) ortada kararsız.
                 _cp_lbl = None; _cp_clr = _gs_neu; _cp_expl = "Veri yetersiz"
                 try:
-                    if _gs_df is not None and len(_gs_df) >= 10:
-                        _cp_vals = []
-                        for _i in range(-5, 0):
-                            _h_i = float(_gs_df['High'].iloc[_i])
-                            _l_i = float(_gs_df['Low'].iloc[_i])
-                            _c_i = float(_gs_df['Close'].iloc[_i])
-                            _r_i = _h_i - _l_i
-                            if _r_i > 0:
-                                _cp_vals.append((_c_i - _l_i) / _r_i * 100)
-                        _cp_now = sum(_cp_vals) / len(_cp_vals) if _cp_vals else 50.0
-                        _cp_prev_vals = []
-                        for _i in range(-10, -5):
-                            _h_i = float(_gs_df['High'].iloc[_i])
-                            _l_i = float(_gs_df['Low'].iloc[_i])
-                            _c_i = float(_gs_df['Close'].iloc[_i])
-                            _r_i = _h_i - _l_i
-                            if _r_i > 0:
-                                _cp_prev_vals.append((_c_i - _l_i) / _r_i * 100)
-                        _cp_prev = sum(_cp_prev_vals) / len(_cp_prev_vals) if _cp_prev_vals else 50.0
-                        _cp_delta = _cp_now - _cp_prev
+                    if _gs_df is not None and len(_gs_df) >= 6:
+                        _h_t = float(_gs_df['High'].iloc[-1])
+                        _l_t = float(_gs_df['Low'].iloc[-1])
+                        _c_t = float(_gs_df['Close'].iloc[-1])
+                        _c_5g = float(_gs_df['Close'].iloc[-6])
+                        _r_t = _h_t - _l_t
+                        _cp_today = ((_c_t - _l_t) / _r_t * 100) if _r_t > 0 else 50.0
+                        _net5_pct = ((_c_t - _c_5g) / _c_5g * 100) if _c_5g > 0 else 0.0
 
-                        _cp_pre_str = f"5 gün önce fiyat son 20 günlük aralığın %{_cp_prev:.0f}'sindeydi, şimdi %{_cp_now:.0f}'sinde"
-                        if _cp_now >= 80 and _cp_prev >= 80:
-                            _cp_lbl = f"Alıcı kontrolü var ★ (%{_cp_now:.0f})"; _cp_clr = _gs_up_clr
-                            _cp_expl = f"{_cp_pre_str} — alıcı kontrolü var"
-                        elif _cp_now >= 70 and _cp_prev <= 25:
-                            _cp_lbl = f"Alıcı agresif ⤴ (%{_cp_prev:.0f}→%{_cp_now:.0f})"; _cp_clr = _gs_up_clr
-                            _cp_expl = f"{_cp_pre_str} — alıcı agresif"
-                        elif _cp_now >= 75 and _cp_prev < 55:
-                            _cp_lbl = f"Alıcı baskısı oluştu ↑ (%{_cp_prev:.0f}→%{_cp_now:.0f})"; _cp_clr = _gs_up_clr
-                            _cp_expl = f"{_cp_pre_str} — alıcı baskısı oluştu"
-                        elif _cp_now >= 60 and _cp_delta >= 0:
-                            _cp_lbl = f"Alıcı baskısı sürüyor (%{_cp_now:.0f})"; _cp_clr = _gs_up_clr
-                            _cp_expl = f"{_cp_pre_str} — alıcı baskısı sürüyor"
-                        elif _cp_now >= 55 and _cp_delta < -15:
-                            _cp_lbl = f"Alıcı zayıflıyor ⚠ (%{_cp_now:.0f})"; _cp_clr = "#f59e0b"
-                            _cp_expl = f"{_cp_pre_str} — alıcı zayıflıyor"
-                        elif _cp_now <= 20 and _cp_prev <= 20:
-                            _cp_lbl = f"Satıcı kontrolü var ★ (%{_cp_now:.0f})"; _cp_clr = _gs_dn_clr
-                            _cp_expl = f"{_cp_pre_str} — satıcı kontrolü var"
-                        elif _cp_now <= 30 and _cp_prev >= 60:
-                            _cp_lbl = f"Satıcı agresif ⤵ (%{_cp_prev:.0f}→%{_cp_now:.0f})"; _cp_clr = _gs_dn_clr
-                            _cp_expl = f"{_cp_pre_str} — satıcı agresif"
-                        elif _cp_now <= 35 and _cp_prev >= 75:
-                            _cp_lbl = f"Satıcı baskısı oluştu ↘ (%{_cp_prev:.0f}→%{_cp_now:.0f})"; _cp_clr = _gs_dn_clr
-                            _cp_expl = f"{_cp_pre_str} — satıcı baskısı oluştu"
-                        elif _cp_now <= 40 and _cp_delta <= 0:
-                            _cp_lbl = f"Satıcı baskısı sürüyor (%{_cp_now:.0f})"; _cp_clr = _gs_dn_clr
-                            _cp_expl = f"{_cp_pre_str} — satıcı baskısı sürüyor"
+                        _CP_HI, _CP_LO, _NET = 65.0, 35.0, 2.0
+                        _base = f"Bugünkü kapanış mumun %{_cp_today:.0f}'inde (5g net %{_net5_pct:+.1f})"
+
+                        if _cp_today >= _CP_HI and _net5_pct > _NET:
+                            _cp_lbl = f"Alıcı baskın ★ (%{_cp_today:.0f})"; _cp_clr = _gs_up_clr
+                            _cp_expl = f"{_base} — sağlıklı yükseliş, alıcı kontrolü teyitli"
+                        elif _cp_today >= _CP_HI and _net5_pct < -_NET:
+                            _cp_lbl = f"Yanıltıcı ⚠ (%{_cp_today:.0f})"; _cp_clr = "#f59e0b"
+                            _cp_expl = f"{_base} — mum tepelerine yakın AMA fiyat aşağı (gap+toparlanma), satıcı henüz bitmemiş"
+                        elif _cp_today >= _CP_HI:
+                            _cp_lbl = f"Alıcı toparlıyor (%{_cp_today:.0f})"; _cp_clr = _gs_up_clr
+                            _cp_expl = f"{_base} — mum tepelerine yakın, alıcılar toparlıyor ama henüz baskın değil"
+                        elif _cp_today <= _CP_LO and _net5_pct < -_NET:
+                            _cp_lbl = f"Satıcı baskın ★ (%{_cp_today:.0f})"; _cp_clr = _gs_dn_clr
+                            _cp_expl = f"{_base} — düşüş sürüyor, satıcı kontrolü teyitli"
+                        elif _cp_today <= _CP_LO and _net5_pct > _NET:
+                            _cp_lbl = f"Yanıltıcı ⚠ (%{_cp_today:.0f})"; _cp_clr = "#f59e0b"
+                            _cp_expl = f"{_base} — fiyat yukarı AMA mum diplerinde kapanıyor (gün-sonu zayıflık), yükseliş kırılgan"
+                        elif _cp_today <= _CP_LO:
+                            _cp_lbl = f"Satıcı kontrolü (%{_cp_today:.0f})"; _cp_clr = _gs_dn_clr
+                            _cp_expl = f"{_base} — mum diplerinde kapanıyor, satıcı baskısı var"
                         else:
-                            _cp_lbl = f"Kararsız (%{_cp_now:.0f})"; _cp_clr = _gs_neu
-                            _cp_expl = f"{_cp_pre_str} — kararsız"
+                            _cp_lbl = f"Kararsız (%{_cp_today:.0f})"; _cp_clr = _gs_neu
+                            _cp_expl = f"{_base} — mum ortasında, alıcı/satıcı dengeli"
                 except Exception:
                     pass
 
                 if _cp_lbl:
-                    # Alıcı agresif, Satıcı agresif, Satıcı baskısı oluştu, Alıcı zayıflıyor → pulse
-                    _cp_pulse = any(k in _cp_lbl for k in (
-                        "Alıcı agresif", "Satıcı agresif", "Satıcı baskısı oluştu", "Alıcı zayıflıyor"
-                    ))
+                    # Yanıltıcı senaryolar → pulse (uyarı)
+                    _cp_pulse = "Yanıltıcı" in _cp_lbl
                     _gs_items_html += _gs_row(
-                        "Mum (Kapanış Konumu)",
+                        "Kapanış, o günkü mumun neresinde",
                         f"<span style='color:{_cp_clr};'>{_cp_lbl}</span>",
                         explain=_cp_expl,
                         lc=_cp_clr,
@@ -19251,6 +19397,11 @@ if st.session_state.generate_prompt:
     # --- 1. GEREKLİ VERİLERİ TOPLA ---
     info = fetch_stock_info(t)
     df_hist = get_safe_historical_data(t) # Ana veri
+    # Hayalet bar temizliği (1 Haz 2026): BIST tatil günlerinde V=0 sahte barlar
+    # AI prompt'taki RVOL/Vol_Avg20/5g net % hesaplarını çarpıtıyordu. Sadece prompt
+    # girdisi için filter; endeks (V hep >0) etkilenmez.
+    if df_hist is not None and not df_hist.empty and 'Volume' in df_hist.columns:
+        df_hist = df_hist[df_hist['Volume'].fillna(0) > 0].copy()
     
     # EKSİK OLAN TANIMLAMALAR EKLENDİ (bench_series ve idx_data)
     cat_for_bench = st.session_state.category
@@ -20464,8 +20615,9 @@ if st.session_state.generate_prompt:
         squeeze_duration_txt = "(veri eksik)"
 
     # 11) Volume Profile — HVN/LVN (yüksek/düşük hacim düğümleri = ek S/D)
+    # Lookback 60g: 20g kısa vadeli gürültü, 60g kurumsal birikim seviyesi yansıtır.
     try:
-        _vp_lookback = min(20, len(df_hist))
+        _vp_lookback = min(60, len(df_hist))
         _vp_df  = df_hist.tail(_vp_lookback)
         _vp_min = float(_vp_df['Low'].min())
         _vp_max = float(_vp_df['High'].max())
@@ -20506,10 +20658,82 @@ if st.session_state.generate_prompt:
                 f"HVN (yoğun hacim — doğal destek/direnç): {', '.join(map(str, _hvn_levels)) if _hvn_levels else 'yok'} | "
                 f"LVN (boş bölge — hızlı geçilir): {', '.join(map(str, _lvn_levels)) if _lvn_levels else 'yok'}"
             )
+            # Fiyat ile HVN/LVN/POC ilişkisi (AI yorumu için)
+            try:
+                _curr_p = float(df_hist['Close'].iloc[-1])
+                _poc_price = round(_vp_centers[_poc_idx], 2)
+                if _hvn_levels:
+                    _nearest_hvn = min(_hvn_levels, key=lambda x: abs(x - _curr_p))
+                    _hvn_dist_pct = (_nearest_hvn - _curr_p) / _curr_p * 100.0
+                    hvn_en_yakin_txt = f"{_nearest_hvn} ({_hvn_dist_pct:+.2f}% uzaklıkta)"
+                else:
+                    hvn_en_yakin_txt = "yok"
+                _curr_bin = min(max(np.digitize(_curr_p, _vp_edges) - 1, 0), _vp_bins - 1)
+                fiyat_lvn_icinde_txt = "evet" if _curr_bin in _lvn_idx else "hayır"
+                fiyat_poc_konumu_txt = f"{'üstünde' if _curr_p > _poc_price else 'altında'} (POC: {_poc_price})"
+            except Exception:
+                hvn_en_yakin_txt = "(veri eksik)"
+                fiyat_lvn_icinde_txt = "(veri eksik)"
+                fiyat_poc_konumu_txt = "(veri eksik)"
         else:
             hvn_lvn_txt = "(yatay fiyat, profil çıkarılamadı)"
+            hvn_en_yakin_txt = "(veri eksik)"
+            fiyat_lvn_icinde_txt = "(veri eksik)"
+            fiyat_poc_konumu_txt = "(veri eksik)"
     except Exception:
         hvn_lvn_txt = "(veri eksik)"
+        hvn_en_yakin_txt = "(veri eksik)"
+        fiyat_lvn_icinde_txt = "(veri eksik)"
+        fiyat_poc_konumu_txt = "(veri eksik)"
+
+    # 11.5) VP Şekil — POC'un VA (~70% hacim) içindeki konumu = Akümülasyon/Dağıtım/Denge
+    vp_sekil_txt = "(veri eksik)"
+    try:
+        if '_vp_prof' in dir() and _vp_prof is not None and float(_vp_prof.sum()) > 0:
+            _total_v = float(_vp_prof.sum())
+            _order_v = sorted(range(_vp_bins), key=lambda i: -_vp_prof[i])
+            _va_set = set(); _acc_v = 0.0
+            for _i in _order_v:
+                _va_set.add(_i); _acc_v += _vp_prof[_i]
+                if _acc_v / _total_v >= 0.70: break
+            _val_p = float(_vp_edges[min(_va_set)])
+            _vah_p = float(_vp_edges[max(_va_set) + 1])
+            _va_w  = max(_vah_p - _val_p, 1e-9)
+            _poc_off = (_poc_price - (_val_p + _vah_p) / 2) / _va_w  # -0.5 ... +0.5
+            if _poc_off < -0.15:
+                vp_sekil_txt = "Akümülasyon (POC değer bölgesinin alt yarısında — kurumsal dipte birikim)"
+            elif _poc_off > 0.15:
+                vp_sekil_txt = "Dağıtım (POC değer bölgesinin üst yarısında — kurumsal tepede satış)"
+            else:
+                vp_sekil_txt = "Denge (POC ortada — adil değer, mean revert beklenir)"
+    except Exception:
+        pass
+
+    # 11.6) Mum Kapanış × 5g Net % — sağlıklı/yanıltıcı tespiti (gap-grind koruması)
+    mum_kapanis_durumu_txt = "(veri eksik)"
+    try:
+        if len(df_hist) >= 6:
+            _h_t = float(df_hist['High'].iloc[-1])
+            _l_t = float(df_hist['Low'].iloc[-1])
+            _c_t = float(df_hist['Close'].iloc[-1])
+            _c_5g = float(df_hist['Close'].iloc[-6])
+            _r_t = _h_t - _l_t
+            _cp_t = ((_c_t - _l_t) / _r_t * 100) if _r_t > 0 else 50.0
+            _net5 = ((_c_t - _c_5g) / _c_5g * 100) if _c_5g > 0 else 0.0
+            if _cp_t >= 65 and _net5 < -2:
+                mum_kapanis_durumu_txt = (f"YANILTICI — mum %{_cp_t:.0f}'inde (yüksek) AMA 5g net %{_net5:+.1f} (negatif): "
+                                          f"gap+toparlanma, satıcı henüz bitmemiş")
+            elif _cp_t <= 35 and _net5 > 2:
+                mum_kapanis_durumu_txt = (f"YANILTICI — mum %{_cp_t:.0f}'inde (düşük) AMA 5g net %{_net5:+.1f} (pozitif): "
+                                          f"gün-sonu zayıflık, yükseliş kırılgan")
+            elif _cp_t >= 65 and _net5 > 2:
+                mum_kapanis_durumu_txt = f"Sağlıklı yükseliş — mum %{_cp_t:.0f}'inde, 5g net %{_net5:+.1f} (uyumlu)"
+            elif _cp_t <= 35 and _net5 < -2:
+                mum_kapanis_durumu_txt = f"Sağlıklı düşüş — mum %{_cp_t:.0f}'inde, 5g net %{_net5:+.1f} (uyumlu)"
+            else:
+                mum_kapanis_durumu_txt = f"Mum %{_cp_t:.0f}'inde, 5g net %{_net5:+.1f}"
+    except Exception:
+        pass
 
     # 12) Master Score Breakdown — alt skorlar prompt için tek satır
     try:
@@ -20530,7 +20754,7 @@ if st.session_state.generate_prompt:
             _ha_row = _ha_df[_ha_df['Sembol'] == t]
             if not _ha_row.empty:
                 _ha_skor = _ha_row.iloc[0].get('Skor', _ha_row.iloc[0].get('skor', 0))
-                hidden_acc_txt = f"AKTİF — Skor: {_ha_skor}/100 (Force Index + CMF + pocket pivot teyitli birikim)"
+                hidden_acc_txt = f"AKTİF — Skor: {_ha_skor}/100 (Force Index + Para Akışı + pocket pivot teyitli birikim)"
             else:
                 hidden_acc_txt = "Hisse Gizli Birikim listesinde değil"
         else:
@@ -21286,6 +21510,11 @@ smart_money:
   vah: {vah_txt}
   val: {val_txt}
   hvn_lvn: {hvn_lvn_txt}
+  hvn_en_yakin: {hvn_en_yakin_txt}
+  fiyat_lvn_icinde: {fiyat_lvn_icinde_txt}
+  fiyat_poc_konumu: {fiyat_poc_konumu_txt}
+  vp_sekil: {vp_sekil_txt}
+  mum_kapanis_durumu: {mum_kapanis_durumu_txt}
   cum_delta_5g: {cum5_txt}
   guncel_fiyat: {guncel_fiyat}
   rvol: {"VERİ EKSİK" if _vol_missing_flag else f"{rvol_val}x"}
@@ -21352,10 +21581,30 @@ Puan açıklamaları (referans):
 - Volatilite: BB bant genişliği 20g ort'tan dar (10pt)
 - Momentum özel (RS): Mansfield > 0 (5pt), RS 5g yükseliş (5pt), Alpha pozitif (5pt)
 
-*** OBV + CMF YORUMLAMA REHBERİ (YAML.obv_cmf.durum okuyacaksın) ***
+*** HVN/LVN YORUMLAMA REHBERİ (YAML.smart_money.hvn_lvn + hvn_en_yakin + fiyat_lvn_icinde + fiyat_poc_konumu) ***
+HVN = Volume Profile'da yüksek hacim biriken seviye (60g, kurumsal mıknatıs — klasik S/D'den daha güçlü çünkü gerçek paranın nereye konduğunu gösterir).
+LVN = boş bölge, hacim yok (fiyat oraya girince hızlı geçer, destek/direnç beklenmez).
+- hvn_en_yakin uzaklığı |%2| içindeyse: "kurumsal mıknatıs seviye, test edilebilir; kırılım yaşanırsa bir sonraki HVN'ye hareket görülebilir".
+- fiyat_lvn_icinde "evet" ise: "boşluk bölgede; bu seviyede destek/direnç beklenmez, hızlı geçiş yaşanabilir".
+- fiyat_poc_konumu "üstünde" + alıcı baskısı varsa: "değer bölgesini yukarı kırma denemesi, hacim teyidi aranır". "altında" + satıcı baskısı: "değer bölgesi altında baskı sürüyor".
+- YASAL DİL: "test edilebilir / görülebilir / yaşanırsa" — "al/sat/giriş yap" YASAK.
+
+*** VP ŞEKLİ YORUMLAMA REHBERİ (YAML.smart_money.vp_sekil) ***
+POC'un Value Area içindeki konumu, hacim profilinin şeklini söyler — kurumsal niyet sinyali.
+- "Akümülasyon" → POC değer bölgesinin alt yarısında: kurumsal dipte topladı, yukarı kırılım potansiyeli yüksek; YAML.smart_money.fiyat_poc_konumu "üstünde" ile birleşirse güçlendir.
+- "Dağıtım" → POC üst yarıda: kurumsal tepede sattı, geri çekilme/red riski yüksek; Pahalı Bölge + Dağıtım çakışırsa kritik uyarı.
+- "Denge" → POC ortada: adil değer, mean revert beklenir, yön sinyali zayıf.
+
+*** MUM KAPANIŞI × 5g NET % YORUMLAMA REHBERİ (YAML.smart_money.mum_kapanis_durumu) ***
+Tek mumun içindeki kapanış pozisyonu (CP) tek başına yanıltıcı olabilir — 5 günlük net fiyat değişimi ile birlikte okunur.
+- "YANILTICI — mum yüksek AMA 5g negatif": gap+toparlanma deseni, mum tepede kapanmış ama fiyat net aşağı; "alıcı baskısı" yorumundan KAÇIN, satıcı baskısı devam ediyor olabilir.
+- "YANILTICI — mum düşük AMA 5g pozitif": gün-sonu zayıflık deseni, yükseliş kırılgan; "alıcı yorgun, geri çekilme riski" tonu uygun.
+- "Sağlıklı yükseliş/düşüş": CP ile net yön uyumlu, sinyal teyitli.
+
+*** OBV + Para Akışı YORUMLAMA REHBERİ (YAML.obv_cmf.durum okuyacaksın) ***
 YAML.obv_cmf.durum başlığı "ŞÜPHELİ / SAHTE GÜÇ / ZAYIF TEYİT" içeriyorsa → OBV göründüğü kadar güçlü değil, gün içi alıcı/satıcı bar dengesi OBV'yi sorguluyor → "OBV güçlü ama bar içi alıcı zayıf" şeklinde dürüstçe yansıt; muhtemelen gap/açılış hacminden kaynaklı.
-- CMF > +0.05: bar içi alış güçlü → OBV birikimini onaylar.
-- CMF < -0.05: bar içi satış baskısı → OBV birikimini sorgular.
+- Para Akışı > +0.05: bar içi alış güçlü → OBV birikimini onaylar.
+- Para Akışı < -0.05: bar içi satış baskısı → OBV birikimini sorgular.
 - Çelişki yoksa (aynı yön): sinyali güçlendirilmiş sun.
 
 *** KIRILIM KALİTESİ FİLTRESİ (OMI — OBV Momentum Index) ***
@@ -21469,7 +21718,7 @@ Bu başlığı "📌 " ile işaretle. Sonra diğer görevlere geç.
 Aselsan'da bugünkü tablo ilginç bir resim çiziyor. Fiyat sakin sakin geri çekilirken para akışı sessizce yukarı doğru sızıyor — bu kombinasyon genelde kurumsal toplama anlatısının habercisidir. Şimdi maddelere bakalım.
 
 ✅ (9/10) Akıllı Para Birikimi (OBV + CMF Çakışması):
-On Balance Volume son 5 günde belirgin bir yükseliş gösterirken Chaikin Money Flow değeri +0.08 seviyesinde tutunuyor. Yani sadece kapanış yönü değil, gün içi bar dinamiği de alıcının daha ısrarcı olduğunu söylüyor. Fiyatın yatay seyrettiği bir dönemde bu sessiz birikim, genellikle bir sonraki hamlenin yakıtını biriktiriyor — peki bu yakıt nereye taşıyacak?
+On Balance Volume son 5 günde belirgin bir yükseliş gösterirken Para Akışı değeri +0.08 seviyesinde tutunuyor. Yani sadece kapanış yönü değil, gün içi bar dinamiği de alıcının daha ısrarcı olduğunu söylüyor. Fiyatın yatay seyrettiği bir dönemde bu sessiz birikim, genellikle bir sonraki hamlenin yakıtını biriktiriyor — peki bu yakıt nereye taşıyacak?
 
 ✅ (8/10) İskontolu Bölge + Discount Konum (ICT):
 Algoritma şu an "Discount" konumunda diyor ve fiyat son 20 günlük menzilin %32'sinde. Kurumsal alıcılar için bu tipik bir hazırlık bölgesidir. Önceki maddedeki birikim sinyaliyle birleştiğinde, yapının iki bağımsız kanıtla aynı yöne işaret ettiğini görüyoruz.
@@ -22191,14 +22440,35 @@ def _render_left_col():
         else:
             _k1_bias_lbl = "NÖTR →";    _k1_bias_col = "#f59e0b"; _k1_bias_bg = "rgba(245,158,11,0.12)"
 
-        # ── Güven Skoru (conviction — sadece df ile hızlı hesap) ──────────────────
-        _k1_df        = get_safe_historical_data(_k1_ticker, period="1y")
-        _k1_conv      = calculate_conviction_score(_k1_df) if _k1_df is not None else {"score": 50}
-        _k1_conv_score = _k1_conv.get('score', 50)
-        if   _k1_conv_score >= 70: _k1_conv_col = "#4ade80"
-        elif _k1_conv_score >= 55: _k1_conv_col = "#86efac"
-        elif _k1_conv_score >= 45: _k1_conv_col = "#f59e0b"
-        else:                      _k1_conv_col = "#f87171"
+        _k1_df = get_safe_historical_data(_k1_ticker, period="1y")
+
+        # ── Kısa Yapı (son 6 mum HH/HL/LH/LL) ─────────────────────────────────────
+        _k1_kisa_lbl = "—"; _k1_kisa_col = "#94a3b8"
+        try:
+            if _k1_df is not None and len(_k1_df) >= 6:
+                _hs = _k1_df['High'].values; _ls = _k1_df['Low'].values
+                _h1,_h2,_h3 = float(_hs[-1]),float(_hs[-2]),float(_hs[-3])
+                _l1,_l2,_l3 = float(_ls[-1]),float(_ls[-2]),float(_ls[-3])
+                _hh = _h1>_h2>_h3; _hl = _l1>_l2>_l3
+                _lh = _h1<_h2<_h3; _ll = _l1<_l2<_l3
+                if   _hh and _hl: _k1_kisa_lbl = "Sağlam ↑"; _k1_kisa_col = "#4ade80"
+                elif _lh and _ll: _k1_kisa_lbl = "Bozuk ↓";  _k1_kisa_col = "#f87171"
+                elif _hh and _ll: _k1_kisa_lbl = "Megafon ⚠"; _k1_kisa_col = "#f87171"
+                elif _lh and _hl: _k1_kisa_lbl = "Üçgen";    _k1_kisa_col = "#f59e0b"
+                else:             _k1_kisa_lbl = "Karışık";  _k1_kisa_col = "#94a3b8"
+        except Exception:
+            pass
+
+        # ── Makro Faz (Wyckoff — SMA200 + OBV ağırlıklı) ──────────────────────────
+        _k1_makro_lbl = "—"; _k1_makro_col = "#94a3b8"
+        try:
+            if _k1_df is not None:
+                _k1_reg = detect_market_regime(_k1_df, pa=None)
+                if _k1_reg:
+                    _k1_makro_lbl = _k1_reg.get('label', '—')
+                    _k1_makro_col = _k1_reg.get('color', '#94a3b8')
+        except Exception:
+            pass
 
         # ── RSI (14 periyot, hızlı hesap) ─────────────────────────────────────────
         _k1_rsi_val = 50.0
@@ -22282,13 +22552,14 @@ def _render_left_col():
 
         # Sağ kolon kartı için değerleri session_state'e aktar
         st.session_state['_k1_metrics'] = {
-            'yapi_lbl': _k1_bias_lbl, 'yapi_col': _k1_bias_col,
-            'rs_str':   _k1_rs_str,   'rs_col':   _k1_rs_col,
-            'mom_str':  _k1_mom_str,  'mom_col':  _k1_mom_col,
-            'rsi_val':  _k1_rsi_val,  'rsi_col':  _k1_rsi_col,
-            'vol_str':  _k1_vol_str,  'vol_col':  _k1_vol_col,
-            'beta_str': _k1_beta_str, 'beta_col': _k1_beta_col,
-            'conv_score': _k1_conv_score, 'conv_col': _k1_conv_col,
+            'kisa_lbl':  _k1_kisa_lbl,  'kisa_col':  _k1_kisa_col,
+            'yapi_lbl':  _k1_bias_lbl,  'yapi_col':  _k1_bias_col,
+            'makro_lbl': _k1_makro_lbl, 'makro_col': _k1_makro_col,
+            'rs_str':    _k1_rs_str,    'rs_col':    _k1_rs_col,
+            'mom_str':   _k1_mom_str,   'mom_col':   _k1_mom_col,
+            'rsi_val':   _k1_rsi_val,   'rsi_col':   _k1_rsi_col,
+            'vol_str':   _k1_vol_str,   'vol_col':   _k1_vol_col,
+            'beta_str':  _k1_beta_str,  'beta_col':  _k1_beta_col,
             'is_bist_stock': _k1_is_bist_stock,
             'is_idx':        _k1_is_idx,
         }
@@ -22527,21 +22798,67 @@ def _render_left_col():
                             f'<span style="font-size:0.65rem;color:{color};font-weight:700;line-height:1.3;">{line2}</span>'
                             f'</div>')
     
-                st.markdown(f"""
-    <div style="border:1px solid #1e3a5f;border-radius:8px;overflow:hidden;margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
-      <div style="display:flex;align-items:stretch;padding:0;background:{bg_col};width:100%;">
-    {grp_label("📉", "KISA VADE", "ORT.", "#38bdf8")}
-    {ma_cell("EMA 5",   ema5,   current_price)}
-    {ma_cell("EMA 8",   ema8,   current_price)}
-    {ma_cell("EMA 13",  ema13,  current_price)}
-    {grp_label("🔭", "ORTA VADE", "ORT.",  "#8b5cf6")}
-    {ma_cell("SMA 50",  sma50,  current_price)}
-    {ma_cell("SMA 100", sma100, current_price)}
-    {ma_cell("SMA 200", sma200, current_price)}
-    {ma_cell("EMA 144", ema144, current_price, sep=False)}
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+                # DİNAMİK MA TABLOSU — fiyat hangi ortalamaların arasında? (1 Haz 2026)
+                # Tüm MA'lar + fiyat tek dikey listede, değere göre azalan sırada.
+                # Fiyatın üstündeki MA'lar = direnç (kırmızı), altındakiler = destek (yeşil).
+                _ma_items = [
+                    ("EMA 5",   ema5,   "kısa"),
+                    ("EMA 8",   ema8,   "kısa"),
+                    ("EMA 13",  ema13,  "kısa"),
+                    ("SMA 50",  sma50,  "orta"),
+                    ("SMA 100", sma100, "orta"),
+                    ("SMA 200", sma200, "orta"),
+                    ("EMA 144", ema144, "orta"),
+                ]
+                _ma_items = [(lbl, float(val), grp) for lbl, val, grp in _ma_items if not pd.isna(val)]
+                _all_rows = list(_ma_items) + [("__PRICE__", float(current_price), "price")]
+                _all_rows.sort(key=lambda x: -x[1])
+
+                def _fmt_val(v):
+                    return f"{int(v)}" if is_index else f"{v:.2f}"
+
+                # YATAY layout — sol (en yüksek) → sağ (en düşük), fiyat ortaya gömülü
+                _cells_html = []
+                _n = len(_all_rows)
+                for _idx, (_lbl, _val, _grp) in enumerate(_all_rows):
+                    _sep = "border-right:1px solid rgba(30,58,95,0.55);" if _idx < _n - 1 else ""
+                    if _grp == "price":
+                        # Fiyat hücresi — vurgulu gradient
+                        _cells_html.append(
+                            f"<div style='flex:1;padding:3px 4px;text-align:center;{_sep}"
+                            f"background:linear-gradient(180deg,rgba(56,189,248,0.18),rgba(139,92,246,0.18));"
+                            f"display:flex;flex-direction:column;gap:0;line-height:1.05;align-items:center;'>"
+                            f"<span style='font-size:0.66rem;font-weight:800;color:#fbbf24;letter-spacing:0.04em;'>▶ FİYAT</span>"
+                            f"<span style='font-size:0.84rem;font-weight:800;color:#fbbf24;"
+                            f"font-family:\"JetBrains Mono\",monospace;'>{_fmt_val(_val)}</span>"
+                            f"<span style='font-size:0.6rem;font-weight:700;color:#fbbf24;'>◀</span>"
+                            f"</div>"
+                        )
+                    else:
+                        _is_res = _val > current_price
+                        _dot = "🔴" if _is_res else "🟢"
+                        _tag = "Direnç" if _is_res else "Destek"
+                        _tag_clr = "#ef4444" if _is_res else "#10b981"
+                        _grp_clr = "#38bdf8" if _grp == "kısa" else "#8b5cf6"
+                        _cells_html.append(
+                            f"<div style='flex:1;padding:3px 4px;text-align:center;{_sep}"
+                            f"display:flex;flex-direction:column;gap:0;line-height:1.05;align-items:center;'>"
+                            f"<span style='font-size:0.66rem;font-weight:700;color:{_grp_clr};letter-spacing:0.02em;'>"
+                            f"<span style='font-size:0.55rem;margin-right:2px;'>{_dot}</span>{_lbl}</span>"
+                            f"<span style='font-size:0.78rem;color:{text_col};font-weight:700;"
+                            f"font-family:\"JetBrains Mono\",monospace;'>{_fmt_val(_val)}</span>"
+                            f"<span style='font-size:0.6rem;color:{_tag_clr};font-weight:700;'>{_tag}</span>"
+                            f"</div>"
+                        )
+
+                st.markdown(
+                    f"<div style='border:1px solid {border_col};border-radius:8px;overflow:hidden;"
+                    f"margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);background:{bg_col};"
+                    f"display:flex;align-items:stretch;width:100%;'>"
+                    + "".join(_cells_html) +
+                    "</div>",
+                    unsafe_allow_html=True
+                )
     
     
     except Exception as e:
@@ -23682,15 +23999,16 @@ def _render_right_col():
 
         # Metrik değerleri session_state'ten oku (sol kolon hesaplamış olur)
         _m = st.session_state.get('_k1_metrics', {})
+        _kisa_lbl   = _m.get('kisa_lbl',   '—');  _kisa_col   = _m.get('kisa_col',   '#94a3b8')
         _yapi_lbl   = _m.get('yapi_lbl',   '—');  _yapi_col   = _m.get('yapi_col',   '#94a3b8')
+        _makro_lbl  = _m.get('makro_lbl',  '—');  _makro_col  = _m.get('makro_col',  '#94a3b8')
         _rs_str     = _m.get('rs_str',     '—');  _rs_col     = _m.get('rs_col',     '#94a3b8')
         _mom_str    = _m.get('mom_str',    '—');  _mom_col    = _m.get('mom_col',    '#94a3b8')
         _rsi_val    = _m.get('rsi_val',    50);   _rsi_col    = _m.get('rsi_col',    '#94a3b8')
         _vol_str    = _m.get('vol_str',    '—');  _vol_col    = _m.get('vol_col',    '#94a3b8')
         _beta_str   = _m.get('beta_str',   '—');  _beta_col   = _m.get('beta_col',   '#94a3b8')
-        _conv_score = _m.get('conv_score', 50);   _conv_col   = _m.get('conv_col',   '#94a3b8')
 
-        # Sağ sütun: 3 metrik satırı
+        # Sağ sütun: metrik satırları
         def _mrow(lbl, val, vcol, border=True):
             brd = f"border-bottom:1px solid {_CLR_DIVIDER};" if border else ""
             return (f"<div style='padding:5px 8px;{brd}'>"
@@ -23700,11 +24018,26 @@ def _render_right_col():
                     f"font-family:\"JetBrains Mono\",monospace;'>{val}</div>"
                     f"</div>")
 
-        _right_col_html = (
-            _mrow("YAPI",     _yapi_lbl,              _yapi_col, border=True) +
-            _mrow("RS GÜCÜ",  _rs_str,                _rs_col,   border=True) +
-            _mrow("MOMENTUM", _mom_str,               _mom_col,  border=False)
+        # YAPI — 3 katmanlı (Kısa / Orta / Makro)
+        def _yapi_sub(lbl, period, val, col):
+            return (f"<div style='display:flex;align-items:center;gap:6px;padding:1px 0;'>"
+                    f"<span style='font-size:0.72rem;color:{_CLR_TEXT_SEC};font-weight:700;'>"
+                    f"{lbl} <span style='opacity:0.55;font-size:0.62rem;font-weight:500;'>{period}</span></span>"
+                    f"<span style='font-size:0.85rem;font-weight:800;color:{col};margin-left:auto;"
+                    f"font-family:\"JetBrains Mono\",monospace;'>{val}</span>"
+                    f"</div>")
+        _yapi_block = (
+            f"<div style='padding:5px 8px;border-bottom:1px solid {_CLR_DIVIDER};'>"
+            f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+            f"letter-spacing:0.5px;font-weight:700;margin-bottom:3px;'>YAPI</div>"
+            + _yapi_sub("Kısa",  "1h",    _kisa_lbl,  _kisa_col)
+            + _yapi_sub("Orta",  "1-2 ay", _yapi_lbl,  _yapi_col)
+            + _yapi_sub("Makro", "6-9 ay", _makro_lbl, _makro_col)
+            + "</div>"
         )
+
+        # Sağ kolon = sadece YAPI bloğu (RS GÜCÜ ve MOMENTUM alt şerite alındı, YAPI nefes alsın)
+        _right_col_html = _yapi_block
 
         # Alt şerit: RSI + koşullu HACİM + koşullu BETA + GÜVEN
         def _chip(lbl, val, vcol):
@@ -23723,12 +24056,44 @@ def _render_right_col():
                     f"font-family:\"JetBrains Mono\",monospace;'>{val}</div>"
                     f"</div>")
 
-        _bottom_html = _chip("RSI", f"{_rsi_val:.0f}", _rsi_col)
-        if _show_hacim:
-            _bottom_html += _chip("HACİM", _vol_str, _vol_col)
-        if _show_beta:
-            _bottom_html += _chip("BETA", _beta_str, _beta_col)
-        _bottom_html += _chip_last("GÜVEN", f"{_conv_score}/100", _conv_col)
+        # Orta şerit — SADECE BIST hisseleri için (RS GÜCÜ + MOMENTUM medium-box)
+        # Endeks/Kripto/Emtia: orta şerit YOK, MOMENTUM alt şerite gider
+        _middle_cells = []
+        if _is_bist:
+            if _rs_str and _rs_str != "—":
+                _middle_cells.append(("RS GÜCÜ", _rs_str, _rs_col))
+            if _mom_str and _mom_str != "—":
+                _middle_cells.append(("MOMENTUM", _mom_str, _mom_col))
+        _middle_html = ""
+        if _middle_cells:
+            _n_mid = len(_middle_cells)
+            for _i, (_lbl, _val, _col) in enumerate(_middle_cells):
+                _sep_mid = f"border-right:1px solid {_CLR_DIVIDER};" if _i < _n_mid - 1 else ""
+                _middle_html += (
+                    f"<div style='flex:1;padding:6px 10px;{_sep_mid}'>"
+                    f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+                    f"letter-spacing:0.5px;font-weight:700;'>{_lbl}</div>"
+                    f"<div style='font-size:1.0rem;font-weight:800;color:{_col};"
+                    f"font-family:\"JetBrains Mono\",monospace;'>{_val}</div>"
+                    f"</div>"
+                )
+
+        # Alt şerit
+        # BIST: RSI + HACİM + BETA (MOMENTUM orta şeritte)
+        # Endeks/Kripto/Emtia: RSI + MOMENTUM (orta şerit yok)
+        _chips_list = [("RSI", f"{_rsi_val:.0f}", _rsi_col)]
+        if not _is_bist and _mom_str and _mom_str != "—":
+            _chips_list.append(("MOMENTUM", _mom_str, _mom_col))
+        if _show_hacim and _vol_str and _vol_str != "—":
+            _chips_list.append(("HACİM", _vol_str, _vol_col))
+        if _show_beta and _beta_str and _beta_str != "—":
+            _chips_list.append(("BETA", _beta_str, _beta_col))
+        _bottom_html = ""
+        for _i, (_lbl, _val, _col) in enumerate(_chips_list):
+            if _i == len(_chips_list) - 1:
+                _bottom_html += _chip_last(_lbl, _val, _col)
+            else:
+                _bottom_html += _chip(_lbl, _val, _col)
 
         # Fiyat formatı (endeks için binlik ayırıcı)
         _px_fmt = (f"{int(price_val):,}".replace(",", ".") if _is_idx else f"{price_val:.2f}")
@@ -23753,6 +24118,7 @@ def _render_right_col():
       {_right_col_html}
     </div>
   </div>
+  {f'<div style="display:flex;border-bottom:1px solid {_CLR_DIVIDER};">{_middle_html}</div>' if _middle_html else ''}
   <div style="display:flex;">
     {_bottom_html}
   </div>
