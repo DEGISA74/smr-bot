@@ -934,6 +934,12 @@ def backfill_signal_returns():
     Master Scan başında otomatik çağrılır; parquet cache üzerinden çalışır,
     internet isteği yapmaz. Her çalışmada en fazla 60 sembol işler.
 
+    FIX (31 May 2026): N+1 darboğazı kaldırıldı. Eski sürüm her sinyal için
+    get_safe_historical_data() çağırıyordu → her çağrı içeride get_live_price()
+    (yfinance API hit) yapıp ~2sn sürüyordu. 60 sembol × 2sn = 2 dakika.
+    Yeni sürüm doğrudan parquet'ten okur (canlı fiyat gereksiz), tek SQLite
+    transaction kullanır. Aynı iş ~3-5sn'ye iniyor.
+
     Return: (dolduruldu, atlandı) tuple
     """
     today = datetime.now(_TZ_ISTANBUL).date()
@@ -959,58 +965,80 @@ def backfill_signal_returns():
     if pending.empty:
         return (0, 0)
 
+    # Doğrudan parquet okuma — get_live_price/yfinance bypass.
+    # Backfill geçmiş veri kullanır, bölünme/canlı fiyat kontrolü gereksiz.
+    def _read_parquet_fast(ticker):
+        try:
+            _ct = ticker.replace(".IS", "")
+            if ".IS" in ticker or ticker.startswith("XU"):
+                _ct = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
+            _fp = os.path.join(CACHE_DIR, f"{_ct}_1d.parquet")
+            if not os.path.exists(_fp):
+                return None
+            return pd.read_parquet(_fp)
+        except Exception:
+            return None
+
+    # Sembol bazında parquet'i tek seferde önbelleğe al (aynı sembolün
+    # birden çok sinyali varsa tekrar okumayı engeller).
+    df_cache = {}
     filled = 0
     skipped = 0
-    for _, sig in pending.iterrows():
-        try:
-            signal_date = pd.to_datetime(sig['scan_date']).date()
-            if (today - signal_date).days < 1:
+
+    # Tek SQLite connection (eskiden döngüde açılıp kapatılıyordu).
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        for _, sig in pending.iterrows():
+            try:
+                signal_date = pd.to_datetime(sig['scan_date']).date()
+                if (today - signal_date).days < 1:
+                    skipped += 1
+                    continue
+
+                sym = sig['symbol']
+                if sym not in df_cache:
+                    df_cache[sym] = _read_parquet_fast(sym)
+                df_h = df_cache[sym]
+                if df_h is None or df_h.empty:
+                    skipped += 1
+                    continue
+                df_h = df_h.sort_index()
+
+                sig_ts  = pd.Timestamp(sig['scan_date'])
+                idx_pos = int(df_h.index.searchsorted(sig_ts))
+                if idx_pos >= len(df_h):
+                    skipped += 1
+                    continue
+
+                ep_raw = sig['entry_price']
+                entry  = float(ep_raw) if (ep_raw is not None and not pd.isna(ep_raw) and float(ep_raw) > 0) \
+                         else float(df_h['Close'].iloc[idx_pos])
+                if entry == 0:
+                    skipped += 1
+                    continue
+
+                for day_offset in range(1, 21):
+                    fwd_idx = idx_pos + day_offset
+                    if fwd_idx >= len(df_h):
+                        break
+                    fwd_price = float(df_h['Close'].iloc[fwd_idx])
+                    ret_pct   = round((fwd_price - entry) / entry * 100, 4)
+                    c.execute('''
+                        INSERT OR IGNORE INTO signal_returns
+                        (signal_id, scan_type, symbol, signal_date,
+                         entry_price, day_offset, close_price, return_pct, category)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (int(sig['id']), sig['scan_type'], sig['symbol'],
+                          sig['scan_date'], entry, day_offset,
+                          fwd_price, ret_pct, sig.get('category', '')))
+                    filled += 1
+            except Exception:
                 skipped += 1
                 continue
-
-            df_h = get_safe_historical_data(sig['symbol'], period='6mo', interval='1d')
-            if df_h is None or df_h.empty:
-                skipped += 1
-                continue
-            df_h = df_h.sort_index()
-
-            # Sinyal tarihine en yakın indeksi bul
-            sig_ts  = pd.Timestamp(sig['scan_date'])
-            idx_pos = int(df_h.index.searchsorted(sig_ts))
-            if idx_pos >= len(df_h):
-                skipped += 1
-                continue
-
-            # Giriş fiyatı
-            ep_raw = sig['entry_price']
-            entry  = float(ep_raw) if (ep_raw is not None and not pd.isna(ep_raw) and float(ep_raw) > 0) \
-                     else float(df_h['Close'].iloc[idx_pos])
-            if entry == 0:
-                skipped += 1
-                continue
-
-            conn = sqlite3.connect(DB_FILE)
-            c    = conn.cursor()
-            for day_offset in range(1, 21):
-                fwd_idx = idx_pos + day_offset
-                if fwd_idx >= len(df_h):
-                    break  # Henüz bu kadar işlem günü geçmemiş — ileride dolar
-                fwd_price  = float(df_h['Close'].iloc[fwd_idx])
-                ret_pct    = round((fwd_price - entry) / entry * 100, 4)
-                c.execute('''
-                    INSERT OR IGNORE INTO signal_returns
-                    (signal_id, scan_type, symbol, signal_date,
-                     entry_price, day_offset, close_price, return_pct, category)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (int(sig['id']), sig['scan_type'], sig['symbol'],
-                      sig['scan_date'], entry, day_offset,
-                      fwd_price, ret_pct, sig.get('category', '')))
-                filled += 1
-            conn.commit()
-            conn.close()
-        except Exception:
-            skipped += 1
-            continue
+        conn.commit()
+    finally:
+        conn.close()
 
     return (filled, skipped)
 
@@ -4138,25 +4166,30 @@ def process_single_accumulation(symbol, df, benchmark_series):
         if rsi_check > 60: return None # Şişkin hisseyi yok say.
 
         # --- 4. MANSFIELD RS (GÜÇ) ---
+        # FIX (31 May 2026): Bench veri yoksa RS kanıtı eksik → sinyali REDDET.
+        # Eskiden bench None ise rs_score=0 ile devam ediyordu (sessiz bilgi kaybı).
+        if benchmark_series is None:
+            return None
         rs_status = "Zayıf"
         rs_score = 0
-        if benchmark_series is not None:
-            try:
-                common_idx = close.index.intersection(benchmark_series.index)
-                if len(common_idx) > 50:
-                    stock_aligned = close.loc[common_idx]
-                    bench_aligned = benchmark_series.loc[common_idx]
-                    rs_ratio = stock_aligned / bench_aligned
-                    rs_ma = rs_ratio.rolling(50).mean()
-                    mansfield = ((rs_ratio / rs_ma) - 1) * 10
-                    curr_rs = float(mansfield.iloc[-1])
-                    if curr_rs > 0: 
-                        rs_status = "GÜÇLÜ (Endeks Üstü)"
-                        rs_score = 1 
-                        if curr_rs > float(mansfield.iloc[-5]): 
-                            rs_status += " 🚀"
-                            rs_score = 2
-            except: pass
+        try:
+            common_idx = close.index.intersection(benchmark_series.index)
+            if len(common_idx) <= 50:
+                return None  # Yeterli ortak veri yoksa RS ölçülemez → reddet
+            stock_aligned = close.loc[common_idx]
+            bench_aligned = benchmark_series.loc[common_idx]
+            rs_ratio = stock_aligned / bench_aligned
+            rs_ma = rs_ratio.rolling(50).mean()
+            mansfield = ((rs_ratio / rs_ma) - 1) * 10
+            curr_rs = float(mansfield.iloc[-1])
+            if curr_rs > 0:
+                rs_status = "GÜÇLÜ (Endeks Üstü)"
+                rs_score = 1
+                if curr_rs > float(mansfield.iloc[-5]):
+                    rs_status += " 🚀"
+                    rs_score = 2
+        except Exception:
+            return None  # RS hesabı patladıysa sinyal verme
 
         # --- 5. POCKET PIVOT (ZAMAN AYARLI KONTROL) ---
         is_pocket_pivot = False
@@ -4191,6 +4224,19 @@ def process_single_accumulation(symbol, df, benchmark_series):
         cmf_confirms = cmf_20 > 0.05
         cmf_conflict = cmf_20 < -0.05
 
+        # --- 52H YILLIK KONUM (FIX 31 May 2026) ---
+        # Yıllık dipte birikim = güçlü tez (alıcı düşük seviyelerden topluyor).
+        # Yıllık zirvede birikim = şüpheli (zirvede toplama olmaz, dağıtım olur).
+        y_pos = 50.0  # default — nötr
+        try:
+            _y_close = close.iloc[-252:] if len(close) >= 252 else close
+            _y_hi = float(_y_close.max())
+            _y_lo = float(_y_close.min())
+            if _y_hi > _y_lo:
+                y_pos = (price_now - _y_lo) / (_y_hi - _y_lo) * 100
+        except Exception:
+            y_pos = 50.0
+
         # --- SKORLAMA (FIX 30 May 2026: çarpım → toplamsal 0-100 normalize) ---
         # Eski: avg_mf × 5/10 × (1+rs_score) → bonuslar skoru 11× şişiriyordu,
         # tek yüksek-hacim barı olan hisse gerçek toplama yapandan üste çıkıyordu.
@@ -4210,8 +4256,15 @@ def process_single_accumulation(symbol, df, benchmark_series):
         s_squeeze = 10.0 if is_sq else 0.0
         # 6) CMF teyit/çelişki → +10 / -15
         s_cmf = 10.0 if cmf_confirms else (-15.0 if cmf_conflict else 0.0)
+        # 7) 52H Konum (FIX 31 May 2026): dipte +10, alt %50 0, üst %75+ -10
+        if y_pos <= 30:
+            s_52h = 10.0      # Yıllık dipte → birikim tezi güçlü
+        elif y_pos >= 75:
+            s_52h = -10.0     # Yıllık zirvede → birikim şüpheli (dağıtım riski)
+        else:
+            s_52h = 0.0       # Orta bölge → nötr
 
-        final_score = s_israr + s_gizli + s_rs + s_pivot + s_squeeze + s_cmf
+        final_score = s_israr + s_gizli + s_rs + s_pivot + s_squeeze + s_cmf + s_52h
         final_score = max(0.0, min(100.0, final_score))
 
         if avg_mf > 1_000_000: mf_str = f"{avg_mf/1_000_000:.1f}M"
@@ -4231,6 +4284,7 @@ def process_single_accumulation(symbol, df, benchmark_series):
             "Pivot_Sinyali": pp_desc,
             "Pocket_Pivot": is_pocket_pivot,
             "Kalite": quality_label,
+            "Yillik_Konum": round(y_pos, 0),
             "Hacim": float(volume.iloc[-1])
         }
     except Exception: return None
@@ -5921,13 +5975,15 @@ def scan_ict_batch(asset_list):
 # En katı çok-kriterli filtre. Tüm sistemlerin üst üste çakıştığı
 # "Royal Flush" seviyesindeki setup'ları arar.
 # ==============================================================================
-def _nadir_firsat_single_fast(symbol, df):
+def _nadir_firsat_single_fast(symbol, df, bench_series=None):
     """
     Tek sembol için Royal Flush kontrolü — batch DataFrame'den inline hesaplar.
     calculate_ict_deep_analysis / calculate_price_action_dna çağırmaz → hızlı.
     5/5 Kriter:
       1. BOS : son lokal swing high kırıldı (bullish yapı)
-      2. RS  : son 20 günlük getiri > %1.5
+      2. RS  : ALPHA > %1.5 (hisse 20g getirisi − endeks 20g getirisi)
+              FIX (31 May 2026): Eskiden mutlak getiri kontrol ediliyordu (yanlış);
+              şimdi endeks farkı (gerçek outperform).
       3. VWAP sapması < %10
       4. Hacim canlanması (3-gün veya 2-gün patlaması)
       5. RSI < 65
@@ -5950,11 +6006,23 @@ def _nadir_firsat_single_fast(symbol, df):
         if sh is None or curr <= sh:
             return None
 
-        # ── 2. RS proxy: son 20 günlük getiri > %1.5 ──
+        # ── 2. RS Alpha: hisse 20g − endeks 20g getirisi > %1.5 (gerçek outperform) ──
         if len(close) < 21:
             return None
-        ret20 = (close.iloc[-1] / close.iloc[-21] - 1) * 100
-        if ret20 <= 1.5:
+        stock_ret20 = (float(close.iloc[-1]) / float(close.iloc[-21]) - 1) * 100
+        # Endeks verisi yoksa sinyali reddet — RS kanıtı olmadan Royal Flush olmaz
+        if bench_series is None or len(bench_series) < 21:
+            return None
+        try:
+            common_idx = close.index.intersection(bench_series.index)
+            if len(common_idx) < 21:
+                return None
+            _b = bench_series.loc[common_idx]
+            bench_ret20 = (float(_b.iloc[-1]) / float(_b.iloc[-21]) - 1) * 100
+        except Exception:
+            return None
+        alpha = stock_ret20 - bench_ret20
+        if alpha <= 1.5:
             return None
 
         # ── 3. VWAP sapması < %10 ──
@@ -5987,16 +6055,30 @@ def _nadir_firsat_single_fast(symbol, df):
         if rsi >= 65:
             return None
 
+        # ── 6. 52H KONUM (FIX 31 May 2026) ──
+        # Royal Flush mantığı: "henüz hareket etmemiş hisseye 5 dizilim geldi".
+        # Yıllık zirveye çok yakınsa hisse ZATEN yukarıda → bu fırsat değil,
+        # trend takibi. EGEPO/RYSAS gibi yıllık zirvede tetiklenmeleri eler.
+        year_window = close.iloc[-252:] if len(close) >= 252 else close
+        year_high   = float(year_window.max())
+        if year_high > 0 and (curr / year_high) > 0.85:
+            return None
+
+        # Yıllık konum % (bilgi amaçlı çıktıya yazılır)
+        year_low = float(year_window.min())
+        yearly_pos_pct = ((curr - year_low) / (year_high - year_low) * 100) if year_high > year_low else 50
+
         return {
             'Sembol':   symbol,
             'Fiyat':    round(curr, 2),
-            'Durum':    '5/5 | BOS+RS+VWAP+VOL+RSI',
+            'Durum':    '6/6 | BOS+Alpha+VWAP+VOL+RSI+52H',
             'Aciklama': (
                 f"BOS yapı kırılımı teyitli · "
-                f"RS +{ret20:.1f}% (endeks üstü güç) · "
+                f"Alpha +{alpha:.1f}% (hisse {stock_ret20:+.1f}% vs endeks {bench_ret20:+.1f}%) · "
                 f"VWAP sapması %{vwap_diff:.1f} (şişmemiş) · "
                 f"RSI {rsi:.0f} (aşırı alım yok) · "
-                f"Hacim canlandı"
+                f"Hacim canlandı · "
+                f"52H konum %{yearly_pos_pct:.0f} (zirvenin %15+ uzağında, fırsat penceresi)"
             ),
         }
     except Exception:
@@ -6013,6 +6095,16 @@ def scan_nadir_firsat_batch(asset_list):
     data = get_batch_data_cached(asset_list, period="1y")
     if data.empty:
         return pd.DataFrame()
+
+    # Adım 1b: Endeks bench serisi (RS Alpha hesabı için) — kategoriye göre
+    _cat_nf = st.session_state.get('category', '')
+    _bench_t_nf = "XU100.IS" if ("BIST" in _cat_nf or any('.IS' in s for s in asset_list[:3])) else "^GSPC"
+    _bench_df_nf = None
+    try:
+        _bench_df_nf = get_safe_historical_data(_bench_t_nf, period="1y")
+    except Exception:
+        _bench_df_nf = None
+    _bench_close_nf = _bench_df_nf['Close'] if (_bench_df_nf is not None and 'Close' in _bench_df_nf.columns) else None
 
     # Adım 2: Her sembol için DataFrame'i ayır
     stock_dfs = []
@@ -6033,7 +6125,7 @@ def scan_nadir_firsat_batch(asset_list):
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
-            executor.submit(_nadir_firsat_single_fast, sym, df): sym
+            executor.submit(_nadir_firsat_single_fast, sym, df, _bench_close_nf): sym
             for sym, df in stock_dfs
         }
         for future in concurrent.futures.as_completed(futures):
@@ -13655,8 +13747,10 @@ ERKEN_RADAR_SCENARIOS = {
            'description': 'Hisse uzun süredir düşüşte ama son günlerde satıcı baskısı azaldı. Aynı zamanda fiyat dipler yapsa da iç güç (momentum) artıyor — bu klasik bir dipten dönüş zemini.',
            'detect': lambda c: c['rsi_30_45'] and c['strong_bull_div'] and c['vol_dried'] and c['fall_stopped'] and c['recent_fall_15']},
     'A2': {'name': 'Hacimli Tepki', 'category': 'A', 'stars': 4,
-           'description': 'Hisse düşüşten sonra bugün son 10 günün en büyük satış gününden bile yüksek hacimle yeşil kapattı. Büyük alıcılar devreye girmiş olabilir.',
-           'detect': lambda c: c['rsi_35_50'] and c['pocket_pivot'] and c['recent_fall_15']},
+           'description': 'Hisse orta seviyede düşüş (RSI 45-50) sonrası bugün son 10 günün en büyük satış gününden yüksek hacimle yeşil kapattı. Düşüşten sonra net kurumsal tepki sinyali.',
+           # FIX (31 May 2026): A8 ile RSI 35-45 örtüşmesi giderildi. A2 artık SADECE
+           # RSI 45-50 aralığında tetiklenir (rsi_35_50 True + rsi_30_45 False).
+           'detect': lambda c: c['rsi_35_50'] and not c['rsi_30_45'] and c['pocket_pivot'] and c['recent_fall_15']},
     'A3': {'name': 'Çift Dip / İkinci Test', 'category': 'A', 'stars': 4,
            'description': 'Hisse aynı dip seviyesini ikinci kez test etti ama bu sefer satıcı baskısı belirgin şekilde daha düşük. Çift dip, klasik dönüş örüntülerinden biri.',
            'detect': lambda c: c['double_bottom'] and c['rsi_30_50'] and c['vol_dried']},
@@ -13792,7 +13886,14 @@ def evaluate_erken_radar(ticker, df, bench_df=None):
                     red_flags.append(entry)
                 else:
                     matched.append(entry)
-        except Exception:
+        except Exception as _er_exc:
+            # FIX (31 May 2026): Silent exception → log_error ile errors.log'a yaz.
+            # Senaryo lambda detect'i hata verirse senaryo atlanmaya devam eder ama
+            # artık görünür: hangi senaryo, hangi hisse, hangi hata.
+            try:
+                log_error(f"evaluate_erken_radar/{sid}", _er_exc, ctx={'ticker': ticker})
+            except Exception:
+                pass
             continue
     # Sırala: yıldız sayısı desc, sonra ID
     matched.sort(key=lambda x: (-(x['stars'] if isinstance(x['stars'], int) else 0), x['id']))
@@ -15977,14 +16078,14 @@ def _po_box_html(inner_text, loading=False, ai_ok=False):
         badge = ('<span style="font-size:0.55rem;font-weight:700;color:#a855f7;'
                  'background:rgba(168,85,247,0.12);padding:1px 5px;border-radius:3px;'
                  'border:1px solid rgba(168,85,247,0.3);">' + ('AI yorumu' if ai_ok else 'özet') + '</span>')
-        body = f'<div style="font-size:0.72rem;color:#cbd5e1;line-height:1.6;">{inner_text}</div>'
+        body = f'<div style="font-size:0.9rem;color:#cbd5e1;line-height:1.6;">{inner_text}</div>'
     return (
         f'<div style="background:rgba(168,85,247,0.07);border-left:3px solid #a855f7;'
         f'padding:8px 10px;border-radius:4px;display:flex;flex-direction:column;'
         f'justify-content:flex-start;height:100%;position:relative;">'
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;'
         f'padding-bottom:4px;border-bottom:1px solid rgba(168,85,247,0.25);">'
-        f'<div style="font-size:0.75rem;font-weight:800;color:#a855f7;display:flex;align-items:center;gap:4px;">'
+        f'<div style="font-size:1.05rem;font-weight:800;color:#a855f7;display:flex;align-items:center;gap:4px;">'
         f'<span style="width:6px;height:6px;border-radius:50%;background:#a855f7;'
         f'display:inline-block;box-shadow:0 0 3px #a855f7;"></span>Piyasa Özeti</div>'
         f'{badge}</div>'
@@ -16052,6 +16153,68 @@ def _fetch_gemini_ozeti(ticker, data, mtf_ctx, mkt_ctx):
     if not txt:
         raise ValueError("Gemini boş yanıt döndü")
     return txt
+
+
+def render_piyasa_ozeti_full_width(ticker):
+    """
+    Piyasa Özeti — 52H bar ile SMC expander arası, full-width render.
+    Eskiden render_roadmap_8_panel içinde col3'tü; 31 May 2026'da bağımsız panele taşındı.
+    Cache anahtarı aynı kalır (_po_gemini_cache) → Gemini sadece 1 kez çağrılır.
+    """
+    data = calculate_8_point_roadmap(ticker, st.session_state.get('category', 'BIST'))
+    if not data:
+        return
+
+    _comp_score    = data.get('composite_score', 50)
+    _comp_decision = data.get('comp_decision', 'BEKLEMEDE')
+
+    _po_sig    = f"v2|{ticker}|{_comp_score}|{_comp_decision}"
+    _po_cache  = st.session_state.setdefault("_po_gemini_cache", {})
+    _po_cached = _po_cache.get(_po_sig)
+    _po_ph     = st.empty()
+
+    def _wrap(inner_html):
+        # Full-width kabuk — 52H bar genişliği, margin uyumu için 6px top/bottom
+        return (f'<div style="margin:6px 0 8px 0;">{inner_html}</div>')
+
+    if _po_cached:
+        _po_ph.markdown(_wrap(_po_box_html(_po_cached, loading=False, ai_ok=True)), unsafe_allow_html=True)
+        return
+
+    # 1) Loading state
+    _loading_box = _po_box_html(
+        "Sizin için uzman analizi raporu hazırlıyorum — tüm sinyaller çapraz okunuyor…",
+        loading=True)
+    _po_ph.markdown(_wrap(_loading_box), unsafe_allow_html=True)
+
+    # 2) MTF + market context (render_roadmap_8_panel ile aynı mantık)
+    try:
+        _mtf = calculate_multi_timeframe_alignment(ticker)
+        if _mtf and _mtf.get('matrix'):
+            _mtf_ctx = (f"Dominant {_mtf['dominant']} (uyum %{_mtf['overall_pct']}), "
+                        f"{_mtf['bull_cnt']} hücre yukarı / {_mtf['bear_cnt']} hücre aşağı")
+        else:
+            _mtf_ctx = "Veri yok"
+    except Exception:
+        _mtf_ctx = "Veri yok"
+    _bms = st.session_state.get("bist_market_status", {})
+    _mkt_ctx = (f"BIST KAPALI ({_bms.get('label','')}) — veriler son işlem gününe ait"
+                if (_bms.get("closed") and (".IS" in ticker or ticker.startswith(("XU", "XB"))))
+                else "Normal seans")
+
+    # 3) Gemini call (fallback'le güvenli)
+    _ai_ok = False
+    try:
+        _po_txt = _fetch_gemini_ozeti(ticker, data, _mtf_ctx, _mkt_ctx)
+        _ai_ok = True
+    except Exception as _po_exc:
+        log_error("_fetch_gemini_ozeti", _po_exc, ticker)
+        _po_txt = _build_piyasa_ozeti_fallback(ticker, data)
+    if _ai_ok:
+        _po_cache[_po_sig] = _po_txt
+
+    # 4) Replace placeholder
+    _po_ph.markdown(_wrap(_po_box_html(_po_txt, loading=False, ai_ok=_ai_ok)), unsafe_allow_html=True)
 
 
 def render_roadmap_8_panel(ticker):
@@ -16386,9 +16549,9 @@ def render_roadmap_8_panel(ticker):
         make_box(num, title, content, "", edu, tf, status=_statuses[i], box_idx=i)
         for i, (num, title, content, edu, tf) in enumerate(_box_defs)
     ]
-    # 3-sütun grid: col1 = Trend + Hacim alt alta | col2 = Teknik Özet | col3 = Piyasa Özeti
-    _col1 = f'<div style="display:flex;flex-direction:column;gap:5px;">{boxes[0]}{boxes[1]}</div>'
-
+    # 3-sütun grid: 1. Trend Skoru | 2. Hacim Algoritması | 3. Teknik Özet (yan yana)
+    # NOT (31 May 2026): Piyasa Özeti (eski col4) bağımsız panel olarak Smart Money
+    # Hacim Analizi altına taşındı (render_piyasa_ozeti_full_width).
     top_section_html = (
         f'<div style="padding:5px 5px 0 5px;">'
         f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">'
@@ -16396,79 +16559,34 @@ def render_roadmap_8_panel(ticker):
         f'</div></div>'
     )
 
-    def _compose_card(_col3_html):
-        _grid = _col1 + boxes[2] + _col3_html
-        return f"""
-    <style>
-    .dark-text-fix {{ color: #cbd5e1 !important; }}
-    .dark-text-fix b, .dark-text-fix strong {{ color: #f1f5f9 !important; }}
-    .dark-text-fix span {{ color: inherit; }}
-    {hover_css}
-    </style>
-    <div class="info-card" style="border-top:3px solid {title_col};margin-top:5px;margin-bottom:6px;padding:0;">
-        <div class="info-header" style="display:flex;justify-content:space-between;align-items:center;color:{title_col};font-size:1rem;padding:4px 8px;border-bottom:none;background:{header_bg};margin-bottom:0;">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <span style="font-weight:800;">🗺️ Teknik Yol Haritası</span>
-                <span style="font-size:0.6rem;color:#64748b;font-family:'JetBrains Mono',monospace;">güncellendi {_now_str}</span>
-            </div>
-            <span style="background:{badge_bg};color:{badge_text};padding:2px 10px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:0.9rem;border:1px solid {header_border};">{display_ticker}&nbsp;<span style="opacity:0.6;margin:0 4px;font-weight:400;">—</span>&nbsp;<span style="color:{price_color};">{display_price}</span></span>
+    _grid = boxes[0] + boxes[1] + boxes[2]
+    card_html = f"""
+<style>
+.dark-text-fix {{ color: #cbd5e1 !important; }}
+.dark-text-fix b, .dark-text-fix strong {{ color: #f1f5f9 !important; }}
+.dark-text-fix span {{ color: inherit; }}
+{hover_css}
+</style>
+<div class="info-card" style="border-top:3px solid {title_col};margin-top:5px;margin-bottom:6px;padding:0;">
+    <div class="info-header" style="display:flex;justify-content:space-between;align-items:center;color:{title_col};font-size:1rem;padding:4px 8px;border-bottom:none;background:{header_bg};margin-bottom:0;">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-weight:800;">🗺️ Teknik Yol Haritası</span>
+            <span style="font-size:0.6rem;color:#64748b;font-family:'JetBrains Mono',monospace;">güncellendi {_now_str}</span>
         </div>
-        <div style="height:4px;background:rgba(30,58,95,0.5);margin-bottom:0;">
-            <div style="height:100%;width:{_comp_score}%;background:{'#22c55e' if _comp_score >= 67 else ('#f59e0b' if _comp_score >= 40 else '#ef4444')};border-radius:0 2px 2px 0;"></div>
-        </div>
-        {top_section_html}
-        <div style="padding:5px;">
-            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;">
-                {_grid}
-            </div>
+        <span style="background:{badge_bg};color:{badge_text};padding:2px 10px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:0.9rem;border:1px solid {header_border};">{display_ticker}&nbsp;<span style="opacity:0.6;margin:0 4px;font-weight:400;">—</span>&nbsp;<span style="color:{price_color};">{display_price}</span></span>
+    </div>
+    <div style="height:4px;background:rgba(30,58,95,0.5);margin-bottom:0;">
+        <div style="height:100%;width:{_comp_score}%;background:{'#22c55e' if _comp_score >= 67 else ('#f59e0b' if _comp_score >= 40 else '#ef4444')};border-radius:0 2px 2px 0;"></div>
+    </div>
+    {top_section_html}
+    <div style="padding:5px;">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;">
+            {_grid}
         </div>
     </div>
-    """
-
-    # ── COLUMN 3: Piyasa Özeti — Gemini AI yorumu (placeholder + cache) ──
-    _po_sig    = f"v2|{ticker}|{_comp_score}|{_comp_decision}"
-    _po_cache  = st.session_state.setdefault("_po_gemini_cache", {})
-    _po_cached = _po_cache.get(_po_sig)
-    _po_ph     = st.empty()
-
-    if _po_cached:
-        _po_ph.markdown(
-            _compose_card(_po_box_html(_po_cached, loading=False, ai_ok=True)).replace('\n', ''),
-            unsafe_allow_html=True)
-    else:
-        # 1) Önce "hazırlanıyor" ile boya — placeholder anında paint olur
-        _loading_box = _po_box_html(
-            "Sizin için uzman analizi raporu hazırlıyorum — tüm sinyaller çapraz okunuyor…",
-            loading=True)
-        _po_ph.markdown(_compose_card(_loading_box).replace('\n', ''), unsafe_allow_html=True)
-
-        # 2) Gemini'ye git (~2 sn) — kart yükleniyor olarak görünürken
-        try:
-            if _mtf and _mtf.get('matrix'):
-                _mtf_ctx = (f"Dominant {_mtf['dominant']} (uyum %{_mtf['overall_pct']}), "
-                            f"{_mtf['bull_cnt']} hücre yukarı / {_mtf['bear_cnt']} hücre aşağı")
-            else:
-                _mtf_ctx = "Veri yok"
-        except Exception:
-            _mtf_ctx = "Veri yok"
-        _bms = st.session_state.get("bist_market_status", {})
-        _mkt_ctx = (f"BIST KAPALI ({_bms.get('label','')}) — veriler son işlem gününe ait"
-                    if (_bms.get("closed") and (".IS" in ticker or ticker.startswith(("XU", "XB"))))
-                    else "Normal seans")
-        _ai_ok = False
-        try:
-            _po_txt = _fetch_gemini_ozeti(ticker, data, _mtf_ctx, _mkt_ctx)
-            _ai_ok = True
-        except Exception as _po_exc:
-            log_error("_fetch_gemini_ozeti", _po_exc, ticker)
-            _po_txt = _build_piyasa_ozeti_fallback(ticker, data)
-        if _ai_ok:
-            _po_cache[_po_sig] = _po_txt   # sadece AI başarılıysa cache'le (fallback'ta tekrar dene)
-
-        # 3) Placeholder'ı gerçek analizle yerinde değiştir
-        _po_ph.markdown(
-            _compose_card(_po_box_html(_po_txt, loading=False, ai_ok=_ai_ok)).replace('\n', ''),
-            unsafe_allow_html=True)
+</div>
+"""
+    st.markdown(card_html.replace('\n', ''), unsafe_allow_html=True)
 
     # --- Formasyon mini grafiği — butonu fiyat paneli altında göster (col_right) ---
     _m2_chart = data.get('M2_chart_data')
@@ -18843,15 +18961,17 @@ with col_btn:
         # çalışmıyordu. Artık her buton tıklaması full Master Scan çalıştırır.
 
         # ── BIST TAKVİM KONTROLÜ ─────────────────────────────────────────────
+        # Banner'ı st.empty() placeholder'a koy ki tarama bitince temizlenebilsin.
         _ms_day_status, _ms_day_name = _bist_day_status()
+        _holiday_ph = st.empty()
         if _ms_day_status == "closed":
-            st.warning(
+            _holiday_ph.warning(
                 f"⛔ **Bugün BIST kapalı — {_ms_day_name}.**  \n"
                 "Tarama çalışabilir ama yeni veri gelmeyecek; önceki seans verileri kullanılır.",
                 icon="📅"
             )
         elif _ms_day_status == "half":
-            st.info(
+            _holiday_ph.info(
                 f"⚠️ **Arefe günü — {_ms_day_name} (10:00–12:30).**  \n"
                 "Kısa seans: RVOL değerleri arefe normalizer ile gösterilmektedir (÷0.31).",
                 icon="🕐"
@@ -19097,6 +19217,18 @@ with col_btn:
             st.session_state.generate_prompt = False
             # ⚠️ BAN KORUMA flag'i kapat (sayfa render'larında tek hisse view'da live patch aktif)
             st.session_state['_master_scan_running'] = False
+
+            # ── UI TEMİZLİK (31 May 2026): tarama bitince banner + progress bar
+            # ANINDA ekrandan kaldır. st.rerun() zaten birkaç ms içinde sayfayı
+            # yeniden render edecek; empty() çağrıları rerun'dan ÖNCE olduğundan
+            # Streamlit DOM'dan o placeholder'ları siler.
+            # NOT: sleep KULLANMA — sleep süresince eski component'ler ekranda
+            # asılı kalır, kullanıcı "neden hâlâ duruyor?" der.
+            try:
+                my_bar.empty()
+                _holiday_ph.empty()
+            except Exception:
+                pass
 
         except Exception as e:
             # Hata olsa bile flag'i kapat (sonsuza kadar açık kalmasın)
@@ -22222,6 +22354,7 @@ def _render_left_col():
     except Exception:
         pass
     # ── /52H BAR ──────────────────────────────────────────────────────
+
     # ── ANA FİYAT GRAFİĞİ (inline) ───────────────────────────────────────────
     _disp_name = get_display_name(st.session_state.ticker)
 
@@ -22417,7 +22550,14 @@ def _render_left_col():
     # 1--- SMART MONEY HACİM ANALİZİ ---
     st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
     render_smart_volume_panel(st.session_state.ticker)
-    
+
+    # 1.5 --- PİYASA ÖZETİ (Smart Money Hacim Analizi altı, Teknik Yol Haritası üstü)
+    # 31 May 2026: Yol Haritası kartından bağımsız panele taşındı (kullanıcı isteği).
+    try:
+        render_piyasa_ozeti_full_width(st.session_state.ticker)
+    except Exception as _po_full_exc:
+        log_error("render_piyasa_ozeti_full_width", _po_full_exc, st.session_state.ticker)
+
     # 2. TEKNİK YOL HARİTASI PANELİ
     render_roadmap_8_panel(st.session_state.ticker)
     
