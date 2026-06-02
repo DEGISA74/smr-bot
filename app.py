@@ -2298,12 +2298,15 @@ def calculate_synthetic_sentiment(ticker):
         df = get_safe_historical_data(ticker, period="6mo")
         if df is None or df.empty: return None
 
-        # Hayalet bar temizliği (1 Haz 2026): BIST tatil günlerinde V=0 sahte barlar
-        # grafiği yatay yatay donduruyordu. Tarama hesaplamaları için _strip_holiday_bars
-        # sadece trailing barları siliyor; bu fonksiyon CHART için tüm V=0 günleri eler.
-        # Endeksler etkilenmez (XU100/SPX kapalı günlerde zaten satır üretmez).
+        # Hayalet bar temizliği (1 Haz 2026, v2): SADECE V=0 + O=H=L=C flat bar = tatil hayaleti.
+        # Endeksler bazen V=0 dönüyor ama OHLC oynuyor — onlar legitimate, dokunma.
+        # _strip_holiday_bars'ın trailing-only versiyonu; biz gömülü hayalet barları da yakalarız.
         if 'Volume' in df.columns:
-            df = df[df['Volume'].fillna(0) > 0].copy()
+            _v = df['Volume'].fillna(0)
+            _o = df['Open']; _h = df['High']; _l = df['Low']; _c = df['Close']
+            _flat = ((_o - _c).abs() < 1e-9) & ((_h - _c).abs() < 1e-9) & ((_l - _c).abs() < 1e-9)
+            _ghost_mask = (_v <= 0) & _flat
+            df = df[~_ghost_mask].copy()
             if df.empty:
                 return None
 
@@ -17379,11 +17382,14 @@ def _render_genel_ozet_panel():
             _gs_df = None
             try:
                 _gs_df = get_safe_historical_data(_ticker, period="3mo")
-                # Hayalet bar temizliği (1 Haz 2026): BIST tatil günlerinde V=0 sahte
-                # barlar Vol_Avg20/RVOL/5g net %'i çarpıtıyor. Sadece bu panel tüketimi
-                # için filter; endeks (V hep >0) etkilenmez.
+                # Hayalet bar temizliği (v2 — 1 Haz 2026): V=0 + O=H=L=C flat = tatil hayaleti.
+                # Endeks V=0 ama OHLC oynayan barlar legitimate, dokunma.
                 if _gs_df is not None and 'Volume' in _gs_df.columns:
-                    _gs_df = _gs_df[_gs_df['Volume'].fillna(0) > 0].copy()
+                    _v_g = _gs_df['Volume'].fillna(0)
+                    _o_g = _gs_df['Open']; _h_g = _gs_df['High']
+                    _l_g = _gs_df['Low'];  _c_g = _gs_df['Close']
+                    _flat_g = ((_o_g - _c_g).abs() < 1e-9) & ((_h_g - _c_g).abs() < 1e-9) & ((_l_g - _c_g).abs() < 1e-9)
+                    _gs_df = _gs_df[~((_v_g <= 0) & _flat_g)].copy()
                 if _gs_df is not None and len(_gs_df) >= 3:
                     _gs_cc = _gs_df['Close'].values; _gs_co = _gs_df['Open'].values
                     _gs_bull = _gs_cc[-1] > _gs_co[-1]; _gs_cnt = 1
@@ -17559,7 +17565,7 @@ def _render_genel_ozet_panel():
                             _bench_df = get_safe_historical_data(_bench_t)
                         except Exception:
                             pass
-                        _er = evaluate_erken_radar(_ticker, df, _bench_df)
+                        _er = evaluate_erken_radar(_ticker, _gs_df, _bench_df)
                         if _er is not None:
                             _lr_score = _er.get('overall_quality', 0)
                             _primary  = _er.get('primary')
@@ -17633,6 +17639,9 @@ def _render_genel_ozet_panel():
 
                 def _gs_section(title, badge_html=""):
                     _ic = _sec_icons.get(title, "•")
+                    _badge = (f"<span style='margin-left:auto;display:inline-flex;"
+                              f"align-items:center;gap:6px;'>{badge_html}</span>"
+                              if badge_html else "")
                     return (f"<div style='margin-top:10px;padding-top:7px;"
                             f"border-top:1px solid {_gs_line};"
                             f"font-size:0.72rem;font-weight:800;letter-spacing:0.08em;"
@@ -17640,7 +17649,34 @@ def _render_genel_ozet_panel():
                             f"display:flex;align-items:center;gap:6px;'>"
                             f"<span style='font-size:0.88rem;line-height:1;'>{_ic}</span>"
                             f"<span>{title}</span>"
-                            f"{badge_html}</div>")
+                            f"{_badge}</div>")
+
+                # Heatmap dots — bölüm başlıklarına yön özetleri
+                def _section_dots(signals):
+                    if not signals:
+                        return ""
+                    parts = []
+                    for s in signals:
+                        if s > 0:   c = _gs_up_clr
+                        elif s < 0: c = _gs_dn_clr
+                        else:       c = _gs_neu
+                        rgb = _hex_to_rgb(c)
+                        parts.append(
+                            f"<span style='display:inline-block;width:6px;height:6px;"
+                            f"border-radius:50%;background:{c};margin:0 1.5px;"
+                            f"box-shadow:0 0 3px rgba({rgb},0.55);'></span>"
+                        )
+                    return "".join(parts)
+
+                # Section yön özetleri (voting sinyal alt kümeleri)
+                _at_dir = (1 if _gs_sma50_above is True
+                           else (-1 if _gs_sma50_above is False else 0))
+                _kv_dir = (1 if _gs_net_txt in ("YUKARI ★", "YUKARI", "HAFİF YUKARI")
+                           else (-1 if _gs_net_txt in ("AŞAĞI ★", "AŞAĞI", "HAFİF AŞAĞI") else 0))
+                _dots_yk   = _section_dots([_sig_yapi])
+                _dots_yon  = _section_dots([_at_dir, _kv_dir])
+                _dots_para = _section_dots([_sig_hacim, _sig_obv])
+                _dots_mom  = _section_dots([_sig_rsi])
 
                 # --- Kurumsal seviye yedirmeler (1 Haz 2026) ---
                 def _sm_consensus_calc():
@@ -17811,6 +17847,130 @@ def _render_genel_ozet_panel():
 
                 _sig_bd_full = _sig_bd + (f" · {_lvl_expl}" if _lvl_expl else "")
 
+                # Arrow Stack — kompakt dikey kolon (etiket sol, ok sağ; 4 satır)
+                def _arrow_cell(lbl, sig):
+                    if sig > 0:
+                        _ar = "▲"; _clr = _gs_up_clr
+                    elif sig < 0:
+                        _ar = "▼"; _clr = _gs_dn_clr
+                    else:
+                        _ar = "→"; _clr = _gs_neu
+                    _rgb = _hex_to_rgb(_clr)
+                    return (
+                        f"<div style='padding:2px 7px;"
+                        f"background:rgba({_rgb},0.10);border:1px solid rgba({_rgb},0.30);"
+                        f"border-radius:5px;display:flex;align-items:center;justify-content:space-between;"
+                        f"gap:8px;line-height:1.1;min-width:68px;'>"
+                        f"<span style='font-size:0.6rem;color:{_gs_lbl_col};font-weight:700;letter-spacing:0.04em;'>{lbl}</span>"
+                        f"<span style='font-size:0.9rem;color:{_clr};font-weight:900;'>{_ar}</span>"
+                        f"</div>"
+                    )
+                _arrow_stack_html = (
+                    f"<div style='display:flex;flex-direction:column;gap:3px;flex:0 0 auto;'>"
+                    + _arrow_cell("HACİM", _sig_hacim)
+                    + _arrow_cell("OBV",   _sig_obv)
+                    + _arrow_cell("YAPI",  _sig_yapi)
+                    + _arrow_cell("RSI",   _sig_rsi)
+                    + "</div>"
+                )
+
+                # #1 5-Mum Mini Şeridi — son 5 mumun OHLC SVG çizimi (sağ tarafta, büyük)
+                _mini_candles_html = ""
+                try:
+                    if _gs_df is not None and len(_gs_df) >= 5:
+                        _df5 = _gs_df.tail(5)
+                        _hs = _df5['High'].astype(float).values
+                        _ls = _df5['Low'].astype(float).values
+                        _os = _df5['Open'].astype(float).values
+                        _cs = _df5['Close'].astype(float).values
+                        _pmin = float(_ls.min())
+                        _pmax = float(_hs.max())
+                        _rng = max(_pmax - _pmin, 1e-9)
+                        _cw_w, _cw_h = 110, 80
+                        _n = 5
+                        _cell_w = _cw_w / _n
+                        _body_w = _cell_w * 0.42
+                        _parts = []
+                        for _i in range(_n):
+                            _o, _h, _l, _c = float(_os[_i]), float(_hs[_i]), float(_ls[_i]), float(_cs[_i])
+                            _xc = _i * _cell_w + _cell_w / 2
+                            _yh = (_pmax - _h) / _rng * _cw_h
+                            _yl = (_pmax - _l) / _rng * _cw_h
+                            _yo = (_pmax - _o) / _rng * _cw_h
+                            _yc = (_pmax - _c) / _rng * _cw_h
+                            _clr_c = _gs_up_clr if _c >= _o else _gs_dn_clr
+                            _parts.append(
+                                f"<line x1='{_xc:.1f}' y1='{_yh:.1f}' x2='{_xc:.1f}' y2='{_yl:.1f}' "
+                                f"stroke='{_clr_c}' stroke-width='1.4'/>"
+                            )
+                            _bt = min(_yo, _yc); _bh = max(abs(_yc - _yo), 1.5)
+                            _parts.append(
+                                f"<rect x='{_xc - _body_w/2:.1f}' y='{_bt:.1f}' "
+                                f"width='{_body_w:.1f}' height='{_bh:.1f}' fill='{_clr_c}'/>"
+                            )
+                        _mini_candles_html = (
+                            f"<svg width='100%' height='{_cw_h}' viewBox='0 0 {_cw_w} {_cw_h}' "
+                            f"preserveAspectRatio='xMidYMid meet' style='max-width:110px;'>"
+                            + "".join(_parts) + "</svg>"
+                        )
+                except Exception:
+                    pass
+
+                # #2 Multi-Timeframe Trafik Işıkları — DİKEY, sağ kolon (5g/20g/50g/200g)
+                # 1g kaldırıldı (gürültü); 4 timeframe yeterli ladder.
+                _tf_lights_html = ""
+                try:
+                    if _gs_df is not None and len(_gs_df) >= 2:
+                        _cl = _gs_df['Close']
+                        _cn = float(_cl.iloc[-1])
+                        _tfs = []
+                        if len(_cl) >= 6:
+                            _p5 = float(_cl.iloc[-6])
+                            _tfs.append(("5g", 1 if _cn > _p5 else (-1 if _cn < _p5 else 0)))
+                        else: _tfs.append(("5g", 0))
+                        if len(_cl) >= 20:
+                            _s20 = float(_cl.rolling(20).mean().iloc[-1])
+                            _tfs.append(("20g", 1 if _cn > _s20 else -1))
+                        else: _tfs.append(("20g", 0))
+                        _tfs.append(("50g", 1 if _gs_sma50_above is True else (-1 if _gs_sma50_above is False else 0)))
+                        if len(_cl) >= 200:
+                            _s200 = float(_cl.rolling(200).mean().iloc[-1])
+                            _tfs.append(("200g", 1 if _cn > _s200 else -1))
+                        else: _tfs.append(("200g", 0))
+
+                        _tf_cells = []
+                        for _lbl, _d in _tfs:
+                            if _d > 0:   _tc = _gs_up_clr
+                            elif _d < 0: _tc = _gs_dn_clr
+                            else:        _tc = _gs_neu
+                            _trgb = _hex_to_rgb(_tc)
+                            _tf_cells.append(
+                                f"<div style='display:flex;align-items:center;gap:5px;padding:1px 4px;"
+                                f"line-height:1.1;justify-content:space-between;min-width:46px;'>"
+                                f"<span style='font-size:0.58rem;color:{_gs_lbl_col};font-weight:700;'>{_lbl}</span>"
+                                f"<span style='display:inline-block;width:9px;height:9px;border-radius:50%;"
+                                f"background:{_tc};box-shadow:0 0 4px rgba({_trgb},0.6);'></span>"
+                                f"</div>"
+                            )
+                        _tf_lights_html = (
+                            f"<div style='display:flex;flex-direction:column;gap:3px;"
+                            f"flex:0 0 auto;justify-content:center;'>"
+                            + "".join(_tf_cells) + "</div>"
+                        )
+                except Exception:
+                    pass
+
+                # Orta blok: sol=arrow stack | orta=mum şeridi | sağ=TF lights (dikey)
+                _mid_row_html = (
+                    f"<div style='display:flex;gap:8px;margin-top:7px;align-items:center;'>"
+                    f"{_arrow_stack_html}"
+                    f"<div style='flex:1;display:flex;justify-content:center;align-items:center;'>"
+                    f"{_mini_candles_html}"
+                    f"</div>"
+                    f"{_tf_lights_html}"
+                    f"</div>"
+                )
+
                 _gs_items_html += (
                     f"<div style='background:rgba(56,189,248,0.07);"
                     f"border:1px solid {_gs_line};border-radius:6px;"
@@ -17819,16 +17979,20 @@ def _render_genel_ozet_panel():
                     f"font-family:{_mono_s};font-weight:800;'>"
                     f"<span style='color:{_gs_net_clr};font-size:0.83rem;white-space:nowrap;'>{_gs_net_txt} "
                     f"<span style='opacity:0.6;font-size:0.65rem;font-weight:600;'>{_dom_n}/4</span></span>"
-                    f"<span style='display:inline-flex;align-items:center;white-space:nowrap;margin-left:auto;'>"
-                    f"<span style='color:{_gs_neu};padding:0 8px;font-weight:400;font-size:0.72rem;'>|</span>"
-                    f"<span style='color:{_gs_neu};font-size:0.62rem;font-weight:600;letter-spacing:0.04em;margin-right:3px;'>LONG</span>{_lr_vhtml}"
-                    f"</span>"
-                    f"</div>"
+                    + (
+                        f"<span style='display:inline-flex;align-items:center;white-space:nowrap;margin-left:auto;'>"
+                        f"<span style='color:{_gs_neu};padding:0 8px;font-weight:400;font-size:0.72rem;'>|</span>"
+                        f"<span style='color:{_gs_neu};font-size:0.62rem;font-weight:600;letter-spacing:0.04em;margin-right:3px;'>LONG</span>{_lr_vhtml}"
+                        f"</span>"
+                        if _lr_score is not None else ""
+                    )
+                    + f"</div>"
+                    f"{_mid_row_html}"
                     f"</div>"
                 )
 
                 # ── GRUP 0: YAPI & KONUM ─────────────────────────────────────
-                _gs_items_html += _gs_section("Yapı & Konum")
+                _gs_items_html += _gs_section("Yapı & Konum", badge_html=_dots_yk)
 
                 # 1) YAPI — 8 senaryo (HH+HL, CHoCH, LH+LL, Megafon, Üçgen, Yatay, Yeni yapı)
                 _yapi_lbl  = "Karışık"; _yapi_clr = _gs_neu
@@ -17887,16 +18051,24 @@ def _render_genel_ozet_panel():
                             _yapi_short = "eşit"
                         elif _hh and not _ll:
                             _yapi_lbl = "Yeni yapı oluşuyor ↑"; _yapi_clr = _gs_neu
-                            _yapi_expl = "Yapının bir tarafı kırıldı. Tam trend yeni yapı henüz oluşmadı."
+                            _yapi_expl = ("Son tepe öncekinden yüksek (HH) — alıcılar yeni zirve denedi, "
+                                          "yukarı yöne kırılım var ama henüz yükselen dip (HL) teyidi yok")
                             _yapi_short = "HH"
                         elif _hl and not _lh:
                             _yapi_lbl = "Yeni yapı oluşuyor ↑"; _yapi_clr = _gs_neu
-                            _yapi_expl = "Yapının bir tarafı kırıldı. Tam trend yeni yapı henüz oluşmadı."
+                            _yapi_expl = ("Son dip öncekinden yüksek (HL) — satıcılar zayıfladı, "
+                                          "alt destek yukarı çıktı ama henüz yeni tepe (HH) yapılmadı")
                             _yapi_short = "HL"
-                        elif _lh or _ll:
+                        elif _lh and not _ll:
                             _yapi_lbl = "Yeni yapı oluşuyor ↓"; _yapi_clr = _gs_neu
-                            _yapi_expl = "Yapının bir tarafı kırıldı. Tam trend yeni yapı henüz oluşmadı."
-                            _yapi_short = "LH" if _lh else "LL"
+                            _yapi_expl = ("Son tepe öncekinden düşük (LH) — alıcılar yoruldu, "
+                                          "aşağı yöne ilk uyarı; henüz yeni dip (LL) kırılmadı")
+                            _yapi_short = "LH"
+                        elif _ll:
+                            _yapi_lbl = "Yeni yapı oluşuyor ↓"; _yapi_clr = _gs_neu
+                            _yapi_expl = ("Son dip öncekinden düşük (LL) — satıcılar baskın, "
+                                          "aşağı kırılım var ama henüz alçak tepe (LH) teyidi yok")
+                            _yapi_short = "LL"
                 except Exception:
                     pass
 
@@ -18072,7 +18244,7 @@ def _render_genel_ozet_panel():
                 )
 
                 # ── GRUP 1: YÖN (önce macro/orta vade, sonra kısa vade) ──────────
-                _gs_items_html += _gs_section("Yön")
+                _gs_items_html += _gs_section("Yön", badge_html=_dots_yon)
                 _net_sig = (1 if _gs_net_txt in ("YUKARI", "HAFİF YUKARI")
                             else (-1 if _gs_net_txt in ("AŞAĞI", "HAFİF AŞAĞI") else 0))
 
@@ -18144,7 +18316,7 @@ def _render_genel_ozet_panel():
                         _sm_badge_html = (
                             f"<span title='Hacim/OBV/CMF/Delta5g/POC oylaması — pozitif: "
                             f"{', '.join(_sm_pos) if _sm_pos else 'yok'}' "
-                            f"style='margin-left:auto;font-size:0.64rem;font-weight:700;"
+                            f"style='font-size:0.64rem;font-weight:700;"
                             f"padding:1px 7px;border-radius:8px;"
                             f"background:rgba({_sm_rgb},0.15);color:{_sm_clr};"
                             f"border:1px solid rgba({_sm_rgb},0.35);text-transform:none;"
@@ -18152,8 +18324,9 @@ def _render_genel_ozet_panel():
                         )
                 except Exception:
                     pass
-                _gs_items_html += _gs_section("Para akışı", badge_html=_sm_badge_html)
+                _gs_items_html += _gs_section("Para akışı", badge_html=_dots_para + _sm_badge_html)
 
+                # 5g delta % (Hacim cümlesi için)
                 if _gs_cdpct > 0:
                     _bp = 50 + _gs_cdpct / 2; _sp = 50 - _gs_cdpct / 2
                     _dpct = (f"%{_bp:.0f} alım / %{_sp:.0f} satış" if _gs_cum5 >= 0
@@ -18161,132 +18334,308 @@ def _render_genel_ozet_panel():
                 else:
                     _dpct = "dengede"
 
-                if not _data_ready:
-                    _gs_items_html += _gs_row(
-                        "Hacim",
-                        f"<span style='color:{_gs_neu};'>henüz yok</span>",
-                        explain=f"Gün içi hacim oluşmadı · son 5 gün dengesi: {_dpct}",
-                        lc=_gs_neu
-                    )
+                # ── FORCE COMPASS — OBV/CMF/Delta5g vektör bileşkesi ─────────────
+                _obv_t = _gs_obv.get('title', '')
+                _obv_lower = _obv_t.lower() if _obv_t else ""
+
+                # Y ekseni: OBV gücü (kümülatif uzun vade)
+                if "güçlü gizli giriş" in _obv_lower or "sağlıklı trend" in _obv_lower:
+                    _y_force = 1.0
+                elif "düşüşe direnç" in _obv_lower or "olası toplama" in _obv_lower:
+                    _y_force = 0.5
+                elif "şüpheli" in _obv_lower or "sahte güç" in _obv_lower or "zayıf teyit" in _obv_lower:
+                    _y_force = 0.4
+                elif "kafa çevir" in _obv_lower and "toparlanma" in _obv_lower:
+                    _y_force = 0.25
+                elif "kafa çevir" in _obv_lower and "zayıflama" in _obv_lower:
+                    _y_force = -0.25
+                elif "gizli çıkış" in _obv_lower or "dağıtım" in _obv_lower:
+                    _y_force = -1.0
                 else:
-                    # VSA: hacim × mum anatomisi (9 senaryo)
-                    _vsa_lbl = None; _vsa_clr = _gs_neu; _vsa_expl = None
-                    try:
-                        if _gs_df is not None and len(_gs_df) >= 1:
-                            _o_v = float(_gs_df['Open'].iloc[-1])
-                            _c_v = float(_gs_df['Close'].iloc[-1])
-                            _h_v = float(_gs_df['High'].iloc[-1])
-                            _l_v = float(_gs_df['Low'].iloc[-1])
-                            _rng_v = _h_v - _l_v
-                            if _rng_v > 0:
-                                _body_v   = abs(_c_v - _o_v)
-                                _body_r_v = _body_v / _rng_v
-                                _is_green = _c_v > _o_v
-                                _is_red   = _c_v < _o_v
-                                _uw_r     = (_h_v - max(_c_v, _o_v)) / _rng_v
-                                _lw_r     = (min(_c_v, _o_v) - _l_v) / _rng_v
-                                _strong   = _body_r_v > 0.6
-                                _is_doji  = _body_r_v < 0.2
-                                _long_uw  = _uw_r > 0.4
-                                _long_lw  = _lw_r > 0.4
-                                _hi_vol   = _gs_rvol >= 1.5
-                                _lo_vol   = _gs_rvol < 0.8
+                    _y_force = 0.0
 
-                                if _hi_vol and _strong and _is_green:
-                                    _vsa_lbl = "Alım onayı ★"; _vsa_clr = _gs_up_clr
-                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + güçlü yeşil gövde — talep güçlü"
-                                elif _hi_vol and _strong and _is_red:
-                                    _vsa_lbl = "Satım onayı ★"; _vsa_clr = _gs_dn_clr
-                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + güçlü kırmızı gövde — arz güçlü"
-                                elif _hi_vol and _is_doji:
-                                    _vsa_lbl = "Climax ⚠⚠"; _vsa_clr = _gs_dn_clr
-                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + doji — climax, dönüş yakın"
-                                elif _hi_vol and _long_uw:
-                                    _vsa_lbl = "Üst rejekti ⤵"; _vsa_clr = _gs_dn_clr
-                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + üst fitil — yükselişte dağıtım"
-                                elif _hi_vol and _long_lw:
-                                    _vsa_lbl = "Alt rejekti ⤴"; _vsa_clr = _gs_up_clr
-                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + alt fitil — düşüşte toplama"
-                                elif _lo_vol and _strong and _is_green:
-                                    _vsa_lbl = "Sahte alım ⚠"; _vsa_clr = _gs_dn_clr
-                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + yeşil gövde — no demand"
-                                elif _lo_vol and _strong and _is_red:
-                                    _vsa_lbl = "Sahte satım ⚠"; _vsa_clr = _gs_up_clr
-                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + kırmızı gövde — no supply"
-                                elif _lo_vol and _is_doji:
-                                    _vsa_lbl = "Ölü piyasa"; _vsa_clr = _gs_neu
-                                    _vsa_expl = f"{_gs_rvol:.1f}x hacim + doji — likidite yok"
-                    except Exception:
-                        pass
+                # X ekseni: CMF dual-window (5g + 20g, OBV mantığı gibi) + Delta 5g
+                _x_force = 0.0
+                _cmf_val_fc = None    # CMF 20g (orta vade)
+                _cmf_val_5g = None    # CMF 5g (kısa vade)
+                _cmf_state = "neutral"  # strong_pos / strong_neg / turning_up / turning_down / pos / neg / neutral
+                _d5_signed_fc = None
+                try:
+                    _cmf_val_fc = float(compute_cmf(_gs_df, period=20))
+                    _cmf_val_5g = float(compute_cmf(_gs_df, period=5))
+                    _r5_fc = _gs_df.tail(5)
+                    _d5_signed_fc = float(((_r5_fc['Close'] - _r5_fc['Open']) * _r5_fc['Volume']).sum())
 
-                    # Hacim mini bar (1.5x markerlı) — bar 0-3x aralığında
-                    def _vol_bar(rvol_v, clr):
-                        _fill = min(rvol_v / 3.0, 1.0) * 100
-                        _mark = 1.5 / 3.0 * 100  # %50
-                        return (
-                            f"<span style='display:inline-block;width:46px;height:5px;background:#1e293b;"
-                            f"border-radius:3px;position:relative;margin-right:5px;vertical-align:middle;'>"
-                            f"<span style='position:absolute;left:0;top:0;width:{_fill:.0f}%;"
-                            f"height:100%;background:{clr};border-radius:3px;'></span>"
-                            f"<span style='position:absolute;left:{_mark:.0f}%;top:-2px;"
-                            f"width:1px;height:9px;background:#64748b;'></span>"
-                            f"</span>"
-                        )
+                    # CMF dual-window state (6 senaryo)
+                    _THR = 0.05
+                    _c5_pos = _cmf_val_5g > _THR
+                    _c5_neg = _cmf_val_5g < -_THR
+                    _c20_pos = _cmf_val_fc > _THR
+                    _c20_neg = _cmf_val_fc < -_THR
+                    if _c5_pos and _c20_pos:       _cmf_state = "strong_pos"
+                    elif _c5_neg and _c20_neg:     _cmf_state = "strong_neg"
+                    elif _c5_pos and _c20_neg:     _cmf_state = "turning_up"     # kafa çev. toparlanma
+                    elif _c5_neg and _c20_pos:     _cmf_state = "turning_down"   # kafa çev. zayıflama
+                    elif _c20_pos:                 _cmf_state = "pos"
+                    elif _c20_neg:                 _cmf_state = "neg"
+                    else:                          _cmf_state = "neutral"
 
-                    # VSA kritik sinyaller → pulse animasyon
-                    _vsa_critical = {
-                        "Climax ⚠⚠", "Üst rejekti ⤵", "Sahte alım ⚠",
-                        "Sahte satım ⚠", "Alt rejekti ⤴"
+                    # X eksen force — state-driven
+                    _state_force_map = {
+                        "strong_pos": 1.0, "pos": 0.7, "turning_up": 0.3,
+                        "neutral": 0.0,
+                        "turning_down": -0.3, "neg": -0.7, "strong_neg": -1.0,
                     }
+                    _x_cmf_part = _state_force_map.get(_cmf_state, 0.0)
+                    _x_d5_part = 1.0 if _d5_signed_fc > 0 else (-1.0 if _d5_signed_fc < 0 else 0.0)
+                    _x_force = (_x_cmf_part + _x_d5_part) / 2.0
+                except Exception:
+                    pass
 
-                    if _vsa_lbl:
-                        _vsa_bar = _vol_bar(_gs_rvol, _vsa_clr)
-                        _gs_items_html += _gs_row(
-                            "Hacim",
-                            (f"{_vsa_bar}"
-                             f"<span style='color:{_vsa_clr};'>{_gs_rvol:.1f}x</span> "
-                             f"<span style='color:{_gs_neu};font-size:0.73rem;'>{_vsa_lbl}</span>"),
-                            explain=_vsa_expl + f" · 5g denge: {_dpct}",
-                            lc=_vsa_clr,
-                            pulse=(_vsa_lbl in _vsa_critical)
-                        )
+                # Compass ok rengi (yön rengi)
+                import math as _math_fc
+                if _y_force > 0.4 and _x_force > -0.2:
+                    _ar_clr = _gs_up_clr  # Boğa
+                elif _y_force < -0.4 and _x_force < 0.2:
+                    _ar_clr = _gs_dn_clr  # Ayı
+                else:
+                    _ar_clr = "#f59e0b"   # Çelişki/belirsiz
+
+                # Compass büyütüldü (1 Haz 2026 v2): 80x75 → 110x100
+                _cx_c, _cy_c = 50, 52
+                _r_max_c = 32
+                _ax_end_c = _cx_c + _x_force * _r_max_c
+                _ay_end_c = _cy_c - _y_force * _r_max_c
+
+                # 3 sinyal noktası — her biri SABİT açıda, uzaklık = sinyal gücü
+                # OBV: Y ekseni (90°/270°), CMF: NE-SW (45°), Delta 5g: NW-SE (135°)
+                # Min görünür offset: 0.35 (nötr sinyaller de görünsün)
+                def _safe_pos(strength, min_visible=0.35):
+                    """0 dahil sinyalleri en az min_visible mesafede tut."""
+                    s = float(strength)
+                    if abs(s) < min_visible:
+                        return min_visible if s >= 0 else -min_visible
+                    return max(-1.0, min(1.0, s))
+
+                # CMF güç — dual-window state'ten gel (turning durumları zayıf konum)
+                _cmf_strength = _state_force_map.get(_cmf_state, 0.0) if _cmf_val_fc is not None else 0.0
+                # Delta 5g güç
+                _d5_strength = 0.0
+                if _d5_signed_fc is not None and _d5_signed_fc != 0:
+                    try:
+                        _d5_abs_max = float(abs(_r5_fc['Close'] * _r5_fc['Volume']).sum())
+                        if _d5_abs_max > 0:
+                            _d5_strength = max(-1.0, min(1.0, _d5_signed_fc / _d5_abs_max * 5))
+                    except Exception:
+                        _d5_strength = 1.0 if _d5_signed_fc > 0 else -1.0
+
+                # Görünür pozisyonlar (sinyal 0 olsa bile dışarıda görünsün)
+                _obv_disp = _safe_pos(_y_force)
+                _cmf_disp = _safe_pos(_cmf_strength)
+                _d5_disp  = _safe_pos(_d5_strength)
+
+                # Dot konumları (sabit açılar)
+                _r_dot = _r_max_c * 0.78
+                _obv_dot_x = _cx_c
+                _obv_dot_y = _cy_c - _obv_disp * _r_dot  # 90° (kuzey ekseni)
+                _cmf_dot_x = _cx_c + _cmf_disp * _r_dot * 0.707  # 45° (NE)
+                _cmf_dot_y = _cy_c - _cmf_disp * _r_dot * 0.707
+                _d5_dot_x  = _cx_c - _d5_disp  * _r_dot * 0.707   # 135° (NW)
+                _d5_dot_y  = _cy_c - _d5_disp  * _r_dot * 0.707
+
+                def _dot_color(strength):
+                    if strength > 0.1:  return _gs_up_clr
+                    if strength < -0.1: return _gs_dn_clr
+                    return _gs_neu
+
+                _obv_dc = _dot_color(_y_force)
+                _cmf_dc = _dot_color(_cmf_strength)
+                _d5_dc  = _dot_color(_d5_strength)
+
+                # 3 distinct shape — kullanıcı tek bakışta tanısın
+                # OBV: ▲ üçgen (pozitif) / ▼ üçgen (negatif) — Y ekseni
+                # Para Akışı: ◆ elmas — NE-SW
+                # Δ 5g: ■ kare — NW-SE
+                _sh_r = 5  # shape boyutu (radius) — %30 küçültüldü
+
+                # OBV — üçgen (yön yön'ü gösterir)
+                if _y_force >= 0:
+                    _obv_shape = (f"<polygon points='{_obv_dot_x:.1f},{_obv_dot_y - _sh_r:.1f} "
+                                  f"{_obv_dot_x - _sh_r*0.866:.1f},{_obv_dot_y + _sh_r*0.5:.1f} "
+                                  f"{_obv_dot_x + _sh_r*0.866:.1f},{_obv_dot_y + _sh_r*0.5:.1f}' "
+                                  f"fill='{_obv_dc}'/>")
+                else:
+                    _obv_shape = (f"<polygon points='{_obv_dot_x:.1f},{_obv_dot_y + _sh_r:.1f} "
+                                  f"{_obv_dot_x - _sh_r*0.866:.1f},{_obv_dot_y - _sh_r*0.5:.1f} "
+                                  f"{_obv_dot_x + _sh_r*0.866:.1f},{_obv_dot_y - _sh_r*0.5:.1f}' "
+                                  f"fill='{_obv_dc}'/>")
+
+                # Para Akışı — elmas (4 köşeli)
+                _cmf_shape = (f"<polygon points='{_cmf_dot_x:.1f},{_cmf_dot_y - _sh_r:.1f} "
+                              f"{_cmf_dot_x + _sh_r:.1f},{_cmf_dot_y:.1f} "
+                              f"{_cmf_dot_x:.1f},{_cmf_dot_y + _sh_r:.1f} "
+                              f"{_cmf_dot_x - _sh_r:.1f},{_cmf_dot_y:.1f}' "
+                              f"fill='{_cmf_dc}'/>")
+
+                # Δ 5g — kare
+                _d5_shape = (f"<rect x='{_d5_dot_x - _sh_r*0.85:.1f}' y='{_d5_dot_y - _sh_r*0.85:.1f}' "
+                             f"width='{_sh_r*1.7:.1f}' height='{_sh_r*1.7:.1f}' fill='{_d5_dc}'/>")
+
+                _compass_svg = (
+                    f"<svg width='110' height='100' viewBox='0 0 110 100' style='flex-shrink:0;'>"
+                    # Ekseni
+                    f"<line x1='14' y1='{_cy_c}' x2='86' y2='{_cy_c}' stroke='#475569' stroke-width='0.5'/>"
+                    f"<line x1='{_cx_c}' y1='17' x2='{_cx_c}' y2='87' stroke='#475569' stroke-width='0.5'/>"
+                    f"<circle cx='{_cx_c}' cy='{_cy_c}' r='32' fill='none' stroke='#334155' "
+                    f"stroke-width='0.4' stroke-dasharray='1.5,2'/>"
+                    # Bileşke ok (3 sinyalin toplamı, arkada)
+                    f"<line x1='{_cx_c}' y1='{_cy_c}' x2='{_ax_end_c:.1f}' y2='{_ay_end_c:.1f}' "
+                    f"stroke='{_ar_clr}' stroke-width='2.2' stroke-linecap='round' opacity='0.55'/>"
+                    # 3 sinyal şekli (öne)
+                    f"{_obv_shape}"
+                    f"{_cmf_shape}"
+                    f"{_d5_shape}"
+                    # Etiketler
+                    f"<text x='50' y='12' text-anchor='middle' font-size='8.5' fill='#94a3b8' font-weight='700'>BOĞA</text>"
+                    f"<text x='50' y='97' text-anchor='middle' font-size='8.5' fill='#94a3b8' font-weight='700'>AYI</text>"
+                    f"<text x='3' y='55' text-anchor='start' font-size='8.5' fill='#94a3b8' font-weight='700'>SAT</text>"
+                    f"<text x='107' y='55' text-anchor='end' font-size='8.5' fill='#94a3b8' font-weight='700'>AL</text>"
+                    f"</svg>"
+                )
+
+                # 3-sinyal mini listesi (pusulanın sağında)
+                # Her satır = compass'taki ŞEKİL+RENK ikonu (görsel eşleme) + label + değer
+                def _sig_line(lbl, val, is_pos, shape_svg):
+                    _sc = _gs_up_clr if is_pos else (_gs_dn_clr if is_pos is False else _gs_neu)
+                    _sym = "+" if is_pos else ("−" if is_pos is False else "·")
+                    return (
+                        f"<div style='display:flex;align-items:center;gap:6px;line-height:1.5;'>"
+                        f"<span style='display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;'>{shape_svg}</span>"
+                        f"<span style='font-size:0.62rem;color:{_gs_lbl_col};font-weight:600;min-width:62px;'>{lbl}</span>"
+                        f"<span style='font-size:0.66rem;color:{_sc};font-weight:700;'>{_sym} {val}</span>"
+                        f"</div>"
+                    )
+                # Mini ikon SVG üreteci (legend için, compass'la birebir aynı şekil + renk)
+                def _mini_obv_icon(clr, is_pos):
+                    # Üçgen (yönü is_pos'a göre)
+                    if is_pos is False:
+                        pts = "7,11 1.5,4 12.5,4"  # ▼
                     else:
-                        _vol_intp = "ortalama üstü" if _gs_rvol >= 1.5 else ("normal" if _gs_rvol >= 0.8 else "zayıf")
-                        _vol_clr  = _gs_up_clr if _gs_rvol >= 1.5 else (_gs_neu if _gs_rvol >= 0.8 else _gs_dn_clr)
-                        _bar_h = _vol_bar(_gs_rvol, _vol_clr)
-                        _gs_items_html += _gs_row(
-                            "Hacim",
-                            (f"{_bar_h}"
-                             f"<span style='color:{_vol_clr};'>{_gs_rvol:.1f}x</span> "
-                             f"<span style='color:{_gs_neu};font-size:0.73rem;'>{_vol_intp}</span>"),
-                            explain=f"Son 5 gün alıcı/satıcı dengesi: {_dpct}",
-                            lc=_dir_color(_sig_hacim)
-                        )
-
-                _obv_t = _gs_obv.get('title', ''); _obv_d = _gs_obv.get('desc', '')
-                _obv_map = {
-                    "🔥 GÜÇLÜ GİZLİ GİRİŞ":                        ("Gizli giriş",       _gs_up_clr, "Fiyat düşerken kurumsal birikim sinyali gözlemleniyor"),
-                    "👀 Olası Toplama (Zayıf)":                      ("Zayıf toplama",     _gs_neu,    "Hafif birikim emaresi var, henüz güçlü değil"),
-                    "⚠️ GİZLİ ÇIKIŞ":                               ("Gizli çıkış",       _gs_dn_clr, "Fiyat çıkarken OBV geriliyor — dağıtım sinyali"),
-                    "⚠️ GİZLİ ÇIKIŞ (Dağıtım)":                     ("Gizli çıkış",       _gs_dn_clr, "Fiyat çıkarken OBV geriliyor — dağıtım sinyali"),
-                    "✅ Hacim Destekli Trend":                        ("Trend destekli",    _gs_up_clr, "Hacim yönü destekliyor — sağlıklı hareket"),
-                    "✅ SAĞLIKLI TREND (Hacim Onaylı)":               ("Trend destekli",    _gs_up_clr, "Hacim yönü destekliyor — sağlıklı hareket"),
-                    "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)":           ("Direnç / emilim",   _gs_neu,    "Düşüşe rağmen OBV ortalaması üzerinde — kurumsal destek gözlemleniyor"),
-                    "⚖️ ZAYIF İVME (Hacimsiz Bölge)":               ("Hacimsiz",          _gs_neu,    "OBV ortalama altında — net para akışı yok"),
-                    "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)":           ("Kafa çeviriyor ↑",  "#38bdf8",  "5g OBV yukarı döndü — 14g hâlâ baskılı, erken toparlanma sinyali"),
-                    "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)":            ("Kafa çeviriyor ↓",  "#f59e0b",  "5g OBV zayıfladı ama 14g hâlâ pozitif — kısa vadeli yavaşlama"),
-                    # CMF çelişki başlıkları (calculate_price_action_dna downgrade senaryoları)
-                    "⚠️ ŞÜPHELİ GİRİŞ (Para Akışı Çelişkili)":            ("Şüpheli giriş",     "#f59e0b",  "OBV birikim görüyor ama bar içi alıcı zayıf — Para Akışı negatif, gün içi gerçek talep sorgulanabilir"),
-                    "⚠️ SAHTE GÜÇ (OBV-Para Akışı Çelişkisi)":             ("Sahte güç ⚠️",      "#f59e0b",  "OBV güçlü görünüyor ama bar içi satış baskısı var — kurumsal destek sorgulanabilir"),
-                    "⚠️ ZAYIF TEYİT (OBV güçlü, Para Akışı zayıf)":        ("Zayıf teyit",       "#f59e0b",  "OBV ortalamasının üzerinde ama Para Akışı satış baskısı gösteriyor — trend kırılgan olabilir"),
+                        pts = "7,3 1.5,11 12.5,11"  # ▲
+                    return f"<svg width='14' height='14' viewBox='0 0 14 14'><polygon points='{pts}' fill='{clr}'/></svg>"
+                def _mini_cmf_icon(clr):
+                    # Elmas ◆
+                    return (f"<svg width='14' height='14' viewBox='0 0 14 14'>"
+                            f"<polygon points='7,1 13,7 7,13 1,7' fill='{clr}'/></svg>")
+                def _mini_d5_icon(clr):
+                    # Kare ■
+                    return (f"<svg width='14' height='14' viewBox='0 0 14 14'>"
+                            f"<rect x='2' y='2' width='10' height='10' fill='{clr}'/></svg>")
+                # OBV durumu
+                _obv_y_pos = (True if _y_force > 0.3 else (False if _y_force < -0.3 else None))
+                _obv_short = ("güçlü" if _y_force > 0.6 else
+                              ("zayıflıyor" if _y_force > 0 else
+                               ("nötr" if _y_force == 0 else
+                                ("zayıf" if _y_force > -0.6 else "neg."))))
+                # CMF durumu — dual-window state'e göre
+                _cmf_state_label = {
+                    "strong_pos":   ("güçlü",       True),
+                    "pos":          ("poz.",        True),
+                    "turning_up":   ("dönüyor ↗",   True),
+                    "neutral":      ("nötr",        None),
+                    "turning_down": ("zayıflıyor ↘", False),
+                    "neg":          ("neg.",        False),
+                    "strong_neg":   ("güçlü neg.",   False),
                 }
-                _ov_lbl, _ov_clr, _ov_expl = _obv_map.get(
-                    _obv_t, ("nötr", _gs_neu, "Akıllı para hareketi belirgin değil"))
-                _gs_items_html += _gs_row(
-                    "OBV",
-                    f"<span style='color:{_ov_clr};'>{_ov_lbl}</span>",
-                    explain=_ov_expl,
-                    lc=_ov_clr
+                _cmf_short, _cmf_pos = _cmf_state_label.get(_cmf_state, ("—", None))
+                if _cmf_val_fc is None:
+                    _cmf_short, _cmf_pos = "—", None
+                # Delta5g durumu
+                _d5_pos = (None if _d5_signed_fc is None else (True if _d5_signed_fc > 0 else (False if _d5_signed_fc < 0 else None)))
+                _d5_short = "poz." if (_d5_signed_fc and _d5_signed_fc > 0) else ("neg." if (_d5_signed_fc and _d5_signed_fc < 0) else "—")
+                _signals_block = (
+                    f"<div style='display:flex;flex-direction:column;gap:3px;flex:1;justify-content:center;padding-left:38px;'>"
+                    + _sig_line("OBV",         _obv_short, _obv_y_pos, _mini_obv_icon(_obv_dc, _obv_y_pos))
+                    + _sig_line("Para Akışı",  _cmf_short, _cmf_pos,   _mini_cmf_icon(_cmf_dc))
+                    + _sig_line("Δ 5g",        _d5_short,  _d5_pos,    _mini_d5_icon(_d5_dc))
+                    + "</div>"
+                )
+
+                # ── HACİM cümlesi ────────────────────────────────────────────────
+                if not _data_ready:
+                    _hac_icon, _hac_clr, _hac_text = "→", _gs_neu, "Gün içi hacim henüz oluşmadı"
+                elif _gs_rvol >= 1.5:
+                    if _gs_cum5 > 0:
+                        _hac_icon, _hac_clr = "✓", _gs_up_clr
+                        _hac_text = f"Hacim normalden {_gs_rvol:.1f}x fazla — alıcı baskısı belirgin"
+                    elif _gs_cum5 < 0:
+                        _hac_icon, _hac_clr = "⚠", _gs_dn_clr
+                        _hac_text = f"Hacim normalden {_gs_rvol:.1f}x fazla — satıcı baskısı belirgin"
+                    else:
+                        _hac_icon, _hac_clr = "→", "#f59e0b"
+                        _hac_text = f"Hacim normalden {_gs_rvol:.1f}x fazla — yön kararsız"
+                elif _gs_rvol < 0.7:
+                    _hac_icon, _hac_clr = "↘", "#94a3b8"
+                    _hac_text = f"Hacim normalden %{int((1 - _gs_rvol) * 100)} az — ilgi düşük"
+                else:
+                    _hac_icon, _hac_clr = "→", _gs_neu
+                    _hac_text = f"Hacim normal seviyede ({_gs_rvol:.1f}x) — son 5g {_dpct}"
+
+                # ── OBV cümlesi (sade Türkçe çeviri) ─────────────────────────────
+                _obv_sentence_map = {
+                    "🔥 GÜÇLÜ GİZLİ GİRİŞ":                        ("✓", _gs_up_clr, "Akıllı para alım yapıyor — fiyat düşerken kurumsal birikim"),
+                    "✅ SAĞLIKLI TREND (Hacim Onaylı)":             ("✓", _gs_up_clr, "Hacim yönü destekliyor — sağlıklı yükseliş"),
+                    "✅ Hacim Destekli Trend":                       ("✓", _gs_up_clr, "Hacim yönü destekliyor — sağlıklı yükseliş"),
+                    "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)":          ("🛡", _gs_neu,    "Panik satışları kurumsal alımla karşılanıyor"),
+                    "👀 Olası Toplama (Zayıf)":                     ("→", _gs_neu,    "Erken toplama belirtisi — henüz teyit yok"),
+                    "⚠️ ŞÜPHELİ GİRİŞ (Para Akışı Çelişkili)":     ("⚠", "#f59e0b", "OBV birikim görüyor ama bar içi alıcı zayıf — gün-içi şüpheli"),
+                    "⚠️ SAHTE GÜÇ (OBV-Para Akışı Çelişkisi)":     ("⚠", "#f59e0b", "OBV güçlü ama mum içinde satıcı baskın — sahte güç"),
+                    "⚠️ ZAYIF TEYİT (OBV güçlü, Para Akışı zayıf)":("⚠", "#f59e0b", "OBV yukarı ama günlük kapanış zayıf — trend kırılgan"),
+                    "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)":          ("↗", "#38bdf8", "5g OBV yukarı döndü ama 14g hâlâ baskılı — erken toparlanma sinyali"),
+                    "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)":           ("↘", "#f59e0b", "5g OBV zayıfladı ama 14g hâlâ pozitif — kısa vadeli yavaşlama, erken uyarı"),
+                    "⚠️ GİZLİ ÇIKIŞ (Dağıtım)":                    ("⚠", _gs_dn_clr, "Akıllı para satıyor — dağıtım belirtisi"),
+                    "⚠️ GİZLİ ÇIKIŞ":                              ("⚠", _gs_dn_clr, "Akıllı para satıyor — dağıtım belirtisi"),
+                    "⚖️ ZAYIF İVME (Hacimsiz Bölge)":              ("→", _gs_neu,    "Belirgin akıllı para hareketi yok"),
+                }
+                _obv_icon, _obv_clr_s, _obv_text = _obv_sentence_map.get(
+                    _obv_t, ("→", _gs_neu, "Akıllı para hareketi belirgin değil"))
+
+                # ── PARA AKIŞI cümlesi — CMF dual-window (5g vs 20g) ─────────────
+                _cmf_sentence_map = {
+                    "strong_pos":   ("✓", _gs_up_clr, "Para Akışı 5g ve 20g birlikte pozitif — bar içi alıcı baskısı teyitli"),
+                    "pos":          ("→", _gs_up_clr, "Para Akışı 20g pozitif — orta vadede alıcı baskısı sürüyor"),
+                    "turning_up":   ("↗", "#38bdf8", "5g Para Akışı pozitife döndü ama 20g hâlâ negatif — bar içi toparlanma erken sinyali"),
+                    "neutral":      ("→", _gs_neu,    "Para Akışı sönük — net yön sinyali yok"),
+                    "turning_down": ("↘", "#f59e0b", "5g Para Akışı negatife döndü ama 20g hâlâ pozitif — bar içi alıcı yorgun, erken uyarı"),
+                    "neg":          ("→", _gs_dn_clr, "Para Akışı 20g negatif — orta vadede satıcı baskısı sürüyor"),
+                    "strong_neg":   ("⚠", _gs_dn_clr, "Para Akışı 5g ve 20g birlikte negatif — bar içi satıcı baskısı teyitli"),
+                }
+                _cmf_icon, _cmf_clr_s, _cmf_text = _cmf_sentence_map.get(
+                    _cmf_state, ("→", _gs_neu, "Para akışı verisi alınamadı"))
+
+                # Pusula + sinyal listesi yan yana, altında 3 cümle (italic — panel açıklama stiliyle aynı)
+                def _flow_sentence(icon, color, text):
+                    return (
+                        f"<div style='display:flex;align-items:flex-start;gap:6px;padding:2px 0;"
+                        f"font-size:0.72rem;color:{_gs_expl_col};line-height:1.4;"
+                        f"font-style:italic;opacity:0.85;'>"
+                        f"<span style='color:{color};font-weight:800;flex-shrink:0;min-width:14px;"
+                        f"text-align:center;font-style:normal;'>{icon}</span>"
+                        f"<span>{text}</span></div>"
+                    )
+
+                # Çerçeve — _gs_line ile diğer panel divider'larıyla aynı tonda
+                _gs_items_html += (
+                    f"<div style='padding:7px 8px;border:1px solid {_gs_line};"
+                    f"border-radius:6px;margin:4px 0 2px;'>"
+                    f"<div style='display:flex;align-items:stretch;gap:6px;margin-bottom:5px;'>"
+                    f"{_compass_svg}"
+                    f"{_signals_block}"
+                    f"</div>"
+                    + _flow_sentence(_hac_icon, _hac_clr, _hac_text)
+                    + _flow_sentence(_obv_icon, _obv_clr_s, _obv_text)
+                    + _flow_sentence(_cmf_icon, _cmf_clr_s, _cmf_text)
+                    + "</div>"
                 )
 
                 _sfp_t = _gs_sfp.get('title', 'Yok')
@@ -18302,7 +18651,7 @@ def _render_genel_ozet_panel():
                     )
 
                 # ── GRUP 3: MOMENTUM ──────────────────────────────────────────
-                _gs_items_html += _gs_section("Momentum")
+                _gs_items_html += _gs_section("Momentum", badge_html=_dots_mom)
 
                 # RSI Divergence — fiyat ile RSI arasındaki uyumsuzluk
                 # Bullish: fiyat yeni dip, RSI daha yüksek (satıcı tükeniyor)
@@ -18384,15 +18733,30 @@ def _render_genel_ozet_panel():
 
                     # RSI mini gauge (30/70 markerlı)
                     _rsi_pct = max(0, min(100, _gs_rsi_val))
+                    # #4 RSI Bullseye — concentric zone disc + marker dot
+                    # Outer ring = extreme (0-30 / 70-100), inner = normal (30-70).
+                    # Marker konumu: dikey eksen, RSI>50 üstte, <50 altta; uzaklık = |RSI-50|.
+                    _rsi_v = max(0.0, min(100.0, float(_gs_rsi_val)))
+                    _dot_y = 14 - (_rsi_v - 50.0) / 50.0 * 11.5  # cy=14, range ±11.5
+                    if _rsi_v >= 70 or _rsi_v <= 30:   _dot_clr = "#ef4444"
+                    elif _rsi_v >= 60 or _rsi_v <= 40: _dot_clr = "#f59e0b"
+                    else:                              _dot_clr = "#10b981"
                     _rsi_gauge = (
-                        f"<span style='display:inline-block;width:50px;height:5px;background:#1e293b;"
-                        f"border-radius:3px;position:relative;margin-right:5px;vertical-align:middle;'>"
-                        f"<span style='position:absolute;left:30%;top:-2px;width:1px;height:9px;background:#475569;'></span>"
-                        f"<span style='position:absolute;left:70%;top:-2px;width:1px;height:9px;background:#475569;'></span>"
-                        f"<span style='position:absolute;left:{_rsi_pct:.0f}%;top:-2.5px;"
-                        f"width:9px;height:9px;border-radius:50%;background:{_rc};"
-                        f"transform:translateX(-50%);box-shadow:0 0 4px {_rc};'></span>"
-                        f"</span>"
+                        f"<svg width='28' height='28' viewBox='0 0 28 28' "
+                        f"style='vertical-align:middle;margin-right:6px;flex-shrink:0;'>"
+                        # Dış halka (kırmızı extreme zone)
+                        f"<circle cx='14' cy='14' r='13' fill='#1e293b' "
+                        f"stroke='#ef4444' stroke-width='2.5' stroke-opacity='0.5'/>"
+                        # İç yeşil normal zone disk
+                        f"<circle cx='14' cy='14' r='7.5' fill='#0d1829' "
+                        f"stroke='#22c55e' stroke-width='1.5' stroke-opacity='0.6'/>"
+                        # Yatay merkez referans çizgisi (RSI=50)
+                        f"<line x1='2' y1='14' x2='26' y2='14' "
+                        f"stroke='#475569' stroke-width='0.5' stroke-dasharray='2,1.5' opacity='0.5'/>"
+                        # RSI marker dot
+                        f"<circle cx='14' cy='{_dot_y:.1f}' r='2.5' fill='{_dot_clr}' "
+                        f"stroke='#0f172a' stroke-width='1'/>"
+                        f"</svg>"
                     )
                     # Regular Div (bull/bear) → pulse
                     _rsi_pulse = _rsi_div in ("bull", "bear")
@@ -19410,11 +19774,14 @@ if st.session_state.generate_prompt:
     # --- 1. GEREKLİ VERİLERİ TOPLA ---
     info = fetch_stock_info(t)
     df_hist = get_safe_historical_data(t) # Ana veri
-    # Hayalet bar temizliği (1 Haz 2026): BIST tatil günlerinde V=0 sahte barlar
-    # AI prompt'taki RVOL/Vol_Avg20/5g net % hesaplarını çarpıtıyordu. Sadece prompt
-    # girdisi için filter; endeks (V hep >0) etkilenmez.
+    # Hayalet bar temizliği (v2 — 1 Haz 2026): V=0 + O=H=L=C flat = tatil hayaleti.
+    # Endeks V=0 ama OHLC oynayan barlar legitimate, dokunma.
     if df_hist is not None and not df_hist.empty and 'Volume' in df_hist.columns:
-        df_hist = df_hist[df_hist['Volume'].fillna(0) > 0].copy()
+        _v_h = df_hist['Volume'].fillna(0)
+        _o_h = df_hist['Open']; _h_h = df_hist['High']
+        _l_h = df_hist['Low'];  _c_h = df_hist['Close']
+        _flat_h = ((_o_h - _c_h).abs() < 1e-9) & ((_h_h - _c_h).abs() < 1e-9) & ((_l_h - _c_h).abs() < 1e-9)
+        df_hist = df_hist[~((_v_h <= 0) & _flat_h)].copy()
     
     # EKSİK OLAN TANIMLAMALAR EKLENDİ (bench_series ve idx_data)
     cat_for_bench = st.session_state.category
@@ -20492,6 +20859,31 @@ if st.session_state.generate_prompt:
     except Exception:
         obv_div_txt = "(veri eksik)"
 
+    # 2.5) CMF Dual-Window (5g + 20g) — kafa çeviriyor tespiti dahil
+    cmf_dual_txt = "(veri eksik)"
+    try:
+        _cmf_20 = float(compute_cmf(df_hist, period=20))
+        _cmf_5  = float(compute_cmf(df_hist, period=5))
+        _THR_p = 0.05
+        _c5p = _cmf_5 > _THR_p;  _c5n = _cmf_5 < -_THR_p
+        _c20p = _cmf_20 > _THR_p; _c20n = _cmf_20 < -_THR_p
+        if _c5p and _c20p:
+            cmf_dual_txt = f"Güçlü pozitif (5g {_cmf_5:+.3f} + 20g {_cmf_20:+.3f}) — bar içi alıcı baskısı teyitli"
+        elif _c5n and _c20n:
+            cmf_dual_txt = f"Güçlü negatif (5g {_cmf_5:+.3f} + 20g {_cmf_20:+.3f}) — bar içi satıcı baskısı teyitli"
+        elif _c5p and _c20n:
+            cmf_dual_txt = f"Kafa çeviriyor / toparlanma (5g {_cmf_5:+.3f} pozitif, 20g {_cmf_20:+.3f} negatif) — bar içi erken toparlanma sinyali"
+        elif _c5n and _c20p:
+            cmf_dual_txt = f"Kafa çeviriyor / zayıflama (5g {_cmf_5:+.3f} negatif, 20g {_cmf_20:+.3f} pozitif) — bar içi alıcı yorgun, erken uyarı"
+        elif _c20p:
+            cmf_dual_txt = f"Orta vade pozitif (20g {_cmf_20:+.3f}) — alıcı baskısı sürüyor"
+        elif _c20n:
+            cmf_dual_txt = f"Orta vade negatif (20g {_cmf_20:+.3f}) — satıcı baskısı sürüyor"
+        else:
+            cmf_dual_txt = f"Nötr (5g {_cmf_5:+.3f}, 20g {_cmf_20:+.3f}) — net yön yok"
+    except Exception:
+        pass
+
     # 3) Formasyon adı + güven skoru (pat_df'ten — Skor = q_score, 0-100)
     try:
         if pat_df is not None and not pat_df.empty:
@@ -21515,6 +21907,7 @@ ict_pa:
 obv_cmf:
   durum: {obv_div_txt}
   omi_sigma: {omi_txt}
+  cmf_dual_window: {cmf_dual_txt}
 
 smart_money:
   delta_durumu: {delta_durumu}
@@ -21614,11 +22007,19 @@ Tek mumun içindeki kapanış pozisyonu (CP) tek başına yanıltıcı olabilir 
 - "YANILTICI — mum düşük AMA 5g pozitif": gün-sonu zayıflık deseni, yükseliş kırılgan; "alıcı yorgun, geri çekilme riski" tonu uygun.
 - "Sağlıklı yükseliş/düşüş": CP ile net yön uyumlu, sinyal teyitli.
 
-*** OBV + Para Akışı YORUMLAMA REHBERİ (YAML.obv_cmf.durum okuyacaksın) ***
+*** OBV + Para Akışı YORUMLAMA REHBERİ (YAML.obv_cmf.durum + cmf_dual_window) ***
 YAML.obv_cmf.durum başlığı "ŞÜPHELİ / SAHTE GÜÇ / ZAYIF TEYİT" içeriyorsa → OBV göründüğü kadar güçlü değil, gün içi alıcı/satıcı bar dengesi OBV'yi sorguluyor → "OBV güçlü ama bar içi alıcı zayıf" şeklinde dürüstçe yansıt; muhtemelen gap/açılış hacminden kaynaklı.
 - Para Akışı > +0.05: bar içi alış güçlü → OBV birikimini onaylar.
 - Para Akışı < -0.05: bar içi satış baskısı → OBV birikimini sorgular.
 - Çelişki yoksa (aynı yön): sinyali güçlendirilmiş sun.
+
+CMF DUAL-WINDOW (5g + 20g — OBV mantığıyla aynı; YAML.obv_cmf.cmf_dual_window):
+- "Güçlü pozitif" (her ikisi +): bar içi alıcı baskısı hem kısa hem orta vadede teyitli — kurumsal ilgi kalıcı.
+- "Güçlü negatif" (her ikisi −): satıcı baskısı kalıcı — alış erken bekleme.
+- "Kafa çeviriyor / toparlanma" (5g+ AMA 20g−): bar içi erken dönüş sinyali; trend henüz teyit etmedi, "izlenecek erken sinyal" diliyle yansıt; tek başına aksiyon değil.
+- "Kafa çeviriyor / zayıflama" (5g− AMA 20g+): orta vade pozitif ama kısa vade yorgun — erken uyarı; "alıcı tarafında yorgunluk gözleniyor" tonu.
+- "Orta vade pozitif/negatif" (sadece 20g aktif): istikrarlı yön, kısa vade net değil.
+- "Nötr": net yön yok, başka sinyallere ağırlık ver.
 
 *** KIRILIM KALİTESİ FİLTRESİ (OMI — OBV Momentum Index) ***
 OMI = EMA(OBV,5) − EMA(OBV,20), 50-bar std ile normalize → kısa vadeli OBV ivmesinin orta vadeye göre gücü.
@@ -21984,7 +22385,7 @@ UYARI: Sadece gerçek bir risk varsa yaz — RSI uyumsuzluğu, stopping volume, 
 Analizin sonuna "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." yaz (küçük harf, noktalı) ve altına "#SmartMoneyRadar #BIST100" yaz.
 
 *****GÖREVLERİN SUNUŞ SIRALAMASI*****
-Sabit sıra: 1 → 2 → 3 → 4 → 5. Beşinci Görev daima en sonda.
+Sabit sıra: 4 → 2 → 3 → 1 → 5. Beşinci Görev daima en sonda.
 ANCAK her görevin İÇERİĞİNİ bugünün baskın senaryosuna göre çerçevele:
 - Royal Flush, Quasimodo, TOBO/Fincan-Kulp kırılımı veya 5★ Erken Radar varsa → o senaryoyu tüm görevlerin merkezine al, diğer veriler destekleyici.
 - Z-Score ≥ 2.0 + OBV düşüyor/hacim zayıf → risk yönetimi tonu baskın olsun.
