@@ -2763,6 +2763,11 @@ Her bir paragrafı yazarken kendine şu soruyu sor: 'Eee, yani? Kahvehanedeki ya
 Örnek Yanlış Cümle: "Z-Score +2 seviyesinin aşıldığını göstermektedir. Algoritmik olarak bu bölgeler aşırı fiyatlanma alanlarıdır ve düzeltme riski taşıyabilmektedir."
 Özetle; Twitter için atılacak bi twit tarzında, aşırıya kaçmadan ve basit bir dilde yaz. Yatırımcıyı korkutmadan, umutlandırmadan, sadece mevcut durumun ne olduğunu ve hangi risklerin nerede olduğunu anlat.
 
+*** ANTİ-KALIP MEKANİK KURAL (PRO) ***
+1) Her madde/paragrafın iskeleti en az 1 SAYI/FİYAT + 1 GÜN-SAYISI veya ORAN olsun (örn: "SMA50'nin %1.8 üstünde · 4 gündür"). Genel sıfat-yığını ("güçlü", "kararlı", "iştahlı") tek başına = YASAK.
+2) GÖREV-İÇİ TEKRARSIZLIK: Aynı veri noktasını (OBV durumu, RVOL, CMF, VSA) farklı maddelerde AYNI sıfat kombinasyonuyla yazma — kendi varyantını kur.
+3) AÇILIŞ ÖZ-DENETİMİ: Madde açılışını yazmadan önce sor — "Bu cümle başka hisse için de geçer mi?" Cevap evetse: hisseye özgü tek anchor (52H konumu, OBV durum başlığı, formasyon eşiği, OMI sigma, VP şekli) ile yeniden yaz.
+
 *** EN ÖNEMLİ KURAL: VERİ ODAK NOKTASI VE AĞIRLIKLANDIRMA KURALI ***
 1. ANALİZİN MERKEZİ: Her zaman "Akıllı Para ne yapıyor?", "Senaryo Çerçevesi (Bias+Zone)" ve "Fitil Çekiliyor mu?" soruları olmalıdır.
   3 ana odağın var:
@@ -2773,133 +2778,42 @@ Her bir paragrafı yazarken kendine şu soruyu sor: 'Eee, yani? Kahvehanedeki ya
 3. Z-SCORE SINIRLANDIRMASI: Z-Score veya ortalamalardan uzaklaşma verilerini analizin merkezine KOYMA. Yüksek Z-Score değerlerini bir "çöküş", "bit yeniği" veya "kesin dönüş" sinyali olarak YORUMLAMA.
 4. Güçlü kurumsal alımların olduğu yerlerde yüksek Z-Score, tehlike değil "güçlü momentumun" kanıtıdır. Z-Score'a sadece risk yönetimi paragrafında "kısa bir kâr al/izleyen stop uyarısı" olarak kısaca değin ve geç. Hikayeni bu istatistik üzerine kurma.
 
-*** Z-SCORE BAĞLAM REHBERİ (ZORUNLU OKUMA — SCAN KUTUSU "🚨 Z-SCORE ANOMALİSİ" GÖRSEN DAHİ) ***
-Z-Score tek başına ne anlam taşır?
-- Z > +2 = "Fiyat son 20 günlük ortalamasından 2 standart sapma uzakta" demektir. Sadece bir uzaklık ölçüsüdür, kehanete çevrilmez.
-- Trend başlangıçlarında, güçlü kırılımlarda, kurumsal giriş anlarında Z > +2 BEKLENEN VE NORMAL bir olgudur.
-  Örnek: Hisse 3 gündür yükseli̇yor → Z = +2.7 → Bu "tehlike" değil, "ivme" sinyalidir.
+*** Z-SCORE + POC/VWAP + MEAN REVERSION — BİRLEŞİK BAĞLAM REHBERİ ***
+Z-Score, POC, VWAP üçü de UZAKLIK/REFERANS ölçeridir — KEHANET değildir, "adil değer" değildir, tek başına dönüş tetikleyicisi DEĞİLDİR. Trend başlangıcında / güçlü kırılımda Z>+2, VWAP'tan %X sapma, POC'tan kopma — BEKLENEN ve NORMAL olgudur (ivme sinyalidir).
 
-Z-Score'u SADECE şu iki koşulda öne al:
-  a) OBV düşüyor VEYA hacim zayıf IKEN Z > +2 → Gerçek "Zayıf El Yükselişi" riski. Kısaca değin.
-  b) Fiyat 30+ gündür durmadan yükseliyor VE kurumsal satış işaretleri de varsa → Yorgunluk notu düş.
+Bunları "düzeltme tezi"ne ÇEVİRMEK İÇİN ANCAK şu çelişki koşullarından biri ŞART:
+  a) OBV/Delta divergence + uzaklık birlikte → "yorgunluk emaresi olabilir"
+  b) Yatay range içinde +2 std → "mean reversion ihtimali artıyor"
+  c) Stopping/Climax Volume + uzaklık → "kurumsal kar satışı belirebilir"
+  d) Trend zaten kırılmış + uzaklık daralıyor → "eski denge testi"
+Aksi durumda: uzaklık → SEVİYE bilgisi (destek/direnç, izleyen stop noktası), yön sinyali DEĞİL.
 
-Aksi tüm durumlarda: Scan kutusunda 🚨 Z-Score uyarısı görsen bile bunu analizinin ana teması yapma. Sadece "uzaklık verisi" olarak son paragrafa göm. Analizin hikayesi akıllı para, senaryo ve price action üzerine kurulu kalsın.
+ÖZEL DURUMLAR:
+- PRE-LAUNCH / "BİRİKİM TAMAMLANDI" → bu analizin birincil hikayesi olmalı; Z-Score arka plana atılır.
+- ALTIN SET-UP (Golden Trio) + yüksek Z-Score → "güçlü momentum + uzama"; ton olumlu, Z-Score "stop yukarı taşı" notu, panik dili YASAK.
 
-PRE-LAUNCH / BİRİKİM TAMAMLANDI durumu: Eğer KALKIŞ RADARI "BİRİKİM TAMAMLANDI" veya "⚡ YÜKSELİŞ KRİTERLERİ KARŞILANDI" statüsündeyse, bu analizin birincil hikayesi olmalıdır. Z-Score ne olursa olsun, birikim süreci tamamlanmış ve tetik bekleniyor demektir — bu bulguyu analizin en başına koy, Z-Score yorumunu ise ancak risk yönetimi notunda kısaca kullan.
+YASAKLI KALIP AİLELERİ (fikri yakala — hepsi yasak):
+× "düzeltme yakın / pahalı / aşırı uzak / geri gelmeli / ortalamaya döner / sürdürülemez / adil değerden saptı / RSI 70+ satış / Z>+2 çöküş yakın / parabolik bitti / kâr satışı yakın"
+× "kurumsal maliyetten %X uzaklaşması düzeltme ihtiyacı fısıldıyor" (kurumsal maliyet kalıbı)
+× "%X uzakta → pahalı bölge" (yüzdesel uzaklık tek başına yargı)
 
-ALTIN SET-UP (Golden Trio) + Yüksek Z-Score bir arada: Bu durum "tehlike" değil "güçlü momentum + uzama" kombinasyonudur. Analizin tonu olumlu kalmalı; Z-Score'u "stop seviyesini yukarı taşı" notu olarak kullan, "dikkat et, çöküş gelebilir" panikâr diline çevirme.
+DOĞRU DİL — ŞU KALIPLARI KULLAN:
+✓ "VWAP geri çekilmede destek olabilir" (uzaklık → seviye)
+✓ "Trend ivmesinin doğal sonucu" (uzaklık → momentum açıklaması)
+✓ "İzleyen stop yükseltme noktası" (uzaklık → risk yönetimi)
+✓ "OBV uyumsuzluğu olmadıkça düzeltme zorunluluğu yok" (uzaklık + çelişki testi)
+✓ "RSI 75 — güçlü trendde haftalarca 70+ kalabilir, OBV çelişkisi olmadıkça uyarı değil"
 
-*** POC / VWAP BAĞLAM REHBERİ (ZORUNLU OKUMA — Z-SCORE İLE AYNI MANTIK) ***
-POC ve VWAP "fair value" (adil değer) DEĞİLDİR. Geçmiş hacim merkezi ve kurumsal execution ortalamasıdır. Tek başına alım/satım sinyali olarak ASLA kullanılmaz.
+TRADE PLAN'da POC/VWAP: Giriş = retest seviyesi · Stop = VAL altı · Hedef = VAH veya bir önceki POC. Yön kararı için OBV/delta/hacim kullanılır, POC/VWAP DEĞİL.
 
-POC tek başına ne anlam taşır?
-- POC = "Son 20 günde en çok hacim gören fiyat" — geçmiş arz/talep dengesinin tepe noktası 
-- Fiyatın POC üstünde olması = piyasa yeni denge arıyor (bullish auction, NORMAL bir durumdur)
-- Fiyatın POC altında olması = eski denge çöküyor (bearish auction)
-- POC'tan uzaklık MOMENTUM ölçer, "overvaluation" (aşırı pahalılık) DEĞİLDİR
+⚠️ ÖZ-DENETLEME (analiz bitince hızlı tarama): "Düzeltme yakın / pahalı / aşırı uzak / sürdürülemez / geri gelmeli / ortalamaya döner" yazdın mı? → Evet ise: bağımsız kanıt (OBV/Delta divergence) ekle veya sil.
 
-VWAP tek başına ne anlam taşır?
-- VWAP = Kurumsal execution benchmark (algo trading referansı)
-- Trendde fiyatın VWAP üstünde kalması BEKLENEN durumdur, "pahalı" değildir
-- VWAP'tan sapma = trend ivmesi göstergesi, "düzeltme ihtiyacı" değildir
-
-YANLIŞ kullanım örnekleri (BU TARZ CÜMLELER KESİNLİKLE YASAK):
-× "Fiyat POC'un %5 üstünde, pahalı, düzeltme gelebilir"
-× "VWAP'tan koptu, mean reversion bekleniyor"
-× "Kurumsal maliyet merkezinden %X uzaklaşması düzeltme ihtiyacı fısıldıyor"
-× "Pahalı bölgeye girdi, geri gelme zorunluluğu var"
-
-DOĞRU kullanım örnekleri:
-✓ "Fiyat POC üzerinde — POC seviyesi olası geri çekilmede destek olabilir"
-✓ "VWAP üstünde momentum sağlam — VWAP altına düşmedikçe trend yapısı bozulmaz"
-✓ "VAH üstünde kapanış var, kurumsal alıcılar yeni denge arıyor"
-✓ "Fiyat VWAP'tan %X sapmış — bu trend ivmesinin doğal sonucu, çelişki değil"
-
-POC/VWAP uzaklığını "düzeltme tezini" ANCAK şu durumlarda kur (yani çelişki varsa):
-  a) OBV düşüyor + RSI uyumsuzluk + POC üstünde → "yorgunluk emaresi" (kısa not, son paragraf)
-  b) Yatay piyasa (range) içinde POC'tan +2 std sapma → mean reversion ihtimali konuşulabilir
-  c) Stopping/Climax Volume + POC üstünde → kurumsal kar satışı sinyali olabilir
-  d) Trend zaten çökmüş + fiyat POC'a dönüyor → eski denge testi
-
-Aksi tüm durumlarda POC/VWAP'ı sadece SEVİYE olarak kullan, yön sinyali olarak değil.
-"%5 uzak", "%10 uzak" gibi yüzdesel uzaklık TEK BAŞINA analiz argümanı OLAMAZ.
-Bunlar ancak diğer çelişkilerle (OBV/RSI/Hacim divergence) BİRLİKTE değerlendirilirse anlamlıdır.
-
-Trade plan oluştururken POC/VWAP'ı ŞÖYLE kullan:
-- Giriş bölgesi: POC veya VWAP geri çekilmesinde re-test (level olarak)
-- Stop seviyesi: VAL (Value Area Low) altı
-- Hedef: VAH (Value Area High) veya bir önceki POC
-Yön kararı için POC/VWAP DEĞİL → akıllı para hareketi (OBV, delta, kurumsal hacim) kullanılır.
-
-═══════════════════════════════════════════════════════════════════════
-🚫 KESİN YASAK CÜMLE KALIPLARI — MEAN REVERSION FALLACY (BU LİSTEYİ EZBERLE)
-═══════════════════════════════════════════════════════════════════════
-AŞAĞIDAKİ KALIPLARI HİÇBİR KOŞULDA KULLANMAYACAKSIN. Bu cümleleri yazarsan
-analizin reddedilir. Eğer kullanmak üzereysen DUR ve şu kontrolü yap:
-"Bu çıkarımı POC/VWAP/RSI/Z-Score uzaklığı ÜZERİNE Mİ kuruyorum, yoksa
-OBV/Hacim/Delta çelişkisi gibi BAĞIMSIZ bir kanıt var mı?"
-Bağımsız kanıt YOKSA → bu cümleyi yazma.
-
-🚫 YASAK 1 — VWAP/POC distance'ı tek başına dönüş tetikleyicisi yapmak:
-   × "Fiyat VWAP'tan %X uzaklaştı, düzeltme gelebilir"
-   × "POC'un %X üstüne çıktı, pahalı bölgeye girdi"
-   × "Kurumsal maliyetten uzaklaşması düzeltme ihtiyacı fısıldıyor"
-   × "Adil değerden saptı, geri dönüş kaçınılmaz"
-   × "Parabolik hareket sürdürülemez"
-   × "Bu hızda yükseliş normal değil, kâr satışı yakın"
-   ✓ DOĞRUSU: "Fiyat VWAP üzerinde — VWAP geri çekilmede destek seviyesi olabilir"
-   ✓ DOĞRUSU: "POC'tan %X uzakta — bu trend ivmesinin doğal sonucu"
-
-🚫 YASAK 2 — RSI overbought/oversold'u tek başına dönüş tetikleyicisi yapmak:
-   × "RSI 75'te, aşırı alım, düzeltme yakın"
-   × "RSI 25'te, aşırı satım, dönüş zamanı"
-   × "Momentum tepe yapmış, satış geliyor"
-   ✓ DOĞRUSU: "RSI 75 — güçlü trendde RSI haftalarca 70+ kalabilir, OBV/hacim çelişkisi olmadıkça düzeltme zorunluluğu yok"
-   ✓ DOĞRUSU: "RSI 25 — düşüş hız kaybediyor olabilir; pozitif divergence + hacim teyidi ile alım fırsatı dönüşebilir"
-
-🚫 YASAK 3 — Z-Score'u tek başına çöküş/dönüş tetikleyicisi yapmak:
-   × "Z-Score +2.5'te, çöküş geliyor"
-   × "Standart sapmalardan kopmuş, geri gelmeli"
-   ✓ DOĞRUSU: "Z-Score +2.5 — trend ivmesinin doğal ölçüsü; izleyen stop yükseltme noktası, ama tek başına çıkış sinyali değil"
-
-🚫 YASAK 4 — "Pahalı/Ucuz" yargısını yüzdelik uzaklık üzerine kurmak:
-   × "%5 yukarıda → pahalı bölge"
-   × "%3 altında → ucuz, alım fırsatı"
-   ✓ DOĞRUSU: Konum bilgisi olarak "fiyat X seviyesinin üzerinde/altında" — yargı yok, seviye var.
-
-🚫 YASAK 5 — Mean reversion'ı bağımsız kanıt olmadan kullanmak:
-   × "Geri gelmesi lazım", "düzeltmesi gerekiyor", "ortalamaya dönmeli"
-   × "Bu hareket kalıcı değil"
-   × "Geri çekilme kaçınılmaz"
-   Mean reversion'dan SADECE şu durumlarda bahset (ve "kesin" değil "ihtimal" diliyle):
-     a) OBV/Delta divergence + uzaklık birlikte → "yorgunluk emaresi olabilir"
-     b) Yatay piyasa içinde +2 std → "range içinde mean reversion ihtimali artıyor"
-     c) Stopping/Climax Volume + uzaklık → "kurumsal kar satışı belirebilir"
-     d) Trend zaten kırılmış + uzaklık daralıyor → "eski denge testi"
-
-⚠️ ÖZ-DENETLEME — ANALİZİ TAMAMLAMADAN ÖNCE ŞU 3 SORUYU CEVAPLA:
-   1. "Düzeltme yakın / pahalı / aşırı uzak" tarzı cümle yazdım mı? → Evet ise SİL veya bağımsız kanıt ekle.
-   2. POC/VWAP/RSI/Z-Score uzaklığını TEK BAŞINA argüman olarak kullandım mı? → Evet ise OBV/Hacim/Delta ile teyit et veya konum bilgisine indir.
-   3. "Sürdürülemez", "geri gelmeli", "ortalamaya döner" gibi mean reversion ifadesi kullandım mı? → Evet ise yukarıdaki 4 koşuldan birinin sağlandığını doğrula.
-
-Bu kuralların ihlali = analizinin profesyonelliğinin sıfırlanması demektir.
-═══════════════════════════════════════════════════════════════════════
-
-*** YANILTICI VERİ TUZAKLARI — BUNLARI YANLIŞ OKUMA ***
-Aşağıdaki veriler trendin yan ürünüdür, trendin kendisi değildir. Hisse yükseliyorsa bu verileri tehlike olarak çerçeveleme:
-
-Z-Score yüksekliği → Yükselen bir hissede Z-Score'un +2 veya üzerine çıkması normaldir. "Yükseldi ama Z-Score tehlikeli" deme. Sadece "bu seviyede izleyen stop mantıklı olabilir" diyebilirsin.
-
-VWAP sapması → Ralli yapan hissede fiyatın VWAP'tan uzaklaşması ivmenin sonucudur. "VWAP'tan çok koptu, düzeltme gelebilir" yerine "VWAP bu noktada olası bir geri çekilmede destek olabilir" de.
-
-RSI aşırı alım → Güçlü trendlerde RSI haftalarca 70 üzerinde kalabilir. RSI'ı tek başına uyarı olarak öne çıkarma; OBV veya hacimle çelişmiyorsa dipnot geç.
-
-Gerçek çelişki bunlardır — bunları mutlaka belirt ama "yükseldik, şuna da dikkat edelim" tonuyla:
+*** GERÇEK ÇELİŞKİ LİSTESİ (dipnot olarak belirt — merkeze alma) ***
+Bunlar trendin "yan ürünü değil" gerçek çelişkilerdir. Yükseliş devam ederken bile "şunu da gözden kaçırmayalım" tonuyla göster:
 → Fiyat yukarı giderken OBV aşağı (gizli dağıtım olabilir)
 → Hacim düşerken fiyat yükseliyor (zayıf el yükselişi)
 → HARSI kırmızıyken fiyat tavan yapıyor (momentum tükenebilir)
-→ Stopping Volume veya Climax Volume tespit edilmişse (dönüş ihtimali artar)
-Bu çelişkiler varsa tek bir paragrafta "yükseliş devam ederken şunu da gözden kaçırmayalım" şeklinde sun, ama kesinlikle analizin merkezine alma.
+→ Stopping/Climax Volume tespit edilmişse (dönüş ihtimali artar)
 
 {data_block}
 
@@ -3012,19 +2926,26 @@ def build_ai_prompt_gorev1(ticker: str, ict: dict, info: dict, df: pd.DataFrame)
 Hem finans bilgisi olan hem olmayan aynı metni okuyacak. İkisi için ayrı analiz yazma — teknik terimleri aşağıdaki ANLATIM KURALI'na göre benzetmeyle ver, sonra devam et. Hız kesme. Doğru ton: bir konuyu gerçekten bilen birinin sohbet dili.
 
 *** ANLATIM KURALI ***
-Teknik terimler geçtiğinde parantez içinde açıklama yapma:
-YASAK: "Order Block (kurumsal alım bölgesi)" → Bu sadece çevirme, sadelik değil.
-YERİNE benzetme kullan — terimi bir cümleyle somutlaştır, sonra devam et:
-- Order Block → "büyük oyuncuların geçmişte mal topladığı raf gibi — fiyat o rafa gelince genelde tutunur"
-- FVG → "fiyatın çok hızlı geçtiği boş basamak — genelde geri dönüp doldurulur"
-- BOS → "fiyatın defalarca döndüğü duvarı nihayet yıkması — trend değişiyor demektir"
-- Liquidity Sweep → "büyük oyuncuların stop emirlerini patlatmak için fiyatı o seviyeye itmesi — tuzak gibi"
-- Delta → "alıcıların mı satıcıların mı daha ısrarcı olduğunu gösteren güç ölçeri"
-- OBV → "fiyat ne yaparsa yapsın paranın hangi yöne aktığını gösteren şamandıra"
-- RVOL → "normalde 100 kişi işlem yaparken bugün kaç kişi girdiğini gösteren kalabalık sayacı"
-- VWAP → "büyük fonların o gündeki ortalama alım fiyatı — kurumlar buna göre pozisyon kurar"
-- Z-Score → "fiyatın son 20 günün ortalamasından ne kadar uzaklaştığını gösteren lastik"
-- CHoCH → "koşan birinin duraksaması — trend henüz dönmedi ama ritmi bozuldu"
+Teknik terimleri parantez içinde çevirme. Yerine ÖNCE insani benzetme cümlesi, SONRA kısaltma parantezde. Aşağıdakiler İLHAM amaçlıdır — ezbere kopya YASAK, kendi cümleni kur. Aynı kavramı arka arkaya iki analizde AYNI kelimelerle yazma.
+
+İLHAM örnekleri (format: "insani cümle" → sonra parantezde kısaltma):
+- "Fiyat ne yaparsa yapsın paranın hangi yöne aktığını gösteren şamandıra" → (OBV)
+- "Alıcıların mı satıcıların mı daha ısrarcı olduğunu gösteren güç ölçeri" → (Delta)
+- "Normalde 100 kişi işlem yaparken bugün kaç kişi girdiğini gösteren kalabalık sayacı" → (RVOL)
+- "Büyük fonların o gündeki ortalama alım fiyatı — kurumlar buna göre pozisyon kurar" → (VWAP)
+- "Büyük oyuncuların mal topladığı raf — fiyat o rafa gelince tutunur" → (Order Block / OB)
+- "Fiyatın çok hızlı geçtiği boş basamak — geri dönüp doldurulur" → (FVG)
+- "Defalarca döndüğü duvarı nihayet yıkması" → (BOS — Yapı Kırılımı)
+- "Stop'ları patlatmak için fiyatı o seviyeye itmek — tuzak gibi" → (Liquidity Sweep)
+- "Fiyatın son 20 günün ortalamasından ne kadar uzaklaştığını gösteren lastik" → (Z-Score)
+- "Koşan birinin duraksaması — trend dönmedi ama ritmi bozuldu" → (CHoCH)
+
+KURAL: Bir terim tanımını analizde EN FAZLA 1 kez ver. İkinci geçişten itibaren sadece kısa kısaltma (OBV, Delta, RVOL, VWAP, OB, FVG, BOS).
+
+*** ANTİ-KALIP MEKANİK KURAL (ELITE) ***
+1) Her madde/paragrafın iskeleti en az 1 SAYI/FİYAT + 1 GÜN-SAYISI veya ORAN olsun. Genel sıfat-yığını ("güçlü", "kararlı", "iştahlı") tek başına = YASAK.
+2) GÖREV-İÇİ TEKRARSIZLIK: Aynı veri noktasını (OBV durumu, RVOL, CMF, VSA) farklı maddelerde AYNI sıfat kombinasyonuyla yazma — varyant kur.
+3) AÇILIŞ ÖZ-DENETİMİ: Madde açılışını yazmadan önce sor — "Bu cümle başka hisse için de geçer mi?" Cevap evetse: hisseye özgü tek anchor (52H konumu, OBV durum başlığı, formasyon eşiği, OMI sigma, VP şekli) ile yeniden yaz.
 
 *** EN ÖNEMLİ KURAL: VERİ ODAK NOKTASI VE AĞIRLIKLANDIRMA KURALI ***
 1. ANALİZİN MERKEZİ: Her zaman "Akıllı Para ne yapıyor?", "Senaryo Çerçevesi (Bias+Zone)" ve "Fitil Çekiliyor mu?" soruları olmalıdır.
@@ -3101,130 +3022,42 @@ YASAKLI CÜMLE KALIPLARI — Aşağıdaki kalıpları ASLA kullanma, bunları ku
 Örnek Yanlış Cümle: "Z-Score +2 seviyesinin aşıldığını göstermektedir. Algoritmik olarak bu bölgeler aşırı fiyatlanma alanlarıdır ve düzeltme riski taşıyabilmektedir."
 Aşırıya kaçmadan, basit bir dilde yaz. Yatırımcıyı korkutmadan, umutlandırmadan, sadece mevcut durumun ne olduğunu ve hangi risklerin nerede olduğunu anlat.
 
-*** Z-SCORE BAĞLAM REHBERİ (ZORUNLU OKUMA — SCAN KUTUSU "🚨 Z-SCORE ANOMALİSİ" GÖRSEN DAHİ) ***
-Z-Score tek başına ne anlam taşır?
-- Z > +2 = "Fiyat son 20 günlük ortalamasından 2 standart sapma uzakta" demektir. Sadece bir uzaklık ölçüsüdür, kehanete çevrilmez.
-- Trend başlangıçlarında, güçlü kırılımlarda, kurumsal giriş anlarında Z > +2 BEKLENEN VE NORMAL bir olgudur.
-  Örnek: Hisse 3 gündür yükseli̇yor → Z = +2.7 → Bu "tehlike" değil, "ivme" sinyalidir.
+*** Z-SCORE + POC/VWAP + MEAN REVERSION — BİRLEŞİK BAĞLAM REHBERİ ***
+Z-Score, POC, VWAP üçü de UZAKLIK/REFERANS ölçeridir — KEHANET değildir, "adil değer" değildir, tek başına dönüş tetikleyicisi DEĞİLDİR. Trend başlangıcında / güçlü kırılımda Z>+2, VWAP'tan %X sapma, POC'tan kopma — BEKLENEN ve NORMAL olgudur (ivme sinyalidir).
 
-Z-Score'u SADECE şu iki koşulda öne al:
-  a) OBV düşüyor VEYA hacim zayıf IKEN Z > +2 → Gerçek "Zayıf El Yükselişi" riski. Kısaca değin.
-  b) Fiyat 30+ gündür durmadan yükseliyor VE kurumsal satış işaretleri de varsa → Yorgunluk notu düş.
+Bunları "düzeltme tezi"ne ÇEVİRMEK İÇİN ANCAK şu çelişki koşullarından biri ŞART:
+  a) OBV/Delta divergence + uzaklık birlikte → "yorgunluk emaresi olabilir"
+  b) Yatay range içinde +2 std → "mean reversion ihtimali artıyor"
+  c) Stopping/Climax Volume + uzaklık → "kurumsal kar satışı belirebilir"
+  d) Trend zaten kırılmış + uzaklık daralıyor → "eski denge testi"
+Aksi durumda: uzaklık → SEVİYE bilgisi (destek/direnç, izleyen stop noktası), yön sinyali DEĞİL.
 
-Aksi tüm durumlarda: Scan kutusunda 🚨 Z-Score uyarısı görsen bile bunu analizinin ana teması yapma. Sadece "uzaklık verisi" olarak son paragrafa göm. Analizin hikayesi akıllı para, senaryo ve price action üzerine kurulu kalsın.
+ÖZEL DURUMLAR:
+- PRE-LAUNCH / "BİRİKİM TAMAMLANDI" → bu analizin birincil hikayesi olmalı; Z-Score arka plana atılır.
+- ALTIN SET-UP (Golden Trio) + yüksek Z-Score → "güçlü momentum + uzama"; ton olumlu, Z-Score "stop yukarı taşı" notu, panik dili YASAK.
 
-PRE-LAUNCH / BİRİKİM TAMAMLANDI durumu: Eğer KALKIŞ RADARI "BİRİKİM TAMAMLANDI" veya "⚡ YÜKSELİŞ KRİTERLERİ KARŞILANDI" statüsündeyse, bu analizin birincil hikayesi olmalıdır. Z-Score ne olursa olsun, birikim süreci tamamlanmış ve tetik bekleniyor demektir — bu bulguyu analizin en başına koy, Z-Score yorumunu ise ancak risk yönetimi notunda kısaca kullan.
+YASAKLI KALIP AİLELERİ (fikri yakala — hepsi yasak):
+× "düzeltme yakın / pahalı / aşırı uzak / geri gelmeli / ortalamaya döner / sürdürülemez / adil değerden saptı / RSI 70+ satış / Z>+2 çöküş yakın / parabolik bitti / kâr satışı yakın"
+× "kurumsal maliyetten %X uzaklaşması düzeltme ihtiyacı fısıldıyor" (kurumsal maliyet kalıbı)
+× "%X uzakta → pahalı bölge" (yüzdesel uzaklık tek başına yargı)
 
-ALTIN SET-UP (Golden Trio) + Yüksek Z-Score bir arada: Bu durum "tehlike" değil "güçlü momentum + uzama" kombinasyonudur. Analizin tonu olumlu kalmalı; Z-Score'u "stop seviyesini yukarı taşı" notu olarak kullan, "dikkat et, çöküş gelebilir" panikâr diline çevirme.
+DOĞRU DİL — ŞU KALIPLARI KULLAN:
+✓ "VWAP geri çekilmede destek olabilir" (uzaklık → seviye)
+✓ "Trend ivmesinin doğal sonucu" (uzaklık → momentum açıklaması)
+✓ "İzleyen stop yükseltme noktası" (uzaklık → risk yönetimi)
+✓ "OBV uyumsuzluğu olmadıkça düzeltme zorunluluğu yok" (uzaklık + çelişki testi)
+✓ "RSI 75 — güçlü trendde haftalarca 70+ kalabilir, OBV çelişkisi olmadıkça uyarı değil"
 
-*** POC / VWAP BAĞLAM REHBERİ (ZORUNLU OKUMA — Z-SCORE İLE AYNI MANTIK) ***
-POC ve VWAP "fair value" (adil değer) DEĞİLDİR. Geçmiş hacim merkezi ve kurumsal execution ortalamasıdır. Tek başına alım/satım sinyali olarak ASLA kullanılmaz.
+TRADE PLAN'da POC/VWAP: Giriş = retest seviyesi · Stop = VAL altı · Hedef = VAH veya bir önceki POC. Yön kararı için OBV/delta/hacim kullanılır, POC/VWAP DEĞİL.
 
-POC tek başına ne anlam taşır?
-- POC = "Son 20 günde en çok hacim gören fiyat" — geçmiş arz/talep dengesinin tepe noktası
-- Fiyatın POC üstünde olması = piyasa yeni denge arıyor (bullish auction, NORMAL bir durumdur)
-- Fiyatın POC altında olması = eski denge çöküyor (bearish auction)
-- POC'tan uzaklık MOMENTUM ölçer, "overvaluation" (aşırı pahalılık) DEĞİLDİR
+⚠️ ÖZ-DENETLEME (analiz bitince hızlı tarama): "Düzeltme yakın / pahalı / aşırı uzak / sürdürülemez / geri gelmeli / ortalamaya döner" yazdın mı? → Evet ise: bağımsız kanıt (OBV/Delta divergence) ekle veya sil.
 
-VWAP tek başına ne anlam taşır?
-- VWAP = Kurumsal execution benchmark (algo trading referansı)
-- Trendde fiyatın VWAP üstünde kalması BEKLENEN durumdur, "pahalı" değildir
-- VWAP'tan sapma = trend ivmesi göstergesi, "düzeltme ihtiyacı" değildir
-
-YANLIŞ kullanım örnekleri (BU TARZ CÜMLELER KESİNLİKLE YASAK):
-× "Fiyat POC'un %5 üstünde, pahalı, düzeltme gelebilir"
-× "VWAP'tan koptu, mean reversion bekleniyor"
-× "Kurumsal maliyet merkezinden %X uzaklaşması düzeltme ihtiyacı fısıldıyor"
-× "Pahalı bölgeye girdi, geri gelme zorunluluğu var"
-
-DOĞRU kullanım örnekleri:
-✓ "Fiyat POC üzerinde — POC seviyesi olası geri çekilmede destek olabilir"
-✓ "VWAP üstünde momentum sağlam — VWAP altına düşmedikçe trend yapısı bozulmaz"
-✓ "VAH üstünde kapanış var, kurumsal alıcılar yeni denge arıyor"
-✓ "Fiyat VWAP'tan %X sapmış — bu trend ivmesinin doğal sonucu, çelişki değil"
-
-POC/VWAP uzaklığını "düzeltme tezini" ANCAK şu durumlarda kur (yani çelişki varsa):
-  a) OBV düşüyor + RSI uyumsuzluk + POC üstünde → "yorgunluk emaresi" (kısa not, son paragraf)
-  b) Yatay piyasa (range) içinde POC'tan +2 std sapma → mean reversion ihtimali konuşulabilir
-  c) Stopping/Climax Volume + POC üstünde → kurumsal kar satışı sinyali olabilir
-  d) Trend zaten çökmüş + fiyat POC'a dönüyor → eski denge testi
-
-Aksi tüm durumlarda POC/VWAP'ı sadece SEVİYE olarak kullan, yön sinyali olarak değil.
-"%5 uzak", "%10 uzak" gibi yüzdesel uzaklık TEK BAŞINA analiz argümanı OLAMAZ.
-Bunlar ancak diğer çelişkilerle (OBV/RSI/Hacim divergence) BİRLİKTE değerlendirilirse anlamlıdır.
-
-Trade plan oluştururken POC/VWAP'ı ŞÖYLE kullan:
-- Giriş bölgesi: POC veya VWAP geri çekilmesinde re-test (level olarak)
-- Stop seviyesi: VAL (Value Area Low) altı
-- Hedef: VAH (Value Area High) veya bir önceki POC
-Yön kararı için POC/VWAP DEĞİL → akıllı para hareketi (OBV, delta, kurumsal hacim) kullanılır.
-
-═══════════════════════════════════════════════════════════════════════
-🚫 KESİN YASAK CÜMLE KALIPLARI — MEAN REVERSION FALLACY (BU LİSTEYİ EZBERLE)
-═══════════════════════════════════════════════════════════════════════
-AŞAĞIDAKİ KALIPLARI HİÇBİR KOŞULDA KULLANMAYACAKSIN. Bu cümleleri yazarsan
-analizin reddedilir. Eğer kullanmak üzereysen DUR ve şu kontrolü yap:
-"Bu çıkarımı POC/VWAP/RSI/Z-Score uzaklığı ÜZERİNE Mİ kuruyorum, yoksa
-OBV/Hacim/Delta çelişkisi gibi BAĞIMSIZ bir kanıt var mı?"
-Bağımsız kanıt YOKSA → bu cümleyi yazma.
-
-🚫 YASAK 1 — VWAP/POC distance'ı tek başına dönüş tetikleyicisi yapmak:
-   × "Fiyat VWAP'tan %X uzaklaştı, düzeltme gelebilir"
-   × "POC'un %X üstüne çıktı, pahalı bölgeye girdi"
-   × "Kurumsal maliyetten uzaklaşması düzeltme ihtiyacı fısıldıyor"
-   × "Adil değerden saptı, geri dönüş kaçınılmaz"
-   × "Parabolik hareket sürdürülemez"
-   × "Bu hızda yükseliş normal değil, kâr satışı yakın"
-   ✓ DOĞRUSU: "Fiyat VWAP üzerinde — VWAP geri çekilmede destek seviyesi olabilir"
-   ✓ DOĞRUSU: "POC'tan %X uzakta — bu trend ivmesinin doğal sonucu"
-
-🚫 YASAK 2 — RSI overbought/oversold'u tek başına dönüş tetikleyicisi yapmak:
-   × "RSI 75'te, aşırı alım, düzeltme yakın"
-   × "RSI 25'te, aşırı satım, dönüş zamanı"
-   × "Momentum tepe yapmış, satış geliyor"
-   ✓ DOĞRUSU: "RSI 75 — güçlü trendde RSI haftalarca 70+ kalabilir, OBV/hacim çelişkisi olmadıkça düzeltme zorunluluğu yok"
-   ✓ DOĞRUSU: "RSI 25 — düşüş hız kaybediyor olabilir; pozitif divergence + hacim teyidi ile alım fırsatı dönüşebilir"
-
-🚫 YASAK 3 — Z-Score'u tek başına çöküş/dönüş tetikleyicisi yapmak:
-   × "Z-Score +2.5'te, çöküş geliyor"
-   × "Standart sapmalardan kopmuş, geri gelmeli"
-   ✓ DOĞRUSU: "Z-Score +2.5 — trend ivmesinin doğal ölçüsü; izleyen stop yükseltme noktası, ama tek başına çıkış sinyali değil"
-
-🚫 YASAK 4 — "Pahalı/Ucuz" yargısını yüzdelik uzaklık üzerine kurmak:
-   × "%5 yukarıda → pahalı bölge"
-   × "%3 altında → ucuz, alım fırsatı"
-   ✓ DOĞRUSU: Konum bilgisi olarak "fiyat X seviyesinin üzerinde/altında" — yargı yok, seviye var.
-
-🚫 YASAK 5 — Mean reversion'ı bağımsız kanıt olmadan kullanmak:
-   × "Geri gelmesi lazım", "düzeltmesi gerekiyor", "ortalamaya dönmeli"
-   × "Bu hareket kalıcı değil"
-   × "Geri çekilme kaçınılmaz"
-   Mean reversion'dan SADECE şu durumlarda bahset (ve "kesin" değil "ihtimal" diliyle):
-     a) OBV/Delta divergence + uzaklık birlikte → "yorgunluk emaresi olabilir"
-     b) Yatay piyasa içinde +2 std → "range içinde mean reversion ihtimali artıyor"
-     c) Stopping/Climax Volume + uzaklık → "kurumsal kar satışı belirebilir"
-     d) Trend zaten kırılmış + uzaklık daralıyor → "eski denge testi"
-
-⚠️ ÖZ-DENETLEME — ANALİZİ TAMAMLAMADAN ÖNCE ŞU 3 SORUYU CEVAPLA:
-   1. "Düzeltme yakın / pahalı / aşırı uzak" tarzı cümle yazdım mı? → Evet ise SİL veya bağımsız kanıt ekle.
-   2. POC/VWAP/RSI/Z-Score uzaklığını TEK BAŞINA argüman olarak kullandım mı? → Evet ise OBV/Hacim/Delta ile teyit et veya konum bilgisine indir.
-   3. "Sürdürülemez", "geri gelmeli", "ortalamaya döner" gibi mean reversion ifadesi kullandım mı? → Evet ise yukarıdaki 4 koşuldan birinin sağlandığını doğrula.
-
-Bu kuralların ihlali = analizinin profesyonelliğinin sıfırlanması demektir.
-═══════════════════════════════════════════════════════════════════════
-
-*** YANILTICI VERİ TUZAKLARI — BUNLARI YANLIŞ OKUMA ***
-Aşağıdaki veriler trendin yan ürünüdür, trendin kendisi değildir. Hisse yükseliyorsa bu verileri tehlike olarak çerçeveleme:
-→ Z-Score yüksekliği → Yükselen bir hissede Z-Score'un +2 veya üzerine çıkması normaldir. "Yükseldi ama Z-Score tehlikeli" deme. Sadece "bu seviyede izleyen stop mantıklı olabilir" diyebilirsin.
-→ VWAP sapması → Ralli yapan hissede fiyatın VWAP'tan uzaklaşması ivmenin sonucudur. "VWAP'tan çok koptu, düzeltme gelebilir" yerine "VWAP bu noktada olası bir geri çekilmede destek olabilir" de.
-→ RSI aşırı alım → Güçlü trendlerde RSI haftalarca 70 üzerinde kalabilir. RSI'ı tek başına uyarı olarak öne çıkarma; OBV veya hacimle çelişmiyorsa dipnot geç.
-
-Gerçek çelişki bunlardır — bunları mutlaka belirt ama "yükseldik, şuna da dikkat edelim" tonuyla:
+*** GERÇEK ÇELİŞKİ LİSTESİ (dipnot olarak belirt — merkeze alma) ***
+Bunlar trendin "yan ürünü değil" gerçek çelişkilerdir. Yükseliş devam ederken bile "şunu da gözden kaçırmayalım" tonuyla göster:
 → Fiyat yukarı giderken OBV aşağı (gizli dağıtım olabilir)
 → Hacim düşerken fiyat yükseliyor (zayıf el yükselişi)
 → HARSI kırmızıyken fiyat tavan yapıyor (momentum tükenebilir)
-→ Stopping Volume veya Climax Volume tespit edilmişse (dönüş ihtimali artar)
-Bu çelişkiler varsa tek bir paragrafta "yükseliş devam ederken şunu da gözden kaçırmayalım" şeklinde sun — analizin merkezine alma.
+→ Stopping/Climax Volume tespit edilmişse (dönüş ihtimali artar)
 
 {data_block}
 
