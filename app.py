@@ -22123,13 +22123,48 @@ Bunları "düzeltme tezi"ne çevirmek için ANCAK şu çelişki koşullarından 
   d) Trend zaten kırılmış + uzaklık daralıyor → "eski denge testi"
 Aksi durumda: uzaklık verisi → SEVİYE bilgisi olarak kullan (destek/direnç, izleyen stop noktası), yön sinyali olarak DEĞİL.
 
+═══════════════════════════════════════════════════════════════════════
+🚫 KESİN YASAK CÜMLE KALIPLARI — 5 KATEGORİ (BU LİSTEYİ EZBERLE)
+═══════════════════════════════════════════════════════════════════════
+Bağımsız kanıt YOKSA (OBV/Delta/Hacim divergence yoksa) → bu cümleleri yazma. Yazarsan analiz reddedilir.
+
+🚫 YASAK 1 — VWAP/POC uzaklığını TEK BAŞINA dönüş tetikleyicisi yapmak:
+   × "Fiyat VWAP'tan %X uzaklaştı, düzeltme gelebilir"
+   × "POC'un %X üstüne çıktı, pahalı bölgeye girdi"
+   × "Kurumsal maliyetten %X uzaklaşması yapısal zayıflıktır" (← ASTOR analizinde bu yapıldı, YASAK)
+   × "Adil değerden saptı, geri dönüş kaçınılmaz"
+   × "Parabolik hareket sürdürülemez"
+   ✓ DOĞRU: "Fiyat VWAP üzerinde — VWAP geri çekilmede destek seviyesi olabilir"
+   ✓ DOĞRU: "POC'tan %X uzakta — bu trend ivmesinin doğal sonucu"
+   ✓ DOĞRU (çelişki varsa): "VWAP'tan %X uzakta + OBV divergence → yorgunluk emaresi olabilir"
+
+🚫 YASAK 2 — RSI overbought/oversold'u TEK BAŞINA dönüş tetikleyicisi yapmak:
+   × "RSI 75'te, aşırı alım, düzeltme yakın"
+   × "RSI 25'te, aşırı satım, dönüş zamanı"
+   ✓ DOĞRU: "RSI 75 — güçlü trendde RSI haftalarca 70+ kalabilir, OBV/hacim çelişkisi olmadıkça düzeltme zorunluluğu yok"
+
+🚫 YASAK 3 — Z-Score'u TEK BAŞINA çöküş/dönüş tetikleyicisi yapmak:
+   × "Z-Score +2.5'te, çöküş geliyor"
+   × "Standart sapmalardan kopmuş, geri gelmeli"
+   ✓ DOĞRU: "Z-Score +2.5 — trend ivmesinin doğal ölçüsü; izleyen stop yükseltme noktası"
+
+🚫 YASAK 4 — "Pahalı/Ucuz" yargısını yüzdelik uzaklık üzerine kurmak:
+   × "%5 yukarıda → pahalı bölge"
+   × "%3 altında → ucuz, alım fırsatı"
+   ✓ DOĞRU: Konum bilgisi olarak "fiyat X seviyesinin üzerinde/altında" — yargı yok, seviye var.
+
+🚫 YASAK 5 — Mean reversion'ı bağımsız kanıt olmadan kullanmak:
+   × "Geri gelmesi lazım", "ortalamaya dönmeli", "geri çekilme kaçınılmaz"
+   Mean reversion'dan SADECE 4 koşullu durumda bahset (yukarıdaki a/b/c/d), "ihtimal" diliyle.
+
+⚠️ ÖZ-DENETLEME (analiz bitince zorunlu): "Düzeltme yakın / pahalı / aşırı uzak / sürdürülemez / geri gelmeli / ortalamaya döner" yazdın mı? → Evet ise: bağımsız kanıt ekle veya sil. UZAKLIK BAĞLAM kuralı + YASAKLI KELİMELER + MEAN REVERSION FALLACY = aynı kuralın 3 katmanı.
+═══════════════════════════════════════════════════════════════════════
+
 ÖZEL DURUMLAR:
 - PRE-LAUNCH "BİRİKİM TAMAMLANDI" veya KALKIŞ RADARI YÜKSELİŞ KRİTERLERİ KARŞILANDI → bu analizin birincil hikayesi olmalı; Z-Score arka plana atılır.
 - ALTIN SET-UP (Golden Trio) + yüksek Z-Score birlikte → "güçlü momentum + uzama" kombinasyonu; ton olumlu, Z-Score "stop yukarı taşı" notu, "çöküş gelebilir" panikâr dili YASAK.
 
 TRADE PLAN'da POC/VWAP kullanımı: Giriş = POC/VWAP retest seviyesi · Stop = VAL altı · Hedef = VAH veya bir önceki POC. Yön kararı için OBV/delta/hacim kullanılır, POC/VWAP DEĞİL.
-
-⚠️ ÖZ-DENETLEME (analiz bitince hızlı tarama): "Düzeltme yakın / pahalı / aşırı uzak / sürdürülemez / geri gelmeli / ortalamaya döner" yazdın mı? → Evet ise: bağımsız kanıt (OBV/Delta/Hacim divergence) ekle veya sil. Yukarıdaki YASAKLI KELİMELER + MEAN REVERSION FALLACY bölümleri ve POC/VWAP BAĞLAM REHBERİ aynı kuralın 3 katmanıdır — tek seferde uy.
 
 *** GERÇEK ÇELİŞKİ LİSTESİ — Bunları kaçırma ***
 (Yukarıdaki Z-Score / VWAP / POC / RSI yasakları zaten okudun — tekrar etmeye gerek yok.
@@ -22665,6 +22700,16 @@ YAML'da olmayan veya farklı olan bir sayı/etiket yazdıysan → o cümleyi DÜ
 YAML.smart_money üstündeki ERKEN RADAR bölümünde Kalite Skoru ≥ 65 mi?
 EVET ise: G1 açılış paragrafında ana senaryo adı geçti mi? G4 GENEL YORUM'da senaryoya değindin mi?
 HAYIR cevabı varsa: o bölümleri yeniden yaz — Erken Radar senaryosunu enjekte et.
+
+**KATMAN 6 — UZAKLIK CÜMLESİ BAĞLAM TESTİ (KRİTİK):**
+Analizinde "VWAP / POC / Z-Score / RSI overbought" kelimeleri geçen HER cümleyi tek tek tara. Her biri için sor:
+A) Cümle SADECE uzaklık/seviye bilgisi mi veriyor? (örn: "Fiyat VWAP'ın %3 üstünde — VWAP geri çekilmede destek olabilir") → ✓ DOĞRU, geç.
+B) Cümle uzaklığı dönüş/zayıflık ARGÜMANI olarak mı kullanıyor? (örn: "VWAP'tan %3.5 uzaklaşması yapısal zayıflıktır", "POC üstünde, pahalı bölgede", "RSI 70+, satış geliyor") → ❌ YASAK.
+   Bu durumda 2 seçenek:
+   1) YAML'da bu uzaklığa eşlik eden BAĞIMSIZ kanıt var mı? (OBV divergence / Climax / Stopping Volume / Delta divergence / RSI divergence) → varsa: "VWAP %3.5 uzakta + OBV kafa çev. zayıflama → yorgunluk emaresi olabilir" şeklinde BİRLEŞTİR.
+   2) Bağımsız kanıt YOK → cümleyi tamamen SİL veya seviye bilgisine indir.
+ÖRNEK (ASTOR yorumunda yapılan HATA): "Endeks VWAP hattının %3.5 altında işlem görmeye devam ediyor. Fiyatın bu kurumsal ortalamanın gerisinde kalması yapısal zayıflıktır." → BAĞLAMSIZ YASAK. Doğrusu: "Fiyat VWAP'ın %3.5 altında — VWAP geri çekilmede direnç olarak çalışabilir" (sadece seviye) VEYA bağımsız kanıt eklendiyse "VWAP'ın altında + OBV kafa çev. zayıflama + günlük delta -%77 → bar içi alıcı yorgun, kısa vade temkin".
+Bu katman ASTOR analizinin %40 hatasını çözer; ihmal etme.
 
 ⚠️ 4 KATMANI GEÇEMEMİŞ ANALİZ = REDDEDİLMİŞ ANALİZ. Tekrar yaz, sonra gönder.
 Bu filtreler abonenin Telegram'ına giden CANLI çıktıya uygulanır — itibarımız buna bağlı, hassasiyet maksimum.
