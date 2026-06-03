@@ -1736,13 +1736,13 @@ def get_batch_data_cached(asset_list, period="1y"):
                     df_sym_new = df_new.xs(sym, axis=1, level=1).copy() if sym in df_new.columns.get_level_values(1) else df_new[sym].copy()
                 else:
                     df_sym_new = df_new.copy()
-                
+
                 if isinstance(df_sym_new.columns, pd.MultiIndex):
                     if 'Close' in df_sym_new.columns.get_level_values(0):
                         df_sym_new.columns = df_sym_new.columns.get_level_values(0)
                     else:
                         df_sym_new.columns = df_sym_new.columns.get_level_values(1)
-                
+
                 df_sym_new = df_sym_new.loc[:, ~df_sym_new.columns.duplicated()]
                 df_sym_new.columns = [str(c).capitalize() for c in df_sym_new.columns]
                 if 'Volume' not in df_sym_new.columns or df_sym_new['Volume'].isna().all():
@@ -1750,16 +1750,52 @@ def get_batch_data_cached(asset_list, period="1y"):
 
                 df_sym_new = df_sym_new.dropna(subset=['Close'])
                 df_sym_new.index = df_sym_new.index.tz_localize(None) # Zaman dilimi çakışmasını önle
-                
+
+                # ═══════════════════════════════════════════════════════════════
+                # B4-3 (4 Haz 2026) — İSYATIRIM HACİM FALLBACK (Master Scan için)
+                # Yahoo Finance BIST hisseleri için sistematik olarak V=0 dönüyor
+                # (test: SASA 28/30 V=0, 95 hissede HİÇBİRİ tam temiz).
+                # Bu blok: BIST hissesi + son 30 günde V=0 oranı %20+ ise
+                # isyatirimhisse'den hacim çekip override eder.
+                # Master Scan ortalama 600 hisse × ~0.3sn isyatirim çağrısı ≈ 3dk
+                # ek süre, ama tüm hacim-bazlı analizler artık doğru çalışır.
+                # ═══════════════════════════════════════════════════════════════
+                try:
+                    _is_bist_b43 = sym.endswith(".IS") and not sym.startswith(("XU", "XB", "XT"))
+                    if _is_bist_b43 and len(df_sym_new) >= 30:
+                        _last30_b43 = df_sym_new['Volume'].tail(30)
+                        _v0_ratio = (_last30_b43 == 0).sum() / 30
+                        if _v0_ratio > 0.20:  # son 30g'de %20+ V=0 → bozuk
+                            from datetime import timedelta as _td_b43
+                            _end_b43 = df_sym_new.index[-1] + _td_b43(days=1)
+                            _start_b43 = df_sym_new.index[0]
+                            _isy_b43 = _fetch_bist_ohlcv_isyatirim(
+                                clean_sym,
+                                _start_b43.strftime("%Y-%m-%d"),
+                                _end_b43.strftime("%Y-%m-%d")
+                            )
+                            if _isy_b43 is not None and len(_isy_b43) > 5:
+                                _common_b43 = df_sym_new.index.intersection(_isy_b43.index)
+                                if len(_common_b43) > 0:
+                                    # Yahoo bar varsa AMA Volume 0 ise → isyatirim'den al
+                                    _zero_mask = df_sym_new.loc[_common_b43, 'Volume'] == 0
+                                    _isy_nonzero = _isy_b43.loc[_common_b43, 'Volume'] > 0
+                                    _fix_idx = _common_b43[_zero_mask & _isy_nonzero]
+                                    if len(_fix_idx) > 0:
+                                        df_sym_new.loc[_fix_idx, 'Volume'] = _isy_b43.loc[_fix_idx, 'Volume']
+                                        _CACHE_STATS['isy_volume_fix'] = _CACHE_STATS.get('isy_volume_fix', 0) + 1
+                except Exception as _e_b43:
+                    pass  # isyatirim fail → Yahoo verisiyle devam (eski davranış)
+
                 file_path = os.path.join(CACHE_DIR, f"{clean_sym}_1d.parquet")
-                
+
                 # Doğrudan yeni gelen düzeltilmiş veriyi kaydediyoruz
-                df_sym_new.to_parquet(file_path) 
-                
+                df_sym_new.to_parquet(file_path)
+
                 df_ready = df_sym_new.tail(500).copy()
                 combined_dict[sym] = apply_volume_projection(df_ready, sym)
-                
-            except Exception as e: 
+
+            except Exception as e:
                 continue
 
     if combined_dict:
