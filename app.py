@@ -1736,13 +1736,18 @@ def get_batch_data_cached(asset_list, period="1y"):
             period="1y", group_by='ticker', threads=True, prepost=False
         )
 
+        # ─── AŞAMA A: Yahoo verisini temizle (serial, hızlı — ~5sn) ──────
+        # Bu döngü sadece DataFrame cleanup yapar — isyatirim çağrısı YOK.
+        # İsyatirim fallback aşağıda PARALEL yapılır (max_workers=10).
+        _isy_candidates = []   # (sym, clean_sym, df_sym_new) — V=0 > %20 olanlar
+        _df_pending = {}        # sym → df_sym_new (henüz parquet'e yazılmamış)
         for sym in missing_assets:
             clean_sym = sym.replace(".IS", "")
             if "BIST" in sym or ".IS" in sym or sym.startswith("XU"):
                 clean_sym = sym if sym.endswith(".IS") else f"{sym}.IS"
 
             try:
-                # MULTIINDEX TEMİZLİĞİ: Katmanları tekilleştir
+                # MULTIINDEX TEMİZLİĞİ
                 if len(missing_assets) > 1 and isinstance(df_new.columns, pd.MultiIndex):
                     df_sym_new = df_new.xs(sym, axis=1, level=1).copy() if sym in df_new.columns.get_level_values(1) else df_new[sym].copy()
                 else:
@@ -1757,56 +1762,73 @@ def get_batch_data_cached(asset_list, period="1y"):
                 df_sym_new = df_sym_new.loc[:, ~df_sym_new.columns.duplicated()]
                 df_sym_new.columns = [str(c).capitalize() for c in df_sym_new.columns]
                 if 'Volume' not in df_sym_new.columns or df_sym_new['Volume'].isna().all():
-                    df_sym_new['Volume'] = 0.0  # KARANTİNA: Sahte hacim yerine sıfır atıyoruz
+                    df_sym_new['Volume'] = 0.0  # KARANTİNA: Sahte hacim yerine sıfır
 
                 df_sym_new = df_sym_new.dropna(subset=['Close'])
-                df_sym_new.index = df_sym_new.index.tz_localize(None) # Zaman dilimi çakışmasını önle
+                df_sym_new.index = df_sym_new.index.tz_localize(None)
 
-                # ═══════════════════════════════════════════════════════════════
-                # B4-3 (4 Haz 2026) — İSYATIRIM HACİM FALLBACK (Master Scan için)
-                # Yahoo Finance BIST hisseleri için sistematik olarak V=0 dönüyor
-                # (test: SASA 28/30 V=0, 95 hissede HİÇBİRİ tam temiz).
-                # Bu blok: BIST hissesi + son 30 günde V=0 oranı %20+ ise
-                # isyatirimhisse'den hacim çekip override eder.
-                # Master Scan ortalama 600 hisse × ~0.3sn isyatirim çağrısı ≈ 3dk
-                # ek süre, ama tüm hacim-bazlı analizler artık doğru çalışır.
-                # ═══════════════════════════════════════════════════════════════
+                _df_pending[sym] = (clean_sym, df_sym_new)
+
+                # İsyatirim adayı mı? (BIST hissesi + son 30g V=0 oranı > %20)
+                _is_bist_b43 = sym.endswith(".IS") and not sym.startswith(("XU", "XB", "XT"))
+                if _is_bist_b43 and len(df_sym_new) >= 30:
+                    _v0_ratio = (df_sym_new['Volume'].tail(30) == 0).sum() / 30
+                    if _v0_ratio > 0.20:
+                        _isy_candidates.append((sym, clean_sym))
+            except Exception:
+                continue
+
+        # ─── AŞAMA B: PARALEL İSYATIRIM FALLBACK (max_workers=10) ────────
+        # B4-3 v2 (4 Haz 2026): Serial → Paralel.
+        # Önceki sürümde her hisse için döngüde serial isyatirim çağrısı vardı:
+        # 600 hisse × 0.5sn ≈ 5dk. Şimdi ThreadPoolExecutor ile ~30sn'ye iner.
+        # Streamlit context gerekmiyor (isyatirim fonksiyonu salt requests+pandas).
+        if _isy_candidates:
+            import threading as _th_b43
+            from concurrent.futures import ThreadPoolExecutor as _TPE_b43, as_completed as _ac_b43
+            _isy_lock = _th_b43.Lock()
+
+            def _isy_fetch_one(item):
+                _sym_x, _clean_x = item
                 try:
-                    _is_bist_b43 = sym.endswith(".IS") and not sym.startswith(("XU", "XB", "XT"))
-                    if _is_bist_b43 and len(df_sym_new) >= 30:
-                        _last30_b43 = df_sym_new['Volume'].tail(30)
-                        _v0_ratio = (_last30_b43 == 0).sum() / 30
-                        if _v0_ratio > 0.20:  # son 30g'de %20+ V=0 → bozuk
-                            from datetime import timedelta as _td_b43
-                            _end_b43 = df_sym_new.index[-1] + _td_b43(days=1)
-                            _start_b43 = df_sym_new.index[0]
-                            _isy_b43 = _fetch_bist_ohlcv_isyatirim(
-                                clean_sym,
-                                _start_b43.strftime("%Y-%m-%d"),
-                                _end_b43.strftime("%Y-%m-%d")
-                            )
-                            if _isy_b43 is not None and len(_isy_b43) > 5:
-                                _common_b43 = df_sym_new.index.intersection(_isy_b43.index)
-                                if len(_common_b43) > 0:
-                                    # Yahoo bar varsa AMA Volume 0 ise → isyatirim'den al
-                                    _zero_mask = df_sym_new.loc[_common_b43, 'Volume'] == 0
-                                    _isy_nonzero = _isy_b43.loc[_common_b43, 'Volume'] > 0
-                                    _fix_idx = _common_b43[_zero_mask & _isy_nonzero]
-                                    if len(_fix_idx) > 0:
-                                        df_sym_new.loc[_fix_idx, 'Volume'] = _isy_b43.loc[_fix_idx, 'Volume']
-                                        _CACHE_STATS['isy_volume_fix'] = _CACHE_STATS.get('isy_volume_fix', 0) + 1
-                except Exception as _e_b43:
-                    pass  # isyatirim fail → Yahoo verisiyle devam (eski davranış)
+                    _clean_isy_x, _df_x = _df_pending[_sym_x]
+                    from datetime import timedelta as _td_x
+                    _end_x = _df_x.index[-1] + _td_x(days=1)
+                    _start_x = _df_x.index[0]
+                    _isy_x = _fetch_bist_ohlcv_isyatirim(
+                        _clean_x,
+                        _start_x.strftime("%Y-%m-%d"),
+                        _end_x.strftime("%Y-%m-%d")
+                    )
+                    if _isy_x is not None and len(_isy_x) > 5:
+                        _common_x = _df_x.index.intersection(_isy_x.index)
+                        if len(_common_x) > 0:
+                            _zero_x = _df_x.loc[_common_x, 'Volume'] == 0
+                            _isynz_x = _isy_x.loc[_common_x, 'Volume'] > 0
+                            _fix_x = _common_x[_zero_x & _isynz_x]
+                            if len(_fix_x) > 0:
+                                _df_x.loc[_fix_x, 'Volume'] = _isy_x.loc[_fix_x, 'Volume']
+                                with _isy_lock:
+                                    _CACHE_STATS['isy_volume_fix'] = _CACHE_STATS.get('isy_volume_fix', 0) + 1
+                                return _sym_x, True, len(_fix_x)
+                    return _sym_x, False, 0
+                except Exception as _e_x:
+                    return _sym_x, False, 0
 
+            with _TPE_b43(max_workers=10) as _ex_b43:
+                _futs_b43 = [_ex_b43.submit(_isy_fetch_one, _item) for _item in _isy_candidates]
+                for _fut_b43 in _ac_b43(_futs_b43):
+                    try: _fut_b43.result(timeout=30)
+                    except Exception: pass
+
+        # ─── AŞAMA C: Parquet'e yaz + combined_dict doldur (serial, hızlı) ──
+        for sym, (clean_sym, df_sym_new) in _df_pending.items():
+            try:
                 file_path = os.path.join(CACHE_DIR, f"{clean_sym}_1d.parquet")
-
-                # Doğrudan yeni gelen düzeltilmiş veriyi kaydediyoruz
                 df_sym_new.to_parquet(file_path)
-
                 df_ready = df_sym_new.tail(500).copy()
                 combined_dict[sym] = apply_volume_projection(df_ready, sym)
-
-            except Exception as e:
+            except Exception:
                 continue
 
     if combined_dict:
