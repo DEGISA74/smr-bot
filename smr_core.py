@@ -2759,7 +2759,7 @@ Her bir paragrafı yazarken kendine şu soruyu sor: 'Eee, yani? Kahvehanedeki ya
 4. TAVSİYE VERMEK YASAKTIR — GENİŞLETİLMİŞ HUKUKİ SINIR:
    a) DİREKT YASAK: "alın / satın / tutun / kaçın / ekleyin / pozisyon açın / pozisyon kapatın / giriş yapın / stop koyun"
    b) İNDİREKT YASAK: "bekleyin / izleyin / dikkat edin / düşünün / karar verin / değerlendirin / portföyünüze ekleyin"
-   c) "RASYONEL/MAKUL" KALIPLARI YASAK: "en rasyonel strateji / en makul yaklaşım / mantıklı olan / doğru hamle / yapılması gereken / X almaya zorluyor"
+   c) "RASYONEL/MAKUL" KALIPLARI YASAK: "rasyonel / rasyonel olabilir / rasyonel bir duruş / rasyonel yaklaşım / makul / en rasyonel strateji / en makul yaklaşım / mantıklı olan / doğru hamle / yapılması gereken / X almaya zorluyor / bekle-gör stratejisi / pozisyonsuz kalmak / sermaye koruma yaklaşımı"
    d) "İKİ KEZ DÜŞÜN" / "TEMKİNLİ KAL" YASAK: "iki kez düşünmek gerek / temkinli kalmak gerek / ihtiyatlı davranmalı"
    e) SÜRE BELİRTEN BEKLEME YASAK: "3 hafta beklemek / şimdilik beklemek / izlemede kalmak"
    ✓ DOĞRU: SADECE KOŞULLU GÖZLEM — "X kırılırsa Y görülebilir / Z aşılırsa hareket izlenebilir / şu seviye altında baskı sürebilir"
@@ -3072,7 +3072,7 @@ YASAKLI CÜMLE KALIPLARI — Aşağıdaki kalıpları ASLA kullanma, bunları ku
 4. TAVSİYE VERMEK YASAKTIR — GENİŞLETİLMİŞ HUKUKİ SINIR:
    a) DİREKT YASAK: "alın / satın / tutun / kaçın / ekleyin / pozisyon açın / pozisyon kapatın / giriş yapın / stop koyun"
    b) İNDİREKT YASAK: "bekleyin / izleyin / dikkat edin / düşünün / karar verin / değerlendirin / portföyünüze ekleyin"
-   c) "RASYONEL/MAKUL" KALIPLARI YASAK: "en rasyonel strateji / en makul yaklaşım / mantıklı olan / doğru hamle / yapılması gereken / X almaya zorluyor"
+   c) "RASYONEL/MAKUL" KALIPLARI YASAK: "rasyonel / rasyonel olabilir / rasyonel bir duruş / rasyonel yaklaşım / makul / en rasyonel strateji / en makul yaklaşım / mantıklı olan / doğru hamle / yapılması gereken / X almaya zorluyor / bekle-gör stratejisi / pozisyonsuz kalmak / sermaye koruma yaklaşımı"
    d) "İKİ KEZ DÜŞÜN" / "TEMKİNLİ KAL" YASAK: "iki kez düşünmek gerek / temkinli kalmak gerek / ihtiyatlı davranmalı"
    e) SÜRE BELİRTEN BEKLEME YASAK: "3 hafta beklemek / şimdilik beklemek / izlemede kalmak / defansif siperde 3 hafta beklemek"
    ✓ DOĞRU: SADECE KOŞULLU GÖZLEM — "X kırılırsa Y görülebilir / Z aşılırsa hareket izlenebilir / şu seviye altında baskı sürebilir / yapı netleşebilir"
