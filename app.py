@@ -191,20 +191,31 @@ def _fetch_bist_ohlcv_isyatirim(symbol, start_date, end_date):
         df_isy = fetch_stock_data(symbols=_sym, start_date=_s, end_date=_e)
         if df_isy is None or df_isy.empty:
             return None
-        required = {'HGDG_TARIH', 'HGDG_ACILIS', 'HGDG_MAX', 'HGDG_MIN', 'HGDG_KAPANIS', 'HGDG_AOF', 'HGDG_HACIM'}
-        if not required.issubset(df_isy.columns):
+        # 4 Haz 2026 — İsyatirim API'sinde HGDG_ACILIS sütunu artık YOK.
+        # Eski zorunlu kontrol her zaman False döndürüyordu → fallback hiç çalışmıyordu.
+        # YENİ MANTIK: Volume için sadece HGDG_HACIM + HGDG_AOF + HGDG_TARIH yeter.
+        # Açılış (Open) opsiyonel — yoksa Close ile doldur (Yahoo'nun OHLC zaten doğru).
+        _minimal = {'HGDG_TARIH', 'HGDG_AOF', 'HGDG_HACIM', 'HGDG_KAPANIS'}
+        if not _minimal.issubset(df_isy.columns):
             return None
         df_isy = df_isy[df_isy['HGDG_AOF'] > 0].copy()
+        if df_isy.empty:
+            return None
         idx = pd.to_datetime(df_isy['HGDG_TARIH'])
         idx = idx.dt.tz_localize(None) if idx.dt.tz is not None else idx
+        # Açılış varsa kullan, yoksa Close ile fallback (override edici fonksiyonlar Open'i
+        # genelde Yahoo'dan korur — sadece Volume + Close gerçekten önemli).
+        _open_col = df_isy['HGDG_ACILIS'].values if 'HGDG_ACILIS' in df_isy.columns else df_isy['HGDG_KAPANIS'].values
+        _high_col = df_isy['HGDG_MAX'].values if 'HGDG_MAX' in df_isy.columns else df_isy['HGDG_KAPANIS'].values
+        _low_col  = df_isy['HGDG_MIN'].values if 'HGDG_MIN' in df_isy.columns else df_isy['HGDG_KAPANIS'].values
         df_out = pd.DataFrame({
-            'Open':   df_isy['HGDG_ACILIS'].values,
-            'High':   df_isy['HGDG_MAX'].values,
-            'Low':    df_isy['HGDG_MIN'].values,
+            'Open':   _open_col,
+            'High':   _high_col,
+            'Low':    _low_col,
             'Close':  df_isy['HGDG_KAPANIS'].values,
             'Volume': (df_isy['HGDG_HACIM'] / df_isy['HGDG_AOF']).values,
         }, index=idx)
-        df_out = df_out[df_out['Close'] > 0].dropna()
+        df_out = df_out[df_out['Close'] > 0].dropna(subset=['Close', 'Volume'])
         return df_out if not df_out.empty else None
     except ImportError:
         return None
