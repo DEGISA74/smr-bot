@@ -11379,8 +11379,25 @@ def render_smart_volume_panel(ticker):
         except Exception:
             _cp = poc
 
-    # Fiyat formatı: 1000+ tam sayı, diğerleri 2 ondalık
-    _cp_str = f"{int(_cp):,}" if _cp >= 1000 else f"{_cp:.2f}"
+    # Fiyat formatı: 1000+ tam sayı (Türkçe binlik: nokta), diğerleri 2 ondalık
+    if _cp >= 1000:
+        _cp_str = f"{int(_cp):,}".replace(",", ".")
+    else:
+        _cp_str = f"{_cp:.2f}"
+
+    # Günlük değişim (badge altına / yanına eklemek için)
+    _chg_str = ""; _chg_clr = "#94a3b8"
+    try:
+        _df_chg = get_safe_historical_data(ticker, period="1mo")
+        if _df_chg is not None and len(_df_chg) >= 2:
+            _prev_c = float(_df_chg['Close'].iloc[-2])
+            if _prev_c > 0:
+                _chg_pct = (_cp - _prev_c) / _prev_c * 100
+                _chg_clr = "#10b981" if _chg_pct > 0 else ("#f87171" if _chg_pct < 0 else "#94a3b8")
+                _sign = "+" if _chg_pct > 0 else ""
+                _chg_str = f"{_sign}{_chg_pct:.2f}%"
+    except Exception:
+        pass
 
     # Bar fill: 0-100 ölçeği (her yarı bar kendi 100%'ü)
     d1_fill  = min(abs(delta_yuzde), 100) if not is_index else (65 if delta_val != 0 else 0)
@@ -11599,25 +11616,25 @@ def render_smart_volume_panel(ticker):
 
         if is_pos is True:
             spans = (
-                f'<span style="display:inline-block;width:50%;height:8px;background:{track};border-radius:3px 0 0 3px;vertical-align:top;"></span>'
-                f'<span style="display:inline-block;width:{fw:.1f}%;height:8px;background:{color};vertical-align:top;"></span>'
-                f'<span style="display:inline-block;width:{rw:.1f}%;height:8px;background:{track};border-radius:0 3px 3px 0;vertical-align:top;"></span>'
+                f'<span style="display:inline-block;width:50%;height:7px;background:{track};border-radius:3px 0 0 3px;vertical-align:top;"></span>'
+                f'<span style="display:inline-block;width:{fw:.1f}%;height:7px;background:{color};vertical-align:top;"></span>'
+                f'<span style="display:inline-block;width:{rw:.1f}%;height:7px;background:{track};border-radius:0 3px 3px 0;vertical-align:top;"></span>'
             )
         elif is_pos is False:
             spans = (
-                f'<span style="display:inline-block;width:{rw:.1f}%;height:8px;background:{track};border-radius:3px 0 0 3px;vertical-align:top;"></span>'
-                f'<span style="display:inline-block;width:{fw:.1f}%;height:8px;background:{color};vertical-align:top;"></span>'
-                f'<span style="display:inline-block;width:50%;height:8px;background:{track};border-radius:0 3px 3px 0;vertical-align:top;"></span>'
+                f'<span style="display:inline-block;width:{rw:.1f}%;height:7px;background:{track};border-radius:3px 0 0 3px;vertical-align:top;"></span>'
+                f'<span style="display:inline-block;width:{fw:.1f}%;height:7px;background:{color};vertical-align:top;"></span>'
+                f'<span style="display:inline-block;width:50%;height:7px;background:{track};border-radius:0 3px 3px 0;vertical-align:top;"></span>'
             )
         else:
             spans = (
-                f'<span style="display:inline-block;width:50%;height:8px;background:{track};border-radius:3px 0 0 3px;vertical-align:top;"></span>'
-                f'<span style="display:inline-block;width:50%;height:8px;background:{track};border-radius:0 3px 3px 0;vertical-align:top;"></span>'
+                f'<span style="display:inline-block;width:50%;height:7px;background:{track};border-radius:3px 0 0 3px;vertical-align:top;"></span>'
+                f'<span style="display:inline-block;width:50%;height:7px;background:{track};border-radius:0 3px 3px 0;vertical-align:top;"></span>'
             )
         return (
-            f'<div style="position:relative;font-size:0;line-height:0;white-space:nowrap;height:8px;margin:3px 0 4px;">'
+            f'<div style="position:relative;font-size:0;line-height:0;white-space:nowrap;height:7px;margin:2px 0 3px;">'
             + spans +
-            f'<div style="position:absolute;left:50%;top:-2px;width:2px;height:12px;background:{center_col};transform:translateX(-50%);"></div>'
+            f'<div style="position:absolute;left:50%;top:-2px;width:2px;height:11px;background:{center_col};transform:translateX(-50%);"></div>'
             f'</div>'
         )
 
@@ -11748,11 +11765,8 @@ def render_smart_volume_panel(ticker):
         _ds_w = min(float(abs(delta_yuzde)), 100.0)
         _ds_lbl = "Güçlü" if delta_yuzde >= 65 else ("Orta" if delta_yuzde >= 40 else "Zayıf")
         _delta_strength_html = (
-            f"<div style='margin-top:4px;border-top:1px solid {divider};padding-top:3px;'>"
-            f"<div style='height:4px;background:{track_bg};border-radius:2px;overflow:hidden;'>"
-            f"<div style='height:100%;width:{_ds_w:.0f}%;background:{t3_ic};border-radius:2px;'></div>"
-            f"</div>"
-            f"<div style='font-size:0.68rem;color:{t3_ic};font-weight:700;margin-top:2px;'>"
+            f"<div style='margin-top:2px;'>"
+            f"<div style='font-size:0.66rem;color:{t3_ic};font-weight:700;'>"
             f"{_ds_lbl} baskı · %{delta_yuzde:.0f}</div>"
             f"</div>"
         )
@@ -11781,18 +11795,20 @@ def render_smart_volume_panel(ticker):
                 _dots5_html += f"<span style='color:{_dc5};font-size:0.78rem;margin-right:3px;'>{_ds5}</span>"
             _sum_clr5 = "#10b981" if _up_cnt5 > _dn_cnt5 else ("#f87171" if _dn_cnt5 > _up_cnt5 else "#94a3b8")
             _delta_5d_dots_html = (
-                f"<div style='margin-top:4px;border-top:1px solid {divider};padding-top:3px;'>"
-                f"<div style='margin-bottom:2px;'>{_dots5_html}</div>"
-                f"<div style='font-size:0.68rem;color:{_sum_clr5};font-weight:700;'>"
-                f"{_up_cnt5}↑ / {_dn_cnt5}↓ son 5 kapanış</div>"
+                f"<div style='margin-top:2px;display:flex;align-items:center;gap:6px;'>"
+                f"<span>{_dots5_html}</span>"
+                f"<span style='font-size:0.66rem;color:{_sum_clr5};font-weight:700;'>"
+                f"{_up_cnt5}&#8593; / {_dn_cnt5}&#8595; son 5 kapanış</span>"
                 f"</div>"
             )
     except Exception:
         pass
 
     # ── 5G RVOL Trend HTML (Tile 4 eki) ──────────────────────────
+    # Bugünkü RVOL boşsa (rvol<0.05 / _vol_data_missing) → 5G grafiği de gösterme;
+    # aksi halde "veri yok" mesajıyla altta dolu grafik çelişiyor.
     _rvol_5d_html = ""
-    if not _vol_data_missing:
+    if not _vol_data_missing and rvol >= 0.05:
         try:
             _df_rv5 = get_safe_historical_data(ticker, period="3mo")
             if _df_rv5 is not None and len(_df_rv5) >= 25:
@@ -11825,12 +11841,11 @@ def render_smart_volume_panel(ticker):
                 _tdir = "↑ ivmeleniyor" if _td5 > 0.2 else ("↓ yavaşlıyor" if _td5 < -0.2 else "→ sabit")
                 _tcol = "#10b981" if "↑" in _tdir else ("#f87171" if "↓" in _tdir else "#94a3b8")
                 _rvol_5d_html = (
-                    f"<div style='margin-top:4px;border-top:1px solid {divider};padding-top:3px;'>"
-                    f"<div style='display:flex;align-items:flex-end;gap:3px;height:28px;'>"
+                    f"<div style='margin-top:2px;display:flex;align-items:flex-end;gap:8px;'>"
+                    f"<div style='display:flex;align-items:flex-end;gap:3px;height:22px;'>"
                     f"{_bars5}"
                     f"</div>"
-                    f"<div style='font-size:0.68rem;color:{_tcol};font-weight:700;"
-                    f"margin-top:1px;'>5G {_tdir}</div>"
+                    f"<span style='font-size:0.66rem;color:{_tcol};font-weight:700;'>5G {_tdir}</span>"
                     f"</div>"
                 )
         except Exception:
@@ -11903,25 +11918,16 @@ def render_smart_volume_panel(ticker):
         c3_sub  = "Hacim göstergeleri net bir yön vermiyor — bekleyiş."
 
     # ── Büyük Kart HTML üretici (kompakt: q_label + verdict tek satır, sonra desc) ──
-    def _big_card_html(icon, clr, q_label, verdict, sub_text):
+    # ── YENİ: Tek satırlı mini verdict badge (eski 3 büyük kart yerine) ──
+    def _mini_badge(icon, clr, q_label, verdict):
         return (
-            f'<div style="padding:8px 13px 9px; border-radius:8px;'
-            f' background:linear-gradient(135deg, {clr}26 0%, {clr}0a 100%);'
-            f' border:1px solid {clr}66;'
-            f' box-shadow:0 1px 4px rgba(0,0,0,0.18);">'
-            # Üst satır: soru solda, verdict (icon + etiket) sağda
-            f'<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:5px;">'
-            f'<span style="font-size:0.64rem; color:{text_muted}; font-weight:800;'
-            f' letter-spacing:0.7px; text-transform:uppercase; white-space:nowrap;">{q_label}</span>'
-            f'<span style="display:inline-flex; align-items:center; gap:6px; flex-shrink:0;">'
-            f'<span style="font-size:1.1rem; line-height:1;">{icon}</span>'
-            f'<span style="font-size:0.92rem; font-weight:900; color:{clr};'
-            f' letter-spacing:0.3px; white-space:nowrap;">{verdict}</span>'
+            f'<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;'
+            f'background:{clr}1a;border:1px solid {clr}55;border-radius:14px;'
+            f'font-size:0.72rem;white-space:nowrap;">'
+            f'<span style="font-size:0.88rem;line-height:1;">{icon}</span>'
+            f'<span style="color:{text_muted};font-weight:700;letter-spacing:0.3px;">{q_label}</span>'
+            f'<span style="color:{clr};font-weight:900;">{verdict}</span>'
             f'</span>'
-            f'</div>'
-            # Açıklama
-            f'<div style="font-size:0.78rem; color:{text_sub}; line-height:1.4;">{sub_text}</div>'
-            f'</div>'
         )
 
     # ── Açıklama satırı — tatil günü chip'i (eğer kapalıysa) ─────
@@ -11937,107 +11943,214 @@ def render_smart_volume_panel(ticker):
         )
         _desc_text = _holiday_chip + sv["desc"]
 
-    # ── Ticker-fiyat badge — ICT paneli ile aynı stil ────────────
-    if dark:
-        _badge_css = ("font-family:'JetBrains Mono'; font-weight:800; color:#10b981; font-size:0.9rem;"
-                      " background:rgba(0,0,0,0.4); padding:2px 8px; border-radius:6px;"
-                      " border:1px solid rgba(255,255,255,0.1); white-space:nowrap;")
-    else:
-        _badge_css = ("background:rgba(56,189,248,0.1); color:#38bdf8; padding:2px 10px; border-radius:4px;"
-                      " font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.9rem;"
-                      " border:1px solid rgba(30,58,138,0.2); white-space:nowrap;")
+    # ── Ticker-fiyat badge — fiyat + günlük değişim ayrı, em-dash yerine boşluk ──
+    _badge_css = (
+        "font-family:'JetBrains Mono'; font-weight:800; color:#10b981; font-size:0.9rem;"
+        " background:rgba(0,0,0,0.4); padding:2px 8px; border-radius:6px;"
+        " border:1px solid rgba(255,255,255,0.1); white-space:nowrap;"
+    ) if dark else (
+        "background:rgba(56,189,248,0.1); color:#38bdf8; padding:2px 10px; border-radius:4px;"
+        " font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.9rem;"
+        " border:1px solid rgba(30,58,138,0.2); white-space:nowrap;"
+    )
+    _chg_html = (
+        f'<span style="margin-left:4px;font-family:JetBrains Mono;font-weight:800;'
+        f'font-size:0.74rem;color:{_chg_clr};background:rgba(0,0,0,0.28);'
+        f'padding:2px 6px;border-radius:4px;border:1px solid {_chg_clr}55;white-space:nowrap;">'
+        f'{_chg_str}</span>'
+    ) if _chg_str else ""
+
+    # ── YENİ: Birleşik Değer Bölgesi (POC + VA + Fiyat Konumu) HTML ──
+    # POC, VAL, VAH ortak ölçek: ±15% bant. Fiyat noktası gerçek konumda; POC merkez; VAL/VAH mavi şeritle.
+    _zone_bar_html = ""
+    if poc > 0 and _cp > 0:
+        # Bant: POC ±15%
+        _lo, _hi = poc * 0.85, poc * 1.15
+        def _clamp_pct(v):
+            return max(0.0, min(100.0, (v - _lo) / (_hi - _lo) * 100))
+        _poc_p = 50.0  # POC merkez tanım gereği
+        _val_p = _clamp_pct(val) if val > 0 else None
+        _vah_p = _clamp_pct(vah) if vah > 0 else None
+        _cp_p  = _clamp_pct(_cp)
+        # VA bandı (mavi şerit)
+        _va_band = ""
+        if _val_p is not None and _vah_p is not None and _vah_p > _val_p:
+            _va_band = (
+                f'<div style="position:absolute;left:{_val_p:.1f}%;width:{(_vah_p-_val_p):.1f}%;'
+                f'top:1px;bottom:1px;background:rgba(96,165,250,0.22);border-left:1px dashed #60a5fa;'
+                f'border-right:1px dashed #60a5fa;"></div>'
+            )
+        _zone_bar_html = (
+            f'<div style="position:relative;height:12px;background:{track_bg};border-radius:3px;margin:4px 0 2px;">'
+            f'{_va_band}'
+            # POC merkez işareti (sarı dikey çizgi)
+            f'<div style="position:absolute;left:{_poc_p:.1f}%;top:-2px;bottom:-2px;width:2px;'
+            f'background:#fbbf24;transform:translateX(-50%);"></div>'
+            # Fiyat noktası (renk: konuma göre)
+            f'<div style="position:absolute;left:{_cp_p:.1f}%;top:-3px;width:9px;height:18px;'
+            f'background:{t1_ic};border-radius:3px;border:1.5px solid #0f172a;'
+            f'transform:translateX(-50%);box-shadow:0 0 4px {t1_ic}aa;"></div>'
+            f'</div>'
+            # Alt etiket satırı
+            f'<div style="display:flex;justify-content:space-between;font-size:0.62rem;'
+            f'color:{text_muted};font-weight:700;">'
+            f'<span>VAL {val:.2f}</span><span style="color:#fbbf24;">POC {poc:.2f}</span>'
+            f'<span>VAH {vah:.2f}</span></div>'
+        )
+
+    # ── Boşluk yönetimi: t3/t4 ikisi de boşsa tek placeholder ──
+    _t3_empty = (t3_pct == "—")
+    _t4_empty = (t4_pct in ("—", "Veri Eksik"))
+    _both_intraday_empty = _t3_empty and _t4_empty
+
+    # ── Hisse vs Endeks hacim label netleştirme (Fix #6) ──
+    _hacim_kind = "Endeks Hacmi" if is_index else "Hisse Hacmi"
+    _t4_short_lbl = f"{_hacim_kind} (20G ort.)"
+
+    # ── Verdict strip mini badge'leri (eski 3 büyük kart yerine) ──
+    _verdict_strip = (
+        _mini_badge(c1_icon, c1_clr, "Fiyat", c1_lbl) +
+        _mini_badge(c2_icon, c2_clr, "Hacim", c2_lbl) +
+        _mini_badge(c3_icon, c3_clr, "Akıllı Para", c3_lbl)
+    )
+
+    # ── 5G dot row için kısa konsensüs cümlesi ─────────────────────
+    # Üst verdict satırı için ana mesaj: konsensüs label'ı ekstra açıklamayla
+    _cs_main_msg_map = {
+        "ALIM BASKISI":   "Çoğu gösterge alıcı yönünde uyumlu.",
+        "HAFİF ALIM":     "Hafif alım eğilimi, kuvvetli teyit yok.",
+        "NÖTR":           "Yön belirsiz, göstergeler çelişkili.",
+        "HAFİF SATIŞ":    "Hafif satış baskısı, kuvvetli teyit yok.",
+        "SATIŞ BASKISI":  "Çoğu gösterge satıcı yönünde — temkinli ol.",
+    }
+    _cs_main_msg = _cs_main_msg_map.get(_cs_lbl, "")
 
     # ── HTML ──────────────────────────────────────────────────────
     _html = (
         f'<div style="border:1px solid {bc}; background:{bg}; border-radius:8px; margin-top:10px; box-shadow:0 1px 6px rgba(0,0,0,{"0.22" if dark else "0.07"});">'
 
-        # HEADER: sol=başlık, orta=senaryo, sağ=ticker+fiyat
+        # HEADER: başlık | senaryo | ticker+fiyat+değişim+konsensüs
         f'<div style="padding:7px 12px; border-bottom:1px solid {divider}; display:flex; align-items:center; gap:8px;">'
         f'<span style="font-weight:800; font-size:1.0rem; color:{bc}; white-space:nowrap;">&#128202; SMART MONEY HACİM ANALİZİ</span>'
         f'<span style="flex:1; font-size:0.81rem; color:{text_main}; font-weight:700; text-align:center; padding:0 6px;">{sv["title"]}</span>'
-        f'<span style="{_badge_css}">{display_ticker} — {_cp_str}</span>'
+        f'<span style="{_badge_css}">{display_ticker} {_cp_str}</span>'
+        f'{_chg_html}'
         f'<span style="margin-left:6px;font-size:0.72rem;font-weight:800;color:{_cs_clr};'
         f'background:rgba(0,0,0,0.28);padding:2px 8px;border-radius:4px;'
         f'border:1px solid {_cs_clr};white-space:nowrap;opacity:0.92;">'
         f'&#128176; {_cs_scr} — {_cs_lbl}</span>'
         f'</div>'
 
-        # AÇIKLAMA (tek satır) — tatil günü chip + senaryo açıklaması
-        f'<div style="padding:5px 12px; border-bottom:1px solid {divider}; font-size:0.9rem; color:{text_sub}; line-height:1.4;">{_desc_text}</div>'
+        # AÇIKLAMA satırı (mevcut)
+        f'<div style="padding:4px 12px; border-bottom:1px solid {divider}; font-size:0.88rem; color:{text_sub}; line-height:1.35;">{_desc_text}</div>'
 
-        # ── 3 BÜYÜK KART (Birincil Sinyal Katmanı — kompakt 2 satırlı) ──
-        f'<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; padding:8px 12px; border-bottom:1px solid {divider};">'
-        f'{_big_card_html(c1_icon, c1_clr, "&#128205; Fiyat Nerede?", c1_lbl, c1_sub)}'
-        f'{_big_card_html(c2_icon, c2_clr, "&#128202; Piyasa Aktif mi?", c2_lbl, c2_sub)}'
-        f'{_big_card_html(c3_icon, c3_clr, "&#128269; Akıllı Para Ne Yapıyor?", c3_lbl, c3_sub)}'
+        # ── YENİ VERDICT STRIP (eski 3 büyük kart yerine tek satır) ──
+        f'<div style="padding:5px 12px;border-bottom:1px solid {divider};'
+        f'display:flex;align-items:center;gap:9px;flex-wrap:wrap;">'
+        f'<span style="font-size:0.72rem;color:{text_muted};font-weight:800;'
+        f'letter-spacing:0.6px;text-transform:uppercase;">&#9889; Özet:</span>'
+        f'<span style="font-size:0.82rem;color:{text_main};font-weight:600;flex:1;min-width:140px;">{_cs_main_msg}</span>'
+        f'{_verdict_strip}'
         f'</div>'
 
         # ── Teknik Detay Başlığı ─────────────────────────────────────
-        f'<div style="padding:5px 12px; font-size:0.62rem; color:{text_muted}; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; background:rgba(0,0,0,0.18); border-bottom:1px solid {divider};">&#9881;&#65039; Teknik Detaylar</div>'
+        f'<div style="padding:3px 12px; font-size:0.60rem; color:{text_muted}; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; background:rgba(0,0,0,0.18); border-bottom:1px solid {divider};">&#9881;&#65039; Teknik Detaylar</div>'
 
-        # 6 TILE GRID (ikincil katman — uzman kullanıcılar için tam detay)
-        f'<div style="display:grid; grid-template-columns:0.75fr 0.8fr 0.95fr 1.0fr 1.0fr 0.95fr; gap:0;">'
+        # ── ANA GRID (3 büyük kart): Değer Bölgesi | 5 Günlük | Akıllı Para ──
+        f'<div style="display:grid; grid-template-columns:1.25fr 1fr 1.1fr; gap:0; border-bottom:1px solid {divider}; align-items:stretch;">'
 
-        # — TILE 1: POC (Merkez) —
-        f'<div style="padding:6px 8px; border-right:1px solid {divider}; background:{t2_bb};">'
-        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:4px; text-transform:uppercase;">&#127919; POC (Merkez)</div>'
-        f'<div style="font-size:0.97rem; font-weight:900; color:{t2_ic}; margin-bottom:4px;">{poc:.2f}</div>'
-        f'<div style="font-size:0.80rem; color:{text_sub}; line-height:1.4;">En yoğun işlem fiyatı.<br>{poc_vs}.</div>'
-        f'{_poc_bar_html}'
+        # — BÜYÜK 1: DEĞER BÖLGESİ (POC + VA + Fiyat Konumu birleşik) —
+        f'<div style="padding:6px 10px 7px; border-right:1px solid {divider}; background:{t1_bb};">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">'
+        f'<span style="font-size:0.62rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#127919; Değer Bölgesi</span>'
+        f'<span style="font-size:0.70rem;color:{text_muted};font-weight:700;">POC&nbsp;{poc:.2f}</span>'
+        f'</div>'
+        f'<div style="font-size:0.90rem; font-weight:900; color:{t1_ic}; line-height:1.15;">{t1_icon} {t1_label}</div>'
+        f'{_zone_bar_html}'
+        f'<div style="font-size:0.76rem; color:{text_sub}; line-height:1.3;margin-top:3px;">{t1_sub}</div>'
         f'</div>'
 
-        # — TILE 2: Fiyat Konumu —
-        f'<div style="padding:6px 8px; border-right:1px solid {divider}; background:{t1_bb};">'
-        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:4px; text-transform:uppercase;">&#128205; Fiyat Konumu</div>'
-        f'<div style="font-size:0.78rem; font-weight:900; color:{t1_ic}; margin-bottom:4px; line-height:1.2;">{t1_icon} {t1_label}</div>'
-        f'<div style="font-size:0.80rem; color:{text_sub}; line-height:1.4;">{t1_sub}</div>'
-        f'{_va_prox_html}'
+        # — BÜYÜK 2: 5 GÜNLÜK ALIM-SATIM (kritik) —
+        f'<div style="padding:6px 10px 7px; border-right:1px solid {divider}; background:{t5_bb};">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+        f'<span style="font-size:0.60rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#128200; Son 5 Günlük Alım-Satım</span>'
+        f'<span style="font-size:1.0rem; font-weight:900; color:{t5_ic};">{t5_pct}</span>'
         f'</div>'
-
-        # — TILE 3: Bugünkü Delta —
-        f'<div style="padding:6px 8px; border-right:1px solid {divider}; background:{t3_bb};">'
-        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:2px; text-transform:uppercase;">&#9889; {_t3_header_text}</div>'
-        f'<div style="display:flex; justify-content:{"flex-end" if t3_pos is True else "flex-start" if t3_pos is False else "center"}; margin-bottom:1px;">'
-        f'<span style="font-size:0.92rem; font-weight:900; color:{t3_ic};">{t3_pct}</span></div>'
-        f'{bidir_bar(d1_fill, t3_ic, t3_pos, track_bg)}'
-        f'<div style="font-size:0.8rem; color:{text_main}; font-weight:700; margin-bottom:2px;">{t3_lbl}</div>'
-        f'<div style="font-size:0.8rem; color:{text_sub}; line-height:1.35;">{t3_sub}</div>'
-        f'{_delta_strength_html}'
-        f'</div>'
-
-        # — TILE 4: Ortalamaya Göre Hacim —
-        f'<div style="padding:6px 8px; border-right:1px solid {divider}; background:{t4_bb};">'
-        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:2px; text-transform:uppercase;">&#128202; {_t4_header_text}</div>'
-        f'<div style="display:flex; justify-content:{"flex-end" if t4_pos is True else "flex-start" if t4_pos is False else "center"}; margin-bottom:1px;">'
-        f'<span style="font-size:0.92rem; font-weight:900; color:{t4_ic};">{t4_pct}</span></div>'
-        f'{bidir_bar(rvol_fill, t4_ic, t4_pos, track_bg)}'
-        f'<div style="font-size:0.8rem; color:{text_main}; font-weight:700; margin-bottom:2px;">{t4_lbl}</div>'
-        f'<div style="font-size:0.8rem; color:{text_sub}; line-height:1.35;">{t4_sub}</div>'
-        f'{_rvol_5d_html}'
-        f'</div>'
-
-        # — TILE 5: 5 Seans Delta —
-        f'<div style="padding:6px 8px; border-right:1px solid {divider}; background:{t5_bb};">'
-        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:2px; text-transform:uppercase;">&#128200; Son 5 Günlük Alım-Satım</div>'
-        f'<div style="display:flex; justify-content:{"flex-end" if t5_pos is True else "flex-start" if t5_pos is False else "center"}; margin-bottom:1px;">'
-        f'<span style="font-size:0.92rem; font-weight:900; color:{t5_ic};">{t5_pct}</span></div>'
         f'{bidir_bar(cum_fill, t5_ic, t5_pos, track_bg)}'
-        f'<div style="font-size:0.8rem; color:{text_main}; font-weight:700; margin-bottom:2px;">{t5_lbl}</div>'
-        f'<div style="font-size:0.8rem; color:{text_sub}; line-height:1.35;">{t5_sub}</div>'
+        f'<div style="font-size:0.80rem; color:{text_main}; font-weight:700;">{t5_lbl}</div>'
+        f'<div style="font-size:0.76rem; color:{text_sub}; line-height:1.3;">{t5_sub}</div>'
         f'{_delta_5d_dots_html}'
         f'</div>'
 
-        # — TILE 6: OBV + CMF Durumu —
-        f'<div style="padding:6px 8px; background:{_tile_bg(_t6_tile_pos)};">'
-        f'<div style="font-size:0.62rem; color:{text_muted}; font-weight:700; letter-spacing:0.5px; margin-bottom:3px; text-transform:uppercase;">&#128272; OBV Durumu</div>'
-        f'<div style="font-size:0.78rem; font-weight:900; color:{_t6_obv_color}; line-height:1.3; margin-bottom:3px;">{_t6_short}</div>'
-        f'<div style="font-size:0.70rem; color:{_t6_obv_color}; font-weight:700; opacity:0.9; margin-bottom:3px;">{_t6_cmf_str}</div>'
-        f'<div style="font-size:0.78rem; color:{text_sub}; line-height:1.35;">{_t6_short_desc}</div>'
+        # — BÜYÜK 3: AKILLI PARA / OBV (kritik) —
+        f'<div style="padding:6px 10px 7px; background:{_tile_bg(_t6_tile_pos)};">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">'
+        f'<span style="font-size:0.60rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#128272; Akıllı Para Durumu (OBV)</span>'
+        f'<span style="font-size:0.66rem; color:{_t6_obv_color}; font-weight:700; opacity:0.92;white-space:nowrap;">{_t6_cmf_str}</span>'
+        f'</div>'
+        f'<div style="font-size:0.90rem; font-weight:900; color:{_t6_obv_color}; line-height:1.2; margin:2px 0 3px;">{_t6_short}</div>'
+        f'<div style="font-size:0.76rem; color:{text_sub}; line-height:1.3;">{_t6_short_desc}</div>'
         f'</div>'
 
-        f'</div>'  # grid sonu
-        f'</div>'
+        f'</div>'  # ana grid sonu
     )
+
+    # ── ALT SATIR: Bugünkü Baskı + Hisse Hacmi (mini) — boşsa birleşik placeholder ──
+    if _both_intraday_empty:
+        # Tek birleşik placeholder
+        _bist_post_msg = ""
+        try:
+            _now_hm_p = datetime.now(_TZ_ISTANBUL).hour * 100 + datetime.now(_TZ_ISTANBUL).minute
+            if 955 <= _now_hm_p <= 1820:
+                _bist_post_msg = "Seans içinde — kapanışa doğru güncellenecek."
+            elif 1820 < _now_hm_p <= 2000:
+                _bist_post_msg = "Kapanış sonrası — Yahoo verisi 30-90 dakika içinde yansır."
+            else:
+                _bist_post_msg = "Seans dışı — bir sonraki seansta güncellenecek."
+        except Exception:
+            _bist_post_msg = "Seans verisi bekleniyor."
+        _html += (
+            f'<div style="padding:8px 12px;background:rgba(148,163,184,0.07);'
+            f'border-top:1px solid {divider};display:flex;align-items:center;gap:10px;">'
+            f'<span style="font-size:0.92rem;">&#9203;</span>'
+            f'<span style="font-size:0.74rem;color:{text_muted};font-weight:800;'
+            f'letter-spacing:0.5px;text-transform:uppercase;">Gün İçi Veri Bekleniyor</span>'
+            f'<span style="font-size:0.80rem;color:{text_sub};">{_bist_post_msg}</span>'
+            f'</div>'
+        )
+    else:
+        # Mini grid: 2 kompakt kart
+        _html += (
+            f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:0;">'
+
+            # MİNİ 1: Bugünkü Baskı
+            f'<div style="padding:4px 10px 5px; border-right:1px solid {divider}; background:{t3_bb};">'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+            f'<span style="font-size:0.58rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#9889; {_t3_header_text}</span>'
+            f'<span style="font-size:0.86rem; font-weight:900; color:{t3_ic};">{t3_pct}</span>'
+            f'</div>'
+            f'{bidir_bar(d1_fill, t3_ic, t3_pos, track_bg)}'
+            f'<div style="font-size:0.74rem; color:{text_sub}; line-height:1.25;">'
+            f'<span style="color:{text_main};font-weight:700;">{t3_lbl}.</span> {t3_sub}</div>'
+            f'{_delta_strength_html}'
+            f'</div>'
+
+            # MİNİ 2: Hacim (Hisse/Endeks — netleştirilmiş)
+            f'<div style="padding:4px 10px 5px; background:{t4_bb};">'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+            f'<span style="font-size:0.58rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#128202; {_t4_short_lbl}</span>'
+            f'<span style="font-size:0.86rem; font-weight:900; color:{t4_ic};">{t4_pct}</span>'
+            f'</div>'
+            f'{bidir_bar(rvol_fill, t4_ic, t4_pos, track_bg)}'
+            f'<div style="font-size:0.74rem; color:{text_sub}; line-height:1.25;">'
+            f'<span style="color:{text_main};font-weight:700;">{t4_lbl}.</span> {t4_sub}</div>'
+            f'{_rvol_5d_html}'
+            f'</div>'
+
+            f'</div>'  # mini grid sonu
+        )
+
+    _html += '</div>'  # panel kök div sonu
     st.markdown(_html, unsafe_allow_html=True)
 
 
@@ -22064,207 +22177,100 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
         )
 
     prompt = f"""{_ai_holiday_note}*** KİMLİĞİN ***
-25 yıldır hem kurumsal hem bireysel portföy yöneten, BIST'i ve global piyasaları yakından izleyen ve çok iyi analiz edebilen, çok değerli, çok bilgili ve çok deneyimli bir analistsin. Karmaşık veriyi sade dile çevirmekte iyisin — ama sadeleştirirken bilgiyi kaybetmezsin. Ne korkutursan ne de umutlandırırsın. Veri ne diyorsa onu söylersin, fazlasını değil. Hem yükseliş hem düşüş gördün, ikisini de bekliyorsun. Soğukkanlısın.
+25 yıllık portföy yöneticisi analistsin. Karmaşık veriyi sadeleştirirsin, ama bilgiyi kaybetmezsin. Ne korkutursun ne umutlandırırsın — veri ne diyorsa onu söylersin. Soğukkanlısın, sezgilisin, hem yükselişi hem düşüşü bekliyorsun. Hem finans bilen hem bilmeyen okuyacak; teknik terimi ANLATIM KURALI'ndaki gibi benzetmeyle ver, sonra çıplak kısaltmayı kullan. Sohbet dili — robot değil.
 
-Hem finans bilgisi olan hem olmayan aynı metni okuyacak. İkisi için ayrı analiz yazma — teknik terimleri aşağıdaki ANLATIM KURALI'na göre benzetmeyle ver, sonra devam et. Hız kesme. Doğru ton: bir konuyu gerçekten bilen birinin sohbet dili.
+*** ANALİZ İSKELETİ (HER GÖREVDE BU SIRAYLA DÜŞÜN) ***
+Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
+1) **YAPI** (yaml.ict_pa.structure + mss_yapi_kirilimi + GENEL ÖZET PANEL.YAPI): Trend bias ne? HH+HL mi LH+LL mi, BOS/CHoCH var mı? — Bu yönü söyler.
+2) **KONUM** (yaml.scenario.zone + yaml.smart_money.va_pos + yaml.asset.yillik_konum_52h): Fiyat ucuz mu pahalı mı? Discount/Premium, VA içinde/altında/üstünde, 52H konumu — Bu RR'ı söyler.
+3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + smart_money.cum_delta_5g + vp_sekil): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi.
+4) **TETİKLEYİCİ** (yaml.ict_pa.ob + fvg + sweep_silkeleme + yaml.targets): Hangi seviye kırılırsa ne olur? — Bu gözlenecek noktayı söyler.
+5) **YANLIŞLANMA** (yaml.targets + son swing low/high + yaml.asset.yillik_konum_52h): Tez hangi seviye altında çöker? — Bu risk noktası.
 
-*** ASIL İŞİN (TEK CÜMLE) ***
-Aşağıdaki YAML verisinden bu hisseye özgü en şaşırtıcı 1 bulguyu çıkar, sade Türkçe ile deneyimli bir analist gibi anlat. Sonraki bölümlerdeki kurallar yardımcı çerçeve — kalıp değil.
+Ana hikaye genelde (3)'tedir. (1)+(2) zemini, (4)+(5) sonucu kurar. **Asla 5 mercekten birini atlama.**
 
-*** DÜŞÜNME SÜRECİ — YAZMADAN ÖNCE ZORUNLU ***
-Her görev için yazmaya başlamadan, kendine 3 soruyu cevapla:
-1) Bu hissenin BUGÜNE ÖZGÜ en şaşırtıcı tek noktası nedir? (52H konumu? VSA anomalisi? OBV-fiyat çelişkisi? Formasyon kırılım eşiği? POC altında ama delta pozitif?)
-2) Bu noktayı 4-5 farklı şekilde nasıl anlatabilirim? (Bir analist arkadaşıma anlatır gibi, bir öğrenciye anlatır gibi, soru soran gibi, gözlem yapar gibi…)
-3) Hangi anlatım hem doğal hem de bu hisseye ÖZEL hissettiriyor? — onu yaz, sıfırdan kur.
+*** ASIL İŞİN ***
+Bu hisseye o güne özgü 1 baskın hikayeyi çıkar (çelişki varsa → çelişki ana hikaye; yoksa → en güçlü tek sinyal). Sade Türkçe, sayı-merkezli cümlelerle anlat.
 
-*** ANTİ-KALIP — KARA LİSTE ***
-Aşağıdaki kalıplar tekrar edildiğinde analiz reddedilir. Aynı bilgiyi her seferinde FARKLI cümle yapısıyla anlat:
-× "nadir eşzamanlı hizalanma şablonu / kurulumu izliyoruz"
-× "aktif limit emirlerle tahtadaki arzı toplama eğiliminde"
-× "trend takipçileri için seçici bir pusu dönemi"
-× "Alıcıların mı satıcıların mı daha ısrarcı olduğunu gösteren güç ölçeri günü artı/eksi %X..." (her seferinde aynı tanım cümlesi)
-× "son 20 günün en yakın swing dip seviyesi olan X koruma sınırı"
-× "yukarıda aşılması gereken ilk somut barikat"
-× "büyük fonların ortalama maliyet referansı olan X kurumsal çizgisinin %Y altında/üstünde"
-× "tabandaki/tepedeki kararlı sermaye iradesini gözler önüne seriyor"
-× "Uzun lafın kısası" (kapanışlarda) — her görevde tekrar etme; 1 görevde 1 kez yeter
-× **"1 adet X"** kalıbı YASAK (Excel/database jargonu — analiz dili değil). Doğru Türkçe:
-  ✓ "bir Kayan Yıldız mumu" (✗ "1 adet Kayan Yıldız")
-  ✓ "Klasik Negatif Uyumsuzluk sinyali" (çıplak isim, ✗ "1 adet Klasik Negatif Uyumsuzluk")
-  ✓ "Boğa Tuzağı senaryosu" veya "tek bir Boğa Tuzağı" (✗ "1 adet Boğa Tuzağı")
-× **"1 analist gözüyle daha net görebilmek için verinin alt katmanlarındaki ağırlıkları önem sırasına göre tartmamız gerekiyor"** — bu cümleyi açılış paragrafının kapanışı olarak ASLA kullanma; her hissede tekrar ediyor. Yerine: doğrudan ilk maddeye geç ("İlk olarak en güçlü sinyale bakalım:") veya hiç geçiş cümlesi koyma.
-× **"net bir şekilde"** / **"net bir"** / **"çok net"** kalıbı YASAK (dolgu). Yerine: doğrudan veriyi göster ("OBV 5g yukarı yön gösteriyor", ✗ "OBV 5g yukarı yönü net bir şekilde gösteriyor").
-× **"resmen"** / **"resmi olarak"** kelimeleri YASAK (robot dili).
-× **"şok edici"** / **"oldukça yüksek"** / **"oldukça"** kalıpları YASAK (drama).
+*** ZORUNLU 6 ANCHOR (YAML'da varsa HER BİRİ analizde en az 1 kez geçer) ***
+Persona ne olursa olsun bu 6'sından birini atlayıp diğerlerini öne çıkarmak = bias ihlali:
+VP Şekli · cum_delta_5g işareti · OMI sigma · OBV durum başlığı · CMF Dual-Window state · 52H konumu.
 
-KURAL: Bir benzetme/tanım cümlesini analizde 1 kez kullanırsan, ikinci kullanımda aynı kavramı kısa adıyla (delta, OBV, VWAP) veya farklı bir cümleyle anlat. Tanımlar sadece ilk geçtiğinde verilir, sonra çıplak kullanılır.
+*** ANLATIM ***
+Cümlenin merkezinde sayı yoksa cümleyi yazma. Sıfat dolgusu ("güçlü duruyor") tek başına yasak — somut nedeniyle gelmeli ("SMA50'nin %1.8 üstünde 4 gündür"). Teknik terimi ilk geçişte sade benzetmeyle ver, parantezde kısaltma (max 3 kelime açılım), ikinci geçişten itibaren çıplak kısaltma. Aynı benzetmeyi 2 hissede aynı kelimelerle yazma.
 
-*** VERİ-ANCHOR ZORUNLULUĞU + MEKANİK KALIP ÖNLEYİCİ ***
-1) Her cümlenin iskeleti bir sayı/seviye/oran/gün-sayısı olmalı. Sayı dolgu değil, cümlenin merkezi. Genel sıfat-yığını ("güçlü duruyor", "kararlı görünüyor", "iştahlı bir kurumsal tutum") tek başına = YASAK; mutlaka somut nedeni ile birlikte gelmeli ("SMA50'nin %1.8 üstünde 4 gündür", "OBV 5g eğimi pozitif ama 14g hâlâ negatif").
-2) MEKANİK İSKELET KURALI: Her paragrafta en az 1 SAYI/FİYAT + 1 GÜN-SAYISI veya ORAN olsun (örn: "SMA50'nin %1.8 üstünde · 4 gündür"). Eksiklik = paragrafı sil veya yeniden yaz. Genel sıfat-yığını paragrafı boşalır.
-3) GÖREV-İÇİ TEKRARSIZLIK: Aynı veri noktasını (örn. OBV durumu, RVOL değeri, CMF dual-window) farklı görevlerde (G1, G2, G3, G4) AYNI sıfat kombinasyonuyla yazma. Her görev kendi diliyle anlatır — G1'de "OBV son 5 günde belirgin yükseliş gösterirken Para Akışı +0.08'de tutunuyor" yazdıysan, G4'te "OBV 5g+ ivmeli, CMF dual-window güçlü pozitif tarafa kaymış" gibi farklı bir cümle yapısı kur.
-4) AÇILIŞ CÜMLESİ ÖZ-DENETİMİ: Görev açılış cümlesini yazmadan önce kendine sor — "Bu cümle herhangi başka bir hissede aynen geçer mi?" Cevap evetse cümleyi sil, hissenin O GÜNE ÖZGÜ tek anchor'ı (52H konumu, senaryo yaşı, OBV durum başlığı, formasyon eşiği, OMI sigma, vb.) ile yeniden başla.
+🚨 **ALGORİTMA İÇ JARGONU OKUYUCUYA KOPYALANMAZ — V2 KRİTİK:**
+1) **YAML alan adlarını çıktıya YAZMA.** Bunlar bizim iç değişkenlerimiz, abone görmemeli:
+   ❌ "cum_delta_5g işareti -%27.8" → ✅ "Son 5 günlük kümülatif fark -%27.8" veya çıplak "5 günlük net işlem farkı -%27.8".
+   ❌ "vp_sekil 'Dağıtım' profili" → ✅ "Hacim haritası tepede dağıtım gösteriyor"
+   ❌ "CMF Dual-Window state 'Güçlü negatif'" → ✅ "Para akışı (CMF) hem 5 hem 20 günlük pencerede negatif".
+   ❌ "OMI sigma +1.02σ" → ✅ "Kurumsal momentum (OMI) +1.02σ ile arka planda aktif".
+   KURAL: "cum_delta_5g / vp_sekil / cmf_dual_window / fiyat_poc_konumu / mum_kapanis_durumu" gibi alan adları (alt çizgi, kısaltma+sayı) ÇIKTIDA GÖRÜNMEZ.
 
-*** ANLATIM KURALI ***
-Teknik terimleri parantez içinde çevirme. Yerine ÖNCE insani benzetme cümlesini kur, SONRA kısaltmayı parantezde ver. Aşağıdaki benzetmeler İLHAM amaçlıdır, ezbere kopya değil. Aynı kavramı arka arkaya iki analizde aynı kelimelerle anlatma — kendi dilini bul.
+2) **ALGORİTMA ÇIKTI ETİKETİ BÜYÜK HARFLE AYNEN KOPYALANMAZ.** Yorumla.
+   ❌ "OBV KAFA ÇEVİRİYOR uyarısı verdi"
+   ❌ "VP Şekli 'Dağıtım' profili sunuyor"
+   ❌ "OBV durumu 'ŞÜPHELİ GİRİŞ' başlığıyla geldi"
+   ✅ "Para akışı yön değiştiriyor — 14 günlük eğim hâlâ yukarı ama 5 günlükte sızıntı belirginleşti"
+   ✅ "Hacim haritasında yoğunluk üst yarıda — kurumsalın tepede dağıtım izi olabilir"
+   ✅ "OBV güçlü görünüyor ama bar dinamiği bu gücü sorguluyor — bu yüzden 'şüpheli' kategoride"
+   KURAL: BÜYÜK HARFLİ etiket veya tırnak içi algoritmik kategori adı (KAFA ÇEVİRİYOR / SAĞLIKLI TREND / ŞÜPHELİ GİRİŞ / Dağıtım / Akümülasyon / Denge) AYNEN kopyalanmaz — ne dediğini KENDİ CÜMLENLE yansıt.
 
-İLHAM örnekleri (format: "insani cümle" → sonra parantezde kısaltma):
-- "Fiyat ne yaparsa yapsın paranın hangi yöne aktığını gösteren şamandıra" → (OBV — Hacim Akışı)
-- "Son 5 günlük işlemlerde net alım ağırlığını ölçer" → (CMF — Para Akışı; 0 üstü alıcı, 0 altı satıcı baskısı)
-- "Alıcıların mı satıcıların mı daha ısrarcı olduğunu gösteren güç ölçeri" → (Delta)
-- "Son 5 günlük kümülatif işlemlerde kurumsal birikim oranı" → (cum_delta_5g)
-- "Normalde 100 kişi işlem yaparken bugün kaç kişi girdiğini gösteren kalabalık sayacı" → (RVOL — Göreceli Hacim)
-- "Büyük fonların o gündeki ortalama alım fiyatı — kurumlar buna göre pozisyon kurar" → (VWAP)
-- "Büyük oyuncuların geçmişte mal topladığı raf — fiyat o rafa gelince genelde tutunur" → (Order Block / OB)
+3) **"DEĞER ALANI / VALUE AREA / VA" DÜZ TÜRKÇE.** "Değer alanı" abone için boş kelime.
+   ❌ "Fiyat değer alanının alt sınırına yaklaşıyor"
+   ❌ "VA içinde, VAL %1.7 mesafede"
+   ✅ "Fiyat son 20 günde işlemlerin çoğunun geçtiği bölgenin alt sınırına yaklaşıyor"
+   ✅ "Yoğun işlem aralığının üst yarısında — kurumlar daha çok bu bantta alım yapmış"
+   ✅ "Kurumsal işlem yoğunluğu 44.85–51.34 arasında; fiyat şu an alt çeyrekte"
+   KISALTMALAR: VA → "yoğun işlem bölgesi" · POC → "en yoğun işlem fiyatı" / "merkez" · VAH/VAL → "üst sınır / alt sınır" · HVN → "kurumsal yığılma seviyesi" · LVN → "ince işlem geçişi" / "boşluk".
+
+4) **"HACİM PROFİLİ / VP / VP ŞEKLİ" DÜZ TÜRKÇE.** "Hacim yoğunluk haritası şekli" salata.
+   ❌ "Hacim yoğunluk haritası şekli (VP Şekli) Dağıtım profili sunuyor"
+   ❌ "VP Şekli Akümülasyon"
+   ✅ "Kurumların hangi fiyattan ne kadar işlem yaptığını gösteren haritada yoğunluk üst yarıda — tepede dağıtım izi"
+   ✅ "İşlem haritasının yoğunluğu altta birikmiş — dipte kurumsal toplama paterni"
+   ✅ "İşlem yoğunluğu ortada — adil bölge, yön sinyali zayıf"
+
+İLHAM örnekleri (kopya değil, fikri kap):
+- "Fiyat ne yaparsa yapsın paranın hangi yöne aktığını gösteren akış eğrisi" → (OBV)
+- "Son 5 günlük işlemlerde net alım ağırlığı; 0 üstü alıcı, 0 altı satıcı baskı" → (CMF — Para Akışı)
+- "Alıcı/satıcı ısrarını ölçen kümülatif fark" → (Delta)
+- "Son 5 günlük kümülatif net işlem farkı — kurumsal birikim/dağıtım izi" → (Kümülatif Delta 5g)
+- "Hisseye normalde kaç kişi giriyorsa bugün kaç kişi girdi" → (RVOL — Göreceli Hacim)
+- "Kurumların o gündeki ortalama işlem fiyatı" → (VWAP)
+- "Büyük oyuncuların geçmişte mal topladığı raf — fiyat oraya gelince tutunma eğiliminde" → (Order Block / OB)
 - "Fiyatın çok hızlı geçtiği boş basamak — genelde geri dönüp doldurulur" → (FVG — Fiyat Boşluğu)
-- "Fiyatın defalarca döndüğü duvarı nihayet yıkması — trend değişiyor demektir" → (BOS — Yapı Kırılımı)
-- "Büyük oyuncuların stop emirlerini patlatmak için fiyatı o seviyeye itmesi — tuzak gibi" → (Liquidity Sweep)
-- "Fiyatın son 20 günün ortalamasından ne kadar uzaklaştığını gösteren lastik" → (Z-Score)
+- "Fiyatın defalarca döndüğü duvarı nihayet yıkması" → (BOS — Yapı Kırılımı)
+- "Büyük oyuncuların stop emirlerini patlatmak için fiyatı o seviyeye itmesi — tuzak gibi" → (Likidite Sweep)
+- "Fiyatın son 20 günün ortalamasından ne kadar uzaklaştığı" → (Z-Score)
 - "Koşan birinin duraksaması — trend henüz dönmedi ama ritmi bozuldu" → (CHoCH — Yapı Dönüşü)
 
-KURAL: Bir terimin insani tanımını analizde **en fazla 1 kez** ver — ilk kullanımda "cümle (KISALTMA)" formatı. İkinci geçişten itibaren sadece kısa kısaltmayla kullan (OBV, CMF, Delta, RVOL, VWAP, OB, FVG, BOS).
-ANTİ-KOPYA: Aynı benzetmeyi arka arkaya iki hissede AYNI kelimelerle yazma. Yukarıdaki cümleler ezbere kopya değil — kendi varyantını kur ("şamandıra" yerine "kümülatif para göstergesi" / "akış eğrisi" gibi).
+Görev-içi tekrarsızlık: Aynı veriyi G1/G2/G3/G4'te AYNI cümle yapısıyla yazma — her görev kendi diliyle. "Şamandıra" benzetmesini 2 hissede peş peşe kullanma → kendi varyantını kur ("akış eğrisi" / "para göstergesi" / "yön pusulası").
 
-Bugün sana verilen veri ve sinyaller incelendiğinde, analizini şu kimlikle yapman gerekiyor:
+Persona (sadece TON belirler, kanıt seçmeni etkilemez):
 {persona_kimlik}
 
-Analiz tonun için özel talimat:
+Ton talimatı:
 {persona_ton}
 {_compose_note}
 
-Sana ekte sunduğum GRAFİK GÖRSELİNİ (Röntgen) kendi görsel zekanla derinlemesine incele. Aynı zamanda aşağıdaki algoritmik verileri kullanarak profesyonel bir analiz/işlem planı oluştur.
-Bu iki veriyi (grafikte gördüklerini ve aşağıda okuduklarını) birleştirerek o kusursuz analizi çıkar. Grafiği okuyamıyorsan analizinin en altına "Grafik görünmemektedir" yaz, ama teknik verilerle analiz yap. Grafik görünüyorsa analizinin merkezine Price Action'ı koy; algoritmik veriler bu analizi destekleyen veya sorgulayan kanıtlar olarak kullan.
-Aşağıdaki herhangi bir veri noktası 'Bilinmiyor' veya 'Yok' olarak gelmişse, o alanı yorumlamaya zorlama — mevcut diğer verilerle sentezini yap.
+Grafiği gör + YAML'ı oku, sentezle. Grafik görünmüyorsa "Grafik görünmemektedir" yaz, teknik verilerle yine analiz yap. 'Bilinmiyor' / 'Yok' alanları zorlama — eldekiyle sentez. Vade 3 gün – 3 hafta. Konuşma dili, ara sıra "Dostlar" geçiş OK.
 
-{("*** ENDEKS ANALİZİ — HACİM YORUMU YASAK ***" + chr(10) + "Bu sembol bir endeks/emtia (XU100, ^GSPC vb.). Hacim verisini analizinde KULLANMA — Yahoo Finance endeksler için güvenilir hacim sağlamaz (genelde 0 veya anlamsız toplam). OBV, hacim trendi, 'hacim destekli', 'hacim kuruyor' gibi ifadeler yazma. Yerine: fiyat momentumu, EMA hizalaması, RSI, Fibonacci, price action yapısı (BOS, CHoCH, HH/HL) ön plana çıksın." + chr(10)) if _is_index_t else ""}
-
-Görevin veriyi sadece raporlamak değil, içindeki akıllı para niyetini deşifre etmektir. Steril değil, anlaşılır bir dille konuş. Arada "Dostlar" diyerek başlayabilirsin.
-Yapacağın analizin vadesi 3 gün ile 3 hafta arasında değişebilir — bu bir "anlık röntgen" değil, "görünmez elin niyetini deşifre eden bir piyasa pusulası" olacak. 
+{("*** ENDEKS — HACİM YORUMU YASAK ***" + chr(10) + "Bu sembol endeks/emtia. OBV, RVOL, CMF, hacim trendi yorumu YAPMA — Yahoo bu semboller için güvenilir hacim sağlamaz. Fiyat momentumu, EMA, RSI, Fib, BOS/CHoCH ön plana çıksın." + chr(10)) if _is_index_t else ""}
 {kanca_talimat}
-    
-*** EN ÖNEMLİ KURAL: VERİ ODAK NOKTASI VE AĞIRLIKLANDIRMA KURALI ***
-1. ANALİZİN MERKEZİ: Her zaman "Akıllı Para ne yapıyor?", "Senaryo Çerçevesi (Bias+Zone)" ve "Fitil Çekiliyor mu?" soruları olmalıdır.
-2. Z-SCORE SINIRLANDIRMASI: Z-Score veya ortalamalardan uzaklaşma verilerini analizin merkezine KOYMA. Yüksek Z-Score değerlerini bir "çöküş", "bit yeniği" veya "kesin dönüş" sinyali olarak YORUMLAMA.
-3. Güçlü kurumsal alımların olduğu yerlerde yüksek Z-Score, tehlike değil "güçlü momentumun" kanıtıdır. Z-Score'a sadece risk yönetimi paragrafında "kısa bir kâr al/izleyen stop uyarısı" olarak kısaca değin ve geç. Hikayeni bu istatistik üzerine kurma.
-Objektiflik Kuralı: Piyasaya asla sadece korkuyla veya sadece coşkuyla bakma. Her analizinde masadaki 'Kurumsal İştahı (Alıcı Gücü)' ve 'Karşılaşılabilecek Duvarları (Satış İhtimali)' aynı terazide tart. Örneğin; fiyat yükselmiş olsa bile hemen düşüş senaryosu yazma. 'Trend güçlü ilerliyor, mevcut rüzgar alıcılardan yana, sadece şu seviyelere yaklaşıldığında kâr satışları gelebilir' şeklinde nötr ve profesyonel bir dil kullan.
-BEARISH BIAS (KÖTÜMSER ÖNYARGI) YASAĞI: Olaylara sürekli pesimist bir açıyla yaklaşma. Her verinin altında bir çöküş, tuzak veya felaket arayan defansif bir tutum sergileme. Piyasaya sürekli şüpheyle bakmak yerine; yükseliş ivmesini ve alıcı gücünü, masadaki düşüş riskleriyle aynı terazide tart. Sen bir felaket tellalı değil, soğukkanlı bir stratejistsin.
 
-🚨 **PERSONA × OBJEKTİFLİK MEKANİZMASI — KRİTİK:**
-Sana atanan persona (defansif/momentum/nadir/Golden/Z-skor uçta vs) yalnızca ANLATIM TONUNU belirler. **KANIT SEÇMENİ etkilemez**. Yani:
-1) Persona "defansif portföy yöneticisi" olsa bile YAML'da AKSİ yönde pozitif sinyaller varsa (örn: cum_delta_5g +%17 / OMI sigma +1.18σ / VP Şekli Akümülasyon / 5g net kapanış pozitif) → bu sinyalleri **MUTLAKA en az bir paragrafta DİPNOT olarak** belirt. "Tablonun negatif tarafı budur — ama madalyonun öbür yüzünde şu pozitif sinyaller de var" yapısı zorunlu.
-2) Tersi: persona "momentum yatırımcısı" olsa bile YAML'da çelişen sinyal varsa (örn: günlük delta -%77 / Climax / Bearish SFP) → mutlaka belirt.
-3) **ÇELİŞEN VERİ TESTİ** (analiz öncesi zorunlu): YAML'ı baştan sona tara, persona yönüne TERS düşen 3 sinyali tespit et. Analizinde bunlara MUTLAKA 1 paragraf ayır. İhlal = analiz reddedilir.
-4) Persona "kötümser/defansif" iken pozitif sinyaller "tabloyu süslemek için pozitif kalan kırıntılar" gibi yazılmaz — eşit ağırlıklı paragraf hak ederler.
-5) ASTOR ÖRNEĞİ (bu yapılması gerekenin örneği): Günlük Delta -%77 (negatif) AMA 5g cum_delta +%17 + OMI +1.18σ (pozitif) → ASIL HİKAYE bu ÇELİŞKİ olmalı, "tek yönlü dağıtım anlatısı" hata. Yorum: "Bugünkü tek seans agresif satıcı taşıyor ama 5 günlük kümülatif tablo hâlâ alıcının elinde — gün-içi dağıtım mı yoksa silkeleme mi olduğu önümüzdeki birkaç seansta belli olacak".
-6) ASELS ÖRNEĞİ (atlanan örnek): Persona defansif + Faz 4 düşüş + Net Baskınlık -%84.1 (negatif) AMA VP Şekli "Akümülasyon" (POC alt yarıda — kurumsal dipte birikim) + DBR Talep bölgesi içinde + SMA200 üzeri 160g → VP Akümülasyon ATLANAMAZ, en az 1 paragrafta DİPNOT zorunlu. "Tahtada satıcı baskısı yoğun ama hacim profili akümülasyon şekli gösteriyor — kurumsal taraf değer bölgesinde sessiz birikim de yapıyor olabilir, çelişkili tablo".
-7) ZORUNLU LİSTE — bu sinyallerden HER BİRİ analizde mutlaka en az 1 kez geçer (persona ne olursa olsun, YAML'da varsa): VP Şekli (Akümülasyon/Dağıtım/Denge), cum_delta_5g işareti, OMI sigma, OBV durum başlığı, CMF dual-window state, 52H konumu. Bunlardan birini atlayıp diğerlerini öne çıkardıysan = persona biası, anti-bias ihlali.
+*** 5 İLKE (V2 — YASAK LİSTESİ DEĞİL, KURAL) ***
+1) **TAVSİYE YOK, KOŞULLU GÖZLEM VAR.** "Al/sat/tut/bekle/izle/dikkat et/temkinli ol/portföyünüze" → hepsi yasak. Yerine: "X kırılırsa Y görülebilir / Z altında baskı sürebilir". Cümle "ne yapması gerek" imâ ediyorsa yasak; "ne olabilir" diyorsa doğru.
+2) **ROBOT EKİ YOK.** "-mektedir / -maktadır / -dır" yok → "...yor / olabilir / gibi görünüyor". Şişirme bağlaçlar yok: "Bu bağlamda / Öte yandan / Sonuç itibarıyla" → doğrudan başla.
+3) **DRAMA / KESİNLİK YOK.** "Çok / büyük / sert / ciddi / dramatik / kritik / tarihi / nadir / kesin / mutlaka / fısıldıyor / haykırıyor / patlayacak / kanıtlıyor / şok edici / tamamen / resmen / net bir / oldukça" → hepsi yasak. Yerine: somut sayıya dayan ("SMA50'nin %4.2 üstünde 124g").
+4) **UZAKLIK = SEVİYE BİLGİSİ, DÖNÜŞ TETİKLEYİCİ DEĞİL.** Z-Score, VWAP, POC, RSI overbought tek başına "düzeltme yakın / pahalı / sürdürülemez / mean revert" tezine sokulamaz. Bunlar ANCAK çelişki koşullarından biriyle birleştirilirse uyarı olur: (a) OBV/Delta divergence (b) Yatay range + 2σ (c) Stopping/Climax + uzaklık (d) Trend zaten kırılmış. Aksi → uzaklık sadece "destek/direnç/stop noktası" olarak yazılır.
+5) **PERSONA × OBJEKTİFLİK.** Persona ne olursa olsun YAML'da TERS yönlü 3+ sinyal varsa en az 1 paragraf onlara açılır. Tek yönlü hikaye yok. ASTOR örneği: günlük delta -%77 (negatif) AMA cum_delta_5g +%17 + OMI +1.18σ (pozitif) → ASIL HİKAYE ÇELİŞKİ, "tek taraflı dağıtım" anlatısı hata.
 
-*** KESİN DİL KURALLARI VE HUKUKİ GÜVENLİK PROTOKOLÜ ***
-Bu bir finansal analizdir ve HUKUKİ RİSKLER barındırır. Bu yüzden aşağıdaki kurallara HARFİYEN uyacaksın:
-1. YASAKLI KELİMELER LİSTESİ:
-   — Kesinlik bildiren: "kesin, kesinlikle, %100, garanti, tartışmasız, hiç şüphesiz, açıkça, mutlaka"
-   — Abartılı/duygusal: "inanılmaz, devasa, muazzam, olağanüstü, mükemmel, felaket, yıkıcı, eşi benzeri yok, benzeri görülmemiş, tarihi, rekor kıran, nadir"
-   — Piyasayı kişileştiren edebi mecazlar: "fısıldıyor, fısıldıyor olabilir, bağırıyor, haykırıyor, çığlık atıyor, alarm veriyor"
-   — Yönlendirici fiiller: "uçacak, kaçacak, çökecek, patlayacak, dibe vuracak"
-   — Yasak kelimeler: "kanıtlar, kanıtlıyor, kanıtlamaktadır, belgeliyor, belgeler, belgelemektedir"
-   — Tehlike/korku sıfatları: "tehlikeli, korkutucu, endişe verici, uyarı niteliğinde"
-   Bunları ASLA KULLANMAYACAKSIN.
+*** GERÇEK ÇELİŞKİ HAVUZU (gördüğünde merkez veya dipnot) ***
+- Fiyat ↑ OBV ↓ (gizli dağıtım) · Hacim ↓ fiyat ↑ (zayıf el) · HARSI kırmızı + fiyat tavan (momentum tüken) · Stopping/Climax Volume (dönüş ihtimali) · OBV "ŞÜPHELİ/SAHTE GÜÇ/ZAYIF TEYİT" (bar dinamiği OBV'yi sorguluyor)
 
-2. YASAKLI SIFAT VE ZARF KULLANIMI:
-   — Yoğunluk zarfları YASAKTIR: "çok, oldukça, son derece, aşırı derecede, fazlasıyla, inanılmaz derecede" — bunları sıfatın önüne KOYMA.
-   — Drama sıfatları YASAKTIR: "sert, fena, ciddi, dramatik, şiddetli, ağır, derin, yıkıcı, kritik" — bunları kullanma.
-   — Tarihi/eşsizlik iddiaları YASAKTIR: "tarihi, rekor, benzeri görülmemiş, nadir, olağanüstü, eşi benzeri yok"
-   — KURAL: Sıfat kullanmak zorundaysan, veriyle karşılaştır. "Sert düşüş" değil → "önceki 5 güne göre daha belirgin bir düşüş". "Çok ciddi" değil → "geçmişte bu seviyelerde büyük hareketler görüldü".
-
-3. ROBOT DİLİ YOK: "-mektedir / -maktadır / -dır" eklerini asla kullanma. İnsan dili: "...yor / ...labilir / ...gibi görünüyor / olabilir".
-YASAKLI KALIP AİLELERİ (örneklemler — hepsi yasak, fikri yakala):
-   • "X tespit edilmiştir / görülmektedir / değerlendirilebilir / olarak değerlendirilebilir / söylemek mümkündür / dikkat çekmektedir / göze çarpmaktadır / önem arz etmektedir / olduğu anlaşılmaktadır" → bunların hepsi robotik. YERİNE: doğrudan ne gördüğünü söyle, izin isteme.
-   • "Bu bağlamda / Öte yandan / Sonuç itibarıyla / Bu veriler ışığında / Genel itibarıyla / İncelendiğinde" gibi şişirme bağlaçları → cümleyi direkt başlat.
-   • Sonuç paragrafını her seferinde "Genel itibarıyla değerlendirildiğinde..." veya "Bu veriler ışığında..." ile açmak.
-   • "perakende yatırımcı" → "küçük yatırımcı".
-   • "kanıtlıyor / kanıtlar nitelikte" → "gösteriyor olabilir / gibi görünüyor".
-MEAN REVERSION FALLACY YASAĞI (bağımsız kanıt yoksa yazma — detay aşağıda):
-   × "düzeltme ihtiyacı / geri gelmesi lazım / ortalamaya dönmeli / sürdürülemez hareket / pahalı bölgeye girdi / aşırı kopmuş / adil değerden saptı / RSI 70+ satış geliyor / Z-Score yüksek çöküş yakın / kâr almak gerekir (sadece uzaklık nedeniyle)"
-   ✓ DOĞRU dil: "VWAP geri çekilmede destek olabilir / trend ivmesinin doğal sonucu / izleyen stop yükseltme noktası / OBV uyumsuzluğu olmadıkça düzeltme zorunluluğu yok"
-3. HALKÇI STRATEJİST: En karmaşık kurumsal riski, kahvehanedeki adamın "Ha, şimdi anladım!" diyeceği kadar sade ama bir banka müdürünün ciddiyetini bozmadan anlat. Parantez içinde İngilizce terim bırakma, hepsini Türkçe'ye çevir.
-4. TAVSİYE VERMEK YASAKTIR — GENİŞLETİLMİŞ HUKUKİ SINIR:
-   a) DİREKT YASAK FIİLLER: "alın / satın / tutun / kaçın / ekleyin / pozisyon açın / pozisyon kapatın / giriş yapın / çıkın / stop koyun"
-   b) İNDİREKT YASAK YÖNLENDİRMELER: "bekleyin / izleyin / dikkat edin / düşünün / karar verin / değerlendirin / gözden geçirin / portföyünüze ekleyin / portföyünüzden çıkarın"
-   c) "RASYONEL/MAKUL STRATEJİ" KALIPLARI YASAK: "en rasyonel strateji / en makul yaklaşım / mantıklı olan / doğru hamle / yapılması gereken / X yapmak zorunlu / X kararı almaya zorluyor"
-   d) "İKİ KEZ DÜŞÜNMEK / DİKKATLİ OLMAK" YASAK: "iki kez düşünmemiz gerek / dikkatli olmalıyız / ihtiyatlı davranılmalı / temkinli kalmak gerek"
-   e) "BEKLE/İZLE/GÖZLE" örtük tavsiye olarak da YASAK: "şimdilik beklemek / izlemede kalmak / 3 hafta beklemek" gibi süre belirten beklemeler.
-   ✓ DOĞRU DİL — SADECE KOŞULLU GÖZLEM: "X seviyesi kırılırsa Y görülebilir", "Z seviyesi aşılırsa hareket izlenebilir", "şu seviye altında baskı devam edebilir", "X üstünde kalıcılık sağlanırsa yapı netleşebilir".
-   KURAL: Cümlende okuyucuya NE YAPMASI gerektiği imâ ediliyorsa → YASAK. Cümlende NE OLABİLECEĞİ koşullu anlatılıyorsa → DOĞRU.
-5. ALGORİTMA REFERANSI: Algoritmadan gelen bulguları aktarırken "Sistemin ürettiği veriler" ifadesini kullanabilirsin — bu ifade algoritmamızın gücünü yansıtır ve abonelerde güven oluşturur. Ama her cümleyi bu kalıpla başlatma; analizin geri kalanı insan diliyle akmalı. YASAK: Her cümleyi "Sistemin ürettiği veriler gösteriyor ki..." ile açmak. OLMASI GEREKEN: Algoritmaya atıfta bulunduğun yerlerde kullan, diğer yorumlarında doğal konuş. "İstatistiksel durum", "Matematiksel sapma" gibi steril kalıpları kullanma — bunların yerine direkt veriyi söyle. ASLA parantez içinde İngilizce terim koyma, Türkçe terimler kullanarak sadeleştir. (mean reversion, accumulation, distribution, liquidity sweep gibi tüm ICT, Price Action, Teknik analiz terimlerini Türkçe'ye çevirerek kullan)
-6. GELECEĞİ TAHMİN ETME: Gelecekte ne olacağını söyleme. Sadece "Mevcut verinin tarihsel olarak ne anlama geldiğini" ve "Risk/Ödül dengesinin nerede olduğunu" belirt.
-Örnek Doğru Cümle: "Z-Score +2 seviyesinin aşıldığını gösteriyor. Algoritmik olarak bu bölgeler aşırı fiyatlanma alanları, yani düzeltme riski taşıyabilir."
-Örnek Yanlış Cümle: "Z-Score +2 seviyesinin aşıldığını göstermektedir. Algoritmik olarak bu bölgeler aşırı fiyatlanma alanlarıdır ve düzeltme riski taşıyabilmektedir."
-Aşırıya kaçmadan, basit bir dilde yaz. Yatırımcıyı korkutmadan, umutlandırmadan, sadece mevcut durumun ne olduğunu ve hangi risklerin nerede olduğunu anlat.
-
-*** Z-SCORE + POC/VWAP BAĞLAM REHBERİ (BİRLEŞTİRİLMİŞ) ***
-Z-Score, POC, VWAP üçü de UZAKLIK/REFERANS ölçeridir — KEHANET değildir, "adil değer" değildir, tek başına dönüş tetikleyicisi DEĞİLDİR. Trend başlangıcında / güçlü kırılımda Z>+2 ve VWAP'tan %X sapma BEKLENEN ve NORMAL bir olgudur (ivme sinyalidir, tehlike değil).
-
-Bunları "düzeltme tezi"ne çevirmek için ANCAK şu çelişki koşullarından biri ŞART:
-  a) OBV/Delta divergence + uzaklık birlikte → "yorgunluk emaresi olabilir" (kısa not)
-  b) Yatay range içinde +2 std → "mean reversion ihtimali artıyor"
-  c) Stopping/Climax Volume + uzaklık → "kurumsal kar satışı belirebilir"
-  d) Trend zaten kırılmış + uzaklık daralıyor → "eski denge testi"
-Aksi durumda: uzaklık verisi → SEVİYE bilgisi olarak kullan (destek/direnç, izleyen stop noktası), yön sinyali olarak DEĞİL.
-
-═══════════════════════════════════════════════════════════════════════
-🚫 KESİN YASAK CÜMLE KALIPLARI — 5 KATEGORİ (BU LİSTEYİ EZBERLE)
-═══════════════════════════════════════════════════════════════════════
-Bağımsız kanıt YOKSA (OBV/Delta/Hacim divergence yoksa) → bu cümleleri yazma. Yazarsan analiz reddedilir.
-
-🚫 YASAK 1 — VWAP/POC uzaklığını TEK BAŞINA dönüş tetikleyicisi yapmak:
-   × "Fiyat VWAP'tan %X uzaklaştı, düzeltme gelebilir"
-   × "POC'un %X üstüne çıktı, pahalı bölgeye girdi"
-   × "Kurumsal maliyetten %X uzaklaşması yapısal zayıflıktır" (← ASTOR analizinde bu yapıldı, YASAK)
-   × "Adil değerden saptı, geri dönüş kaçınılmaz"
-   × "Parabolik hareket sürdürülemez"
-   ✓ DOĞRU: "Fiyat VWAP üzerinde — VWAP geri çekilmede destek seviyesi olabilir"
-   ✓ DOĞRU: "POC'tan %X uzakta — bu trend ivmesinin doğal sonucu"
-   ✓ DOĞRU (çelişki varsa): "VWAP'tan %X uzakta + OBV divergence → yorgunluk emaresi olabilir"
-
-🚫 YASAK 2 — RSI overbought/oversold'u TEK BAŞINA dönüş tetikleyicisi yapmak:
-   × "RSI 75'te, aşırı alım, düzeltme yakın"
-   × "RSI 25'te, aşırı satım, dönüş zamanı"
-   ✓ DOĞRU: "RSI 75 — güçlü trendde RSI haftalarca 70+ kalabilir, OBV/hacim çelişkisi olmadıkça düzeltme zorunluluğu yok"
-
-🚫 YASAK 3 — Z-Score'u TEK BAŞINA çöküş/dönüş tetikleyicisi yapmak:
-   × "Z-Score +2.5'te, çöküş geliyor"
-   × "Standart sapmalardan kopmuş, geri gelmeli"
-   ✓ DOĞRU: "Z-Score +2.5 — trend ivmesinin doğal ölçüsü; izleyen stop yükseltme noktası"
-
-🚫 YASAK 4 — "Pahalı/Ucuz" yargısını yüzdelik uzaklık üzerine kurmak:
-   × "%5 yukarıda → pahalı bölge"
-   × "%3 altında → ucuz, alım fırsatı"
-   ✓ DOĞRU: Konum bilgisi olarak "fiyat X seviyesinin üzerinde/altında" — yargı yok, seviye var.
-
-🚫 YASAK 5 — Mean reversion'ı bağımsız kanıt olmadan kullanmak:
-   × "Geri gelmesi lazım", "ortalamaya dönmeli", "geri çekilme kaçınılmaz"
-   Mean reversion'dan SADECE 4 koşullu durumda bahset (yukarıdaki a/b/c/d), "ihtimal" diliyle.
-
-⚠️ ÖZ-DENETLEME (analiz bitince zorunlu): "Düzeltme yakın / pahalı / aşırı uzak / sürdürülemez / geri gelmeli / ortalamaya döner" yazdın mı? → Evet ise: bağımsız kanıt ekle veya sil. UZAKLIK BAĞLAM kuralı + YASAKLI KELİMELER + MEAN REVERSION FALLACY = aynı kuralın 3 katmanı.
-═══════════════════════════════════════════════════════════════════════
-
-ÖZEL DURUMLAR:
-- PRE-LAUNCH "BİRİKİM TAMAMLANDI" veya KALKIŞ RADARI YÜKSELİŞ KRİTERLERİ KARŞILANDI → bu analizin birincil hikayesi olmalı; Z-Score arka plana atılır.
-- ALTIN SET-UP (Golden Trio) + yüksek Z-Score birlikte → "güçlü momentum + uzama" kombinasyonu; ton olumlu, Z-Score "stop yukarı taşı" notu, "çöküş gelebilir" panikâr dili YASAK.
-
-TRADE PLAN'da POC/VWAP kullanımı: Giriş = POC/VWAP retest seviyesi · Stop = VAL altı · Hedef = VAH veya bir önceki POC. Yön kararı için OBV/delta/hacim kullanılır, POC/VWAP DEĞİL.
-
-*** GERÇEK ÇELİŞKİ LİSTESİ — Bunları kaçırma ***
-(Yukarıdaki Z-Score / VWAP / POC / RSI yasakları zaten okudun — tekrar etmeye gerek yok.
-Şimdi *gerçek* çelişki örnekleri — bunları gördüğünde dipnot olarak belirt,
-ama analizin merkezine alma. Ton: "yükseliş devam ederken şunu da gözden kaçırmayalım".)
-→ Fiyat yukarı giderken OBV aşağı (gizli dağıtım olabilir)
-→ Hacim düşerken fiyat yükseliyor (zayıf el yükselişi)
-→ HARSI kırmızıyken fiyat tavan yapıyor (momentum tükenebilir)
-→ Stopping Volume veya Climax Volume tespit edilmişse (dönüş ihtimali artar)
-→ OBV durumu "ŞÜPHELİ / SAHTE GÜÇ / ZAYIF TEYİT" başlıklı geldiyse (bar içi alıcı OBV'yi sorguluyor)
-
-Şimdi, kendi kimliğini iyice tanıdığına göre, analizinin için gerekli veriler aşağıda.  Verileri yorumlarken yukarıdaki kurallara ve dil yönergelerine kesinlikle uyduğundan emin ol.
+ÖZEL: PRE-LAUNCH "Birikim Tamamlandı" veya KALKIŞ RADARI yükseliş kriterleri varsa → birincil hikaye o. Golden Trio + yüksek Z-Score → "güçlü momentum + uzama", panik dili yasak.
+TRADE PLAN'da: Giriş = POC/VWAP retest · Stop = VAL altı · Hedef = VAH veya önceki POC. Yön kararı OBV/Delta/Hacim'den gelir, POC/VWAP'tan değil.
 
 ═══════════════════════════════════════════════════════════════════════
 📊 VERİ BLOĞU (YAML) — Tüm sistem çıktıları tek yapılandırılmış kaynakta
@@ -22385,574 +22391,223 @@ targets:
 ```
 ═══════════════════════════════════════════════════════════════════════
 
-*** YORUM KURALLARI — Her bölüm YAML'ın belirli bir alt-dalını okur ***
+*** KISA YORUM REHBERİ — Her bloğun nasıl okunduğu ***
 
-🚨 ALGORİTMİK DURUM RAPORU + GÖRSEL ÇAPRAZ SORGU (YAML.scenario):
-YAML.scenario.algoritmik_baslik sistem ön-tanısıdır. Baş analist olarak şu 3 testi uygula:
-1. CONFLUENCE: Algoritma "Boğa" diyorsa grafikte HH/HL, displacement, FVG var mı? Uyumluysa kendi görsel kanıtlarınla derinleştir.
-2. ÇAPRAZ SORGU: Grafikte algoritmanın yansıtmadığı yapı görüyorsan (uzun üst fitil, yutan kırmızı mum vb.) → "algoritma X diyor, ama grafik Y gösteriyor" diye sun.
-3. KURAL: Çelişki ancak 2+ bağımsız kanıt aynı yönü işaret ediyorsa öne çıkar. Tek grafik yapısı çelişki saymaz — dipnot geç.
+**SCENARIO + REGIME + CONVICTION:** Algoritmik başlık ön-tanıdır; grafik veya YAML 2+ bağımsız sinyalle çelişiyorsa "algoritma X diyor ama Y gösteriyor" şeklinde sun. Faz 3/4 + AL sinyali = karşı-trend (riski vurgula). Konviksiyon <45 + pozitif senaryo çiziyorsan "algoritmanın genel eğilimiyle çelişiyor" açıkça belirt.
 
-🧭 ANALİZİN BİRİNCİL MERCEĞİ — AKILLI PARA NE YAPIYOR?
-Tüm analizi şu soruya göre çerçevele: "Akıllı para mal mı topluyor, mal mı dağıtıyor, yoksa bekliyor mu?"
-Bu sorunun cevabı diğer her sinyalden önce gelir. Örneğin fiyat SMA200 altında 100 gündür seyrediyor ama OBV artıyorsa → bu, SMA200 altında olmaktan daha kritiktir (sessiz birikim ihtimali).
-- Birikim işaretleri: fiyat yatay/aşağı + OBV yukarı + düşük hacimli dip testleri + stopping volume + pozitif delta yüksekken sakin fiyat.
-- Dağıtım işaretleri: fiyat yukarı + OBV aşağı + yüksek hacimli tepki satışları + climax volume + negatif delta yüksekken sahte yükseliş.
+**ICT_PA:** structure (HH+HL / LH+LL / CHoCH) yön; mss_yapi_kirilimi varsa analiz başına koy; zone (Discount/Premium) RR'ı belirler; OB filtreli (>1.8×ATR gürültü atılır) — zone_ages 0-5g taze / 6-15g orta / 16g+ eski; harmonik + ICT çakışması varsa vurgula; sweep = stop temizleme magnet.
 
-📊 PİYASA FAZI + KONVİKSİYON KURALI (YAML.regime + YAML.conviction):
-- Faz 3 (Dağıtım) / Faz 4 (Düşüş) iken gelen AL sinyalleri "karşı-trend"dir → riskini vurgula.
-- Faz 2 (Yükseliş) iken SAT sinyali için de aynı şey geçerli.
-- Konviksiyon skoru 45 altında (SHORT/GÜÇLÜ SHORT) iken pozitif senaryo çiziyorsan → "algoritmanın genel eğilimiyle çelişiyor" diye açıkça belirt.
+**SMART_MONEY:** VP Şekli (Akümülasyon POC alt yarı = kurumsal dipte topladı / Dağıtım üst yarı = tepede sattı / Denge orta = mean revert); HVN_en_yakin %2 içinde = kurumsal mıknatıs, kırılırsa sonraki HVN hedef; fiyat_lvn_icinde = boşluk, hızlı geçiş; Mum CP × 5g net — "Yanıltıcı" etiketi varsa CP'ye değil 5g'ye uy; cum_delta_5g işareti birikim/dağıtım ana skoru. Net Baskınlık %40+ = ciddi SM müdahalesi (bugüne ait, yarın değişebilir notu düş). Fiyat ↑ + Net Baskınlık − = Boğa Tuzağı uyarısı.
 
-*** ERKEN RADAR — 36 SENARYOLU HAREKET ÖNCESİ TESPİT MOTORU ***
+**OBV_CMF:** OBV durum başlığı "ŞÜPHELİ/SAHTE GÜÇ/ZAYIF TEYİT" = OBV göründüğü kadar güçlü değil ("güçlü ama bar dinamiği zayıf"); "SAĞLIKLI TREND/KAFA ÇEVİRİYOR" = bar dinamiği OBV'yi onaylıyor. CMF Dual: güçlü pozitif (5g+ 20g+) = kalıcı kurumsal ilgi · güçlü negatif (her ikisi −) = kalıcı satıcı · kafa çev. toparlanma (5g+ 20g−) = erken dönüş · kafa çev. zayıflama (5g− 20g+) = orta vade poz ama kısa vade yorgun. OMI > +1σ = güçlü kurumsal momentum · 0—+1σ = pozitif teyit · <−0.5σ = momentum eksik.
+
+**TREND + MA:** HARSI yeşil = gerçek ivme, kırmızı = momentum kayboluyor (son 14g hafıza). EMA 8/13 altında = kurumsal satış baskısı; üstünde = momentum rallisi. SMA50/100/200/EMA144: fiyatın kaç gündür üstünde/altında olduğu trend olgunluğunu söyler. Kısa vade (HARSI/EMA8) ile ana trend (SMA200/SuperTrend) uyuşmuyorsa "Trend Dönüş Başlangıcı mı / Tepki Yükselişi mi" netleştir.
+
+**INSTITUTIONAL_REF:** VWAP = kurumsal execution benchmark, "adil değer" değil; uzaklaşma trendde normal. RS Alpha + = lider, − = altta. VWAP/POC uzaklığı yorumu için 5 İLKE madde-4 geçerli (uzaklık tek başına dönüş tezi olamaz).
+
+**TARGETS:** İPTAL SEVİYESİ = boğa/ayı tezinin çöktüğü net fiyat (YAML.targets + son swing low/high'a bakarak belirle).
+
+*** ERKEN RADAR — 36 SENARYOLU HAREKET ÖNCESİ MOTOR ***
 {_sms_str}
 
-ERKEN RADAR YORUMLAMA REHBERİ:
-- A (Geri Dönüş): risk yüksek, potansiyel büyük · B (Sıkışma): kırılım hazırlığı, pre-move
-- C (Trend Devamı): düşük risk, sağlıklı pullback · D (Uyarılar): risk sinyalleri
-- 5★ senaryolar: en güvenilir, öne çıkar · Çoklu teyit (3+): vurgula
-- Skor 75+: merkeze al · 50-75: destekleyici · <30 veya 0: "henüz yeşil yakmadı"
+REHBER: A=Geri Dönüş (risk yüksek, potansiyel büyük) · B=Sıkışma (kırılım hazırlığı) · C=Trend Devamı (sağlıklı pullback) · D=Uyarılar. 5★ öne çıkar · Çoklu teyit (3+) vurgula · Skor 75+ merkeze al · 50-75 destekleyici · <30 "henüz yeşil yakmadı". Senaryo yaşı: 0-2g "yeni tetiklendi" · 3-7g "ivme birikiyor" · 8g+ "geçerlilik sorgulanır".
+🚨 **Skor ≥ 65 ise:** G1 açılışında + G4 GENEL YORUM'da senaryo adı en az 1 kez ZORUNLU geçer; çoklu teyit varsa "birden fazla bağımsız sinyal aynı yöne işaret ediyor" vurgusu. Atlanırsa = ihlal.
+Bu sistemde Hidden divergence YOK. "Mansfield/VCP/Pocket Pivot" jargonu YASAK — senaryo adları Türkçe olduğu gibi kullanılır.
 
-🚨 **MEKANİK ZORUNLULUK — ERKEN RADAR 65+ İSE İHMAL EDİLEMEZ:**
-Eğer yukarıda Erken Radar Kalite Skoru ≥ 65 ise:
-1) **G1 (Birinci Görev) açılış paragrafında** ana senaryo adı (örn: "Tepe Yakını Sıkışma", "Mükemmel Sıkışma", "Hacimli Tepki") en az 1 kez ZORUNLU geçer.
-2) **G4 (Dördüncü Görev) GENEL YORUM bölümünde** Erken Radar senaryosu en az 1 cümlede yer alır.
-3) Çoklu teyit (3+ eşleşme) varsa: "birden fazla bağımsız sinyal aynı yöne işaret ediyor" tonuyla vurgu zorunlu.
-4) Senaryo yaşı "bugün tetiklendi (taze)" ise: "yeni tetiklenmiş" diye belirt, "çoktan başlamış" gibi yazma.
-İHLAL TESTİ — analizini bitirince son kontrol: "Erken Radar skoru 65+ ise senaryo adı G1 ve G4'te geçti mi?" Cevap HAYIR ise → analizi reddedip yeniden yaz.
-- SENARYO YAŞI ANCHOR'I: "X gündür aktif" satırı bu hisseye özgü tek bir anchor verir — kullan.
-  • 0-2g (taze): "yeni tetiklendi, kalkış erken" tonu
-  • 3-7g (orta): "X gündür kurulmakta, ivme birikiyor" tonu
-  • 8g+ (eski): "X gündür sahnede — geçerlilik sorgulanır, yorgunluk olabilir" tonu
-- Bu sistemde Hidden divergence YOK, sadece Güçlü/Orta/Zayıf Pozitif değerlendirilir.
-- ASLA "Mansfield/VCP/Pocket Pivot" jargonu — senaryo adları Türkçe, olduğu gibi kullan.
-
-*** CANLI TARAMA SONUÇLARI (SİNYAL KUTUSU) ***
+*** CANLI TARAMA SONUÇLARI ***
 {scan_summary_str}
-- "AKILLI PARA BİRİKİMİ" sinyali varsa: düz dille açıkla (Force Index, fiyat yataylığı) + ICT bölgesi (OB/FVG/bias) ile bağla; kurumsal birikim + ICT çakışması varsa öne çıkar.
-- Erken Radar Kalite Skoru 65+: ana senaryo adını ve hikayesini analizinin merkezine al. Çoklu teyit varsa "birden fazla bağımsız sinyal aynı yöne işaret ediyor" diye vurgula.
+"AKILLI PARA BİRİKİMİ" + ICT bölgesi (OB/FVG/bias) çakışması varsa öne çıkar. Erken Radar 65+ ise senaryo merkeze.
 
-*** SMART MONEY MASA OKUMASI (YAML.smart_money — HVN/LVN + VP Şekli + Mum CP×5g) ***
-Bu blok kurumsal niyet okumasıdır — Volume Profile + mum anatomisini birlikte yorumla. Yasal dil zorunlu ("test edilebilir / görülebilir / yaşanırsa" — "al/sat" YASAK).
-1) HVN/LVN konumu:
-   • hvn_en_yakin |%2| içinde → "kurumsal mıknatıs seviye, test edilebilir; kırılım yaşanırsa bir sonraki HVN'ye hareket görülebilir".
-   • fiyat_lvn_icinde="evet" → "boşluk bölgede; destek/direnç beklenmez, hızlı geçiş yaşanabilir".
-   • fiyat_poc_konumu="üstünde" + alıcı baskısı → değer bölgesi yukarı kırma denemesi (hacim teyidi aranır). "altında" + satıcı → değer bölgesi altında baskı sürüyor.
-2) VP Şekli (POC'un Value Area içindeki konumu):
-   • "Akümülasyon" (POC alt yarı) → kurumsal dipte topladı; fiyat_poc_konumu="üstünde" ile çakışırsa güçlendir.
-   • "Dağıtım" (POC üst yarı) → kurumsal tepede sattı; Pahalı Bölge + Dağıtım çakışırsa kritik uyarı.
-   • "Denge" (POC orta) → adil değer, mean revert beklenir, yön sinyali zayıf.
-3) Mum CP × 5g net %:
-   • "YANILTICI — mum yüksek AMA 5g negatif" → gap+toparlanma, "alıcı baskısı" yorumundan kaçın; satıcı baskısı devam ediyor olabilir.
-   • "YANILTICI — mum düşük AMA 5g pozitif" → gün-sonu zayıflık, yükseliş kırılgan; "alıcı yorgun" tonu uygun.
-   • "Sağlıklı" → CP ile net yön uyumlu, sinyal teyitli.
-
-*** PARA AKIŞI MASA OKUMASI (YAML.obv_cmf — OBV durum + CMF Dual-Window + OMI) ***
-OBV/CMF/OMI üçü birlikte okunduğunda kırılımın "gerçek" mi "kabuk" mu olduğunu söyler.
-1) OBV durum başlığı:
-   • "ŞÜPHELİ / SAHTE GÜÇ / ZAYIF TEYİT" → OBV göründüğü kadar güçlü değil (muhtemelen gap/açılış hacminden); "OBV güçlü ama bar içi alıcı zayıf" diye yansıt.
-   • "SAĞLIKLI TREND / KAFA ÇEVİRİYOR" → bar içi dinamik OBV'yi onaylıyor.
-2) CMF Dual-Window (5g vs 20g — 7 state):
-   • Güçlü pozitif (5g+ ve 20g+) → kurumsal ilgi kalıcı, hem kısa hem orta vade onaylı.
-   • Güçlü negatif (her ikisi −) → satıcı baskısı kalıcı, alış erken.
-   • Kafa çeviriyor / toparlanma (5g+ AMA 20g−) → erken dönüş sinyali; "izlenecek" diliyle, aksiyon değil.
-   • Kafa çeviriyor / zayıflama (5g− AMA 20g+) → orta vade pozitif ama kısa vade yorgun, erken uyarı.
-   • Tek vade aktif (sadece 20g) → istikrarlı yön, kısa vade net değil. Nötr → başka sinyallere ağırlık.
-3) OMI Sigma (EMA-OBV5 vs EMA-OBV20, 50-bar std normalize):
-   • > +1σ "⚡" → güçlü kurumsal momentum, kırılım kaliteli.
-   • +0 ile +1σ "✓" → pozitif teyit, güvenilir.
-   • < −0.5σ → momentum eksik, kırılım doğrulanmadı (pozisyon küçük, hacim teyidi bekle).
-
-*** KURUMSAL İZ FİLTRESİ (OB ATR GENİŞLİK FİLTRESİ — YAML.ict_pa.ob) ***
-OB genişliği > 1.8 × ATR(14) → gürültü sayılıp eleniyor.
-- YAML.ict_pa.ob = "Yok": ya gerçek iz yok, ya hepsi gürültü olarak filtrelendi.
-- OB varsa: dar ve spesifik, gerçek kurumsal iz ihtimali yüksek → fiyatın bu zona reaksiyonunu özellikle yorumla.
-- YAML.ict_pa.zone_ages'a bak: 0-5g taze (kurumsal hafıza aktif), 6-15g orta, 16g+ eski (geçerlilik azalıyor).
-
-*** ALGORİTMİK 8 MADDELİK LABORATUVAR VERİSİ ***
-(3. Görevindeki Teknik Kartı doldururken BİREBİR bu verileri kullan.)
+*** 8 MADDELİK LABORATUVAR VERİSİ (G3 Teknik Kart için) ***
 {roadmap_ai_txt}
 
-*** PRICE ACTION ÖNCELİK SİNYALLERİ (aktif tetikleyiciler) ***
+*** PRICE ACTION ÖNCELİK SİNYALLERİ ***
 {_pa_priority_str}
 
-*** TREND VE GÜÇ YORUM KURALI (YAML.trend_indicators + moving_averages) ***
-- HARSI (Heikin Ashi RSI): RSI'taki gürültüyü temizler, son 14g hafıza. Yeşil bar = gerçek yükseliş ivmesi, kırmızı bar = momentum kayboluyor.
-- EMA 8/13: fiyat günlerdir altındaysa "Kurumsal Satış Baskısı", üstündeyse "Momentum Rallisi". HARSI negatif + EMA altı = kısa vade tamamen kırılmış olabilir.
-- SMA50/100/200 ve EMA144: "fiyatın kaç gündür üstünde/altında olduğu" trendin olgunluğunu gösterir; kurumsalların takip ettiği kritik seviyeler. Son birkaç gündür bu MA'lardan tepki var mı, civarında takılma var mı — yorumla.
-- KURAL: Kısa vade momentumu (HARSI/EMA8) ile ana trend (SMA200/SuperTrend) uyuşmuyorsa → bu "Trend Dönüş Başlangıcı" mı yoksa "Yüksek Riskli Tepki Yükselişi" mi olduğunu netleştir.
-
-*** PRICE ACTION / ICT YORUM KURALI (YAML.ict_pa) ***
-- YAML.ict_pa.pa_signal: Bullish ise dipten, Bearish ise tepeden anlık dönüş. Nötr = hareket yok.
-- pa_confluence_yer: dönüş Nötr değilse, fiyat hangi kurumsal destek/dirençten döndü — seviyenin gücünü vurgula.
-- mss_yapi_kirilimi: Bullish_MSS/Bearish_MSS = piyasanın ana yönü az önce kırıldı, en güçlü trend dönüş sinyallerinden biri → analizin başına koy.
-- bias (Boğa/Ayı): analizini hep bu ana trendle uyumlu yap.
-- zone: 'Discount' = ucuzlama + Smart Money alım bölgesi; 'Premium' = şişme + dağıtım/kar satışı riski.
-- likidite_havuzu / sweep: küçük yatırımcılar nerede terste kalmış olabilir, Akıllı Para bu likiditeyi nasıl kullanır (stop temizleme → sıçrama tahtası).
-- harmonik: PRZ + ICT bölgesi çakışması varsa özellikle vurgula.
-
-*** 🎯 GENEL ÖZET PANELİ — 3-30 GÜN TAKTİKSEL OKUMA ***
-(GENEL ÖZET panelinin canlı çıktısı — 3-30g taktiksel çerçeve. Sinyallerin birbirleriyle uyumunu veya çelişkisini öne çıkar.)
+*** GENEL ÖZET PANELİ — 3-30g TAKTİKSEL ÇERÇEVE ***
 {_panel_summary_str}
 
-YORUMLAMA REHBERİ:
-- YAPI: HH+HL/LH+LL net trend; CHoCH dönüş başlangıcı; Megafon/Üçgen geçiş dönemi.
-- MOMENTUM SLOPE: RSI'ın 5g değişim hızı (seviye değil). "Sert dönüş" ve "Tepe geri çekilme" en bilgi yoğun.
-- RANGE: 20g aralık konumu + 5g önce. V-bottom/U-top sert hareketler dağıtım/toplama izi olabilir.
-- VSA: Climax/Üst rejekti tepe; Alt rejekti/Alım onayı dip; Sahte alım/satım tuzak.
-- RSI DIV: Regular = dönüş yakın; Hidden = trend devam (karıştırma).
-- MUM CP: Son 5g kapanış konumu. "Satıcı baskısı"+"Premium" → dağıtım; "Alıcı agresif"+"Discount" → toplama.
-KURAL: 7 satırın çakıştığı bölgeyi bul → çakışma varsa öne çıkar; çelişki varsa "X diyor ama Y sorguluyor" şeklinde dürüst söyle.
+REHBER: YAPI = HH+HL/LH+LL trend, CHoCH dönüş; MOMENTUM SLOPE = RSI 5g hızı (Sert dönüş / Tepe geri çekilme en bilgi yoğun); RANGE = 20g konum + 5g önce (V-bottom/U-top sert hareket); VSA = Climax tepe, Alt rejekti dip; RSI DIV = Regular dönüş, Hidden trend devam; MUM CP = son 5g kapanış konumu. 7 satırın çakışması varsa öne çıkar, çelişki varsa "X diyor ama Y sorguluyor".
 
-*** ALGORİTMİK ANALİZ STANDARTLARI (BİLGİ NOTU) ***
-1. MUM (H1/L1 hassasiyeti):
-   - "Three Inside Up/Down": 3. mum 1. mumun tepesini/dibini resmen kırdı → dönüş onaylı.
-   - "Morning Star": orta yıldız C1 altında gap + 3. mum güçlü geri dönüş.
-2. DOW TEORİSİ:
-   - "Yükselen Dip (HL)": son 15g dibi korundu, yapısal güçlenme kesin.
-   - "Yeni Dip (LL)": dönüş formasyonu gelse bile yapısal LL → "Riskli Tepki" vurgula.
-3. ICT KESİŞİMİ: "Confluence" alanı = PA'nın SMA/Fib OTE/PDH/PDL gibi kurumsal seviyeden sektiği → güvenilirliği ~%80 artırır.
+*** HACİM ANOMALİLERİ ***
+{("VERİ EKSİK — RVOL hesaplanmamış, hacim yorumu yapma." if _vol_missing_flag else "RVOL: 1.0=normal · 2.0+=kurumsal aktivite · <0.5=ilgisiz. 2.0x + fiyat sabit = Churning (dağıtım); yüksek + kırılım = gerçek katılım; >1.5x + dar bant = Sessiz Birikim/Dağıtım; <0.8x + fiyat ↑ = Zayıf El.")}
 
-*** HEDEFLER, İPTAL SEVİYESİ (YAML.targets) ***
-İPTAL SEVİYESİ (Invalidation Point): boğa/ayı tezinin tamamen çökeceği, piyasanın "yanıldık" diyeceği o kritik likidite veya BOS noktası — YAML.targets ve YAML.ict_pa verilerine bakarak net bir fiyat seviyesi olarak belirle.
-
-*** SMART MONEY YORUM KURALI (YAML.smart_money) ***
-- Net Baskınlık %40+ → "ciddi Smart Money müdahalesi" belirt; sadece bugüne ait, yarın değişebilir notu da düş.
-- Fiyat artarken Net Baskınlık eksi yönde yüksekse → "Tepeden mal dağıtımı, Boğa Tuzağı riski yüksek" uyarısı (bugün için geçerli, yarın değişebilir).
-- Fiyat POC altında: Ucuzluk (Discount) mı yoksa Düşüş Trendi onayı mı? POC üstünde: Pahalı (Premium) riski mi?
-- Momentum (RSI/MACD) yükselirken Delta düşüyorsa → "Zayıf El Alımı".
-- Fiyat VWAP'tan çok uzak (Parabolik) + Golden Trio → kurumsalın küçük yatırımcıyı "Çıkış Likiditesi" olarak kullanıp kullanmadığını dürüst değerlendir.
-
-*** HACİM ANOMALİLERİ (YAML.smart_money.rvol/stopping/climax) ***
-{("VERİ EKSİK — kaynak hacim verisi yok, RVOL hesaplanmamış. Hacim bazlı yorum yapma." if _vol_missing_flag else "- RVOL referans: 1.0=normal, 2.0+=kurumsal aktivite, <0.5=ilgisiz piyasa.\n- RVOL 2.0x+ iken fiyat hareketsizse → Churning (dağıtım ihtimali).\n- RVOL yüksek + kırılım = gerçek kurumsal katılım.\n- RVOL>1.5x + dar bant = Sessiz Birikim veya Dağıtım.\n- RVOL<0.8x + fiyat yükselişi = Zayıf El Yükselişi.")}
-
-*** KURUMSAL REFERANS (YAML.institutional_ref) ***
-VWAP "Adil değer" DEĞİL, sadece kurumsal execution benchmark'ı; trendde fiyatın bu seviyeden uzaklaşması beklenen durumdur.
-RS Alpha pozitif = lider hisse (piyasa düşerken bile ayakta); negatif = piyasa altında.
-⚠️ VWAP/POC UZAKLIĞI yorumu için yukarıdaki "🚫 KESİN YASAK CÜMLE KALIPLARI — YASAK 1" kuralları geçerli. Yasak cümle yazdığını fark edersen sil — yerine OBV/Delta/Hacim çelişkisi VARsa onunla birlikte yaz, YOKsa cümleyi tamamen çıkar.
-
-*** SIFIRINCI GÖREV (ZORUNLU — EN BAŞA YAZ, SONRA DİĞERLERİNE GEÇ) ***
-"KURAL: Kancayı (Hook) bir tahmine değil, bir çelişkiyi teşhis etmeye dayandır. Zeki takipçi tahmine değil, analitik tespite güvenir.
-MESELA YASAK: 'X hissesi buradan dönebilir' (Bu ucuzdur).
-MESELA OLMASI GEREKEN: 'Fiyat %3 düşerken kurumsal alış hacmi neden zirve yapıyor? Birileri sessizce mal mı topluyor?' (Bu bir mantık bilmecesidir)."
-Algoritmamızın senaryo tespitinden üretilen temel başlık: {hook_baslik}
-Bu başlığı esas al. Analizindeki EN KRİTİK veya EN ŞOK EDİCİ TEK BULGUYA dayanan özelleştirilmiş bir hook başlığı üret.
+*** SIFIRINCI GÖREV — HOOK (ÖZELLEŞTİRİLMİŞ, EN BAŞA YAZ) ***
+Algoritmik default başlık: {hook_baslik} — bunu AYNEN KOPYALAMA. Analizdeki en çarpıcı çelişki/bulguya dayanan özelleştirilmiş hook üret.
 Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [SENARYO]: [GERİLİM CÜMLESİ — max 8 kelime] 👇📸
-Kural: Açık-uçlu bir gerilim, çelişki veya merak unsuru içersin (bağlaç dayatması YOK — kendi cümle yapını kur). "ANALİZİ", "RAPORU" gibi jenerik kelimeler yasak.
-Örnekler:
-  🐳 #THYAO 327.50 (-1.2%) | TOPLAMA BÖLGESİ: OBV yükseliyor, fiyat neden düşüyor? 👇📸
-  🔥 #SISE 48.20 (+3.1%) | AŞIRI ISINMA: Z-Score +2.7 — ama kurumsal alım devam ediyor? 👇📸
-  🎯 #EREGL 140.00 (+0.5%) | KONSOLİDASYON: 3 aydır aynı bant — kırılım bu sefer gerçek mi? 👇📸
-  🐳 #THYAO 327.50 | HERKES ALIYOR: Fiyat yükseliyor ama para akışı neden zayıf? 👇📸
-  🔥 #SISE 48.20 | ANALİZ: Kurumlar mal mı boşaltıyor yoksa silkeleme mi yapılıyor? 👇📸
-  🎯 #EREGL 140.00 | KRİTİK SEVİYE: Robotlar burada neyi bekliyor olabilir? 👇📸
+Kancayı tahmine değil çelişkiye dayandır. Açık uçlu soru/gerilim/somut sayı içersin. "ANALİZ/RAPOR" jenerik kelime yasak. Closed-end soru ("yükselir mi?") yasak.
 
-⚡ ALGORİTMA UYUM ZORUNLULUĞU (X / Twitter):
-Bu başlık X algoritması tarafından ilk 30 dakikada engagement velocity ile değerlendirilir.
-Yaşaması için SAVE (kaydet=25 puan) + REPLY (yorum=13.5 puan) tetiklemesi şart.
-Like (1 puan) tek başına tweet'i gömer. Hook'u yazarken "Birisi bunu kaydetmek/yorum yapmak ister mi?" sorusunu kendine sor.
-Detaylı algoritma kuralları için aşağıda Dördüncü Görev'deki "X / TWITTER ALGORİTMA STRATEJİSİ" bölümüne uy:
-   - Somut SEVİYE (save tetikler) + AÇIK UÇLU çelişki/soru (reply tetikler) birlikte olsun
-   - Closed-end soru ("yükselir mi?") YASAK → açık-uçlu ("hangi senaryo?") OK
-   - Max 2 hashtag, ilk satırda URL yok, "ALACAĞIM!" gibi promo dili yok
-   - 180-220 karakter ideal, max 280
+İyi örnekler:
+🐳 #THYAO 327.50 (-1.2%) | TOPLAMA: OBV yükseliyor, fiyat neden düşüyor? 👇📸
+🔥 #SISE 48.20 (+3.1%) | AŞIRI ISINMA: Z +2.7 — kurumsal alım sürüyor? 👇📸
+🎯 #EREGL 140.00 (+0.5%) | KONSOLİDASYON: 3 aydır aynı bant — kırılım gerçek mi? 👇📸
 
-Bu başlığı "📌 " ile işaretle. Sonra diğer görevlere geç.
+X algoritması: SAVE (somut seviye/sayı) + REPLY (açık uçlu soru/çelişki) tetiklenmeli. 180-220 karakter ideal. Max 2 hashtag, ilk satırda URL yok, promo dili yok.
+Hook'u "📌 " ile işaretle, diğer görevlere geç.
 
-*** REFERANS ÇIKTI ÖRNEĞİ — Bu tonu yakala (içerik farklı olabilir, ÜSLUP aynı kalsın) ***
-
-İşte iyi bir Birinci Görev maddesinin nasıl yazıldığına dair örnek (BAŞKA bir hisseden, sadece üslup için):
-
+*** REFERANS ÜSLÜP (başka hisseden — sadece ton için) ***
 📌 #ASELS 78.50 (-0.8%) | TOPLAMA BÖLGESİ: OBV yükseliyor, fiyat neden düşüyor? 👇📸
-
-Aselsan'da bugünkü tablo ilginç bir resim çiziyor. Fiyat sakin sakin geri çekilirken para akışı sessizce yukarı doğru sızıyor — bu kombinasyon genelde kurumsal toplama anlatısının habercisidir. Şimdi maddelere bakalım.
-
-✅ (9/10) Akıllı Para Birikimi (OBV + CMF Çakışması):
-On Balance Volume son 5 günde belirgin bir yükseliş gösterirken Para Akışı değeri +0.08 seviyesinde tutunuyor. Yani sadece kapanış yönü değil, gün içi bar dinamiği de alıcının daha ısrarcı olduğunu söylüyor. Fiyatın yatay seyrettiği bir dönemde bu sessiz birikim, genellikle bir sonraki hamlenin yakıtını biriktiriyor — peki bu yakıt nereye taşıyacak?
-
-✅ (8/10) İskontolu Bölge + Discount Konum (ICT):
-Algoritma şu an "Discount" konumunda diyor ve fiyat son 20 günlük menzilin %32'sinde. Kurumsal alıcılar için bu tipik bir hazırlık bölgesidir. Önceki maddedeki birikim sinyaliyle birleştiğinde, yapının iki bağımsız kanıtla aynı yöne işaret ettiğini görüyoruz.
-
+Aselsan'da tablo ilginç bir resim çiziyor. Fiyat sakin geri çekilirken para akışı sessizce yukarı sızıyor — bu kombinasyon genelde kurumsal toplama habercisidir.
+✅ (9/10) Akıllı Para Birikimi: OBV son 5 günde belirgin yükseliş gösterirken Para Akışı (CMF) +0.08'de tutunuyor. Sadece kapanış değil bar dinamiği de alıcı tarafta. Fiyatın yatayda seyrettiği bu dönemde sessiz birikim, sonraki hamlenin yakıtını biriktiriyor olabilir.
+✅ (8/10) Discount Konum: ICT şu an "Discount" diyor, fiyat 20g menzilinin %32'sinde. Kurumsal alıcılar için hazırlık bölgesi. Birikim sinyaliyle birleştiğinde iki bağımsız kanıt aynı yöne işaret ediyor.
 Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlıklara da bakmak gerekiyor:
-
-📍 (6/10) RSI Henüz Soğuk (47):
-Momentum tarafında RSI 47 seviyesinde — yön arıyor ama henüz net bir kararlılık yok. Bu birikim hikayesinin gerçek olup olmadığını anlamak için RSI'ın 50 üstüne kalıcı geçişi izlenebilir. Eğer önümüzdeki günlerde RSI 55+ seviyesini görürsek, hikaye doğrulanmış olur.
-
-(Yukarıdaki sadece tonu göstermek için — fiyatlar/değerler gerçek hisseyle alakasız. Sen şu an analiz ettiğin hissenin GERÇEK verilerini kullan.)
+📍 (6/10) RSI 47: Yön arıyor, kararlılık yok. 50 üstüne kalıcı geçiş izlenirse hikaye doğrulanabilir.
+(Fiyatlar örnek — sen GERÇEK YAML verilerini kullan.)
 
 ═══════════════════════════════════════════════════════════════════════
 
 *** BEŞ GÖREVİN VAR ***
 
-** Birinci Görevin;
-Tüm bu teknik verileri Linda Raschke’nin profesyonel soğukkanlılığıyla sentezleyip, Lance Beggs’in ‘Stratejik Price Action’ ve ‘Yatırımcı Psikolojisi’ odaklı bakış açısıyla yorumlamaktır. Asla tavsiye verme (bekle, al, sat, tut vs deme), sadece olasılıkları belirt. "etmeli" "yapmalı" gibi emir kipleri ile konuşma. "edilebilir" "yapılabilir" gibi konuş. Asla keskin konuşma. "en yüksek", "en kötü", "en sert", "çok", "büyük", "küçük", "dev", "keskin", "sert" gibi aşırılık ifade eden kelimelerden uzak dur. Bizim işimiz basitçe olasılıkları sıralamak.
-Analizini yaparken karmaşık finans jargonundan kaçın; mümkün olduğunca Türkçe terimler kullanarak sade ve anlaşılır bir dille konuş. Verilerin neden önemli olduğunu, birbirleriyle nasıl etkileşime girebileceğini ve bu durumun yatırımcı psikolojisi üzerinde nasıl bir etkisi olabileceğini açıklamaya çalış. Unutma, geleceği kimse bilemez, bu sadece olasılıkların bir değerlendirmesidir.
-Teknik terimleri zorunda kalırsan sadece ilk geçtiği yerde kısaltmasıyla ver, sonraki anlatımlarda akıcılığı bozmamak için sadeleştir.
-Analizinde küçük yatırımcı psikolojisi ile kurumsal niyet arasındaki farka odaklan. Verilerdeki anormallikleri birer ipucu olarak kabul et ve bu ipuçlarını birleştirerek piyasa yapıcının olası hamlesini değerlendir.
-Bir veri noktası ‘Bilinmiyor’ gelirse onu yok say, ancak eldeki verilerle bir olasılık tablosu kur. Asla tek yönlü (sadece olumlu) bir tablo çizme; madalyonun öte yüzünü her zaman göster. Savunma mekanizman ‘analizi haklı çıkarmak’ değil, ‘riski bulmak’ olsun.
-Herhangi bir veri alanı boş veya süslü parantez içinde {...} şeklinde ham halde gelmişse, o verinin teknik bir arıza nedeniyle okunamadığını varsay ve mevcut diğer verilerle analizi tamamla. Asla "Veri Yok" veya "Bilinmiyor" yazan bir alanı yorumlamaya zorlama, sadece mevcut verilerle en iyi sentezi yapmaya çalış.
-En başa "{hook_baslik}" başlığı at. Sonra analizine o günün en baskın bulgusuyla başla — başlık değil, direkt cümle. Okuyucu ilk satırda ne olduğunu anlasın. Bu giriş 4-5 cümlelik akıcı bir paragraf olsun; "YÖNETİCİ ÖZETİ" gibi bir etiket koyma.
-Referans ton — YASAK: "Söz konusu teknik tablo incelendiğinde, momentumun zayıfladığı görülmektedir." OLMASI GEREKEN: "OBV yükselirken fiyat aynı yerde sayıyor — bu tablo genelde kurumsal toplama öncesi görülür, ama dikkatli olmak gerek."
-{genel_analiz_baslik}:
-   - Yukarıdaki verilerden SADECE EN KRİTİK OLANLARI seçerek maksimum 6 maddelik bir liste oluştur. Zorlama madde ekleme! 2 kritik sinyal varsa 2 madde yaz.
-   - SIRALAMA KURALI (BU KURAL ÖNEMLİ): Maddeleri "Önem Derecesine" göre azalan şekilde sırala. Düzyazı halinde yapma; Her madde için paragraf aç. Önce olumlu olanları sırala; en çok olumlu’dan en az olumlu’ya doğru sırala. Sonra da olumsuz olanları sırala; en çok olumsuz’dan en az olumsuz’a doğru sırala. Olumsuz olanları sıralamadan evvel şu geçişi kullan: "Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlıklara da bakmak gerekiyor:" — "Öte Yandan;" gibi sert bir kopuş değil, okuyucuyu doğal olarak oraya taşı. Otoriter yazma. Geleceği kimse bilemez.
-   - SIRALAMA KURALI DEVAMI: Her maddeyi 3 cümle ile yorumla ve yorumlarken; o verinin neden önemli olduğunu (8/10) gibi puanla ve finansal bir dille açıkla. Olumlu maddelerin başına "✅" ve verdiğin puanı, olumsuz/nötr maddelerin başına " 📍 " ve verdiğin puanı koy. (Örnek Başlık: "📍 (8/10) Momentum Kaybı ve HARSI Zayıflığı:") Olumlu maddeleri alt alta, Olumsuz maddeleri de alt alta yaz. Sırayı asla karıştırma. (Yani bir olumlu bir olumsuz madde yazma)
-   - AKIŞ KURALI (BU KURAL KRİTİK): Her maddeyi birbirinden kopuk bağımsız bir kutu gibi yazma. Her madde bir öncekinin üzerine inşa edilsin ve bir sonrakine köprü kursun. Bunun için her maddenin 3 cümlesi şu işlevi taşısın:
-     · 1. cümle: Veriyi söyle — net, sade, doğrudan.
-     · 2. cümle: Ne anlama geldiğini söyle — okuyucu için, teknik jargon değil.
-     · 3. cümle: Köprü kur — ya bir soru bırak ("Peki bunu teyit eden var mı?"), ya bir sonraki maddenin cevabını ima et ("Cevap bir sonraki sinyalde gizli."), ya da önceki maddeyle bağlantı kur ("Bu da BOS sinyalini güçlendiriyor.").
-   Okuyucu her maddeyi okuyunca bir sonrakini okumak zorunda hissetmeli. Analizin bir hikayesi olsun — başı, gerilimi ve çözümü.
-   Ayrıca, yorumları bir robot gibi değil, tecrübeli ve sezgileri kuvvetli bir stratejist gibi yap.
-     a) Listenin en başına; "Kırılım (Breakout)", "Akıllı Para (Smart Money)", "Trend Dönüşü" veya "BOS" içeren EN GÜÇLÜ sinyalleri koy ve bunlara (8/10) ile (10/10) arasında puan ver.
-        - Eğer ALTIN SET-UP durumu ‘EVET’ ise, bu hissenin piyasadan pozitif ayrıştığını (RS Gücü), istatistiksel ucuz bölgede olduğunu (ICT) ve ivme kazandığını vurgula. Analizinde bu 3/3 onayın teknik kriterleri eş zamanlı karşıladığını ve tarihsel olarak düşük frekanslı bir yapı olduğunu belirt.
-        - Eğer ROYAL FLUSH NADİR SET-UP durumu ‘EVET’ ise, bu nadir görülen 4/4’lük onayı analizin en başında vurgula ve bu set-up'ın dört kriterin kesişimi nedeniyle algoritmik olarak nadir görüldüğünü ve olası senaryoları dengeli biçimde değerlendir.
-     b) Listenin devamına; trendi destekleyen ama daha zayıf olan yan sinyalleri (örneğin: "Hareketli ortalama üzerinde", "RSI 50 üstü" vb.) ekle. Ancak bunlara DÜRÜSTÇE (1/10) ile (7/10) arasında puan ver.
-   - NOT: Listeyi 6 maddeye tamamlamak için zayıf sinyallere asla yapay olarak yüksek puan (8+) verme! Sinyal gücü neyse onu yaz.
-4. SONUÇ VE UYARI: "SONUÇ:" başlığı aç — tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik bir özeti olsun.
-Eğer RSI uyumsuzluğu, hacim düşüklüğü, stopping volume, trend tersliği, ayı/boğa tuzağı veya gizli satış işaretleri varsa bunları "UYARI:" başlığı altında normal cümle tonuyla yaz — büyük harf kullanma, uyarıyı da insani bir dille aktar.
-Analizinde HARSI (Heikin Ashi RSI) verilerini kullanacaksan bunun son 14 günlük olduğunu unutma ve son gün mumu için şu şartlar sağlanıyorsa dikkati çek: 1) Eğer ‘Yeşil Bar’ ise bunu "gürültüden arınmış gerçek bir yükseliş ivmesi" olarak yorumla. 2) Eğer ‘Kırmızı Bar’ ise fiyat yükselse bile momentumun (RSI bazında) düştüğünü ve bunun bir yorgunluk sinyali olabileceğini belirt.
-Analizin sonuna "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." yaz ve altına " #SmartMoneyRadar #{clean_ticker} #BIST100" yaz.
+** BİRİNCİ GÖREV — Detaylı Analiz (Linda Raschke + Lance Beggs üslubu) **
+Üst başlık: "{hook_baslik}". Sonra direkt cümleyle başla (etiket yok). 4-5 cümlelik akıcı giriş paragrafı — o günün en baskın bulgusu ilk satırda olsun. Küçük yatırımcı psikolojisi vs kurumsal niyet farkına odaklan. Tek yönlü tablo yasak — madalyonun öte yüzü hep var.
 
-** İkinci Görevin;
-Birinci görevinin "okuyunca her şeyi anlamış gibi hissettiren" sıkıştırılmış özetidir. Uzun analizi okumayan aboneler için birinci görevin HER ÖNEMLİ NOKTASINI kapsayan, gereksiz tekrar içermeyen, akıcı ve "to the point" bir özet çıkaracaksın. Jenerik ifadeler yasak — her maddede mutlaka somut fiyat seviyesi, yüzde değeri veya metrik adı geçmeli.
+**{genel_analiz_baslik}** (madde listesi):
+- Max 6 madde. Zorlama: 2 kritik sinyal varsa 2 madde yaz.
+- Sıra: önce olumlular (en güçlüden en zayıfa) → geçiş cümlesi "Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlıklara da bakmak gerekiyor:" → sonra olumsuzlar (en güçlüden en zayıfa). Karıştırma yok.
+- Her madde: ✅ olumlu / 📍 olumsuz işaretiyle başla + (X/10) puan + 3 cümle.
+- 3 cümle yapısı: (1) veri (2) anlam (3) köprü (soru / sonraki maddeye ima / önceki ile bağlantı).
+- Puan: Kırılım/Smart Money/Trend Dönüşü/BOS = 8-10/10; yan sinyaller (MA üstü, RSI 50+) = 1-7/10. Zayıfa 8+ puan verme.
+- ALTIN SET-UP EVET → RS + ICT discount + ivme 3/3 onay, tarihsel düşük frekans vurgu.
+- ROYAL FLUSH EVET → 4/4 kesişim, analiz başında ana hikaye.
 
-Format şu şekilde olacak — bölüm sırası sabit değil, o günün en baskın sinyali hangi bölümse onu öne al:
+**SONUÇ:** 3-4 cümle vurucu özet.
+**UYARI:** Sadece gerçek risk varsa (RSI uyumsuzluk / stopping volume / boğa-ayı tuzağı / gizli satış); küçük harf, doğal cümle.
+
+HARSI yeşil bar = gürültüden arınmış gerçek yükseliş ivmesi; kırmızı bar + fiyat ↑ = momentum yorgunluğu sinyali (vurgula).
+Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." + "#SmartMoneyRadar #{clean_ticker} #BIST100"
+
+** İKİNCİ GÖREV — Özet **
+Birinci görevin sıkıştırılmış özü. Jenerik yasak — her satırda somut seviye / yüzde / metrik adı.
+
 #{clean_ticker} {fiyat_str} ({degisim_str}) | {ai_scenario_title} 👇📸
 
 ⚡ ÖZET YORUM:
-[Birinci görevindeki açılış paragrafının en kritik 2 cümlelik özü. Büyük resmi ve genel tonu ver.]
+[G1 açılışın 2 cümlelik özü — büyük resim + ton]
 
 📊 TEKNİK TABLO:
-🔹[En güçlü sinyal — somut seviye veya formasyon adıyla]
-🔹[Yapı ve trend durumu — nerede duruyoruz, hangi seviye kritik]
-🔹[Sadece gerçek bir risk veya yapısal uyumsuzluk varsa ekle — Z-Score tek başına yüksekse bu satırı koyma]
+🔹[En güçlü sinyal — somut seviye/formasyon]
+🔹[Yapı + trend durumu — kritik seviye]
+🔹[Gerçek risk varsa — Z-Score tek başına yüksekse koyma]
 
 🏦 AKILLI PARA:
-🔹[Smart Money: delta durumu, VA konumu (ÜSTÜNDE/ALTINDA/İÇİNDE), kurumsal iz — 1 cümle, somut veriyle]
-🔹[Hacim anomalisi: RVOL, VSA, OBV veya kümülatif delta — 1 cümle]
+🔹[delta + VA konumu + kurumsal iz — 1 cümle, somut]
+🔹[RVOL/VSA/OBV/cum_delta anomalisi — 1 cümle]
 
 ⚠️ SONUÇ ve UYARI:
-[Birinci görevindeki sonucu ve varsa en kritik uyarıyı 1 cümleyle — normal cümle tonuyla, büyük harf kullanma]
+[G1 sonucu + en kritik uyarı — 1 cümle, küçük harf]
 Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #BIST100 #SmartMoneyRadar #{clean_ticker}
 
-** Üçüncü Görevin:
-Yukarıdaki saf matematiksel verileri (Özellikle "Algoritmik 8 Maddelik Laboratuvar Verisi" bölümünü) kullanarak ve grafiği okuyarak aşağıdaki şablonu doldur. Her madde okuması keyifli, profesyonel ve İNSANİ bir tonda olmalıdır. Başlık "{hook_baslik}" olmalıdır.
-Önemli: Veri yoksa veya grafik o maddeyi desteklemiyorsa o maddeyi atlayabilirsin — boş doldurmak zorunda değilsin.
+** ÜÇÜNCÜ GÖREV — SMR Algoritmik Hisse Raporu (G3) **
+8 Maddelik Laboratuvar verisini ve grafiği kullanarak şablonu doldur. Başlık: "{hook_baslik}". Veri yoksa madde atlanabilir, boş doldurma.
 
-*** JARGON FİLTRESİ — KRİTİK KURAL (HERKES ANLASIN!) ***
-Bu rapor BAĞIMSIZ olarak okunuyor (kullanıcı G1/G4'ü değil, sadece bu G3'ü görebilir). Yani:
-- "İlk geçiş" sayacı bu G3 raporunda baştan başlar. G1 veya G4'te ne yazdığın bu raporu etkilemez.
-- Terim ilk kullanıldığında: ÖNCE Türkçe adı, SONRA İngilizce kısaltma parantezde → "Türkçe Adı (İNG)". İkinci geçişten itibaren sadece Türkçe adı VEYA sadece kısaltma — ama BİR DAHA tam açılım YOK.
-- "TERİM — yani açıklama" veya "TERİM (açıklama)" formatı YASAK — okuyucu ilk kelimede takılır.
-- 🚨 AÇILIM MAX 3 KELİME (v3 sıkılaştırma): İlk geçişte verilen tam Türkçe açılım EN FAZLA 3 KELİME olabilir. Aşılırsa kalıp salata olur.
-  ✅ "para akışı (CMF)" / "göreceli güç (RSI)" / "göreceli hacim (RVOL)" / "kümülatif fark (Delta)"
-  ❌ "Sermaye giriş çıkış dengesini ölçen para akışı endeksi (CMF)"  → 7 kelime, YASAK
-  ❌ "Ağırlıklı algoritmik skor olan ana puan (Master Skor)"  → 6 kelime, YASAK
-  ❌ "Alıcı ve satıcı hacim farkını ölçen kümülatif emir farkı (Delta)"  → 9 kelime, YASAK
-  ❌ "Çoklu zaman dilimi uyumu (MTF)"  → 4 kelime, sınırda — "vade uyumu (MTF)" yap
-- 🚨 SIFAT EKLEME YASAK (v3.1 — 5 Haz 2026): Açılım kelimesinin ÖNÜNE sıfat/tanım eklemek YASAK. Bu hâlâ K5'i atlatır.
-  ❌ YASAK PREFIXLER: "Kısa vadeli / Uzun vadeli / Ağırlıklı / Sermaye / Kümülatif / Bar içi / Gün içi / Anlık / Sentezlenmiş / Hesaplanmış / Normalize edilmiş"
-  ❌ "**Kısa vadeli** para akışı endeksi (CMF)" → 5 kelime, YASAK
-  ❌ "**Ağırlıklı** algoritmik skor (Master Skor)" → 4 kelime, YASAK
-  ❌ "**Bar içi** kümülatif emir farkı (Delta)" → 6 kelime, YASAK
-  ✅ Sıfatsız: "para akışı (CMF)" / "algoritmik skor (Master Skor)" / "kümülatif fark (Delta)"
-  KURAL: Vade bilgisini (5g/20g/günlük) açılımın İÇİNDE değil, açılımdan SONRA ver: "para akışı (CMF) 5g penceresinde -0.417" ✓
-- ZORUNLU açıklama (ilk geçişte tam çeviri ama MAX 3 kelime): HH+HL, LH+LL, CHoCH, BOS, OBV, CMF, RSI, VSA, FVG, OB, VWAP.
-- OPSİYONEL (akışı bozarsa kullanma, kullanırsan MAX 3 kelime çeviri): MTF, Discount/Premium, Climax, Delta, Order Block, EQH/EQL, MACD, Bollinger, HARSI, Megafon, Hidden Bull/Bear, Regular Bull/Bear, V-bottom, U-top, Churning.
-- "Sağlam yapı / yükselen dipler / kurumsal mıknatıs / değer bölgesi" gibi düz Türkçe ifadeler kısaltma olmadan da kullanılabilir — zorla parantez sıkıştırma.
+JARGON FİLTRESİ (G3 bağımsız okunur — sayaç sıfırlanır):
+- Terim ilk geçişte: "Türkçe (KISALTMA)" — açılım MAX 3 KELİME. ✅ "para akışı (CMF)" · ❌ "Sermaye giriş çıkış dengesini ölçen para akışı endeksi (CMF)".
+- SIFAT PREFIX YASAK: "Kısa vadeli / Ağırlıklı / Bar içi / Kümülatif / Sentezlenmiş" + açılım → yasak. Vade bilgisi açılım DIŞINDA: "para akışı (CMF) 5g penceresinde -0.417" ✓.
+- 2. geçişten itibaren sadece kısaltma — bir daha tam açılım yok.
+- "TERİM — yani açıklama" formatı yasak.
+- Düz Türkçe ("sağlam yapı / yükselen dipler / değer bölgesi") zorla parantez sıkıştırma.
 
-Açıklama olmadan kısaltma KULLANMA. Ama açıklama yığarak akışı da öldürme — her cümleye 2-3 parantez girdiğinde rapor robot diline döner.
+ANTİ-KALIP G3 (her madde):
+- M1 açılışı yasak: "Sistemin ürettiği..." / "Ağırlıklı sentezlenmiş algoritmik skor..."
+- M2 açılışı yasak: "Günlük mum kapanış konumu verilerine..."
+- M3 açılışı yasak: "Göreceli Güç Endeksi (RSI)... momentum eğiminde..."
+- M4 açılışı yasak: "Hacim-Mum Analizi (VSA)..."
+- M5 açılışı yasak: "Tüm senaryoların birbiriyle sentezi..."
+- ANCHOR-ÖNCE: Her madde ilk cümlesi o maddedeki en vurucu rakam/sinyal olsun. "Master 21/100; trend 0, hacim 50 — taraf netliği yok." ✓
+- M4 sırası serbest — sabit "VSA→OBV→Delta→CMF" yasak. Hisseye en konuşkan veri başa, ikincil arkaya veya at.
 
-*** ANTİ-KALIP + SIKIŞTIRMA MOTORU (G3'E ÖZEL — ŞABLON KIRAN MEKANİK) ***
-G3 her gün onlarca hisse için üretiliyor. Önceki çıktıların büyük kısmı aşağıdaki kalıplara takılıyordu — artık SIFIRLANIR:
+CÜMLE TAVANI: M1=3 · M2=3 · M3=3 · M4=3 · M5=4 + "📌 İzlenecek". 3 yüklem zinciri yasak. Aynı fiil arka arkaya yasak.
 
-🚫 YASAKLI AÇILIŞ KALIPLARI (her madde — herhangi biriyle başlama):
-- M1 açılışında: "Sistemin ürettiği verilerde..." / "Sistemin sentezlediği..." / "Ağırlıklı [sentezlenmiş] algoritmik skor olan ana puan..."
-- M2 açılışında: "Günlük [mum] kapanış konumu [verilerine bakıldığında/göstergesi]..." / "Kapanış konumu verilerine bakıldığında..."
-- M3 açılışında: "Göreceli Güç Endeksi (RSI) ... momentum eğiminde..." / "Gösterge hızı ölçümünde aşağı ivme..."
-- M4 açılışında: "Hacim [ve] fiyat anatomisini inceleyen [Hacim-Mum Analizi (VSA)]..."
-- M5 açılışında: "Fiyat 20 günlük [fiyat/hareket] alanının..." / "Tüm senaryoların birbiriyle [sentezi/uyumu]..."
+K-KATMANLARI (anlaşılırlık):
+- K1 YOK BULGU YASAK: "tespit edilmiyor / sinyal yok / sıkışma yok / uyumsuzluk yok / formasyon yok" → cümleyi TAMAMEN SİL, kısa geçiş bile yapma. M3 sıkışma yoksa cümle Enerji skoruyla biter.
+- K2 NÖTR SAYI YASAK: %0, 1.0x, 0.0 değişim → yer kaplar. Sadece YÖNÜ olan sayı geçer.
+- K3 METODOLOJİ YASAK: Master breakdown'u (100/100, 0/100, %58 vb.) sıralama. Skorun NE ANLAMA GELDİĞİ söylenir, NASIL hesaplandığı değil.
+- K3-MTF: Hücre sayısı, uyum oranı, dağılım % yazma. Sadece DOMİNANT YÖN.
+- K4 MİKRO INTRADAY YASAK: "CP günlük marjın %30 alt diliminde" → sil.
+- K6 İÇ ÇELİŞKİ: 5 madde tek yön etrafında hizalanır. Çelişiyorsa "kısa vadede X, geniş resmde Y" geçişiyle açıkça belirt.
 
-✅ ANCHOR-ÖNCE KURALI:
-Her maddenin İLK cümlesi o maddedeki EN VURUCU rakam/sinyal/anomalinin somut ifadesi olmalı — şablon ifade DEĞİL.
-İYİ ÖRNEK: "Master skor 21/100; trend 0, hacim 50 — taraf netliği yok." ✓
-İYİ ÖRNEK: "RSI 25, aşırı satım — ama dipler hâlâ daha derin." ✓
-İYİ ÖRNEK: "Delta -%51.6 — son 5 günün en sert dağıtım izi." ✓
-KÖTÜ ÖRNEK: "Sistemin ürettiği verilerde algoritmik skor 21/100 seviyesiyle..." ✗
+DOLGU KELİME TEMİZLİĞİ: "seviyesinde gerçekleşirken / matrisinde belirlenirken / bar içi kontrol / kurumsal nakit / yarı yapı senaryosu" → at. "bar içi" → "gün içi / seans içi". "kurumsal nakit" → "kurumsal akış".
 
-✅ SABİT VERİ SIRASI YASAK:
-Önceki çıktılarda M4 hep "VSA → RVOL → OBV → Delta → CMF" sırasıyla yazılıyordu — şablon hissi bundan. Hangi veri o hisse için en konuşkansa onu başa al; ikincil olanları arkaya bağla veya at. Aynı sırayı 2 hisse üst üste kullanma.
+KAPANIŞ FORMÜLLERİ ("📌 İzlenecek:" — 4 alternatif rotasyon, klasik yasak):
+F1: "Yukarıda X aşılırsa Y kırılır; aşağıda Z altı baskıyı sürdürür."
+F2: "Kilit eşik X — altında dağıtım izi sürer, üstüne kapanış yapıyı sorgular."
+F3: "Hareket ipucu X üstünde başlar; aşağıda Y algoritmik destek."
+F4: "X kırılırsa hikaye değişir — soru, alıcı buraya gelecek mi?"
 
-✅ CÜMLE TAVANI (sıkıştırma — DOLGU YOK):
-- M1: 3 cümle. M2: 3 cümle. M3: 3 cümle. M4: 3 cümle. M5: 4 cümle (📌 İzlenecek satırı hariç).
-- Bir cümle 1 fikir taşır. "X yansıtırken Y oluşturuyor ve Z sürüyor" gibi 3 yüklem zinciri YASAK.
-- Sıfat dolgusu YASAK: "ağırlıklı sentezlenmiş", "kararlılığını ölçen", "kümülatif emir eşleşmelerindeki ısrar farkını gösteren" → "Delta -%51.6, dağıtım." yeterli.
-- "Yansıtıyor / işaret ediyor / doğruluyor / gösteriyor" fiilleri arka arkaya iki cümlede tekrar etmesin.
-
-✅ KAPANIŞ FORMÜLLERİ ("📌 İzlenecek:" satırı için — 4 alternatif, dönüşümlü):
-F1 — Çift seviye + tetik: "Yukarıda X aşılırsa Y kırılır; aşağıda Z altı baskıyı sürdürür."
-F2 — Tek anchor + bağlam: "Kilit eşik X — buranın altında dağıtım izi sürer, üstüne kapanış yapıyı sorgular."
-F3 — Asimetrik vurgu: "Hareket ipucu X'in üstünde başlar; aşağıda Y zaten algoritmik destek."
-F4 — Soru tonlu: "X kırılırsa hikaye değişir — soru, alıcı buraya gelecek mi?"
-KLASIK "Yukarıda X eşiği aşılırsa hareket izlenebilir, aşağıda Y altında baskı devam edebilir" formülü TAMAMEN YASAKLI — aynı hisse için 2 hisse üst üste aynı formülü kullanma.
-
-*** ANLAŞILIRLIK FİLTRESİ v3 (5 Haz 2026 — canlı Twitter geri bildirimi sonrası) ***
-Önceki çıktılar teknik olarak doğruydu ama OKUYUCU "bişey anladıysam arap" dedi. Sorun: gereksiz bulgu doldurma, hesaplama detayı anlatma, nötr sayı sıralama, mikro intraday detayı. Aşağıdaki 4 katman bunu kapatır:
-
-🚫 K1 — "YOK" BULGULAR YASAK (v3.1 sıkılaştırma):
-"tespit edilmiyor / bulunmuyor / görünmüyor / gözlenmiyor / kırılmadı / oluşmadı / sinyal yok / sıkışma yok / uyumsuzluk yok / formasyon yok" cümleleri yasak. OLMAYAN bir şeyi anlatmak DOLGU'dur.
-YASAK ÖRNEK: "Bollinger ve Keltner bantları arasında herhangi bir daralma tespiti bulunmuyor." → silinir.
-YASAK ÖRNEK: "piyasada hacimsel bir sıkışma durumu gözlenmiyor" → silinir.
-YASAK ÖRNEK: "Klasik uyumsuzluk görünmüyor." → silinir.
-YASAK ÖRNEK: "FVG direnci tespit edilmiyor." → silinir.
-🚨 KRİTİK: "Yoksa söz etmiyorum, dolgu için kısaca geçeyim" düşüncesi YASAK. Yoksa CÜMLEYİ TAMAMEN SİL, kısa bir geçiş bile yapma.
-M3 ÖZEL: Bollinger/Keltner sıkışma YOKSA → cümle Enerji skoruyla biter, "sıkışma yok / normal volatilite" kelimeleri HİÇ geçmez.
-DOĞRU: Yoksa bahsetme. Var olan veriyi anlat.
-
-🚫 K2 — NÖTR/SIFIR METRİK YASAK:
-%0, 1.0x civarı, 0.0 değişim gibi YÖNÜ OLMAYAN sayı söyleme. Bunlar bilgi taşımaz, sadece yer kaplar.
-YASAK ÖRNEK: "Günlük net baskınlık oranı %0 ile kusursuz dengede gerçekleşirken..." → sil. "Baskınlık yok" demek istiyorsan tek kelimeyle geç.
-YASAK ÖRNEK: "Son 5 günü net %0.0 değişimle yatay tamamlıyor." → "Son 5 gün yatay." yeterli.
-YASAK ÖRNEK: "RVOL 1.0x normal seyrediyor" → bahsetme, normal seyir = haber değil.
-KURAL: Sadece YÖNÜ olan sayı geçer (Delta -%49, RVOL 0.44x, CMF -0.417 vb.). Sıfır/nötr = at.
-
-🚫 K3 — HESAPLAMA YAPISI ANLATMA, SONUÇ ANLAT (v3.1 sıkılaştırma):
-Component breakdown, alt-skor dağılımı, eşleşme oranı, normalize değer = METODOLOJİ. Okuyucu hesaplamayı bilmek zorunda değil.
-YASAK ÖRNEK: "Master Skor 12/100 seviyesiyle negatif görünümü işaret ediyor; burada kurumsal yapı 100/100 ile direnç gösterirken trend bileşeni 0/100 seviyesinde baskılanıyor. Çoklu zaman dilimi uyumu matrisinde dominant yön aşağı olarak belirlenirken vadeler arası eşleşme oranı %58 seviyesinde gerçekleşiyor."
-DOĞRU: "Algoritmik skor 12/100 — uzun vade baskı altında. Yapı tek dayanak, trend ve momentum aşağıda. Vadeler büyük çoğunlukla satıcı."
-KURAL: Skorun NASIL hesaplandığı yerine NE ANLAMA GELDİĞİ. Alt skorları (100/100, 0/100, %58) sıralama — özet bir cümleyle yön ver.
-
-🚫 K3-MTF ÖZEL — MTF HÜCRE/EŞLEŞME SAYISI YAZMAK YASAK (v3.1):
-Vade Uyumu Matrisi'nin "X hücre aşağı, Y hücre yukarı, Z nötr" ve "uyum oranı %X" gibi component sayıları METODOLOJİdir.
-YASAK ÖRNEK: "MTF matrisinde **yedi hücre aşağı yönü gösterirken uyum oranı %58** seviyesinde."
-YASAK ÖRNEK: "12 hücreden 7'si negatif, %58 eşleşme."
-DOĞRU: "Vadeler büyük çoğunlukla satıcı tarafta."
-DOĞRU: "Vade uyumu (MTF) net aşağı — kısa ve orta vade hizalı."
-KURAL: Sadece **DOMİNANT YÖN** söyle. Hücre sayısı, uyum oranı, dağılım yüzdesi YAZMA.
-
-🚫 K4 — MİKRO INTRADAY DETAY YASAK:
-"Kapanış konumu (CP) günlük marjın %30 alt diliminde" / "Mum boyu ortalamadan %12 küçük" / "Spread günlük ortalamanın %1.5'i" gibi bant analisti detayı.
-Twitter takipçisi için bu tür mikro veriler GÜRÜLTÜdür — okuma motivasyonunu öldürür.
-YASAK ÖRNEK: "Seans sonu kapanış konumu (CP) günlük hareket marjının %30'luk alt diliminde gerçekleşerek kısa vadeli direncin sürdüğünü gösteriyor."
-DOĞRU: O cümleyi tamamen sil. CP konumunu söylemek istiyorsan "Gün içi kapanış zayıf bölgede" tek cümlesi kafi.
-
-🚫 K6 — TEK YÖN MUTABAKATI (İÇ ÇELİŞKİ KONTROLÜ):
-5 madde TEK yön (alıcı / satıcı / nötr-bekleme) etrafında hizalanmalı. Çelişen iki ifadeyi yan yana koyma.
-YASAK ÇELİŞKİ ÖRNEKLERİ:
-- "satıcı baskısı" + "%0 kusursuz denge" → hangisi? Birini sil.
-- "satıcılar tükendi" + "kurumsal satıcı kontrolü" → hangisi? Birini sil.
-- "negatif görünüm 12/100" + "kırılım yönlü çözüleceğini fısıldıyor" → hangisi? Net karara dön.
-- "dağıtım baskısı" + "alıcı tükenmesi" → 5g delta ile 20g delta'yı ayır, "kısa vadede satıcı, daha geniş resmde tükenme" gibi açık geçişle yaz.
-KURAL: Cümleyi yazarken kendine sor — "Aynı maddedeki diğer cümle bunu desteklemiyor mu? Çelişiyor mu?" Çelişiyorsa "ama / oysa / kısa vadede X uzun vadede Y" geçişiyle açıkça belirt veya zayıf olanı sil.
-
-✅ DOLGU KELİME TEMİZLİĞİ (her cümlede ara — v3.1 genişletildi):
-"seviyesinde gerçekleşirken / değeriyle / rasyosuyla / matrisinde belirlenirken / oranıyla ölçülürken / kümülatif emir farkı / piyasa anatomisi / bar içi / bar içi kontrol / bar içi dinamiklerde / bar içi hakimiyet / kurumsal nakit çıkışı / kurumsal nakit akışı / yarı yapı senaryosu / tek taraflı bozulma / nakit hareketlerinin genel dengesinde" → bunları görürsen at, cümleyi yalın yaz.
-🚨 "bar içi" KELİME ÖBEĞİ TEK BAŞINA YASAK (v3.1): "bar içi alıcı / bar içi satıcı / bar içi kontrol / bar içi dinamik" → hepsi YASAK. Yerine "gün içi / seans içi / kapanış öncesi" kullan.
-🚨 "kurumsal nakit" tamlaması YASAK (v3.1): "kurumsal nakit çıkışı / kurumsal nakit akışı / kurumsal nakit hareketleri" → "kurumsal satıcı baskısı / kurumsal alıcı baskısı / kurumsal akış" kullan.
-YALIN ÖRNEK (kullanıcının yazdığı): "Günlük baskınlık yok, RVOL 0.44x hacimsiz piyasa gösteriyor. CMF -0.417 kurumsal satıcı izi."
-DOLU ÖRNEK (yasak): "Günlük bazda net baskınlık oranı %0 ile kusursuz dengede gerçekleşirken göreceli hacim (RVOL) 0.44x rasyosuyla ilgisiz ve kuruyan bir piyasa anatomisi sunuyor. Sermaye giriş çıkış dengesini ölçen para akışı endeksi (CMF) ise 5 günlük süreçte -0.417 değeriyle kurumsal satıcıların bar içi kontrolünü onaylıyor."
-
-Formatın şu şekilde olmalıdır (Başlıkları aynen kullan, her bölüm ALT BAŞLIK ETİKETİ OLMADAN akıcı paragraf olarak yazılır):
+FORMAT (başlıkları aynen, içerik akıcı paragraf):
 SMR ALGORİTMİK HİSSE RAPORU:
 
 1⃣🔹) Genel Tablo
-(3 cümle. İlk cümle: Master skor + en güçlü/en zayıf alt faktör — somut sayılarla, kalıp ifadesiz. İkinci cümle: Çoklu Vade Uyumu (MTF) dominant yön + uyum oranı; çelişki varsa onu vurgula. Üçüncü cümle: GENEL ÖZET PANEL'deki "YAPI" satırından aktif senaryo — HH+HL / LH+LL / CHoCH / Megafon / Üçgen sıkışma / Yatay range / Yarı yapı. Etiket yok, akıcı paragraf.)
+(3 cümle: Master skor + en güçlü/en zayıf alt faktör · MTF dominant yön (çelişki varsa vurgula) · GENEL ÖZET PANEL YAPI'dan aktif senaryo (HH+HL / LH+LL / CHoCH / Üçgen / Yatay range / Yarı yapı).)
 
 2⃣🔹) Fiyat Davranışı
-(3 cümle. Vurucu olan başa: gün içi CP konumu mu, mum tipi mi (Shooting Star/Hammer/Marubozu/Piercing), SMA50/SMA200 ilişkisi mi, formasyon mu (OBO/TOBO/Bayrak)? Bugünün hikayesini taşıyan hangisiyse o ilk cümle. Geri kalan 2 cümle destek bilgisi — sadece somut sayı (kaç gün üstünde/altında, SMA seviyesi). Formasyon yoksa söz etme, "formasyon bulunmuyor" gibi dolgu YASAK.)
+(3 cümle: Bugünün hikayesini taşıyan başta — CP konumu / mum tipi / SMA ilişkisi / formasyon. Geri kalan 2 cümle somut sayı (gün, seviye). Formasyon yoksa söz etme.)
 
 3⃣🔹) İvme & Enerji
-(3 cümle. İlk cümle: RSI değeri + MOMENTUM SLOPE durumu (Sert dönüş / Toparlanma / Trend hızlanıyor / Yavaşlıyor / Aşağı ivme / Yatay / Tepe geri çekilme) — anchor sayı ile. İkinci cümle: RSI DIVERGENCE tipi (Klasik Pozitif = tükenme sinyali / Gizli Pozitif = trend devamı / Klasik Negatif / Gizli Negatif / Yok — karıştırma) + kısa MTF momentum notu. Üçüncü cümle: Enerji skoru + Bollinger/Keltner SIKIŞMA durumu — SIKIŞMA YOKSA bu cümle Enerji skoruyla biter, "normal volatilite rejimi sürüyor" gibi dolgu YASAK.)
+(3 cümle: RSI değeri + MOMENTUM SLOPE (Sert dönüş / Toparlanma / Aşağı ivme / Yatay / Tepe geri çekilme) · RSI DIVERGENCE tipi (Klasik Poz/Neg = dönüş; Gizli Poz/Neg = trend devam) + MTF momentum notu · Enerji skoru + (varsa) Sıkışma. Sıkışma yoksa Enerji'yle bitir.)
 
 4⃣🔹) Akıllı Para İzi
-(3 cümle. Şu 6 veriden BU HİSSEDE EN İLGİNÇ olan 2-3 tanesini seç: VSA senaryosu, RVOL, OBV yönü, Delta yüzdesi, CMF Dual-Window 5g/20g, OMI Sigma. Birinci cümle EN VURUCU olana ait. İkinci-üçüncü cümle teyit veya çelişki — sabit "VSA → OBV → Delta → CMF" sırası YASAK. Tüm 6 veriyi listelemek YASAK. Aynı kavram için aynı tanım cümlesini her hissede tekrar yazma — "alıcı ve satıcıların emir kararlılığını ölçen kümülatif işlem farkı" gibi kalıplar yerine "Delta -%51.6, dağıtım".)
+(3 cümle: 6 veriden (VSA / RVOL / OBV / Delta / CMF Dual / OMI) bu hissede EN İLGİNÇ 2-3'ünü seç. İlk cümle en vurucu. Tüm 6'yı listelemek yasak. Tanım cümlesi tekrarı yasak — "Delta -%51.6, dağıtım." ✓
+🚨 YAML alan adı (cum_delta_5g / vp_sekil / cmf_dual_window) yazma. BÜYÜK HARF algoritma etiketi (KAFA ÇEVİRİYOR / Dağıtım / Akümülasyon) aynen kopyalama → kendi cümlenle yansıt. "Değer alanı" → "yoğun işlem bölgesi".)
 
 5⃣🔹🔹) Teknik Okuma Özeti
-(4 cümle + "📌 İzlenecek:" satırı.
- Cümle 1: 20g range konumu (Discount/Premium/Toparlanma/V-dönüş/U-top/Dipte tutunma/Orta) + 5g net % — anchor.
- Cümle 2: Üstte ve altta en kritik 1-2 likidite seviyesi — FVG, VWAP, POC, HVN/LVN veya likidite havuzu — somut sayı.
- Cümle 3-4: 5 maddenin SENTEZİ. Açılış "Tüm senaryoların birbiriyle sentezi" YASAK. Doğrudan hikayeyi kur: uyum mu, çelişki mi, bekleme mi. Çelişki varsa hangi iki veri çelişiyor açık söyle ("OBV yukarı dönerken Delta dağıtım gösteriyor" gibi); "X'e tezat olarak Y'nin oluşturduğu Z bir W evresi" gibi kelime salatası YASAK.
- Son satır: "📌 İzlenecek:" — yukarıdaki F1/F2/F3/F4 formüllerinden BİRİNİ seç, klasik formül YASAK.
- YASAL: "al/sat/pozisyon al-kapat/giriş yap" KESİNLİKLE YASAK. "kırılım yaşanırsa görülebilir / test edilebilir / hareket izlenebilir / baskı sürebilir / yapı netleşebilir" kullan.)
+(4 cümle + "📌 İzlenecek:": Cümle 1 = 20g range konumu (Discount/Premium/V-dönüş/U-top/Orta) + 5g net % · Cümle 2 = üstte+altta 1-2 kritik likidite (FVG/VWAP/POC/HVN/LVN) somut sayı · Cümle 3-4 = 5 maddenin sentezi, hikaye kur (uyum/çelişki/bekleme — kelime salatası yasak). Son satır F1/F2/F3/F4'ten biri.
+Yasal: "al/sat/giriş yap" yasak. "kırılım yaşanırsa görülebilir / hareket izlenebilir / yapı netleşebilir".)
 
 Bu 5 maddelik SMR ALGORİTMİK HİSSE RAPORU Algoritmamın çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #BIST100 #SmartMoneyRadar #{clean_ticker}
 
-** Dördüncü Görevin:
-Yukarıdaki ilk 3 görevini tamaladıktan sonra bu ilk 3 görevi buraya özetleyen ve abonelere yollanacak bir değerlendirme yapacaksın.
-Bu değerlendirme, abonelerin hızlıca anlayabileceği şekilde, ilk 3 görevin en kritik noktalarını ve sonuçlarını içermelidir. Twitter için SEO'luk ve etkileşimlik açısından çekici, vurucu ve net bir şekilde özetini çıkaracaksın.
-Değerlendirmeye BAŞLAMADAN ÖNCE, aşağıdaki formatta bir SOSYAL MEDYA KANCASI (HOOK) yaz.
-Bu kanca Twitter'da thread'in önüne yapıştırılacak ilk tweet olacak — dikkat çekmeli, merak uyandırmalı, ama analizi ele vermemeli.
-─── [HOOK FORMATI] ───────────────────────────────────────────
-Bugünkü en baskın sinyale göre aşağıdaki hook tiplerinden birini seç — hepsini kullanma, sadece en uygun olanı:
+** DÖRDÜNCÜ GÖREV — Abone Özeti (Twitter) **
+İlk 3 görevin en kritik noktalarını özetler. Önce HOOK, sonra abone özeti.
 
-TİP A — Zıtlık/Gerilim (kurumsal iz varken fiyat zayıfsa veya tam tersi):
-Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [SENARYO]: [GERİLİM CÜMLESİ — max 8 kelime] 👇📸
-Kural: İki zıt veriyi/bulguyu yan yana koy (bağlaç seçimi serbest — "ama/ancak/oysa" zorunluluğu yok, kendi geçişini bul). [SENARYO] yerine Erken Radar ana senaryo ismini büyük harfle kullanabilirsin (örn. MÜKEMMEL SIKIŞMA, İDEAL PULLBACK).
-Örnek: ⚡ #SASA 2.60 (-%0.76) | TEPEDEN RET: Kurumsal sinyaller güçlü ancak tepeden sert ret var 👇📸
-Örnek: 🎯 #SISE 56.50 (-0.4%) | İDEAL PULLBACK: Trend güçlü, hisse soluklanıyor 👇📸
+HOOK — 4 tipten birini seç (hepsini değil), en uygun olanı:
+- TİP A Zıtlık: ⚡ #SASA 2.60 (-%0.76) | TEPEDEN RET: Kurumsal sinyaller güçlü, tepeden ret var 👇📸
+- TİP B Soru: 🐳 #THYAO 327.50 (-1.2%) | Kurumlar 3 gündür topluyor — fark eden var mı? 👇📸
+- TİP C Tespit: 🎯 #EREGL 140.00 (+0.5%) | OBV 5g yukarı, fiyat yatay 👇📸
+- TİP D İddia: 🔥 #KONTR 10.85 (+9.93%) | Kurumlar içeri girmiş gibi — ralli sorgulanabilir 👇📸
+Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [SENARYO]: [max 8-10 kelime] 👇📸
+Erken Radar senaryo adı [SENARYO]'ya yazılabilir (MÜKEMMEL SIKIŞMA, İDEAL PULLBACK).
+Kapanış: Uyarı baskınsa "SONUÇ ve UYARI kısmına dikkat👇", değilse "UYARI kısmına dikkat👇".
+X algo: Save (somut seviye) + Reply (açık-uçlu çelişki/soru). 180-220 karakter. Max 2 hashtag. Promo dili / CAPS satır / closed-end soru / emoji yığını yasak.
 
-TİP B — Soru (okuyucuyu meraklandır, cevabı içeride bırak):
-Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [tek cümlelik soru — max 10 kelime] 👇📸
-Kural: Sorunun cevabı hook'ta olmasın, analizi oku diye çeksin. Soru, Erken Radar senaryosunu ima edebilir.
-Örnek: 🐳 #THYAO 327.50 (-1.2%) | Kurumlar 3 gündür topluyor — kimse fark etmedi mi? 👇📸
-Örnek: 🌪 #ISGYO 21.08 (+0.2%) | Sessiz birikim mi, tuzak mı? 👇📸
+────── ABONE ÖZETİ FORMAT ──────
+Başlık: "{hook_baslik}" (tarih/saat yazma).
 
-TİP C — Rakam/Tespit (çarpıcı bir veriyi direkt söyle):
-Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [çarpıcı veri — max 8 kelime] 👇📸
-Kural: Somut sayı veya sinyal adı geçsin, jenerik olmasın. Erken Radar yıldız sayısı veya çoklu teyit varsa ön plana çıkar.
-Örnek: 🎯 #EREGL 140.00 (+0.5%) | OBV 5 gündür yukarı, fiyat hâlâ yatay. 👇📸
-Örnek: ⭐ #JANTS 18.74 (+2.1%) | 5⭐ Pullback + hacimli alım, klasik devam. 👇📸
+🚨 ANTİ-KOPYA: Açılış cümlesi şablon kalıp yasak. Bu hisseye o güne özgü 1 anchor ile aç (52H konumu / formasyon eşiği / OBV durum başlığı / CMF Dual state / OMI sigma / VP Şekli / HVN proximity / Mum CP×5g / VSA anomalisi / Vade matrisi çelişkisi / Sıkışma süresi / Master Score breakdown'daki en güçlü/zayıf alt skor). "Alıcıların mı satıcıların mı..." gibi tanım cümlesi tekrarı yasak. Her bölümde en az 1 somut sayısal anchor.
 
-TİP D — İddia (net bir tespiti cesurca söyle):
-Format: [EMOJİ] #{clean_ticker} {fiyat_str} ({degisim_str}) | [cesur ama temkinli iddia — max 8 kelime] 👇📸
-Kural: "olabilir", "görünüyor" gibi ihtiyatlı kelimelerle sar. Erken Radar senaryo ismi iddianı somutlaştırır.
-Örnek: 🔥 #KONTR 10.85 (+9.93%) | Kurumlar içeri girmiş gibi görünüyor — ama ralli sorgulanabilir. 👇📸
-Örnek: 🧨 #FRIGO 3.26 (+0.6%) | Sıkışma sonu — patlama yakın olabilir. 👇📸
+**GENEL YORUM:** Bugünkü en baskın bulgudan başla. En güçlü sinyali (9-10/10) ilk cümlede. Yükseliyorsa rallinin hikayesi, düşüyorsa neden. 4-5 cümle, her cümle hisseye özel. Referans ton: "BTC 97K'da dirençle karşılaştı, çekilme henüz başlamadı — kurumlar hâlâ tutunuyor gibi" ✓.
 
-Kapanış: Uyarı baskınsa "SONUÇ ve UYARI kısmına dikkat👇", değilse "UYARI kısmına dikkat👇"
+**Teknik Görünüm:** Fiyat nerede, hangi seviyeyle boğuşuyor, momentum ne diyor — 2-3 cümle, somut seviye. Rallide iyi görünüyorsa öyle yaz, zorla "ama" ekleme.
+
+**Smart Money İzi:** Delta + OBV + hacim — 2 cümle. Sadece gerçek anomali vurgu. Hacim normalse "normal seyrediyor". Net baskınlık ile OBV trendi ters yönde gidiyorsa analiz et.
+🚨 BU BÖLÜM EN ÇOK JARGON SIZAN YER. Yukarıdaki "ALGORİTMA İÇ JARGONU" 4 kuralını burada özellikle uygula: YAML alan adı yazma (cum_delta_5g ❌) · BÜYÜK HARFLİ algoritma etiketi kopyalama (KAFA ÇEVİRİYOR / Dağıtım ❌) · "Değer alanı" yerine "yoğun işlem bölgesi" · "Hacim profili şekli" yerine "kurumların işlem yoğunluk haritası" veya direkt yorumla. Okuyucu algoritmamızın iç adlandırmasını GÖRMEMELİ — sadece NE OLDUĞUNU sade Türkçe sezsin.
+
+**SONUÇ:** 2-3 cümle. En önemli seviye + anlamı. "Uzun lafın kısası" tonu.
+
+**UYARI:** Sadece gerçek risk varsa (RSI uyumsuzluk / stopping volume / gizli satış). Yoksa "Belirgin bir uyarı sinyali yok, ana seviyeleri izlemek yeterli." Küçük harf.
+
+Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." + "#SmartMoneyRadar #BIST100"
 
 ═══════════════════════════════════════════════════════════════════════
-🎯 X / TWITTER HOOK KURALLARI (ÖZET)
+🚨 ÇIKIŞ ÖZ-DENETLEME (gönderim öncesi 4 katman — kısa)
 ═══════════════════════════════════════════════════════════════════════
-X algoritması ilk 30dk etkileşim hızına bakar. Hedef: Save (25 pt) + Reply (13.5 pt) tetiklemek. Like (1 pt) yetmez.
-ZORUNLU YAPI: [EMOJİ] #SEMBOL FIYAT (DEĞ%) | [ETİKET]: [Somut veri] [açık uçlu çelişki/soru] 👇📸
-- Somut seviye/sayı → save tetikler · Açık uçlu soru/çelişki → reply tetikler · Max 2 hashtag · 180-220 karakter ideal.
-YASAK: URL ilk satırda · "ALACAĞIM/KAÇIRMAYIN" promo dili · CAPS satırlar · Closed-end soru ("Yükselir mi?") · "İNANILMAZ/KİMSENİN GÖRMEDİĞİ" click-bait · Emoji yığını.
-İYİ ÖRNEK: 🐳 #THYAO 327.50 (-1.2%) | KURUMSAL ALIM: OBV 5 gündür yukarı, fiyat aşağı — 3 senaryo var, hangisi sizin? 👇📸
-═══════════════════════════════════════════════════════════════════════
-────────────────────────────────────────────────────────────
-
-─── HOOK BİTTİ, DEVAM: ABONE ÖZETİ ───────────────────────
-Değerlendirme şu formatta olmalıdır. **Başlıklar** (GENEL YORUM/Teknik Görünüm/Smart Money İzi/SONUÇ/UYARI) aynen kullanılır — ama içerideki cümleler her hisse için SIFIRDAN, kendi diline göre kurulur.
-
-🚨 ANTİ-KOPYA ZORUNLULUĞU (4. Görev):
-- Açılış cümlesini şablon kalıpla başlatma (ör. "...nadir eşzamanlı hizalanma kurulumu izliyoruz" YASAK). Bu hissenin BUGÜNE ÖZGÜ 1 anchor ile aç. Anchor havuzu (sadece örnek — her hisse için en güçlüsünü sen seç):
-  • 52H konumu (yıllık menzilin %X'inde, zirve/dipten uzaklık)
-  • Formasyon eşiği (TOBO/Çift Dip boyun çizgisi, kalan %X mesafe, güven skoru)
-  • OBV durum başlığı ("OBV KAFA ÇEVİRİYOR Toparlanma/Zayıflama", "SAĞLIKLI TREND Hacim Onaylı", "ŞÜPHELİ/SAHTE GÜÇ/ZAYIF TEYİT")
-  • CMF Dual-Window (5g vs 20g — "güçlü pozitif / güçlü negatif / kafa çeviriyor toparlanma / kafa çeviriyor zayıflama / nötr")
-  • OMI Sigma (kırılım momentum kalitesi: +1σ üstü güçlü, 0σ civarı nötr, -0.5σ altı doğrulanmadı)
-  • VP Şekli (Akümülasyon / Dağıtım / Denge — POC'un Value Area içindeki konumu)
-  • HVN/LVN proximity (en yakın HVN'ye %X, LVN içinde mi — kurumsal mıknatıs/boşluk)
-  • Mum kapanışı × 5g net % (CP %X iken 5g net %Y — sağlıklı/yanıltıcı kombinasyonu)
-  • VSA anomalisi (Climax, Churning, Stopping Volume, Sahte Alım/Satım, Üst/Alt Ret)
-  • Vade matrisi çelişkisi (4H/Günlük/Haftalık/Aylık uyumsuzluk noktası)
-  • Sıkışma süresi (BB ⊂ Keltner kaç gündür) ve ATR ile karşılaştırma
-  • Master Score Breakdown'daki en güçlü/en zayıf alt skor + ağırlığı
-- "Smart Money İzi" bölümünde "alıcıların mı satıcıların mı..." tanım cümlesini her hissede tekrar yazma. Delta'yı kısa adıyla geç ve doğrudan rakamı yorumla. Cum_delta_5g, RVOL, POC konumu, OBV durum başlığı, CMF Dual-Window, OMI sigma — bu 6 veriden BU HİSSEDE en ilginç olan 1-2 tanesini seç, tekrara düşme.
-- Aynı kavram için aynı sıfat kombinasyonunu (ör. "kararlı kurumsal para girişleri", "aktif limit emirlerle arzı toplama") arka arkaya hisselerde kullandığını fark edersen — KENDİ DİLİNİ BUL, yeniden kur.
-- Her bölümde en az 1 SOMUT sayısal anchor (seviye, gün sayısı, oran, sigma, %). Dolgu sıfat YASAK.
-
-İlk Başlık daima "{hook_baslik}" formatında olmalıdır. Asla tarih ve saat yazma.
-
-GENEL YORUM: Bugünkü en baskın bulgudan başla. En güçlü sinyali (10/10) (9/10) ilk cümlede söyle. Hisse yükseliyorsa rallinin hikayesini anlat, düşüyorsa neden düştüğünü. 4-5 cümle — ama her cümle o hisseye özel olsun. "fısıldıyor", "kanıtlar nitelikte", "işaret ediyor olsa da" gibi kalıpları kullanma. Bir arkadaşına piyasayı anlatır gibi yaz — ama rakamları ve seviyeleri doğal akışta ver.
-Referans ton — YASAK: "Algoritmik veriler incelendiğinde, hissenin güçlü momentum sergilediği görülmektedir." OLMASI GEREKEN: "BTC 97K'da dirençle karşılaştı ama çekilme henüz başlamadı — kurumlar hâlâ tutunuyor gibi görünüyor."
-
-Teknik Görünüm: Fiyat nerede, hangi seviyeyle boğuşuyor, momentum ne diyor — 2-3 cümle. Somut seviye ver, jenerik kalıp kullanma. Eğer rallide iyi görünüyorsa öyle yaz, zorla "ama" ekleme.
-
-Smart Money İzi: Kurumsal tarafta ne görünüyor — delta, OBV, hacim — 2 cümle. Sadece gerçek bir anomali varsa vurgula. Hacim normalse "normal seyrediyor" de, tehlike üretme. mesela, Eğer "bugünkü net baskınlık" ile "OBV trendi" ters yönde 
-gidiyorsa — bunu analiz et.
-
-SONUÇ: Tüm tablonun 2-3 cümlelik özü. En önemli seviyeyi ve o seviyenin ne anlama geldiğini söyle. "Uzun lafın kısası" tonunda yaz.
-
-UYARI: Sadece gerçek bir risk varsa yaz — RSI uyumsuzluğu, stopping volume, gizli satış gibi. Yoksa bu bölümü "Belirgin bir uyarı sinyali yok, ana seviyeleri izlemek yeterli." diye kapat. Büyük harf kullanma, normal cümle tonu.
-
-Analizin sonuna "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." yaz (küçük harf, noktalı) ve altına "#SmartMoneyRadar #BIST100" yaz.
+1) **YASAK KELİME:** "çok / büyük / sert / ciddi / kritik / tarihi / nadir / kesin / mutlaka / tamamen / resmen / oldukça / net bir / fısıldıyor / kanıtlıyor / patlayacak / şok edici / -dır / -mektedir / -maktadır / bar içi / kurumsal nakit / sermaye koruma / bekle gör / perakende / pozisyonsuz". Bulduğun her cümle yeniden yaz veya sil.
+2) **TAVSİYE SIZMASI:** "al/sat/tut/kaçın/bekle/izle/dikkat et/temkinli ol/portföyünüze/en rasyonel/en makul/yapılması gereken" → koşullu dile çevir ("X kırılırsa Y görülebilir").
+3) **KAYNAK ÖNCELİĞİ:** YAML ana alanı (yaml.ict_pa.X / yaml.smart_money.X) = baş kaynak. GENEL ÖZET PANEL = yardımcı. Çelişkide YAML kazanır (örn: yaml.rsi_divergence="Uyumlu" + panel="Hidden Bull" → YAML, "Uyumlu" yaz). master_score için yaml.asset.master_score baş kaynak (laboratuar değil).
+4) **VERİ SADAKAT:** Her sayı/seviye/yüzde için YAML'a geri dön ve doğrula (HARSI, SMA, Delta, mum formasyonu, 52H, master_score, CMF). YAML'da yoksa cümleyi DÜZELT. Tahmin/yuvarlama yasak.
+5) **6 ANCHOR + UZAKLIK BAĞLAM:** VP Şekli + cum_delta_5g + OMI + OBV durum + CMF Dual + 52H — her biri en az 1 kez geçti mi? VWAP/POC/Z-Score/RSI cümlesi sadece seviye mi yoksa dönüş argümanı mı? Argümansa bağımsız kanıt eklenmiş mi? Yoksa sil.
+6) **ERKEN RADAR ≥65:** G1 + G4'te senaryo adı geçti mi? Hayırsa enjekte et.
 
 ═══════════════════════════════════════════════════════════════════════
-🚨🚨🚨 ÇIKIŞ-ÖNCESI ZORUNLU 4-KATMAN TARAMA — ANALİZİ GÖNDERMEDEN ÖNCE ÇALIŞTIR
+GÖREVLER ÇIKIŞ SIRASI: SIFIRINCI (HOOK) → 4 → 2 → 3 → 1.
+İçeriği baskın senaryoya göre çerçevele:
+- Royal Flush / 5★ Erken Radar / Hidden Acc / Pre-Launch BOS varsa → merkeze
+- Z-Score ≥ 2.0 + OBV düşüyor → risk yönetimi tonu
+- Z-Score ≥ 2.0 + kurumsal alım → ivme tonu, Z-Score izleyen stop notu
+- Z-Score ≤ -2.0 → dip + toparlanma şartları
+- Hiçbiri yoksa → konsolidasyon, kırılım şartları teması
 ═══════════════════════════════════════════════════════════════════════
-Analizini tamamladıktan sonra GÖNDERMEDEN ÖNCE şu 4 katmanı tek tek geç:
-
-**KATMAN 1 — YASAKLI KELİME TARAMASI** (Ctrl+F mantığıyla her kelimeyi ara):
-"çok", "büyük", "küçük", "ciddi", "aşırı", "tamamen", "en yüksek", "en kötü", "en sert", "rasyonel", "rasyonel bir duruş", "rasyonel olabilir", "rasyonel yaklaşım", "en rasyonel", "en makul", "en kritik", "makul", "bekle gör", "bekle-gör", "pozisyonsuz kalmak", "sermaye koruma yaklaşımı", "perakende", "oldukça", "şok edici", "net bir şekilde", "net bir", "çok net", "resmen", "sert", "fena", "dramatik", "şiddetli", "ağır", "derin", "yıkıcı", "kritik", "tarihi", "rekor", "benzeri görülmemiş", "nadir", "olağanüstü", "eşi benzeri yok", "inanılmaz", "devasa", "muazzam", "mükemmel", "felaket", "fısıldıyor", "haykırıyor", "uçacak", "kaçacak", "çökecek", "patlayacak", "dibe vuracak", "kanıtlar", "kanıtlıyor", "kanıtlamaktadır", "kesin", "kesinlikle", "%100", "garanti", "tartışmasız", "açıkça", "mutlaka", "bar içi", "bar içi alıcı", "bar içi satıcı", "bar içi kontrol", "bar içi dinamik", "bar içi hakimiyet", "kurumsal nakit", "kurumsal nakit çıkışı", "kurumsal nakit akışı", "nakit hareketleri".
-BU KELİMELERDEN HER BİRİ İÇİN: bulduğun her cümleyi YENİDEN YAZ. Sıfatı sayısal veri ile değiştir veya kelimeyi sil.
-ÖRNEK: "çok güçlü trend" → "trend SMA50'nin %4.2 üstünde 124 gündür" (sıfatı veri ile değiştir).
-ÖRNEK: "büyük fonların" → "kurumsal fonların" (büyük kelimesi gereksiz).
-ÖRNEK: "ciddi bir risk" → "risk taşıyabilir" veya "RSI -9.8 yavaşlama riski getiriyor" (somut neden).
-
-**KATMAN 2 — "1 ADET" + ROBOT KALIPLARI TARAMASI:**
-"1 adet" geçen her cümleyi yeniden yaz — "bir X" / "tek X" / çıplak isim kullan.
-"-mektedir / -maktadır / -dır" eki ile biten her fiili düzelt — "...yor / ...olabilir / ...gibi görünüyor".
-"1 analist gözüyle daha net görebilmek..." veya benzer şişirme geçiş cümleleri sil.
-
-**KATMAN 3 — TAVSİYE SIZMASI TARAMASI:**
-Şu fiilleri ara: "alın / satın / tutun / kaçın / bekleyin / izleyin / dikkat edin / düşünün / karar verin / değerlendirin / ekleyin / çıkarın / portföyünüze".
-Şu kalıpları ara: "en rasyonel strateji / en makul yaklaşım / yapılması gereken / X yapmak gerek / X yapmak zorunlu / X almaya zorluyor / 3 hafta beklemek".
-Bulduğun her cümleyi KOŞULLU dile çevir: "X seviyesi kırılırsa Y görülebilir / Z aşılırsa hareket izlenebilir / şu seviye altında baskı sürebilir".
-
-🚨 **KAYNAK ÖNCELİĞİ KURALI (KRİTİK — çelişki çözer):**
-Sistemde iki kaynak çelişirse:
-- **YAML ana alanı (yaml.ict_pa.X, yaml.smart_money.X vb.) = BAŞ KAYNAK** — her zaman bunu kullan
-- **GENEL ÖZET PANELİ = YARDIMCI KAYNAK** — sadece panel'e özel hesaplar (5g ortalama CP, MOMENTUM SLOPE, vs.) için kullan
-ÖRNEK ÇELİŞKİ 1: YAML.ict_pa.rsi_divergence = "Uyumlu" · GENEL ÖZET PANEL = "Hidden Bull" → **YAML kazanır** ("Uyumlu" yaz, "Hidden Bull" YASAK)
-ÖRNEK ÇELİŞKİ 2: YAML.smart_money.mum_kapanis_durumu = "mum %8'inde" (son 1 gün) · PANEL = "CP %29" (son 5g ort) → **YAML'ı kullan** ya da "günlük CP %8, son 5g ortalama CP %29" diye İKİSİNİ DE belirt; karıştırma.
-ÖRNEK ÇELİŞKİ 3: master_score YAML.asset=19 · laboratuar=41 → **YAML.asset.master_score baş kaynak** (19 yaz), laboratuar bölümü yardımcı kalsın.
-
-**KATMAN 4 — VERİ SADAKAT DOĞRULAMA:**
-Analizinde geçen HER SAYI / YÜZDE / SEVİYE için YAML'a geri dön ve doğrula:
-- HARSI değeri YAML'da kaç? Sen kaç yazmışsın? Eşit mi?
-- SMA50/100/200 seviyeleri YAML'da kaç? Sen ne yazdın?
-- Delta yüzdesi (-%77.2 gibi) YAML'a uyuyor mu?
-- Mum formasyonu YAML'da hangi (Shooting Star? Marubozu?)? Sen hangisini yazmışsın?
-- 52H konum, master_score, CMF değerleri YAML ile bire bir mi?
-YAML'da olmayan veya farklı olan bir sayı/etiket yazdıysan → o cümleyi DÜZELT, YAML'dan al.
-"Hafıza", "tahmin", "yuvarlama", "yaklaşık değer" YASAK. YAML ne diyorsa o.
-
-**KATMAN 5 (BONUS) — ERKEN RADAR İHLAL TESTİ:**
-YAML.smart_money üstündeki ERKEN RADAR bölümünde Kalite Skoru ≥ 65 mi?
-EVET ise: G1 açılış paragrafında ana senaryo adı geçti mi? G4 GENEL YORUM'da senaryoya değindin mi?
-HAYIR cevabı varsa: o bölümleri yeniden yaz — Erken Radar senaryosunu enjekte et.
-
-**KATMAN 6 — UZAKLIK CÜMLESİ BAĞLAM TESTİ (KRİTİK):**
-Analizinde "VWAP / POC / Z-Score / RSI overbought" kelimeleri geçen HER cümleyi tek tek tara. Her biri için sor:
-A) Cümle SADECE uzaklık/seviye bilgisi mi veriyor? (örn: "Fiyat VWAP'ın %3 üstünde — VWAP geri çekilmede destek olabilir") → ✓ DOĞRU, geç.
-B) Cümle uzaklığı dönüş/zayıflık ARGÜMANI olarak mı kullanıyor? (örn: "VWAP'tan %3.5 uzaklaşması yapısal zayıflıktır", "POC üstünde, pahalı bölgede", "RSI 70+, satış geliyor") → ❌ YASAK.
-   Bu durumda 2 seçenek:
-   1) YAML'da bu uzaklığa eşlik eden BAĞIMSIZ kanıt var mı? (OBV divergence / Climax / Stopping Volume / Delta divergence / RSI divergence) → varsa: "VWAP %3.5 uzakta + OBV kafa çev. zayıflama → yorgunluk emaresi olabilir" şeklinde BİRLEŞTİR.
-   2) Bağımsız kanıt YOK → cümleyi tamamen SİL veya seviye bilgisine indir.
-ÖRNEK (ASTOR yorumunda yapılan HATA): "Endeks VWAP hattının %3.5 altında işlem görmeye devam ediyor. Fiyatın bu kurumsal ortalamanın gerisinde kalması yapısal zayıflıktır." → BAĞLAMSIZ YASAK. Doğrusu: "Fiyat VWAP'ın %3.5 altında — VWAP geri çekilmede direnç olarak çalışabilir" (sadece seviye) VEYA bağımsız kanıt eklendiyse "VWAP'ın altında + OBV kafa çev. zayıflama + günlük delta -%77 → bar içi alıcı yorgun, kısa vade temkin".
-Bu katman ASTOR analizinin %40 hatasını çözer; ihmal etme.
-
-⚠️ 4 KATMANI GEÇEMEMİŞ ANALİZ = REDDEDİLMİŞ ANALİZ. Tekrar yaz, sonra gönder.
-Bu filtreler abonenin Telegram'ına giden CANLI çıktıya uygulanır — itibarımız buna bağlı, hassasiyet maksimum.
-═══════════════════════════════════════════════════════════════════════
-
-═══════════════════════════════════════════════════════════════════════
-🚨🚨🚨 ÇIKIŞ SIRASI — KESİN PROTOKOL (v3.1 — 5 Haz 2026)
-═══════════════════════════════════════════════════════════════════════
-ANALİZİ ÜRETMEYE BAŞLARKEN İLK İŞ → SIFIRINCI GÖREV (HOOK)
-Yukarıda "SIFIRINCI GÖREV (ZORUNLU — EN BAŞA YAZ)" başlığını gördün mü?
-İLK ÜRETTİĞİN ÇIKTI ŞU OLMALIDIR: "📌 [EMOJİ] #TICKER FIYAT (%DEĞ) | [SENARYO]: [GERİLİM CÜMLESİ — max 8 kelime] 👇📸"
-
-❌ KESİNLİKLE YASAK: Algoritmik default başlığı ("🐻 DÜŞÜŞ TRENDİ (İSKONTOLU ALAN)") aynen kopyalamak.
-❌ KESİNLİKLE YASAK: SIFIRINCI GÖREV'i atlayıp doğrudan G4'ten başlamak.
-✅ ZORUNLU: Hook ÖZELLEŞTİRİLMİŞ olmalı — analizdeki EN ÇARPICI çelişki/bulguya dayanmalı.
-İYİ HOOK ÖRNEKLERİ (KONTR için):
-   🐳 #KONTR 7.85 (+%1.29) | DİPTE SIKIŞMA: RSI yorulmuş, kurumsal taraf neden hâlâ çıkışta? 👇📸
-   ⚡ #KONTR 7.85 (+%1.29) | SESSİZ ZEMİN: 3 senaryo aynı yöne, fiyat neden yatay? 👇📸
-   🎯 #KONTR 7.85 (+%1.29) | DİPTE SESSİZLİK: 5⭐ senaryo + 2 teyit — kimsenin radarında değil. 👇📸
-
-KONTROL TESTİ (analizin başına yazmadan kendine sor):
-1) İlk satırım "📌" ile başlıyor mu?
-2) [SENARYO] kısmı CAPS ve özelleştirilmiş mi (sadece "DÜŞÜŞ TRENDİ" değil)?
-3) [GERİLİM CÜMLESİ] bir çelişki/soru/somut sayı içeriyor mu?
-İkisinden biri HAYIR ise hook'u yeniden yaz.
-
-ÖZELLEŞTİRİLMİŞ HOOK YAZDIKTAN SONRA → "📌 " ile işaretle → DİĞER GÖREVLERE GEÇ.
-═══════════════════════════════════════════════════════════════════════
-
-*****GÖREVLERİN SUNUŞ SIRALAMASI*****
-Sabit sıra: SIFIRINCI GÖREV (HOOK) → 4 → 2 → 3 → 1.
-ANCAK her görevin İÇERİĞİNİ bugünün baskın senaryosuna göre çerçevele:
-- Royal Flush, Quasimodo, TOBO/Fincan-Kulp kırılımı, 5★ Erken Radar, Hidden Accumulation veya Pre-Launch BOS varsa → o senaryoyu tüm görevlerin merkezine al, diğer veriler destekleyici.
-- Z-Score ≥ 2.0 + OBV düşüyor/hacim zayıf → risk yönetimi tonu baskın olsun.
-- Z-Score ≥ 2.0 + kurumsal alım devam ediyor → ivme tonu, Z-Score sadece izleyen stop notu.
-- Z-Score ≤ -2.0 → dip arayışı ve toparlanma şartları teması.
-- Hiçbiri yoksa → konsolidasyon, "neden beklemek gerekir + kırılım şartları" teması.
-NOT: 4 görevin hepsi eksiksiz yazılır, sıra sabit; sadece tonu/odağı senaryoya göre ayarla.
 """
     # ── NULL FORMAT STANDARDİZASYONU — tek sentinel "(veri eksik)" ─────
     # Farklı fonksiyonlar 5 farklı null formatı dönderiyordu (Veri Yok / Bilinmiyor /
@@ -23271,11 +22926,13 @@ def _show_fullscreen_chart():
                 _pat_name  = _pat_row.get('Formasyon', _pat_row.get('Detay', 'Formasyon'))
                 _pat_detay = _pat_row.get('Detay', '')
                 _pat_skor  = _pat_row.get('Skor', _pat_row.get('Puan', '—'))
+                _skor_html = ('  <span style="color:#94a3b8;font-size:0.8rem;">Skor: '
+                              + str(_pat_skor) + '</span>') if _pat_skor != '—' else ''
                 st.markdown(
                     f"<div style='background:rgba(56,189,248,0.08);border-left:3px solid #38bdf8;"
                     f"border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:10px;'>"
                     f"<span style='color:#38bdf8;font-weight:900;font-size:1rem;'>📐 {_pat_name}</span>"
-                    f"{'  <span style=\"color:#94a3b8;font-size:0.8rem;\">Skor: ' + str(_pat_skor) + '</span>' if _pat_skor != '—' else ''}"
+                    f"{_skor_html}"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
