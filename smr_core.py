@@ -2784,6 +2784,145 @@ Her bir paragrafı yazarken kendine şu soruyu sor: 'Eee, yani? Kahvehanedeki ya
 × "büyük fonların / büyük oyuncuların / büyük resim" — "büyük" yasak; "kurumsal fonlar" / "kurumsal oyuncular" / "genel tablo" kullan.
 × "perakende yatırımcı / perakende alıcılar" — "küçük yatırımcı" yaz.
 
+🚨 GENİŞLETİLMİŞ KARA LİSTE — AÇILIŞ + AKIŞ + JARGON (G3 anti-kalıp v2):
+
+A) YASAKLI MADDE AÇILIŞLARI (madde/alt-başlık açılışı şunlardan hiçbiriyle başlamaz):
+× "Sistemin ürettiği verilerde..." / "Sistemin sentezlediği..."
+× "Ağırlıklı [sentezlenmiş] algoritmik skor olan ana puan..." / "Ana puan X/100 seviyesi..."
+× "Günlük [mum] kapanış konumu [verilerine bakıldığında/göstergesi]..."
+× "Hacim [ve] fiyat anatomisini inceleyen [Hacim-Mum Analizi (VSA)]..."
+× "Göreceli Güç Endeksi (RSI) ... momentum eğiminde..." / "Gösterge hızı ölçümünde..."
+× "Tüm senaryoların birbiriyle [sentezi/uyumu]..."
+× "Fiyat 20 günlük [fiyat/hareket] alanının..."
+× "Algoritmik veriler incelendiğinde..." / "Yapılan analizlerde..."
+ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sinyali — somut sayı + bağlam. "Master skor 21 — trend 0, hacim 50" ✓ · "Delta -%51.6, son 5g'in en sert dağıtımı" ✓ · "RSI 25, aşırı satım — dipler hâlâ daha derin" ✓.
+
+B) FİİL ZİNCİRİ YASAĞI:
+Aşağıdaki pasif analiz fiilleri bir madde/paragraf içinde MAKSİMUM 1 KEZ kullanılır:
+"işaret ediyor / yansıtıyor / doğruluyor / gösteriyor / fısıldıyor / sunuyor / üretiyor / onaylıyor / kanıtlıyor / gözler önüne seriyor"
+Üst üste 2 cümlede aynı fiil veya aynı kategoriden bir başkası → baştan yaz. Ritim çeşitliliği yoksa rapor robot diline döner.
+
+C) KELİME SALATASI YASAĞI:
+× "X'e tezat olarak Y'nin oluşturduğu Z bir W evresi" kalıbı — kelime salatası. Doğrudan çelişkiyi söyle: "OBV yukarı dönerken Delta dağıtım gösteriyor — çelişki, bekleme demek."
+× "kararlı kurumsal para girişleri / aktif limit emirlerle arzı toplama / emir eşleşmelerindeki ısrar farkını ölçen kümülatif işlem hacmi farkı" — 4-5 kelimelik tanım yapıları yerine 2 kelime: "Delta -%51.6, dağıtım."
+× "...senaryosuyla çalışarak / ...senaryosuyla çalışırken" — "X durumunda" veya "X aktif" kullan.
+× "kurumsal nakit çıkışı / kurumsal bar içi hakimiyet" gibi şişirme tamlamalar — "satıcı baskın" yeterli.
+
+D) JARGON TEKRAR YASAĞI (KATMAN 4 tamamlayıcısı):
+Terim ilk geçişinde tam açılım + parantez (örn. "Göreceli Güç Endeksi (RSI)"). İkinci geçişten itibaren BİR DAHA tam açılım YOK — sadece kısaltma (RSI, OBV, CMF, VSA) veya düz Türkçe ad. Her cümlede "Hacim Akış Endeksi (OBV)" tekrarı = otomatik baştan yaz.
+
+E) GENİŞLETİLMİŞ KAPANIŞ FORMÜLLERİ ("İzlenecek seviye" tipi son cümleler için — 4 alternatif, dönüşümlü):
+F1 — Çift seviye + tetik: "Yukarıda X aşılırsa Y kırılır; aşağıda Z altı baskıyı sürdürür."
+F2 — Tek anchor + bağlam: "Kilit eşik X — buranın altında dağıtım izi sürer, üstüne kapanış yapıyı sorgular."
+F3 — Asimetrik vurgu: "Hareket ipucu X'in üstünde başlar; aşağıda Y zaten algoritmik destek."
+F4 — Soru tonlu: "X kırılırsa hikaye değişir — soru, alıcı buraya gelecek mi?"
+KLASIK "Yukarıda X eşiği aşılırsa hareket izlenebilir, aşağıda Y altında baskı devam edebilir" formülü TAMAMEN YASAK — aynı formülü 2 hisse üst üste kullanma.
+
+F) UYDURMA KELİME + SAHTE ALT-BAŞLIK YASAĞI (KRİTİK):
+× Finans dilinde olmayan veya yanlış kullanılan Türkçe drama kelimeleri YASAK:
+  "mahmure / mahmur / sarhoş / esrik / harici momentum / harici Z-Score / artı iki yönlü Bearish /
+   negatif iki yönlü / dahili divergence / yan-yana çelişki / çift kutup uyarısı"
+× Z-Score skaler bir değerdir; "artı iki yönlü", "negatif yan", "çift kutuplu" gibi nitelemeler YANLIŞTIR.
+  Doğru: "Z-Score +2.1" veya "Z-Score 2 standart sapma üstünde". Yön nitelendirme YASAK — bağlama (OBV/Delta/VSA) bak.
+× Her etiket/sıfat için sor: "Bu kelime İngilizce karşılığı olan bilinen bir finans terimi mi?" Cevap HAYIR ise: kullanma.
+× UYARI/SONUÇ bölümlerinde uydurma alt-başlık YASAK. İzin verilen UYARI alt-etiketleri (varsa kullan, yoksa düz cümleyle aç):
+  DAĞITIM RİSKİ / KLİMAKS UYARISI / VWAP RETİ / BOĞA TUZAĞI / AYI TUZAĞI / MOMENTUM TÜKENMESİ /
+  HACİM UYUMSUZLUĞU / KIRILIM SAHTECİLİĞİ / STOPPING VOLUME / GİZLİ DAĞITIM / NO DEMAND / NO SUPPLY /
+  REGULAR BEAR DIVERGENCE / REGULAR BULL DIVERGENCE / CHoCH KIRILIMI / MEGAFON GENİŞLEMESİ
+  Bu listede olmayan başlık etiketi YASAK (özellikle "MAHMURE REDDETME", "SARHOŞ ALICI" gibi uydurma).
+
+G) VWAP KONUMU × BÖLGE EŞLEŞTİRMESİ (mantık çelişkisi yasağı):
+× "VWAP altında + premium bölge" / "VWAP üstünde + discount bölge" gibi ÇELİŞKİLİ eşleme YASAK — biri mutlaka yanlıştır.
+Doğru eşleştirme:
+  Fiyat > VWAP → ÜSTÜNDE konum → günlük denge üstü (premium tarafı, alıcı baskın gün)
+  Fiyat < VWAP → ALTINDA konum → günlük denge altı (discount tarafı, satıcı baskın gün)
+NOT: VWAP "kurumların ortalama alım fiyatı" DEĞİL — istatistiksel hacim-ağırlıklı ortalama. "Kurumların maliyeti" tanımı YASAK.
+
+H) ENDEKS ANALİZ İSTİSNASI (XU100, XU030, XBANK, XHOLD, XUSIN, XGIDA vb.):
+× RVOL endekste anlamlı değildir — "RVOL 0.00x" veya "düşük RVOL" yazma; endeks için bu metrik atlanır.
+× Bireysel hisseye özgü jargon (kurumsal alım, mal topluyor, akıllı para emiyor) endeks için aşırı — "endeks-genel piyasa katılımı" tonu kullan.
+× 52H konumu, MA dizilimi, VWAP, RSI, Z-Score endekste geçerli — bunları kullanmaya devam et.
+× Endekste "smart money OB" veya "kurumsal akümülasyon" gibi mikro-yapı yorumu YASAK — endeks toplam piyasanın aynası, bireysel kurum davranışı değil.
+
+I) SON İHLAL ÖRNEKLERİ (THYAO/SASA/XU100 çıktılarından — bu hatalar tekrarlanmaz):
+
+İhlal 1 — FİİL ZİNCİRİ (madde içi MAX 1 pasif analiz fiili):
+× "...işaret ediyor. ...gösteriyor. ...destekliyor. ...yansıtıyor. ...doğruluyor." (5 cümlede aynı sınıf)
+✓ Çeşitlendir: "...işaret ediyor. ...buradan okunur. ...sayılar şöyle: ...sonuç:" yapısı kur.
+KONTROL: Madde bittiğinde say — "kaç pasif analiz fiili kullandın?" 2+ ise BAŞTAN YAZ.
+
+İhlal 2 — ANCHOR-İLK (madde/alt-başlık açılışı somut rakam):
+× "Hisse, son dönemde X seviyesinin üzerinde tutunarak yapısal olumlu sinyaller veriyor." (genel açılış)
+✓ "VWAP 298.79; fiyat üstünde 1g — alıcı baskın gün." (somut + vurucu)
+KONTROL: İlk cümlenin ilk 3 kelimesi sayı/rakam/seviye içeriyor mu? İçermiyorsa şablondur — BAŞTAN YAZ.
+
+İhlal 3 — TEK CÜMLE = 1 FİKİR (3 yüklem zinciri YASAK):
+× "Fiyat, X yapısı sergilerken, kapanışlar, hacim ve VWAP arasındaki uyum incelendiğinde, kararsızlık göze çarpıyor." (3 yüklem + 6 detay)
+✓ Üçe böl: "Yapı: X. Hacim ortalama. VWAP üstü — kararsızlık var."
+
+İhlal 4 — JARGON YANLIŞ TANIMI YASAK:
+× "Displacement, yani hacimsiz hareketin zayıflığı..." (YANLIŞ — displacement = sert ivmeli kırılım hareketi)
+× "alıcılı bölge / satıcılı bölge / yorulma emareleri / hacimsizlik zayıflığı" (bilinen finans terimi DEĞİL — uydurma)
+✓ Tanımını bilmediğin terimi KULLANMA. ANLATIM KURALI ve JARGON FİLTRESİ'nde izinli terim listesi var; başkasını uydurma.
+✓ Sadece şu ICT/SMC terimleri tanımlı ve kullanılabilir: HH+HL, LH+LL, CHoCH, BOS, OB, FVG, VWAP, OBV, RVOL, VSA, CMF, HARSI, RSI, SMA/EMA, Discount/Premium, Climax/No Demand/No Supply, Regular/Hidden Bull/Bear Divergence.
+
+İhlal 5 — YAPI SENARYOSU TUTARSIZLIĞI:
+× Açılışta "LH/HL", maddede "HL" tek başına (tutarsız okuma — "LH/HL" diye bir senaryo yok)
+✓ YAML'daki YAPI satırından TEK senaryo oku, baştan sona aynı şekilde kullan.
+✓ Geçerli yapı senaryoları (BİRİNİ seç): HH+HL / LH+LL / CHoCH up / CHoCH down / Megafon / Üçgen sıkışma / Yatay range / Yarı yapı.
+
+İhlal 6 — DISCLAIMER ATLAMA YASAK (yasal koruma):
+× Closing'de sadece "------" + hashtag yazıp disclaimer cümlesini atlama YASAK (THYAO çıktısında olan hata).
+✓ Closing 3 satır TAM yazılır: (1) ayraç çizgisi, (2) "...Eğitim amaçlıdır. Yatırım tavsiyesi değildir." cümlesi, (3) hashtag satırı.
+✓ "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." YASAL koruma cümlesidir — atlanamaz, kısaltılamaz, yutulamaz.
+
+*** ANLAŞILIRLIK FİLTRESİ v3 (5 Haz 2026 — canlı Twitter geri bildirimi sonrası) ***
+v2'de teknik kalıplar kırıldı ama okuyucu "anlamadım" dedi. Sorun: gereksiz bulgu doldurma, hesaplama detayı anlatma, nötr sayı sıralama, mikro intraday detay, jargon açılım şişirme, iç çelişki.
+
+🚫 K1 — "YOK" BULGULAR YASAK:
+"tespit edilmiyor / bulunmuyor / görünmüyor / kırılmadı / sıkışma yok / uyumsuzluk yok" cümleleri = DOLGU.
+× "Bollinger ve Keltner bantları arasında daralma tespiti bulunmuyor." → SİL
+× "Klasik uyumsuzluk görünmüyor." → SİL
+× "FVG direnci tespit edilmiyor." → SİL
+✓ Var olan veriyi anlat, yok olanı sussun geç.
+
+🚫 K2 — NÖTR/SIFIR METRİK YASAK:
+%0, 1.0x civarı, 0.0 değişim YÖNÜ OLMAYAN sayılar — bilgi taşımaz.
+× "Günlük baskınlık oranı %0 ile kusursuz dengede gerçekleşirken..." → SİL
+× "Son 5 günü net %0.0 değişimle yatay tamamlıyor." → "Son 5 gün yatay" yeterli
+× "RVOL 1.0x normal seyrediyor" → bahsetme, normal = haber değil
+✓ Sadece yönü olan sayı geçer (Delta -%49, RVOL 0.44x, CMF -0.417).
+
+🚫 K3 — HESAPLAMA DEĞİL SONUÇ:
+Component breakdown, alt-skor, eşleşme oranı, normalize değer = METODOLOJİ. Okuyucu hesaplamayı bilmez.
+× "Master Skor 12/100; kurumsal yapı 100/100 ile direnç, trend bileşeni 0/100 baskılanıyor. MTF matrisinde dominant yön aşağı, eşleşme oranı %58."
+✓ "Algoritmik skor 12/100 — uzun vade baskı. Yapı tek dayanak, trend ve momentum aşağıda. Vadeler büyük çoğunlukla satıcı."
+KURAL: Skor NASIL hesaplandı değil, NE ANLAMA GELDİĞİ. Alt skor sıralama (100/100, 0/100, %58) YASAK.
+
+🚫 K4 — MİKRO INTRADAY DETAY YASAK:
+"CP %30 alt dilim / mum boyu %12 küçük / spread %1.5 / lot karşılaştırma" — bant analisti detayı, Twitter takipçisi için gürültü.
+× "Seans sonu kapanış konumu (CP) günlük marjın %30'luk alt diliminde gerçekleşerek..." → SİL
+✓ "Gün içi kapanış zayıf bölgede" yeterli (kullanılacaksa).
+
+🚫 K5 SIKILAŞTIRMA — AÇILIM MAX 3 KELİME + SIFAT EKLEME YASAK:
+İlk geçişte tam çeviri EN FAZLA 3 KELİME. "Kısa vadeli", "ağırlıklı", "ölçen" gibi sıfat/fiil ekleme YASAK.
+× "Sermaye giriş çıkış dengesini ölçen para akışı endeksi (CMF)" — 7 kelime
+× "Ağırlıklı algoritmik skor olan ana puan (Master Skor)" — 6 kelime
+× "Alıcı ve satıcı hacim farkını ölçen kümülatif emir farkı (Delta)" — 9 kelime
+× "Kısa vadeli para akışı endeksi (CMF)" — sıfat eklendi, 5 kelime
+✓ "para akışı (CMF)" / "algoritmik skor (Master Skor)" / "kümülatif fark (Delta)" — 2 kelime, ideal
+
+🚫 K6 — TEK YÖN MUTABAKATI (İÇ ÇELİŞKİ KONTROLÜ):
+5 madde TEK yön (alıcı/satıcı/nötr-bekleme) etrafında hizalanmalı. Çelişen iki ifadeyi yan yana koyma.
+× "satıcı baskısı" + "%0 kusursuz denge" → birini sil
+× "satıcılar tükendi" + "kurumsal satıcı kontrolü" → birini sil
+× "dağıtım baskısı" + "alıcı tükenmesi" → "kısa vadede satıcı, geniş resmde tükenme" açık geçişle yaz
+× Delta dağıtım + OBV yukarı → "Delta+CMF satışta, AMA OBV alıcı sızıntısı — kısa vadede satıcı baskın, alıcı sızıyor" gibi AÇIK GEÇİŞ
+KURAL: Her cümleyi yazarken sor — "Aynı maddedeki diğer cümle bunu destekliyor mu, çelişiyor mu?" Çelişme varsa "ama/oysa/kısa vade X uzun vade Y" geçişiyle açıkça belirt.
+
+✅ DOLGU KELİME TEMİZLİĞİ (her cümlede ara):
+"seviyesinde gerçekleşirken / değeriyle / rasyosuyla / matrisinde belirlenirken / oranıyla ölçülürken / piyasa anatomisi / bar içi kontrol / yarı yapı senaryosu / tek taraflı bozulma" → görürsen at, yalın yaz.
+
 *** EN ÖNEMLİ KURAL: VERİ ODAK NOKTASI VE AĞIRLIKLANDIRMA KURALI ***
 1. ANALİZİN MERKEZİ: Her zaman "Akıllı Para ne yapıyor?", "Senaryo Çerçevesi (Bias+Zone)" ve "Fitil Çekiliyor mu?" soruları olmalıdır.
   3 ana odağın var:
@@ -2887,18 +3026,28 @@ Veri yoksa maddeyi atla. Alt başlıkları aynen kullan. Her madde 2-3 cümle.
 - Risk Uyarısı: (Varsa kritik uyarı — düşük hacim, yıpranmış OB vb.)
 
 ═══════════════════════════════════════════════════════════════════════
-🚨 ÇIKIŞ-ÖNCESI ZORUNLU 4-KATMAN TARAMA (PRO) — GÖNDERMEDEN ÖNCE ÇALIŞTIR
+🔒 İÇ DENETİM ÖZ-KONTROL [SADECE SANA ÖZEL — YANITA DAHİL ETMEK MUTLAK YASAK]
 ═══════════════════════════════════════════════════════════════════════
+[UYARI: Aşağıdaki katmanları yanıtı yazmadan ÖNCE kafadan uygula. Bu blok ASLA yanıtın bir parçası DEĞİLDİR. "KATMAN", "═══", "ÇIKIŞ-ÖNCESI", "İÇ DENETİM", "YASAKLI KELİME" gibi kelimeleri abone Telegram'ına GÖNDEREMEZSİN.]
 **KATMAN 1 — YASAKLI KELİME:** "çok / büyük / küçük / ciddi / aşırı / tamamen / en yüksek / en kötü / en sert / en rasyonel / en kritik / perakende / oldukça / şok edici / net bir şekilde / net bir / çok net / resmen / sert / fena / dramatik / şiddetli / kritik / tarihi / rekor / nadir / olağanüstü / inanılmaz / devasa / mükemmel / felaket / fısıldıyor / haykırıyor / uçacak / çökecek / patlayacak / kanıtlıyor / kesin / garanti / mutlaka". Bulduğun her kelimeyi ya sil ya somut sayı ile değiştir ("çok güçlü trend" → "SMA50'nin %4.2 üstünde 124 gündür").
 **KATMAN 2 — "1 ADET" + ROBOT DİLİ:** "1 adet X" → "bir X" / çıplak isim. "-mektedir / -maktadır / -dır" → "...yor / ...olabilir / ...gibi". "1 analist gözüyle" geçişlerini sil.
 **KATMAN 3 — TAVSİYE SIZMASI:** "alın / satın / tutun / bekleyin / izleyin / dikkat edin / düşünün / değerlendirin / portföyünüze / en rasyonel / 3 hafta beklemek / X almaya zorluyor". Hepsini KOŞULLU dile çevir.
 **KATMAN 4 — VERİ SADAKAT:** Yazdığın HER sayı/seviye için YAML'a dön ve doğrula. HARSI, SMA seviyeleri, Delta yüzdesi, mum formasyonu adı YAML'da yazana BİREBİR uymalı. Hafıza/tahmin/yuvarlama YASAK.
 **KATMAN 4.5 — UZAKLIK CÜMLESİ BAĞLAM TESTİ (KRİTİK):** Analizinde "VWAP / POC / Z-Score / RSI overbought" geçen HER cümleyi tara. Cümle uzaklığı YARGI/DÖNÜŞ argümanı olarak mı kullanıyor? (örn: "VWAP %3.5 altında → yapısal zayıflık", "POC üstünde → pahalı bölge", "RSI 70+ → satış") → BAĞIMSIZ KANIT (OBV/Delta divergence, Climax, Stopping Volume) yoksa cümleyi SİL veya seviye bilgisine indir ("VWAP %3.5 altında — VWAP geri çekilmede direnç olabilir"). Bağımsız kanıt varsa BİRLEŞTİR. Tek başına uzaklık → yön yargısı YASAK.
-⚠️ 4 katmanı geçemeyen analiz REDDEDİLİR — tekrar yaz. Bu çıktı abone Telegram'ına CANLI gidiyor; itibarımız buna bağlı.
+⚠️ Katmanları geçemeyen analiz REDDEDİLİR — tekrar yaz.
+═══════════════════════════════════════════════════════════════════════
+🔒 İÇ DENETİM BLOĞU SONU — YUKARIDAKİ HİÇBİR SATIR YANIT İÇİNDE OLMAYACAK. Şimdi gerçek yanıtı yaz:
 ═══════════════════════════════════════════════════════════════════════
 --------------------------------------------------------------------------------------------------------
 SMR-PRO aboneleri için Algoritmamın TEKNİK KART çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #SmartMoneyRadar #{clean_ticker}
+
+🚨 ÜÇ SATIR KONTROL (gönderimden hemen önce — YASAL KORUMA):
+(1) Tire ayraç çizgisi var mı?
+(2) "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." cümlesi tam ve eksiksiz mi?
+(3) "#SmartMoneyRadar #{clean_ticker}" hashtag satırı var mı?
+Üçü de zorunlu — disclaimer cümlesi YASAL ZORUNLULUKTUR, atlanamaz/kısaltılamaz/yutulamaz.
+Hashtag yanıtının SON satırıdır — sonrasında HİÇBİR ŞEY YAZMA.
 """
 
 
@@ -2967,8 +3116,8 @@ Teknik terimleri parantez içinde çevirme. Yerine ÖNCE insani benzetme cümles
 - "Fiyat ne yaparsa yapsın paranın hangi yöne aktığını gösteren şamandıra" → (OBV)
 - "Alıcıların mı satıcıların mı daha ısrarcı olduğunu gösteren güç ölçeri" → (Delta)
 - "Normalde 100 kişi işlem yaparken bugün kaç kişi girdiğini gösteren kalabalık sayacı" → (RVOL)
-- "Büyük fonların o gündeki ortalama alım fiyatı — kurumlar buna göre pozisyon kurar" → (VWAP)
-- "Büyük oyuncuların mal topladığı raf — fiyat o rafa gelince tutunur" → (Order Block / OB)
+- "Günün hacim-ağırlıklı ortalama fiyatı — denge çizgisi; üstü alıcı tarafı, altı satıcı tarafı" → (VWAP)
+- "Kurumsal alıcının mal topladığı raf — fiyat o rafa gelince tutunur" → (Order Block / OB)
 - "Fiyatın çok hızlı geçtiği boş basamak — geri dönüp doldurulur" → (FVG)
 - "Defalarca döndüğü duvarı nihayet yıkması" → (BOS — Yapı Kırılımı)
 - "Stop'ları patlatmak için fiyatı o seviyeye itmek — tuzak gibi" → (Liquidity Sweep)
@@ -2992,6 +3141,140 @@ KURAL: Bir terim tanımını analizde EN FAZLA 1 kez ver. İkinci geçişten iti
 × "büyük fonların / büyük oyuncuların / büyük resim" — "büyük" yasak.
 × "perakende yatırımcı / perakende alıcılar" — "küçük yatırımcı" yaz.
 × "3 hafta beklemek / şimdilik beklemek" — örtük tavsiye, koşullu dile çevir.
+
+🚨 GENİŞLETİLMİŞ KARA LİSTE — AÇILIŞ + AKIŞ + JARGON (G3 anti-kalıp v2):
+
+A) YASAKLI MADDE AÇILIŞLARI (madde/alt-başlık açılışı şunlardan hiçbiriyle başlamaz):
+× "Sistemin ürettiği verilerde..." / "Sistemin sentezlediği..."
+× "Ağırlıklı [sentezlenmiş] algoritmik skor olan ana puan..." / "Ana puan X/100 seviyesi..."
+× "Günlük [mum] kapanış konumu [verilerine bakıldığında/göstergesi]..."
+× "Hacim [ve] fiyat anatomisini inceleyen [Hacim-Mum Analizi (VSA)]..."
+× "Göreceli Güç Endeksi (RSI) ... momentum eğiminde..." / "Gösterge hızı ölçümünde..."
+× "Tüm senaryoların birbiriyle [sentezi/uyumu]..."
+× "Fiyat 20 günlük [fiyat/hareket] alanının..."
+× "Algoritmik veriler incelendiğinde..." / "Yapılan analizlerde..."
+ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sinyali — somut sayı + bağlam. "Master skor 21 — trend 0, hacim 50" ✓ · "Delta -%51.6, son 5g'in en sert dağıtımı" ✓ · "RSI 25, aşırı satım — dipler hâlâ daha derin" ✓.
+
+B) FİİL ZİNCİRİ YASAĞI:
+Aşağıdaki pasif analiz fiilleri bir madde/paragraf içinde MAKSİMUM 1 KEZ kullanılır:
+"işaret ediyor / yansıtıyor / doğruluyor / gösteriyor / fısıldıyor / sunuyor / üretiyor / onaylıyor / kanıtlıyor / gözler önüne seriyor"
+Üst üste 2 cümlede aynı fiil veya aynı kategoriden bir başkası → baştan yaz. Ritim çeşitliliği yoksa rapor robot diline döner.
+
+C) KELİME SALATASI YASAĞI:
+× "X'e tezat olarak Y'nin oluşturduğu Z bir W evresi" kalıbı — kelime salatası. Doğrudan çelişkiyi söyle: "OBV yukarı dönerken Delta dağıtım gösteriyor — çelişki, bekleme demek."
+× "kararlı kurumsal para girişleri / aktif limit emirlerle arzı toplama / emir eşleşmelerindeki ısrar farkını ölçen kümülatif işlem hacmi farkı" — 4-5 kelimelik tanım yapıları yerine 2 kelime: "Delta -%51.6, dağıtım."
+× "...senaryosuyla çalışarak / ...senaryosuyla çalışırken" — "X durumunda" veya "X aktif" kullan.
+× "kurumsal nakit çıkışı / kurumsal bar içi hakimiyet" gibi şişirme tamlamalar — "satıcı baskın" yeterli.
+
+D) JARGON TEKRAR YASAĞI (KATMAN 4 tamamlayıcısı):
+Terim ilk geçişinde tam açılım + parantez (örn. "Göreceli Güç Endeksi (RSI)"). İkinci geçişten itibaren BİR DAHA tam açılım YOK — sadece kısaltma (RSI, OBV, CMF, VSA) veya düz Türkçe ad. Her cümlede "Hacim Akış Endeksi (OBV)" tekrarı = otomatik baştan yaz.
+
+E) GENİŞLETİLMİŞ KAPANIŞ FORMÜLLERİ ("İzlenecek seviye" tipi son cümleler için — 4 alternatif, dönüşümlü):
+F1 — Çift seviye + tetik: "Yukarıda X aşılırsa Y kırılır; aşağıda Z altı baskıyı sürdürür."
+F2 — Tek anchor + bağlam: "Kilit eşik X — buranın altında dağıtım izi sürer, üstüne kapanış yapıyı sorgular."
+F3 — Asimetrik vurgu: "Hareket ipucu X'in üstünde başlar; aşağıda Y zaten algoritmik destek."
+F4 — Soru tonlu: "X kırılırsa hikaye değişir — soru, alıcı buraya gelecek mi?"
+KLASIK "Yukarıda X eşiği aşılırsa hareket izlenebilir, aşağıda Y altında baskı devam edebilir" formülü TAMAMEN YASAK — aynı formülü 2 hisse üst üste kullanma.
+
+F) UYDURMA KELİME + SAHTE ALT-BAŞLIK YASAĞI (KRİTİK):
+× Finans dilinde olmayan veya yanlış kullanılan Türkçe drama kelimeleri YASAK:
+  "mahmure / mahmur / sarhoş / esrik / harici momentum / harici Z-Score / artı iki yönlü Bearish /
+   negatif iki yönlü / dahili divergence / yan-yana çelişki / çift kutup uyarısı"
+× Z-Score skaler bir değerdir; "artı iki yönlü", "negatif yan", "çift kutuplu" gibi nitelemeler YANLIŞTIR.
+  Doğru: "Z-Score +2.1" veya "Z-Score 2 standart sapma üstünde". Yön nitelendirme YASAK — bağlama (OBV/Delta/VSA) bak.
+× Her etiket/sıfat için sor: "Bu kelime İngilizce karşılığı olan bilinen bir finans terimi mi?" Cevap HAYIR ise: kullanma.
+× UYARI/SONUÇ bölümlerinde uydurma alt-başlık YASAK. İzin verilen UYARI alt-etiketleri (varsa kullan, yoksa düz cümleyle aç):
+  DAĞITIM RİSKİ / KLİMAKS UYARISI / VWAP RETİ / BOĞA TUZAĞI / AYI TUZAĞI / MOMENTUM TÜKENMESİ /
+  HACİM UYUMSUZLUĞU / KIRILIM SAHTECİLİĞİ / STOPPING VOLUME / GİZLİ DAĞITIM / NO DEMAND / NO SUPPLY /
+  REGULAR BEAR DIVERGENCE / REGULAR BULL DIVERGENCE / CHoCH KIRILIMI / MEGAFON GENİŞLEMESİ
+  Bu listede olmayan başlık etiketi YASAK (özellikle "MAHMURE REDDETME", "SARHOŞ ALICI" gibi uydurma).
+
+G) VWAP KONUMU × BÖLGE EŞLEŞTİRMESİ (mantık çelişkisi yasağı):
+× "VWAP altında + premium bölge" / "VWAP üstünde + discount bölge" gibi ÇELİŞKİLİ eşleme YASAK — biri mutlaka yanlıştır.
+Doğru eşleştirme:
+  Fiyat > VWAP → ÜSTÜNDE konum → günlük denge üstü (premium tarafı, alıcı baskın gün)
+  Fiyat < VWAP → ALTINDA konum → günlük denge altı (discount tarafı, satıcı baskın gün)
+NOT: VWAP "kurumların ortalama alım fiyatı" DEĞİL — istatistiksel hacim-ağırlıklı ortalama. "Kurumların maliyeti" tanımı YASAK.
+
+H) ENDEKS ANALİZ İSTİSNASI (XU100, XU030, XBANK, XHOLD, XUSIN, XGIDA vb.):
+× RVOL endekste anlamlı değildir — "RVOL 0.00x" veya "düşük RVOL" yazma; endeks için bu metrik atlanır.
+× Bireysel hisseye özgü jargon (kurumsal alım, mal topluyor, akıllı para emiyor) endeks için aşırı — "endeks-genel piyasa katılımı" tonu kullan.
+× 52H konumu, MA dizilimi, VWAP, RSI, Z-Score endekste geçerli — bunları kullanmaya devam et.
+× Endekste "smart money OB" veya "kurumsal akümülasyon" gibi mikro-yapı yorumu YASAK — endeks toplam piyasanın aynası, bireysel kurum davranışı değil.
+
+I) SON İHLAL ÖRNEKLERİ (THYAO/SASA/XU100 çıktılarından — bu hatalar tekrarlanmaz):
+
+İhlal 1 — FİİL ZİNCİRİ (madde içi MAX 1 pasif analiz fiili):
+× "...işaret ediyor. ...gösteriyor. ...destekliyor. ...yansıtıyor. ...doğruluyor." (5 cümlede aynı sınıf)
+✓ Çeşitlendir: "...işaret ediyor. ...buradan okunur. ...sayılar şöyle: ...sonuç:" yapısı kur.
+KONTROL: Madde bittiğinde say — "kaç pasif analiz fiili kullandın?" 2+ ise BAŞTAN YAZ.
+
+İhlal 2 — ANCHOR-İLK (madde/alt-başlık açılışı somut rakam):
+× "Hisse, son dönemde X seviyesinin üzerinde tutunarak yapısal olumlu sinyaller veriyor." (genel açılış)
+✓ "VWAP 298.79; fiyat üstünde 1g — alıcı baskın gün." (somut + vurucu)
+KONTROL: İlk cümlenin ilk 3 kelimesi sayı/rakam/seviye içeriyor mu? İçermiyorsa şablondur — BAŞTAN YAZ.
+
+İhlal 3 — TEK CÜMLE = 1 FİKİR (3 yüklem zinciri YASAK):
+× "Fiyat, X yapısı sergilerken, kapanışlar, hacim ve VWAP arasındaki uyum incelendiğinde, kararsızlık göze çarpıyor." (3 yüklem + 6 detay)
+✓ Üçe böl: "Yapı: X. Hacim ortalama. VWAP üstü — kararsızlık var."
+
+İhlal 4 — JARGON YANLIŞ TANIMI YASAK:
+× "Displacement, yani hacimsiz hareketin zayıflığı..." (YANLIŞ — displacement = sert ivmeli kırılım hareketi)
+× "alıcılı bölge / satıcılı bölge / yorulma emareleri / hacimsizlik zayıflığı" (bilinen finans terimi DEĞİL — uydurma)
+✓ Tanımını bilmediğin terimi KULLANMA. ANLATIM KURALI ve JARGON FİLTRESİ'nde izinli terim listesi var; başkasını uydurma.
+✓ Sadece şu ICT/SMC terimleri tanımlı ve kullanılabilir: HH+HL, LH+LL, CHoCH, BOS, OB, FVG, VWAP, OBV, RVOL, VSA, CMF, HARSI, RSI, SMA/EMA, Discount/Premium, Climax/No Demand/No Supply, Regular/Hidden Bull/Bear Divergence.
+
+İhlal 5 — YAPI SENARYOSU TUTARSIZLIĞI:
+× Açılışta "LH/HL", maddede "HL" tek başına (tutarsız okuma — "LH/HL" diye bir senaryo yok)
+✓ YAML'daki YAPI satırından TEK senaryo oku, baştan sona aynı şekilde kullan.
+✓ Geçerli yapı senaryoları (BİRİNİ seç): HH+HL / LH+LL / CHoCH up / CHoCH down / Megafon / Üçgen sıkışma / Yatay range / Yarı yapı.
+
+İhlal 6 — DISCLAIMER ATLAMA YASAK (yasal koruma):
+× Closing'de sadece "------" + hashtag yazıp disclaimer cümlesini atlama YASAK (THYAO çıktısında olan hata).
+✓ Closing 3 satır TAM yazılır: (1) ayraç çizgisi, (2) "...Eğitim amaçlıdır. Yatırım tavsiyesi değildir." cümlesi, (3) hashtag satırı.
+✓ "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." YASAL koruma cümlesidir — atlanamaz, kısaltılamaz, yutulamaz.
+
+*** ANLAŞILIRLIK FİLTRESİ v3 (5 Haz 2026 — canlı Twitter geri bildirimi sonrası) ***
+v2'de teknik kalıplar kırıldı ama okuyucu "anlamadım" dedi. Sorun: gereksiz bulgu doldurma, hesaplama detayı anlatma, nötr sayı sıralama, mikro intraday detay, jargon açılım şişirme, iç çelişki.
+
+🚫 K1 — "YOK" BULGULAR YASAK:
+"tespit edilmiyor / bulunmuyor / görünmüyor / kırılmadı / sıkışma yok / uyumsuzluk yok" cümleleri = DOLGU.
+× "Bollinger ve Keltner bantları arasında daralma tespiti bulunmuyor." → SİL
+× "Klasik uyumsuzluk görünmüyor." → SİL
+✓ Var olan veriyi anlat, yok olanı sussun geç.
+
+🚫 K2 — NÖTR/SIFIR METRİK YASAK:
+%0, 1.0x civarı, 0.0 değişim YÖNÜ OLMAYAN sayılar — bilgi taşımaz.
+× "Günlük baskınlık oranı %0 ile kusursuz dengede gerçekleşirken..." → SİL
+× "Son 5 günü net %0.0 değişimle yatay tamamlıyor." → "Son 5 gün yatay" yeterli
+✓ Sadece yönü olan sayı geçer (Delta -%49, RVOL 0.44x, CMF -0.417).
+
+🚫 K3 — HESAPLAMA DEĞİL SONUÇ:
+Component breakdown, alt-skor, eşleşme oranı = METODOLOJİ. Okuyucu hesaplamayı bilmez.
+× "Master Skor 12/100; kurumsal yapı 100/100 direnç, trend bileşeni 0/100 baskılanıyor. MTF matrisinde eşleşme %58."
+✓ "Algoritmik skor 12/100 — uzun vade baskı. Yapı tek dayanak. Vadeler satıcı."
+KURAL: Skor NASIL değil NE ANLAMA. Alt skor sıralama (100/100, 0/100, %58) YASAK.
+
+🚫 K4 — MİKRO INTRADAY DETAY YASAK:
+"CP %30 alt dilim / mum boyu %12 küçük / spread %1.5" — bant analisti detayı, gürültü.
+× "Seans sonu kapanış konumu (CP) günlük marjın %30'luk alt diliminde..." → SİL
+✓ "Gün içi kapanış zayıf bölgede" yeterli.
+
+🚫 K5 SIKILAŞTIRMA — AÇILIM MAX 3 KELİME + SIFAT EKLEME YASAK:
+İlk geçişte tam çeviri EN FAZLA 3 KELİME. Sıfat/fiil ekleme YASAK.
+× "Sermaye giriş çıkış dengesini ölçen para akışı endeksi (CMF)" — 7 kelime
+× "Kısa vadeli para akışı endeksi (CMF)" — sıfat eklendi, 5 kelime
+✓ "para akışı (CMF)" / "algoritmik skor (Master Skor)" / "kümülatif fark (Delta)" — 2 kelime, ideal
+
+🚫 K6 — TEK YÖN MUTABAKATI (İÇ ÇELİŞKİ KONTROLÜ):
+5 madde TEK yön etrafında hizalanmalı. Çelişen iki ifadeyi yan yana koyma.
+× "satıcı baskısı" + "%0 kusursuz denge" → birini sil
+× "satıcılar tükendi" + "kurumsal satıcı kontrolü" → birini sil
+× Delta dağıtım + OBV yukarı → "Delta+CMF satışta, AMA OBV alıcı sızıntısı — kısa vade satıcı, alıcı sızıyor" AÇIK GEÇİŞ
+KURAL: Çelişme varsa "ama/oysa/kısa vade X uzun vade Y" geçişiyle açıkça belirt.
+
+✅ DOLGU KELİME TEMİZLİĞİ:
+"seviyesinde gerçekleşirken / rasyosuyla / piyasa anatomisi / bar içi kontrol / yarı yapı senaryosu / tek taraflı bozulma" → at, yalın yaz.
 
 🚨 PERSONA × OBJEKTİFLİK MEKANİZMASI:
 Sana atanan persona (defansif/momentum/nadir/Golden/Z-uçta vs) sadece ANLATIM TONUNU belirler, KANIT SEÇMEZ.
@@ -3167,7 +3450,7 @@ Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu e
 ### SONUÇ:
 (3-4 cümle — en kritik bulguyu, somut seviyeleri ve net olasılığı öne çıkar. Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik bir özeti olsun.)
 
-### UYARI: (Varsa — küçük harf, insan diliyle. Şunlardan biri varsa MUTLAKA yaz:
+### UYARI: (Varsa — küçük harf, insan diliyle. ALT-BAŞLIK UYDURMA YASAK: "F bloğu UYDURMA YASAĞI" maddesindeki izin verilen UYARI etiketleri listesinden seç (DAĞITIM RİSKİ / KLİMAKS UYARISI / VWAP RETİ / BOĞA TUZAĞI / MOMENTUM TÜKENMESİ / vb.); uydurma drama başlığı (MAHMURE, SARHOŞ ALICI, ÇIĞLIKLAYAN SATIM gibi) MUTLAK YASAK. Şunlardan biri varsa MUTLAKA yaz:
    - Regular Bear Div (yükselişte alıcı tükeniyor) veya Regular Bull Div (düşüşte satıcı tükeniyor)
    - VSA Sahte alım ⚠ (no demand — düşük hacimli yeşil mum) veya Sahte satım ⚠ (no supply)
    - VSA Climax ⚠⚠ (yüksek hacim + doji — dönüş yakın)
@@ -3178,19 +3461,34 @@ Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu e
    - HARSI kırmızı, RVOL düşük, OBV ayrışıyor, stopping volume, trend tersliği, gizli satış
    ÖNEMLİ NOT: Hidden Bull/Bear divergence UYARI DEĞİLDİR — "trend devamı" sinyalidir, GENEL ANALİZ'e olumlu çerçevede yaz, UYARI'ya KOYMA.)
 ═══════════════════════════════════════════════════════════════════════
-🚨 ÇIKIŞ-ÖNCESI ZORUNLU 4-KATMAN TARAMA (ELITE) — GÖNDERMEDEN ÖNCE ÇALIŞTIR
+🔒 İÇ DENETİM ÖZ-KONTROL [SADECE SANA ÖZEL — YANITA DAHİL ETMEK MUTLAK YASAK]
 ═══════════════════════════════════════════════════════════════════════
+[UYARI: Aşağıdaki 6 katmanı yanıtı yazmadan ÖNCE kafadan uygula. Bu blok ASLA yanıtın bir parçası DEĞİLDİR. "KATMAN", "═══", "ÇIKIŞ-ÖNCESI", "İÇ DENETİM", "YASAKLI KELİME" gibi kelimeleri abone Telegram'ına GÖNDEREMEZSİN. Önceki çıktılarda bu blok abone mesajına sızdı — bu HATA tekrarlanırsa görev REDDEDİLİR.]
 **KATMAN 1 — YASAKLI KELİME:** "çok / büyük / küçük / ciddi / aşırı / tamamen / en yüksek / en kötü / en sert / en rasyonel / en kritik / perakende / oldukça / şok edici / net bir şekilde / net bir / çok net / resmen / sert / fena / dramatik / şiddetli / kritik / tarihi / rekor / nadir / olağanüstü / inanılmaz / devasa / mükemmel / felaket / fısıldıyor / haykırıyor / uçacak / çökecek / patlayacak / kanıtlıyor / kesin / garanti / mutlaka". Bulduğun her kelimeyi ya sil ya somut sayı ile değiştir.
 **KATMAN 2 — "1 ADET" + ROBOT DİLİ:** "1 adet X" → "bir X" / çıplak isim. "-mektedir / -maktadır / -dır" → "...yor / ...olabilir". "1 analist gözüyle daha net görebilmek..." → SİL, direkt ilk maddeye geç.
 **KATMAN 3 — TAVSİYE SIZMASI:** "alın / satın / bekleyin / izleyin / dikkat edin / düşünün / değerlendirin / portföyünüze / en rasyonel / 3 hafta beklemek / defansif siperde beklemek / X almaya zorluyor / iki kez düşünmek gerek". Hepsini KOŞULLU dile çevir veya sil.
 **KATMAN 4 — VERİ SADAKAT:** Yazdığın HER sayı/seviye için YAML'a dön ve doğrula. HARSI değeri, SMA seviyeleri, Delta yüzdesi, mum formasyonu adı, CMF değeri, OMI sigma, 52H konumu — hepsi YAML ile BİREBİR uymalı. Hafıza/tahmin/yuvarlama YASAK. YAML'da olmayan sayı yazdıysan o cümleyi DÜZELT.
 **KATMAN 5 — ERKEN RADAR İHLAL TESTİ:** YAML'daki Erken Radar Kalite Skoru ≥ 65 mi? EVET ise: G1 açılış paragrafında ana senaryo adı geçti mi? HAYIR cevabı varsa: G1 açılışını yeniden yaz, senaryoyu enjekte et.
 **KATMAN 6 — PERSONA ANTİ-BIAS:** YAML'da persona yönüne TERS düşen sinyaller var mı (defansif iken cum_delta + / momentum iken Climax)? Var ise: en az 1 paragrafta dipnot zorunlu — "tek yönlü hikaye" hata.
-⚠️ 6 katmanı geçemeyen analiz REDDEDİLİR — tekrar yaz, sonra gönder. Bu çıktı ELITE abone Telegram'ına CANLI gidiyor; itibarımız her cümleye bağlı.
+⚠️ 6 katmanı geçemeyen analiz REDDEDİLİR — tekrar yaz, sonra gönder.
+═══════════════════════════════════════════════════════════════════════
+🔒 İÇ DENETİM BLOĞU SONU — YUKARIDAKİ HİÇBİR SATIR YANIT İÇİNDE OLMAYACAK. Şimdi gerçek yanıtı yaz:
 ═══════════════════════════════════════════════════════════════════════
 
-Analizin sonuna şu notu ekle:
+Analizin sonuna AYNEN şu 3 satırı (eksiksiz) ekle — bu YASAL KORUMA, atlamak/kısaltmak/yutmak YASAK:
 -----------------------------------------------------------------------------------------------
 SMR-ELITE aboneleri için Detaylı Özel Analizdir. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #SmartMoneyRadar #{clean_ticker}
+
+🚨 ÜÇ SATIR KONTROL (gönderimden hemen önce):
+(1) Tire ayraç çizgisi var mı?
+(2) "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." cümlesi tam ve eksiksiz mi?
+(3) "#SmartMoneyRadar #{clean_ticker}" hashtag satırı var mı?
+Üçünden biri eksikse yanıtı tamamla — bu disclaimer cümlesi YASAL ZORUNLULUKTUR.
+
+*** ÇIKIŞ KURALI (KRİTİK — İHLAL EDERSEN GÖREV BAŞARISIZ) ***
+"#SmartMoneyRadar #{clean_ticker}" satırı YANITININ SON SATIRIDIR. DURURSUN.
+Bu satırdan SONRA HİÇBİR ŞEY YAZMA — boş satır, "═══", "KATMAN", "ÇIKIŞ-ÖNCESI", "İÇ DENETİM", "YASAKLI KELİME", "KARA LİSTE" YANITA KOPYALANMAZ.
+Yukarıdaki tüm iç denetim blokları (6-KATMAN, GENİŞLETİLMİŞ KARA LİSTE F/G/H, UYDURMA YASAĞI, VWAP eşleştirme, ENDEKS istisnası) sadece senin için TALİMAT — analiz çıktısının BİR PARÇASI DEĞİL.
+Yanıtının başlangıcı: ana başlık. Yanıtının bitişi: hashtag satırı. Aradakiler analiz. Bu üçünün dışında hiçbir şey output edilemez.
 """

@@ -1,6 +1,6 @@
 # Patron Terminal — CLAUDE.md
 # Hızlı navigasyon. Sistemin TAMAMI: `memory/SMR_SISTEM_OZETI.md` (tek kaynak).
-# Son güncelleme: 3 Haz 2026 Oturum 14 (AI Prompt v2 + Backtest UI + Feature Snapshot)
+# Son güncelleme: 5 Haz 2026 Oturum 16 (auto-refresh + 52H/MA merge + İsyatirim Open bug + G3 anti-kalıp v3)
 
 ---
 
@@ -43,7 +43,7 @@
   - `bist_calendar.py` — BIST işlem takvimi (tatil/arefe/RVOL normalizer)
   - `backtest_runner.py` — Forward returns + XU100 alpha (standalone, Task Scheduler 19:30)
   - `backup_patron_db.ps1` — Haftalık DB yedeği (Task Scheduler Pazar 21:00)
-- **Veri:** Yahoo Finance (`yfinance`) + parquet cache (`get_batch_data_cached`)
+- **Veri:** **Yahoo (OHLC) + İsyatirim (Volume override)** hibrit + parquet cache. Detay: `memory/SMR_SISTEM_OZETI.md` → "VERİ KATMANI" bölümü
 - **DB:** patron.db (Master Scan + scan_signals + signal_returns + signal_results), signals.db (bot)
 
 ---
@@ -156,7 +156,33 @@
 
 ---
 
-## Son Oturum Notu — 3 Haz 2026 Oturum 14
+## Son Oturum Notu — 5 Haz 2026 Oturum 16
+
+**Auto-refresh (app.py:9 + ~23215):** `streamlit-autorefresh 1.0.1` venv'e kuruldu. `_render_left_col` başına 10 dk gate eklendi: `is_trading_day` + `get_session_hours` ile sadece BIST seans saatleri içinde tetiklenir. Refresh anında `get_batch_data_cached.clear()` → açık hisse %100 taze. Hisse değiştiğinde key resetlenir. TTL 900 korundu.
+
+**52H bar → MA tablosu içine gömüldü (~23445 + 23694):** Standalone 52H kart silindi, HTML snippet `session_state['_52h_strip_html']`'ye yazıldı. MA kartı `display:flex column` ile 2 katman: üstte 52H range bar (6px kompakt), altta MA cells. Tek border.
+
+**SMC expander üst boşluğu kapatıldı (~23480):** Sebep — `st_autorefresh` görünmez iframe boş `element-container` bırakıyordu. 3 katmanlı CSS fix: iframe display:none + `:has()` element-container squash + boş markdownContainer sıfırla + expander margin-top:0 + öncesine -1.4rem pull-up.
+
+**İsyatirim endeks hacim → vazgeçildi:** Test → `fetch_index_data` sadece `INDEX, DATE, VALUE` döner (hacim YOK). XU100 hesaplama endeksi. Diğer "hacim sorunlu" gruplar (kripto/emtia/FX) ya doğru ya tanım gereği yok.
+
+**🚨 KRİTİK: İsyatirim Open=Close doji bug fix (app.py:2142 + 2192):** Commit 591ad72'de (dün) `_fetch_bist_ohlcv_isyatirim` API'den HGDG_ACILIS kaldırıldığında Open'ı Close ile dolduruyordu. Caller'lar TÜM OHLCV override yapıyordu → Yahoo'nun gerçek Open'ı doji ile eziliyordu → "5 mumdan 4'ü doji". Test: HGDG_MIN/MAX hâlâ var, sadece Open kayıp. Fix: override listesinden `Open` çıkarıldı, Yahoo Open korundu. 627 parquet cache silindi. ICT/candlestick/body analizleri tekrar doğru.
+
+**G3 Anti-Kalıp v3 (app.py B35 ~22641 + 22685):** Twitter geri bildirimi "bişey anladıysam arap". v2 6.5/10. v3 → 6 yeni kural: K1 "YOK bulgular yasak" (Bollinger sıkışma yok / klasik uyumsuzluk yok cümleleri silinir), K2 "nötr/sıfır metrik yasak" (%0 / 1.0x atılır), K3 "hesaplama yapısı anlatma, sonuç anlat" (100/100, 0/100, %58 component breakdown yasak), K4 "mikro intraday detay yasak" (CP %30 alt dilim), K5 "açılım MAX 3 kelime" ("para akışı (CMF)" ✓, "Sermaye giriş çıkış dengesini ölçen para akışı endeksi (CMF)" ✗), K6 "tek yön mutabakatı" (5 madde tek yön, çelişiyorsa açık geçiş). Net: ~+50 satır prompt. Backup: `app_backup_pre_g3_v3.py`. smr_core senkron ertelendi.
+
+---
+
+## Önceki Oturum Notu — 4 Haz 2026 Oturum 15
+
+**G3 Anti-Kalıp v2 (app.py + smr_core.py):** "AI yorumları robotik, hep aynı şey" geri bildirimi → Görev 3 prompt'unu A+B karma ile yeniden yazdım. (A) Anchor-ilk kuralı, (B) sıkıştırma. Eklenen 5 mekanizma: yasaklı açılış kalıpları (8 spesifik), fiil zinciri yasağı (10 fiil, madde içi max 1), kelime salatası yasağı (4 kalıp), jargon tekrar yasağı (2. geçişten itibaren açılım yok), 4 alternatif "📌 İzlenecek" formülü (klasik kalıp yasak). app.py G3 5-madde + akıcı paragraf yapısı korundu, sadece cümle tavanı (M1-M4=3, M5=4) + dil kuralı. smr_core.py PRO 7-madde + alt-başlık yapısı **aynen** korundu, sadece anti-kalıp bloğu eklendi (PRO+ELITE ikisine de). VPS deploy + restart başarılı. Backup: `smr_core_backup_pre_g3_antikalip.py`. Net: app.py +56 sat, smr_core +68 sat. Test çıktısı 6.5/10 (4 sızıntı: "fısıldıyor" KATMAN 1 ihmali, M1 yarı şablon, M5 kelime salatası, fiil zinciri — kullanıcı kabul etti, ikinci iter ertelendi).
+
+**app.py stale data uyarısı false-positive fix:** Sat 2163 — `is_yahoo_update_needed` veya `_volume_is_stale` "tazele" diyor → Yahoo retry boş dönüyor → kod `days=0` ile stale flag set ediyor → UI "0 gün eski (son güncelleme: bugün)" diyor. Mantıksız. Fix: `if _stale_days.days >= 1` koşulu eklendi. Bugünkü veri var, intraday tazeleme başarısız → sessiz; gerçek 1+ gün eskime → eskisi gibi uyarı.
+
+**🆕 Insider Tracker (yeni proje, VPS'te):** US House PTR (Periodic Transaction Report) → Gemini → Telegram (SMR Pro+Elite). `~/insider/` dizini, systemd `insider-bot.service`, saatte 1 tarama. Veri kaynağı: `https://disclosures-clerk.house.gov/public_disc/financial-pdfs/{year}FD.zip` (eski `ftp/xml/` 404). Filtre: 9 isim whitelist (Pelosi, Gottheimer, Crenshaw, Khanna, McCaul, Hern, Greene, Carter, Higgins), min $100k, max 30g delay, sadece Purchase, Self+Joint owner. Gemini-flash-latest ile PDF→structured JSON. OCR YOK. Maliyet: $0. Detay: `memory/project_insider_tracker.md` (varsa).
+
+---
+
+## Önceki Oturum Notu — 3 Haz 2026 Oturum 14
 
 **AI Prompt v2 refactor (9 madde):** Hook "ama/ancak" zorunluluğu kaldırıldı, endeks YAML smart_money/obv_cmf koşullu skip, G5 silindi (sıra 4→2→3→1), sentiment_karne YAML kaldırıldı (panel summary korundu), Smart Money + OBV/CMF yorum kuralları konsolide (3→1 + 3→1), G3 jargon filtresi "ilk geçiş G3'te" netleşti (28 zorunlu → 11+15 opsiyonel), anti-kalıp mekanik kural (paragraf-iskeleti + görev-içi tekrarsızlık + açılış öz-denetimi), `_sms_str`'e senaryo yaşı enjekte (0-2g taze / 3-7g orta / 8g+ eski), persona compose edilebilir (`_active_scenarios` listesi 9 senaryo flag'i + `_compose_note` → Hidden Acc + Pre-Launch + 5★ Erken Radar artık kaybolmuyor). ANLATIM KURALI'na 12 insani benzetme geri eklendi (cümle + parantezde kısaltma formatı). Backup: `app_backup_pre_prompt_v2.py`. Net: 25,030 → 25,040 satır (+10).
 

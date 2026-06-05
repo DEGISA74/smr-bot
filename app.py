@@ -7,6 +7,12 @@
 # Tüm üçüncü parti kütüphaneler, standart Python modülleri ve proje genelinde kullanılan sabitler burada tanımlanır.
 # ==============================================================================
 import streamlit as st
+try:
+    from streamlit_autorefresh import st_autorefresh as _st_autorefresh
+    _AUTOREFRESH_OK = True
+except ImportError:
+    _AUTOREFRESH_OK = False
+    def _st_autorefresh(*_a, **_kw): return 0
 import yfinance as yf
 import pandas as pd
 from ta.volume import VolumeWeightedAveragePrice
@@ -2133,7 +2139,11 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                     if _isy_ohlcv is not None and len(_isy_ohlcv) > 5:
                         _common = df_new.index.intersection(_isy_ohlcv.index)
                         if len(_common) > 0:
-                            df_new.loc[_common, ['Open', 'High', 'Low', 'Close', 'Volume']] = _isy_ohlcv.loc[_common]
+                            # 5 Haz 2026 — Open'ı override etme! İsyatirim API'sinden HGDG_ACILIS
+                            # kaldırıldı, fonksiyon Open=Close döndürüyor (doji bug). Yahoo Open
+                            # doğru olduğu için onu koruyoruz. High/Low/Close/Volume İsyatirim'den.
+                            df_new.loc[_common, ['High', 'Low', 'Close', 'Volume']] = \
+                                _isy_ohlcv.loc[_common, ['High', 'Low', 'Close', 'Volume']]
                     else:
                         # isyatirimhisse başarısız → eski parquet hacim koruması
                         if 'Volume' in df_cached.columns:
@@ -2150,12 +2160,15 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 return apply_volume_projection(df_new.tail(500).copy(), ticker)
 
             # Retry başarısız → eski cache'i döndür + staleness işareti
+            # Sadece veri GERÇEKTEN ≥1 gün eskiyse uyar — bugünkü intraday tazeleme
+            # başarısız olunca "0 gün eski" false-positive uyarısı çıkmasın.
             _stale_days = (datetime.now(_TZ_ISTANBUL).date() - df_cached.index[-1].date())
-            st.session_state['_data_stale'] = {
-                'ticker': ticker,
-                'days':   _stale_days.days,
-                'last':   df_cached.index[-1].strftime('%d.%m.%Y'),
-            }
+            if _stale_days.days >= 1:
+                st.session_state['_data_stale'] = {
+                    'ticker': ticker,
+                    'days':   _stale_days.days,
+                    'last':   df_cached.index[-1].strftime('%d.%m.%Y'),
+                }
             return apply_volume_projection(df_cached.tail(500).copy(), ticker)
 
         else:
@@ -2183,7 +2196,9 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                     if _isy_ohlcv is not None and len(_isy_ohlcv) > 5:
                         _common = df_full.index.intersection(_isy_ohlcv.index)
                         if len(_common) > 0:
-                            df_full.loc[_common, ['Open', 'High', 'Low', 'Close', 'Volume']] = _isy_ohlcv.loc[_common]
+                            # 5 Haz 2026 — Open'ı override etme (doji bug fix, line 2142'deki ile aynı).
+                            df_full.loc[_common, ['High', 'Low', 'Close', 'Volume']] = \
+                                _isy_ohlcv.loc[_common, ['High', 'Low', 'Close', 'Volume']]
                     # isyatirimhisse başarısız → _fix_stale_volume fallback
                     elif _volume_is_stale(df_full, ticker):
                         df_full = _fix_stale_volume(df_full, clean_ticker, interval)
@@ -22620,36 +22635,125 @@ Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #BIST100 #SmartMoneyRadar #{clean_ticker}
 
 ** Üçüncü Görevin:
-Yukarıdaki saf matematiksel verileri (Özellikle "Algoritmik 8 Maddelik Laboratuvar Verisi" bölümünü) kullanarak ve grafiği okuyarak aşağıdaki şablonu doldur. Her madde alt başlıklardan oluşmalı ve okuması keyifli, profesyonel bir tonda olmalıdır. Başlık "{hook_baslik}" olmalıdır.
-Önemli: Veri yoksa veya grafik o maddeyi desteklemiyorsa o maddeyi atlayabilirsin — boş doldurmak zorunda değilsin. Veri varsa yaz, yoksa geç.
+Yukarıdaki saf matematiksel verileri (Özellikle "Algoritmik 8 Maddelik Laboratuvar Verisi" bölümünü) kullanarak ve grafiği okuyarak aşağıdaki şablonu doldur. Her madde okuması keyifli, profesyonel ve İNSANİ bir tonda olmalıdır. Başlık "{hook_baslik}" olmalıdır.
+Önemli: Veri yoksa veya grafik o maddeyi desteklemiyorsa o maddeyi atlayabilirsin — boş doldurmak zorunda değilsin.
 
 *** JARGON FİLTRESİ — KRİTİK KURAL (HERKES ANLASIN!) ***
 Bu rapor BAĞIMSIZ olarak okunuyor (kullanıcı G1/G4'ü değil, sadece bu G3'ü görebilir). Yani:
 - "İlk geçiş" sayacı bu G3 raporunda baştan başlar. G1 veya G4'te ne yazdığın bu raporu etkilemez.
-- Terim ilk kullanıldığında: ÖNCE Türkçe adı, SONRA İngilizce kısaltma parantezde → "Türkçe Adı (İNG)". İkinci geçişten itibaren sadece Türkçe adı.
+- Terim ilk kullanıldığında: ÖNCE Türkçe adı, SONRA İngilizce kısaltma parantezde → "Türkçe Adı (İNG)". İkinci geçişten itibaren sadece Türkçe adı VEYA sadece kısaltma — ama BİR DAHA tam açılım YOK.
 - "TERİM — yani açıklama" veya "TERİM (açıklama)" formatı YASAK — okuyucu ilk kelimede takılır.
-- ZORUNLU açıklama (ilk geçişte tam çeviri): HH+HL, LH+LL, CHoCH, BOS, OBV, CMF, RSI, VSA, FVG, OB, VWAP. Bunlar olmadan rapor anlaşılmaz.
-- OPSİYONEL (akışı bozarsa kullanma, kullanırsan tam çevirisini ver): MTF, Discount/Premium, Climax, Delta, Order Block, EQH/EQL, MACD, Bollinger, HARSI, Megafon, Hidden Bull/Bear, Regular Bull/Bear, V-bottom, U-top, Churning.
+- 🚨 AÇILIM MAX 3 KELİME (v3 sıkılaştırma): İlk geçişte verilen tam Türkçe açılım EN FAZLA 3 KELİME olabilir. Aşılırsa kalıp salata olur.
+  ✅ "para akışı (CMF)" / "göreceli güç (RSI)" / "göreceli hacim (RVOL)" / "kümülatif fark (Delta)"
+  ❌ "Sermaye giriş çıkış dengesini ölçen para akışı endeksi (CMF)"  → 7 kelime, YASAK
+  ❌ "Ağırlıklı algoritmik skor olan ana puan (Master Skor)"  → 6 kelime, YASAK
+  ❌ "Alıcı ve satıcı hacim farkını ölçen kümülatif emir farkı (Delta)"  → 9 kelime, YASAK
+  ❌ "Çoklu zaman dilimi uyumu (MTF)"  → 4 kelime, sınırda — "vade uyumu (MTF)" yap
+- ZORUNLU açıklama (ilk geçişte tam çeviri ama MAX 3 kelime): HH+HL, LH+LL, CHoCH, BOS, OBV, CMF, RSI, VSA, FVG, OB, VWAP.
+- OPSİYONEL (akışı bozarsa kullanma, kullanırsan MAX 3 kelime çeviri): MTF, Discount/Premium, Climax, Delta, Order Block, EQH/EQL, MACD, Bollinger, HARSI, Megafon, Hidden Bull/Bear, Regular Bull/Bear, V-bottom, U-top, Churning.
 - "Sağlam yapı / yükselen dipler / kurumsal mıknatıs / değer bölgesi" gibi düz Türkçe ifadeler kısaltma olmadan da kullanılabilir — zorla parantez sıkıştırma.
 
 Açıklama olmadan kısaltma KULLANMA. Ama açıklama yığarak akışı da öldürme — her cümleye 2-3 parantez girdiğinde rapor robot diline döner.
 
+*** ANTİ-KALIP + SIKIŞTIRMA MOTORU (G3'E ÖZEL — ŞABLON KIRAN MEKANİK) ***
+G3 her gün onlarca hisse için üretiliyor. Önceki çıktıların büyük kısmı aşağıdaki kalıplara takılıyordu — artık SIFIRLANIR:
+
+🚫 YASAKLI AÇILIŞ KALIPLARI (her madde — herhangi biriyle başlama):
+- M1 açılışında: "Sistemin ürettiği verilerde..." / "Sistemin sentezlediği..." / "Ağırlıklı [sentezlenmiş] algoritmik skor olan ana puan..."
+- M2 açılışında: "Günlük [mum] kapanış konumu [verilerine bakıldığında/göstergesi]..." / "Kapanış konumu verilerine bakıldığında..."
+- M3 açılışında: "Göreceli Güç Endeksi (RSI) ... momentum eğiminde..." / "Gösterge hızı ölçümünde aşağı ivme..."
+- M4 açılışında: "Hacim [ve] fiyat anatomisini inceleyen [Hacim-Mum Analizi (VSA)]..."
+- M5 açılışında: "Fiyat 20 günlük [fiyat/hareket] alanının..." / "Tüm senaryoların birbiriyle [sentezi/uyumu]..."
+
+✅ ANCHOR-ÖNCE KURALI:
+Her maddenin İLK cümlesi o maddedeki EN VURUCU rakam/sinyal/anomalinin somut ifadesi olmalı — şablon ifade DEĞİL.
+İYİ ÖRNEK: "Master skor 21/100; trend 0, hacim 50 — taraf netliği yok." ✓
+İYİ ÖRNEK: "RSI 25, aşırı satım — ama dipler hâlâ daha derin." ✓
+İYİ ÖRNEK: "Delta -%51.6 — son 5 günün en sert dağıtım izi." ✓
+KÖTÜ ÖRNEK: "Sistemin ürettiği verilerde algoritmik skor 21/100 seviyesiyle..." ✗
+
+✅ SABİT VERİ SIRASI YASAK:
+Önceki çıktılarda M4 hep "VSA → RVOL → OBV → Delta → CMF" sırasıyla yazılıyordu — şablon hissi bundan. Hangi veri o hisse için en konuşkansa onu başa al; ikincil olanları arkaya bağla veya at. Aynı sırayı 2 hisse üst üste kullanma.
+
+✅ CÜMLE TAVANI (sıkıştırma — DOLGU YOK):
+- M1: 3 cümle. M2: 3 cümle. M3: 3 cümle. M4: 3 cümle. M5: 4 cümle (📌 İzlenecek satırı hariç).
+- Bir cümle 1 fikir taşır. "X yansıtırken Y oluşturuyor ve Z sürüyor" gibi 3 yüklem zinciri YASAK.
+- Sıfat dolgusu YASAK: "ağırlıklı sentezlenmiş", "kararlılığını ölçen", "kümülatif emir eşleşmelerindeki ısrar farkını gösteren" → "Delta -%51.6, dağıtım." yeterli.
+- "Yansıtıyor / işaret ediyor / doğruluyor / gösteriyor" fiilleri arka arkaya iki cümlede tekrar etmesin.
+
+✅ KAPANIŞ FORMÜLLERİ ("📌 İzlenecek:" satırı için — 4 alternatif, dönüşümlü):
+F1 — Çift seviye + tetik: "Yukarıda X aşılırsa Y kırılır; aşağıda Z altı baskıyı sürdürür."
+F2 — Tek anchor + bağlam: "Kilit eşik X — buranın altında dağıtım izi sürer, üstüne kapanış yapıyı sorgular."
+F3 — Asimetrik vurgu: "Hareket ipucu X'in üstünde başlar; aşağıda Y zaten algoritmik destek."
+F4 — Soru tonlu: "X kırılırsa hikaye değişir — soru, alıcı buraya gelecek mi?"
+KLASIK "Yukarıda X eşiği aşılırsa hareket izlenebilir, aşağıda Y altında baskı devam edebilir" formülü TAMAMEN YASAKLI — aynı hisse için 2 hisse üst üste aynı formülü kullanma.
+
+*** ANLAŞILIRLIK FİLTRESİ v3 (5 Haz 2026 — canlı Twitter geri bildirimi sonrası) ***
+Önceki çıktılar teknik olarak doğruydu ama OKUYUCU "bişey anladıysam arap" dedi. Sorun: gereksiz bulgu doldurma, hesaplama detayı anlatma, nötr sayı sıralama, mikro intraday detayı. Aşağıdaki 4 katman bunu kapatır:
+
+🚫 K1 — "YOK" BULGULAR YASAK:
+"tespit edilmiyor / bulunmuyor / görünmüyor / kırılmadı / oluşmadı / sinyal yok" cümleleri yasak. OLMAYAN bir şeyi anlatmak DOLGU'dur.
+YASAK ÖRNEK: "Bollinger ve Keltner bantları arasında herhangi bir daralma tespiti bulunmuyor." → silinir.
+YASAK ÖRNEK: "Klasik uyumsuzluk görünmüyor." → silinir.
+YASAK ÖRNEK: "FVG direnci tespit edilmiyor." → silinir.
+DOĞRU: Yoksa bahsetme. Var olan veriyi anlat.
+
+🚫 K2 — NÖTR/SIFIR METRİK YASAK:
+%0, 1.0x civarı, 0.0 değişim gibi YÖNÜ OLMAYAN sayı söyleme. Bunlar bilgi taşımaz, sadece yer kaplar.
+YASAK ÖRNEK: "Günlük net baskınlık oranı %0 ile kusursuz dengede gerçekleşirken..." → sil. "Baskınlık yok" demek istiyorsan tek kelimeyle geç.
+YASAK ÖRNEK: "Son 5 günü net %0.0 değişimle yatay tamamlıyor." → "Son 5 gün yatay." yeterli.
+YASAK ÖRNEK: "RVOL 1.0x normal seyrediyor" → bahsetme, normal seyir = haber değil.
+KURAL: Sadece YÖNÜ olan sayı geçer (Delta -%49, RVOL 0.44x, CMF -0.417 vb.). Sıfır/nötr = at.
+
+🚫 K3 — HESAPLAMA YAPISI ANLATMA, SONUÇ ANLAT:
+Component breakdown, alt-skor dağılımı, eşleşme oranı, normalize değer = METODOLOJİ. Okuyucu hesaplamayı bilmek zorunda değil.
+YASAK ÖRNEK: "Master Skor 12/100 seviyesiyle negatif görünümü işaret ediyor; burada kurumsal yapı 100/100 ile direnç gösterirken trend bileşeni 0/100 seviyesinde baskılanıyor. Çoklu zaman dilimi uyumu matrisinde dominant yön aşağı olarak belirlenirken vadeler arası eşleşme oranı %58 seviyesinde gerçekleşiyor."
+DOĞRU: "Algoritmik skor 12/100 — uzun vade baskı altında. Yapı tek dayanak, trend ve momentum aşağıda. Vadeler büyük çoğunlukla satıcı."
+KURAL: Skorun NASIL hesaplandığı yerine NE ANLAMA GELDİĞİ. Alt skorları (100/100, 0/100, %58) sıralama — özet bir cümleyle yön ver.
+
+🚫 K4 — MİKRO INTRADAY DETAY YASAK:
+"Kapanış konumu (CP) günlük marjın %30 alt diliminde" / "Mum boyu ortalamadan %12 küçük" / "Spread günlük ortalamanın %1.5'i" gibi bant analisti detayı.
+Twitter takipçisi için bu tür mikro veriler GÜRÜLTÜdür — okuma motivasyonunu öldürür.
+YASAK ÖRNEK: "Seans sonu kapanış konumu (CP) günlük hareket marjının %30'luk alt diliminde gerçekleşerek kısa vadeli direncin sürdüğünü gösteriyor."
+DOĞRU: O cümleyi tamamen sil. CP konumunu söylemek istiyorsan "Gün içi kapanış zayıf bölgede" tek cümlesi kafi.
+
+🚫 K6 — TEK YÖN MUTABAKATI (İÇ ÇELİŞKİ KONTROLÜ):
+5 madde TEK yön (alıcı / satıcı / nötr-bekleme) etrafında hizalanmalı. Çelişen iki ifadeyi yan yana koyma.
+YASAK ÇELİŞKİ ÖRNEKLERİ:
+- "satıcı baskısı" + "%0 kusursuz denge" → hangisi? Birini sil.
+- "satıcılar tükendi" + "kurumsal satıcı kontrolü" → hangisi? Birini sil.
+- "negatif görünüm 12/100" + "kırılım yönlü çözüleceğini fısıldıyor" → hangisi? Net karara dön.
+- "dağıtım baskısı" + "alıcı tükenmesi" → 5g delta ile 20g delta'yı ayır, "kısa vadede satıcı, daha geniş resmde tükenme" gibi açık geçişle yaz.
+KURAL: Cümleyi yazarken kendine sor — "Aynı maddedeki diğer cümle bunu desteklemiyor mu? Çelişiyor mu?" Çelişiyorsa "ama / oysa / kısa vadede X uzun vadede Y" geçişiyle açıkça belirt veya zayıf olanı sil.
+
+✅ DOLGU KELİME TEMİZLİĞİ (her cümlede ara):
+"seviyesinde gerçekleşirken / değeriyle / rasyosuyla / matrisinde belirlenirken / oranıyla ölçülürken / kümülatif emir farkı / piyasa anatomisi / bar içi kontrol / yarı yapı senaryosu / tek taraflı bozulma" → bunları görürsen at, cümleyi yalın yaz.
+YALIN ÖRNEK (kullanıcının yazdığı): "Günlük baskınlık yok, RVOL 0.44x hacimsiz piyasa gösteriyor. CMF -0.417 kurumsal satıcı izi."
+DOLU ÖRNEK (yasak): "Günlük bazda net baskınlık oranı %0 ile kusursuz dengede gerçekleşirken göreceli hacim (RVOL) 0.44x rasyosuyla ilgisiz ve kuruyan bir piyasa anatomisi sunuyor. Sermaye giriş çıkış dengesini ölçen para akışı endeksi (CMF) ise 5 günlük süreçte -0.417 değeriyle kurumsal satıcıların bar içi kontrolünü onaylıyor."
+
 Formatın şu şekilde olmalıdır (Başlıkları aynen kullan, her bölüm ALT BAŞLIK ETİKETİ OLMADAN akıcı paragraf olarak yazılır):
 SMR ALGORİTMİK HİSSE RAPORU:
+
 1⃣🔹) Genel Tablo
-(Algoritmik skoru ve karar etiketini yaz; en güçlü ve en zayıf alt faktörü vurgula. Ardından Çoklu Vade Uyumu (MTF) matrisinden dominant yön ve uyum oranını belirt — vadeler uyumlu mu çelişkili mi? Bölümü kapatırken GENEL ÖZET PANEL'deki "YAPI" satırından aktif yapı senaryosunu ekle: Yükselen Tepeler ve Dipler (HH+HL) / Alçalan Tepeler ve Dipler (LH+LL) / Yapı Dönüşü (CHoCH) / Genişleyen Volatilite (Megafon) / Üçgen sıkışma / Yatay range / Yarı yapı. Tümünü etiket olmadan tek akıcı paragrafta yaz.)
+(3 cümle. İlk cümle: Master skor + en güçlü/en zayıf alt faktör — somut sayılarla, kalıp ifadesiz. İkinci cümle: Çoklu Vade Uyumu (MTF) dominant yön + uyum oranı; çelişki varsa onu vurgula. Üçüncü cümle: GENEL ÖZET PANEL'deki "YAPI" satırından aktif senaryo — HH+HL / LH+LL / CHoCH / Megafon / Üçgen sıkışma / Yatay range / Yarı yapı. Etiket yok, akıcı paragraf.)
 
 2⃣🔹) Fiyat Davranışı
-(Panel'deki "Mum (Kapanış Konumu)" satırından kim kontrol ediyor sorusuna nesnel cevap ver — mum gövdesinin günlük aralıkta nerede kapandığını ve 10 senaryodan hangisinin aktif olduğunu belirt. Ardından varsa grafikte gördüğün formasyon yapısını (OBO, TOBO, Bayrak, Piercing Line, Hammer vb.) ekle; formasyon yoksa bu bilgiyi atla. Alt başlık etiketi kullanma — tek paragraf.)
+(3 cümle. Vurucu olan başa: gün içi CP konumu mu, mum tipi mi (Shooting Star/Hammer/Marubozu/Piercing), SMA50/SMA200 ilişkisi mi, formasyon mu (OBO/TOBO/Bayrak)? Bugünün hikayesini taşıyan hangisiyse o ilk cümle. Geri kalan 2 cümle destek bilgisi — sadece somut sayı (kaç gün üstünde/altında, SMA seviyesi). Formasyon yoksa söz etme, "formasyon bulunmuyor" gibi dolgu YASAK.)
 
 3⃣🔹) İvme & Enerji
-(GENEL ÖZET PANEL'deki "MOMENTUM SLOPE" satırından RSI seviyesi DEĞİL 5g'lik değişim hızını yaz — Sert dönüş / Toparlanma / Trend hızlanıyor / Yatay / Yavaşlıyor / Aşağı ivme / Tepe geri çekilme'den hangisi aktif? Ardından RSI DIVERGENCE satırından uyumsuzluk tipini belirt: Klasik Pozitif (Regular Bull) / Klasik Negatif (Regular Bear) / Gizli Pozitif (Hidden Bull) / Gizli Negatif (Hidden Bear) / Yok — Klasik tükenme sinyali, Gizli trend devamı sinyalidir, karıştırma. Çoklu vade momentum uyumunu kısaca ekle. Bölümü Enerji Puanı ile kapat: Algoritmadan gelen skoru yaz ve sıkışma/dağılma yorumunu bir cümleyle bitir. Tümü alt başlık olmadan tek akıcı paragraf.)
+(3 cümle. İlk cümle: RSI değeri + MOMENTUM SLOPE durumu (Sert dönüş / Toparlanma / Trend hızlanıyor / Yavaşlıyor / Aşağı ivme / Yatay / Tepe geri çekilme) — anchor sayı ile. İkinci cümle: RSI DIVERGENCE tipi (Klasik Pozitif = tükenme sinyali / Gizli Pozitif = trend devamı / Klasik Negatif / Gizli Negatif / Yok — karıştırma) + kısa MTF momentum notu. Üçüncü cümle: Enerji skoru + Bollinger/Keltner SIKIŞMA durumu — SIKIŞMA YOKSA bu cümle Enerji skoruyla biter, "normal volatilite rejimi sürüyor" gibi dolgu YASAK.)
 
 4⃣🔹) Akıllı Para İzi
-(GENEL ÖZET PANEL'deki "VSA" satırından Hacim-Mum Anatomisi (VSA) senaryosunu belirt: Alım onayı / Satım onayı / Dönüş Uyarısı (Climax) / Üst Ret / Alt Ret / Sahte alım / Sahte satım / Ölü piyasa / Normal. Ardından Hacim Akışı Endeksi (OBV) ve Alıcı/Satıcı Hacim Farkı (Delta) verisiyle kurumsal emilim veya çıkış izlerini yorumla. Alt başlık etiketi kullanma — tek akıcı paragraf.)
+(3 cümle. Şu 6 veriden BU HİSSEDE EN İLGİNÇ olan 2-3 tanesini seç: VSA senaryosu, RVOL, OBV yönü, Delta yüzdesi, CMF Dual-Window 5g/20g, OMI Sigma. Birinci cümle EN VURUCU olana ait. İkinci-üçüncü cümle teyit veya çelişki — sabit "VSA → OBV → Delta → CMF" sırası YASAK. Tüm 6 veriyi listelemek YASAK. Aynı kavram için aynı tanım cümlesini her hissede tekrar yazma — "alıcı ve satıcıların emir kararlılığını ölçen kümülatif işlem farkı" gibi kalıplar yerine "Delta -%51.6, dağıtım".)
 
 5⃣🔹🔹) Teknik Okuma Özeti
-(Önce GENEL ÖZET PANEL'deki "RANGE (20g)" satırından fiyatın 20g aralıktaki konumunu ve 5g önceki değişimini belirt: Ucuz Bölge (Discount) / Pahalı Bölge (Premium) / V-Dönüş / Üstten Düşüş (U-top) / Toparlanma / Premium kaybı / Premium tutunma / Tepede tıkalı / Dipte tutunma / Orta. Ardından fiyatın üstündeki ve altındaki en kritik likidite seviyelerini somut rakamlarla ver. Bölümü tüm analizin 2-3 cümlelik vurucu özeti ile kapat — 5 senaryonun BİRBİRİYLE UYUMU veya ÇELİŞKİSİ üzerinden hikayeyi kur. Son satır olarak "📌 İzlenecek:" ekle: Üst ve Alt seviyelerle teknik kırılım gözlemini yaz. YASAL UYARI — yatırım tavsiyesi verilmez; "al", "sat", "pozisyon al/kapat", "giriş yap" KESİNLİKLE YASAK. Bunların yerine: "kırılım yaşanırsa görülebilir", "test edilebilir", "hareket izlenebilir", "baskı devam edebilir", "yapı netleşebilir". Alt başlık etiketi kullanma — tek akıcı paragraf.)
+(4 cümle + "📌 İzlenecek:" satırı.
+ Cümle 1: 20g range konumu (Discount/Premium/Toparlanma/V-dönüş/U-top/Dipte tutunma/Orta) + 5g net % — anchor.
+ Cümle 2: Üstte ve altta en kritik 1-2 likidite seviyesi — FVG, VWAP, POC, HVN/LVN veya likidite havuzu — somut sayı.
+ Cümle 3-4: 5 maddenin SENTEZİ. Açılış "Tüm senaryoların birbiriyle sentezi" YASAK. Doğrudan hikayeyi kur: uyum mu, çelişki mi, bekleme mi. Çelişki varsa hangi iki veri çelişiyor açık söyle ("OBV yukarı dönerken Delta dağıtım gösteriyor" gibi); "X'e tezat olarak Y'nin oluşturduğu Z bir W evresi" gibi kelime salatası YASAK.
+ Son satır: "📌 İzlenecek:" — yukarıdaki F1/F2/F3/F4 formüllerinden BİRİNİ seç, klasik formül YASAK.
+ YASAL: "al/sat/pozisyon al-kapat/giriş yap" KESİNLİKLE YASAK. "kırılım yaşanırsa görülebilir / test edilebilir / hareket izlenebilir / baskı sürebilir / yapı netleşebilir" kullan.)
+
 Bu 5 maddelik SMR ALGORİTMİK HİSSE RAPORU Algoritmamın çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
 #BIST100 #SmartMoneyRadar #{clean_ticker}
 
@@ -23211,6 +23315,35 @@ col_left, col_right = st.columns([82, 20])
 def _render_left_col():
     # geçmiş takibi — selectbox header'da, burada sadece state güncelle
     _cur_ticker = st.session_state.ticker
+
+    # ── OTOMATİK VERİ TAZELEME (10 dk) ─────────────────────────────────────────
+    # Sadece BIST seans saatleri içinde tetiklenir. Hafta sonu/resmi tatil/seans
+    # dışı → hiç çalışmaz (Yahoo + İsyatirim'e gereksiz istek gönderilmez).
+    # Refresh anında get_batch_data_cached temizlenir → açık hisse %100 taze.
+    try:
+        if _AUTOREFRESH_OK and _BIST_CAL_OK:
+            _now_tr = datetime.now(_TZ_ISTANBUL)
+            if _bist_is_trading_day(_now_tr):
+                _sess = _bist_session_hours(_now_tr)
+                if _sess:
+                    _sh, _sm = map(int, _sess[0].split(":"))
+                    _eh, _em = map(int, _sess[1].split(":"))
+                    _now_t = (_now_tr.hour, _now_tr.minute)
+                    if (_sh, _sm) <= _now_t <= (_eh, _em):
+                        _ar_count = _st_autorefresh(
+                            interval=600_000,  # 10 dk
+                            key=f"_auto_refresh_{_cur_ticker}",
+                        )
+                        if _ar_count and _ar_count > 0:
+                            try:
+                                get_batch_data_cached.clear()
+                            except Exception:
+                                pass
+    except Exception:
+        pass
+    # ───────────────────────────────────────────────────────────────────────────
+
+
     _hist = st.session_state.sorgu_gecmisi
     if not _hist or _hist[0] != _cur_ticker:
         _hist = [_cur_ticker] + [t for t in _hist if t != _cur_ticker]
@@ -23407,34 +23540,66 @@ def _render_left_col():
                 _bar_color = "#508a62"   # solgun yeşil     — güç bölgesi
             else:
                 _bar_color = "#386b48"   # solgun koyu yeşil — zirve
-            st.markdown(f"""
-    <div style="border:1px solid #1e3a5f;border-radius:8px;background:#0d1829;
-            padding:9px 14px 10px 14px;margin-bottom:8px;">
-      <div style="position:relative;height:8px;border-radius:4px;
-              background:#1e3a5f;margin-bottom:7px;">
-    <div style="position:absolute;top:0;left:0;height:100%;width:{_pct}%;
-                background:{_bar_color};border-radius:4px;opacity:0.9;"></div>
-    <div style="position:absolute;top:50%;left:{_pct}%;
-                transform:translate(-50%,-50%);
-                width:13px;height:13px;border-radius:50%;
-                background:{_bar_color};border:2px solid #0d1829;
-                box-shadow:0 0 8px rgba(255,255,255,0.2);"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-    <span style="font-size:0.75rem;color:{_lbl_color};font-weight:600;font-family:'JetBrains Mono',monospace;">52H Düşük: {_fmt(_yl)}</span>
-    <span style="font-size:0.75rem;color:{_lbl_color};font-weight:600;">%{_pct} konumda</span>
-    <span style="font-size:0.75rem;color:{_lbl_color};font-weight:600;font-family:'JetBrains Mono',monospace;">52H Yüksek: {_fmt(_yh)}</span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+            # 52H şeridi artık MA tablosunun ÜSTÜNDE gömülü render edilir.
+            # HTML snippet'i session_state'e koy, MA kartı içeride splicelar.
+            st.session_state['_52h_strip_html'] = (
+                f"<div style='padding:7px 10px 5px 10px;"
+                f"border-bottom:1px solid rgba(30,58,95,0.55);"
+                f"background:linear-gradient(180deg,rgba(13,24,41,0.6),rgba(13,24,41,0.3));'>"
+                f"<div style='position:relative;height:6px;border-radius:3px;"
+                f"background:#1e3a5f;margin-bottom:5px;'>"
+                f"<div style='position:absolute;top:0;left:0;height:100%;width:{_pct}%;"
+                f"background:{_bar_color};border-radius:3px;opacity:0.9;'></div>"
+                f"<div style='position:absolute;top:50%;left:{_pct}%;"
+                f"transform:translate(-50%,-50%);width:10px;height:10px;border-radius:50%;"
+                f"background:{_bar_color};border:2px solid #0d1829;"
+                f"box-shadow:0 0 6px rgba(255,255,255,0.18);'></div>"
+                f"</div>"
+                f"<div style='display:flex;justify-content:space-between;align-items:center;'>"
+                f"<span style='font-size:0.65rem;color:{_lbl_color};font-weight:600;"
+                f"font-family:\"JetBrains Mono\",monospace;'>52H Düşük: {_fmt(_yl)}</span>"
+                f"<span style='font-size:0.65rem;color:{_lbl_color};font-weight:600;'>"
+                f"%{_pct} konumda</span>"
+                f"<span style='font-size:0.65rem;color:{_lbl_color};font-weight:600;"
+                f"font-family:\"JetBrains Mono\",monospace;'>52H Yüksek: {_fmt(_yh)}</span>"
+                f"</div>"
+                f"</div>"
+            )
+        else:
+            st.session_state['_52h_strip_html'] = ""
     except Exception:
-        pass
-    # ── /52H BAR ──────────────────────────────────────────────────────
+        st.session_state['_52h_strip_html'] = ""
+    # ── /52H BAR (MA kartına gömülü) ──────────────────────────────────
 
     # ── ANA FİYAT GRAFİĞİ (inline) ───────────────────────────────────────────
     _disp_name = get_display_name(st.session_state.ticker)
 
     # ── SMC Grafik — expander (default kapalı) ───────────────────────────────
+    # st_autorefresh + KATMAN 1 invisible markdown'lar sol kolonun üstünde
+    # boş element-container'lar bırakıyor → sağ kolon sıfır boşlukla başlarken
+    # sol kolon yukarıdan ~80px düşüyordu. CSS ile sıfırlandı (5 Haz 2026).
+    st.markdown("""<style>
+    /* streamlit-autorefresh iframe wrapper'ını gizle */
+    iframe[title*="streamlit_autorefresh"],
+    iframe[title*="autorefresh"] {
+        display: none !important;
+        height: 0 !important;
+    }
+    /* Boş iframe'i barındıran element-container yer kaplamasın */
+    div.element-container:has(iframe[title*="streamlit_autorefresh"]),
+    div.element-container:has(iframe[title*="autorefresh"]) {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    /* İçi boş markdown wrapper'larını da sıfırla (KATMAN 1 try/except artıkları) */
+    div.element-container:has(> div[data-testid="stMarkdownContainer"]:empty) {
+        display: none !important;
+        margin: 0 !important;
+    }
+    </style>""", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:-1.4rem;'></div>", unsafe_allow_html=True)
     st.markdown("""<style>
     div[data-testid="stExpander"] details {
         background: #0d1829 !important;
@@ -23442,6 +23607,7 @@ def _render_left_col():
         border-top: 3px solid #3b82f6 !important;
         border-radius: 8px !important;
         margin-bottom: 8px !important;
+        margin-top: 0 !important;
     }
     div[data-testid="stExpander"] details summary {
         font-size: 1.4rem !important;
@@ -23656,11 +23822,16 @@ def _render_left_col():
                             f"</div>"
                         )
 
+                # 52H range şeridi MA hücrelerinin üstünde aynı kart içinde.
+                _52h_html = st.session_state.get('_52h_strip_html', '')
                 st.markdown(
                     f"<div style='border:1px solid {border_col};border-radius:8px;overflow:hidden;"
                     f"margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);background:{bg_col};"
-                    f"display:flex;align-items:stretch;width:100%;'>"
+                    f"display:flex;flex-direction:column;width:100%;'>"
+                    + _52h_html +
+                    f"<div style='display:flex;align-items:stretch;width:100%;'>"
                     + "".join(_cells_html) +
+                    "</div>"
                     "</div>",
                     unsafe_allow_html=True
                 )
