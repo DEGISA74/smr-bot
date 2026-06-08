@@ -23142,7 +23142,8 @@ POC RETEST (84.832 event, BIST 593 hisse, 1y; retest = POC'a %1 yakına ≤10g):
   naked_poc_yakin: test edilmemiş eski POC = kurumsal limit emir bekleyen seviye; yön OBV/Delta'dan gelir.
 
 SCANNER TIER (11.797 sinyal backtest, 29 Nis-31 May 2026, 31 scan_type tier'lı) — `scanner_tiers_aktif` varsa:
-  **TIER_1_ELIT** (prelaunch_bos, er_A8, er_B1): hit %75+, ret %+4 ila %+13 → ana hikaye buradan yönlendirilsin
+  🚨 **TIER_1_ELIT VARSA = ANA HİKAYE (sert kural, 8 Haz 2026 Oturum 19):** prelaunch_bos/er_A8/er_B1 flag'i bu ticker'da varsa → G1 açılış paragrafı + G4 GENEL YORUM açılışı o TIER_1 senaryosundan başlar. Backtest hit %75+ kanıt-tabanı en güçlü olandır → `scenario.algoritmik_baslik`'ten, `asset.master_score`'dan ve diğer scanner'lardan ÖNCE gelir. Birden fazla TIER_1 flag varsa en yüksek hit'i öne çıkar (er_A8 %100 > prelaunch_bos %78 > er_B1 %75). Atlanırsa = ihlal — G1/G4'te TIER_1 adı en az 1 kez ZORUNLU geçer + "backtest kanıtı: hit %X, ret %+Y" notu eklenir.
+  **TIER_1_ELIT** (prelaunch_bos, er_A8, er_B1): hit %75+, ret %+4 ila %+13 → yukarıdaki sert kural geçerli
   **TIER_2_GUVENILIR** (er_C3/D3/C9/D1/A9/C2/A3/A7/C11): hit %62-68, ret %+2.7-5.9 → destekleyici teyit, ana hikaye olabilir
   **TIER_3_ORTA** (er_C7/A4/D4/D5/C5/B11/B5/A5/A1/C8/A2/B8/A6): hit %42-75 ama ret %+1.2-3.3 → zayıf, ana hikaye kurma; **diğer teyitler aranır** (POC, OBV, mum)
   **TIER_3_ZAYIF** (er_D2/C6/C1, guclu_donus): ret negatif/sıfır → adı çekici ama gerçek kazandırma yok; "diğer teyitler güçlüyse" notuyla geç. guclu_donus özel: 20g'de %+4.2 → "geç giriş riski" notu uygun.
@@ -23336,6 +23337,7 @@ Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlı
 - Puan: Kırılım/Smart Money/Trend Dönüşü/BOS = 8-10/10; yan sinyaller (MA üstü, RSI 50+) = 1-7/10. Zayıfa 8+ puan verme.
 - ALTIN SET-UP EVET → RS + ICT discount + ivme 3/3 onay, tarihsel düşük frekans vurgu.
 - ROYAL FLUSH EVET → 4/4 kesişim, analiz başında ana hikaye.
+- 🚨 **TIER_1_ELIT FLAG VARSA → açılış paragrafında ana hikaye merkez** (prelaunch_bos/er_A8/er_B1). master_score'dan ve scenario.algoritmik_baslik'ten önce gelir. "Backtest kanıtı: hit %X, ret %+Y" notu eklenir. Bkz. KALİBRASYON TABLOLARI sert kural.
 
 **SONUÇ:** 3-4 cümle vurucu özet.
 **UYARI:** Sadece gerçek risk varsa (RSI uyumsuzluk / stopping volume / boğa-ayı tuzağı / gizli satış); küçük harf, doğal cümle.
@@ -23445,6 +23447,7 @@ Başlık: "{hook_baslik}" (tarih/saat yazma).
 🚨 ANTİ-KOPYA: Açılış cümlesi şablon kalıp yasak. Bu hisseye o güne özgü 1 anchor ile aç (52H konumu / formasyon eşiği / OBV durum başlığı / CMF Dual state / OMI sigma / VP Şekli / HVN proximity / Mum CP×5g / VSA anomalisi / Vade matrisi çelişkisi / Sıkışma süresi / Master Score breakdown'daki en güçlü/zayıf alt skor). "Alıcıların mı satıcıların mı..." gibi tanım cümlesi tekrarı yasak. Her bölümde en az 1 somut sayısal anchor.
 
 **GENEL YORUM:** Bugünkü en baskın bulgudan başla. En güçlü sinyali (9-10/10) ilk cümlede. Yükseliyorsa rallinin hikayesi, düşüyorsa neden. 4-5 cümle, her cümle hisseye özel. Referans ton: "BTC 97K'da dirençle karşılaştı, çekilme henüz başlamadı — kurumlar hâlâ tutunuyor gibi" ✓.
+🚨 **TIER_1_ELIT FLAG VARSA → o senaryo açılışın merkezi.** scenario.algoritmik_baslik veya master_score'a göre değil, scanner_tiers_aktif TIER_1 etiketine göre çatıyı kur ("Pre-Launch BOS tetiklendi — backtest hit %78"). Bkz. KALİBRASYON TABLOLARI sert kural.
 
 **Teknik Görünüm:** Fiyat nerede, hangi seviyeyle boğuşuyor, momentum ne diyor — 2-3 cümle, somut seviye. Rallide iyi görünüyorsa öyle yaz, zorla "ama" ekleme.
 
