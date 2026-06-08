@@ -5362,6 +5362,79 @@ def detect_classic_candle_patterns(df):
             slope_pct = 0
         trend = "up" if slope_pct > 1.5 else ("down" if slope_pct < -1.5 else "flat")
 
+        # 8 Haz 2026 Oturum 19 — STRÜKTÜREL LOKASYON BAĞLAMI
+        # Pattern + trend yetmez; "dipten gelen Morning Star" / "tepeden gelen Evening Star"
+        # gibi YERLEŞİM önemli. Konsolidasyon ortasındaki hammer = gürültü, dip yakınındaki
+        # hammer = anlamlı reversal. Burada 4 lokasyon kriteri hesaplanır:
+        #  (a) 52H pozisyon (dip %25 / tepe %25 → ekstrem)
+        #  (b) RSI(14) ekstrem (<35 oversold / >65 overbought)
+        #  (c) SMA200'den sapma (uzaklık |%|>8 → stretched)
+        #  (d) Ardışık aynı renk mum (3+ → tükeniş)
+        cur = float(c[-1])
+        # 52H pos
+        seg52 = df.tail(252) if len(df) >= 60 else df
+        h52 = float(seg52['High'].max()); l52 = float(seg52['Low'].min())
+        pos52 = (cur - l52) / (h52 - l52) if h52 > l52 else 0.5
+        at_bottom_25 = pos52 < 0.25
+        at_top_25    = pos52 > 0.75
+        # RSI(14)
+        try:
+            _di = pd.Series(c).diff()
+            _ri = 100 - 100 / (1 + (_di.where(_di > 0, 0).rolling(14).mean() / (-_di.where(_di < 0, 0)).rolling(14).mean()))
+            rsi14 = float(_ri.iloc[-1])
+        except Exception:
+            rsi14 = 50
+        oversold   = rsi14 < 35
+        overbought = rsi14 > 65
+        # SMA200 sapma
+        try:
+            sma200 = float(pd.Series(c).rolling(200, min_periods=50).mean().iloc[-1])
+            sma200_dev = (cur - sma200) / sma200 * 100 if sma200 > 0 else 0
+        except Exception:
+            sma200_dev = 0
+        stretched_down = sma200_dev < -8
+        stretched_up   = sma200_dev > 8
+        # Ardışık mum sayısı (son 5'te)
+        consec_red = 0; consec_green = 0
+        for k in range(-1, -min(6, len(c)+1), -1):
+            if c[k] < o[k]: consec_red  += 1
+            elif c[k] > o[k]: consec_green += 1
+            else: break
+            if (c[k] < o[k] and k != -1 and c[k+1] > o[k+1]) or (c[k] > o[k] and k != -1 and c[k+1] < o[k+1]):
+                break
+
+        # Bullish reversal pattern'i anlamlı yapan lokasyonlar
+        def _bull_location_score():
+            score = 0; reasons = []
+            if at_bottom_25:   score += 2; reasons.append(f"52H %{pos52*100:.0f} dipte")
+            if oversold:       score += 2; reasons.append(f"RSI {rsi14:.0f} aşırı satım")
+            if stretched_down: score += 1; reasons.append(f"SMA200 -%{abs(sma200_dev):.1f} stretched")
+            if consec_red >= 3: score += 1; reasons.append(f"{consec_red}g ardışık kırmızı (tükeniş)")
+            return score, reasons
+
+        # Bearish reversal pattern'i anlamlı yapan lokasyonlar
+        def _bear_location_score():
+            score = 0; reasons = []
+            if at_top_25:    score += 2; reasons.append(f"52H %{pos52*100:.0f} tepede")
+            if overbought:   score += 2; reasons.append(f"RSI {rsi14:.0f} aşırı alım")
+            if stretched_up: score += 1; reasons.append(f"SMA200 +%{sma200_dev:.1f} stretched")
+            if consec_green >= 3: score += 1; reasons.append(f"{consec_green}g ardışık yeşil (tükeniş)")
+            return score, reasons
+
+        # Lokasyon → confidence çarpan + "ANLAMLI / ORTA / GÜRÜLTÜ" etiketi
+        # score >=3 → ANLAMLI (×1.0) · score 1-2 → ORTA (×0.7) · score 0 → GÜRÜLTÜ (×0.4, eşik altı düşer)
+        def _location_tag(score):
+            if score >= 3: return "ANLAMLI", 1.0
+            elif score >= 1: return "ORTA", 0.7
+            else: return "GÜRÜLTÜ", 0.4
+
+        bull_score, bull_reasons = _bull_location_score()
+        bear_score, bear_reasons = _bear_location_score()
+        bull_tag, bull_mult = _location_tag(bull_score)
+        bear_tag, bear_mult = _location_tag(bear_score)
+        bull_loc_txt = (" | LOKASYON: " + " + ".join(bull_reasons)) if bull_reasons else ""
+        bear_loc_txt = (" | LOKASYON: " + " + ".join(bear_reasons)) if bear_reasons else ""
+
         # Son 3 mum metrikleri
         def _m(i):
             rng = max(h[i] - l[i], 1e-9)
@@ -5377,95 +5450,108 @@ def detect_classic_candle_patterns(df):
             }
         t0, t1, t2 = _m(-3), _m(-2), _m(-1)  # t2 = bugün
 
-        # 1) BULLISH ENGULFING: t1 kırmızı + t2 yeşil + t2 gövdesi t1'i kapsıyor
+        # NOT: Aşağıdaki her pattern için BASE_CONFIDENCE × LOCATION_MULT uygulanır.
+        # bullish_reversal → bull_mult (52H dip + RSI oversold + SMA200 stretched + 3g+ ardışık kırmızı)
+        # bearish_reversal → bear_mult (52H tepe + RSI overbought + SMA200 stretched + 3g+ ardışık yeşil)
+        # Lokasyon "GÜRÜLTÜ" ise (×0.4) çoğu pattern eşik altı düşer → otomatik filtre.
+        # Pattern context'ine "ANLAMLI/ORTA/GÜRÜLTÜ" + lokasyon nedenleri eklenir.
+
+        # 1) BULLISH ENGULFING
         if t1['red'] and t2['green'] and o[-1] < c[-2] and c[-1] > o[-2] and t2['body'] > t1['body']:
-            ctx = " (düşüş trendinde reversal güçlü)" if trend == "down" else " (trend yatay, teyit lazım)"
+            base = 85 if trend == "down" else 60
             out.append({'name': 'Bullish Engulfing', 'type': 'bullish_reversal',
-                        'confidence': 85 if trend == "down" else 60,
-                        'context': f"t-1 kırmızı + bugün yeşil + bugün gövdesi öncekini kapsıyor{ctx}"})
+                        'confidence': int(base * bull_mult),
+                        'context': f"t-1 kırmızı + bugün yeşil + gövde kapsıyor | KONUM: {bull_tag}{bull_loc_txt}"})
 
         # 2) BEARISH ENGULFING
         if t1['green'] and t2['red'] and o[-1] > c[-2] and c[-1] < o[-2] and t2['body'] > t1['body']:
-            ctx = " (yükseliş trendinde reversal güçlü)" if trend == "up" else " (trend yatay, teyit lazım)"
+            base = 85 if trend == "up" else 60
             out.append({'name': 'Bearish Engulfing', 'type': 'bearish_reversal',
-                        'confidence': 85 if trend == "up" else 60,
-                        'context': f"t-1 yeşil + bugün kırmızı + bugün gövdesi öncekini kapsıyor{ctx}"})
+                        'confidence': int(base * bear_mult),
+                        'context': f"t-1 yeşil + bugün kırmızı + gövde kapsıyor | KONUM: {bear_tag}{bear_loc_txt}"})
 
-        # 3) PIERCING LINE: t1 kırmızı büyük gövde + t2 açılış t1 kapanışına yakın veya altta
-        #    + t2 yeşil + kapanış t1 gövdesinin %50+'inde
-        #    (klasik Nison tanımı: açılış önceki kapanışın altında. %0.5 tolerans BIST gap yokluğu için)
+        # 3) PIERCING LINE
         if t1['red'] and t1['body_pct'] > 0.5 and t2['green']:
             t1_mid = (o[-2] + c[-2]) / 2
             if o[-1] <= c[-2] * 1.005 and c[-1] > t1_mid:
                 pen = (c[-1] - c[-2]) / (o[-2] - c[-2]) * 100 if (o[-2] - c[-2]) > 0 else 0
-                ctx = " (düşüş trendinde reversal güçlü)" if trend == "down" else " (trend yatay)"
+                base = 80 if trend == "down" else 55
                 out.append({'name': 'Piercing Line', 'type': 'bullish_reversal',
-                            'confidence': 80 if trend == "down" else 55,
-                            'context': f"penetrasyon %{pen:.0f}{ctx}"})
+                            'confidence': int(base * bull_mult),
+                            'context': f"penetrasyon %{pen:.0f} | KONUM: {bull_tag}{bull_loc_txt}"})
 
-        # 4) DARK CLOUD COVER (tersi) — açılış önceki kapanışın üstünde veya çok yakın
+        # 4) DARK CLOUD COVER
         if t1['green'] and t1['body_pct'] > 0.5 and t2['red']:
             t1_mid = (o[-2] + c[-2]) / 2
             if o[-1] >= c[-2] * 0.995 and c[-1] < t1_mid:
-                ctx = " (yükseliş trendinde reversal güçlü)" if trend == "up" else " (trend yatay)"
+                base = 80 if trend == "up" else 55
                 out.append({'name': 'Dark Cloud Cover', 'type': 'bearish_reversal',
-                            'confidence': 80 if trend == "up" else 55,
-                            'context': f"üst yarıyı kestiği için{ctx}"})
+                            'confidence': int(base * bear_mult),
+                            'context': f"üst yarıyı kestiği için | KONUM: {bear_tag}{bear_loc_txt}"})
 
-        # 5) HAMMER: alt gölge gövdenin 2x+, üst gölge gövdenin %25'inden az, gövde mum'un üst yarısında
+        # 5) HAMMER
         if t2['body'] > 0 and t2['lower'] >= 2 * t2['body'] and t2['upper'] < 0.25 * t2['body'] and t2['body_pct'] < 0.4:
-            ctx = " (düşüş trendinde reversal güçlü)" if trend == "down" else " (trend yatay → gürültü)"
+            base = 75 if trend == "down" else 35
             out.append({'name': 'Hammer', 'type': 'bullish_reversal',
-                        'confidence': 75 if trend == "down" else 35,
-                        'context': f"uzun alt gölge ({t2['lower']/t2['body']:.1f}x gövde){ctx}"})
+                        'confidence': int(base * bull_mult),
+                        'context': f"uzun alt gölge ({t2['lower']/t2['body']:.1f}x gövde) | KONUM: {bull_tag}{bull_loc_txt}"})
 
-        # 6) SHOOTING STAR (tersi)
+        # 6) SHOOTING STAR
         if t2['body'] > 0 and t2['upper'] >= 2 * t2['body'] and t2['lower'] < 0.25 * t2['body'] and t2['body_pct'] < 0.4:
-            ctx = " (yükseliş trendinde reversal güçlü)" if trend == "up" else " (trend yatay → gürültü)"
+            base = 75 if trend == "up" else 35
             out.append({'name': 'Shooting Star', 'type': 'bearish_reversal',
-                        'confidence': 75 if trend == "up" else 35,
-                        'context': f"uzun üst gölge ({t2['upper']/t2['body']:.1f}x gövde){ctx}"})
+                        'confidence': int(base * bear_mult),
+                        'context': f"uzun üst gölge ({t2['upper']/t2['body']:.1f}x gövde) | KONUM: {bear_tag}{bear_loc_txt}"})
 
-        # 7) MORNING STAR (3 mum): t0 büyük kırmızı + t1 küçük gövde (dip) + t2 yeşil, t0 gövdesinin %50+'inde kapanış
+        # 7) MORNING STAR (dipten gelen klasik 3-mum dönüş)
         if t0['red'] and t0['body_pct'] > 0.5 and t1['body_pct'] < 0.4 and t2['green']:
             t0_mid = (o[-3] + c[-3]) / 2
             if c[-1] > t0_mid:
-                ctx = " (düşüş trendinde klasik dip)" if trend == "down" else ""
+                base = 85 if trend == "down" else 60
                 out.append({'name': 'Morning Star', 'type': 'bullish_reversal',
-                            'confidence': 85 if trend == "down" else 60,
-                            'context': f"3 mumlu dip dönüş formasyonu{ctx}"})
+                            'confidence': int(base * bull_mult),
+                            'context': f"3 mumlu dip dönüş | KONUM: {bull_tag}{bull_loc_txt}"})
 
-        # 8) EVENING STAR (tersi)
+        # 8) EVENING STAR (tepeden gelen klasik 3-mum dönüş)
         if t0['green'] and t0['body_pct'] > 0.5 and t1['body_pct'] < 0.4 and t2['red']:
             t0_mid = (o[-3] + c[-3]) / 2
             if c[-1] < t0_mid:
-                ctx = " (yükseliş trendinde klasik tepe)" if trend == "up" else ""
+                base = 85 if trend == "up" else 60
                 out.append({'name': 'Evening Star', 'type': 'bearish_reversal',
-                            'confidence': 85 if trend == "up" else 60,
-                            'context': f"3 mumlu tepe dönüş formasyonu{ctx}"})
+                            'confidence': int(base * bear_mult),
+                            'context': f"3 mumlu tepe dönüş | KONUM: {bear_tag}{bear_loc_txt}"})
 
-        # 9) DOJI: gövde mum range'in %5'inden az (kararsızlık)
+        # 9) DOJI
         if t2['body_pct'] < 0.05 and t2['range'] > 0:
             doji_type = "Long-legged Doji" if (t2['upper'] > t2['range']*0.3 and t2['lower'] > t2['range']*0.3) else \
                         "Gravestone Doji" if (t2['upper'] > t2['range']*0.5 and t2['lower'] < t2['range']*0.1) else \
                         "Dragonfly Doji" if (t2['lower'] > t2['range']*0.5 and t2['upper'] < t2['range']*0.1) else \
                         "Doji"
-            ctx = " (trend tepesinde tereddüt)" if trend == "up" else (" (trend dibinde tereddüt)" if trend == "down" else "")
-            out.append({'name': doji_type, 'type': 'indecision',
-                        'confidence': 60 if trend != "flat" else 40,
-                        'context': f"alıcı-satıcı dengesi{ctx}"})
+            # Dragonfly = bullish reversal · Gravestone = bearish reversal · diğerleri = tereddüt
+            if "Dragonfly" in doji_type:
+                base = 65; mult = bull_mult; tag = bull_tag; loc_txt = bull_loc_txt; ptype = 'bullish_reversal'
+            elif "Gravestone" in doji_type:
+                base = 65; mult = bear_mult; tag = bear_tag; loc_txt = bear_loc_txt; ptype = 'bearish_reversal'
+            else:
+                # Tereddüt — sadece trend ekstreminde anlamlı
+                base = 50; mult = max(bull_mult, bear_mult); tag = "EKSTREM" if (bull_tag=="ANLAMLI" or bear_tag=="ANLAMLI") else "ORTA"; loc_txt = ""; ptype = 'indecision'
+            out.append({'name': doji_type, 'type': ptype,
+                        'confidence': int(base * mult),
+                        'context': f"alıcı-satıcı dengesi | KONUM: {tag}{loc_txt}"})
 
-        # 10) THREE WHITE SOLDIERS / THREE BLACK CROWS (3 ardışık güçlü mum)
+        # 10) THREE WHITE SOLDIERS / THREE BLACK CROWS (continuation — lokasyon farklı)
+        # Continuation pattern: dipten kalkış (TWS) veya tepeden iniş (TBC) → bull/bear lokasyonu UYUMLU OLMALI
         if all(_m(i)['green'] and _m(i)['body_pct'] > 0.6 for i in (-3, -2, -1)) and c[-1] > c[-2] > c[-3]:
+            # TWS: dipten kalkış için bullish location (dip + oversold + stretched_down)
             out.append({'name': 'Three White Soldiers', 'type': 'bullish_continuation',
-                        'confidence': 70,
-                        'context': "3 ardışık güçlü yeşil mum, kapanışlar yükselen"})
+                        'confidence': int(70 * bull_mult),
+                        'context': f"3 ardışık güçlü yeşil mum, kapanışlar yükselen | KONUM: {bull_tag}{bull_loc_txt}"})
         elif all(_m(i)['red'] and _m(i)['body_pct'] > 0.6 for i in (-3, -2, -1)) and c[-1] < c[-2] < c[-3]:
             out.append({'name': 'Three Black Crows', 'type': 'bearish_continuation',
-                        'confidence': 70,
-                        'context': "3 ardışık güçlü kırmızı mum, kapanışlar düşen"})
+                        'confidence': int(70 * bear_mult),
+                        'context': f"3 ardışık güçlü kırmızı mum, kapanışlar düşen | KONUM: {bear_tag}{bear_loc_txt}"})
 
-        # Confidence eşiği: 40+ olanları döndür (gürültüyü filtrele)
+        # Confidence eşiği: 40+ olanları döndür (lokasyon GÜRÜLTÜ olanlar otomatik düşer)
         out = [p for p in out if p.get('confidence', 0) >= 40]
         # En yüksek confidence'tan sırala
         out.sort(key=lambda p: p.get('confidence', 0), reverse=True)
@@ -21676,9 +21762,9 @@ if st.session_state.generate_prompt:
         pa_div = f"{div_title} -> DETAY: {div_reason}"
 
     # 8 Haz 2026 Oturum 19 — KLASİK MUM FORMASYONU MEKANİK TESPİTİ
-    # detect_classic_candle_patterns 10 klasik pattern + trend bağlamı kontrol eder.
-    # En yüksek confidence'tan sıralı liste; mum_desc'in başına eklenir.
-    # pa_data yoksa bile çalışır → mum_desc'i tek başına da set edebilir.
+    # detect_classic_candle_patterns 10 klasik pattern + trend + LOKASYON BAĞLAMI kontrol eder.
+    # 52H dip/tepe + RSI ekstrem + SMA200 sapma + ardışık mum tükeniş.
+    # Lokasyon "GÜRÜLTÜ" patternleri otomatik filtrelenir (×0.4 mult, eşik altı).
     try:
         _classic_patterns = detect_classic_candle_patterns(df_hist)
         if _classic_patterns:
@@ -21688,6 +21774,48 @@ if st.session_state.generate_prompt:
                 mum_desc = f"🕯️ KLASİK: {_ptxt} | Sistem: {mum_desc}"
             else:
                 mum_desc = f"🕯️ KLASİK: {_ptxt}"
+    except Exception:
+        _classic_patterns = []
+
+    # 8 Haz 2026 Oturum 19 — STOPPING VOLUME AT REVERSAL
+    # Klasik VSA mantığı: bullish reversal mumu (Engulfing/Piercing/Hammer/Morning Star/TWS/
+    # Dragonfly Doji) + bugün hacim son N kırmızı mumun ortalamasına EŞİT/ÜSTÜNDE → satıcıların
+    # hacmi alıcılar tarafından devralındı = "Stopping Volume". RVOL düşük (0.68x) olsa bile
+    # bu kıyaslama bağlamı önemli — reversal kontekstinde mutlak değil göreli hacim sayar.
+    # Bearish reversal için tersi (önceki yeşil mumlarla kıyas).
+    stopping_volume_at_reversal_txt = None
+    try:
+        if _classic_patterns:
+            _top1 = _classic_patterns[0]
+            _ptype = _top1.get('type', '')
+            _today_vol = float(df_hist['Volume'].iloc[-1])
+            if 'bullish' in _ptype:
+                # Son 5g içindeki kırmızı mumların hacim ortalaması (bugün hariç)
+                _prev5 = df_hist.tail(6).iloc[:-1]  # son 5g, bugün hariç
+                _red_vols = _prev5.loc[_prev5['Close'] < _prev5['Open'], 'Volume']
+                if len(_red_vols) >= 2:
+                    _red_avg = float(_red_vols.mean())
+                    if _red_avg > 0:
+                        _ratio = _today_vol / _red_avg * 100
+                        if _ratio >= 90:
+                            stopping_volume_at_reversal_txt = (
+                                f"Stopping Volume teyitli — bugün {_top1['name']} mumu hacmi {_today_vol/1e6:.0f}M, "
+                                f"son 5g kırmızı mum ort {_red_avg/1e6:.0f}M (oran %{_ratio:.0f}) — "
+                                f"satıcı hacmi alıcılar tarafından devralındı"
+                            )
+            elif 'bearish' in _ptype:
+                _prev5 = df_hist.tail(6).iloc[:-1]
+                _green_vols = _prev5.loc[_prev5['Close'] > _prev5['Open'], 'Volume']
+                if len(_green_vols) >= 2:
+                    _green_avg = float(_green_vols.mean())
+                    if _green_avg > 0:
+                        _ratio = _today_vol / _green_avg * 100
+                        if _ratio >= 90:
+                            stopping_volume_at_reversal_txt = (
+                                f"Climax Volume teyitli — bugün {_top1['name']} mumu hacmi {_today_vol/1e6:.0f}M, "
+                                f"son 5g yeşil mum ort {_green_avg/1e6:.0f}M (oran %{_ratio:.0f}) — "
+                                f"alıcı hacmi satıcılar tarafından devralındı"
+                            )
     except Exception:
         pass
 
@@ -22733,6 +22861,8 @@ if st.session_state.generate_prompt:
     # Stopping / Climax volume — sadece "Var/Pozitif" gibi tetiklendiyse emit
     _em_stop   = _line("stopping_volume", stop_vol_val)   if (stop_vol_val   and str(stop_vol_val).strip()   not in ("Yok", "yok", "0", "False", "None")) else ""
     _em_climax = _line("climax_volume",   climax_vol_val) if (climax_vol_val and str(climax_vol_val).strip() not in ("Yok", "yok", "0", "False", "None")) else ""
+    # 8 Haz 2026 Oturum 19 — Reversal mum + Stopping/Climax hacim devralma
+    _em_sv_rev = _line("stopping_volume_at_reversal", stopping_volume_at_reversal_txt) if stopping_volume_at_reversal_txt else ""
 
     # SCANNER TIER inject — bu ticker'ı flag eden TIER'lı scanner varsa emit
     _scanner_tier_lines = []
@@ -23303,8 +23433,23 @@ Konuşma dili, ara sıra "Dostlar" geçiş OK. Asla "Patron" deme.
 
 *** KLASİK MUM FORMASYONU — GÖRSELDEN OKU + YAML İLE TEYİT (8 Haz 2026 Oturum 19) ***
 yaml.ict_pa.mum_formasyonu alanı "🕯️ KLASİK:" ile başlıyorsa MEKANİK tespit var — direkt o ismi (Bullish Engulfing / Piercing Line / Hammer / Morning Star / Shooting Star / Doji çeşitleri / Three White Soldiers vs.) AYNEN kullan, kanıt olarak göster. "Klasik" ek metnini yazma, sadece formasyon adı + güven % + bağlam.
-GRAFİKTEN AYRICA OKU: Son 1-3 mumda klasik pattern (piercing line / engulfing / hammer / shooting star / doji / morning-evening star / tweezer top-bottom / three white soldiers / black crows / inside-outside day) görünüyorsa tanı. YAML'la teyit ediyorsa "iki kaynak çakışıyor" vurgusu. YAML'da yok ama görselde net varsa "grafik formasyon işaret ediyor" şeklinde dipnot.
-KURAL: "X'e benziyor" YASAK — "X tetiklendi (güven %Y)" ya da hiç bahsetme. Trend bağlamı zorunlu: Hammer + düşüş trendi = reversal ✓; Hammer + yatay = gürültü → susarak geç. Pattern + diğer kanıtlarla (RSI div, OBV, hacim sıçraması) çakışıyorsa ANCHOR yap.
+🚨 LOKASYON BAĞLAMI ŞART: Her pattern'in context'inde "KONUM: ANLAMLI / ORTA / GÜRÜLTÜ" + lokasyon nedenleri (52H %X dipte/tepede, RSI X aşırı satım/alım, SMA200 sapma, ardışık mum tükeniş) var. **Sadece KONUM=ANLAMLI olan patternleri G1+G4'te ana hikayeye al.** KONUM=ORTA = destekleyici dipnot. KONUM=GÜRÜLTÜ patternleri zaten filtreden geçmedi (görmezsen yok). Dipten gelen Morning Star ✓ · konsolidasyon ortasındaki Hammer ✗.
+GRAFİKTEN AYRICA OKU: Son 1-3 mumda klasik pattern görünüyorsa tanı. YAML'la teyit ediyorsa "iki kaynak çakışıyor" vurgusu. YAML'da yok ama görselde net VE strüktürel anlamlı yerde (dip/tepe/52H ekstrem) varsa "grafik formasyon işaret ediyor" dipnotu.
+KURAL: "X'e benziyor" YASAK — "X tetiklendi (güven %Y, KONUM ANLAMLI/ORTA)" şeklinde yaz.
+
+*** STOPPING/CLIMAX VOLUME AT REVERSAL (8 Haz 2026 Oturum 19) ***
+yaml.smart_money.stopping_volume_at_reversal alanı varsa → bu klasik VSA sinyali:
+- Bullish reversal mumu + bugünkü hacim ≥ son 5g kırmızı mum ort hacim %90'ı = "satıcı hacmi alıcılar tarafından devralındı"
+- RVOL düşük (örn 0.68x) olsa bile bu KIYAS BAĞLAMI önemlidir: reversal kontekstinde mutlak hacim değil önceki yöndeki hacimle kıyas sayar.
+- AI bu alanı GÖRDÜĞÜNDE → "hacim mutlak olarak düşük olsa da satıcı hacmi devralındı" ANCHOR yorumu yap; RVOL düşük olduğu için "sahte alım" deme. Sadece bu alan yoksa RVOL klasik yorumu geçerli.
+
+*** REVERSAL CONFLUENCE ANCHOR (8 Haz 2026 Oturum 19) ***
+🚨 Aşağıdaki 4 sinyalden 3+'ü aynı anda varsa → G1 + G4 ana hikaye "DİPTEN/TEPEDEN DÖNÜŞ ÇABASI" çerçevesinde kurulur. CMF/OBV negatif olsa bile bu sinyaller YAPISAL değil TETİKLEYİCİ — confluence ana hikayeyi belirler; karşı sinyaller "kalıcı yön için CMF/OBV dönüşü beklenir" şeklinde DİPNOT olur.
+  1. TIER_1_ELIT scanner flag (er_A8 / prelaunch_bos / er_B1) — backtest hit %75+
+  2. Klasik mum reversal pattern + KONUM=ANLAMLI (Piercing / Engulfing / Morning Star / Hammer + dipte, ya da bearish karşılığı + tepede)
+  3. RSI Pozitif Uyumsuzluk (bullish için) veya RSI Negatif Uyumsuzluk (bearish için)
+  4. stopping_volume_at_reversal veya climax_volume_at_reversal alanı dolu
+3+ çakışma = ANCHOR. 2 çakışma = güçlü gözlem (ana hikaye değil ama 2. sıra). 1 ya da 0 = klasik analiz.
 
 *** UZAKLIK = SEVİYE BİLGİSİ, TETİKLEYİCİ DEĞİL ***
 Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mean revert" tezine sokulamaz. Tetikleyici olması için çelişki şartı: (a) OBV/Delta divergence (b) Yatay range + 2σ (c) Stopping/Climax + uzaklık (d) Trend zaten kırılmış. Aksi → uzaklık sadece "destek/direnç/stop noktası" olarak yazılır.
@@ -23424,7 +23569,7 @@ ict_pa:
 
 {("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else ""))}
 
-{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else ""))}
+{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
 
 institutional_ref:
   vwap: {v_val:.2f}
