@@ -21640,26 +21640,11 @@ if st.session_state.generate_prompt:
     pa_div = "-"
     sfp_desc = "-"
     loc_desc = "-"
+    confidence_prompt = ""
     if pa_data:
         mum_desc = pa_data.get('candle', {}).get('desc', '-')
-
-    # 8 Haz 2026 Oturum 19 — KLASİK MUM FORMASYONU MEKANİK TESPİTİ
-    # detect_classic_candle_patterns 10 klasik pattern + trend bağlamı kontrol eder.
-    # En yüksek confidence'tan sıralı liste; mum_desc'in başına eklenir (varsa).
-    try:
-        _classic_patterns = detect_classic_candle_patterns(df_hist)
-        if _classic_patterns:
-            _top = _classic_patterns[:3]  # max 3 pattern (gürültü olmasın)
-            _ptxt = " · ".join([f"{p['name']} (güven %{p['confidence']}, {p['context']})" for p in _top])
-            if mum_desc and mum_desc not in ("-", ""):
-                mum_desc = f"🕯️ KLASİK: {_ptxt} | Sistem: {mum_desc}"
-            else:
-                mum_desc = f"🕯️ KLASİK: {_ptxt}"
-    except Exception:
-        pass
         # Güven skoru ve bağlam notlarını candle desc'ten parse et
         candle_raw = pa_data.get('candle', {}).get('desc', '')
-        confidence_prompt = ""
         if "Güven:" in candle_raw:
             try:
                 guven_part = candle_raw.split("Güven:")[1].split("/100")[0].strip()
@@ -21689,7 +21674,23 @@ if st.session_state.generate_prompt:
         div_title = div_data.get('title', '-')
         div_reason = div_data.get('desc', '-')
         pa_div = f"{div_title} -> DETAY: {div_reason}"
-    
+
+    # 8 Haz 2026 Oturum 19 — KLASİK MUM FORMASYONU MEKANİK TESPİTİ
+    # detect_classic_candle_patterns 10 klasik pattern + trend bağlamı kontrol eder.
+    # En yüksek confidence'tan sıralı liste; mum_desc'in başına eklenir.
+    # pa_data yoksa bile çalışır → mum_desc'i tek başına da set edebilir.
+    try:
+        _classic_patterns = detect_classic_candle_patterns(df_hist)
+        if _classic_patterns:
+            _top = _classic_patterns[:3]  # max 3 pattern (gürültü olmasın)
+            _ptxt = " · ".join([f"{p['name']} (güven %{p['confidence']}, {p['context']})" for p in _top])
+            if mum_desc and mum_desc not in ("-", ""):
+                mum_desc = f"🕯️ KLASİK: {_ptxt} | Sistem: {mum_desc}"
+            else:
+                mum_desc = f"🕯️ KLASİK: {_ptxt}"
+    except Exception:
+        pass
+
     # --- SMART MONEY VERİLERİ (AI İÇİN HAZIRLIK) ---
     # Önce varsayılan değerleri atayalım (Veri yoksa hata vermesin)
     v_val = 0; v_diff = 0; vwap_ai_txt = "Veri Yok"; rs_ai_txt = "Veri Yok"; alpha_val = 0
