@@ -11864,7 +11864,13 @@ def render_smart_volume_panel(ticker):
     delta_yuzde      = sv.get("delta_yuzde", 0)
     _vol_data_missing = sv.get("vol_data_missing", False)
     rvol        = sv.get("rvol", 1.0)
-    is_index    = ticker.startswith(("XU", "XB", "XT", "XY", "^"))
+    # 8 Haz 2026 Oturum 19 — Futures (=F: GC=F gold, SI=F silver, CL=F oil)
+    # Yahoo bunlara güvenilmez hacim veriyor (gün-gün 7-89000 arası dalgalı,
+    # gerçek CME ~250K kontrat). 20g ortalama yapay düşük → RVOL şişiyor (9x/18x).
+    # AI prompt'u zaten "_is_index_t = ... endswith('=F')" ile koruyor; UI tile'ı
+    # geri kalıyordu → is_index'e futures de dahil edildi, Tile 3/4/5 hacim
+    # rakamı yerine "Endeks/Emtia Hacmi sağlanamadı" gösterir.
+    is_index    = ticker.startswith(("XU", "XB", "XT", "XY", "^")) or ticker.endswith("=F") or "-USD" in ticker
 
     # ── XU100 + HAFTA SONU FİX ────────────────────────────────────────────────
     # XU100 için Yahoo bazen Cumartesi/Pazar'a 0-hacimli bar koyuyor → rvol=0
@@ -19639,7 +19645,16 @@ def _render_genel_ozet_panel():
                 )
 
                 # ── HACİM cümlesi ────────────────────────────────────────────────
-                if not _data_ready:
+                # 8 Haz 2026 Oturum 19 — Futures/Endeks/Kripto için RVOL güvenilmez
+                # (Yahoo hacim verisi GC=F/SI=F/XU* için tutarsız). AI prompt zaten
+                # bu sembollere "hacim yorumu YAPMA" diyor; GENEL ÖZET PARA AKIŞI
+                # da hacim cümlesini "veri güvenilmez" notuyla geç.
+                _is_no_vol_t = (_ticker.startswith(("XU", "XB", "XT", "XY", "^"))
+                                or _ticker.endswith("=F")
+                                or "-USD" in _ticker)
+                if _is_no_vol_t:
+                    _hac_icon, _hac_clr, _hac_text = "→", _gs_neu, "Hacim verisi bu sembol için güvenilmez (endeks/emtia/kripto)"
+                elif not _data_ready:
                     _hac_icon, _hac_clr, _hac_text = "→", _gs_neu, "Gün içi hacim henüz oluşmadı"
                 elif _gs_rvol >= 1.5:
                     if _gs_cum5 > 0:
