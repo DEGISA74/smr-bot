@@ -754,6 +754,9 @@ def init_db():
         'ALTER TABLE scan_signals ADD COLUMN f_ms_momentum REAL',       # 0-100
         'ALTER TABLE scan_signals ADD COLUMN f_ms_ict REAL',            # 0-100
         'ALTER TABLE scan_signals ADD COLUMN f_ms_radar2 REAL',         # 0-100
+        # 8 Haz 2026 Oturum 19 — Dual-window feature genişlemesi (CMF disiplinini cum_delta + RSI'ya yay):
+        'ALTER TABLE scan_signals ADD COLUMN f_cum_delta_dual TEXT',    # 5g/20g cum_delta state (7 state, CMF ile aynı kalıp)
+        'ALTER TABLE scan_signals ADD COLUMN f_rsi_dual TEXT',          # RSI(5)/RSI(14) state (7 state — overbought/oversold/early/cooling/dip_recovery)
     ]:
         try:
             c.execute(_alter_col)
@@ -795,6 +798,8 @@ def _compute_signal_features(ticker: str) -> dict:
         'f_poc_magnet': None, 'f_poc_confluence': None, 'f_avwap_test_zone': None,
         # 6 Haz 2026 — Master Score breakdown sub-skorlar (component analizi için)
         'f_ms_trend': None, 'f_ms_momentum': None, 'f_ms_ict': None, 'f_ms_radar2': None,
+        # 8 Haz 2026 Oturum 19 — Dual-window genişleme (CMF kalıbı)
+        'f_cum_delta_dual': None, 'f_rsi_dual': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -889,6 +894,48 @@ def _compute_signal_features(ticker: str) -> dict:
                     if 'radar2'   in _bd: out['f_ms_radar2']   = round(float(_bd['radar2'].get('score', 0)), 1)
             elif isinstance(_ms_ret, tuple) and len(_ms_ret) >= 1:
                 out['f_master_score'] = round(float(_ms_ret[0]), 1)
+        except Exception: pass
+
+        # 11) f_cum_delta_dual — 5g/20g cum_delta state (CMF disiplini, 7 state)
+        # cum_delta = (Close-Low)/Range × Vol − (High-Close)/Range × Vol  (calculate_volume_delta proxy)
+        # Normalize: cum_n / total_vol_n, eşik ±%5 = strong
+        try:
+            _rng = (df['High'] - df['Low']).replace(0, np.nan)
+            _bp = (df['Close'] - df['Low']) / _rng
+            _sp = (df['High'] - df['Close']) / _rng
+            _vd = (df['Volume'] * _bp - df['Volume'] * _sp).fillna(0)
+            _cum5  = float(_vd.tail(5).sum());  _tot5  = float(df['Volume'].tail(5).sum())
+            _cum20 = float(_vd.tail(20).sum()); _tot20 = float(df['Volume'].tail(20).sum())
+            _p5  = (_cum5  / _tot5  * 100.0) if _tot5  > 0 else 0
+            _p20 = (_cum20 / _tot20 * 100.0) if _tot20 > 0 else 0
+            if   _p5 > 5  and _p20 > 5:  out['f_cum_delta_dual'] = 'strong_pos'
+            elif _p5 < -5 and _p20 < -5: out['f_cum_delta_dual'] = 'strong_neg'
+            elif _p5 > 0  and _p20 < 0:  out['f_cum_delta_dual'] = 'turning_up'    # short toparlanma, ana dağıtım
+            elif _p5 < 0  and _p20 > 0:  out['f_cum_delta_dual'] = 'turning_down'  # short profit-taking, ana birikim
+            elif _p20 > 5:                out['f_cum_delta_dual'] = 'pos'
+            elif _p20 < -5:               out['f_cum_delta_dual'] = 'neg'
+            else:                         out['f_cum_delta_dual'] = 'neutral'
+        except Exception: pass
+
+        # 12) f_rsi_dual — RSI(5)/RSI(14) state (7 state)
+        # RSI(5) erken sinyal — overbought/oversold'a RSI(14)'ten daha hızlı girer
+        # cooling_overheat: RSI(5) zaten soğumaya başladı ama RSI(14) hâlâ aşırı alımda → tepe yorgunluğu
+        # dip_recovery: RSI(5) toparlanıyor, RSI(14) hâlâ dip → erken dönüş adayı
+        try:
+            _d = c.diff()
+            _g5 = _d.where(_d > 0, 0).rolling(5).mean()
+            _l5 = (-_d.where(_d < 0, 0)).rolling(5).mean()
+            _rs5 = _g5 / _l5
+            _rsi5 = float((100 - (100 / (1 + _rs5))).iloc[-1])
+            _rsi14 = out.get('f_rsi')
+            if _rsi14 is not None:
+                if   _rsi5 >= 80 and _rsi14 >= 70: out['f_rsi_dual'] = 'overbought_both'
+                elif _rsi5 <= 20 and _rsi14 <= 30: out['f_rsi_dual'] = 'oversold_both'
+                elif _rsi5 >= 80 and _rsi14 < 60:  out['f_rsi_dual'] = 'early_overbought'  # RSI(5) önde — erken uyarı
+                elif _rsi5 <= 20 and _rsi14 > 40:  out['f_rsi_dual'] = 'early_oversold'    # RSI(5) önde dip
+                elif _rsi5 < 50  and _rsi14 >= 70: out['f_rsi_dual'] = 'cooling_overheat'  # tepe yorgunluğu
+                elif _rsi5 > 50  and _rsi14 <= 30: out['f_rsi_dual'] = 'dip_recovery'      # erken dönüş
+                else:                              out['f_rsi_dual'] = 'neutral'
         except Exception: pass
 
         # 8-10) POC-tabanlı 3 flag (backtest 84.832 event'lik segmente göre)
@@ -1102,6 +1149,11 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_ms_momentum_v    = _ff('F_MS_Momentum', 'MS_Momentum', 'f_ms_momentum')
             f_ms_ict_v         = _ff('F_MS_ICT', 'MS_ICT', 'f_ms_ict')
             f_ms_radar2_v      = _ff('F_MS_Radar2', 'MS_Radar2', 'f_ms_radar2')
+            # 8 Haz 2026 Oturum 19 — Dual-window genişleme
+            f_cum_delta_dual_raw = _ff('F_CumDelta_Dual', 'CumDelta_Dual', 'f_cum_delta_dual', cast=str)
+            f_cum_delta_dual     = f_cum_delta_dual_raw if f_cum_delta_dual_raw else None
+            f_rsi_dual_raw       = _ff('F_RSI_Dual', 'RSI_Dual', 'f_rsi_dual', cast=str)
+            f_rsi_dual           = f_rsi_dual_raw if f_rsi_dual_raw else None
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -1119,17 +1171,21 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_ms_momentum_v    is None: f_ms_momentum_v    = _feat.get('f_ms_momentum')
                 if f_ms_ict_v         is None: f_ms_ict_v         = _feat.get('f_ms_ict')
                 if f_ms_radar2_v      is None: f_ms_radar2_v      = _feat.get('f_ms_radar2')
+                if f_cum_delta_dual   is None: f_cum_delta_dual   = _feat.get('f_cum_delta_dual')
+                if f_rsi_dual         is None: f_rsi_dual         = _feat.get('f_rsi_dual')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
                     f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days, f_vp_shape, f_master_score,
                     f_poc_magnet, f_poc_confluence, f_avwap_test_zone,
-                    f_ms_trend, f_ms_momentum, f_ms_ict, f_ms_radar2)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_ms_trend, f_ms_momentum, f_ms_ict, f_ms_radar2,
+                    f_cum_delta_dual, f_rsi_dual)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
-                 f_ms_trend_v, f_ms_momentum_v, f_ms_ict_v, f_ms_radar2_v)
+                 f_ms_trend_v, f_ms_momentum_v, f_ms_ict_v, f_ms_radar2_v,
+                 f_cum_delta_dual, f_rsi_dual)
             )
         conn.commit()
         conn.close()
@@ -22386,6 +22442,55 @@ if st.session_state.generate_prompt:
     # cum_delta_5g — "Dengede" anlamsız, sadece pozitif/negatif baskı emit
     _em_cum5 = _line("cum_delta_5g", cum5_txt) if (cum5_txt and "Dengede" not in cum5_txt and "Veri Yok" not in cum5_txt) else ""
 
+    # 8 Haz 2026 Oturum 19 — cum_delta DUAL-WINDOW (5g + 20g state)
+    # Phase 3 ruhuyla: CMF disiplini cum_delta'ya taşındı. AI'a sadece anlamlı
+    # state ulaşır (neutral → sus). state isimleri Türkçeleştirilir, jargon yok.
+    _em_cum_delta_dual = ""
+    try:
+        if len(df_hist) >= 20:
+            _rng_d = (df_hist['High'] - df_hist['Low']).replace(0, np.nan)
+            _bp_d = (df_hist['Close'] - df_hist['Low']) / _rng_d
+            _sp_d = (df_hist['High'] - df_hist['Close']) / _rng_d
+            _vd_d = (df_hist['Volume'] * _bp_d - df_hist['Volume'] * _sp_d).fillna(0)
+            _c5_d  = float(_vd_d.tail(5).sum());  _t5_d  = float(df_hist['Volume'].tail(5).sum())
+            _c20_d = float(_vd_d.tail(20).sum()); _t20_d = float(df_hist['Volume'].tail(20).sum())
+            _p5_d  = (_c5_d  / _t5_d  * 100.0) if _t5_d  > 0 else 0
+            _p20_d = (_c20_d / _t20_d * 100.0) if _t20_d > 0 else 0
+            _cdd_txt = None
+            if   _p5_d > 5  and _p20_d > 5:  _cdd_txt = f"Güçlü pozitif (5g %{_p5_d:+.1f} + 20g %{_p20_d:+.1f}) — kalıcı kurumsal birikim"
+            elif _p5_d < -5 and _p20_d < -5: _cdd_txt = f"Güçlü negatif (5g %{_p5_d:+.1f} + 20g %{_p20_d:+.1f}) — kalıcı kurumsal dağıtım"
+            elif _p5_d > 0  and _p20_d < 0:  _cdd_txt = f"Kafa çeviriyor / toparlanma (5g %{_p5_d:+.1f} pozitif, 20g %{_p20_d:+.1f} negatif) — short toparlanma, ana dağıtım era'sı sürüyor"
+            elif _p5_d < 0  and _p20_d > 0:  _cdd_txt = f"Kafa çeviriyor / zayıflama (5g %{_p5_d:+.1f} negatif, 20g %{_p20_d:+.1f} pozitif) — short profit-taking, ana birikim era'sı"
+            if _cdd_txt:
+                _em_cum_delta_dual = _line("cum_delta_dual_window", _cdd_txt)
+    except Exception:
+        pass
+
+    # 8 Haz 2026 Oturum 19 — RSI DUAL-WINDOW (5g + 14g state)
+    # Larry Connors / Linda Raschke disiplini. RSI(5) erken sinyal, RSI(14) klasik.
+    # neutral / sıradan overbought-oversold → sus; sadece erken uyarı / çelişki emit
+    _em_rsi_dual = ""
+    try:
+        if len(df_hist) >= 15:
+            _dr = df_hist['Close'].diff()
+            _g5r = _dr.where(_dr > 0, 0).rolling(5).mean()
+            _l5r = (-_dr.where(_dr < 0, 0)).rolling(5).mean()
+            _r5  = float((100 - (100 / (1 + (_g5r / _l5r)))).iloc[-1])
+            _g14r = _dr.where(_dr > 0, 0).rolling(14).mean()
+            _l14r = (-_dr.where(_dr < 0, 0)).rolling(14).mean()
+            _r14  = float((100 - (100 / (1 + (_g14r / _l14r)))).iloc[-1])
+            _rd_txt = None
+            if   _r5 >= 80 and _r14 >= 70: _rd_txt = f"İki pencerede aşırı alım (RSI5 {_r5:.0f} + RSI14 {_r14:.0f}) — momentum tepesi yakın"
+            elif _r5 <= 20 and _r14 <= 30: _rd_txt = f"İki pencerede aşırı satım (RSI5 {_r5:.0f} + RSI14 {_r14:.0f}) — dip ihtimali"
+            elif _r5 >= 80 and _r14 < 60:  _rd_txt = f"Erken aşırı alım sinyali (RSI5 {_r5:.0f} hızla yükseldi, RSI14 {_r14:.0f} henüz ortada) — 1-3g içinde ısınma genişleyebilir"
+            elif _r5 <= 20 and _r14 > 40:  _rd_txt = f"Erken aşırı satım darbesi (RSI5 {_r5:.0f}, RSI14 {_r14:.0f}) — short pulse dip, dönüş adayı"
+            elif _r5 < 50  and _r14 >= 70: _rd_txt = f"Tepe yorgunluğu (RSI5 {_r5:.0f} soğuyor, RSI14 {_r14:.0f} hâlâ aşırı alımda) — momentum kırılıyor"
+            elif _r5 > 50  and _r14 <= 30: _rd_txt = f"Erken dip dönüşü (RSI5 {_r5:.0f} toparlanıyor, RSI14 {_r14:.0f} hâlâ dipte) — dönüş işareti"
+            if _rd_txt:
+                _em_rsi_dual = _line("rsi_dual_window", _rd_txt)
+    except Exception:
+        pass
+
     # Stopping / Climax volume — sadece "Var/Pozitif" gibi tetiklendiyse emit
     _em_stop   = _line("stopping_volume", stop_vol_val)   if (stop_vol_val   and str(stop_vol_val).strip()   not in ("Yok", "yok", "0", "False", "None")) else ""
     _em_climax = _line("climax_volume",   climax_vol_val) if (climax_vol_val and str(climax_vol_val).strip() not in ("Yok", "yok", "0", "False", "None")) else ""
@@ -22963,7 +23068,8 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
 • institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched).
-• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `stopping_volume`/`climax_volume` (tetiklendiyse).
+• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse).
+• trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
 *** KALİBRASYON TABLOLARI — SADECE REFERANS, gördüğünde uygula ***
 POC RETEST (84.832 event, BIST 593 hisse, 1y; retest = POC'a %1 yakına ≤10g):
@@ -23044,7 +23150,7 @@ trend_indicators:
   supertrend_60g: {st_txt}
   minervini: {mini_txt}
   radar1_momentum_hacim: {r1_txt}
-  radar2_trend_setup: {r2_txt}
+  radar2_trend_setup: {r2_txt}{(chr(10) + _em_rsi_dual) if _em_rsi_dual else ""}
 
 moving_averages:
   sma50: {sma50_str} (seviye: {sma50_val:.2f})
@@ -23073,7 +23179,7 @@ ict_pa:
 
 {("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else ""))}
 
-{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else ""))}
+{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else ""))}
 
 institutional_ref:
   vwap: {v_val:.2f}
