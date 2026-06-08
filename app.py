@@ -19693,6 +19693,67 @@ def _render_genel_ozet_panel():
                 _cmf_icon, _cmf_clr_s, _cmf_text = _cmf_sentence_map.get(
                     _cmf_state, ("→", _gs_neu, "Para akışı verisi alınamadı"))
 
+                # ── 8 Haz 2026 Oturum 19 — DUAL-WINDOW CONFLUENCE LAYER ──────
+                # cum_delta dual (5g/20g) + RSI dual (5g/14g) state cümlesi.
+                # Sadece anlamlı state → italic satır eklenir. Neutral → satır YOK
+                # (panel kalabalıklaşmasın). Confluence: CMF + cum_delta + RSI 3
+                # state ATA bakışla görülür.
+                _cum_state = None; _cum_text_b = None; _cum_icon_b = "→"; _cum_clr_b = _gs_neu
+                _rsi_dual_state = None; _rsi_text_b = None; _rsi_icon_b = "→"; _rsi_clr_b = _gs_neu
+                try:
+                    if _gs_df is not None and len(_gs_df) >= 20:
+                        _rng_b = (_gs_df['High'] - _gs_df['Low']).replace(0, np.nan)
+                        _bp_b  = (_gs_df['Close'] - _gs_df['Low']) / _rng_b
+                        _sp_b  = (_gs_df['High'] - _gs_df['Close']) / _rng_b
+                        _vd_b  = (_gs_df['Volume'] * _bp_b - _gs_df['Volume'] * _sp_b).fillna(0)
+                        _c5b   = float(_vd_b.tail(5).sum());  _t5b   = float(_gs_df['Volume'].tail(5).sum())
+                        _c20b  = float(_vd_b.tail(20).sum()); _t20b  = float(_gs_df['Volume'].tail(20).sum())
+                        _p5b   = (_c5b  / _t5b  * 100.0) if _t5b  > 0 else 0
+                        _p20b  = (_c20b / _t20b * 100.0) if _t20b > 0 else 0
+                        if   _p5b > 5  and _p20b > 5:  _cum_state = "strong_pos"
+                        elif _p5b < -5 and _p20b < -5: _cum_state = "strong_neg"
+                        elif _p5b > 0  and _p20b < 0:  _cum_state = "turning_up"
+                        elif _p5b < 0  and _p20b > 0:  _cum_state = "turning_down"
+                        _cum_sentence_map = {
+                            "strong_pos":   ("✓", _gs_up_clr, f"Net Alıcı 5g+20g birlikte pozitif ({_p5b:+.1f}% / {_p20b:+.1f}%) — kalıcı kurumsal birikim"),
+                            "strong_neg":   ("⚠", _gs_dn_clr, f"Net Satıcı 5g+20g birlikte negatif ({_p5b:+.1f}% / {_p20b:+.1f}%) — kalıcı kurumsal dağıtım"),
+                            "turning_up":   ("↗", "#38bdf8", f"5g toparlanma ({_p5b:+.1f}%) ama 20g hâlâ negatif ({_p20b:+.1f}%) — short rally, ana dağıtım sürüyor"),
+                            "turning_down": ("↘", "#f59e0b", f"5g profit-taking ({_p5b:+.1f}%) ama 20g hâlâ pozitif ({_p20b:+.1f}%) — short zayıflama, ana birikim era'sı"),
+                        }
+                        if _cum_state in _cum_sentence_map:
+                            _cum_icon_b, _cum_clr_b, _cum_text_b = _cum_sentence_map[_cum_state]
+                except Exception:
+                    pass
+
+                # RSI Dual (5g/14g) — sadece anlamlı state'ler
+                try:
+                    if _gs_df is not None and len(_gs_df) >= 15:
+                        _dr_b = _gs_df['Close'].diff()
+                        _g5b  = _dr_b.where(_dr_b > 0, 0).rolling(5).mean()
+                        _l5b  = (-_dr_b.where(_dr_b < 0, 0)).rolling(5).mean()
+                        _r5b  = float((100 - (100 / (1 + (_g5b / _l5b)))).iloc[-1])
+                        _g14b = _dr_b.where(_dr_b > 0, 0).rolling(14).mean()
+                        _l14b = (-_dr_b.where(_dr_b < 0, 0)).rolling(14).mean()
+                        _r14b = float((100 - (100 / (1 + (_g14b / _l14b)))).iloc[-1])
+                        if   _r5b >= 80 and _r14b >= 70: _rsi_dual_state = "overbought_both"
+                        elif _r5b <= 20 and _r14b <= 30: _rsi_dual_state = "oversold_both"
+                        elif _r5b >= 80 and _r14b < 60:  _rsi_dual_state = "early_overbought"
+                        elif _r5b <= 20 and _r14b > 40:  _rsi_dual_state = "early_oversold"
+                        elif _r5b < 50  and _r14b >= 70: _rsi_dual_state = "cooling_overheat"
+                        elif _r5b > 50  and _r14b <= 30: _rsi_dual_state = "dip_recovery"
+                        _rsi_sentence_map = {
+                            "overbought_both":   ("⚠", _gs_dn_clr, f"RSI çift pencere aşırı alım (5g {_r5b:.0f} + 14g {_r14b:.0f}) — momentum tepesi yakın"),
+                            "oversold_both":     ("↗", _gs_up_clr, f"RSI çift pencere aşırı satım (5g {_r5b:.0f} + 14g {_r14b:.0f}) — dip ihtimali"),
+                            "early_overbought":  ("⚠", "#f59e0b", f"RSI(5) {_r5b:.0f} erken aşırı alım, RSI(14) {_r14b:.0f} ortada — 1-3g içinde ısınma genişleyebilir"),
+                            "early_oversold":    ("↗", "#38bdf8", f"RSI(5) {_r5b:.0f} erken aşırı satım, RSI(14) {_r14b:.0f} hâlâ ortada — short pulse dip"),
+                            "cooling_overheat":  ("↘", "#f59e0b", f"Tepe yorgunluğu — RSI(5) {_r5b:.0f} soğuyor, RSI(14) {_r14b:.0f} hâlâ aşırı alımda"),
+                            "dip_recovery":      ("↗", _gs_up_clr, f"Erken dip dönüşü — RSI(5) {_r5b:.0f} toparlanıyor, RSI(14) {_r14b:.0f} hâlâ dipte"),
+                        }
+                        if _rsi_dual_state in _rsi_sentence_map:
+                            _rsi_icon_b, _rsi_clr_b, _rsi_text_b = _rsi_sentence_map[_rsi_dual_state]
+                except Exception:
+                    pass
+
                 # Pusula + sinyal listesi yan yana, altında 3 cümle (italic — panel açıklama stiliyle aynı)
                 def _flow_sentence(icon, color, text):
                     return (
@@ -19715,6 +19776,8 @@ def _render_genel_ozet_panel():
                     + _flow_sentence(_hac_icon, _hac_clr, _hac_text)
                     + _flow_sentence(_obv_icon, _obv_clr_s, _obv_text)
                     + _flow_sentence(_cmf_icon, _cmf_clr_s, _cmf_text)
+                    + (_flow_sentence(_cum_icon_b, _cum_clr_b, _cum_text_b) if _cum_text_b else "")
+                    + (_flow_sentence(_rsi_icon_b, _rsi_clr_b, _rsi_text_b) if _rsi_text_b else "")
                     + "</div>"
                 )
 
