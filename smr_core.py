@@ -2795,7 +2795,9 @@ A) YASAKLI MADDE AÇILIŞLARI (madde/alt-başlık açılışı şunlardan hiçbi
 × "Tüm senaryoların birbiriyle [sentezi/uyumu]..."
 × "Fiyat 20 günlük [fiyat/hareket] alanının..."
 × "Algoritmik veriler incelendiğinde..." / "Yapılan analizlerde..."
-ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sinyali — somut sayı + bağlam. "Master skor 21 — trend 0, hacim 50" ✓ · "Delta -%51.6, son 5g'in en sert dağıtımı" ✓ · "RSI 25, aşırı satım — dipler hâlâ daha derin" ✓.
+ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sinyali — somut sayı + bağlam. ✓ "Hisse 3 gündür SMA50'nin %1.8 altında — kısa vade baskı altında." · ✓ "Delta -%51.6, son 5g'in en sert dağıtımı." · ✓ "RSI 25, aşırı satım — dipler hâlâ daha derin." · ❌ "Master skor 21 — trend 0, hacim 50" (alt-skor zinciri = K3 ihlali).
+M1 ALT-SKOR SIRALAMASI YASAK: "Sistem skoru X/100; trend Y, momentum Z, ICT W" formatı = metodoloji anlatmak. Yerine NİTEL özet: "Sistem skoru orta — yapı tarafı baskın" / "Skor düşük; ICT katmanı tek pozitif sinyal".
+🚨 RSI DIVERGENCE ZORUNLU CHECK: yaml.ict_pa.rsi_divergence (veya rsi_divergence alanı) değerini AYNEN yansıt. yaml="Uyumlu" + panel="Hidden Bull" → "Uyumlu" yaz, "gizli pozitif"/"hidden bull"/"gizli yükseliş" YASAK. yaml="Klasik Negatif" + panel="Hidden Bear" → "Klasik Negatif" yaz. Panel etiketini YAML üzerine asla bindirme.
 
 B) FİİL ZİNCİRİ YASAĞI:
 Aşağıdaki pasif analiz fiilleri bir madde/paragraf içinde MAKSİMUM 1 KEZ kullanılır:
@@ -3153,7 +3155,9 @@ A) YASAKLI MADDE AÇILIŞLARI (madde/alt-başlık açılışı şunlardan hiçbi
 × "Tüm senaryoların birbiriyle [sentezi/uyumu]..."
 × "Fiyat 20 günlük [fiyat/hareket] alanının..."
 × "Algoritmik veriler incelendiğinde..." / "Yapılan analizlerde..."
-ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sinyali — somut sayı + bağlam. "Master skor 21 — trend 0, hacim 50" ✓ · "Delta -%51.6, son 5g'in en sert dağıtımı" ✓ · "RSI 25, aşırı satım — dipler hâlâ daha derin" ✓.
+ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sinyali — somut sayı + bağlam. ✓ "Hisse 3 gündür SMA50'nin %1.8 altında — kısa vade baskı altında." · ✓ "Delta -%51.6, son 5g'in en sert dağıtımı." · ✓ "RSI 25, aşırı satım — dipler hâlâ daha derin." · ❌ "Master skor 21 — trend 0, hacim 50" (alt-skor zinciri = K3 ihlali).
+M1 ALT-SKOR SIRALAMASI YASAK: "Sistem skoru X/100; trend Y, momentum Z, ICT W" formatı = metodoloji anlatmak. Yerine NİTEL özet: "Sistem skoru orta — yapı tarafı baskın" / "Skor düşük; ICT katmanı tek pozitif sinyal".
+🚨 RSI DIVERGENCE ZORUNLU CHECK: yaml.ict_pa.rsi_divergence (veya rsi_divergence alanı) değerini AYNEN yansıt. yaml="Uyumlu" + panel="Hidden Bull" → "Uyumlu" yaz, "gizli pozitif"/"hidden bull"/"gizli yükseliş" YASAK. yaml="Klasik Negatif" + panel="Hidden Bear" → "Klasik Negatif" yaz. Panel etiketini YAML üzerine asla bindirme.
 
 B) FİİL ZİNCİRİ YASAĞI:
 Aşağıdaki pasif analiz fiilleri bir madde/paragraf içinde MAKSİMUM 1 KEZ kullanılır:
