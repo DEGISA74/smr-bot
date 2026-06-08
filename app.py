@@ -23654,6 +23654,7 @@ Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlı
 
 ** BİRİNCİ GÖREV — Detaylı Analiz (Linda Raschke + Lance Beggs üslubu) **
 Üst başlık: "{hook_baslik}". Sonra direkt cümleyle başla (etiket yok). 4-5 cümlelik akıcı giriş paragrafı — o günün en baskın bulgusu ilk satırda olsun. Küçük yatırımcı psikolojisi vs kurumsal niyet farkına odaklan. Tek yönlü tablo yasak — madalyonun öte yüzü hep var.
+🚨 İLK CÜMLE BUGÜN-SPESİFİK TETİKLEYİCİDEN GELİR (8 Haz 2026 Oturum 19): G4 AÇILIŞ ANCHOR ÖNCELİĞİ kuralı G1'e de uygulanır. Klasik mum reversal (KONUM=ANLAMLI) / TIER_1_ELIT flag / stopping_volume / RSI ekstrem+uyumsuzluk / cum_delta kafa-çev. / OBV durum başlığı / Mum CP YANILTICI → bunlardan biri varsa ilk cümle MUTLAKA onunla başlar. "Fiyat yıllık zirvenin %X konumunda" / "VWAP'tan %Y uzaklıkta" / "X gündür SMA50 altında" → açılış cümlesi olarak YASAK (3 son analizde tekrar ettiği için sertleştirildi). 52H bilgisi gerekiyorsa 3-4. cümlede "fiyat aynı zamanda 52H'nin %X'inde" destek bilgisi olarak geçer.
 
 **{genel_analiz_baslik}** (madde listesi):
 - Max 6 madde. Zorlama: 2 kritik sinyal varsa 2 madde yaz.
@@ -23770,7 +23771,24 @@ X algo: Save (somut seviye) + Reply (açık-uçlu çelişki/soru). 180-220 karak
 ────── ABONE ÖZETİ FORMAT ──────
 Başlık: "{hook_baslik}" (tarih/saat yazma).
 
-🚨 ANTİ-KOPYA: Açılış cümlesi şablon kalıp yasak. Bu hisseye o güne özgü 1 anchor ile aç (52H konumu / formasyon eşiği / OBV durum başlığı / CMF Dual state / OMI sigma / VP Şekli / HVN proximity / Mum CP×5g / VSA anomalisi / Vade matrisi çelişkisi / Sıkışma süresi / Master Score breakdown'daki en güçlü/zayıf alt skor). "Alıcıların mı satıcıların mı..." gibi tanım cümlesi tekrarı yasak. Her bölümde en az 1 somut sayısal anchor.
+🚨 ANTİ-KOPYA: Açılış cümlesi şablon kalıp yasak. Bu hisseye o güne özgü 1 anchor ile aç. "Alıcıların mı satıcıların mı..." gibi tanım cümlesi tekrarı yasak. Her bölümde en az 1 somut sayısal anchor.
+🚨 AÇILIŞ ANCHOR ÖNCELİĞİ (8 Haz 2026 Oturum 19 — şablon kayma fixi):
+**ÖNCE BUGÜN-SPESİFİK TETİKLEYİCİLER:**
+  1. Klasik mum reversal + KONUM=ANLAMLI (Piercing Line / Engulfing / Morning Star vs.)
+  2. TIER_1_ELIT scanner flag (er_A8 / prelaunch_bos / er_B1)
+  3. stopping_volume_at_reversal veya climax_volume_at_reversal
+  4. Bugünkü scenario.algoritmik_baslik aktif tetikleyicisi
+  5. RSI ekstrem (<25 veya >75) + RSI Pozitif/Negatif Uyumsuzluk çelişkisi
+  6. cum_delta_dual_window kafa-çev. state (turning_up/turning_down)
+  7. OBV durum başlığı (ŞÜPHELİ / KAFA ÇEVİRİYOR / SAHTE GÜÇ)
+  8. Mum CP %75+ × 5g net negatif YANILTICI durumu
+**SONRA STRÜKTÜREL DURUM (ortada):**
+  9. CMF Dual state · OMI sigma · VP Şekli · HVN/LVN proximity · Sıkışma süresi
+**SON ÇARE STATİK KONUMLAR (açılış olamaz, sadece destekleyici dipnot):**
+  10. ❌ "Fiyat yıllık zirvenin %X konumunda" — yasak açılış kalıbı (3 hissede peş peşe görüldü)
+  11. ❌ "VWAP'tan %X uzaklıkta" — açılış değil, dipnot
+  12. ❌ "SMA50 altında X gündür" — açılış değil, ikinci paragraf
+KURAL: 1-8'den biri varsa onunla aç. 9'daki strüktürel veriler ikinci paragraf veya alt cümle. 10-12 statik konum bilgileri sadece "destek/direnç noktası" olarak yazılır — açılış cümlesi olarak ASLA. "Fiyat yıllık zirvenin %X konumunda..." şablonu son 3 analizde başlangıçtı; bunu yazma. 52H konumunu vermek istersen 3. veya 4. cümlede "fiyat aynı zamanda 52H'nin %X'inde" şeklinde DESTEK BİLGİSİ olarak geçir, hikaye ekseni yapma.
 
 **GENEL YORUM:** Bugünkü en baskın bulgudan başla. En güçlü sinyali (9-10/10) ilk cümlede. Yükseliyorsa rallinin hikayesi, düşüyorsa neden. 4-5 cümle, her cümle hisseye özel. Referans ton: "BTC 97K'da dirençle karşılaştı, çekilme henüz başlamadı — kurumlar hâlâ tutunuyor gibi" ✓.
 🚨 **TIER_1_ELIT FLAG VARSA → o senaryo açılışın merkezi.** scenario.algoritmik_baslik veya master_score'a göre değil, scanner_tiers_aktif TIER_1 etiketine göre çatıyı kur ("Pre-Launch BOS tetiklendi — backtest hit %78"). Bkz. KALİBRASYON TABLOLARI sert kural.
