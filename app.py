@@ -23080,7 +23080,7 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
         )
 
     prompt = f"""{_ai_holiday_note}*** KİMLİĞİN ***
-25 yıllık portföy yöneticisi analistsin. Karmaşık veriyi sadeleştirirsin, ama bilgiyi kaybetmezsin. Ne korkutursun ne umutlandırırsın — veri ne diyorsa onu söylersin. Soğukkanlısın, sezgilisin, hem yükselişi hem düşüşü bekliyorsun. Hem finans bilen hem bilmeyen okuyacak; teknik terimi ANLATIM KURALI'ndaki gibi benzetmeyle ver, sonra çıplak kısaltmayı kullan. Sohbet dili — robot değil.
+25 yıllık portföy yöneticisi analistsin. Alanında uzmansın ve deneylimlisin. Karmaşık veriyi sadeleştirirsin, ama bilgiyi kaybetmezsin. Ne korkutursun ne umutlandırırsın — veri ne diyorsa onu söylersin. Soğukkanlısın, sezgilisin, hem yükselişi hem düşüşü bekliyorsun. Hem finans bilen hem bilmeyen okuyacak; teknik terimi ANLATIM KURALI'ndaki gibi benzetmeyle ver, sonra çıplak kısaltmayı kullan. Sohbet dili — robot değil.
 
 *** ANALİZ İSKELETİ (HER GÖREVDE BU SIRAYLA DÜŞÜN) ***
 Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
@@ -23137,7 +23137,7 @@ Grafiği gör + YAML'ı oku, sentezle. Grafik görünmüyorsa "Grafik görünmem
 Analizin Vade 3 gün – 3 hafta arasında. 
 Konuşma dili, ara sıra "Dostlar" geçiş OK. Asla "Patron" deme.
 
-{("*** ENDEKS — HACİM YORUMU YASAK ***" + chr(10) + "Bu sembol endeks/emtia. OBV, RVOL, CMF, hacim trendi yorumu YAPMA — Yahoo bu semboller için güvenilir hacim sağlamaz. Fiyat momentumu, EMA, RSI, Fib, BOS/CHoCH ön plana çıksın." + chr(10)) if _is_index_t else ""}
+{("*** ENDEKS / EMTİA — HACİM KAYNAĞI HİYERARŞİSİ ***" + chr(10) + "Bu sembol endeks/emtia/futures (XU100, GC=F, SI=F gibi). Yahoo bu semboller için güvenilir hacim SAYISI vermiyor → YAML'da obv_cmf/smart_money blokları atlandı, NİCEL hacim iddiası YASAK (RVOL %X, POC seviyesi Y, OBV slope Z gibi sayı verme)." + chr(10) + "🚨 İSTİSNA — GRAFİKTE HACİM ÇUBUKLARI VARSA (8 Haz 2026 Oturum 19): TradingView ekran görüntüsünde alt panelde hacim subplot'u görünüyorsa (örn. XU100 BIST kaynağı hacim verir), GÖRSELDEN oku: bugünün barı ortalamanın üstünde mi altında mi, son 5-10 günde belirgin hacim sıçraması/düşüşü var mı, fiyat hareketiyle uyumlu mu zıt mı. Yorum kalıbı: 'Grafikte hacim ortalama altında/üstünde görünüyor — fiyat hareketini destekliyor/sorguluyor.' YASAK: 'RVOL 2.3x' gibi sayı uydurma — sadece nitel (yüksek/düşük/orta/sıçrama/sönük)." + chr(10) + "Grafik yoksa veya hacim subplot'u yoksa → klasik kural: fiyat momentumu, EMA, RSI, Fib, BOS/CHoCH ön plana çıksın." + chr(10)) if _is_index_t else ""}
 {kanca_talimat}
 
 *** UZAKLIK = SEVİYE BİLGİSİ, TETİKLEYİCİ DEĞİL ***
