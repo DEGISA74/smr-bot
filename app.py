@@ -26314,18 +26314,18 @@ def _render_right_col():
             # Hex → rgb (glow için)
             _rgb_for_glow = _bar_fill if _bar_fill.startswith("rgba") else _bar_fill
             return (
-                f"<div {_ttl} style='display:flex;align-items:center;gap:7px;padding:5px 10px;{brd}'>"
-                f"<span style='font-size:0.86rem;line-height:1;flex-shrink:0;width:16px;text-align:center;'>{icon}</span>"
-                f"<span style='font-size:0.74rem;color:rgba(255,255,255,0.85);font-weight:700;"
-                f"flex-shrink:0;width:104px;white-space:nowrap;'>{label}</span>"
+                f"<div {_ttl} style='display:flex;align-items:center;gap:8px;padding:6px 11px;{brd}'>"
+                f"<span style='font-size:0.95rem;line-height:1;flex-shrink:0;width:18px;text-align:center;'>{icon}</span>"
+                f"<span style='font-size:0.81rem;color:rgba(255,255,255,0.88);font-weight:700;"
+                f"flex-shrink:0;width:114px;white-space:nowrap;'>{label}</span>"
                 # Bar (track + fill + skor sayısı bar üstünde overlay)
-                f"<div style='flex:1;height:13px;background:rgba(0,0,0,0.28);border-radius:7px;"
+                f"<div style='flex:1;height:15px;background:rgba(0,0,0,0.28);border-radius:8px;"
                 f"position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.08);'>"
                 f"<div style='height:100%;width:{_pct:.0f}%;background:{_bar_fill};"
-                f"border-radius:7px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div>"
+                f"border-radius:8px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div>"
                 # Skor sayısı bar üstünde overlay — beyaz + shadow (her bg'de okunur)
-                f"<span style='position:absolute;right:6px;top:50%;transform:translateY(-50%);"
-                f"font-size:0.66rem;font-weight:900;color:#fff;"
+                f"<span style='position:absolute;right:7px;top:50%;transform:translateY(-50%);"
+                f"font-size:0.73rem;font-weight:900;color:#fff;"
                 f"text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);"
                 f"font-family:\"JetBrains Mono\",monospace;line-height:1;'>{score_text}</span>"
                 f"</div>"
@@ -26334,7 +26334,7 @@ def _render_right_col():
 
         _sinyal_block = (
             f"<div style='padding:5px 0 4px;border-bottom:1px solid {_CLR_DIVIDER};'>"
-            f"<div style='padding:3px 10px 5px;font-size:0.58rem;color:{_CLR_TEXT_SEC};"
+            f"<div style='padding:3px 11px 5px;font-size:0.64rem;color:{_CLR_TEXT_SEC};"
             f"text-transform:uppercase;letter-spacing:0.6px;font-weight:800;'>📊 SİNYAL ÖZETİ</div>"
             + _so_row("🎯", "Genel Sağlık",     _so_master, 100, _so_color_100(_so_master),
                      f"{int(_so_master)}/100" if _so_master is not None else "—",
@@ -26357,20 +26357,23 @@ def _render_right_col():
         _right_col_html = _sinyal_block
 
         # Alt şerit: RSI + koşullu HACİM + koşullu BETA + GÜVEN
+        # (9 Haz 2026: yükseklik yarıya küçültüldü — padding ve fontlar kompakt)
         def _chip(lbl, val, vcol):
-            return (f"<div style='flex:1;text-align:center;padding:5px 3px;"
-                    f"border-right:1px solid {_CLR_DIVIDER};'>"
-                    f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
-                    f"letter-spacing:0.5px;font-weight:700;'>{lbl}</div>"
-                    f"<div style='font-size:1.0rem;font-weight:800;color:{vcol};"
-                    f"font-family:\"JetBrains Mono\",monospace;'>{val}</div>"
+            return (f"<div style='flex:1;text-align:center;padding:2px 3px;"
+                    f"border-right:1px solid {_CLR_DIVIDER};display:flex;align-items:center;"
+                    f"justify-content:center;gap:6px;line-height:1;'>"
+                    f"<span style='font-size:0.66rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+                    f"letter-spacing:0.4px;font-weight:700;'>{lbl}</span>"
+                    f"<span style='font-size:0.82rem;font-weight:800;color:{vcol};"
+                    f"font-family:\"JetBrains Mono\",monospace;'>{val}</span>"
                     f"</div>")
         def _chip_last(lbl, val, vcol):
-            return (f"<div style='flex:1;text-align:center;padding:5px 3px;'>"
-                    f"<div style='font-size:1.0rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
-                    f"letter-spacing:0.5px;font-weight:700;'>{lbl}</div>"
-                    f"<div style='font-size:1.0rem;font-weight:800;color:{vcol};"
-                    f"font-family:\"JetBrains Mono\",monospace;'>{val}</div>"
+            return (f"<div style='flex:1;text-align:center;padding:2px 3px;"
+                    f"display:flex;align-items:center;justify-content:center;gap:6px;line-height:1;'>"
+                    f"<span style='font-size:0.66rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+                    f"letter-spacing:0.4px;font-weight:700;'>{lbl}</span>"
+                    f"<span style='font-size:0.82rem;font-weight:800;color:{vcol};"
+                    f"font-family:\"JetBrains Mono\",monospace;'>{val}</span>"
                     f"</div>")
 
         # Orta şerit — SADECE BIST hisseleri için (RS GÜCÜ + MOMENTUM medium-box)
@@ -26422,19 +26425,25 @@ def _render_right_col():
             box-shadow:0 6px 14px -3px {_shadow};
             margin-bottom:8px;border:1px solid rgba(255,255,255,0.12);
             overflow:hidden;">
-  <!-- TOP STRIP: ticker + fiyat + %değişim (tek satır kompakt) -->
+  <!-- TOP STRIP: sol — FİYAT label + XBANK büyük · sağ — fiyat büyük + %değişim altında -->
   <div style="padding:9px 12px;border-bottom:1px solid {_CLR_DIVIDER};
-              display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
-    <span style="font-size:0.66rem;color:{_CLR_TEXT_SEC};font-weight:800;
-                 text-transform:uppercase;letter-spacing:0.7px;line-height:1;">FİYAT</span>
-    <span style="font-family:'JetBrains Mono',monospace;font-size:1.0rem;
-                 font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;letter-spacing:0.02em;">{display_ticker}</span>
-    <span style="flex:1;font-family:'JetBrains Mono',monospace;font-size:1.65rem;
-                 font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;text-align:right;">{_px_fmt}</span>
-    <span style="background:rgba(0,0,0,0.28);color:{_CLR_TEXT_PRI};font-weight:800;
-                 font-size:0.78rem;padding:3px 9px;border-radius:14px;line-height:1;">
-      {_arrow} %{abs(change_val):.2f}
-    </span>
+              display:flex;align-items:center;gap:10px;">
+    <!-- SOL: FİYAT (üst, küçük) + XBANK (alt, büyük) -->
+    <div style="display:flex;flex-direction:column;align-items:flex-start;line-height:1;gap:3px;">
+      <span style="font-size:0.62rem;color:{_CLR_TEXT_SEC};font-weight:800;
+                   text-transform:uppercase;letter-spacing:0.7px;line-height:1;">FİYAT</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:1.30rem;
+                   font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;letter-spacing:0.02em;">{display_ticker}</span>
+    </div>
+    <!-- SAĞ: fiyat (üst, büyük) + %değişim (alt, rozet) -->
+    <div style="flex:1;display:flex;flex-direction:column;align-items:flex-end;line-height:1;gap:5px;">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:2.15rem;
+                   font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;">{_px_fmt}</span>
+      <span style="background:rgba(0,0,0,0.28);color:{_CLR_TEXT_PRI};font-weight:800;
+                   font-size:0.78rem;padding:3px 9px;border-radius:14px;line-height:1;">
+        {_arrow} %{abs(change_val):.2f}
+      </span>
+    </div>
   </div>
 
   <!-- MIDDLE: Sinyal Özeti matris (tam genişlik, bar'lı satırlar) -->
