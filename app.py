@@ -23417,6 +23417,45 @@ VP Şekli · cum_delta_5g işareti · OMI sigma · OBV durum başlığı · CMF 
 
 Görev-içi tekrarsızlık: aynı veriyi G1-G4'te AYNI cümleyle yazma; benzetmeyi 2 hissede peş peşe kullanma → varyantını kur ("akış eğrisi" / "para göstergesi" / "yön pusulası").
 
+═══════════════════════════════════════════════════════════════════════
+🎙️ SES VE RİTM — İNSANİ YAZIM (8 Haz 2026 Oturum 19 — robot dili fixi)
+═══════════════════════════════════════════════════════════════════════
+SORUN: Çok anti-kural eklendi ama AI hâlâ haber spikeri tonunda — "X gerçekleşirken Y ortaya koyuyor, Z belgeleyerek W yansıtıyor". Bunlar haber dili, analist konuşması değil. Gerçek bir portföy yöneticisi sayı söyler, sonra "ne anlama geliyor"u kendi diliyle yorumlar. Sezgi gösterir. Aralarda nefes alır.
+
+*** TARZ ÖRNEKLERİ — bu sesi yakala (kopya değil, ritim ve geçiş) ***
+
+ÖRNEK 1 (bullish reversal — TIER_1 + Klasik Mum + RSI Div çakışması):
+"ASELS dipten kalkmak için bugün ilk somut adımı attı. Piercing Line geldi — gövde önceki kırmızı mumun yarısının üstüne kapandı, hacim de satıcı günleriyle eşit. Yani alıcılar dünün ağırlığını taşıdı. RSI 28'den dönüyor, fiyat 52H'nin %18'inde — istatistiksel olarak ucuz bölgenin dibinde. Bir de Erken Radar A8 tetiklendi (backtest hit %100). Üç bağımsız sinyal aynı yöne işaret ediyor. Tabii CMF hâlâ -0.21'de; kurumsal taraf henüz dönüş onayı vermedi. Yani sinyal güçlü ama kalıcılık için CMF'nin sıfır üstüne geçmesi beklenir."
+
+ÖRNEK 2 (bearish setup — tepede dağıtım):
+"SISE'de tablo şüpheli. Fiyat 28 günlük rallinin son ucunda, %4'lük yeşil mum geldi ama hacim son 3 satış gününün altında — alıcı sayısı azalmış, momentum yorgun gibi. OBV 'KAFA ÇEVİRİYOR' diyor: 14g eğim hâlâ yukarı ama 5g'de sızıntı belirgin. cum_delta 5g pozitif görünse de 20g -%8'de, yani ana akıllı para çıkışta. Üstüne RSI 76, klasik aşırı alım. Burada klasik 'son alıcıyı yakalama' kalıbı kuruluyor. 41.20 destek seviyesi günlük kapanışta kırılırsa ralli hikayesi biter."
+
+ÖRNEK 3 (konsolide — yön yok):
+"EREGL bugün özel bir sinyal vermedi. Fiyat 20g bandının ortasında, %47'de — ne ucuz ne pahalı. CMF nötr, OBV ortalamasıyla beraber yatay. cum_delta dengesinde. Yani günlük taraf netliği yok. Tek dikkat çeken şey 4 gündür süren NR4 sıkışması; bant daraldıkça enerji birikir. Hangi yöne çıkacağı tetikleyiciden gelir — şu an haritada öyle bir tetikleyici yok. Bekle-izle modunda kalmak rasyonel görünüyor. 40.10 üstüne kapanış olursa kanal kırılır; 38.20 altına inerse iskontoya kayar."
+
+*** RİTM KURALI ***
+• Ardışık 3 cümle AYNI uzunlukta olamaz (kısa-orta-uzun karışım zorunlu).
+• Bir analiz içinde en az 1 KISA CÜMLE (5-9 kelime) bulunur — "Burada tablo değişiyor.", "Şu anlamlı:", "Tuhafı şu —", "Bekleyelim.", "Sinyal açık.", "Yön belli değil." gibi.
+• Anchor (sayı cümlesi) → SONRA mutlaka bir İNSANİ YORUM/SEZGİ cümlesi gelir. "RSI 22" + "Yani satıcılar tükendi, ama tükenmiş olmak alıcı çağırmıyor."
+
+*** İZİNLİ KONUŞMA GEÇİŞLERİ (analiz seyrekleştirir, mekanikten kurtarır) ***
+"Şuna bak —" · "Tuhafı şu:" · "İşte burası ilginç —" · "İlk bakışta öyle görünüyor ama..." · "Açıkçası..." · "Bir şey atlamayalım:" · "Burada tablo değişiyor." · "Ben olsam beklerdim." · "Şu detay önemli:" · "Mantıken..." · "Yani..." · "Burada işler ilginçleşiyor —"
+KURAL: Bu geçişlerden EN AZ 1 tanesi G1 + G4 açılış paragrafında geçer. Tüm analiz aynı düz cümle kalıbı = haber dili = ihlal.
+
+*** HABER DİLİ FİİLLERİ — GENİŞLETİLMİŞ YASAK LİSTE ***
+"gerçekleşirken / gerçekleşiyor / belgeleyerek / belgeliyor / ortaya koyuyor / gözler önüne seriyor / yansıtmaktadır / yansıtıyor (3+ kez geçtiyse) / işliyor / işaret etmektedir / teyit etmektedir / kalmaktadır / sergilemekte / sergileyerek / yönlendirilmekte / oluşturmaktadır / üretmekte / üstlenmekte / bulunmakta / temsil etmekte / pekiştirmekte" → bir analiz içinde TOPLAM 2 KEZ kullanılabilir, fazlası ihlal.
+ÖZELLİKLE YASAK ŞABLON: "X seviyesinde Y oluşurken / gerçekleşirken Z'yi yansıtıyor" — bu cümle yapısı haber dilinin kalıbı. Yerine: "X oldu. Y bunun sonucu — Z'nin işareti."
+ÖRNEK FİX:
+  ❌ "Göreceli hacim 0.68x seviyesinde gerçekleşerek kurumsal katılımın sınırlı kaldığını yansıtıyor."
+  ✅ "Hacim 0.68x — ortalama altında. Yani kurumsal taraf izleme modunda, bugünkü hareketin arkasında değil."
+
+*** ANCHOR-SONRA-İNSANİ-YORUM KURALI (CRITICAL) ***
+Her sayı cümlesinden SONRA en az 1 cümle "ne anlama geliyor" yorumu olmak ZORUNDA. 2-3 sayı cümlesi peş peşe = ezbere data dump = ihlal.
+  ❌ "RSI 22'de. SMA50 22.75. Net Baskınlık -%70.7. cum_delta -%28.8."
+  ✅ "RSI 22 — istatistiksel dipte. Burada normalde alıcı çıkar ama Net Baskınlık -%70.7 diyor ki tablo başka: satıcılar hâlâ organize. Ucuz olmak yetmiyor."
+
+═══════════════════════════════════════════════════════════════════════
+
 Persona (sadece TON belirler, kanıt seçmeni etkilemez):
 {persona_kimlik}
 
@@ -23814,6 +23853,10 @@ Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." + "#BIST100"
 4) **VERİ SADAKAT:** Her sayı/seviye/yüzde için YAML'a geri dön ve doğrula (HARSI, SMA, Delta, mum formasyonu, 52H, master_score, CMF). YAML'da yoksa cümleyi DÜZELT. Tahmin/yuvarlama yasak.
 5) **6 ANCHOR + UZAKLIK BAĞLAM:** VP Şekli + cum_delta_5g + OMI + OBV durum + CMF Dual + 52H — her biri en az 1 kez geçti mi? VWAP/POC/Z-Score/RSI cümlesi sadece seviye mi yoksa dönüş argümanı mı? Argümansa bağımsız kanıt eklenmiş mi? Yoksa sil.
 6) **ERKEN RADAR ≥65:** G1 + G4'te senaryo adı geçti mi? Hayırsa enjekte et.
+7) **SES & RİTM (8 Haz 2026 Oturum 19):** G1 + G4 açılış paragrafında EN AZ 1 konuşma geçişi var mı ("Şuna bak —" / "Tuhafı şu:" / "Açıkçası..." / "İşte burası ilginç —" vs.)? Yoksa enjekte et. Ardışık 3 cümle aynı uzunluk bandında mı? Varsa birini KISA cümleye (5-9 kelime) çevir. Sayı cümlelerinin ARDINDAN insani yorum cümlesi var mı? Yoksa ekle.
+8) **HABER DİLİ FİİL SAYACI:** "gerçekleşirken / ortaya koyuyor / belgeleyerek / yansıtmaktadır / işliyor / sergilemekte / pekiştirmekte / oluşturmaktadır" + benzerleri TOPLAM 2'yi aşıyorsa fazlasını kısa-aktif fiille değiştir ("X oldu", "Y kırıldı", "Z açık").
+9) **HABER ŞABLON CÜMLESİ:** "X seviyesinde Y gerçekleşerek Z'yi yansıtıyor" KALIBI yasak. Bu yapıyı gördüğün her cümleyi "X oldu. Y bunun sonucu — Z'nin işareti." şeklinde böl.
+10) **AÇILIŞ ANCHOR:** İlk cümle "Fiyat yıllık zirvenin %X konumunda" ile başlıyorsa SİL — bugün-spesifik tetikleyiciden (klasik mum / TIER_1 / RSI ekstrem / cum_delta kafa-çev. / OBV durum) baştan yaz.
 
 ═══════════════════════════════════════════════════════════════════════
 GÖREVLER ÇIKIŞ SIRASI: SIFIRINCI (HOOK) → 4 → 2 → 3 → 1.
