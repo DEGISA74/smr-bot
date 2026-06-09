@@ -19502,21 +19502,26 @@ def _render_genel_ozet_panel():
                 # 3) RANGE KONUMU — 20g aralık × değişim matris (9 senaryo)
                 _rng_lbl = "—"; _rng_clr = _gs_neu; _rng_expl = "20g aralık verisi yok"
                 _rng_pos_pct = None
+                _rng_20g_pct = None
                 try:
                     if _gs_df is not None and len(_gs_df) >= 20 and _curr_close_val:
                         _h20 = float(_gs_df['High'].iloc[-20:].max())
                         _l20 = float(_gs_df['Low'].iloc[-20:].min())
-                        _close_5g = float(_gs_df['Close'].iloc[-6])
+                        _close_5g  = float(_gs_df['Close'].iloc[-6])
+                        # 20G önce kapanış — pencerenin ilk barı (iloc[-20])
+                        _close_20g = float(_gs_df['Close'].iloc[-20])
                         if _h20 > _l20:
                             _rng_pos_pct  = (_curr_close_val - _l20) / (_h20 - _l20) * 100
                             _rng_prev_pct = (_close_5g - _l20) / (_h20 - _l20) * 100
+                            _rng_20g_pct  = (_close_20g - _l20) / (_h20 - _l20) * 100
                             _drng         = _rng_pos_pct - _rng_prev_pct
 
-                            # Sade açıklama: anlamayan da okuyup anlamalı (9 Haz 2026)
-                            # "0 = son 20 günün en dibi · 100 = en tepesi" — temel referans
+                            # Sade açıklama: 20G önce → 5G önce → bugün yolculuk
                             _rng_base = (f"Son 20 günün dip-tepe aralığında konum "
                                          f"(0 = en dip, 100 = en tepe). "
-                                         f"○ 5g önce %{_rng_prev_pct:.0f} → ● bugün %{_rng_pos_pct:.0f}")
+                                         f"⊙ 20g önce %{_rng_20g_pct:.0f} → "
+                                         f"○ 5g önce %{_rng_prev_pct:.0f} → "
+                                         f"● bugün %{_rng_pos_pct:.0f}")
                             if _rng_pos_pct < 20 and _rng_prev_pct < 20:
                                 _rng_lbl  = f"%{_rng_pos_pct:.0f} · Dipte tutunma"; _rng_clr = _gs_dn_clr
                                 _rng_expl = f"{_rng_base} — dipte sıkışmış, satıcı baskın"
@@ -19593,13 +19598,14 @@ def _render_genel_ozet_panel():
                     except Exception:
                         pass
 
-                    # SATIR 2: tam genişlik bar — solda "0 dip", sağda "tepe 100", ortada bar
-                    # ○ hollow = 5g önce (üstte, yanında "5G" etiketi)
-                    # ● solid  = bugün (alt çizgide)
-                    _prev_mark_clr = "#cbd5e1"
-                    # 5G etiketi: hollow ring'in solunda mı sağında mı? Eğer prev>85 ise sola yaz.
-                    _5g_label_side = "right" if _rng_prev_pct < 85 else "left"
-                    if _5g_label_side == "right":
+                    # SATIR 2: tam genişlik bar — 3 işaret (20G ⊙ alt · 5G ○ üst · bugün ● bar)
+                    # 20G önce → 5G önce → bugün: fiyat yolculuğu görsel
+                    _prev_mark_clr = "#cbd5e1"   # 5G — bright slate (yakın geçmiş)
+                    _20g_mark_clr  = "#64748b"   # 20G — dim slate (uzak geçmiş)
+
+                    # 5G etiketi (üstte)
+                    _5g_side = "right" if _rng_prev_pct < 85 else "left"
+                    if _5g_side == "right":
                         _5g_label_html = (f"<span style='position:absolute;left:calc({_rng_prev_pct:.0f}% + 7px);top:-15px;"
                                           f"font-size:0.58rem;font-weight:800;color:{_prev_mark_clr};"
                                           f"letter-spacing:0.04em;white-space:nowrap;line-height:1;'>5G</span>")
@@ -19609,8 +19615,20 @@ def _render_genel_ozet_panel():
                                           f"letter-spacing:0.04em;white-space:nowrap;line-height:1;"
                                           f"transform:translateX(-100%);'>5G</span>")
 
+                    # 20G etiketi (altta)
+                    _20g_side = "right" if (_rng_20g_pct or 0) < 85 else "left"
+                    if _20g_side == "right":
+                        _20g_label_html = (f"<span style='position:absolute;left:calc({_rng_20g_pct:.0f}% + 7px);top:9px;"
+                                           f"font-size:0.58rem;font-weight:800;color:{_20g_mark_clr};"
+                                           f"letter-spacing:0.04em;white-space:nowrap;line-height:1;'>20G</span>")
+                    else:
+                        _20g_label_html = (f"<span style='position:absolute;left:calc({_rng_20g_pct:.0f}% - 7px);top:9px;"
+                                           f"font-size:0.58rem;font-weight:800;color:{_20g_mark_clr};"
+                                           f"letter-spacing:0.04em;white-space:nowrap;line-height:1;"
+                                           f"transform:translateX(-100%);'>20G</span>")
+
                     _bottom_bar_html = (
-                        f"<div style='display:flex;align-items:center;gap:6px;margin-top:14px;'>"
+                        f"<div style='display:flex;align-items:center;gap:6px;margin-top:14px;margin-bottom:10px;'>"
                         f"<span style='font-size:0.58rem;color:#64748b;font-weight:700;flex-shrink:0;'>0</span>"
                         f"<span style='flex:1;display:block;height:5px;background:#1e293b;"
                         f"border-radius:3px;position:relative;'>"
@@ -19619,8 +19637,13 @@ def _render_genel_ozet_panel():
                         f"width:10px;height:10px;border-radius:50%;background:#0f172a;"
                         f"border:1.5px solid {_prev_mark_clr};"
                         f"transform:translateX(-50%);' title='5 gün önce: %{_rng_prev_pct:.0f}'></span>"
-                        # 5G text label (ring'in yanında)
                         f"{_5g_label_html}"
+                        # 20G hollow ring altta (daha küçük + soluk)
+                        f"<span style='position:absolute;left:{_rng_20g_pct:.0f}%;top:4px;"
+                        f"width:8px;height:8px;border-radius:50%;background:#0f172a;"
+                        f"border:1.5px solid {_20g_mark_clr};"
+                        f"transform:translateX(-50%);' title='20 gün önce: %{_rng_20g_pct:.0f}'></span>"
+                        f"{_20g_label_html}"
                         # Bugün solid dot, bar üzerinde
                         f"<span style='position:absolute;left:{_rng_pos_pct:.0f}%;top:-3px;"
                         f"width:11px;height:11px;border-radius:50%;background:{_rng_clr};"
