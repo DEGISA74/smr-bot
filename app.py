@@ -19550,29 +19550,13 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
 
-                # Mini bar + iki işaret + delta — sade tasarım (9 Haz 2026, fix v2)
-                # Tasarım: 5g önce işareti BARIN ÜSTÜNDE (hollow ring, beyaz çerçeve),
-                # bugün BARIN ÜSTÜNDE solid renkli dot. Aralarındaki dikey ayrım sayesinde
-                # iki konum yakın (örn. %51 vs %55) olsa bile birbirini örtmez.
+                # 20G Konum — 2 satırlık özel blok (9 Haz 2026 Oturum 20 fix v3)
+                # Satır 1: "20G Konum" başlığı + delta + durum etiketi (+VP chip'leri)
+                # Satır 2: TAM GENİŞLİK bar (○ 5G işareti yanında etiket + ● bugün)
+                _rng_pulse = any(k in _rng_lbl for k in ("V-dönüş", "Üstten düşüş", "Tepede tıkalı"))
+
                 if _rng_pos_pct is not None:
-                    _prev_mark_clr = "#cbd5e1"  # bright slate — okunabilirlik
-                    _bar_html = (
-                        f"<span style='display:inline-block;width:72px;height:5px;background:#1e293b;"
-                        f"border-radius:3px;position:relative;margin-right:6px;vertical-align:middle;"
-                        f"margin-top:7px;'>"  # üst payı → hollow ring sığsın
-                        # 5g önce — hollow ring, barın ÜSTÜNDE (top:-11px)
-                        f"<span style='position:absolute;left:{_rng_prev_pct:.0f}%;top:-11px;"
-                        f"width:8px;height:8px;border-radius:50%;background:#0f172a;"
-                        f"border:1.5px solid {_prev_mark_clr};"
-                        f"transform:translateX(-50%);' title='5 gün önce: %{_rng_prev_pct:.0f}'></span>"
-                        # Bugün — solid + glow, bar üstünde
-                        f"<span style='position:absolute;left:{_rng_pos_pct:.0f}%;top:-2.5px;"
-                        f"width:10px;height:10px;border-radius:50%;background:{_rng_clr};"
-                        f"transform:translateX(-50%);box-shadow:0 0 4px {_rng_clr};"
-                        f"' title='Bugün: %{_rng_pos_pct:.0f}'></span>"
-                        f"</span>"
-                    )
-                    # Delta: 5g'deki konum değişimi (pozitif yeşil, negatif kırmızı)
+                    # Delta
                     try:
                         _delta_rng_val = _rng_pos_pct - _rng_prev_pct
                         _delta_clr = _gs_up_clr if _delta_rng_val > 0 else (_gs_dn_clr if _delta_rng_val < 0 else _gs_neu)
@@ -19581,51 +19565,107 @@ def _render_genel_ozet_panel():
                                        f"font-weight:700;margin-right:5px;'>%{_delta_sign}{_delta_rng_val:.0f}</span>")
                     except Exception:
                         _delta_html = ""
-                    _rng_value = (f"{_bar_html}{_delta_html}"
-                                  f"<span style='color:{_rng_clr};font-size:0.75rem;'>{_rng_lbl.split(' · ', 1)[-1] if ' · ' in _rng_lbl else _rng_lbl}</span>")
-                else:
-                    _rng_value = f"<span style='color:{_rng_clr};'>{_rng_lbl}</span>"
+                    _rng_status_lbl = _rng_lbl.split(' · ', 1)[-1] if ' · ' in _rng_lbl else _rng_lbl
+                    _top_chip_inner = (f"{_delta_html}"
+                                       f"<span style='color:{_rng_clr};font-size:0.75rem;'>{_rng_status_lbl}</span>")
 
-                # V-dönüş, Üstten düşüş, Tepede tıkalı → pulse (kritik range sinyalleri)
-                _rng_pulse = any(k in _rng_lbl for k in ("V-dönüş", "Üstten düşüş", "Tepede tıkalı"))
-                # Volume Profile zone chip yedirmesi (Premium/Discount/Value Area + POC)
-                try:
-                    _vpz = _vp_zone_calc(lookback=20)
-                    if _vpz:
-                        _vpz_clr = (_gs_dn_clr if _vpz['zone'] == "Pahalı Bölge"
-                                    else (_gs_up_clr if _vpz['zone'] == "Ucuz Bölge" else _gs_neu))
-                        _vpz_rgb = _hex_to_rgb(_vpz_clr)
-                        _vpz_chip = (f"<span style='margin-left:6px;font-size:0.66rem;"
-                                     f"font-weight:700;padding:1px 6px;border-radius:6px;"
-                                     f"background:rgba({_vpz_rgb},0.15);color:{_vpz_clr};"
-                                     f"border:1px solid rgba({_vpz_rgb},0.35);'>"
-                                     f"{_vpz['zone']}</span>")
-                        _rng_value = _rng_value + _vpz_chip
-                        # Şekil chip'i (Akümülasyon / Dağıtım / Denge)
-                        _shape = _vpz.get('shape')
-                        if _shape:
-                            if _shape == "Akümülasyon":
-                                _shp_clr = _gs_up_clr
-                            elif _shape == "Dağıtım":
-                                _shp_clr = _gs_dn_clr
-                            else:
-                                _shp_clr = _gs_neu
-                            _shp_rgb = _hex_to_rgb(_shp_clr)
-                            _rng_value = _rng_value + (
-                                f"<span style='margin-left:4px;font-size:0.66rem;"
-                                f"font-weight:700;padding:1px 6px;border-radius:6px;"
-                                f"background:rgba({_shp_rgb},0.15);color:{_shp_clr};"
-                                f"border:1px solid rgba({_shp_rgb},0.35);'>{_shape}</span>"
-                            )
-                except Exception:
-                    pass
-                _gs_items_html += _gs_row(
-                    "20G Konum",
-                    _rng_value,
-                    explain=_rng_expl,
-                    lc=_rng_clr,
-                    pulse=_rng_pulse
-                )
+                    # VP zone + shape chip'leri (varsa) — üst chip'in sağına
+                    try:
+                        _vpz = _vp_zone_calc(lookback=20)
+                        if _vpz:
+                            _vpz_clr = (_gs_dn_clr if _vpz['zone'] == "Pahalı Bölge"
+                                        else (_gs_up_clr if _vpz['zone'] == "Ucuz Bölge" else _gs_neu))
+                            _vpz_rgb = _hex_to_rgb(_vpz_clr)
+                            _top_chip_inner += (f"<span style='margin-left:6px;font-size:0.66rem;"
+                                                f"font-weight:700;padding:1px 6px;border-radius:6px;"
+                                                f"background:rgba({_vpz_rgb},0.15);color:{_vpz_clr};"
+                                                f"border:1px solid rgba({_vpz_rgb},0.35);'>"
+                                                f"{_vpz['zone']}</span>")
+                            _shape = _vpz.get('shape')
+                            if _shape:
+                                _shp_clr = (_gs_up_clr if _shape == "Akümülasyon"
+                                            else (_gs_dn_clr if _shape == "Dağıtım" else _gs_neu))
+                                _shp_rgb = _hex_to_rgb(_shp_clr)
+                                _top_chip_inner += (f"<span style='margin-left:4px;font-size:0.66rem;"
+                                                    f"font-weight:700;padding:1px 6px;border-radius:6px;"
+                                                    f"background:rgba({_shp_rgb},0.15);color:{_shp_clr};"
+                                                    f"border:1px solid rgba({_shp_rgb},0.35);'>{_shape}</span>")
+                    except Exception:
+                        pass
+
+                    # SATIR 2: tam genişlik bar — solda "0 dip", sağda "tepe 100", ortada bar
+                    # ○ hollow = 5g önce (üstte, yanında "5G" etiketi)
+                    # ● solid  = bugün (alt çizgide)
+                    _prev_mark_clr = "#cbd5e1"
+                    # 5G etiketi: hollow ring'in solunda mı sağında mı? Eğer prev>85 ise sola yaz.
+                    _5g_label_side = "right" if _rng_prev_pct < 85 else "left"
+                    if _5g_label_side == "right":
+                        _5g_label_html = (f"<span style='position:absolute;left:calc({_rng_prev_pct:.0f}% + 7px);top:-15px;"
+                                          f"font-size:0.58rem;font-weight:800;color:{_prev_mark_clr};"
+                                          f"letter-spacing:0.04em;white-space:nowrap;line-height:1;'>5G</span>")
+                    else:
+                        _5g_label_html = (f"<span style='position:absolute;left:calc({_rng_prev_pct:.0f}% - 7px);top:-15px;"
+                                          f"font-size:0.58rem;font-weight:800;color:{_prev_mark_clr};"
+                                          f"letter-spacing:0.04em;white-space:nowrap;line-height:1;"
+                                          f"transform:translateX(-100%);'>5G</span>")
+
+                    _bottom_bar_html = (
+                        f"<div style='display:flex;align-items:center;gap:6px;margin-top:14px;'>"
+                        f"<span style='font-size:0.58rem;color:#64748b;font-weight:700;flex-shrink:0;'>0</span>"
+                        f"<span style='flex:1;display:block;height:5px;background:#1e293b;"
+                        f"border-radius:3px;position:relative;'>"
+                        # 5G hollow ring üstte
+                        f"<span style='position:absolute;left:{_rng_prev_pct:.0f}%;top:-9px;"
+                        f"width:10px;height:10px;border-radius:50%;background:#0f172a;"
+                        f"border:1.5px solid {_prev_mark_clr};"
+                        f"transform:translateX(-50%);' title='5 gün önce: %{_rng_prev_pct:.0f}'></span>"
+                        # 5G text label (ring'in yanında)
+                        f"{_5g_label_html}"
+                        # Bugün solid dot, bar üzerinde
+                        f"<span style='position:absolute;left:{_rng_pos_pct:.0f}%;top:-3px;"
+                        f"width:11px;height:11px;border-radius:50%;background:{_rng_clr};"
+                        f"transform:translateX(-50%);box-shadow:0 0 5px {_rng_clr};"
+                        f"' title='Bugün: %{_rng_pos_pct:.0f}'></span>"
+                        f"</span>"
+                        f"<span style='font-size:0.58rem;color:#64748b;font-weight:700;flex-shrink:0;'>100</span>"
+                        f"</div>"
+                    )
+
+                    # 2-satırlık özel blok (severity left-border, pulse opsiyonel)
+                    _rng_sev_rgb = _hex_to_rgb(_rng_clr)
+                    _rng_chip_bg = f"rgba({_rng_sev_rgb},0.10)"
+                    _rng_chip_bd = f"1px solid rgba({_rng_sev_rgb},0.25)"
+                    _rng_pulse_style = ("animation:gs-pulse-warn 2s ease-in-out infinite;"
+                                        if _rng_pulse else "")
+                    _rng_block = (
+                        f"<div style='padding:6px 8px 8px 9px;margin:3px 0;"
+                        f"border-left:3px solid {_rng_clr};border-radius:0 5px 5px 0;"
+                        f"background:rgba(56,189,248,0.025);{_rng_pulse_style}'>"
+                        # Üst satır: başlık + chip
+                        f"<div style='display:flex;align-items:center;gap:6px;'>"
+                        f"<span style='font-size:0.8rem;color:{_rng_clr};font-weight:700;flex:1;'>"
+                        f"20G Konum</span>"
+                        f"<span style='font-family:\"JetBrains Mono\",ui-monospace,Consolas,monospace;"
+                        f"font-size:0.78rem;font-weight:700;white-space:nowrap;text-align:right;"
+                        f"padding:3px 8px;border-radius:5px;background:{_rng_chip_bg};"
+                        f"border:{_rng_chip_bd};'>{_top_chip_inner}</span>"
+                        f"</div>"
+                        # Alt satır: tam genişlik bar
+                        f"{_bottom_bar_html}"
+                        # Explain
+                        f"{_gs_explain(_rng_expl) if _rng_expl else ''}"
+                        f"</div>"
+                    )
+                    _gs_items_html += _rng_block
+                else:
+                    # Veri yok fallback — standart _gs_row
+                    _gs_items_html += _gs_row(
+                        "20G Konum",
+                        f"<span style='color:{_rng_clr};'>{_rng_lbl}</span>",
+                        explain=_rng_expl,
+                        lc=_rng_clr,
+                        pulse=_rng_pulse
+                    )
 
                 # ── GRUP 1: YÖN (önce macro/orta vade, sonra kısa vade) ──────────
                 _gs_items_html += _gs_section("Yön", badge_html=_dots_yon)
