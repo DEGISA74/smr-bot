@@ -11721,6 +11721,56 @@ def _main_price_chart_plotly(symbol, dark_mode):
         except Exception:
             pass
 
+        # ── SAĞ KENAR ETİKETLERİ — çakışma önleme (9 Haz 2026 Oturum 20) ──
+        # POC_MTF (3) + nPOC (3) + VWAP + aVWAP↑ + aVWAP↓ → 9 etikete kadar.
+        # Y değerleri yakınsa üst üste binip okunmaz oluyor (SMC grafiği).
+        # Çözüm: y'ye göre sırala, min_gap'ten az yaklaşanları kaydır + arrow ekle
+        # (arrow gerçek price seviyesini gösterir, label staggered y'de oturur).
+        try:
+            _x_last_ann = dates[-1] if len(dates) else None
+            if _x_last_ann is not None:
+                _y_hi_chart = float(df['High'].max())
+                _y_lo_chart = float(df['Low'].min())
+                _y_range = _y_hi_chart - _y_lo_chart
+                if _y_range > 0:
+                    _min_gap = _y_range * 0.038  # %3.8 görünür y aralığı
+                    # Sağ kenar etiketlerini ayır
+                    _edge_ann = []
+                    for _ann in annotations:
+                        try:
+                            if (_ann.get('x') == _x_last_ann
+                                and _ann.get('xanchor') == 'left'
+                                and not _ann.get('showarrow')):
+                                _edge_ann.append(_ann)
+                        except Exception:
+                            continue
+                    # Yukarıdan aşağıya sırala, kaydır
+                    _edge_ann.sort(key=lambda a: -float(a.get('y', 0)))
+                    _prev_y = None
+                    for _ann in _edge_ann:
+                        _ty = float(_ann.get('y', 0))
+                        if _prev_y is None:
+                            _placed_y = _ty
+                        else:
+                            _placed_y = min(_ty, _prev_y - _min_gap)
+                        if abs(_placed_y - _ty) > _min_gap * 0.1:
+                            # Çakışma — label kaydırıldı, ince arrow ekle
+                            _ann['showarrow']  = True
+                            _ann['arrowhead']  = 2
+                            _ann['arrowsize']  = 0.7
+                            _ann['arrowwidth'] = 0.9
+                            _ann['arrowcolor'] = _ann.get('font', {}).get('color', '#94a3b8')
+                            _ann['standoff']   = 1
+                            # Arrow tip = orijinal y (gerçek seviye), tail+label = staggered y
+                            _ann['ax']    = _x_last_ann
+                            _ann['ay']    = _placed_y
+                            _ann['axref'] = 'x'
+                            _ann['ayref'] = 'y'
+                            # x stays = arrow head (orijinal y)
+                        _prev_y = _placed_y
+        except Exception:
+            pass
+
         fig.update_layout(
             shapes=shapes,
             annotations=annotations,
