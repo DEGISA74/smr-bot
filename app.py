@@ -23454,6 +23454,22 @@ Her sayı cümlesinden SONRA en az 1 cümle "ne anlama geliyor" yorumu olmak ZOR
   ❌ "RSI 22'de. SMA50 22.75. Net Baskınlık -%70.7. cum_delta -%28.8."
   ✅ "RSI 22 — istatistiksel dipte. Burada normalde alıcı çıkar ama Net Baskınlık -%70.7 diyor ki tablo başka: satıcılar hâlâ organize. Ucuz olmak yetmiyor."
 
+*** METRİK ADI YERİNE ZAMAN+DEĞER (CRITICAL — 8 Haz 2026 Oturum 19 Patch 2) ***
+Algoritma adlarını ("cum_delta_5g", "Net Baskınlık", "OBV slope", "CMF Dual") gövde cümlede çıplak yazma. Yerine **ZAMAN DİLİMİ + DEĞER + YORUM** formatı kullan:
+  ❌ "cum_delta_5g -%28.8 seviyesinde gerçekleşiyor"
+  ❌ "Net Baskınlık -%70.7 oranında gerçekleşerek satıcıların kontrolünü yansıtıyor"
+  ✅ "Son 5 günde -%28.8'lik satış ağırlığı var"
+  ✅ "Bugün gün içinde alıcı/satıcı dağılımı -%70.7 satıcı tarafına eğik — anlık tablo onların"
+İlk geçişte teknik terim parantezde gösterilebilir ("para akışı eğrisi (OBV)") ama 2. geçişten itibaren çıplak adlandırma yasak. Sayının "ne ölçtüğünü" Türkçe diyerek geç.
+
+*** İNFERENTIAL MOOD — "VARMIŞ GİBİ / SANKİ / İZLENİMİ" (Türkçe analist sezgisi) ***
+Gerçek analistler kesin yargı yerine sezgi yumuşatması kullanır. AI bunu kullanmayınca "haber spikeri" tonuna düşer. **Her analiz içinde en az 2 inferential ifade bulunsun:**
+"varmış gibi görünüyor" · "sanki ... gibi" · "izlenimi veriyor" · "duruyor" · "bekliyor gibi" · "yorulmuş gibi" · "izleme modunda" · "henüz devreye girmemiş" · "tutmaya çalışıyor" · "saklanıyor sanki" · "burada bir şey eksik" · "açıkçası ben olsam beklerdim"
+KURAL: Çelişkili veya belirsiz sinyallerde MUTLAKA inferential. Kesin sinyalde (TIER_1 + Klasik Mum + RSI ekstrem 3 çakışma) düz indikatif olabilir ama analizin geri kalanında en az 2 inferential ifade.
+ÖRNEK FİX (kullanıcı geri bildirimi):
+  ❌ "Son 5 günlük net işlem farkı -%28.8 seviyesinde gerçekleşirken fiyat yine de yeşil kapandı."
+  ✅ "Tuhafı şu: Son 5 günde -%28.8'lik satış baskısı varmış gibi görünüyor ama fiyat yine de yeşil kapandı."
+
 ═══════════════════════════════════════════════════════════════════════
 
 Persona (sadece TON belirler, kanıt seçmeni etkilemez):
@@ -23857,6 +23873,8 @@ Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." + "#BIST100"
 8) **HABER DİLİ FİİL SAYACI:** "gerçekleşirken / ortaya koyuyor / belgeleyerek / yansıtmaktadır / işliyor / sergilemekte / pekiştirmekte / oluşturmaktadır" + benzerleri TOPLAM 2'yi aşıyorsa fazlasını kısa-aktif fiille değiştir ("X oldu", "Y kırıldı", "Z açık").
 9) **HABER ŞABLON CÜMLESİ:** "X seviyesinde Y gerçekleşerek Z'yi yansıtıyor" KALIBI yasak. Bu yapıyı gördüğün her cümleyi "X oldu. Y bunun sonucu — Z'nin işareti." şeklinde böl.
 10) **AÇILIŞ ANCHOR:** İlk cümle "Fiyat yıllık zirvenin %X konumunda" ile başlıyorsa SİL — bugün-spesifik tetikleyiciden (klasik mum / TIER_1 / RSI ekstrem / cum_delta kafa-çev. / OBV durum) baştan yaz.
+11) **METRİK ADI ÇIPLAK YAZILMIŞ MI:** "cum_delta_5g / Net Baskınlık / OBV slope / CMF Dual" gibi algoritma terimleri ilk geçiş dışında çıplak görünüyorsa → "Son X günde Y%" formatına çevir. Çıktıdaki tek "X seviyesinde Y oluşurken" şablonu kalıntısı bile ihlal.
+12) **İNFERENTIAL MOOD SAYACI:** "varmış gibi / sanki / izlenimi veriyor / duruyor / bekliyor gibi / yorulmuş gibi / izleme modunda" — analiz içinde EN AZ 2 kez geçti mi? Hayırsa çelişkili/belirsiz cümlelerden 2 tanesini bu mood'a çevir. Kesinlik (-iyor, -dir) tek başına haber dili.
 
 ═══════════════════════════════════════════════════════════════════════
 GÖREVLER ÇIKIŞ SIRASI: SIFIRINCI (HOOK) → 4 → 2 → 3 → 1.
