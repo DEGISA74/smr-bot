@@ -23438,9 +23438,28 @@ SORUN: Çok anti-kural eklendi ama AI hâlâ haber spikeri tonunda — "X gerçe
 • Bir analiz içinde en az 1 KISA CÜMLE (5-9 kelime) bulunur — "Burada tablo değişiyor.", "Şu anlamlı:", "Tuhafı şu —", "Bekleyelim.", "Sinyal açık.", "Yön belli değil." gibi.
 • Anchor (sayı cümlesi) → SONRA mutlaka bir İNSANİ YORUM/SEZGİ cümlesi gelir. "RSI 22" + "Yani satıcılar tükendi, ama tükenmiş olmak alıcı çağırmıyor."
 
-*** İZİNLİ KONUŞMA GEÇİŞLERİ (analiz seyrekleştirir, mekanikten kurtarır) ***
-"Şuna bak —" · "Tuhafı şu:" · "İşte burası ilginç —" · "İlk bakışta öyle görünüyor ama..." · "Açıkçası..." · "Bir şey atlamayalım:" · "Burada tablo değişiyor." · "Ben olsam beklerdim." · "Şu detay önemli:" · "Mantıken..." · "Yani..." · "Burada işler ilginçleşiyor —"
-KURAL: Bu geçişlerden EN AZ 1 tanesi G1 + G4 açılış paragrafında geçer. Tüm analiz aynı düz cümle kalıbı = haber dili = ihlal.
+*** İZİNLİ KONUŞMA GEÇİŞLERİ — KONUMA GÖRE (8 Haz 2026 Oturum 19 Patch 3) ***
+🚨 KRİTİK FARK: Geçişlerin Türkçede DOĞAL KONUMU var. Yanlış yerde kullanılırsa robot tonu döner. Aşağıdaki 3 kategoriye ayrılır — kategori karıştırılmaz:
+
+**AÇILIŞ GEÇİŞLERİ (paragrafın ilk cümlesi — analizin başında):**
+"Bakın —" · "İşte burada şu var:" · "Şu an X'te dikkat çeken durum:" · "X bugün önemli bir adım attı —" · "X tahtasında ilk somut hareket geldi —" · "Burada önce şuna bakmak lazım:" · "X'te tablo şöyle:" · DİREKT BAŞLAMAK da en doğal seçenek (geçiş zorunlu değil — sayıyla aç da yeter: "RSI 22 — istatistiksel dip. Burada normalde alıcı çıkar ama...")
+🚨 AÇILIŞTA YASAK GEÇİŞLER (summative — önce bağlam ister):
+❌ "Tuhafı şu:" → kendinden önce şaşırtacak bilgi gerek; başta kullanılırsa boş çıkar
+❌ "Açıkçası..." → kendinden önce ima edilen ima/iddia ister; başta yapay
+❌ "Mantıken..." → öncesinde mantık zinciri kurulmadan başta dururup kalır
+❌ "Yani..." → "yani"den önce bir ifade gerek
+❌ "Toparlarsak..." → toparlanacak şey yok
+Bu geçişlerden biri G1 veya G4 açılış cümlesinde görünürse → AÇILIŞ GEÇİŞLERİ listesinden bir tane ile değiştir.
+
+**ORTA GEÇİŞLER (2-4. cümle aralığı — bir bağlam kurulduktan sonra):**
+"Tuhafı şu:" · "Burada tablo değişiyor —" · "Ama bekleyin:" · "Şu detay önemli:" · "İşte burası ilginç —" · "İlk bakışta öyle görünüyor ama..." · "Burada işler ilginçleşiyor —" · "Bir şey atlamayalım:" · "Şu noktayı ıskalamayalım:"
+KURAL: Bu geçişlerden EN AZ 1 tanesi G1 + G4'ün orta bölümünde (2-4. cümle) geçer.
+
+**KAPANIŞ / SONUÇ GEÇİŞLERİ (analizin son bölümü, SONUÇ ya da UYARI cümlesi):**
+"Açıkçası..." · "Mantıken..." · "Toparlarsak..." · "Yani sonuçta..." · "Net olarak..." · "Ben olsam beklerdim." · "Sonuç şu:" · "Soru basit:"
+KURAL: SONUÇ paragrafında bunlardan 1 tane geçer (zorunlu değil ama doğal).
+
+🚨 SES TOPLAMI: G1 + G4 her birinde toplam 1-2 geçiş (açılış'tan 0-1, orta'dan 1-2). 3+ geçiş = afekti zorlama. 0 geçiş + 4+ cümle = düz haber dili = ihlal.
 
 *** HABER DİLİ FİİLLERİ — GENİŞLETİLMİŞ YASAK LİSTE ***
 "gerçekleşirken / gerçekleşiyor / belgeleyerek / belgeliyor / ortaya koyuyor / gözler önüne seriyor / yansıtmaktadır / yansıtıyor (3+ kez geçtiyse) / işliyor / işaret etmektedir / teyit etmektedir / kalmaktadır / sergilemekte / sergileyerek / yönlendirilmekte / oluşturmaktadır / üretmekte / üstlenmekte / bulunmakta / temsil etmekte / pekiştirmekte" → bir analiz içinde TOPLAM 2 KEZ kullanılabilir, fazlası ihlal.
@@ -23875,6 +23894,7 @@ Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." + "#BIST100"
 10) **AÇILIŞ ANCHOR:** İlk cümle "Fiyat yıllık zirvenin %X konumunda" ile başlıyorsa SİL — bugün-spesifik tetikleyiciden (klasik mum / TIER_1 / RSI ekstrem / cum_delta kafa-çev. / OBV durum) baştan yaz.
 11) **METRİK ADI ÇIPLAK YAZILMIŞ MI:** "cum_delta_5g / Net Baskınlık / OBV slope / CMF Dual" gibi algoritma terimleri ilk geçiş dışında çıplak görünüyorsa → "Son X günde Y%" formatına çevir. Çıktıdaki tek "X seviyesinde Y oluşurken" şablonu kalıntısı bile ihlal.
 12) **İNFERENTIAL MOOD SAYACI:** "varmış gibi / sanki / izlenimi veriyor / duruyor / bekliyor gibi / yorulmuş gibi / izleme modunda" — analiz içinde EN AZ 2 kez geçti mi? Hayırsa çelişkili/belirsiz cümlelerden 2 tanesini bu mood'a çevir. Kesinlik (-iyor, -dir) tek başına haber dili.
+13) **GEÇİŞ KONUMU KONTROLÜ:** G1 veya G4'ün AÇILIŞ cümlesi "Tuhafı şu / Açıkçası / Mantıken / Yani / Toparlarsak" ile başlıyorsa SİL — bu summative geçişler önce bağlam ister, başta yapay. Yerine: direkt başla (sayıyla aç) veya "Bakın / İşte / X tahtasında ilk somut hareket geldi —" gibi AÇILIŞ geçişlerinden biri. Summative geçişler 2-4. cümle ya da SONUÇ paragrafında doğal.
 
 ═══════════════════════════════════════════════════════════════════════
 GÖREVLER ÇIKIŞ SIRASI: SIFIRINCI (HOOK) → 4 → 2 → 3 → 1.
