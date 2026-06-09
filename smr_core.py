@@ -1339,6 +1339,59 @@ def generate_chart(ticker: str, df: pd.DataFrame, ict: dict | None = None) -> by
     return buf.read()
 
 
+# ─── 9 Haz 2026 Oturum 20 — BREAKOUT STATE helper (Kibar Type 1) ─────────────
+# app.py'deki _detect_breakout_state ile aynı algoritma. Pattern boundary verilince
+# son 3 barı değerlendirir: 0 forming · 1 testing · 2 breakout · 3 breakaway gap.
+def _detect_breakout_state_bot(df, boundary):
+    try:
+        if df is None or len(df) < 21 or boundary is None or float(boundary) <= 0:
+            return (0, 0.0, 1.0)
+        boundary = float(boundary)
+        n = len(df)
+        cur_close = float(df['Close'].iloc[-1])
+        cur_open  = float(df['Open'].iloc[-1])
+        cur_low   = float(df['Low'].iloc[-1])
+        prev_close = float(df['Close'].iloc[-2])
+        cur_vol = float(df['Volume'].iloc[-1])
+        vol_20 = float(df['Volume'].iloc[-21:-1].mean()) if n >= 21 else float(df['Volume'].iloc[:-1].mean())
+        vol_ratio = (cur_vol / vol_20) if vol_20 > 0 else 1.0
+        gap_pct = ((cur_open - prev_close) / prev_close * 100.0) if prev_close > 0 else 0.0
+        if cur_close > boundary * 1.01 and vol_ratio > 1.5:
+            gap_ok = gap_pct > 1.5 and cur_low > boundary
+            return (3 if gap_ok else 2, round(gap_pct, 2), round(vol_ratio, 2))
+        for k in range(1, 4):
+            if k > n: break
+            h = float(df['High'].iloc[-k])
+            if boundary * 0.99 <= h <= boundary * 1.005:
+                return (1, round(gap_pct, 2), round(vol_ratio, 2))
+        return (0, round(gap_pct, 2), round(vol_ratio, 2))
+    except Exception:
+        return (0, 0.0, 1.0)
+
+
+def _find_breakout_boundary_bot(df):
+    """Range-tabanlı boundary tespiti — 60/90/120/180g pencerelerde en sıkı bandı bulur.
+    Pattern motoru olmadığı için yatay bant + (yatay direnç bulunmuyorsa) son N gün
+    rolling max bir proxy olarak kullanılır. None dönerse breakout testi yapılmaz."""
+    try:
+        if df is None or len(df) < 60:
+            return None, None
+        cur = float(df['Close'].iloc[-1])
+        # Sıkı bant tara — Range pattern eşiği <%15
+        for w in (60, 90, 120, 180):
+            if len(df) < w: continue
+            pm = float(df['High'].iloc[-w:].max())
+            pmin = float(df['Low'].iloc[-w:].min())
+            if pmin <= 0: continue
+            width = (pm - pmin) / pmin
+            if width < 0.18 and cur >= pm * 0.95:  # bandın üst yarısında
+                return pm, f"{w}g_band"
+        # Fallback yok — boundary belirsizse alarm üretme
+        return None, None
+    except Exception:
+        return None, None
+
+
 # ─── AI PROMPT ÜRET ──────────────────────────────────────────────────────────
 def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tuple:
     """Ortak veri bloğu — hem Görev 1 hem Görev 3 kullanır."""
@@ -1775,6 +1828,23 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     clean     = ticker.replace(".IS", "").replace("-USD", "").replace("=F", "")
 
     rs_line   = f"\n• RS vs XU100 : {rs_txt}" if rs_txt else ""
+
+    # 9 Haz 2026 Oturum 20 — BREAKOUT ALERT (Kibar Type 1)
+    # Range-tabanlı boundary tespiti → state ≥ 2'de prompt'a koşullu emit.
+    _breakout_line = ""
+    try:
+        _bnd, _bnd_tag = _find_breakout_boundary_bot(df)
+        if _bnd is not None and _bnd > 0:
+            _bk_st, _bk_gap, _bk_vol = _detect_breakout_state_bot(df, _bnd)
+            if _bk_st >= 2:
+                _bk_label = "🚀💨 BREAKAWAY GAP" if _bk_st == 3 else "🚀 BREAKOUT"
+                _gap_part = f" · gap +{_bk_gap:.2f}%" if _bk_st == 3 else ""
+                _breakout_line = (f"\n🚀 BREAKOUT ALERT: {_bk_label} | "
+                                  f"boundary {_fmt(_bnd)} ({_bnd_tag}) | "
+                                  f"hacim {_bk_vol:.2f}x (20g ort.){_gap_part}")
+    except Exception:
+        pass
+
     data_block = f"""═══════════════════════════════════════
 📊 HİSSE: {ticker} | Fiyat: {fiyat_str}
 📅 Veri Tarihi: {data_timestamp_txt}
@@ -1819,7 +1889,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • OMI (OBV Momentum Index): {omi_txt}
 • 5G Kümülatif Delta: {delta5_txt}
 • Hacim Kalitesi : {hacim_kal_txt}{rs_line}
-💡 ICT SONUÇ: {ict.get('bottom_line', '-')}
+💡 ICT SONUÇ: {ict.get('bottom_line', '-')}{_breakout_line}
 ═══════════════════════════════════════"""
 
     # ── NULL FORMAT STANDARDİZASYONU — tek sentinel "(veri eksik)" ─────
@@ -2935,6 +3005,12 @@ KURAL: Her cümleyi yazarken sor — "Aynı maddedeki diğer cümle bunu destekl
 3. Z-SCORE SINIRLANDIRMASI: Z-Score veya ortalamalardan uzaklaşma verilerini analizin merkezine KOYMA. Yüksek Z-Score değerlerini bir "çöküş", "bit yeniği" veya "kesin dönüş" sinyali olarak YORUMLAMA.
 4. Güçlü kurumsal alımların olduğu yerlerde yüksek Z-Score, tehlike değil "güçlü momentumun" kanıtıdır. Z-Score'a sadece risk yönetimi paragrafında "kısa bir kâr al/izleyen stop uyarısı" olarak kısaca değin ve geç. Hikayeni bu istatistik üzerine kurma.
 
+*** BREAKOUT ALERT REHBERİ (data_block'ta "🚀 BREAKOUT ALERT" satırı varsa) ***
+Range/bant tabanlı boundary (60-180g yatay bant tavanı) son barda **kapanış + hacim ≥ 1.5×** ile kırıldı.
+- "🚀 BREAKOUT" = klasik kırılım.
+- "🚀💨 BREAKAWAY GAP" = Aksel Kibar Type 1: yukarı boşluk (open > prev_close × 1.015) + low boundary üstünde. Kitabi en güçlü kırılım tipidir; geri test ihtimali düşer.
+Bu satır varsa: G1/G3 açılış cümlesi bu olayı MERKEZE ALIR ("X gündür süren yatay bant kırıldı, hacim Y× normalin"). Boundary seviyesini ve hacim oranını somut sayıyla geç. BREAKAWAY GAP varsa gap %'sini ayrı vurgula. Yoksa: hiç bahsetme — "kırılım yok" deme.
+
 *** Z-SCORE + POC/VWAP + MEAN REVERSION — BİRLEŞİK BAĞLAM REHBERİ ***
 Z-Score, POC, VWAP üçü de UZAKLIK/REFERANS ölçeridir — KEHANET değildir, "adil değer" değildir, tek başına dönüş tetikleyicisi DEĞİLDİR. Trend başlangıcında / güçlü kırılımda Z>+2, VWAP'tan %X sapma, POC'tan kopma — BEKLENEN ve NORMAL olgudur (ivme sinyalidir).
 
@@ -3370,6 +3446,12 @@ YASAKLI CÜMLE KALIPLARI — Aşağıdaki kalıpları ASLA kullanma, bunları ku
 Örnek Doğru Cümle: "Z-Score +2 seviyesinin aşıldığını gösteriyor. Algoritmik olarak bu bölgeler aşırı fiyatlanma alanları, yani düzeltme riski taşıyabilir."
 Örnek Yanlış Cümle: "Z-Score +2 seviyesinin aşıldığını göstermektedir. Algoritmik olarak bu bölgeler aşırı fiyatlanma alanlarıdır ve düzeltme riski taşıyabilmektedir."
 Aşırıya kaçmadan, basit bir dilde yaz. Yatırımcıyı korkutmadan, umutlandırmadan, sadece mevcut durumun ne olduğunu ve hangi risklerin nerede olduğunu anlat.
+
+*** BREAKOUT ALERT REHBERİ (data_block'ta "🚀 BREAKOUT ALERT" satırı varsa) ***
+Range/bant tabanlı boundary (60-180g yatay bant tavanı) son barda **kapanış + hacim ≥ 1.5×** ile kırıldı.
+- "🚀 BREAKOUT" = klasik kırılım.
+- "🚀💨 BREAKAWAY GAP" = Aksel Kibar Type 1: yukarı boşluk (open > prev_close × 1.015) + low boundary üstünde. Kitabi en güçlü kırılım tipidir; geri test ihtimali düşer.
+Bu satır varsa: G1/G3 açılış cümlesi bu olayı MERKEZE ALIR ("X gündür süren yatay bant kırıldı, hacim Y× normalin"). Boundary seviyesini ve hacim oranını somut sayıyla geç. BREAKAWAY GAP varsa gap %'sini ayrı vurgula. Yoksa: hiç bahsetme — "kırılım yok" deme.
 
 *** Z-SCORE + POC/VWAP + MEAN REVERSION — BİRLEŞİK BAĞLAM REHBERİ ***
 Z-Score, POC, VWAP üçü de UZAKLIK/REFERANS ölçeridir — KEHANET değildir, "adil değer" değildir, tek başına dönüş tetikleyicisi DEĞİLDİR. Trend başlangıcında / güçlü kırılımda Z>+2, VWAP'tan %X sapma, POC'tan kopma — BEKLENEN ve NORMAL olgudur (ivme sinyalidir).

@@ -757,6 +757,8 @@ def init_db():
         # 8 Haz 2026 Oturum 19 — Dual-window feature genişlemesi (CMF disiplinini cum_delta + RSI'ya yay):
         'ALTER TABLE scan_signals ADD COLUMN f_cum_delta_dual TEXT',    # 5g/20g cum_delta state (7 state, CMF ile aynı kalıp)
         'ALTER TABLE scan_signals ADD COLUMN f_rsi_dual TEXT',          # RSI(5)/RSI(14) state (7 state — overbought/oversold/early/cooling/dip_recovery)
+        # 9 Haz 2026 Oturum 20 — Breakout state (Kibar Type 1): 0 forming · 1 testing · 2 breakout · 3 breakaway gap
+        'ALTER TABLE scan_signals ADD COLUMN f_breakout_state INTEGER',
     ]:
         try:
             c.execute(_alter_col)
@@ -782,6 +784,45 @@ def init_db():
     conn.close()
 
 # ===============================================================
+# 9 Haz 2026 — BREAKOUT STATE helper (Kibar Type 1)
+# Pattern boundary verilince son 3 barı inceler — 4 state döner.
+# Hem scan_chart_patterns (chart_d'ye gömer) hem _compute_signal_features
+# (f_breakout_state snapshot) tarafından kullanılır.
+# states: 0 forming · 1 testing · 2 breakout_no_gap · 3 breakout_with_gap (breakaway)
+# Returns: (state, gap_pct, vol_ratio)
+# ===============================================================
+def _detect_breakout_state(df, boundary):
+    try:
+        if df is None or len(df) < 21 or boundary is None or float(boundary) <= 0:
+            return (0, 0.0, 1.0)
+        boundary = float(boundary)
+        close = df['Close']; high = df['High']; low = df['Low']
+        opn = df['Open']; vol = df['Volume']
+        n = len(df)
+        cur_close = float(close.iloc[-1])
+        cur_open  = float(opn.iloc[-1])
+        cur_low   = float(low.iloc[-1])
+        prev_close = float(close.iloc[-2])
+        cur_vol = float(vol.iloc[-1])
+        vol_20 = float(vol.iloc[-21:-1].mean()) if n >= 21 else float(vol.iloc[:-1].mean())
+        vol_ratio = (cur_vol / vol_20) if vol_20 > 0 else 1.0
+        gap_pct = ((cur_open - prev_close) / prev_close * 100.0) if prev_close > 0 else 0.0
+        # state 2/3 — kırılım kapanışı + hacim
+        if cur_close > boundary * 1.01 and vol_ratio > 1.5:
+            gap_ok = gap_pct > 1.5 and cur_low > boundary
+            return (3 if gap_ok else 2, round(gap_pct, 2), round(vol_ratio, 2))
+        # state 1 — testing (son 3 barda en az 1 high boundary'ye değdi, close altta)
+        for k in range(1, 4):
+            if k > n: break
+            h = float(high.iloc[-k])
+            if boundary * 0.99 <= h <= boundary * 1.005:
+                return (1, round(gap_pct, 2), round(vol_ratio, 2))
+        return (0, round(gap_pct, 2), round(vol_ratio, 2))
+    except Exception:
+        return (0, 0.0, 1.0)
+
+
+# ===============================================================
 # B4-2 (3 Haz 2026) — Sinyal anı FEATURE SNAPSHOT helper
 # log_scan_signal df_result'ta feature kolonu yoksa otomatik bu helper kullanır.
 # 7 feature: f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days, f_vp_shape, f_master_score.
@@ -800,6 +841,8 @@ def _compute_signal_features(ticker: str) -> dict:
         'f_ms_trend': None, 'f_ms_momentum': None, 'f_ms_ict': None, 'f_ms_radar2': None,
         # 8 Haz 2026 Oturum 19 — Dual-window genişleme (CMF kalıbı)
         'f_cum_delta_dual': None, 'f_rsi_dual': None,
+        # 9 Haz 2026 Oturum 20 — Breakout state (pattern boundary tabanlı, scan_chart_patterns'tan çekilir)
+        'f_breakout_state': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -967,6 +1010,18 @@ def _compute_signal_features(ticker: str) -> dict:
                             _in_zone = True; break
                     out['f_avwap_test_zone'] = 1 if _in_zone else 0
             except Exception: pass
+
+            # f_breakout_state — pattern boundary tabanlı (0/1/2/3) — scan_chart_patterns ChartData
+            # Sadece TOBO/Yükselen Üçgen/Range/Çift Dip formasyonları breakout_state set eder.
+            # Cache'li (_compute_signal_features kendisi cache'li, scan_chart_patterns get_batch_data_cached).
+            try:
+                _pat = scan_chart_patterns([ticker])
+                if _pat is not None and not _pat.empty:
+                    _cd = _pat.iloc[0].get('ChartData', None)
+                    if isinstance(_cd, dict) and 'breakout_state' in _cd:
+                        out['f_breakout_state'] = int(_cd.get('breakout_state', 0))
+            except Exception:
+                pass
 
             # f_poc_magnet — Akümülasyon|Up|below (%67.6) veya Denge|Up|below (%62.0)
             try:
@@ -1154,6 +1209,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_cum_delta_dual     = f_cum_delta_dual_raw if f_cum_delta_dual_raw else None
             f_rsi_dual_raw       = _ff('F_RSI_Dual', 'RSI_Dual', 'f_rsi_dual', cast=str)
             f_rsi_dual           = f_rsi_dual_raw if f_rsi_dual_raw else None
+            # 9 Haz 2026 Oturum 20 — Breakout state (Kibar Type 1)
+            f_breakout_state_v   = _ff('F_Breakout_State', 'Breakout_State', 'f_breakout_state', cast=int)
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -1173,19 +1230,20 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_ms_radar2_v      is None: f_ms_radar2_v      = _feat.get('f_ms_radar2')
                 if f_cum_delta_dual   is None: f_cum_delta_dual   = _feat.get('f_cum_delta_dual')
                 if f_rsi_dual         is None: f_rsi_dual         = _feat.get('f_rsi_dual')
+                if f_breakout_state_v is None: f_breakout_state_v = _feat.get('f_breakout_state')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
                     f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days, f_vp_shape, f_master_score,
                     f_poc_magnet, f_poc_confluence, f_avwap_test_zone,
                     f_ms_trend, f_ms_momentum, f_ms_ict, f_ms_radar2,
-                    f_cum_delta_dual, f_rsi_dual)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_cum_delta_dual, f_rsi_dual, f_breakout_state)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
                  f_ms_trend_v, f_ms_momentum_v, f_ms_ict_v, f_ms_radar2_v,
-                 f_cum_delta_dual, f_rsi_dual)
+                 f_cum_delta_dual, f_rsi_dual, f_breakout_state_v)
             )
         conn.commit()
         conn.close()
@@ -3887,6 +3945,10 @@ def scan_chart_patterns(asset_list):
                                 "neck": float(neck),
                                 "type": "tobo",
                             }
+                            _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(neck))
+                            chart_d["breakout_state"]     = int(_bk_st)
+                            chart_d["breakout_gap_pct"]   = float(_bk_gap)
+                            chart_d["breakout_vol_ratio"] = float(_bk_vol)
                             pattern_found = True
                             pattern_name  = p_name; desc = p_desc
                             break
@@ -3919,6 +3981,10 @@ def scan_chart_patterns(asset_list):
                         "neck": float(_db['neck_v']),
                         "type": "double_bottom",
                     }
+                    _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(_db['neck_v']))
+                    chart_d["breakout_state"]     = int(_bk_st)
+                    chart_d["breakout_gap_pct"]   = float(_bk_gap)
+                    chart_d["breakout_vol_ratio"] = float(_bk_vol)
                     pattern_found = True
 
             # ---------------------------------------------------------------
@@ -4038,6 +4104,10 @@ def scan_chart_patterns(asset_list):
                                             "pivot_types":  (["H"] * len(flat_sh) +
                                                              ["L"] * len(tri_lows_s)),
                                         }
+                                        _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(avg_res))
+                                        chart_d["breakout_state"]     = int(_bk_st)
+                                        chart_d["breakout_gap_pct"]   = float(_bk_gap)
+                                        chart_d["breakout_vol_ratio"] = float(_bk_vol)
                                         pattern_found = True
                                         pattern_name  = p_name; desc = p_desc
                                         base_score    = 88 if breaking else 68
@@ -4062,6 +4132,11 @@ def scan_chart_patterns(asset_list):
                                 "resistance": float(period_max),
                                 "support":    float(period_min),
                             }
+                            if breaking_up:
+                                _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(period_max))
+                                chart_d["breakout_state"]     = int(_bk_st)
+                                chart_d["breakout_gap_pct"]   = float(_bk_gap)
+                                chart_d["breakout_vol_ratio"] = float(_bk_vol)
                             pattern_found = True
                             p_name = f"🧱 RANGE DİRENCİ ({rng_window} Gün)" if breaking_up else f"🧱 RANGE DESTEĞİ ({rng_window} Gün)"
                             p_desc = (f"{rng_window} gündür süren yatay kanal direnci kırılıyor!" if breaking_up
@@ -16134,8 +16209,28 @@ def calculate_8_point_roadmap(ticker, cat=None):
             chart_dat = pat_df.iloc[0].get('ChartData', None)
             _hint = ('<br><span style="color:#38bdf8;font-weight:600;font-size:11px;">'
                      '🔍 Detaylı grafik ve kilit seviyeleri için aşağıdaki butona tıklayın</span>') if chart_dat else ""
+            # 9 Haz 2026 Oturum 20 — BREAKOUT rozeti
+            _bk_badge = ""
+            try:
+                if isinstance(chart_dat, dict) and 'breakout_state' in chart_dat:
+                    _bk_st = int(chart_dat.get('breakout_state', 0) or 0)
+                    _bk_vr = float(chart_dat.get('breakout_vol_ratio', 1.0) or 1.0)
+                    if _bk_st == 3:
+                        _bk_badge = ('<br><span style="background:linear-gradient(90deg,#ec4899,#a855f7);'
+                                     'color:#fff;font-weight:700;font-size:11px;padding:2px 8px;border-radius:6px;">'
+                                     f'🚀💨 BREAKAWAY GAP · {_bk_vr:.1f}× hacim</span>')
+                    elif _bk_st == 2:
+                        _bk_badge = ('<br><span style="background:linear-gradient(90deg,#22d3ee,#3b82f6);'
+                                     'color:#fff;font-weight:700;font-size:11px;padding:2px 8px;border-radius:6px;">'
+                                     f'🚀 KIRILIM · {_bk_vr:.1f}× hacim</span>')
+                    elif _bk_st == 1:
+                        _bk_badge = ('<br><span style="background:#1f2937;color:#fcd34d;'
+                                     'font-weight:600;font-size:11px;padding:2px 8px;border-radius:6px;'
+                                     'border:1px solid #d97706;">⏳ BOUNDARY TEST</span>')
+            except Exception:
+                pass
             m2 = (f"<b>Mevcut Formasyon:</b> {pat_name}<br>"
-                  f"<b>Ana Yapı:</b> {'İtki (Trend)' if cp > sma50 else 'Düzeltme (Pullback)'}{_hint}")
+                  f"<b>Ana Yapı:</b> {'İtki (Trend)' if cp > sma50 else 'Düzeltme (Pullback)'}{_bk_badge}{_hint}")
         else:
             chart_dat = None
             m2 = f"<b>Mevcut Formasyon:</b> Kitabi bir yapı görünmüyor.<br><b>Ana Yapı:</b> {'İtki (Trend)' if cp > sma50 else 'Düzeltme Fazı'}"
@@ -22876,6 +22971,34 @@ if st.session_state.generate_prompt:
         pass
     _em_scanner_tiers = ("\n  scanner_tiers_aktif:\n" + "\n".join(_scanner_tier_lines)) if _scanner_tier_lines else ""
 
+    # 9 Haz 2026 Oturum 20 — BREAKOUT ALERT (Kibar Type 1)
+    # pat_df.ChartData.breakout_state varsa ve >= 2 ise prompt'a koşullu emit.
+    # state=2 → close > boundary + hacim 1.5x · state=3 → + breakaway gap (open > prev_close × 1.015 + low > boundary)
+    _em_breakout_alert = ""
+    try:
+        if pat_df is not None and not pat_df.empty:
+            _cd = pat_df.iloc[0].get('ChartData', None)
+            if isinstance(_cd, dict):
+                _bk_st = int(_cd.get('breakout_state', 0) or 0)
+                if _bk_st >= 2:
+                    _bk_gap = float(_cd.get('breakout_gap_pct', 0.0) or 0.0)
+                    _bk_vol = float(_cd.get('breakout_vol_ratio', 1.0) or 1.0)
+                    _bk_type = str(_cd.get('type', 'pattern'))
+                    _bk_boundary = (_cd.get('neck') or _cd.get('resistance') or 0)
+                    _label = "🚀💨 BREAKAWAY GAP" if _bk_st == 3 else "🚀 BREAKOUT"
+                    _bk_lines = [
+                        f"    durum: {_label}",
+                        f"    pattern_tipi: {_bk_type}",
+                        f"    boundary_seviye: {float(_bk_boundary):.2f}" if _bk_boundary else "",
+                        f"    hacim_orani: {_bk_vol:.2f}x (20g ort.)",
+                    ]
+                    if _bk_st == 3:
+                        _bk_lines.append(f"    gap_pct: +{_bk_gap:.2f}% (yukarı boşluk + low boundary üstünde)")
+                    _bk_lines = [l for l in _bk_lines if l]
+                    _em_breakout_alert = "\n  breakout_alert:\n" + "\n".join(_bk_lines)
+    except Exception:
+        pass
+
     # ────────────────────────────────────────────────────────────────
 
     # 12) Master Score Breakdown — alt skorlar prompt için tek satır
@@ -23650,7 +23773,7 @@ institutional_ref:
   fiyat_vwap_uzaklik_pct: {v_diff:.1f}
   vwap_etiket: {vwap_ai_txt}
   rs_piyasa_gucu: {rs_ai_txt}
-  alpha: {alpha_val:.1f}{_poc_avwap_block}{_em_scanner_tiers}
+  alpha: {alpha_val:.1f}{_poc_avwap_block}{_em_scanner_tiers}{_em_breakout_alert}
 
 targets:
   direnc_fib: {fib_res}
@@ -23672,6 +23795,8 @@ targets:
 **TREND + MA:** HARSI yeşil = gerçek ivme, kırmızı = momentum kayboluyor (son 14g hafıza). EMA 8/13 altında = kurumsal satış baskısı; üstünde = momentum rallisi. SMA50/100/200/EMA144: fiyatın kaç gündür üstünde/altında olduğu trend olgunluğunu söyler. Kısa vade (HARSI/EMA8) ile ana trend (SMA200/SuperTrend) uyuşmuyorsa "Trend Dönüş Başlangıcı mı / Tepki Yükselişi mi" netleştir.
 
 **INSTITUTIONAL_REF:** VWAP = kurumsal execution benchmark, "adil değer" değil; uzaklaşma trendde normal. RS Alpha + = lider, − = altta. VWAP/POC uzaklığı yorumu için 5 İLKE madde-4 geçerli (uzaklık tek başına dönüş tezi olamaz).
+
+🚀 **BREAKOUT_ALERT** (varsa): pattern boundary (TOBO boyun / Yükselen Üçgen direnci / Yatay Bant tavanı / Çift Dip boynu) son barda **kırıldı + hacim ≥ 1.5×**. "🚀 BREAKOUT" = klasik kapanış kırılımı · "🚀💨 BREAKAWAY GAP" = yukarı boşluk + low boundary üstünde (Aksel Kibar "Type 1" — kitabi en güçlü kırılım tipi). Varsa: **G1 açılışını bu olay merkeze al** ("X aydır süren {pattern_tipi} kırıldı"), boundary seviyesini ve hacim oranını somut sayıyla geç. BREAKAWAY GAP varsa gap'i ayrıca vurgula (geri test ihtimali düşer, çoğu zaman doldurulmadan ilerler). Yoksa bahsetme — "kırılım yok" deme.
 
 **TARGETS:** İPTAL SEVİYESİ = boğa/ayı tezinin çöktüğü net fiyat (YAML.targets + son swing low/high'a bakarak belirle).
 
