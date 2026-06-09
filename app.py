@@ -23895,6 +23895,25 @@ Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." + "#BIST100"
 11) **METRİK ADI ÇIPLAK YAZILMIŞ MI:** "cum_delta_5g / Net Baskınlık / OBV slope / CMF Dual" gibi algoritma terimleri ilk geçiş dışında çıplak görünüyorsa → "Son X günde Y%" formatına çevir. Çıktıdaki tek "X seviyesinde Y oluşurken" şablonu kalıntısı bile ihlal.
 12) **İNFERENTIAL MOOD SAYACI:** "varmış gibi / sanki / izlenimi veriyor / duruyor / bekliyor gibi / yorulmuş gibi / izleme modunda" — analiz içinde EN AZ 2 kez geçti mi? Hayırsa çelişkili/belirsiz cümlelerden 2 tanesini bu mood'a çevir. Kesinlik (-iyor, -dir) tek başına haber dili.
 13) **GEÇİŞ KONUMU KONTROLÜ:** G1 veya G4'ün AÇILIŞ cümlesi "Tuhafı şu / Açıkçası / Mantıken / Yani / Toparlarsak" ile başlıyorsa SİL — bu summative geçişler önce bağlam ister, başta yapay. Yerine: direkt başla (sayıyla aç) veya "Bakın / İşte / X tahtasında ilk somut hareket geldi —" gibi AÇILIŞ geçişlerinden biri. Summative geçişler 2-4. cümle ya da SONUÇ paragrafında doğal.
+14) **🚨 YAML FIELD NAME SAYACI (CRITICAL — Patch 4):** Aşağıdaki YAML alan adları analiz içinde TOPLAM 0 (sıfır) kez görünmeli. Tek geçiş bile ihlal. Parantezle kısaltma (CD) (CMF) (VP) (OMI) gibi kalıplar da YASAK.
+ÇIPLAK YASAK LİSTE: "cum_delta_5g · cum_delta_dual_window · OMI sigma · OMI · CMF Dual-Window · CMF Dual · CMF Dual-Window state · VP Şekli · VP · OBV durum başlığı · fiyat_poc_konumu · mum_kapanis_durumu · stopping_volume · climax_volume · poc_magnet_active · scanner_tiers_aktif · master_breakdown · F_MS_Trend · f_rsi_dual · f_cum_delta_dual"
+BULUNDUĞUNDA DÖNÜŞTÜRME:
+  ❌ "cum_delta_5g işareti -%51.1" → ✅ "Son 5 günde -%51.1'lik satış ağırlığı"
+  ❌ "Kümülatif Delta (CD) -%51.1" → ✅ "Son 5 günün net işlem farkı -%51.1"
+  ❌ "CMF Dual-Window state 5g -0.288" → ✅ "Para akış göstergesi 5 günlük -0.288"
+  ❌ "VP Şekli alt yarıda" → ✅ "İşlem yoğunluğu alt yarıda — dipte birikim profili"
+  ❌ "OMI sigma tespiti mevcut görünmüyor" → CÜMLEYİ TAMAMEN SİL (K1 yok-bulgu kuralı)
+  ❌ "Kümülatif Delta Dağıtım Baskısı" madde başlığı → ✅ "Kalıcı Kurumsal Satış Baskısı"
+İlk geçişte teknik açılım sadece sade Türkçe + parantezde STANDART kısaltma (RSI, CMF, OBV, VWAP, ATR) izinli; YAML field adı asla.
+15) **🚨 G2 ÖZEL SIKIŞTIRMA KURALI (Patch 4):** Görev 2 ⚡ ÖZET YORUM bölümünde:
+  - Maksimum 2 cümle, ama her ikisi de FARKLI uzunlukta (kısa + orta veya orta + uzun karışım)
+  - 1. cümle: bugün-spesifik anchor + sayı (RSI ekstrem / klasik mum / TIER_1 / cum_delta dual state vs.)
+  - 2. cümle: inferential mood ZORUNLU ("varmış gibi / izleniyor / duruyor / bekliyor gibi / yorulmuş gibi")
+  YASAK KALIPLAR:
+    ❌ "Hissede X seviyesine inerek Y bölgesinin derinliklerine ulaştı"
+    ❌ "Bu durum satıcıların tahtayı baskıladığını gösteriyor"
+    ❌ "X seviyesi Y'yi belgeleyerek Z..."
+  G2'de TEKNİK TABLO ve AKILLI PARA satırlarında: her bir 🔹 başına EN AZ 1 inferential ifade veya çelişki/gözlem cümlesi; "X gösteriyor" / "X teyit ediyor" gibi düz haber dili 🔹 başına maks 1 kez.
 
 ═══════════════════════════════════════════════════════════════════════
 GÖREVLER ÇIKIŞ SIRASI: SIFIRINCI (HOOK) → 4 → 2 → 3 → 1.
