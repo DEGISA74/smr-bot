@@ -26308,15 +26308,28 @@ def _render_right_col():
             if score >= 45: return _SO_YELLOW
             return _SO_RED
 
-        def _so_color_5(score):
+        def _so_color_5_directional(score, bias):
+            """ICT model_score yönle birlikte renkler.
+            - bullish + ≥4 → yeşil  (güçlü LONG setup)
+            - bullish + 3  → sarı   (gelişen LONG)
+            - bullish + ≤2 → kırmızı (zayıf setup)
+            - bearish + herhangi → KIRMIZI (ne kadar tam o kadar tehlike — short setup)
+            - retrace/dash → nötr/sarı
+            """
             if score is None: return _SO_NEUTRAL
+            _b = (bias or "").lower()
+            if "bear" in _b and "retrace" not in _b:
+                return _SO_RED   # tam bearish — long-bias kullanıcı için kötü
+            if "retrace" in _b or _b in ("", "-"):
+                return _SO_YELLOW if score >= 3 else _SO_NEUTRAL
+            # bullish dalı
             if score >= 4: return _SO_GREEN
             if score >= 3: return _SO_YELLOW
             return _SO_RED
 
         # 5 skoru topla — hepsi @st.cache_data ile cache'li, ek hesap maliyeti minimal
         _so_master = None; _so_pos = None; _so_road = None; _so_er = None; _so_ict = None
-        _so_ict_lbl = None
+        _so_ict_lbl = None; _so_ict_bias = ""
         try:
             _so_master, _, _ = calculate_master_score(_tk)
         except Exception: pass
@@ -26330,6 +26343,7 @@ def _render_right_col():
             if _so_ict_data:
                 _so_ict = _so_ict_data.get('model_score', 0)
                 _so_ict_lbl = ["SETUP YOK", "ÇOK ZAYIF", "ZAYIF", "ORTA", "GÜÇLÜ", "TAM MODEL"][int(_so_ict)]
+                _so_ict_bias = str(_so_ict_data.get('bias', '')).lower()
         except Exception: pass
         try:
             _so_df = get_safe_historical_data(_tk)
@@ -26398,9 +26412,15 @@ def _render_right_col():
             + _so_row("🌟", "Erken Radar",      _so_er,     100, _so_color_100(_so_er),
                      f"{int(_so_er)}/100" if _so_er is not None else "—",
                      "27 senaryo paterni — kalite skoru (5g-20g)")
-            + _so_row("🏛",  "Smart Money",     _so_ict,    5,   _so_color_5(_so_ict),
-                     f"{int(_so_ict)}/5 · {_so_ict_lbl}" if _so_ict is not None else "—",
-                     f"ICT Model skoru (OB/FVG/likidite teyit) — {_so_ict_lbl or '—'}", border=False)
+            + _so_row("🏛",  "Smart Money",     _so_ict,    5,   _so_color_5_directional(_so_ict, _so_ict_bias),
+                     (f"{int(_so_ict)}/5 "
+                      + ("↑" if "bull" in _so_ict_bias and "retrace" not in _so_ict_bias
+                         else ("↓" if "bear" in _so_ict_bias and "retrace" not in _so_ict_bias
+                               else "↔"))
+                      + f" {_so_ict_lbl}") if _so_ict is not None else "—",
+                     (f"ICT Model — {_so_ict_lbl or '—'} · bias: {_so_ict_bias or '—'} · "
+                      "yön + güç birleşik (bearish 5/5 = güçlü SHORT setup, LONG için kırmızı)"),
+                     border=False)
             + "</div>"
         )
 
