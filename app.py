@@ -23923,7 +23923,7 @@ targets:
 
 **INSTITUTIONAL_REF:** VWAP = kurumsal execution benchmark, "adil değer" değil; uzaklaşma trendde normal. RS Alpha + = lider, − = altta. VWAP/POC uzaklığı yorumu için 5 İLKE madde-4 geçerli (uzaklık tek başına dönüş tezi olamaz).
 
-🚀 **BREAKOUT_ALERT** (varsa): pattern boundary (TOBO boyun / Yükselen Üçgen direnci / Yatay Bant tavanı / Çift Dip boynu) son barda **kırıldı + hacim ≥ 1.5×**. "🚀 BREAKOUT" = klasik kapanış kırılımı · "🚀💨 BREAKAWAY GAP" = yukarı boşluk + low boundary üstünde (Aksel Kibar "Type 1" — kitabi en güçlü kırılım tipi). Varsa: **G1 açılışını bu olay merkeze al** ("X aydır süren {pattern_tipi} kırıldı"), boundary seviyesini ve hacim oranını somut sayıyla geç. BREAKAWAY GAP varsa gap'i ayrıca vurgula (geri test ihtimali düşer, çoğu zaman doldurulmadan ilerler). Yoksa bahsetme — "kırılım yok" deme.
+🚀 **BREAKOUT_ALERT** (varsa): pattern boundary (TOBO boyun / Yükselen Üçgen direnci / Yatay Bant tavanı / Çift Dip boynu) son barda **kırıldı + hacim ≥ 1.5×**. "🚀 BREAKOUT" = klasik kapanış kırılımı · "🚀💨 BREAKAWAY GAP" = yukarı boşluk + low boundary üstünde (Aksel Kibar "Type 1" — kitabi en güçlü kırılım tipi). Varsa: **G1 açılışını bu olay merkeze al** ("X aydır süren {{pattern_tipi}} kırıldı"), boundary seviyesini ve hacim oranını somut sayıyla geç. BREAKAWAY GAP varsa gap'i ayrıca vurgula (geri test ihtimali düşer, çoğu zaman doldurulmadan ilerler). Yoksa bahsetme — "kırılım yok" deme.
 
 **TARGETS:** İPTAL SEVİYESİ = boğa/ayı tezinin çöktüğü net fiyat (YAML.targets + son swing low/high'a bakarak belirle).
 
@@ -26364,12 +26364,12 @@ def _render_right_col():
             # Hex → rgb (glow için)
             _rgb_for_glow = _bar_fill if _bar_fill.startswith("rgba") else _bar_fill
             return (
-                f"<div {_ttl} style='display:flex;align-items:center;gap:8px;padding:6px 11px;{brd}'>"
+                f"<div {_ttl} style='display:flex;align-items:center;gap:8px;padding:3.5px 11px;{brd}'>"
                 f"<span style='font-size:0.95rem;line-height:1;flex-shrink:0;width:18px;text-align:center;'>{icon}</span>"
                 f"<span style='font-size:0.81rem;color:rgba(255,255,255,0.88);font-weight:700;"
                 f"flex-shrink:0;width:114px;white-space:nowrap;'>{label}</span>"
                 # Bar (track + fill + skor sayısı bar üstünde overlay)
-                f"<div style='flex:1;height:15px;background:rgba(0,0,0,0.28);border-radius:8px;"
+                f"<div style='flex:1;height:13px;background:rgba(0,0,0,0.28);border-radius:8px;"
                 f"position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.08);'>"
                 f"<div style='height:100%;width:{_pct:.0f}%;background:{_bar_fill};"
                 f"border-radius:8px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div>"
@@ -26383,16 +26383,16 @@ def _render_right_col():
             )
 
         _sinyal_block = (
-            f"<div style='padding:5px 0 4px;border-bottom:1px solid {_CLR_DIVIDER};'>"
-            f"<div style='padding:3px 11px 5px;font-size:0.64rem;color:{_CLR_TEXT_SEC};"
-            f"text-transform:uppercase;letter-spacing:0.6px;font-weight:800;'>📊 SİNYAL ÖZETİ</div>"
+            f"<div style='padding:4px 0 3px;border-bottom:1px solid {_CLR_DIVIDER};'>"
+            f"<div style='padding:2.5px 11px 4px;font-size:0.64rem;color:{_CLR_TEXT_SEC};"
+            f"text-transform:uppercase;letter-spacing:0.5px;font-weight:800;'>📊 SİNYAL ÖZETİ</div>"
             + _so_row("🎯", "Genel Sağlık",     _so_master, 100, _so_color_100(_so_master),
                      f"{int(_so_master)}/100" if _so_master is not None else "—",
                      "Master Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)")
             + _so_row("🧭", "Pozisyon Eğilimi", _so_pos,    100, _so_color_100(_so_pos),
                      f"{int(_so_pos)}/100" if _so_pos is not None else "—",
                      "Conviction — SMA50/200 + OBV + Z-Score (5-15g LONG/SHORT bias)")
-            + _so_row("🗺",  "Yol Haritası",    _so_road,   100, _so_color_100(_so_road),
+            + _so_row("🗺",  "Tek. Yol Haritası",    _so_road,   100, _so_color_100(_so_road),
                      f"{int(_so_road)}/100" if _so_road is not None else "—",
                      "Roadmap — Trend/Mom/Hacim/Yapı/Senaryo eşit ağırlıkla sentez")
             + _so_row("🌟", "Erken Radar",      _so_er,     100, _so_color_100(_so_er),
