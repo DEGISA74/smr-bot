@@ -19550,24 +19550,26 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
 
-                # Mini bar + iki işaret (○ 5g önce · ● bugün) + delta — sade tasarım (9 Haz 2026)
+                # Mini bar + iki işaret + delta — sade tasarım (9 Haz 2026, fix v2)
+                # Tasarım: 5g önce işareti BARIN ÜSTÜNDE (hollow ring, beyaz çerçeve),
+                # bugün BARIN ÜSTÜNDE solid renkli dot. Aralarındaki dikey ayrım sayesinde
+                # iki konum yakın (örn. %51 vs %55) olsa bile birbirini örtmez.
                 if _rng_pos_pct is not None:
-                    # Bar genişledi (54→72px) → iki işaret rahat sığsın
-                    # ○ Hollow circle = 5 gün önceki konum (geçmiş referansı, soluk)
-                    # ● Solid circle  = bugünkü konum (parlak, severity renginde)
-                    _prev_mark_clr = "#94a3b8"  # nötr gri — geçmiş referans
+                    _prev_mark_clr = "#cbd5e1"  # bright slate — okunabilirlik
                     _bar_html = (
                         f"<span style='display:inline-block;width:72px;height:5px;background:#1e293b;"
-                        f"border-radius:3px;position:relative;margin-right:6px;vertical-align:middle;'>"
-                        # 5g önce — hollow ring
-                        f"<span style='position:absolute;left:{_rng_prev_pct:.0f}%;top:-2.5px;"
-                        f"width:9px;height:9px;border-radius:50%;background:transparent;"
-                        f"border:1.5px solid {_prev_mark_clr};opacity:0.75;"
-                        f"transform:translateX(-50%);'></span>"
-                        # Bugün — solid + glow
+                        f"border-radius:3px;position:relative;margin-right:6px;vertical-align:middle;"
+                        f"margin-top:7px;'>"  # üst payı → hollow ring sığsın
+                        # 5g önce — hollow ring, barın ÜSTÜNDE (top:-11px)
+                        f"<span style='position:absolute;left:{_rng_prev_pct:.0f}%;top:-11px;"
+                        f"width:8px;height:8px;border-radius:50%;background:#0f172a;"
+                        f"border:1.5px solid {_prev_mark_clr};"
+                        f"transform:translateX(-50%);' title='5 gün önce: %{_rng_prev_pct:.0f}'></span>"
+                        # Bugün — solid + glow, bar üstünde
                         f"<span style='position:absolute;left:{_rng_pos_pct:.0f}%;top:-2.5px;"
                         f"width:10px;height:10px;border-radius:50%;background:{_rng_clr};"
-                        f"transform:translateX(-50%);box-shadow:0 0 4px {_rng_clr};'></span>"
+                        f"transform:translateX(-50%);box-shadow:0 0 4px {_rng_clr};"
+                        f"' title='Bugün: %{_rng_pos_pct:.0f}'></span>"
                         f"</span>"
                     )
                     # Delta: 5g'deki konum değişimi (pozitif yeşil, negatif kırmızı)
@@ -19618,7 +19620,7 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
                 _gs_items_html += _gs_row(
-                    "20G dip↔tepe konumu",
+                    "20G Konum",
                     _rng_value,
                     explain=_rng_expl,
                     lc=_rng_clr,
