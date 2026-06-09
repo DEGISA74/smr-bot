@@ -11108,30 +11108,72 @@ def _compute_smc_elements(highs_arr, lows_arr, opens_arr, closes_arr, n_pivot=5)
                 lo < lows_arr[i + 1] and lo <= lows_arr[i + fp]):
             pl.append((i, float(lo)))
 
-    # ── 2. Fair Value Gaps (3-bar gap) + mitigation tracking ─────────
-    # Bullish FVG zone: (highs[i-2], lows[i])  — gap must not be refilled yet
-    # Bearish FVG zone: (highs[i],  lows[i-2]) — gap must not be refilled yet
+    # ── 2. Fair Value Gaps (3-bar gap) + STATE tracking ──────────────
+    # 9 Haz 2026 Oturum 20: state'li detector. Eski sürüm mitigated FVG'leri
+    # filtreliyordu. Yeni sürüm tutuyor + state etiketliyor:
+    #   - 'fresh'      : fiyat henüz gap'e girmedi (orijinal rolü aktif — destek/direnç)
+    #   - 'tested'     : gap'e dokundu ama ortadan kırmadı (orijinal rolü hâlâ aktif)
+    #   - 'inverted'   : gap tamamen kırıldı, rolü ters döndü (Inverse FVG / iFVG)
+    #                    → bull FVG artık direnç, bear FVG artık destek
+    # Tuple yapısı: (i_start, p_lo, p_hi, state)
     fvg_bull_raw = []
     fvg_bear_raw = []
     for i in range(2, n):
         if lows_arr[i] > highs_arr[i - 2]:
             p_lo = float(highs_arr[i - 2])
             p_hi = float(lows_arr[i])
-            # Mitigated when any subsequent low re-enters the gap from above
-            if not any(lows_arr[j] < p_hi for j in range(i + 1, n)):
-                fvg_bull_raw.append((i - 2, p_lo, p_hi))
+            # Subsequent bar'larda durum tespiti
+            _state = 'fresh'
+            for j in range(i + 1, n):
+                # Tam kırılım: low p_lo'nun altına geçtiyse → inverted
+                if lows_arr[j] < p_lo:
+                    _state = 'inverted'
+                    break
+                # Test: low gap içine girdiyse → tested (kırılım yok)
+                if lows_arr[j] < p_hi:
+                    _state = 'tested'
+            fvg_bull_raw.append((i - 2, p_lo, p_hi, _state))
         elif highs_arr[i] < lows_arr[i - 2]:
             p_lo = float(highs_arr[i])
             p_hi = float(lows_arr[i - 2])
-            # Mitigated when any subsequent high re-enters the gap from below
-            if not any(highs_arr[j] > p_lo for j in range(i + 1, n)):
-                fvg_bear_raw.append((i - 2, p_lo, p_hi))
-    result['fvg_bull'] = fvg_bull_raw[-4:]
-    result['fvg_bear'] = fvg_bear_raw[-4:]
+            _state = 'fresh'
+            for j in range(i + 1, n):
+                if highs_arr[j] > p_hi:
+                    _state = 'inverted'
+                    break
+                if highs_arr[j] > p_lo:
+                    _state = 'tested'
+            fvg_bear_raw.append((i - 2, p_lo, p_hi, _state))
+    # En son 6 FVG (4'ten 6'ya çıkarıldı — inverted iFVG'ler de tutulsun)
+    result['fvg_bull'] = fvg_bull_raw[-6:]
+    result['fvg_bear'] = fvg_bear_raw[-6:]
 
-    # ── 3. BOS / CHoCH + Order Blocks (body-based, mitigated filtered) ─
-    # OB tuple layout: (bar_idx, open, close, body_hi, body_lo)
-    #   body_hi = max(open, close),  body_lo = min(open, close)
+    # ── 3. BOS / CHoCH + Order Blocks (body-based) + STATE tracking ───
+    # 9 Haz 2026 Oturum 20: OB state'li detector.
+    # OB tuple: (bar_idx, open, close, body_hi, body_lo, state)
+    #   - 'fresh'      : fiyat hiç test etmemiş → orijinal rol aktif (rölatif güçlü)
+    #   - 'mitigation' : fiyat içine girdi/dokundu ama kırmadı → rol hâlâ aktif
+    #                    (Mitigation Block — "tested OB", retest devam ediyor)
+    #   - 'breaker'    : fiyat OB body'sini kırdı → rol TERSİNE DÖNDÜ (Breaker Block)
+    #                    bull OB artık direnç (failed support), bear OB artık destek
+    def _classify_bull_ob(j, b_lo, b_hi, n):
+        # OB sonrası bar'larda durum tespiti
+        state = 'fresh'
+        for k in range(j + 1, n):
+            if lows_arr[k] < b_lo:
+                return 'breaker'   # tam kırılım — rol ters döndü
+            if lows_arr[k] < b_hi:  # body içine girdi (tepe-orta arası)
+                state = 'mitigation'
+        return state
+    def _classify_bear_ob(j, b_lo, b_hi, n):
+        state = 'fresh'
+        for k in range(j + 1, n):
+            if highs_arr[k] > b_hi:
+                return 'breaker'
+            if highs_arr[k] > b_lo:
+                state = 'mitigation'
+        return state
+
     if len(ph) >= 2 and len(pl) >= 2:
         trend_up  = ph[-1][1] > ph[-2][1]
         last_ph   = ph[-1]
@@ -11146,10 +11188,9 @@ def _compute_smc_elements(highs_arr, lows_arr, opens_arr, closes_arr, n_pivot=5)
                     if closes_arr[j] < opens_arr[j]:          # bearish candle → bull OB
                         b_lo = float(min(opens_arr[j], closes_arr[j]))
                         b_hi = float(max(opens_arr[j], closes_arr[j]))
-                        # Mitigated if price later traded below OB body low
-                        if not any(lows_arr[k] < b_lo for k in range(j + 1, n)):
-                            result['ob_bull'].append(
-                                (j, float(opens_arr[j]), float(closes_arr[j]), b_hi, b_lo))
+                        _st = _classify_bull_ob(j, b_lo, b_hi, n)
+                        result['ob_bull'].append(
+                            (j, float(opens_arr[j]), float(closes_arr[j]), b_hi, b_lo, _st))
                         break
                 break
             elif not trend_up and closes_arr[i] < last_pl[1]:
@@ -11158,10 +11199,9 @@ def _compute_smc_elements(highs_arr, lows_arr, opens_arr, closes_arr, n_pivot=5)
                     if closes_arr[j] > opens_arr[j]:          # bullish candle → bear OB
                         b_lo = float(min(opens_arr[j], closes_arr[j]))
                         b_hi = float(max(opens_arr[j], closes_arr[j]))
-                        # Mitigated if price later traded above OB body high
-                        if not any(highs_arr[k] > b_hi for k in range(j + 1, n)):
-                            result['ob_bear'].append(
-                                (j, float(opens_arr[j]), float(closes_arr[j]), b_hi, b_lo))
+                        _st = _classify_bear_ob(j, b_lo, b_hi, n)
+                        result['ob_bear'].append(
+                            (j, float(opens_arr[j]), float(closes_arr[j]), b_hi, b_lo, _st))
                         break
                 break
 
@@ -11174,33 +11214,32 @@ def _compute_smc_elements(highs_arr, lows_arr, opens_arr, closes_arr, n_pivot=5)
                 result['bos_lines'].append((i, last_ph[1], 'CHoCH'))
                 break
 
-        # Extra OBs from recent pivot extremes (fill up to 2 of each kind)
-        for k in range(min(4, len(ph))):
-            if len(result['ob_bull']) >= 2:
+        # Extra OBs from recent pivot extremes (fill up to 3 of each kind — breaker'lar dahil)
+        for k in range(min(6, len(ph))):
+            if len(result['ob_bull']) >= 3:
                 break
             piv = ph[-(k + 1)]
             for j in range(piv[0] - 1, max(0, piv[0] - 10), -1):
                 if closes_arr[j] < opens_arr[j]:
                     b_lo = float(min(opens_arr[j], closes_arr[j]))
                     b_hi = float(max(opens_arr[j], closes_arr[j]))
-                    if any(lows_arr[k2] < b_lo for k2 in range(j + 1, n)):
-                        break   # mitigated — skip this pivot entirely
-                    candidate = (j, float(opens_arr[j]), float(closes_arr[j]), b_hi, b_lo)
-                    if candidate not in result['ob_bull']:
+                    _st = _classify_bull_ob(j, b_lo, b_hi, n)
+                    candidate = (j, float(opens_arr[j]), float(closes_arr[j]), b_hi, b_lo, _st)
+                    # Aynı bar'da iki kere ekleme
+                    if not any(c[0] == j for c in result['ob_bull']):
                         result['ob_bull'].append(candidate)
                     break
-        for k in range(min(4, len(pl))):
-            if len(result['ob_bear']) >= 2:
+        for k in range(min(6, len(pl))):
+            if len(result['ob_bear']) >= 3:
                 break
             piv = pl[-(k + 1)]
             for j in range(piv[0] - 1, max(0, piv[0] - 10), -1):
                 if closes_arr[j] > opens_arr[j]:
                     b_lo = float(min(opens_arr[j], closes_arr[j]))
                     b_hi = float(max(opens_arr[j], closes_arr[j]))
-                    if any(highs_arr[k2] > b_hi for k2 in range(j + 1, n)):
-                        break   # mitigated — skip this pivot entirely
-                    candidate = (j, float(opens_arr[j]), float(closes_arr[j]), b_hi, b_lo)
-                    if candidate not in result['ob_bear']:
+                    _st = _classify_bear_ob(j, b_lo, b_hi, n)
+                    candidate = (j, float(opens_arr[j]), float(closes_arr[j]), b_hi, b_lo, _st)
+                    if not any(c[0] == j for c in result['ob_bear']):
                         result['ob_bear'].append(candidate)
                     break
 
@@ -11370,49 +11409,143 @@ def _main_price_chart_plotly(symbol, dark_mode):
                     text=f"<b>{lbl}</b>", showarrow=False,
                     xanchor='left', font=dict(size=11, color=clr), bgcolor='rgba(0,0,0,0)'))
 
-        # FVG
-        for (xi, p_lo, p_hi) in smc['fvg_bull']:
-            if xi < n:
+        # FVG — state-aware render (9 Haz 2026 Oturum 20)
+        # fresh: dolu kutu (orjinal renk), tested: ince kutu, inverted: zıt renk + 'iFVG' label
+        for _fvg_tuple in smc['fvg_bull']:
+            xi, p_lo, p_hi, _st = (_fvg_tuple if len(_fvg_tuple) == 4
+                                   else (_fvg_tuple[0], _fvg_tuple[1], _fvg_tuple[2], 'fresh'))
+            if xi >= n: continue
+            if _st == 'inverted':
+                # Rol tersine döndü → bull FVG artık direnç (kırmızı vurgulu)
                 shapes.append(dict(type='rect', xref='x', yref='y',
                     x0=dates[xi], x1=dates[-1], y0=p_lo, y1=p_hi,
-                    fillcolor='rgba(38,166,154,0.10)',
+                    fillcolor='rgba(239,83,80,0.07)',
+                    line=dict(color='#ef5350', width=0.8, dash='dash'), layer='below'))
+                annotations.append(dict(
+                    x=dates[min(xi + 1, n - 1)], y=p_hi, xref='x', yref='y',
+                    text='iFVG↓', showarrow=False, yanchor='bottom',
+                    font=dict(size=9, color='#ef5350', family='monospace')))
+            elif _st == 'tested':
+                shapes.append(dict(type='rect', xref='x', yref='y',
+                    x0=dates[xi], x1=dates[-1], y0=p_lo, y1=p_hi,
+                    fillcolor='rgba(38,166,154,0.06)',
+                    line=dict(color='#26a69a', width=0.4, dash='dot'), layer='below'))
+                annotations.append(dict(
+                    x=dates[min(xi + 1, n - 1)], y=p_hi, xref='x', yref='y',
+                    text='FVG·', showarrow=False, yanchor='bottom',
+                    font=dict(size=9, color='rgba(38,166,154,0.7)', family='monospace')))
+            else:  # fresh
+                shapes.append(dict(type='rect', xref='x', yref='y',
+                    x0=dates[xi], x1=dates[-1], y0=p_lo, y1=p_hi,
+                    fillcolor='rgba(38,166,154,0.12)',
                     line=dict(color='#26a69a', width=0.5, dash='dot'), layer='below'))
                 annotations.append(dict(
                     x=dates[min(xi + 1, n - 1)], y=p_hi, xref='x', yref='y',
                     text='FVG', showarrow=False, yanchor='bottom',
                     font=dict(size=10, color='#26a69a', family='monospace')))
-        for (xi, p_lo, p_hi) in smc['fvg_bear']:
-            if xi < n:
+        for _fvg_tuple in smc['fvg_bear']:
+            xi, p_lo, p_hi, _st = (_fvg_tuple if len(_fvg_tuple) == 4
+                                   else (_fvg_tuple[0], _fvg_tuple[1], _fvg_tuple[2], 'fresh'))
+            if xi >= n: continue
+            if _st == 'inverted':
+                # Rol tersine döndü → bear FVG artık destek (yeşil vurgulu)
                 shapes.append(dict(type='rect', xref='x', yref='y',
                     x0=dates[xi], x1=dates[-1], y0=p_lo, y1=p_hi,
-                    fillcolor='rgba(239,83,80,0.10)',
+                    fillcolor='rgba(38,166,154,0.07)',
+                    line=dict(color='#26a69a', width=0.8, dash='dash'), layer='below'))
+                annotations.append(dict(
+                    x=dates[min(xi + 1, n - 1)], y=p_lo, xref='x', yref='y',
+                    text='iFVG↑', showarrow=False, yanchor='top',
+                    font=dict(size=9, color='#26a69a', family='monospace')))
+            elif _st == 'tested':
+                shapes.append(dict(type='rect', xref='x', yref='y',
+                    x0=dates[xi], x1=dates[-1], y0=p_lo, y1=p_hi,
+                    fillcolor='rgba(239,83,80,0.06)',
+                    line=dict(color='#ef5350', width=0.4, dash='dot'), layer='below'))
+                annotations.append(dict(
+                    x=dates[min(xi + 1, n - 1)], y=p_lo, xref='x', yref='y',
+                    text='FVG·', showarrow=False, yanchor='top',
+                    font=dict(size=9, color='rgba(239,83,80,0.7)', family='monospace')))
+            else:  # fresh
+                shapes.append(dict(type='rect', xref='x', yref='y',
+                    x0=dates[xi], x1=dates[-1], y0=p_lo, y1=p_hi,
+                    fillcolor='rgba(239,83,80,0.12)',
                     line=dict(color='#ef5350', width=0.5, dash='dot'), layer='below'))
                 annotations.append(dict(
                     x=dates[min(xi + 1, n - 1)], y=p_lo, xref='x', yref='y',
                     text='FVG', showarrow=False, yanchor='top',
                     font=dict(size=10, color='#ef5350', family='monospace')))
 
-        # Order Blocks
-        for (bi, o, c, h, l) in smc['ob_bull']:
-            if bi < n:
+        # Order Blocks — state-aware render (fresh / mitigation / breaker)
+        # breaker: rol ters döner → bull OB artık direnç, bear OB artık destek
+        for _ob in smc['ob_bull']:
+            bi, o_, c_, h_, l_, _st = (_ob if len(_ob) == 6
+                                       else (_ob[0], _ob[1], _ob[2], _ob[3], _ob[4], 'fresh'))
+            if bi >= n: continue
+            if _st == 'breaker':
+                # Failed bull OB → şimdi direnç. Kırmızı bordeau.
                 shapes.append(dict(type='rect', xref='x', yref='y',
                     x0=dates[max(0, bi - 1)], x1=dates[min(n - 1, bi + 3)],
-                    y0=l, y1=h,
-                    fillcolor='rgba(38,166,154,0.18)',
+                    y0=l_, y1=h_,
+                    fillcolor='rgba(239,83,80,0.10)',
+                    line=dict(color='#ef5350', width=1.2, dash='dash')))
+                annotations.append(dict(
+                    x=dates[bi], y=h_, xref='x', yref='y',
+                    text='BB↓', showarrow=False, yanchor='bottom',
+                    font=dict(size=9, color='#ef5350', family='monospace')))
+            elif _st == 'mitigation':
+                shapes.append(dict(type='rect', xref='x', yref='y',
+                    x0=dates[max(0, bi - 1)], x1=dates[min(n - 1, bi + 3)],
+                    y0=l_, y1=h_,
+                    fillcolor='rgba(38,166,154,0.10)',
+                    line=dict(color='#26a69a', width=0.7, dash='dot')))
+                annotations.append(dict(
+                    x=dates[bi], y=h_, xref='x', yref='y',
+                    text='OB·', showarrow=False, yanchor='bottom',
+                    font=dict(size=9, color='rgba(38,166,154,0.75)', family='monospace')))
+            else:  # fresh
+                shapes.append(dict(type='rect', xref='x', yref='y',
+                    x0=dates[max(0, bi - 1)], x1=dates[min(n - 1, bi + 3)],
+                    y0=l_, y1=h_,
+                    fillcolor='rgba(38,166,154,0.20)',
                     line=dict(color='#26a69a', width=1, dash='dash')))
                 annotations.append(dict(
-                    x=dates[bi], y=h, xref='x', yref='y',
+                    x=dates[bi], y=h_, xref='x', yref='y',
                     text='OB', showarrow=False, yanchor='bottom',
                     font=dict(size=10, color='#26a69a', family='monospace')))
-        for (bi, o, c, h, l) in smc['ob_bear']:
-            if bi < n:
+        for _ob in smc['ob_bear']:
+            bi, o_, c_, h_, l_, _st = (_ob if len(_ob) == 6
+                                       else (_ob[0], _ob[1], _ob[2], _ob[3], _ob[4], 'fresh'))
+            if bi >= n: continue
+            if _st == 'breaker':
+                # Failed bear OB → şimdi destek. Yeşil vurgulu.
                 shapes.append(dict(type='rect', xref='x', yref='y',
                     x0=dates[max(0, bi - 1)], x1=dates[min(n - 1, bi + 3)],
-                    y0=l, y1=h,
-                    fillcolor='rgba(239,83,80,0.18)',
+                    y0=l_, y1=h_,
+                    fillcolor='rgba(38,166,154,0.10)',
+                    line=dict(color='#26a69a', width=1.2, dash='dash')))
+                annotations.append(dict(
+                    x=dates[bi], y=l_, xref='x', yref='y',
+                    text='BB↑', showarrow=False, yanchor='top',
+                    font=dict(size=9, color='#26a69a', family='monospace')))
+            elif _st == 'mitigation':
+                shapes.append(dict(type='rect', xref='x', yref='y',
+                    x0=dates[max(0, bi - 1)], x1=dates[min(n - 1, bi + 3)],
+                    y0=l_, y1=h_,
+                    fillcolor='rgba(239,83,80,0.10)',
+                    line=dict(color='#ef5350', width=0.7, dash='dot')))
+                annotations.append(dict(
+                    x=dates[bi], y=l_, xref='x', yref='y',
+                    text='OB·', showarrow=False, yanchor='top',
+                    font=dict(size=9, color='rgba(239,83,80,0.75)', family='monospace')))
+            else:  # fresh
+                shapes.append(dict(type='rect', xref='x', yref='y',
+                    x0=dates[max(0, bi - 1)], x1=dates[min(n - 1, bi + 3)],
+                    y0=l_, y1=h_,
+                    fillcolor='rgba(239,83,80,0.20)',
                     line=dict(color='#ef5350', width=1, dash='dash')))
                 annotations.append(dict(
-                    x=dates[bi], y=l, xref='x', yref='y',
+                    x=dates[bi], y=l_, xref='x', yref='y',
                     text='OB', showarrow=False, yanchor='top',
                     font=dict(size=10, color='#ef5350', family='monospace')))
 
@@ -11556,13 +11689,56 @@ def _main_price_chart_plotly(symbol, dark_mode):
             _poc_val = None
             _poc_mtf = {}
 
-        # ── 3. YILLIK VWAP ────────────────────────────────────────────
+        # ── 3. YILLIK VWAP + σ-BANDS ──────────────────────────────────
+        # 9 Haz 2026 Oturum 20: σ-bands eklendi. Citadel/Two Sigma/Renaissance
+        # mean-reversion algoları ±1σ/±2σ VWAP bantlarını otomatik alım/satım
+        # bölgesi olarak kullanır. Fiyat -2σ'da = institutional dip-buy zone.
         _vwap_cur = None
+        _vwap_band_summary = {}
         try:
             _vwap_s   = (df_full['Close'] * df_full['Volume']).cumsum() / df_full['Volume'].cumsum()
             _vwap_arr = _vwap_s.iloc[-90:].values.astype(float)
             _vwap_cur = _vwap_arr[-1]
             _vwap_fmt = f"{int(_vwap_cur):,}" if _vwap_cur >= 1000 else f"{_vwap_cur:.2f}"
+
+            # σ hesabı: VWAP'tan tipik sapmanın rolling std'i (20 bar pencere)
+            _close_arr = df_full['Close'].iloc[-90:].values.astype(float)
+            _dev = _close_arr - _vwap_arr
+            _dev_s = pd.Series(_dev)
+            _sigma = _dev_s.rolling(20, min_periods=5).std().bfill().values
+
+            _upper_1 = _vwap_arr + _sigma
+            _lower_1 = _vwap_arr - _sigma
+            _upper_2 = _vwap_arr + 2 * _sigma
+            _lower_2 = _vwap_arr - 2 * _sigma
+
+            # σ-bands — soft fill (lower 2 önce çiz, sonra üst doluş; mor tonları)
+            fig.add_trace(go.Scatter(
+                x=dates, y=_upper_2,
+                name='+2σ', line=dict(color='rgba(232,121,249,0.0)', width=0),
+                hoverinfo='skip', showlegend=False,
+            ), row=1, col=1)
+            fig.add_trace(go.Scatter(
+                x=dates, y=_lower_2,
+                name='-2σ', line=dict(color='rgba(232,121,249,0.0)', width=0),
+                fill='tonexty', fillcolor='rgba(232,121,249,0.05)',
+                hoverinfo='skip', showlegend=False,
+            ), row=1, col=1)
+            # ±1σ kesik çizgiler
+            fig.add_trace(go.Scatter(
+                x=dates, y=_upper_1,
+                name='VWAP +1σ',
+                line=dict(color='rgba(232,121,249,0.55)', width=1.0, dash='dot'),
+                hoverinfo='skip', showlegend=False,
+            ), row=1, col=1)
+            fig.add_trace(go.Scatter(
+                x=dates, y=_lower_1,
+                name='VWAP -1σ',
+                line=dict(color='rgba(232,121,249,0.55)', width=1.0, dash='dot'),
+                hoverinfo='skip', showlegend=False,
+            ), row=1, col=1)
+
+            # VWAP ana çizgi (üstte kalsın)
             fig.add_trace(go.Scatter(
                 x=dates, y=_vwap_arr,
                 name=f'VWAP(Y): {_vwap_fmt}',
@@ -11577,8 +11753,97 @@ def _main_price_chart_plotly(symbol, dark_mode):
                 font=dict(size=11, color='#e879f9', family='monospace'),
                 bgcolor='rgba(0,0,0,0.55)', borderpad=3,
             ))
+            # ±2σ etiketleri (sağ kenar — staggering pipeline yakalayacak)
+            try:
+                _u2 = float(_upper_2[-1]); _l2 = float(_lower_2[-1])
+                _u2_fmt = f"{int(_u2):,}" if _u2 >= 1000 else f"{_u2:.2f}"
+                _l2_fmt = f"{int(_l2):,}" if _l2 >= 1000 else f"{_l2:.2f}"
+                annotations.append(dict(
+                    x=dates[-1], y=_u2, xref='x', yref='y',
+                    text=f"+2σ {_u2_fmt}",
+                    showarrow=False, xanchor='left', yanchor='middle',
+                    font=dict(size=9, color='rgba(232,121,249,0.85)', family='monospace'),
+                    bgcolor='rgba(0,0,0,0.45)', borderpad=2,
+                ))
+                annotations.append(dict(
+                    x=dates[-1], y=_l2, xref='x', yref='y',
+                    text=f"-2σ {_l2_fmt}",
+                    showarrow=False, xanchor='left', yanchor='middle',
+                    font=dict(size=9, color='rgba(232,121,249,0.85)', family='monospace'),
+                    bgcolor='rgba(0,0,0,0.45)', borderpad=2,
+                ))
+                # Özet — AI prompt / institutional_ref için
+                _cp = float(_close_arr[-1])
+                _vwap_band_summary = {
+                    'vwap': _vwap_cur,
+                    'upper_1': float(_upper_1[-1]),
+                    'lower_1': float(_lower_1[-1]),
+                    'upper_2': _u2,
+                    'lower_2': _l2,
+                    'zone': ('above +2σ' if _cp > _u2 else
+                             ('above +1σ' if _cp > float(_upper_1[-1]) else
+                              ('below -2σ' if _cp < _l2 else
+                               ('below -1σ' if _cp < float(_lower_1[-1]) else 'inside ±1σ')))),
+                    'sigma_dist': (_cp - _vwap_cur) / float(_sigma[-1]) if _sigma[-1] > 0 else 0
+                }
+            except Exception: pass
         except Exception:
             _vwap_cur = None
+
+        # ── 3.A QUARTERLY / YEARLY OPENING (Q-Open, Y-Open) ───────────
+        # Kurumsal kalibrasyon noktaları — JPM/GS algos referansı.
+        # Y-Open = yılın ilk işlem gününün açılışı, Q-Open = çeyreğin ilk günü.
+        _qy_summary = {}
+        try:
+            _last_date = df_full.index[-1]
+            _this_year = _last_date.year
+            _this_q = (_last_date.month - 1) // 3 + 1
+            _q_start_month = (_this_q - 1) * 3 + 1
+            # Y-Open: bu yılın ilk barı
+            _y_bars = df_full[df_full.index.year == _this_year]
+            if len(_y_bars) >= 1:
+                _y_open = float(_y_bars['Open'].iloc[0])
+                _y_open_fmt = f"{int(_y_open):,}" if _y_open >= 1000 else f"{_y_open:.2f}"
+                shapes.append(dict(
+                    type='line', xref='x', yref='y',
+                    x0=dates[0], x1=dates[-1], y0=_y_open, y1=_y_open,
+                    line=dict(color='#94a3b8', width=1.2, dash='dashdot'),
+                    opacity=0.7, layer='above'
+                ))
+                annotations.append(dict(
+                    x=dates[-1], y=_y_open, xref='x', yref='y',
+                    text=f"<b>Y-Open {_y_open_fmt}</b>",
+                    showarrow=False, xanchor='left', yanchor='middle',
+                    font=dict(size=9, color='#cbd5e1', family='monospace'),
+                    bgcolor='rgba(0,0,0,0.55)', borderpad=2,
+                ))
+                _qy_summary['y_open'] = _y_open
+                _qy_summary['y_open_dist_pct'] = (float(df_full['Close'].iloc[-1]) - _y_open) / _y_open * 100
+            # Q-Open: bu çeyreğin ilk barı
+            _q_bars = df_full[(df_full.index.year == _this_year) & (df_full.index.month >= _q_start_month) & (df_full.index.month < _q_start_month + 3)]
+            if len(_q_bars) >= 1:
+                _q_open = float(_q_bars['Open'].iloc[0])
+                # Sadece Y-Open'dan farklıysa çiz (Q1 başında çakışır)
+                if abs(_q_open - _qy_summary.get('y_open', 0)) / max(abs(_qy_summary.get('y_open', 1)), 1) > 0.002:
+                    _q_open_fmt = f"{int(_q_open):,}" if _q_open >= 1000 else f"{_q_open:.2f}"
+                    shapes.append(dict(
+                        type='line', xref='x', yref='y',
+                        x0=dates[0], x1=dates[-1], y0=_q_open, y1=_q_open,
+                        line=dict(color='#fbbf24', width=1.0, dash='dashdot'),
+                        opacity=0.55, layer='above'
+                    ))
+                    annotations.append(dict(
+                        x=dates[-1], y=_q_open, xref='x', yref='y',
+                        text=f"<b>Q{_this_q}-Open {_q_open_fmt}</b>",
+                        showarrow=False, xanchor='left', yanchor='middle',
+                        font=dict(size=9, color='#fcd34d', family='monospace'),
+                        bgcolor='rgba(0,0,0,0.55)', borderpad=2,
+                    ))
+                    _qy_summary['q_open'] = _q_open
+                    _qy_summary['q_open_dist_pct'] = (float(df_full['Close'].iloc[-1]) - _q_open) / _q_open * 100
+                    _qy_summary['q_num'] = _this_q
+        except Exception:
+            _qy_summary = {}
 
         # ── 3.B EVENT-ANCHORED VWAP (52H zirve + 52H dip) ─────────────
         # Klasik anchored VWAP TradingView Premium özelliği. BIST tarafında nadir.
@@ -11711,13 +11976,21 @@ def _main_price_chart_plotly(symbol, dark_mode):
                 _smc_summary['bos'] = (_bos_s[0][2], _bos_s[0][1],
                                        (_cur_price - _bos_s[0][1]) / _bos_s[0][1] * 100)
 
-            _all_fvgs = [(p_lo, p_hi, 'bull') for (_, p_lo, p_hi) in smc['fvg_bull']] + \
-                        [(p_lo, p_hi, 'bear') for (_, p_lo, p_hi) in smc['fvg_bear']]
+            # State'li FVG'leri tuple-tolerant unpack et (eski 3-arity, yeni 4-arity)
+            def _fvg_unpack(t):
+                if len(t) == 4: return (t[0], t[1], t[2], t[3])
+                return (t[0], t[1], t[2], 'fresh')
+            _all_fvgs = [(p_lo, p_hi, 'bull' if _st != 'inverted' else 'bear_inverted', _st)
+                         for (_, p_lo, p_hi, _st) in (_fvg_unpack(t) for t in smc['fvg_bull'])] + \
+                        [(p_lo, p_hi, 'bear' if _st != 'inverted' else 'bull_inverted', _st)
+                         for (_, p_lo, p_hi, _st) in (_fvg_unpack(t) for t in smc['fvg_bear'])]
             if _all_fvgs:
                 _fvg_s = sorted(_all_fvgs, key=lambda x: abs((x[0]+x[1])/2 - _cur_price))
-                _flo, _fhi, _fdir = _fvg_s[0]
+                _flo, _fhi, _fdir, _fst = _fvg_s[0]
                 _fmid = (_flo + _fhi) / 2
+                # AI prompt için 'inverted' bilgisi de geçer (eski 3-tuple yapısı korunur)
                 _smc_summary['fvg'] = (_fdir, _fmid, (_cur_price - _fmid) / _fmid * 100)
+                _smc_summary['fvg_state'] = _fst
         except Exception:
             pass
 
