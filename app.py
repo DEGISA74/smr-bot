@@ -26357,22 +26357,22 @@ def _render_right_col():
         _right_col_html = _sinyal_block
 
         # Alt şerit: RSI + koşullu HACİM + koşullu BETA + GÜVEN
-        # (9 Haz 2026: yükseklik yarıya küçültüldü — padding ve fontlar kompakt)
+        # (9 Haz 2026: bir tur daha küçültüldü — 2px → 1px padding, fontlar 0.62/0.78)
         def _chip(lbl, val, vcol):
-            return (f"<div style='flex:1;text-align:center;padding:2px 3px;"
+            return (f"<div style='flex:1;text-align:center;padding:1px 3px;"
                     f"border-right:1px solid {_CLR_DIVIDER};display:flex;align-items:center;"
-                    f"justify-content:center;gap:6px;line-height:1;'>"
-                    f"<span style='font-size:0.66rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+                    f"justify-content:center;gap:5px;line-height:1;'>"
+                    f"<span style='font-size:0.62rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
                     f"letter-spacing:0.4px;font-weight:700;'>{lbl}</span>"
-                    f"<span style='font-size:0.82rem;font-weight:800;color:{vcol};"
+                    f"<span style='font-size:0.78rem;font-weight:800;color:{vcol};"
                     f"font-family:\"JetBrains Mono\",monospace;'>{val}</span>"
                     f"</div>")
         def _chip_last(lbl, val, vcol):
-            return (f"<div style='flex:1;text-align:center;padding:2px 3px;"
-                    f"display:flex;align-items:center;justify-content:center;gap:6px;line-height:1;'>"
-                    f"<span style='font-size:0.66rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+            return (f"<div style='flex:1;text-align:center;padding:1px 3px;"
+                    f"display:flex;align-items:center;justify-content:center;gap:5px;line-height:1;'>"
+                    f"<span style='font-size:0.62rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
                     f"letter-spacing:0.4px;font-weight:700;'>{lbl}</span>"
-                    f"<span style='font-size:0.82rem;font-weight:800;color:{vcol};"
+                    f"<span style='font-size:0.78rem;font-weight:800;color:{vcol};"
                     f"font-family:\"JetBrains Mono\",monospace;'>{val}</span>"
                     f"</div>")
 
