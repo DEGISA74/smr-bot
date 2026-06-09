@@ -18769,9 +18769,9 @@ def render_unified_signals_panel(ticker):
             f'border-radius:8px;overflow:hidden;margin-bottom:8px;">'
             f'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-bottom:1px solid {border_dim};">'
             f'<span style="font-size:0.85rem;font-weight:800;color:{title_col};">🔔 CANLI SİNYALLER</span>'
-            # Chip kaynağı netleştirildi (9 Haz 2026): "Master 36 · NEGATİF" — kullanıcı
-            # rozetin altta listelenen sinyal sayısından değil Master Skor'dan geldiğini görür.
-            f'<span style="font-size:0.78rem;font-weight:900;color:{karar_color};background:{karar_color}20;padding:2px 8px;border-radius:6px;border:1px solid {karar_color};white-space:nowrap;" title="Master Skor üzerinden: ≥70 POZİTİF · 45-69 NÖTR · &lt;45 NEGATİF">{karar_icon} Master {int(master_score)} · {karar_txt}</span>'
+            # Chip kaynağı netleştirildi (9 Haz 2026): "Teknik 36 · NEGATİF" — kullanıcı
+            # rozetin altta listelenen sinyal sayısından değil Teknik Skor'dan geldiğini görür.
+            f'<span style="font-size:0.78rem;font-weight:900;color:{karar_color};background:{karar_color}20;padding:2px 8px;border-radius:6px;border:1px solid {karar_color};white-space:nowrap;" title="Teknik Skor üzerinden: ≥70 POZİTİF · 45-69 NÖTR · &lt;45 NEGATİF">{karar_icon} Teknik {int(master_score)} · {karar_txt}</span>'
             f'</div>'
             f'{regime_html}'
             f'{conviction_html}'
@@ -20556,7 +20556,7 @@ def _render_health_signals_panel():
                           border-bottom:1px solid #1e3a5f;
                           border-radius:10px 10px 0 0;">
                 <span style="font-size:1.1rem;line-height:1;">🎯</span>
-                GENEL SAĞLIK (Master Skor)
+                GENEL SAĞLIK (Teknik Skor)
               </div>
               <div style="background:#060d1a;padding:6px 4px 8px 4px;border-radius:0 0 10px 10px;overflow:visible;">
                 {_gauge_img_html}
@@ -26388,7 +26388,7 @@ def _render_right_col():
             f"text-transform:uppercase;letter-spacing:0.5px;font-weight:800;'>📊 SİNYAL ÖZETİ</div>"
             + _so_row("🎯", "Genel Sağlık",     _so_master, 100, _so_color_100(_so_master),
                      f"{int(_so_master)}/100" if _so_master is not None else "—",
-                     "Master Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)")
+                     "Teknik Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)")
             + _so_row("🧭", "Pozisyon Eğilimi", _so_pos,    100, _so_color_100(_so_pos),
                      f"{int(_so_pos)}/100" if _so_pos is not None else "—",
                      "Conviction — SMA50/200 + OBV + Z-Score (5-15g LONG/SHORT bias)")
