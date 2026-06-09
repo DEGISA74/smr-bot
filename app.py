@@ -12151,7 +12151,7 @@ def render_synthetic_sentiment_panel(data):
         _overlay2  = base2.mark_point(opacity=0, size=200).encode(
                         y=alt.Y('Price:Q', scale=_ys2), tooltip=_tt2).add_params(_hover2)
         st.altair_chart(alt.layer(area, line_stp, line_price, _vrule2, _dot_p2, _dot_s2, _overlay2).properties(
-            height=280, title=alt.TitleParams("Sentiment Analizi: Mavi (Fiyat) Sarıyı (STP-DEMA6) Yukarı Keserse AL, aşağıya keserse SAT", fontSize=14, color="#38bdf8")), use_container_width=True)
+            height=280, title=alt.TitleParams("Sentiment: Fiyat (mavi) ↔ Eğilim (sarı) — yukarı keserse AL, aşağı keserse SAT", fontSize=14, color="#38bdf8")), use_container_width=True)
 
 def render_smart_volume_panel(ticker):
     """SMART MONEY HACİM ANALİZİ — 4 tile kompakt panel. ICT altında gösterilir."""
@@ -12932,12 +12932,10 @@ def render_smart_volume_panel(ticker):
         # AÇIKLAMA satırı (mevcut)
         f'<div style="padding:4px 12px; border-bottom:1px solid {divider}; font-size:0.88rem; color:{text_sub}; line-height:1.35;">{_desc_text}</div>'
 
-        # ── YENİ VERDICT STRIP (eski 3 büyük kart yerine tek satır) ──
+        # ── VERDICT STRIP (9 Haz 2026: "ÖZET: yön belirsiz..." metni kaldırıldı —
+        #     üst başlıkta zaten geçiyor + 3 rozetle de tekrar oluyordu)
         f'<div style="padding:5px 12px;border-bottom:1px solid {divider};'
-        f'display:flex;align-items:center;gap:9px;flex-wrap:wrap;">'
-        f'<span style="font-size:0.72rem;color:{text_muted};font-weight:800;'
-        f'letter-spacing:0.6px;text-transform:uppercase;">&#9889; Özet:</span>'
-        f'<span style="font-size:0.82rem;color:{text_main};font-weight:600;flex:1;min-width:140px;">{_cs_main_msg}</span>'
+        f'display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end;">'
         f'{_verdict_strip}'
         f'</div>'
 
@@ -18713,7 +18711,9 @@ def render_unified_signals_panel(ticker):
             f'border-radius:8px;overflow:hidden;margin-bottom:8px;">'
             f'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-bottom:1px solid {border_dim};">'
             f'<span style="font-size:0.85rem;font-weight:800;color:{title_col};">🔔 CANLI SİNYALLER</span>'
-            f'<span style="font-size:0.78rem;font-weight:900;color:{karar_color};background:{karar_color}20;padding:2px 8px;border-radius:6px;border:1px solid {karar_color};white-space:nowrap;">{karar_icon} {karar_txt}</span>'
+            # Chip kaynağı netleştirildi (9 Haz 2026): "Master 36 · NEGATİF" — kullanıcı
+            # rozetin altta listelenen sinyal sayısından değil Master Skor'dan geldiğini görür.
+            f'<span style="font-size:0.78rem;font-weight:900;color:{karar_color};background:{karar_color}20;padding:2px 8px;border-radius:6px;border:1px solid {karar_color};white-space:nowrap;" title="Master Skor üzerinden: ≥70 POZİTİF · 45-69 NÖTR · &lt;45 NEGATİF">{karar_icon} Master {int(master_score)} · {karar_txt}</span>'
             f'</div>'
             f'{regime_html}'
             f'{conviction_html}'
@@ -20039,7 +20039,16 @@ def _render_genel_ozet_panel():
                                 or _ticker.endswith("=F")
                                 or "-USD" in _ticker)
                 if _is_no_vol_t:
-                    _hac_icon, _hac_clr, _hac_text = "→", _gs_neu, "Hacim verisi bu sembol için güvenilmez (endeks/emtia/kripto)"
+                    # 9 Haz 2026: sembol tipini açıkça yaz (parantez yığını yerine sebep)
+                    if _ticker.startswith(("XU", "XB", "XT", "XY", "^")):
+                        _hac_text = f"{_ticker} bir endeks — bireysel hisse hacmi yok"
+                    elif _ticker.endswith("=F"):
+                        _hac_text = f"{_ticker} bir vadeli sözleşme — Yahoo hacmi güvenilmez"
+                    elif "-USD" in _ticker:
+                        _hac_text = f"{_ticker} kripto — borsa-bağımlı hacim, RVOL anlamsız"
+                    else:
+                        _hac_text = "Hacim verisi bu sembol için güvenilmez"
+                    _hac_icon, _hac_clr = "→", _gs_neu
                 elif not _data_ready:
                     _hac_icon, _hac_clr, _hac_text = "→", _gs_neu, "Gün içi hacim henüz oluşmadı"
                 elif _gs_rvol >= 1.5:
