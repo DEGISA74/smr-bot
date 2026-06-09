@@ -16237,17 +16237,25 @@ def calculate_8_point_roadmap(ticker, cat=None):
         # Max toplam = 8+7+8 = 23 → /8 skalasına normalize
         enerji_skor = (sq_puan + vol_puan + ema_puan) / 23 * 8
         def _m4_bar(label, val, max_val):
+            # Renk veriye göre değişken (9 Haz 2026 fix): mor sabit yerine severity rengi
             pct = (val / max_val) * 100
-            c = "139,92,246"
-            score_color = "#fff" if val >= max_val else "rgba(76,29,149,0.9)"
+            if pct >= 65:   _bar_rgb = "74,222,128"   # yeşil
+            elif pct >= 40: _bar_rgb = "251,191,36"   # sarı
+            else:           _bar_rgb = "248,113,113"  # kırmızı
             return (
                 f"<div style='margin-bottom:3px;'>"
-                f"<div style='background:rgba({c},0.12);border-radius:3px;height:15px;position:relative;overflow:hidden;'>"
-                f"<div style='width:{pct:.0f}%;background:rgba({c},0.72);height:100%;border-radius:3px;'></div>"
+                f"<div style='background:rgba({_bar_rgb},0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'>"
+                f"<div style='width:{pct:.0f}%;background:rgba({_bar_rgb},0.78);height:100%;border-radius:3px;"
+                f"box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div>"
                 f"<span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;"
-                f"justify-content:space-between;padding:0 5px;box-sizing:border-box;'>"
-                f"<span style='font-size:0.6rem;font-weight:700;color:#fff;'>{label}</span>"
-                f"<span style='font-size:0.6rem;font-weight:800;color:{score_color};'>{val}/{max_val}</span>"
+                f"justify-content:space-between;padding:0 7px;box-sizing:border-box;'>"
+                # Label: beyaz + güçlü shadow (her arka planda okunur)
+                f"<span style='font-size:0.66rem;font-weight:800;color:#fff;"
+                f"text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>{label}</span>"
+                # Skor: beyaz + güçlü shadow (her zaman okunur)
+                f"<span style='font-size:0.7rem;font-weight:900;color:#fff;"
+                f"text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);"
+                f"font-family:\"JetBrains Mono\",monospace;'>{val}/{max_val}</span>"
                 f"</span></div></div>"
             )
         m4 = _m4_bar("Sıkışma", sq_puan, 8) + _m4_bar("Daralma", vol_puan, 8) + _m4_bar(f"Enerji", round(enerji_skor, 1), 8)
@@ -26292,42 +26300,57 @@ def _render_right_col():
                 except Exception: pass
         except Exception: pass
 
-        # Tek satır renderer — kompakt (sıkışmasın diye 9 Haz fix)
-        def _so_row(icon, label, score_html, color, anchor_hint=None, border=True):
+        # Satır rendere: icon + tam label + bar + skor (full width, kırpılma yok)
+        def _so_row(icon, label, score_val, score_max, score_color, score_text, anchor_hint=None, border=True):
             brd = f"border-bottom:1px solid {_CLR_DIVIDER};" if border else ""
             _ttl = f"title='{anchor_hint}'" if anchor_hint else ""
+            # Bar yüzdesi
+            if score_val is None or score_max == 0:
+                _pct = 0
+                _bar_fill = "rgba(148,163,184,0.3)"
+            else:
+                _pct = max(0, min(100, (score_val / score_max) * 100))
+                _bar_fill = score_color
+            # Hex → rgb (glow için)
+            _rgb_for_glow = _bar_fill if _bar_fill.startswith("rgba") else _bar_fill
             return (
-                f"<div {_ttl} style='display:flex;align-items:center;gap:4px;padding:3px 6px;{brd}min-width:0;'>"
-                f"<span style='font-size:0.78rem;line-height:1;flex-shrink:0;'>{icon}</span>"
-                f"<span style='font-size:0.66rem;color:{_CLR_TEXT_SEC};font-weight:700;flex:1;min-width:0;"
-                f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{label}</span>"
-                f"<span style='font-size:0.74rem;font-weight:800;color:{color};"
-                f"font-family:\"JetBrains Mono\",monospace;flex-shrink:0;'>{score_html}</span>"
+                f"<div {_ttl} style='display:flex;align-items:center;gap:7px;padding:5px 10px;{brd}'>"
+                f"<span style='font-size:0.86rem;line-height:1;flex-shrink:0;width:16px;text-align:center;'>{icon}</span>"
+                f"<span style='font-size:0.74rem;color:rgba(255,255,255,0.85);font-weight:700;"
+                f"flex-shrink:0;width:104px;white-space:nowrap;'>{label}</span>"
+                # Bar (track + fill + skor sayısı bar üstünde overlay)
+                f"<div style='flex:1;height:13px;background:rgba(0,0,0,0.28);border-radius:7px;"
+                f"position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.08);'>"
+                f"<div style='height:100%;width:{_pct:.0f}%;background:{_bar_fill};"
+                f"border-radius:7px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div>"
+                # Skor sayısı bar üstünde overlay — beyaz + shadow (her bg'de okunur)
+                f"<span style='position:absolute;right:6px;top:50%;transform:translateY(-50%);"
+                f"font-size:0.66rem;font-weight:900;color:#fff;"
+                f"text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);"
+                f"font-family:\"JetBrains Mono\",monospace;line-height:1;'>{score_text}</span>"
+                f"</div>"
                 f"</div>"
             )
 
-        def _fmt_100(s):
-            if s is None: return "—"
-            return f"{int(s)}<span style='font-size:0.56rem;opacity:0.55;'>/100</span>"
-
-        def _fmt_5(s, lbl):
-            if s is None: return "—"
-            return f"{int(s)}<span style='font-size:0.56rem;opacity:0.55;'>/5</span>"
-
         _sinyal_block = (
-            f"<div style='padding:3px 0;'>"
-            f"<div style='padding:2px 6px 3px;font-size:0.56rem;color:{_CLR_TEXT_SEC};"
-            f"text-transform:uppercase;letter-spacing:0.4px;font-weight:700;'>SİNYAL ÖZETİ</div>"
-            + _so_row("🎯", "Genel Sağlık",   _fmt_100(_so_master), _so_color_100(_so_master),
+            f"<div style='padding:5px 0 4px;border-bottom:1px solid {_CLR_DIVIDER};'>"
+            f"<div style='padding:3px 10px 5px;font-size:0.58rem;color:{_CLR_TEXT_SEC};"
+            f"text-transform:uppercase;letter-spacing:0.6px;font-weight:800;'>📊 SİNYAL ÖZETİ</div>"
+            + _so_row("🎯", "Genel Sağlık",     _so_master, 100, _so_color_100(_so_master),
+                     f"{int(_so_master)}/100" if _so_master is not None else "—",
                      "Master Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)")
-            + _so_row("🧭", "Pozisyon",       _fmt_100(_so_pos),    _so_color_100(_so_pos),
-                     "Pozisyon Eğilimi (Conviction) — SMA50/200 + OBV + Z-Score (5-15g yön bias'ı)")
-            + _so_row("🗺",  "Yol Haritası",  _fmt_100(_so_road),   _so_color_100(_so_road),
+            + _so_row("🧭", "Pozisyon Eğilimi", _so_pos,    100, _so_color_100(_so_pos),
+                     f"{int(_so_pos)}/100" if _so_pos is not None else "—",
+                     "Conviction — SMA50/200 + OBV + Z-Score (5-15g LONG/SHORT bias)")
+            + _so_row("🗺",  "Yol Haritası",    _so_road,   100, _so_color_100(_so_road),
+                     f"{int(_so_road)}/100" if _so_road is not None else "—",
                      "Roadmap — Trend/Mom/Hacim/Yapı/Senaryo eşit ağırlıkla sentez")
-            + _so_row("🌟", "Erken Radar",    _fmt_100(_so_er),     _so_color_100(_so_er),
+            + _so_row("🌟", "Erken Radar",      _so_er,     100, _so_color_100(_so_er),
+                     f"{int(_so_er)}/100" if _so_er is not None else "—",
                      "27 senaryo paterni — kalite skoru (5g-20g)")
-            + _so_row("🏛",  "Smart Money",   _fmt_5(_so_ict, _so_ict_lbl or "—"), _so_color_5(_so_ict),
-                     f"ICT Model skoru — OB/FVG/likidite teyit sayısı (0-5) — {_so_ict_lbl or '—'}", border=False)
+            + _so_row("🏛",  "Smart Money",     _so_ict,    5,   _so_color_5(_so_ict),
+                     f"{int(_so_ict)}/5 · {_so_ict_lbl}" if _so_ict is not None else "—",
+                     f"ICT Model skoru (OB/FVG/likidite teyit) — {_so_ict_lbl or '—'}", border=False)
             + "</div>"
         )
 
@@ -26392,27 +26415,35 @@ def _render_right_col():
         # Fiyat formatı (endeks için binlik ayırıcı)
         _px_fmt = (f"{int(price_val):,}".replace(",", ".") if _is_idx else f"{price_val:.2f}")
 
+        # ── DİKEY STACK (9 Haz 2026): FİYAT üstte kompakt, matris ortada
+        # tam genişlikte (kırpılma yok), alt şerit aynı kalır.
         st.markdown(f"""
 <div style="background:{_bg};border-radius:8px;padding:0;
             box-shadow:0 6px 14px -3px {_shadow};
             margin-bottom:8px;border:1px solid rgba(255,255,255,0.12);
             overflow:hidden;">
-  <div style="display:flex;border-bottom:1px solid {_CLR_DIVIDER};">
-    <div style="flex:0.85;padding:10px 6px;border-right:1px solid {_CLR_DIVIDER};text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center;">
-      <div style="font-size:0.92rem;color:{_CLR_TEXT_SEC};font-weight:700;
-                  text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">FİYAT: {display_ticker}</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:2.15rem;
-                  font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;margin-bottom:6px;">{_px_fmt}</div>
-      <span style="background:rgba(0,0,0,0.22);color:{_CLR_TEXT_PRI};font-weight:700;
-                   font-size:0.95rem;padding:2px 8px;border-radius:20px;">
-        {_arrow} %{abs(change_val):.2f}
-      </span>
-    </div>
-    <div style="flex:1.15;display:flex;flex-direction:column;min-width:0;">
-      {_right_col_html}
-    </div>
+  <!-- TOP STRIP: ticker + fiyat + %değişim (tek satır kompakt) -->
+  <div style="padding:9px 12px;border-bottom:1px solid {_CLR_DIVIDER};
+              display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+    <span style="font-size:0.66rem;color:{_CLR_TEXT_SEC};font-weight:800;
+                 text-transform:uppercase;letter-spacing:0.7px;line-height:1;">FİYAT</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:1.0rem;
+                 font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;letter-spacing:0.02em;">{display_ticker}</span>
+    <span style="flex:1;font-family:'JetBrains Mono',monospace;font-size:1.65rem;
+                 font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;text-align:right;">{_px_fmt}</span>
+    <span style="background:rgba(0,0,0,0.28);color:{_CLR_TEXT_PRI};font-weight:800;
+                 font-size:0.78rem;padding:3px 9px;border-radius:14px;line-height:1;">
+      {_arrow} %{abs(change_val):.2f}
+    </span>
   </div>
+
+  <!-- MIDDLE: Sinyal Özeti matris (tam genişlik, bar'lı satırlar) -->
+  {_sinyal_block}
+
+  <!-- ORTA ŞERİT: BIST için RS GÜCÜ + MOMENTUM -->
   {f'<div style="display:flex;border-bottom:1px solid {_CLR_DIVIDER};">{_middle_html}</div>' if _middle_html else ''}
+
+  <!-- BOTTOM ŞERİT: RSI + HACİM + BETA -->
   <div style="display:flex;">
     {_bottom_html}
   </div>
