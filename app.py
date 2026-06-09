@@ -759,6 +759,12 @@ def init_db():
         'ALTER TABLE scan_signals ADD COLUMN f_rsi_dual TEXT',          # RSI(5)/RSI(14) state (7 state — overbought/oversold/early/cooling/dip_recovery)
         # 9 Haz 2026 Oturum 20 — Breakout state (Kibar Type 1): 0 forming · 1 testing · 2 breakout · 3 breakaway gap
         'ALTER TABLE scan_signals ADD COLUMN f_breakout_state INTEGER',
+        # 9 Haz 2026 Oturum 20 son — SMC kurumsal 4 yeni flag (BACKTEST: Eylül 2026 ortası
+        # signal_returns × bu flag'ler JOIN ile her birinin BIST hit/ret katkısı ölçülecek):
+        'ALTER TABLE scan_signals ADD COLUMN f_at_vwap_minus_2sigma INTEGER',  # fiyat -2σ VWAP zonunda (≤ ±%0.5)
+        'ALTER TABLE scan_signals ADD COLUMN f_at_y_open INTEGER',             # Y-Open'a yakın (±%2 içinde)
+        'ALTER TABLE scan_signals ADD COLUMN f_near_ifvg INTEGER',             # inverse FVG'ye ±%2 içinde
+        'ALTER TABLE scan_signals ADD COLUMN f_breaker_block_active INTEGER',  # aktif BB zonunda ±%2 içinde
     ]:
         try:
             c.execute(_alter_col)
@@ -843,6 +849,11 @@ def _compute_signal_features(ticker: str) -> dict:
         'f_cum_delta_dual': None, 'f_rsi_dual': None,
         # 9 Haz 2026 Oturum 20 — Breakout state (pattern boundary tabanlı, scan_chart_patterns'tan çekilir)
         'f_breakout_state': None,
+        # 9 Haz 2026 Oturum 20 son — SMC kurumsal 4 yeni flag (Eylül 2026 backtest)
+        'f_at_vwap_minus_2sigma': None,
+        'f_at_y_open': None,
+        'f_near_ifvg': None,
+        'f_breaker_block_active': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1040,6 +1051,67 @@ def _compute_signal_features(ticker: str) -> dict:
                         out['f_poc_magnet'] = 0
             except Exception: pass
         except Exception: pass
+
+        # ─── 13-16) SMC KURUMSAL 4 FLAG (9 Haz 2026 Oturum 20 son) ──────────
+        # Bunlar henüz BIST için backtest edilmedi — Eylül 2026 ortası
+        # signal_returns × bu flag'ler JOIN ile gerçek hit/ret katkısı ölçülecek.
+        # AI prompt'a şu an "destekleyici" seviyede emit edilir (ana hikaye değil).
+        try:
+            cur = float(c.iloc[-1])
+
+            # 13) f_at_vwap_minus_2sigma — fiyat -2σ VWAP zonunda (±%0.5 içinde)
+            try:
+                _vwap_full = (df['Close'] * df['Volume']).cumsum() / df['Volume'].cumsum()
+                _close_arr_n = df['Close'].values.astype(float)
+                _vwap_arr_n = _vwap_full.values.astype(float)
+                _dev_s = pd.Series(_close_arr_n - _vwap_arr_n)
+                _sigma_now = float(_dev_s.rolling(20, min_periods=5).std().iloc[-1])
+                if _sigma_now > 0:
+                    _lower_2_now = float(_vwap_arr_n[-1]) - 2 * _sigma_now
+                    if _lower_2_now > 0 and abs(cur - _lower_2_now) / _lower_2_now * 100.0 <= 0.5:
+                        out['f_at_vwap_minus_2sigma'] = 1
+                    else:
+                        out['f_at_vwap_minus_2sigma'] = 0
+            except Exception: pass
+
+            # 14) f_at_y_open — fiyat Y-Open'a ±%2 içinde
+            try:
+                _last_dt = df.index[-1]
+                _yr = _last_dt.year
+                _y_bars = df[df.index.year == _yr]
+                if len(_y_bars) >= 1:
+                    _y_open_val = float(_y_bars['Open'].iloc[0])
+                    if _y_open_val > 0 and abs(cur - _y_open_val) / _y_open_val * 100.0 <= 2.0:
+                        out['f_at_y_open'] = 1
+                    else:
+                        out['f_at_y_open'] = 0
+            except Exception: pass
+
+            # 15-16) f_near_ifvg + f_breaker_block_active — SMC structure'dan
+            try:
+                _highs = df['High'].values.astype(float)
+                _lows  = df['Low'].values.astype(float)
+                _opens = df['Open'].values.astype(float)
+                _closes= df['Close'].values.astype(float)
+                _smc_n = _compute_smc_elements(_highs, _lows, _opens, _closes)
+                # 15) f_near_ifvg — inverted FVG'ye ±%2 içinde mi
+                _near_iv = 0
+                for _fv in (_smc_n.get('fvg_bull', []) + _smc_n.get('fvg_bear', [])):
+                    if len(_fv) >= 4 and _fv[3] == 'inverted':
+                        _mid = (_fv[1] + _fv[2]) / 2.0
+                        if _mid > 0 and abs(cur - _mid) / _mid * 100.0 <= 2.0:
+                            _near_iv = 1; break
+                out['f_near_ifvg'] = _near_iv
+                # 16) f_breaker_block_active — aktif BB zonunda ±%2 içinde mi
+                _near_bb = 0
+                for _ob in (_smc_n.get('ob_bull', []) + _smc_n.get('ob_bear', [])):
+                    if len(_ob) >= 6 and _ob[5] == 'breaker':
+                        _mid = (_ob[3] + _ob[4]) / 2.0  # body_hi + body_lo
+                        if _mid > 0 and abs(cur - _mid) / _mid * 100.0 <= 2.0:
+                            _near_bb = 1; break
+                out['f_breaker_block_active'] = _near_bb
+            except Exception: pass
+        except Exception: pass
     except Exception as e:
         try: log_error("compute_signal_features", e, ctx={'ticker': ticker})
         except Exception: pass
@@ -1211,6 +1283,11 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_rsi_dual           = f_rsi_dual_raw if f_rsi_dual_raw else None
             # 9 Haz 2026 Oturum 20 — Breakout state (Kibar Type 1)
             f_breakout_state_v   = _ff('F_Breakout_State', 'Breakout_State', 'f_breakout_state', cast=int)
+            # 9 Haz 2026 Oturum 20 son — SMC kurumsal 4 yeni flag
+            f_at_vwap_m2s_v      = _ff('F_VWAP_M2S', 'At_VWAP_M2S', 'f_at_vwap_minus_2sigma', cast=int)
+            f_at_y_open_v        = _ff('F_Y_Open', 'At_Y_Open', 'f_at_y_open', cast=int)
+            f_near_ifvg_v        = _ff('F_iFVG', 'Near_iFVG', 'f_near_ifvg', cast=int)
+            f_bb_active_v        = _ff('F_BB_Active', 'Breaker_Block', 'f_breaker_block_active', cast=int)
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -1231,19 +1308,25 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_cum_delta_dual   is None: f_cum_delta_dual   = _feat.get('f_cum_delta_dual')
                 if f_rsi_dual         is None: f_rsi_dual         = _feat.get('f_rsi_dual')
                 if f_breakout_state_v is None: f_breakout_state_v = _feat.get('f_breakout_state')
+                if f_at_vwap_m2s_v    is None: f_at_vwap_m2s_v    = _feat.get('f_at_vwap_minus_2sigma')
+                if f_at_y_open_v      is None: f_at_y_open_v      = _feat.get('f_at_y_open')
+                if f_near_ifvg_v      is None: f_near_ifvg_v      = _feat.get('f_near_ifvg')
+                if f_bb_active_v      is None: f_bb_active_v      = _feat.get('f_breaker_block_active')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
                     f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days, f_vp_shape, f_master_score,
                     f_poc_magnet, f_poc_confluence, f_avwap_test_zone,
                     f_ms_trend, f_ms_momentum, f_ms_ict, f_ms_radar2,
-                    f_cum_delta_dual, f_rsi_dual, f_breakout_state)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_cum_delta_dual, f_rsi_dual, f_breakout_state,
+                    f_at_vwap_minus_2sigma, f_at_y_open, f_near_ifvg, f_breaker_block_active)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
                  f_ms_trend_v, f_ms_momentum_v, f_ms_ict_v, f_ms_radar2_v,
-                 f_cum_delta_dual, f_rsi_dual, f_breakout_state_v)
+                 f_cum_delta_dual, f_rsi_dual, f_breakout_state_v,
+                 f_at_vwap_m2s_v, f_at_y_open_v, f_near_ifvg_v, f_bb_active_v)
             )
         conn.commit()
         conn.close()
@@ -23245,6 +23328,41 @@ if st.session_state.generate_prompt:
                 pass
     except Exception:
         pass
+
+    # 11.5-C) SMC KURUMSAL 4 EK FLAG (9 Haz 2026 Oturum 20 son)
+    # ⚠️ Henüz BIST için backtest edilmedi — DESTEKLEYİCİ seviyede emit.
+    # Ana hikaye yapma, sadece "ek confluence" olarak göster.
+    # Eylül 2026 ortası signal_returns × bu flag'ler JOIN ile gerçek katkı ölçülecek.
+    # Şu an her flag SADECE aktifse emit (gürültü engellenir).
+    try:
+        _smc_extra = _compute_signal_features(t) or {}
+        if _smc_extra.get('f_at_vwap_minus_2sigma') == 1:
+            _poc_avwap_lines.append(
+                "  vwap_minus_2sigma_zone: True (fiyat -2σ VWAP bölgesinde — "
+                "Citadel/Renaissance tarzı mean-reversion algoları otomatik alım eşiği; "
+                "DESTEKLEYİCİ confluence, tek başına yön değildir — BIST backtest beklemede)"
+            )
+        if _smc_extra.get('f_at_y_open') == 1:
+            _poc_avwap_lines.append(
+                "  near_y_open: True (fiyat yıl başı açılışına ±%2 yakın — "
+                "kurumsal kalibrasyon noktası, yıllık performans referansı; "
+                "DESTEKLEYİCİ bağlam — BIST backtest beklemede)"
+            )
+        if _smc_extra.get('f_near_ifvg') == 1:
+            _poc_avwap_lines.append(
+                "  near_inverse_fvg: True (fiyat 'iFVG' bölgesinde ±%2 — eski "
+                "FVG'nin rolü ters dönmüş: eskiden destek olan bull FVG artık direnç "
+                "veya tersi; DESTEKLEYİCİ confluence, bias OBV/Delta'dan gelir — "
+                "BIST backtest beklemede)"
+            )
+        if _smc_extra.get('f_breaker_block_active') == 1:
+            _poc_avwap_lines.append(
+                "  breaker_block_active: True (fiyat aktif 'Breaker Block' bölgesinde "
+                "±%2 — failed Order Block ters dönmüş seviye, ICT'nin advanced rejim "
+                "kavramı; DESTEKLEYİCİ confluence — BIST backtest beklemede)"
+            )
+    except Exception: pass
+
     _poc_avwap_block = ("\n" + "\n".join(_poc_avwap_lines)) if _poc_avwap_lines else ""
 
     # 11.6) Mum Kapanış × 5g Net % — sağlıklı/yanıltıcı tespiti (gap-grind koruması)
@@ -24053,7 +24171,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
-• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched).
+• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle).
 • smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse).
 • trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
