@@ -26292,42 +26292,42 @@ def _render_right_col():
                 except Exception: pass
         except Exception: pass
 
-        # Tek satır renderer
+        # Tek satır renderer — kompakt (sıkışmasın diye 9 Haz fix)
         def _so_row(icon, label, score_html, color, anchor_hint=None, border=True):
             brd = f"border-bottom:1px solid {_CLR_DIVIDER};" if border else ""
             _ttl = f"title='{anchor_hint}'" if anchor_hint else ""
             return (
-                f"<div {_ttl} style='display:flex;align-items:center;gap:6px;padding:3px 8px;{brd}'>"
-                f"<span style='font-size:0.85rem;line-height:1;flex-shrink:0;'>{icon}</span>"
-                f"<span style='font-size:0.72rem;color:{_CLR_TEXT_SEC};font-weight:700;flex:1;"
+                f"<div {_ttl} style='display:flex;align-items:center;gap:4px;padding:3px 6px;{brd}min-width:0;'>"
+                f"<span style='font-size:0.78rem;line-height:1;flex-shrink:0;'>{icon}</span>"
+                f"<span style='font-size:0.66rem;color:{_CLR_TEXT_SEC};font-weight:700;flex:1;min-width:0;"
                 f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{label}</span>"
-                f"<span style='font-size:0.82rem;font-weight:800;color:{color};"
+                f"<span style='font-size:0.74rem;font-weight:800;color:{color};"
                 f"font-family:\"JetBrains Mono\",monospace;flex-shrink:0;'>{score_html}</span>"
                 f"</div>"
             )
 
         def _fmt_100(s):
             if s is None: return "—"
-            return f"{int(s)}<span style='font-size:0.62rem;opacity:0.55;'>/100</span>"
+            return f"{int(s)}<span style='font-size:0.56rem;opacity:0.55;'>/100</span>"
 
         def _fmt_5(s, lbl):
             if s is None: return "—"
-            return f"{int(s)}<span style='font-size:0.62rem;opacity:0.55;'>/5</span> · <span style='font-size:0.66rem;opacity:0.75;'>{lbl}</span>"
+            return f"{int(s)}<span style='font-size:0.56rem;opacity:0.55;'>/5</span>"
 
         _sinyal_block = (
-            f"<div style='padding:4px 0;'>"
-            f"<div style='padding:3px 8px 4px;font-size:0.62rem;color:{_CLR_TEXT_SEC};"
-            f"text-transform:uppercase;letter-spacing:0.5px;font-weight:700;'>SİNYAL ÖZETİ</div>"
-            + _so_row("🎯", "Genel Sağlık",       _fmt_100(_so_master), _so_color_100(_so_master),
+            f"<div style='padding:3px 0;'>"
+            f"<div style='padding:2px 6px 3px;font-size:0.56rem;color:{_CLR_TEXT_SEC};"
+            f"text-transform:uppercase;letter-spacing:0.4px;font-weight:700;'>SİNYAL ÖZETİ</div>"
+            + _so_row("🎯", "Genel Sağlık",   _fmt_100(_so_master), _so_color_100(_so_master),
                      "Master Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)")
-            + _so_row("🧭", "Pozisyon Eğilimi",   _fmt_100(_so_pos),    _so_color_100(_so_pos),
-                     "Conviction — SMA50/200 + OBV + Z-Score (5-15g yön bias'ı)")
-            + _so_row("🗺",  "Yol Haritası",      _fmt_100(_so_road),   _so_color_100(_so_road),
+            + _so_row("🧭", "Pozisyon",       _fmt_100(_so_pos),    _so_color_100(_so_pos),
+                     "Pozisyon Eğilimi (Conviction) — SMA50/200 + OBV + Z-Score (5-15g yön bias'ı)")
+            + _so_row("🗺",  "Yol Haritası",  _fmt_100(_so_road),   _so_color_100(_so_road),
                      "Roadmap — Trend/Mom/Hacim/Yapı/Senaryo eşit ağırlıkla sentez")
-            + _so_row("🌟", "Erken Radar",        _fmt_100(_so_er),     _so_color_100(_so_er),
+            + _so_row("🌟", "Erken Radar",    _fmt_100(_so_er),     _so_color_100(_so_er),
                      "27 senaryo paterni — kalite skoru (5g-20g)")
-            + _so_row("🏛",  "ICT / Smart Money", _fmt_5(_so_ict, _so_ict_lbl or "—"), _so_color_5(_so_ict),
-                     "Model skoru — OB/FVG/likidite teyit sayısı (0-5)", border=False)
+            + _so_row("🏛",  "Smart Money",   _fmt_5(_so_ict, _so_ict_lbl or "—"), _so_color_5(_so_ict),
+                     f"ICT Model skoru — OB/FVG/likidite teyit sayısı (0-5) — {_so_ict_lbl or '—'}", border=False)
             + "</div>"
         )
 
@@ -26398,17 +26398,17 @@ def _render_right_col():
             margin-bottom:8px;border:1px solid rgba(255,255,255,0.12);
             overflow:hidden;">
   <div style="display:flex;border-bottom:1px solid {_CLR_DIVIDER};">
-    <div style="flex:1.1;padding:10px 8px;border-right:1px solid {_CLR_DIVIDER};text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center;">
-      <div style="font-size:1.0rem;color:{_CLR_TEXT_SEC};font-weight:700;
-                  text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">FİYAT: {display_ticker}</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:2.5rem;
+    <div style="flex:0.85;padding:10px 6px;border-right:1px solid {_CLR_DIVIDER};text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center;">
+      <div style="font-size:0.92rem;color:{_CLR_TEXT_SEC};font-weight:700;
+                  text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">FİYAT: {display_ticker}</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:2.15rem;
                   font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;margin-bottom:6px;">{_px_fmt}</div>
       <span style="background:rgba(0,0,0,0.22);color:{_CLR_TEXT_PRI};font-weight:700;
-                   font-size:1.0rem;padding:2px 8px;border-radius:20px;">
+                   font-size:0.95rem;padding:2px 8px;border-radius:20px;">
         {_arrow} %{abs(change_val):.2f}
       </span>
     </div>
-    <div style="flex:1;display:flex;flex-direction:column;">
+    <div style="flex:1.15;display:flex;flex-direction:column;min-width:0;">
       {_right_col_html}
     </div>
   </div>
