@@ -17661,7 +17661,7 @@ def render_roadmap_8_panel(ticker):
                     <span style="width:6px;height:6px;border-radius:50%;background:{s_hex};flex-shrink:0;display:inline-block;box-shadow:0 0 3px {s_hex};"></span>
                     {num}. {title}
                 </div>
-                <div style="font-size:0.55rem;font-weight:700;color:#64748b;background:rgba(100,116,139,0.1);padding:1px 3px;border-radius:3px;border:1px solid rgba(100,116,139,0.2);">⏱️ {tf_text}</div>
+                <div style="font-size:0.55rem;font-weight:700;color:#64748b;background:rgba(100,116,139,0.1);padding:5px 3px;border-radius:3px;border:1px solid rgba(100,116,139,0.2);">⏱️ {tf_text}</div>
             </div>
             <div style="font-size:0.72rem;font-weight:500;line-height:1.3;flex:1;" class="dark-text-fix">{content}</div>
             <div class="rm-edu-tip-{box_idx}" style="font-size:0.65rem;color:#64748b;font-style:italic;margin-top:3px;border-top:1px dashed rgba({s_rgb},0.25);padding-top:3px;opacity:0;max-height:0;overflow:hidden;transition:opacity 0.25s,max-height 0.25s;">{edu_text}</div>
@@ -26359,7 +26359,7 @@ def _render_right_col():
         # Alt şerit: RSI + koşullu HACİM + koşullu BETA + GÜVEN
         # (9 Haz 2026: bir tur daha küçültüldü — 2px → 1px padding, fontlar 0.62/0.78)
         def _chip(lbl, val, vcol):
-            return (f"<div style='flex:1;text-align:center;padding:1px 3px;"
+            return (f"<div style='flex:1;text-align:center;padding:5px 3px;"
                     f"border-right:1px solid {_CLR_DIVIDER};display:flex;align-items:center;"
                     f"justify-content:center;gap:5px;line-height:1;'>"
                     f"<span style='font-size:0.62rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
@@ -26368,7 +26368,7 @@ def _render_right_col():
                     f"font-family:\"JetBrains Mono\",monospace;'>{val}</span>"
                     f"</div>")
         def _chip_last(lbl, val, vcol):
-            return (f"<div style='flex:1;text-align:center;padding:1px 3px;"
+            return (f"<div style='flex:1;text-align:center;padding:5px 3px;"
                     f"display:flex;align-items:center;justify-content:center;gap:5px;line-height:1;'>"
                     f"<span style='font-size:0.62rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
                     f"letter-spacing:0.4px;font-weight:700;'>{lbl}</span>"
@@ -26432,12 +26432,12 @@ def _render_right_col():
     <div style="display:flex;flex-direction:column;align-items:flex-start;line-height:1;gap:3px;">
       <span style="font-size:0.62rem;color:{_CLR_TEXT_SEC};font-weight:800;
                    text-transform:uppercase;letter-spacing:0.7px;line-height:1;">FİYAT</span>
-      <span style="font-family:'JetBrains Mono',monospace;font-size:1.30rem;
+      <span style="font-family:'JetBrains Mono',monospace;font-size:1.50rem;
                    font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;letter-spacing:0.02em;">{display_ticker}</span>
     </div>
     <!-- SAĞ: fiyat (üst, büyük) + %değişim (alt, rozet) -->
     <div style="flex:1;display:flex;flex-direction:column;align-items:flex-end;line-height:1;gap:5px;">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:2.15rem;
+      <span style="font-family:'JetBrains Mono',monospace;font-size:2.25rem;
                    font-weight:900;color:{_CLR_TEXT_PRI};line-height:1;">{_px_fmt}</span>
       <span style="background:rgba(0,0,0,0.28);color:{_CLR_TEXT_PRI};font-weight:800;
                    font-size:0.78rem;padding:3px 9px;border-radius:14px;line-height:1;">
