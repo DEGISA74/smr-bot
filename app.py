@@ -20498,7 +20498,7 @@ def _render_health_signals_panel():
                           border-bottom:1px solid #1e3a5f;
                           border-radius:10px 10px 0 0;">
                 <span style="font-size:1.1rem;line-height:1;">🎯</span>
-                TEKNİK GÖRÜNÜM
+                GENEL SAĞLIK (Master Skor)
               </div>
               <div style="background:#060d1a;padding:6px 4px 8px 4px;border-radius:0 0 10px 10px;overflow:visible;">
                 {_gauge_img_html}
@@ -26232,26 +26232,106 @@ def _render_right_col():
                     f"font-family:\"JetBrains Mono\",monospace;'>{val}</div>"
                     f"</div>")
 
-        # YAPI — 3 katmanlı (Kısa / Orta / Makro)
-        def _yapi_sub(lbl, period, val, col):
-            return (f"<div style='display:flex;align-items:center;gap:6px;padding:1px 0;'>"
-                    f"<span style='font-size:0.72rem;color:{_CLR_TEXT_SEC};font-weight:700;'>"
-                    f"{lbl} <span style='opacity:0.55;font-size:0.62rem;font-weight:500;'>{period}</span></span>"
-                    f"<span style='font-size:0.85rem;font-weight:800;color:{col};margin-left:auto;"
-                    f"font-family:\"JetBrains Mono\",monospace;'>{val}</span>"
-                    f"</div>")
-        _yapi_block = (
-            f"<div style='padding:5px 8px;border-bottom:1px solid {_CLR_DIVIDER};'>"
-            f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
-            f"letter-spacing:0.5px;font-weight:700;margin-bottom:3px;'>YAPI</div>"
-            + _yapi_sub("Kısa",  "1h",    _kisa_lbl,  _kisa_col)
-            + _yapi_sub("Orta",  "1-2 ay", _yapi_lbl,  _yapi_col)
-            + _yapi_sub("Makro", "6-9 ay", _makro_lbl, _makro_col)
+        # ── SİNYAL ÖZETİ — 5 skor matrisi (9 Haz 2026 Oturum 20) ──────────────
+        # YAPI 3-katmanlı kart kaldırıldı (kullanıcı talebi: "yapı zaten başka
+        # yerlerde var"). Yerine 5 farklı lens'ten skor matrisi: kullanıcı tek
+        # bakışta tüm sinyallerin uyum/çelişkisini görür, alttaki ilgili panele
+        # iner. Tekrar yok — her skor sadece kendi panelinde detay açar.
+
+        # Renk paleti — mevcut sistemle uyumlu
+        _SO_GREEN  = "#4ade80"   # 65+
+        _SO_YELLOW = "#fbbf24"   # 45-64
+        _SO_RED    = "#f87171"   # <45
+        _SO_NEUTRAL = "#94a3b8"  # veri yok
+
+        def _so_color_100(score):
+            if score is None: return _SO_NEUTRAL
+            if score >= 65: return _SO_GREEN
+            if score >= 45: return _SO_YELLOW
+            return _SO_RED
+
+        def _so_color_5(score):
+            if score is None: return _SO_NEUTRAL
+            if score >= 4: return _SO_GREEN
+            if score >= 3: return _SO_YELLOW
+            return _SO_RED
+
+        # 5 skoru topla — hepsi @st.cache_data ile cache'li, ek hesap maliyeti minimal
+        _so_master = None; _so_pos = None; _so_road = None; _so_er = None; _so_ict = None
+        _so_ict_lbl = None
+        try:
+            _so_master, _, _ = calculate_master_score(_tk)
+        except Exception: pass
+        try:
+            _so_road_data = calculate_8_point_roadmap(_tk, st.session_state.get('category', 'BIST'))
+            if _so_road_data:
+                _so_road = _so_road_data.get('composite_score')
+        except Exception: pass
+        try:
+            _so_ict_data = calculate_ict_deep_analysis(_tk)
+            if _so_ict_data:
+                _so_ict = _so_ict_data.get('model_score', 0)
+                _so_ict_lbl = ["SETUP YOK", "ÇOK ZAYIF", "ZAYIF", "ORTA", "GÜÇLÜ", "TAM MODEL"][int(_so_ict)]
+        except Exception: pass
+        try:
+            _so_df = get_safe_historical_data(_tk)
+            if _so_df is not None and not _so_df.empty:
+                # Pozisyon Eğilimi (Conviction)
+                try: _so_pa = calculate_price_action_dna(_tk)
+                except Exception: _so_pa = None
+                try: _so_sent = calculate_sentiment_score(_tk)
+                except Exception: _so_sent = None
+                try:
+                    _so_conv = calculate_conviction_score(_so_df, _so_pa, _so_ict_data if _so_ict is not None else None, _so_sent, None, _tk)
+                    if _so_conv: _so_pos = _so_conv.get('score')
+                except Exception: pass
+                # Erken Radar
+                try:
+                    _so_er_data = evaluate_erken_radar(_tk, _so_df)
+                    if _so_er_data: _so_er = _so_er_data.get('overall_quality')
+                except Exception: pass
+        except Exception: pass
+
+        # Tek satır renderer
+        def _so_row(icon, label, score_html, color, anchor_hint=None, border=True):
+            brd = f"border-bottom:1px solid {_CLR_DIVIDER};" if border else ""
+            _ttl = f"title='{anchor_hint}'" if anchor_hint else ""
+            return (
+                f"<div {_ttl} style='display:flex;align-items:center;gap:6px;padding:3px 8px;{brd}'>"
+                f"<span style='font-size:0.85rem;line-height:1;flex-shrink:0;'>{icon}</span>"
+                f"<span style='font-size:0.72rem;color:{_CLR_TEXT_SEC};font-weight:700;flex:1;"
+                f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{label}</span>"
+                f"<span style='font-size:0.82rem;font-weight:800;color:{color};"
+                f"font-family:\"JetBrains Mono\",monospace;flex-shrink:0;'>{score_html}</span>"
+                f"</div>"
+            )
+
+        def _fmt_100(s):
+            if s is None: return "—"
+            return f"{int(s)}<span style='font-size:0.62rem;opacity:0.55;'>/100</span>"
+
+        def _fmt_5(s, lbl):
+            if s is None: return "—"
+            return f"{int(s)}<span style='font-size:0.62rem;opacity:0.55;'>/5</span> · <span style='font-size:0.66rem;opacity:0.75;'>{lbl}</span>"
+
+        _sinyal_block = (
+            f"<div style='padding:4px 0;'>"
+            f"<div style='padding:3px 8px 4px;font-size:0.62rem;color:{_CLR_TEXT_SEC};"
+            f"text-transform:uppercase;letter-spacing:0.5px;font-weight:700;'>SİNYAL ÖZETİ</div>"
+            + _so_row("🎯", "Genel Sağlık",       _fmt_100(_so_master), _so_color_100(_so_master),
+                     "Master Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)")
+            + _so_row("🧭", "Pozisyon Eğilimi",   _fmt_100(_so_pos),    _so_color_100(_so_pos),
+                     "Conviction — SMA50/200 + OBV + Z-Score (5-15g yön bias'ı)")
+            + _so_row("🗺",  "Yol Haritası",      _fmt_100(_so_road),   _so_color_100(_so_road),
+                     "Roadmap — Trend/Mom/Hacim/Yapı/Senaryo eşit ağırlıkla sentez")
+            + _so_row("🌟", "Erken Radar",        _fmt_100(_so_er),     _so_color_100(_so_er),
+                     "27 senaryo paterni — kalite skoru (5g-20g)")
+            + _so_row("🏛",  "ICT / Smart Money", _fmt_5(_so_ict, _so_ict_lbl or "—"), _so_color_5(_so_ict),
+                     "Model skoru — OB/FVG/likidite teyit sayısı (0-5)", border=False)
             + "</div>"
         )
 
-        # Sağ kolon = sadece YAPI bloğu (RS GÜCÜ ve MOMENTUM alt şerite alındı, YAPI nefes alsın)
-        _right_col_html = _yapi_block
+        _right_col_html = _sinyal_block
 
         # Alt şerit: RSI + koşullu HACİM + koşullu BETA + GÜVEN
         def _chip(lbl, val, vcol):
