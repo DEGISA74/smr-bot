@@ -12983,29 +12983,10 @@ def render_smart_volume_panel(ticker):
         f'</div>'  # ana grid sonu
     )
 
-    # ── ALT SATIR: Bugünkü Baskı + Hisse Hacmi (mini) — boşsa birleşik placeholder ──
+    # ── ALT SATIR: Bugünkü Baskı + Hisse Hacmi (mini) — boşsa gizle ──
     if _both_intraday_empty:
-        # Tek birleşik placeholder
-        _bist_post_msg = ""
-        try:
-            _now_hm_p = datetime.now(_TZ_ISTANBUL).hour * 100 + datetime.now(_TZ_ISTANBUL).minute
-            if 955 <= _now_hm_p <= 1820:
-                _bist_post_msg = "Seans içinde — kapanışa doğru güncellenecek."
-            elif 1820 < _now_hm_p <= 2000:
-                _bist_post_msg = "Kapanış sonrası — Yahoo verisi 30-90 dakika içinde yansır."
-            else:
-                _bist_post_msg = "Seans dışı — bir sonraki seansta güncellenecek."
-        except Exception:
-            _bist_post_msg = "Seans verisi bekleniyor."
-        _html += (
-            f'<div style="padding:8px 12px;background:rgba(148,163,184,0.07);'
-            f'border-top:1px solid {divider};display:flex;align-items:center;gap:10px;">'
-            f'<span style="font-size:0.92rem;">&#9203;</span>'
-            f'<span style="font-size:0.74rem;color:{text_muted};font-weight:800;'
-            f'letter-spacing:0.5px;text-transform:uppercase;">Gün İçi Veri Bekleniyor</span>'
-            f'<span style="font-size:0.80rem;color:{text_sub};">{_bist_post_msg}</span>'
-            f'</div>'
-        )
+        # Gerçekten intraday veri yoksa satır hiç render edilmez (kullanıcı tercihi, 9 Haz 2026)
+        pass
     else:
         # Mini grid: 2 kompakt kart
         _html += (
@@ -18646,7 +18627,7 @@ def render_unified_signals_panel(ticker):
             f"background:rgba(255,255,255,0.02);'>"
             f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:4px;'>"
             f"<span style='font-size:0.72rem;font-weight:700;color:#38bdf8;text-transform:uppercase;"
-            f"letter-spacing:0.06em;'>🎯 Kanaat Skoru</span>"
+            f"letter-spacing:0.06em;'>🎯 Pozisyon Eğilimi</span>"
             f"<span style='flex:1;'></span>"
             # Skor sayısı ÖNCE
             f"<span style='font-size:1.0rem;font-weight:900;color:{_cv_color};min-width:28px;"
@@ -19531,45 +19512,59 @@ def _render_genel_ozet_panel():
                             _rng_prev_pct = (_close_5g - _l20) / (_h20 - _l20) * 100
                             _drng         = _rng_pos_pct - _rng_prev_pct
 
-                            _rng_pos_str = f"5 gün önce fiyat 20 günlük aralığının %{_rng_prev_pct:.0f}'sindeydi, şimdi %{_rng_pos_pct:.0f}'inde"
+                            # Sade açıklama: anlamayan da okuyup anlamalı (9 Haz 2026)
+                            # "0 = son 20 günün en dibi · 100 = en tepesi" — temel referans
+                            _rng_base = (f"Son 20 günün dip-tepe aralığında konum "
+                                         f"(0 = en dip, 100 = en tepe). "
+                                         f"○ 5g önce %{_rng_prev_pct:.0f} → ● bugün %{_rng_pos_pct:.0f}")
                             if _rng_pos_pct < 20 and _rng_prev_pct < 20:
                                 _rng_lbl  = f"%{_rng_pos_pct:.0f} · Dipte tutunma"; _rng_clr = _gs_dn_clr
-                                _rng_expl = f"{_rng_pos_str} — sürekli dipte tutunma, düşüş baskısı sürüyor"
+                                _rng_expl = f"{_rng_base} — dipte sıkışmış, satıcı baskın"
                             elif _rng_pos_pct < 33 and _rng_prev_pct > 50:
                                 _rng_lbl  = f"%{_rng_pos_pct:.0f} · Üstten düşüş ⤵"; _rng_clr = _gs_dn_clr
-                                _rng_expl = f"{_rng_pos_str} — satış baskısı, U-top çöküş"
+                                _rng_expl = f"{_rng_base} — tepeden hızlı geri çekildi"
                             elif _rng_pos_pct < 33:
-                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Discount"; _rng_clr = _gs_up_clr
-                                _rng_expl = f"{_rng_pos_str} — aralığın alt bölgesinde, ucuz bölge"
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Dip bölgesi"; _rng_clr = _gs_up_clr
+                                _rng_expl = f"{_rng_base} — ucuz bölgede (alt %33)"
                             elif _rng_pos_pct > 80 and _rng_prev_pct > 80:
                                 _rng_lbl  = f"%{_rng_pos_pct:.0f} · Tepede tıkalı ⚠"; _rng_clr = _gs_dn_clr
-                                _rng_expl = f"{_rng_pos_str} — sürekli tepede tıkanma, dağıtım riski"
+                                _rng_expl = f"{_rng_base} — tepede sıkışmış, dağıtım riski"
                             elif _rng_pos_pct > 66 and _rng_prev_pct < 33:
                                 _rng_lbl  = f"%{_rng_pos_pct:.0f} · V-dönüş ⤴"; _rng_clr = _gs_up_clr
-                                _rng_expl = f"{_rng_pos_str} — alıcı baskısı, dipten V-dönüş"
+                                _rng_expl = f"{_rng_base} — dipten tepeye sert sıçrama"
                             elif _rng_pos_pct > 66 and _rng_prev_pct > 66:
-                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Premium tutunma ★"; _rng_clr = _gs_up_clr
-                                _rng_expl = f"{_rng_pos_str} — premium bölgede tutunma, yükseliş sağlıklı"
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Tepede sağlam ★"; _rng_clr = _gs_up_clr
+                                _rng_expl = f"{_rng_base} — tepede tutunuyor, sağlıklı yukarı"
                             elif _rng_pos_pct > 66:
-                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Premium"; _rng_clr = _gs_dn_clr
-                                _rng_expl = f"{_rng_pos_str} — aralığın üst bölgesinde, pahalı bölge"
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Tepe bölgesi"; _rng_clr = _gs_dn_clr
+                                _rng_expl = f"{_rng_base} — pahalı bölgede (üst %33)"
                             elif _drng > 15:
-                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Toparlanma ↗"; _rng_clr = _gs_up_clr
-                                _rng_expl = f"{_rng_pos_str} — discount'tan çıkış, alıcı baskısı geliyor"
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Yukarı toparlanma ↗"; _rng_clr = _gs_up_clr
+                                _rng_expl = f"{_rng_base} — dipten ortaya doğru çıkış"
                             elif _drng < -15:
-                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Premium kaybı ↘"; _rng_clr = _gs_dn_clr
-                                _rng_expl = f"{_rng_pos_str} — premium'dan düşüş, alıcı baskısı zayıflıyor"
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Aşağı çekilme ↘"; _rng_clr = _gs_dn_clr
+                                _rng_expl = f"{_rng_base} — tepeden ortaya doğru geri çekilme"
                             else:
-                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Orta — yatay"; _rng_clr = _gs_neu
-                                _rng_expl = f"{_rng_pos_str} — orta bölgede (ne dipte ne tepede)"
+                                _rng_lbl  = f"%{_rng_pos_pct:.0f} · Orta · yatay"; _rng_clr = _gs_neu
+                                _rng_expl = f"{_rng_base} — orta bölgede, yatay seyir"
                 except Exception:
                     pass
 
-                # Mini bar + delta yüzde (renkli: pozitif yeşil, negatif kırmızı)
+                # Mini bar + iki işaret (○ 5g önce · ● bugün) + delta — sade tasarım (9 Haz 2026)
                 if _rng_pos_pct is not None:
+                    # Bar genişledi (54→72px) → iki işaret rahat sığsın
+                    # ○ Hollow circle = 5 gün önceki konum (geçmiş referansı, soluk)
+                    # ● Solid circle  = bugünkü konum (parlak, severity renginde)
+                    _prev_mark_clr = "#94a3b8"  # nötr gri — geçmiş referans
                     _bar_html = (
-                        f"<span style='display:inline-block;width:54px;height:5px;background:#1e293b;"
+                        f"<span style='display:inline-block;width:72px;height:5px;background:#1e293b;"
                         f"border-radius:3px;position:relative;margin-right:6px;vertical-align:middle;'>"
+                        # 5g önce — hollow ring
+                        f"<span style='position:absolute;left:{_rng_prev_pct:.0f}%;top:-2.5px;"
+                        f"width:9px;height:9px;border-radius:50%;background:transparent;"
+                        f"border:1.5px solid {_prev_mark_clr};opacity:0.75;"
+                        f"transform:translateX(-50%);'></span>"
+                        # Bugün — solid + glow
                         f"<span style='position:absolute;left:{_rng_pos_pct:.0f}%;top:-2.5px;"
                         f"width:10px;height:10px;border-radius:50%;background:{_rng_clr};"
                         f"transform:translateX(-50%);box-shadow:0 0 4px {_rng_clr};'></span>"
@@ -19623,7 +19618,7 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
                 _gs_items_html += _gs_row(
-                    "Son 20G Range",
+                    "20G dip↔tepe konumu",
                     _rng_value,
                     explain=_rng_expl,
                     lc=_rng_clr,
@@ -24932,6 +24927,23 @@ def _render_left_col():
                 def _fmt_val(v):
                     return f"{int(v)}" if is_index else f"{v:.2f}"
 
+                # Seans değişimi → ok yönü/rengi (9 Haz 2026: "ŞU AN" yazısı yerine istikamet oku)
+                # Layout high→low (sol→sağ). Pozitif seans → fiyat yukarı yöneliyor (sola/üst MA'lara doğru).
+                # Negatif → aşağı yöneliyor (sağa/alt MA'lara). Nötr → düz çizgi.
+                _sess_chg = float(info.get('change_pct', 0) or 0) if info else 0.0
+                if _sess_chg > 0.05:
+                    _arrow_char = "⟵"
+                    _arrow_clr  = "#10b981"
+                    _arrow_glow = "rgba(16,185,129,0.55)"
+                elif _sess_chg < -0.05:
+                    _arrow_char = "⟶"
+                    _arrow_clr  = "#ef4444"
+                    _arrow_glow = "rgba(239,68,68,0.55)"
+                else:
+                    _arrow_char = "⎯"
+                    _arrow_clr  = "#94a3b8"
+                    _arrow_glow = "rgba(148,163,184,0.35)"
+
                 # YATAY layout — sol (en yüksek) → sağ (en düşük), fiyat ortaya gömülü
                 _cells_html = []
                 _n = len(_all_rows)
@@ -24950,8 +24962,9 @@ def _render_left_col():
                             f"<span style='font-size:1.05rem;font-weight:900;color:#f8fafc;"
                             f"font-family:\"JetBrains Mono\",monospace;"
                             f"text-shadow:0 0 10px rgba(148,163,255,0.65);'>{_fmt_val(_val)}</span>"
-                            f"<span style='font-size:0.58rem;font-weight:700;letter-spacing:0.15em;opacity:0.85;"
-                            f"background:linear-gradient(90deg,#a78bfa,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;'>◆ ŞU AN ◆</span>"
+                            f"<span style='font-size:1.05rem;font-weight:900;color:{_arrow_clr};"
+                            f"line-height:1;letter-spacing:0.05em;"
+                            f"text-shadow:0 0 8px {_arrow_glow};'>{_arrow_char}</span>"
                             f"</div>"
                         )
                     else:
@@ -24993,12 +25006,9 @@ def _render_left_col():
     st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
     render_smart_volume_panel(st.session_state.ticker)
 
-    # 1.5 --- PİYASA ÖZETİ (Smart Money Hacim Analizi altı, Teknik Yol Haritası üstü)
-    # 31 May 2026: Yol Haritası kartından bağımsız panele taşındı (kullanıcı isteği).
-    try:
-        render_piyasa_ozeti_full_width(st.session_state.ticker)
-    except Exception as _po_full_exc:
-        log_error("render_piyasa_ozeti_full_width", _po_full_exc, st.session_state.ticker)
+    # 1.5 --- PİYASA ÖZETİ paneli kaldırıldı (9 Haz 2026 Oturum 20)
+    # Sebep: kullanıcı bakmıyor, Gemini çağrısı 4-5sn render gecikmesi yaratıyordu.
+    # render_piyasa_ozeti_full_width fonksiyonu tanımı korundu (referans için), ama çağrılmıyor.
 
     # 2. TEKNİK YOL HARİTASI PANELİ
     render_roadmap_8_panel(st.session_state.ticker)
