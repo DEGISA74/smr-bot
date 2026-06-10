@@ -8,3 +8,9 @@ ta
 matplotlib
 pyarrow
 plotly
+# 10 Haz 2026 Oturum 20 — BIST veri kaynak çeşitlendirmesi
+isyatirimhisse        # İsyatirim resmi API wrapper — Volume override + tam OHLCV
+tefas-crawler         # TEFAS legacy library (alternatif)
+pytefas               # TEFAS yeni API client (Haz 2026 endpoint, breakdown 58 kolon)
+borsapy               # BorsaPy — yfinance fallback (TradingView WebSocket, BIST hisse + VIOP)
+streamlit-autorefresh # 10 dk gate ile session canlı tutma

@@ -181,6 +181,49 @@ def _volume_is_stale(df, ticker):
 
 
 
+def _fetch_bist_ohlcv_borsapy(symbol, period="1y", interval="1d"):
+    """
+    borsapy library — TradingView WebSocket üzerinden gerçek-zamanlı OHLCV.
+    yfinance + İsyatirim ikisi de başarısız olduğunda son fallback.
+
+    Avantajları:
+      - Real-time tick data (TradingView)
+      - VIOP destekli (vadeli işlemler — yfinance vermez)
+      - BIST hisse + endeks + forex + crypto + fon hepsi tek lib
+
+    Riskleri:
+      - TradingView ToS, IP block riski
+      - Tek maintainer, downtime riski
+
+    Bu yüzden SADECE primary kaynaklar başarısızken devreye girer.
+
+    Returns: DataFrame (Open, High, Low, Close, Volume) veya None
+    """
+    try:
+        from borsapy import BorsaPy
+    except ImportError:
+        return None
+    try:
+        _b = BorsaPy()
+        _sym = symbol.replace(".IS", "").upper()
+        _h = _b.hisse(_sym)
+        _df = _h.history(period=period, interval=interval)
+        if _df is None or _df.empty:
+            return None
+        # Sütun normalize
+        _df.columns = [str(c).capitalize() for c in _df.columns]
+        _need = {'Open', 'High', 'Low', 'Close', 'Volume'}
+        if not _need.issubset(_df.columns):
+            return None
+        if _df.index.tz is not None:
+            _df.index = _df.index.tz_convert(None)
+        return _df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+    except Exception as _ex:
+        import logging
+        logging.warning(f"[borsapy] {symbol} hata: {_ex}")
+        return None
+
+
 def _fetch_bist_ohlcv_isyatirim(symbol, start_date, end_date):
     """
     İş Yatırım API'sinden BIST hisse tam OHLCV verisi çeker.
@@ -903,115 +946,119 @@ _KURUMSAL_THRESHOLDS = {
 
 
 def _fetch_tefas_portfolio_snapshot(date_str=None, max_funds=None):
-    """TEFAS BindHistoryAllocation endpoint'inden tüm hisse+karma fonların portföy
-    bileşimini çeker. Sonucu tefas_holdings tablosuna yazar. Cache: günde 1 kez.
+    """TEFAS portföy snapshot fetcher — 10 Haz 2026 GÜNCELLEME.
+
+    TEFAS Haziran 2026'da eski `tefas.gov.tr/api/DB/BindHistory*` endpoint'lerini
+    emekliye ayırdı. Yeni endpoint: `tefas.gov.tr/api/funds/...`.
+
+    ÖNEMLİ KISITLAMA: Yeni public API hisse-bazlı detay vermiyor. Sadece
+    kategorik allocation yüzdeleri var (`stock_pct`, `government_bond_pct`,
+    `eurobond_pct` vs — 58 kategori). Yani "X fonunun XBANK'a %3 ağırlığı var"
+    demiyor, "X fonunun toplam %25'i hisseler" diyor.
+
+    Bu yumuşak ama hâlâ kullanılabilir bir sinyal:
+      - Fon stock_pct 5g'de %15 → %28 çıkmış = BIST'e net para AKIYOR (genel yön)
+      - AUM × stock_pct = piyasaya akan toplam para tahmini
+      - Toplam BIST exposure değişimi = makro fon yönü
+
+    Yaklaşım: `pytefas` library'sini kullan (yeni endpoint, 58 kolon breakdown).
 
     Args:
-        date_str: 'YYYY-MM-DD' formatında — None ise bugün.
-        max_funds: dev modda küçük test için fon sayısı limiti.
+        date_str: 'YYYY-MM-DD' — None ise bugün.
+        max_funds: dev test için (None = hepsi).
     Returns:
-        (success_count, fail_count) tuple
+        (success_count, fail_count)
     """
-    import requests as _requests
-    from datetime import datetime as _dt, timedelta as _td
-
+    from datetime import datetime as _dt
     if date_str is None:
         date_str = _dt.now(_TZ_ISTANBUL).strftime('%Y-%m-%d')
-    try:
-        _d_obj = _dt.strptime(date_str, '%Y-%m-%d')
-    except Exception:
-        return (0, 0)
 
-    # Önce cache kontrolü — bu tarihte zaten veri varsa atla
+    # Cache kontrolü — aynı tarihte zaten >100 kayıt varsa atla
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM tefas_holdings WHERE snapshot_date = ?", (date_str,))
         if (c.fetchone() or [0])[0] > 100:
             conn.close()
-            return (0, 0)   # Zaten cache'de
+            return (0, 0)
         conn.close()
     except Exception:
         pass
 
-    # TEFAS API endpoint — community-known
-    # POST https://www.tefas.gov.tr/api/DB/BindHistoryAllocation
-    # Form data: fontip=YAT, fonkod={FUND}, bastarih=DD.MM.YYYY, bittarih=DD.MM.YYYY
-    _date_tr = _d_obj.strftime('%d.%m.%Y')
-    _headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Origin': 'https://www.tefas.gov.tr',
-        'Referer': 'https://www.tefas.gov.tr/PortfoyDagilimi.aspx',
-    }
-    # 1) Fon listesi (hisse + karma)
-    _fund_list = []
+    # ── pytefas library — yeni TEFAS API (Haziran 2026 endpoint) ──────
     try:
-        # BindFundReturns endpoint'i fon listesi de döndürür
-        _list_url = 'https://www.tefas.gov.tr/api/DB/BindComparisonFundReturns'
-        _list_payload = {
-            'calismatipi': '1',         # Yatırım fonları
-            'fontip': 'YAT',
-            'fonturkod': '',
-            'fonunvantip': '',
-            'strperiod': '1,1,1,1,1,1,1',
-            'startdate': _date_tr,
-            'enddate': _date_tr,
-        }
-        _r = _requests.post(_list_url, data=_list_payload, headers=_headers, timeout=20)
-        if _r.status_code == 200:
-            _data = _r.json().get('data', [])
-            for _item in _data:
-                _kod = (_item.get('FONKODU') or '').strip()
-                if _kod:
-                    _fund_list.append(_kod)
+        from pytefas import Crawler  # pip install pytefas
+    except ImportError:
+        import logging
+        logging.warning("[tefas] pytefas kurulu değil — `pip install pytefas`")
+        return (0, 1)
+
+    try:
+        _tefas = Crawler()
+        # columns='breakdown' → 58 kolonluk portföy bileşim yüzdeleri
+        _df = _tefas.fetch(start=date_str, end=date_str, columns='breakdown')
+        if _df is None or len(_df) == 0:
+            return (0, 1)
     except Exception as _ex:
-        try: log_error("tefas_fund_list", _ex)
+        try: log_error("pytefas_fetch", _ex)
         except Exception: pass
         return (0, 1)
 
-    if max_funds:
-        _fund_list = _fund_list[:max_funds]
-    if not _fund_list:
+    # Toplam fiyat + AUM için ayrı bir info call (price + market_cap kolonları)
+    _df_info = None
+    try:
+        _df_info = _tefas.fetch(start=date_str, end=date_str, columns='info')
+    except Exception:
+        _df_info = None
+
+    # ── Yeni strateji: stock_pct 'in 5%+'sı olan fonları kaydet ───────
+    _success = 0; _fail = 0
+    try:
+        _df_hisse = _df[_df['stock_pct'].fillna(0) >= 5.0].copy()
+        if max_funds:
+            _df_hisse = _df_hisse.head(max_funds)
+    except Exception:
         return (0, 1)
 
-    # 2) Her fon için portföy bileşimi — BindHistoryAllocation
-    _alloc_url = 'https://www.tefas.gov.tr/api/DB/BindHistoryAllocation'
-    _success = 0; _fail = 0
     _conn = sqlite3.connect(DB_FILE)
     _c = _conn.cursor()
-    for _kod in _fund_list:
+    for _, _row in _df_hisse.iterrows():
         try:
-            _payload = {
-                'fontip': 'YAT', 'fonkod': _kod,
-                'bastarih': _date_tr, 'bittarih': _date_tr,
-            }
-            _r = _requests.post(_alloc_url, data=_payload, headers=_headers, timeout=10)
-            if _r.status_code != 200:
+            _kod = str(_row.get('fund_code', '')).strip().upper()
+            if not _kod:
                 _fail += 1; continue
-            _data = _r.json().get('data', [])
-            if not _data:
-                _fail += 1; continue
-            # Bu fonun AUM'unu sonradan başka endpoint'ten çekmek gerekecek
-            # Şimdilik weight kayıtlarını yaz
-            for _row in _data:
-                _stock = (_row.get('Hisse_Senedi') or _row.get('HisseSenediYuzde') or '').strip()
-                _w = _row.get('HisseSenediYuzde')
-                if not _stock or _w is None: continue
+
+            # AUM: info df'ten lookup
+            _aum_mn = None
+            if _df_info is not None and len(_df_info) > 0:
                 try:
-                    _wf = float(str(_w).replace(',', '.'))
-                except Exception:
-                    continue
+                    _info_row = _df_info[_df_info['fund_code'] == _kod]
+                    if len(_info_row) > 0:
+                        _mcap = float(_info_row.iloc[0].get('market_cap', 0) or 0)
+                        if _mcap > 0:
+                            _aum_mn = _mcap / 1_000_000.0
+                except Exception: pass
+
+            # Toplam hisse exposure'ını '_BIST_TOTAL_' özel sembol ile kaydet
+            _stock_pct = float(_row.get('stock_pct', 0) or 0)
+            _c.execute('''INSERT OR REPLACE INTO tefas_holdings
+                          (snapshot_date, fund_code, fund_aum_mn, stock_symbol, weight_pct)
+                          VALUES (?, ?, ?, ?, ?)''',
+                       (date_str, _kod, _aum_mn, '_BIST_TOTAL_', _stock_pct))
+
+            # Ayrıca yabancı hisse exposure'ı ayrı kayıt (foreign_stock_pct kolonu)
+            _foreign_pct = float(_row.get('foreign_stock_pct', 0) or 0)
+            if _foreign_pct > 0:
                 _c.execute('''INSERT OR REPLACE INTO tefas_holdings
                               (snapshot_date, fund_code, fund_aum_mn, stock_symbol, weight_pct)
                               VALUES (?, ?, ?, ?, ?)''',
-                           (date_str, _kod, None, _stock.upper(), _wf))
+                           (date_str, _kod, _aum_mn, '_FOREIGN_STOCK_', _foreign_pct))
+
             _success += 1
             if _success % 50 == 0:
                 _conn.commit()
         except Exception:
-            _fail += 1; continue
+            _fail += 1
     _conn.commit(); _conn.close()
     return (_success, _fail)
 
@@ -1109,21 +1156,36 @@ def _fetch_kap_disclosures(days_back=30):
 
 def _compute_tefas_signals(ticker: str) -> dict:
     """TEFAS portföy snapshot'larından 3 STRONG sinyali hesaplar.
-    Hisse fonu olmayan semboller (endeks/emtia/kripto) → tüm None.
+
+    KISITLAMA NOTU (10 Haz 2026): Yeni TEFAS public API hisse-bazlı detay
+    vermiyor. Sadece kategorik allocation (stock_pct) var. Bu yüzden sinyaller
+    ARTIK HİSSE-SPESİFİK DEĞİL — BIST-geneli kurumsal akış sinyali olur.
+
+    Tüm BIST hisseleri için aynı sinyal döner (PİYASA GENELİ trend):
+      - konsensus_alim: ≥3 fon stock_pct 5g'de ≥%10 artırmış → BIST'e net giriş
+      - konsensus_satim: ≥3 fon stock_pct 5g'de ≥%10 azaltmış → BIST'ten çıkış
+      - yeni_giris: ≥2 büyük fon (AUM ≥500mn) BIST exposure'ını 0→≥%5 yapmış
+
+    Bu sinyal hisse-spesifik olmasa da MAKRO yön bilgisi verir — AI prompt'a
+    "kurumsal para BIST'e yöneliyor/çıkıyor" diye geçer.
+
+    Endeks/emtia/kripto → tüm None (BIST için anlamlı).
     """
     out = {'f_tefas_konsensus_alim': None, 'f_tefas_konsensus_satim': None, 'f_tefas_yeni_giris': None}
     try:
-        # Sembol normalizasyonu — TEFAS hisse kodlarını .IS uzantısı olmadan tutar
+        # BIST hissesi mi?
         _sym = ticker.upper().replace('.IS', '').replace('=F', '').replace('-USD', '')
         if any(_sym.startswith(p) for p in ('XU', 'XB', 'XT', 'XY', '^')) or '=' in _sym or '-' in _sym:
             return out  # endeks/emtia/kripto → TEFAS yok
+
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        # Son 30g pencere — günlük weight değişimleri
+        # _BIST_TOTAL_ özel sembol — fonların TOPLAM BIST exposure'ı
         c.execute('''SELECT snapshot_date, fund_code, fund_aum_mn, weight_pct
-                     FROM tefas_holdings WHERE stock_symbol = ?
+                     FROM tefas_holdings
+                     WHERE stock_symbol = '_BIST_TOTAL_'
                        AND snapshot_date >= date('now', '-30 day')
-                     ORDER BY snapshot_date DESC, fund_code''', (_sym,))
+                     ORDER BY snapshot_date DESC, fund_code''')
         _rows = c.fetchall()
         conn.close()
         if not _rows: return out
@@ -1133,7 +1195,7 @@ def _compute_tefas_signals(ticker: str) -> dict:
         for _date, _kod, _aum, _wpct in _rows:
             _by_fund.setdefault(_kod, []).append((_date, _aum, _wpct))
 
-        # 5 günlük pencere — hangi fonlar arttı/azaldı + yeni giriş
+        # 5 günlük pencere — hangi fonlar BIST exposure'ı arttırdı/azalttı
         _5g_pos = 0; _5g_neg = 0; _yeni_giris_count = 0
         _5g_total_neg_pct = 0
         _T = _KURUMSAL_THRESHOLDS
@@ -1145,9 +1207,7 @@ def _compute_tefas_signals(ticker: str) -> dict:
             if _aum > 0 and _aum < _T['tefas_min_aum_mn']:
                 continue   # AUM filtresi
             _w_latest = float(_latest[2] or 0)
-            if _w_latest < _T['tefas_min_weight_pct']:
-                continue   # pozisyon önemsiz
-            # 5 gün önceki weight — son 5 entry içinde en eskisi
+            # 5 gün önceki weight
             _w_5g_ago = float(_series[max(0, len(_series) - 5)][2] or 0)
             _diff_pct = ((_w_latest - _w_5g_ago) / _w_5g_ago * 100) if _w_5g_ago > 0 else 0
             if _diff_pct >= _T['tefas_min_5g_change_pct']:
@@ -1155,14 +1215,13 @@ def _compute_tefas_signals(ticker: str) -> dict:
             elif _diff_pct <= -_T['tefas_min_5g_change_pct']:
                 _5g_neg += 1
                 _5g_total_neg_pct += abs(_diff_pct)
-            # Yeni giriş: 30g içinde fon listesinde HİÇ YOKKEN bugün var
-            # Series'in en eskisi 7g+ önceyse + ve weight ≥%1, başlangıç pozisyonu say
+            # Yeni giriş: önceden BIST exposure ~0, bugün ≥%5
             if (_aum >= _T['tefas_yeni_giris_aum_mn']
-                and _w_latest >= _T['tefas_yeni_giris_pct']
-                and _w_5g_ago < 0.1):  # eski weight 0.1% altıysa "yeni giriş"
+                and _w_latest >= 5.0
+                and _w_5g_ago < 1.0):  # önceden BIST'te yok
                 _yeni_giris_count += 1
 
-        # Üç sinyali ata (1/0/None)
+        # 3 sinyali ata
         out['f_tefas_konsensus_alim']  = 1 if _5g_pos  >= _T['tefas_min_funds_konsensus'] else 0
         out['f_tefas_konsensus_satim'] = (1 if (_5g_neg >= _T['tefas_min_funds_konsensus']
                                                 and _5g_total_neg_pct >= _T['tefas_dagitim_total_pct'])
@@ -3157,10 +3216,22 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 df_new.to_parquet(file_path)
                 return apply_volume_projection(df_new.tail(500).copy(), ticker)
 
-            # Retry başarısız → eski cache'i döndür + staleness işareti
-            # Sadece veri GERÇEKTEN ≥1 gün eskiyse uyar — bugünkü intraday tazeleme
-            # başarısız olunca "0 gün eski" false-positive uyarısı çıkmasın.
+            # ── KATMAN 2 FALLBACK: borsapy (TradingView) ──
+            # Yahoo retry başarısız + İsyatirim yok → borsapy son şans.
+            # Sadece veri ≥1 gün eskiyse devreye gir (intraday başarısızlığında atla).
             _stale_days = (datetime.now(_TZ_ISTANBUL).date() - df_cached.index[-1].date())
+            _is_bist_stock_u = (".IS" in ticker or "BIST" in ticker) and not ticker.startswith(("XU", "XB", "XT"))
+            if _stale_days.days >= 1 and _is_bist_stock_u and interval == "1d":
+                _bp_df = _fetch_bist_ohlcv_borsapy(ticker, period="1y", interval=interval)
+                if _bp_df is not None and len(_bp_df) > 5:
+                    _bp_df = _apply_split_adjustments(_bp_df)
+                    try: _bp_df.to_parquet(file_path)
+                    except Exception: pass
+                    import logging
+                    logging.info(f"[borsapy] {ticker} cache update fallback — {len(_bp_df)} bar")
+                    return apply_volume_projection(_bp_df.tail(500).copy(), ticker)
+
+            # borsapy de başarısız → eski cache'i döndür + staleness işareti
             if _stale_days.days >= 1:
                 st.session_state['_data_stale'] = {
                     'ticker': ticker,
@@ -3205,6 +3276,21 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 df_full.to_parquet(file_path)
                 return apply_volume_projection(df_full.tail(500).copy(), ticker)
             else:
+                # ── KATMAN 2 FALLBACK: borsapy (TradingView WebSocket) ──
+                # yfinance her iki yöntemde de başarısız. BIST hisse ise borsapy dene.
+                # Son çare — primary çalışmadığında.
+                _is_bist_stock_fb = (".IS" in ticker or "BIST" in ticker) and not ticker.startswith(("XU", "XB", "XT"))
+                if _is_bist_stock_fb and interval == "1d":
+                    _bp_df = _fetch_bist_ohlcv_borsapy(ticker, period="1y", interval=interval)
+                    if _bp_df is not None and len(_bp_df) > 5:
+                        # Bölünme düzeltmesi + cache yaz
+                        _bp_df = _apply_split_adjustments(_bp_df)
+                        try: _bp_df.to_parquet(file_path)
+                        except Exception: pass
+                        import logging
+                        logging.info(f"[borsapy] {ticker} fallback başarılı — {len(_bp_df)} bar")
+                        return apply_volume_projection(_bp_df.tail(500).copy(), ticker)
+
                 # Her iki yöntem de başarısız — session_state'e hata işareti bırak
                 st.session_state['_data_stale'] = {
                     'ticker': ticker,
@@ -23907,23 +23993,25 @@ if st.session_state.generate_prompt:
                 "tek başına teknik analizden bağımsız yön bilgisi — G1'de MUTLAKA "
                 "merkeze al, 'kurumsal yığılma' olarak vurgula)"
             )
+        # TEFAS sinyalleri: MAKRO/BIST-GENELİ (TEFAS yeni API hisse-bazlı detay vermiyor,
+        # sadece kategorik exposure: fonların toplam BIST ağırlığı).
         if _smc_extra.get('f_tefas_konsensus_alim') == 1:
             _poc_avwap_lines.append(
-                "  tefas_konsensus_alim: True (son 5g ≥3 fon hisseyi pozisyonu "
-                "≥%10 artırdı, hepsinin AUM ≥100mn TL — kurumsal birikim; "
-                "DESTEKLEYİCİ confluence)"
+                "  tefas_bist_genel_giris: True (son 5g ≥3 TEFAS fonu (AUM ≥100mn) "
+                "BIST exposure'ını ≥%10 ARTIRDI — yerli kurumsal para BIST'e net giriyor; "
+                "MAKRO destekleyici, hisseye değil piyasaya yön — DESTEKLEYİCİ confluence)"
             )
         if _smc_extra.get('f_tefas_konsensus_satim') == 1:
             _poc_avwap_lines.append(
-                "  tefas_konsensus_satim: True (son 5g ≥3 fon pozisyonu ≥%10 azalttı, "
-                "toplam ≥%20 çıkış — kurumsal dağıtım; DESTEKLEYİCİ confluence — "
-                "olumlu teze karşı agresif risk uyarısı)"
+                "  tefas_bist_genel_cikis: True (son 5g ≥3 fon BIST exposure'ını ≥%10 "
+                "AZALTTI, toplam ≥%20 çıkış — yerli kurumsal para BIST'ten ÇIKIYOR; "
+                "MAKRO uyarı, yön olumluya karşı dikkat — DESTEKLEYİCİ confluence)"
             )
         if _smc_extra.get('f_tefas_yeni_giris') == 1:
             _poc_avwap_lines.append(
-                "  tefas_yeni_giris: True (son 30g ≥2 büyük fon (AUM ≥500mn) ilk kez "
-                "pozisyon aldı, her biri ≥%1 portföy ağırlığı — erken kurumsal ilgi; "
-                "DESTEKLEYİCİ confluence)"
+                "  tefas_yeni_bist_acilis: True (son 30g ≥2 büyük fon (AUM ≥500mn) "
+                "BIST'e ilk kez ağırlık verdi — yeni kurumsal ilgi başlangıcı; "
+                "MAKRO destekleyici — DESTEKLEYİCİ confluence)"
             )
         if _smc_extra.get('f_buyback_aktif') == 1:
             _poc_avwap_lines.append(
