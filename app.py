@@ -3566,9 +3566,12 @@ def fetch_stock_info(ticker):
         # detection. Yahoo bazen bir önceki seansı ATLIYOR (örn. 10 Haz'da Yahoo
         # 9 Haz Pazartesi kapanışını veremedi, 8→10 atladı). prev_close=8 Haz
         # geliyor, gerçek dün=9 Haz → %değişim YANLIŞ.
-        # Çözüm: borsapy ile dünün gerçek kapanışını doğrula (borsapy intraday/EOD
-        # daha güvenilir). Yahoo prev_close ile borsapy'nin son 2 günlük close
-        # arasında >%1 fark varsa borsapy'yi kullan.
+        # Çözüm: borsapy ile dünün gerçek kapanışını DOĞRULA. Yahoo prev_close
+        # ile borsapy'nin dünkü close değeri arasında >%0.2 fark varsa
+        # borsapy'yi kullan (eşik düşük tutuldu — fark genelde küçük ama
+        # gerçek; %0.5 üstü zaten ciddi bar atlamadır).
+        # PLUS: borsapy'nin TARİH index'ini de kullan — Yahoo'nun atladığı
+        # gün borsapy'de varsa bu kesin kanıttır.
         if _is_bist and not _closed_now and price and prev_close:
             try:
                 import borsapy as _bp
@@ -3581,12 +3584,18 @@ def fetch_stock_info(ticker):
                 _df_b = _obj_b.history(period="5d", interval="1d")
                 if _df_b is not None and len(_df_b) >= 2:
                     _bp_prev = float(_df_b['Close'].iloc[-2])
-                    # Yahoo prev_close ile borsapy'nin dünkü kapanışı arasında >%1 fark
-                    # = Yahoo bar atlamış → borsapy'yi kullan
-                    if _bp_prev > 0 and abs(_bp_prev - prev_close) / _bp_prev > 0.01:
+                    _bp_today = float(_df_b['Close'].iloc[-1])
+                    # ÖNEMLİ — borsapy'nin "dün"ü Yahoo'nun "dün"ünden farklı mı?
+                    # Eğer >%0.2 fark VEYA |prev_close - bp_today| < |prev_close - bp_prev|
+                    # (yani Yahoo'nun prev_close'u borsapy'nin BUGÜNÜNE daha yakın
+                    # = bar atlamış olduğu güne karışmış)
+                    _diff_pct = abs(_bp_prev - prev_close) / _bp_prev if _bp_prev > 0 else 0
+                    _bar_skipped = abs(prev_close - _bp_today) < abs(prev_close - _bp_prev)
+                    if _bp_prev > 0 and (_diff_pct > 0.002 or _bar_skipped):
                         import logging
                         logging.info(f"[fetch_stock_info] {ticker}: Yahoo prev_close "
-                                     f"{prev_close:.2f} → borsapy düzeltme {_bp_prev:.2f}")
+                                     f"{prev_close:.2f} → borsapy düzeltme {_bp_prev:.2f} "
+                                     f"(diff %{_diff_pct*100:.2f})")
                         prev_close = _bp_prev
                         change_pct = ((price - prev_close) / prev_close * 100)
             except Exception: pass
