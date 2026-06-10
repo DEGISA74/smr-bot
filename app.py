@@ -835,6 +835,12 @@ def init_db():
         'ALTER TABLE scan_signals ADD COLUMN f_yabanci_cikis INTEGER',         # son 5g top çıkış listesinde
         'ALTER TABLE scan_signals ADD COLUMN f_yabanci_streak INTEGER',        # 3+ gün üst üste yabancı artış
         'ALTER TABLE scan_signals ADD COLUMN f_yabanci_anchor INTEGER',        # giriş + streak çakışması (ELIT)
+        # 10 Haz 2026 Oturum 20 — Relative OBV (hisse OBV trendi vs endeks OBV trendi)
+        # 5 state: outperform_strong/outperform_mild/inline/underperform_mild/underperform_strong
+        # Mansfield RS'in hacim katmanı — gerçek akıllı para ayrışması
+        'ALTER TABLE scan_signals ADD COLUMN f_rel_obv_state TEXT',
+        # ELIT: outperform_strong veya underperform_strong = karşı yönde ayrışma → 1
+        'ALTER TABLE scan_signals ADD COLUMN f_rel_obv_divergence INTEGER',
     ]:
         try:
             c.execute(_alter_col)
@@ -1583,6 +1589,9 @@ def _compute_signal_features(ticker: str) -> dict:
         'f_yabanci_cikis': None,
         'f_yabanci_streak': None,
         'f_yabanci_anchor': None,
+        # 10 Haz 2026 Oturum 20 — Relative OBV (hisse vs endeks)
+        'f_rel_obv_state': None,
+        'f_rel_obv_divergence': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1914,6 +1923,25 @@ def _compute_signal_features(ticker: str) -> dict:
             for _k in ('f_yabanci_giris', 'f_yabanci_cikis', 'f_yabanci_streak', 'f_yabanci_anchor'):
                 if _mkk_y.get(_k) is not None:
                     out[_k] = _mkk_y[_k]
+            # Relative OBV (hisse vs endeks) — hacim akışı ayrışması
+            # Volume güvenilmez sembollerde atla; benchmark fetch ile çakışıyor olabilir
+            try:
+                _vol_no_rel = (
+                    ticker.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                    or ticker.upper().endswith('=F')
+                    or '-USD' in ticker.upper()
+                )
+                if not _vol_no_rel and df is not None and len(df) >= 25:
+                    _bench_t_rel = "XU100.IS" if ".IS" in ticker else "^GSPC"
+                    _df_bench_rel = get_safe_historical_data(_bench_t_rel, period="3mo")
+                    if _df_bench_rel is not None and len(_df_bench_rel) >= 25:
+                        _rel_res = compute_relative_obv_state(df, _df_bench_rel, lookback=20)
+                        if _rel_res:
+                            out['f_rel_obv_state'] = _rel_res['state']
+                            out['f_rel_obv_divergence'] = (
+                                1 if _rel_res['state'] in ('outperform_strong', 'underperform_strong') else 0
+                            )
+            except Exception: pass
             # Convergence (anchor) — 3+ STRONG aynı yönde
             _conv = _compute_kurumsal_convergence(out)
             if _conv.get('f_kurumsal_anchor') is not None:
@@ -2114,6 +2142,10 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_yab_cikis_v        = _ff('F_Yab_Cikis', 'f_yabanci_cikis', cast=int)
             f_yab_streak_v       = _ff('F_Yab_Streak', 'f_yabanci_streak', cast=int)
             f_yab_anchor_v       = _ff('F_Yab_Anchor', 'f_yabanci_anchor', cast=int)
+            # 10 Haz 2026 — Relative OBV (hisse vs endeks)
+            f_rel_obv_raw        = _ff('F_Rel_OBV_State', 'f_rel_obv_state', cast=str)
+            f_rel_obv_state      = f_rel_obv_raw if f_rel_obv_raw else None
+            f_rel_obv_div_v      = _ff('F_Rel_OBV_Div', 'f_rel_obv_divergence', cast=int)
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -2152,6 +2184,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_yab_cikis_v      is None: f_yab_cikis_v      = _feat.get('f_yabanci_cikis')
                 if f_yab_streak_v     is None: f_yab_streak_v     = _feat.get('f_yabanci_streak')
                 if f_yab_anchor_v     is None: f_yab_anchor_v     = _feat.get('f_yabanci_anchor')
+                if f_rel_obv_state    is None: f_rel_obv_state    = _feat.get('f_rel_obv_state')
+                if f_rel_obv_div_v    is None: f_rel_obv_div_v    = _feat.get('f_rel_obv_divergence')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -2164,8 +2198,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_buyback_aktif, f_buyback_dip_aliyor,
                     f_threshold_asildi, f_insider_first_buy, f_kurumsal_anchor,
                     f_mfi_dual, f_rsi_mfi_bouquet,
-                    f_yabanci_giris, f_yabanci_cikis, f_yabanci_streak, f_yabanci_anchor)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_yabanci_giris, f_yabanci_cikis, f_yabanci_streak, f_yabanci_anchor,
+                    f_rel_obv_state, f_rel_obv_divergence)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
@@ -2176,7 +2211,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                  f_buyback_aktif_v, f_buyback_dip_v,
                  f_thresh_v, f_insider_first_v, f_anchor_v,
                  f_mfi_dual, f_rsi_mfi_bouquet_v,
-                 f_yab_giris_v, f_yab_cikis_v, f_yab_streak_v, f_yab_anchor_v)
+                 f_yab_giris_v, f_yab_cikis_v, f_yab_streak_v, f_yab_anchor_v,
+                 f_rel_obv_state, f_rel_obv_div_v)
             )
         conn.commit()
         conn.close()
@@ -4129,6 +4165,82 @@ def compute_mfi(df, period=14):
         return 100.0 - (100.0 / (1.0 + _mfr))
     except Exception:
         return pd.Series([], dtype=float)
+
+
+def compute_relative_obv_state(df_stock, df_bench, lookback=20):
+    """Hisse OBV trendini endeks OBV trendiyle karşılaştırır.
+
+    Mansfield RS sadece fiyat karşılaştırması yapar; bu fonksiyon hacim akışı
+    karşılaştırması yapar — daha derin smart money izi.
+
+    Yöntem:
+      1. Her iki sembol için OBV serisi hesapla (np.sign(diff) * Volume).cumsum()
+      2. Son `lookback` bar için linear slope (polyfit)
+      3. Normalize slopes (her birinin son değerine göre %)
+      4. Hisse_slope - Endeks_slope = göreli ivme
+
+    5 state döner — CMF dual kalıbıyla aynı:
+      - outperform_strong  : hisse↑↑ endeks↓ — gerçek ayrışma (smart money seçti)
+      - outperform_mild    : hisse↑ endeks≈ — endeksten iyi
+      - inline             : ikisi de benzer yönde — sıradan
+      - underperform_mild  : hisse≈ endeks↑ — endeks sürüklüyor, hisse takip etmiyor
+      - underperform_strong: hisse↓↓ endeks↑ — yapısal çıkış
+
+    Args:
+        df_stock: 'Close','Volume' içeren DataFrame.
+        df_bench: aynı format (XU100.IS veya ^GSPC).
+        lookback: slope hesaplanacak gün penceresi (default 20).
+    Returns:
+        dict {state, stock_slope_pct, bench_slope_pct, diff_pct} veya None.
+    """
+    try:
+        import numpy as _np
+        if df_stock is None or df_bench is None: return None
+        if len(df_stock) < lookback or len(df_bench) < lookback: return None
+        # Ortak tarihler
+        _common = df_stock.index.intersection(df_bench.index)
+        if len(_common) < lookback: return None
+        _s = df_stock.loc[_common].tail(lookback)
+        _b = df_bench.loc[_common].tail(lookback)
+        if 'Volume' not in _s.columns or 'Volume' not in _b.columns: return None
+
+        # OBV serileri
+        _s_obv = (_np.sign(_s['Close'].diff()) * _s['Volume']).fillna(0).cumsum().values.astype(float)
+        _b_obv = (_np.sign(_b['Close'].diff()) * _b['Volume']).fillna(0).cumsum().values.astype(float)
+        if len(_s_obv) < lookback or len(_b_obv) < lookback: return None
+
+        # Linear slope (her birinin son değerine % normalize)
+        _x = _np.arange(lookback, dtype=float)
+        _s_slope_raw = _np.polyfit(_x, _s_obv[-lookback:], 1)[0]
+        _b_slope_raw = _np.polyfit(_x, _b_obv[-lookback:], 1)[0]
+        _s_last = abs(_s_obv[-1]) if abs(_s_obv[-1]) > 1e-6 else 1.0
+        _b_last = abs(_b_obv[-1]) if abs(_b_obv[-1]) > 1e-6 else 1.0
+        _s_slope_pct = (_s_slope_raw / _s_last) * 100
+        _b_slope_pct = (_b_slope_raw / _b_last) * 100
+        _diff = _s_slope_pct - _b_slope_pct
+
+        # State (eşikler 5g/20g CMF/MFI dual pattern ile uyumlu)
+        # 'strong' = ikisi zıt yönde + diff>1.5
+        # 'mild' = aynı yönde ama hisse fark açık
+        if _s_slope_pct > 0.3 and _b_slope_pct < -0.3 and _diff > 1.5:
+            _state = 'outperform_strong'
+        elif _s_slope_pct < -0.3 and _b_slope_pct > 0.3 and _diff < -1.5:
+            _state = 'underperform_strong'
+        elif _diff > 0.8:
+            _state = 'outperform_mild'
+        elif _diff < -0.8:
+            _state = 'underperform_mild'
+        else:
+            _state = 'inline'
+
+        return {
+            'state': _state,
+            'stock_slope_pct': round(_s_slope_pct, 2),
+            'bench_slope_pct': round(_b_slope_pct, 2),
+            'diff_pct': round(_diff, 2),
+        }
+    except Exception:
+        return None
 
 
 def compute_cmf(df, period=20, vol_series=None):
@@ -21043,6 +21155,58 @@ def _render_genel_ozet_panel():
                     pulse=_mfi_pulse
                 )
 
+                # 2.C) ENDEKSE GÖRE (Relative OBV) — hacim akışı ayrışması
+                # 10 Haz 2026 Oturum 20: Mansfield RS hacim katmanı.
+                # Hisse OBV trendi endeksten ayrışıyor mu?
+                _rel_lbl = "—"; _rel_clr = _gs_neu; _rel_expl = "Endeks karşılaştırması veri yok"
+                _rel_pulse = False
+                try:
+                    _ticker_rel = _ticker if '_ticker' in dir() else st.session_state.get('ticker', '')
+                    _vol_no_r = (
+                        _ticker_rel.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                        or _ticker_rel.upper().endswith('=F')
+                        or '-USD' in _ticker_rel.upper()
+                    )
+                    if not _vol_no_r and _gs_df is not None and len(_gs_df) >= 25 and 'Volume' in _gs_df.columns:
+                        _bench_rel_t = "XU100.IS" if ".IS" in _ticker_rel else "^GSPC"
+                        _bench_rel_df = get_safe_historical_data(_bench_rel_t, period="3mo")
+                        if _bench_rel_df is not None and len(_bench_rel_df) >= 25:
+                            _rel_r = compute_relative_obv_state(_gs_df, _bench_rel_df, lookback=20)
+                            if _rel_r:
+                                _rel_state = _rel_r['state']
+                                if _rel_state == 'outperform_strong':
+                                    _rel_lbl  = "Endeksten Sıyrılıyor"
+                                    _rel_clr  = _gs_up_clr
+                                    _rel_expl = "Hisse hacim akışı pozitif, endeks negatif — akıllı para bu hisseyi seçti"
+                                    _rel_pulse = True
+                                elif _rel_state == 'outperform_mild':
+                                    _rel_lbl  = "Endeksten Hızlı"
+                                    _rel_clr  = _gs_up_clr
+                                    _rel_expl = "Hacim akışı endeksten daha güçlü, göreli avantaj var"
+                                elif _rel_state == 'underperform_strong':
+                                    _rel_lbl  = "Endeksten Sapıyor"
+                                    _rel_clr  = _gs_dn_clr
+                                    _rel_expl = "Hisse hacim akışı negatif, endeks pozitif — yapısal çıkış izi"
+                                    _rel_pulse = True
+                                elif _rel_state == 'underperform_mild':
+                                    _rel_lbl  = "Endeksten Yavaş"
+                                    _rel_clr  = _gs_dn_clr
+                                    _rel_expl = "Hacim akışı endeksten geride, görelinde zayıf"
+                                else:
+                                    _rel_lbl  = "Uyumlu"
+                                    _rel_clr  = _gs_neu
+                                    _rel_expl = "Endeks ile aynı yönde, ayrı bir sinyal yok"
+                except Exception:
+                    pass
+
+                _gs_items_html += _gs_row(
+                    "Endekse Göre",
+                    f"<span style='color:{_rel_clr};'>{_rel_lbl}</span>",
+                    explain=_rel_expl,
+                    lc=_rel_clr,
+                    pulse=_rel_pulse
+                )
+
                 # 3) RANGE KONUMU — 20g aralık × değişim matris (9 senaryo)
                 _rng_lbl = "—"; _rng_clr = _gs_neu; _rng_expl = "20g aralık verisi yok"
                 _rng_pos_pct = None
@@ -24771,6 +24935,56 @@ if st.session_state.generate_prompt:
             "sinyal — ana hikayeye dahil et."
         )
 
+    # Relative OBV (hisse vs endeks) — hacim akışı ayrışması
+    # 10 Haz 2026 Oturum 20: Mansfield RS'in hacim katmanı.
+    # Sadece "strong" durumlarda emit edilir (gürültü engeli).
+    _em_rel_obv = ""
+    try:
+        _vol_no_rel_e = (
+            t.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+            or t.upper().endswith('=F')
+            or '-USD' in t.upper()
+        )
+        if not _vol_no_rel_e and len(df_hist) >= 25:
+            _bench_rel_t_e = "XU100.IS" if ".IS" in t else "^GSPC"
+            _bench_rel_df_e = get_safe_historical_data(_bench_rel_t_e, period="3mo")
+            if _bench_rel_df_e is not None and len(_bench_rel_df_e) >= 25:
+                _rel_res_e = compute_relative_obv_state(df_hist, _bench_rel_df_e, lookback=20)
+                if _rel_res_e:
+                    _rs = _rel_res_e['state']
+                    _ss = _rel_res_e['stock_slope_pct']
+                    _bs = _rel_res_e['bench_slope_pct']
+                    _df_v = _rel_res_e['diff_pct']
+                    if _rs == 'outperform_strong':
+                        _em_rel_obv = _line(
+                            "rel_obv_state",
+                            f"🎯 ENDEKSTEN AYRIŞMA (outperform_strong): hisse OBV trendi +{_ss}%/g, "
+                            f"endeks OBV trendi {_bs}%/g, fark +{_df_v}%/g — endeks akışı negatifken "
+                            f"hisseye özellikle hacim akıyor. Akıllı para spesifik olarak bu hisseyi "
+                            f"seçti, ana hikayeye dahil et."
+                        )
+                    elif _rs == 'underperform_strong':
+                        _em_rel_obv = _line(
+                            "rel_obv_state",
+                            f"⚠ ENDEKSTEN NEGATİF AYRIŞMA (underperform_strong): hisse OBV trendi {_ss}%/g, "
+                            f"endeks OBV trendi +{_bs}%/g, fark {_df_v}%/g — endeks akışı pozitifken "
+                            f"hisseden çıkış var. Yapısal zayıflık izi, olumlu teze karşı dikkat."
+                        )
+                    elif _rs == 'outperform_mild':
+                        _em_rel_obv = _line(
+                            "rel_obv_state",
+                            f"rel_obv: outperform_mild (hisse OBV %{_ss}/g vs endeks %{_bs}/g, fark +{_df_v}) — "
+                            f"hacim akışı endeksten daha güçlü, göreli avantaj DESTEKLEYİCİ"
+                        )
+                    elif _rs == 'underperform_mild':
+                        _em_rel_obv = _line(
+                            "rel_obv_state",
+                            f"rel_obv: underperform_mild (hisse OBV %{_ss}/g vs endeks %{_bs}/g, fark {_df_v}) — "
+                            f"hacim akışı endeksten geride, görelinde zayıf DESTEKLEYİCİ uyarı"
+                        )
+    except Exception:
+        pass
+
     # Stopping / Climax volume — sadece "Var/Pozitif" gibi tetiklendiyse emit
     _em_stop   = _line("stopping_volume", stop_vol_val)   if (stop_vol_val   and str(stop_vol_val).strip()   not in ("Yok", "yok", "0", "False", "None")) else ""
     _em_climax = _line("climax_volume",   climax_vol_val) if (climax_vol_val and str(climax_vol_val).strip() not in ("Yok", "yok", "0", "False", "None")) else ""
@@ -25321,6 +25535,8 @@ Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
 3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + mfi_dual_window + smart_money.cum_delta_5g + vp_sekil): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi.
 
 **MFI vs RSI okuma:** RSI fiyat momentumu, MFI hacim-ağırlıklı momentum (Wyckoff effort-vs-result). Aynı yönde uyumlu (mfi_dual ve rsi_dual aynı state) = ÇİFT TEYİT, güçlü. Divergent (örn RSI overbought ama MFI nötr) → "fiyat yorgun ama hacim destek vermiyor / fiyat üzerine çıkmaya çalışıyor ama akıllı para girmiyor" = SAHTE RALLY uyarısı. `rsi_mfi_bouquet` varsa = climax noktası, G1 açılışında merkeze al.
+
+**Relative OBV (rel_obv_state) okuma:** Hisse hacim akışı endeks hacim akışından ayrışıyor mu? Mansfield RS'in HACİM versiyonu. `outperform_strong` (hisse OBV↑ endeks OBV↓) = AKILLI PARA spesifik olarak bu hisseyi seçti, yapısal birikim — G1'de merkeze al. `underperform_strong` (hisse OBV↓ endeks OBV↑) = endeks akışı pozitif ama bu hisseden çıkış var, yapısal zayıflık — olumlu teze karşı dikkat uyarısı. Mild durumlar = destekleyici. Sadece OBV slope'una bakma yetmez, ENDEKSE GÖRE ayrışmasını da oku.
 4) **TETİKLEYİCİ** (yaml.ict_pa.ob + fvg + sweep_silkeleme + yaml.targets): Hangi seviye kırılırsa ne olur? — Bu gözlenecek noktayı söyler.
 5) **YANLIŞLANMA** (yaml.targets + son swing low/high + yaml.asset.yillik_konum_52h): Tez hangi seviye altında çöker? — Bu risk noktası.
 
@@ -25474,7 +25690,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
 • institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 KURUMSAL ANCHOR` (3+ kurumsal kanal konverjansı — TEFAS+KAP+ownership aynı yönde — bu varsa G1'de MUTLAKA merkez), `tefas_konsensus_alim`/`tefas_konsensus_satim`/`tefas_yeni_giris` (TEFAS fon akış sinyalleri — STRONG, AI'da 1 cümle), `buyback_aktif`/`buyback_dip_aliyor` (KAP geri alım — özellikle dip alıyor varsa güçlü), `threshold_asildi`/`insider_first_buy` (KAP pay sahipliği — büyük ortak/yönetici hareketleri), `🏛 YABANCI KURUMSAL ANCHOR` (MKK — yabancı net giriş + streak çakışması, gerçek yabancı kurumsal pozisyon kuruyor → G1'de mutlaka 'yabancı destekliyor' vurgusu), `yabanci_giris`/`yabanci_streak`/`yabanci_cikis` (MKK — yabancı oran top-3 + süreklilik bilgisi, DESTEKLEYİCİ).
-• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al).
+• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al), `rel_obv_state` (Relative OBV — hisse hacim akışı endeksten ayrışıyor mu; outperform_strong/underperform_strong = ELIT smart money izi, mild = destekleyici).
 • trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
 *** KALİBRASYON TABLOLARI — SADECE REFERANS, gördüğünde uygula ***
@@ -25584,7 +25800,7 @@ ict_pa:
   sfp_tuzak: {sfp_desc}
   harmonik_xabcd: {harm_txt}
 
-{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else ""))}
+{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else ""))}
 
 {("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
 
