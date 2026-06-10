@@ -818,6 +818,16 @@ def init_db():
         'ALTER TABLE scan_signals ADD COLUMN f_threshold_asildi INTEGER',      # %5/%10/%25 eşik aşımı (yukarı)
         'ALTER TABLE scan_signals ADD COLUMN f_insider_first_buy INTEGER',     # 6ay sonra ilk içerden alım
         'ALTER TABLE scan_signals ADD COLUMN f_kurumsal_anchor INTEGER',       # convergence (3+ aynı yön)
+        # 10 Haz 2026 Oturum 20 — MFI (Money Flow Index) — hacim-ağırlıklı RSI
+        # 7 state dual-window (RSI_dual ile aynı kalıp):
+        #   overbought_both / oversold_both / early_overbought / early_oversold /
+        #   cooling_smart_exit / smart_money_recovery / neutral
+        'ALTER TABLE scan_signals ADD COLUMN f_mfi_dual TEXT',
+        # ELIT confluence flag — RSI ve MFI aynı yönde divergence verirse
+        # tek başına RSI div'inin teyit gücü yetmez; MFI hacim teyidi eklenince
+        # "akıllı para çekildi" hipotezi güçlenir. Wyckoff effort-vs-result'un
+        # algoritmik karşılığı. Nadir ama TIER_1 seviyesinde bekleniyor.
+        'ALTER TABLE scan_signals ADD COLUMN f_rsi_mfi_bouquet INTEGER',
     ]:
         try:
             c.execute(_alter_col)
@@ -1384,6 +1394,9 @@ def _compute_signal_features(ticker: str) -> dict:
         'f_threshold_asildi': None,
         'f_insider_first_buy': None,
         'f_kurumsal_anchor': None,
+        # 10 Haz 2026 Oturum 20 — MFI Dual + RSI/MFI Bouquet
+        'f_mfi_dual': None,
+        'f_rsi_mfi_bouquet': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1520,6 +1533,56 @@ def _compute_signal_features(ticker: str) -> dict:
                 elif _rsi5 < 50  and _rsi14 >= 70: out['f_rsi_dual'] = 'cooling_overheat'  # tepe yorgunluğu
                 elif _rsi5 > 50  and _rsi14 <= 30: out['f_rsi_dual'] = 'dip_recovery'      # erken dönüş
                 else:                              out['f_rsi_dual'] = 'neutral'
+        except Exception: pass
+
+        # 12.5) f_mfi_dual — MFI(5)/MFI(14) dual-window state (7 state)
+        # Wyckoff/VSA'nın hacim-ağırlıklı RSI versiyonu. RSI fiyat momentumu,
+        # MFI bunun hacim teyitli halini ölçer. RSI ile aynı kalıp ama "smart money"
+        # tonu daha güçlü çünkü hacim filtre var.
+        #
+        # Eşikler MFI için: ≥80 / ≤20 (RSI'nın 70/30'undan daha sıkı çünkü
+        # hacim teyit aradığı için extreme daha nadir, daha güçlü)
+        # NOT: Volume güvenilmez sembollerde (endeks/emtia/kripto) None kalır.
+        try:
+            _vol_unreliable = (
+                ticker.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                or ticker.upper().endswith('=F')
+                or '-USD' in ticker.upper()
+            )
+            if not _vol_unreliable and 'Volume' in df.columns:
+                _mfi5_series  = compute_mfi(df, period=5)
+                _mfi14_series = compute_mfi(df, period=14)
+                if len(_mfi5_series) >= 1 and len(_mfi14_series) >= 1:
+                    _mfi5  = float(_mfi5_series.iloc[-1])
+                    _mfi14 = float(_mfi14_series.iloc[-1])
+                    if   _mfi5 >= 80 and _mfi14 >= 75: out['f_mfi_dual'] = 'overbought_both'       # smart money tepede tam dolu
+                    elif _mfi5 <= 20 and _mfi14 <= 25: out['f_mfi_dual'] = 'oversold_both'         # smart money dipte tam boş
+                    elif _mfi5 >= 80 and _mfi14 < 60:  out['f_mfi_dual'] = 'early_overbought'      # smart money agresif giriyor, fiyat henüz değil
+                    elif _mfi5 <= 20 and _mfi14 > 40:  out['f_mfi_dual'] = 'early_oversold'        # ani panik satışı, ana trend henüz değişmedi
+                    elif _mfi5 < 50  and _mfi14 >= 75: out['f_mfi_dual'] = 'cooling_smart_exit'    # smart money çıkmaya başladı, fiyat hâlâ tepede
+                    elif _mfi5 > 50  and _mfi14 <= 25: out['f_mfi_dual'] = 'smart_money_recovery'  # smart money dipten dönüyor, ana fiyat hâlâ baskı altında
+                    else:                              out['f_mfi_dual'] = 'neutral'
+
+                    # f_rsi_mfi_bouquet — ELIT confluence flag
+                    # AÇIKLAMA: RSI ve MFI aynı yönde ekstreme + dual-window aynı durumda.
+                    # Pratikte iki bağımsız teyit anlamına gelir:
+                    #   - Fiyat momentumu (RSI) → "yön zayıflıyor/güçleniyor"
+                    #   - Hacim momentumu (MFI) → "akıllı para destek veriyor/çekiliyor"
+                    # İkisi de aynı yönde TAM AŞIRI ALIM/SATIM ise = TIER_1 sinyal.
+                    # Wyckoff'un "Effort vs Result" eşit ve aşırı = climax noktası
+                    # tezi ile birebir uyumlu. Nadir ama güçlü.
+                    _rsi_dual = out.get('f_rsi_dual')
+                    _mfi_dual = out['f_mfi_dual']
+                    _bouquet_states = {'overbought_both', 'oversold_both',
+                                       'cooling_overheat', 'cooling_smart_exit',
+                                       'dip_recovery', 'smart_money_recovery'}
+                    _aligned_pairs = {
+                        ('overbought_both', 'overbought_both'),  # ikisi de tepe
+                        ('oversold_both', 'oversold_both'),       # ikisi de dip
+                        ('cooling_overheat', 'cooling_smart_exit'),  # ikisi de tepe yorgunluğu
+                        ('dip_recovery', 'smart_money_recovery'),    # ikisi de dipten dönüş
+                    }
+                    out['f_rsi_mfi_bouquet'] = 1 if (_rsi_dual, _mfi_dual) in _aligned_pairs else 0
         except Exception: pass
 
         # 8-10) POC-tabanlı 3 flag (backtest 84.832 event'lik segmente göre)
@@ -1851,6 +1914,10 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_thresh_v           = _ff('F_Threshold', 'f_threshold_asildi', cast=int)
             f_insider_first_v    = _ff('F_Insider_First', 'f_insider_first_buy', cast=int)
             f_anchor_v           = _ff('F_Kurumsal_Anchor', 'f_kurumsal_anchor', cast=int)
+            # 10 Haz 2026 — MFI dual + RSI/MFI Bouquet
+            f_mfi_dual_raw       = _ff('F_MFI_Dual', 'MFI_Dual', 'f_mfi_dual', cast=str)
+            f_mfi_dual           = f_mfi_dual_raw if f_mfi_dual_raw else None
+            f_rsi_mfi_bouquet_v  = _ff('F_RSI_MFI_Bouquet', 'f_rsi_mfi_bouquet', cast=int)
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -1883,6 +1950,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_thresh_v         is None: f_thresh_v         = _feat.get('f_threshold_asildi')
                 if f_insider_first_v  is None: f_insider_first_v  = _feat.get('f_insider_first_buy')
                 if f_anchor_v         is None: f_anchor_v         = _feat.get('f_kurumsal_anchor')
+                if f_mfi_dual         is None: f_mfi_dual         = _feat.get('f_mfi_dual')
+                if f_rsi_mfi_bouquet_v is None: f_rsi_mfi_bouquet_v = _feat.get('f_rsi_mfi_bouquet')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -1893,8 +1962,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_at_vwap_minus_2sigma, f_at_y_open, f_near_ifvg, f_breaker_block_active,
                     f_tefas_konsensus_alim, f_tefas_konsensus_satim, f_tefas_yeni_giris,
                     f_buyback_aktif, f_buyback_dip_aliyor,
-                    f_threshold_asildi, f_insider_first_buy, f_kurumsal_anchor)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_threshold_asildi, f_insider_first_buy, f_kurumsal_anchor,
+                    f_mfi_dual, f_rsi_mfi_bouquet)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
@@ -1903,7 +1973,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                  f_at_vwap_m2s_v, f_at_y_open_v, f_near_ifvg_v, f_bb_active_v,
                  f_tefas_alim_v, f_tefas_satim_v, f_tefas_yeni_v,
                  f_buyback_aktif_v, f_buyback_dip_v,
-                 f_thresh_v, f_insider_first_v, f_anchor_v)
+                 f_thresh_v, f_insider_first_v, f_anchor_v,
+                 f_mfi_dual, f_rsi_mfi_bouquet_v)
             )
         conn.commit()
         conn.close()
@@ -3820,6 +3891,43 @@ def calculate_synthetic_sentiment(ticker):
         plot_df['RVOL'] = (plot_df['Volume'] / plot_df['Vol_Avg20']).replace([np.inf, -np.inf], np.nan)
         return plot_df
     except Exception: return None
+
+def compute_mfi(df, period=14):
+    """Money Flow Index — Wyckoff/VSA'nın hacim-ağırlıklı RSI versiyonu.
+
+    RSI sadece fiyat değişimi gücüne bakar; MFI bu gücün arkasında HACİM var mı
+    sorusunu cevaplar. Smart money divergence'larında RSI'den daha güvenilir.
+
+    Formül:
+      Typical Price = (H + L + C) / 3
+      Raw MF = TP × Volume
+      Pos MF = TP up day'lerinin TP×V toplamı
+      Neg MF = TP down day'lerinin TP×V toplamı
+      MFI = 100 - 100/(1 + Pos/Neg)
+
+    Eşikler: MFI ≥ 80 aşırı alım (hacim teyitli) · MFI ≤ 20 aşırı satım (hacim teyitli).
+    20-80 arası nötr — RSI'nin 30-70 standardından daha geniş çünkü hacim teyit
+    aradığı için daha az ama daha güçlü extreme verir.
+
+    Args:
+        df: 'High','Low','Close','Volume' içeren DataFrame.
+        period: 14 klasik, 5 erken-uyarı (dual window).
+    Returns:
+        pandas.Series of MFI values, period-1 NaN.
+    """
+    try:
+        _tp = (df['High'] + df['Low'] + df['Close']) / 3.0
+        _rmf = _tp * df['Volume']
+        _tp_diff = _tp.diff()
+        _pos_mf = _rmf.where(_tp_diff > 0, 0.0)
+        _neg_mf = _rmf.where(_tp_diff < 0, 0.0)
+        _pos_sum = _pos_mf.rolling(period, min_periods=max(2, period // 2)).sum()
+        _neg_sum = _neg_mf.rolling(period, min_periods=max(2, period // 2)).sum()
+        _mfr = _pos_sum / _neg_sum.replace(0, 1e-9)
+        return 100.0 - (100.0 / (1.0 + _mfr))
+    except Exception:
+        return pd.Series([], dtype=float)
+
 
 def compute_cmf(df, period=20, vol_series=None):
     """Para Akışı (varsayılan 20g) — OBV teyit katmanı için tek kaynak.
@@ -14028,11 +14136,35 @@ def render_smart_volume_panel(ticker):
     _hacim_kind = "Endeks Hacmi" if is_index else "Hisse Hacmi"
     _t4_short_lbl = f"{_hacim_kind} (20G ort.)"
 
+    # ── MFI quick chip (10 Haz 2026 Oturum 20) ──
+    # Verdict stripine ekstra hacim teyit kanalı: Money Flow Index.
+    # Sadece hacim güvenilir sembollerde gösterilir (endeks/emtia/kripto → atla).
+    _mfi_icon = "○"; _mfi_clr = "#94a3b8"; _mfi_lbl_v = "—"
+    try:
+        _vol_safe_mfi = not (is_index or '=F' in ticker.upper() or '-USD' in ticker.upper())
+        # df_hist var mı kontrolü — sv parent scope'ta yüklenmiş olmalı
+        _df_for_mfi = None
+        try:
+            _df_for_mfi = get_safe_historical_data(ticker, period="3mo")
+        except Exception: pass
+        if _vol_safe_mfi and _df_for_mfi is not None and len(_df_for_mfi) >= 20:
+            _mfi_v = compute_mfi(_df_for_mfi, period=14)
+            if len(_mfi_v) > 0:
+                _mfi_now = float(_mfi_v.iloc[-1])
+                if   _mfi_now >= 80: _mfi_icon, _mfi_clr, _mfi_lbl_v = "⚠", "#f87171",   f"Aşırı {_mfi_now:.0f}"
+                elif _mfi_now <= 20: _mfi_icon, _mfi_clr, _mfi_lbl_v = "⚡", "#4ade80",   f"Aşırı {_mfi_now:.0f}"
+                elif _mfi_now >= 65: _mfi_icon, _mfi_clr, _mfi_lbl_v = "↑", "#86efac",   f"Güçlü {_mfi_now:.0f}"
+                elif _mfi_now <= 35: _mfi_icon, _mfi_clr, _mfi_lbl_v = "↓", "#fca5a5",   f"Zayıf {_mfi_now:.0f}"
+                else:                 _mfi_icon, _mfi_clr, _mfi_lbl_v = "→", "#fbbf24",   f"Nötr {_mfi_now:.0f}"
+    except Exception:
+        pass
+
     # ── Verdict strip mini badge'leri (eski 3 büyük kart yerine) ──
     _verdict_strip = (
         _mini_badge(c1_icon, c1_clr, "Fiyat", c1_lbl) +
         _mini_badge(c2_icon, c2_clr, "Hacim", c2_lbl) +
-        _mini_badge(c3_icon, c3_clr, "Akıllı Para", c3_lbl)
+        _mini_badge(c3_icon, c3_clr, "Akıllı Para", c3_lbl) +
+        (_mini_badge(_mfi_icon, _mfi_clr, "MFI", _mfi_lbl_v) if _mfi_lbl_v != "—" else "")
     )
 
     # ── 5G dot row için kısa konsensüs cümlesi ─────────────────────
@@ -20640,6 +20772,77 @@ def _render_genel_ozet_panel():
                     pulse=_mom_pulse
                 )
 
+                # 2.B) HACİM MOMENTUMU (MFI) — Money Flow Index dual-window
+                # 10 Haz 2026 Oturum 20: RSI'nin hacim-ağırlıklı versiyonu.
+                # "Fiyat momentumu var mı?" değil "akıllı para destek veriyor mu?"
+                # sorusunu cevaplar.
+                _mfi_lbl = "—"; _mfi_clr = _gs_neu; _mfi_expl = "Hacim verisi güvenilmez"
+                try:
+                    _ticker_mfi = _ticker if '_ticker' in dir() else st.session_state.get('ticker', '')
+                    _vol_no = (
+                        _ticker_mfi.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                        or _ticker_mfi.upper().endswith('=F')
+                        or '-USD' in _ticker_mfi.upper()
+                    )
+                    if not _vol_no and _gs_df is not None and len(_gs_df) >= 20 and 'Volume' in _gs_df.columns:
+                        _mfi5_s  = compute_mfi(_gs_df, period=5)
+                        _mfi14_s = compute_mfi(_gs_df, period=14)
+                        if len(_mfi5_s) > 0 and len(_mfi14_s) > 0:
+                            _mfi5_v  = float(_mfi5_s.iloc[-1])
+                            _mfi14_v = float(_mfi14_s.iloc[-1])
+                            # State + sade Türkçe açıklama
+                            if _mfi5_v >= 80 and _mfi14_v >= 75:
+                                _mfi_lbl = f"Aşırı Alım ★ ({_mfi14_v:.0f})"
+                                _mfi_clr = _gs_dn_clr
+                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
+                                             f"akıllı para tepede tam dolu (hacim teyitli aşırı alım, dönüş yakın)")
+                            elif _mfi5_v <= 20 and _mfi14_v <= 25:
+                                _mfi_lbl = f"Aşırı Satım ★ ({_mfi14_v:.0f})"
+                                _mfi_clr = _gs_up_clr
+                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
+                                             f"akıllı para dipte tam boş (hacim teyitli aşırı satım, dönüş yakın)")
+                            elif _mfi5_v >= 80 and _mfi14_v < 60:
+                                _mfi_lbl = f"Erken Giriş ↑↑ ({_mfi5_v:.0f})"
+                                _mfi_clr = _gs_up_clr
+                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
+                                             f"akıllı para agresif giriyor, fiyat henüz takip etmedi (erken alış sinyali)")
+                            elif _mfi5_v <= 20 and _mfi14_v > 40:
+                                _mfi_lbl = f"Ani Panik ↓↓ ({_mfi5_v:.0f})"
+                                _mfi_clr = _gs_dn_clr
+                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
+                                             f"ani panik satışı, ana hacim trendi hâlâ pozitif (geçici flush)")
+                            elif _mfi5_v < 50 and _mfi14_v >= 75:
+                                _mfi_lbl = f"Tepe Yorgunluğu ↘ ({_mfi14_v:.0f})"
+                                _mfi_clr = _gs_dn_clr
+                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
+                                             f"akıllı para çıkmaya başladı, fiyat hâlâ tepede (sahte yükseliş riski)")
+                            elif _mfi5_v > 50 and _mfi14_v <= 25:
+                                _mfi_lbl = f"Dip Dönüş ↗ ({_mfi14_v:.0f})"
+                                _mfi_clr = _gs_up_clr
+                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
+                                             f"akıllı para dipten geri dönüyor, ana fiyat hâlâ baskı altında (erken dönüş)")
+                            elif _mfi14_v >= 65:
+                                _mfi_lbl = f"Güçlü ↑ ({_mfi14_v:.0f})"; _mfi_clr = _gs_up_clr
+                                _mfi_expl = f"MFI 14g={_mfi14_v:.0f} — hacim destekli pozitif akış"
+                            elif _mfi14_v <= 35:
+                                _mfi_lbl = f"Zayıf ↓ ({_mfi14_v:.0f})"; _mfi_clr = _gs_dn_clr
+                                _mfi_expl = f"MFI 14g={_mfi14_v:.0f} — hacim destekli negatif akış"
+                            else:
+                                _mfi_lbl = f"Nötr ({_mfi14_v:.0f})"; _mfi_clr = _gs_neu
+                                _mfi_expl = f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — yön belirsiz, beklemede"
+                except Exception:
+                    pass
+
+                # Aşırı alım / aşırı satım ★ → pulse
+                _mfi_pulse = ("★" in _mfi_lbl) or ("↑↑" in _mfi_lbl) or ("↓↓" in _mfi_lbl)
+                _gs_items_html += _gs_row(
+                    "Hacim Momentumu",
+                    f"<span style='color:{_mfi_clr};'>{_mfi_lbl}</span>",
+                    explain=_mfi_expl,
+                    lc=_mfi_clr,
+                    pulse=_mfi_pulse
+                )
+
                 # 3) RANGE KONUMU — 20g aralık × değişim matris (9 senaryo)
                 _rng_lbl = "—"; _rng_clr = _gs_neu; _rng_expl = "20g aralık verisi yok"
                 _rng_pos_pct = None
@@ -24270,6 +24473,75 @@ if st.session_state.generate_prompt:
     except Exception:
         pass
 
+    # 10 Haz 2026 Oturum 20 — MFI Dual Window (hacim-ağırlıklı RSI)
+    # Sadece anlamlı state'lerde emit (klasik nötr 30-70 arası → sus).
+    # Volume güvenilmez sembollerde (endeks/emtia/kripto) hiç hesaplanmaz.
+    _em_mfi_dual = ""
+    _mfi_bouquet_active = False
+    try:
+        _vol_no_mfi = (
+            t.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+            or t.upper().endswith('=F')
+            or '-USD' in t.upper()
+        )
+        if not _vol_no_mfi and len(df_hist) >= 20:
+            _mfi5_e  = compute_mfi(df_hist, period=5)
+            _mfi14_e = compute_mfi(df_hist, period=14)
+            if len(_mfi5_e) > 0 and len(_mfi14_e) > 0:
+                _m5  = float(_mfi5_e.iloc[-1])
+                _m14 = float(_mfi14_e.iloc[-1])
+                _md_txt = None
+                _md_state = None
+                if   _m5 >= 80 and _m14 >= 75:
+                    _md_state = 'overbought_both'
+                    _md_txt = f"İki pencerede hacim teyitli aşırı alım (MFI5 {_m5:.0f} + MFI14 {_m14:.0f}) — akıllı para tepede, dağıtım/dönüş riski"
+                elif _m5 <= 20 and _m14 <= 25:
+                    _md_state = 'oversold_both'
+                    _md_txt = f"İki pencerede hacim teyitli aşırı satım (MFI5 {_m5:.0f} + MFI14 {_m14:.0f}) — akıllı para dipte boş, dönüş ihtimali yüksek"
+                elif _m5 >= 80 and _m14 < 60:
+                    _md_state = 'early_overbought'
+                    _md_txt = f"Erken hacim akışı (MFI5 {_m5:.0f} hızla yükseldi, MFI14 {_m14:.0f} henüz ortada) — akıllı para agresif girdi, fiyat geleceğe sarkacak"
+                elif _m5 <= 20 and _m14 > 40:
+                    _md_state = 'early_oversold'
+                    _md_txt = f"Ani panik satışı (MFI5 {_m5:.0f}, MFI14 {_m14:.0f}) — geçici flush, ana trend hâlâ pozitif"
+                elif _m5 < 50 and _m14 >= 75:
+                    _md_state = 'cooling_smart_exit'
+                    _md_txt = f"Tepe yorgunluğu (MFI5 {_m5:.0f} soğuyor, MFI14 {_m14:.0f} hâlâ aşırı alımda) — akıllı para çıkıyor, sahte rally riski"
+                elif _m5 > 50 and _m14 <= 25:
+                    _md_state = 'smart_money_recovery'
+                    _md_txt = f"Dipten dönüş (MFI5 {_m5:.0f} toparlanıyor, MFI14 {_m14:.0f} hâlâ dipte) — akıllı para geri giriyor, erken dönüş işareti"
+                if _md_txt:
+                    _em_mfi_dual = _line("mfi_dual_window", _md_txt)
+
+                # RSI vs MFI Bouquet — ELIT confluence flag
+                _aligned_pairs_emit = {
+                    ('overbought_both', 'overbought_both'),
+                    ('oversold_both', 'oversold_both'),
+                    ('cooling_overheat', 'cooling_smart_exit'),
+                    ('dip_recovery', 'smart_money_recovery'),
+                }
+                # _rd_txt'ten state çıkar (basit eşleştirme)
+                _rsi_state_now = None
+                if _rd_txt:
+                    if 'aşırı alım' in _rd_txt.lower():       _rsi_state_now = 'overbought_both'
+                    elif 'aşırı satım' in _rd_txt.lower():    _rsi_state_now = 'oversold_both'
+                    elif 'tepe yorgunluğu' in _rd_txt.lower(): _rsi_state_now = 'cooling_overheat'
+                    elif 'dip dönüşü' in _rd_txt.lower():     _rsi_state_now = 'dip_recovery'
+                if _rsi_state_now and _md_state and (_rsi_state_now, _md_state) in _aligned_pairs_emit:
+                    _mfi_bouquet_active = True
+    except Exception:
+        pass
+
+    # Bouquet özel emit — varsa anlamlı bir cümle yaz, anchor gibi
+    _em_rsi_mfi_bouquet = ""
+    if _mfi_bouquet_active:
+        _em_rsi_mfi_bouquet = _line(
+            "rsi_mfi_bouquet",
+            "🎯 RSI ve MFI aynı yönde aşırı/dönüş veriyor — fiyat ve hacim momentumu ÇİFT TEYİTLİ "
+            "(Wyckoff effort-vs-result climax). Tek başına RSI veya tek başına MFI'dan çok daha güçlü "
+            "sinyal — ana hikayeye dahil et."
+        )
+
     # Stopping / Climax volume — sadece "Var/Pozitif" gibi tetiklendiyse emit
     _em_stop   = _line("stopping_volume", stop_vol_val)   if (stop_vol_val   and str(stop_vol_val).strip()   not in ("Yok", "yok", "0", "False", "None")) else ""
     _em_climax = _line("climax_volume",   climax_vol_val) if (climax_vol_val and str(climax_vol_val).strip() not in ("Yok", "yok", "0", "False", "None")) else ""
@@ -24817,7 +25089,9 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
 Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
 1) **YAPI** (yaml.ict_pa.structure + mss_yapi_kirilimi + GENEL ÖZET PANEL.YAPI): Trend bias ne? HH+HL mi LH+LL mi, BOS/CHoCH var mı? — Bu yönü söyler.
 2) **KONUM** (yaml.scenario.zone + yaml.smart_money.va_pos + yaml.asset.yillik_konum_52h): Fiyat ucuz mu pahalı mı? Discount/Premium, VA içinde/altında/üstünde, 52H konumu — Bu RR'ı söyler.
-3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + smart_money.cum_delta_5g + vp_sekil): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi.
+3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + mfi_dual_window + smart_money.cum_delta_5g + vp_sekil): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi.
+
+**MFI vs RSI okuma:** RSI fiyat momentumu, MFI hacim-ağırlıklı momentum (Wyckoff effort-vs-result). Aynı yönde uyumlu (mfi_dual ve rsi_dual aynı state) = ÇİFT TEYİT, güçlü. Divergent (örn RSI overbought ama MFI nötr) → "fiyat yorgun ama hacim destek vermiyor / fiyat üzerine çıkmaya çalışıyor ama akıllı para girmiyor" = SAHTE RALLY uyarısı. `rsi_mfi_bouquet` varsa = climax noktası, G1 açılışında merkeze al.
 4) **TETİKLEYİCİ** (yaml.ict_pa.ob + fvg + sweep_silkeleme + yaml.targets): Hangi seviye kırılırsa ne olur? — Bu gözlenecek noktayı söyler.
 5) **YANLIŞLANMA** (yaml.targets + son swing low/high + yaml.asset.yillik_konum_52h): Tez hangi seviye altında çöker? — Bu risk noktası.
 
@@ -24971,7 +25245,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
 • institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 KURUMSAL ANCHOR` (3+ kurumsal kanal konverjansı — TEFAS+KAP+ownership aynı yönde — bu varsa G1'de MUTLAKA merkez), `tefas_konsensus_alim`/`tefas_konsensus_satim`/`tefas_yeni_giris` (TEFAS fon akış sinyalleri — STRONG, AI'da 1 cümle), `buyback_aktif`/`buyback_dip_aliyor` (KAP geri alım — özellikle dip alıyor varsa güçlü), `threshold_asildi`/`insider_first_buy` (KAP pay sahipliği — büyük ortak/yönetici hareketleri).
-• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse).
+• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al).
 • trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
 *** KALİBRASYON TABLOLARI — SADECE REFERANS, gördüğünde uygula ***
@@ -25081,7 +25355,7 @@ ict_pa:
   sfp_tuzak: {sfp_desc}
   harmonik_xabcd: {harm_txt}
 
-{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else ""))}
+{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else ""))}
 
 {("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
 
