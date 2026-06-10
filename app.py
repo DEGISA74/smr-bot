@@ -28918,6 +28918,46 @@ def _render_left_col():
 
                     if not _classic_data.empty:
                         _render_bt_html_table(_classic_data, "📊 Klasik Taramalar")
+                        # 10 Haz 2026 Oturum 20: ICT Sniper "sessiz" durumu —
+                        # piyasa SMA50 altındaysa kullanıcıya bilgi rozeti göster.
+                        # Sebebi: ICT Sniper sadece YUKARI yönlü setup arar (fiyat>SMA50 + mom+).
+                        # Düşüş trendinde sıfır sinyal "bug" değil, sistem doğru çalışıyor demek.
+                        # UI bilgi mesajı — AI prompt'a/sektör/rejim asla eklenmez.
+                        try:
+                            _xu_df_rej = get_safe_historical_data("XU100.IS")
+                            if _xu_df_rej is not None and len(_xu_df_rej) >= 50:
+                                _xu_last = float(_xu_df_rej['Close'].iloc[-1])
+                                _xu_sma50 = float(_xu_df_rej['Close'].rolling(50).mean().iloc[-1])
+                                _xu_5g = float(_xu_df_rej['Close'].iloc[-6]) if len(_xu_df_rej) >= 6 else _xu_last
+                                _xu_below_sma = _xu_last < _xu_sma50
+                                _xu_5g_neg = _xu_last < _xu_5g
+                                # ICT Sniper satırında 5g sinyal sayısı kontrolü
+                                _ict_row = _classic_data[_classic_data['label'].str.contains('ICT Sniper', na=False)]
+                                _ict_5g_sample = 0
+                                if not _ict_row.empty:
+                                    _ict_5g_sample = int(_ict_row.iloc[0].get('eval_5g', 0) or 0)
+                                # Sample son 30g'de büyük değil ya da pyasa düşüş trendinde
+                                if (_xu_below_sma and _xu_5g_neg) and _ict_5g_sample < 100:
+                                    _xu_diff_pct = ((_xu_last - _xu_sma50) / _xu_sma50) * 100
+                                    st.markdown(
+                                        f"<div style='margin-top:6px;padding:8px 12px;"
+                                        f"background:rgba(251,191,36,0.08);"
+                                        f"border-left:3px solid #fbbf24;"
+                                        f"border-radius:0 4px 4px 0;font-size:0.78rem;"
+                                        f"color:#fde68a;line-height:1.45;'>"
+                                        f"💡 <b>ICT Sniper neden sessiz?</b><br>"
+                                        f"XU100 şu an SMA50 altında "
+                                        f"(<code style='color:#fbbf24;'>{_xu_last:.0f}</code> vs "
+                                        f"<code style='color:#fbbf24;'>{_xu_sma50:.0f}</code>, "
+                                        f"%{_xu_diff_pct:+.1f}). ICT Sniper yalnız <b>yukarı yönlü</b> "
+                                        f"setup arar (fiyat &gt; SMA50 + 5g momentum pozitif). "
+                                        f"Düşüş rejiminde sinyal beklenmez — piyasa dönüşü başlayınca "
+                                        f"ilk tetiklenecek tarama bu olur."
+                                        f"</div>",
+                                        unsafe_allow_html=True
+                                    )
+                        except Exception:
+                            pass
 
                     _top5 = _bt.get('top5_by_expectancy', [])
                     if _top5:
