@@ -27409,6 +27409,51 @@ with col_left:
     with st.container(height=2500, border=False):
         _render_left_col()
 
+# ════════════════════════════════════════════════════════════════════
+# CANLI FİYAT — borsapy TradingView WebSocket (60sn refresh)
+# 10 Haz 2026: BIST seans saatleri içinde 60sn'de bir canlı fiyat çek.
+# Hata 3 ardışık olunca 5dk cooldown. Diğer kaynaklara dokunmaz.
+# ════════════════════════════════════════════════════════════════════
+def _canli_fiyat_borsapy(ticker: str) -> dict:
+    """Borsapy'den anlık fiyat çek. Dön: {price, ts} veya {}."""
+    try:
+        import borsapy as _bp
+        _sym = ticker.replace(".IS", "").upper()
+        if ticker.startswith("XU") or ticker.startswith("^"):
+            _obj = _bp.Index(_sym.replace(".IS", ""))
+        else:
+            _obj = _bp.Ticker(_sym)
+        _df = _obj.history(period="1d", interval="1m")
+        if _df is None or len(_df) == 0:
+            return {}
+        _last_row = _df.iloc[-1]
+        _ts = _df.index[-1]
+        _ts_str = _ts.strftime("%H:%M:%S") if hasattr(_ts, 'strftime') else ""
+        return {
+            'price': float(_last_row.get('Close', 0)),
+            'ts': _ts_str,
+        }
+    except Exception as _ex:
+        import logging
+        logging.warning(f"[canli_fiyat] {ticker}: {_ex}")
+        return {}
+
+
+def _is_bist_seans_acik() -> bool:
+    """BIST seans saatleri içinde mi? (Pzt-Cuma + 10:00-18:00 + tatil değil)"""
+    try:
+        _now = datetime.now(_TZ_ISTANBUL)
+        if _now.weekday() >= 5:
+            return False
+        if '_BIST_CAL_OK' in globals() and _BIST_CAL_OK:
+            if not _bist_is_trading_day(_now):
+                return False
+        _hm = _now.hour * 100 + _now.minute
+        return 1000 <= _hm <= 1800
+    except Exception:
+        return False
+
+
 def _render_right_col():
     info = fetch_stock_info(st.session_state.ticker)
     
@@ -27566,10 +27611,92 @@ def _render_right_col():
                 f"</div>"
             )
 
+        # ── CANLI FİYAT bloğu (sağ üstte SİNYAL ÖZETİ başlığının yanında) ──
+        # 10 Haz 2026: BIST seans saatlerinde 60sn'de bir borsapy ile çekilir.
+        # Renk kuralı: artıda açık yeşil, ekside vişne çürüğü, nötr koyu gri.
+        # Cooldown: 3 ardışık hata → 5 dk sessizlik.
+        _canli_html = ""
+        _show_canli = False
+        try:
+            _is_bist_tk = (".IS" in _tk or "BIST" in _tk or _tk.startswith(("XU","XB","XT")))
+            if _is_bist_tk and _is_bist_seans_acik():
+                # Cooldown kontrolü
+                _cd_key = f"_canli_cd_{_tk}"
+                _err_key = f"_canli_err_{_tk}"
+                _now_ts = datetime.now(_TZ_ISTANBUL).timestamp()
+                _cd_until = st.session_state.get(_cd_key, 0)
+                if _now_ts >= _cd_until:
+                    # 60sn cache key — _canli_fiyat_borsapy'yi st.cache_data wrap'a almıyoruz,
+                    # bunun yerine session_state ile 60sn kuralı uyguluyoruz
+                    _last_call_key = f"_canli_last_{_tk}"
+                    _last_data_key = f"_canli_data_{_tk}"
+                    _last_call = st.session_state.get(_last_call_key, 0)
+                    if (_now_ts - _last_call) >= 60 or not st.session_state.get(_last_data_key):
+                        _cf = _canli_fiyat_borsapy(_tk)
+                        if _cf and _cf.get('price', 0) > 0:
+                            st.session_state[_last_call_key] = _now_ts
+                            st.session_state[_last_data_key] = _cf
+                            st.session_state[_err_key] = 0
+                        else:
+                            _err_cnt = st.session_state.get(_err_key, 0) + 1
+                            st.session_state[_err_key] = _err_cnt
+                            if _err_cnt >= 3:
+                                st.session_state[_cd_key] = _now_ts + 300  # 5 dk cooldown
+                    _cf_data = st.session_state.get(_last_data_key, {})
+                    if _cf_data and _cf_data.get('price', 0) > 0:
+                        _canli_price = _cf_data['price']
+                        _canli_ts = _cf_data.get('ts', '')
+                        # Kart fiyatına göre yön → renk
+                        _delta_pct = ((_canli_price - price_val) / price_val * 100) if price_val else 0
+                        if _delta_pct >= 0:
+                            _canli_clr  = "#86efac"  # açık yeşil
+                            _canli_dot  = "#22c55e"
+                        else:
+                            _canli_clr  = "#9b2c2c"  # vişne çürüğü
+                            _canli_dot  = "#7f1d1d"
+                        # Fiyat formatı (endeks binlik ayırıcı)
+                        _canli_fmt = f"{int(_canli_price):,}".replace(",", ".") if _is_idx else f"{_canli_price:.2f}"
+                        _canli_html = (
+                            f"<div style='display:flex;align-items:center;gap:6px;"
+                            f"padding:2px 11px 2px 0;line-height:1;'>"
+                            f"<span style='display:inline-block;width:7px;height:7px;border-radius:50%;"
+                            f"background:{_canli_dot};box-shadow:0 0 5px {_canli_dot};"
+                            f"animation:canli-pulse 1.6s ease-in-out infinite;'></span>"
+                            f"<span style='font-size:0.58rem;color:{_canli_clr};font-weight:800;"
+                            f"letter-spacing:0.6px;text-transform:uppercase;'>CANLI</span>"
+                            f"<span style='font-size:0.68rem;color:{_canli_clr};font-weight:800;"
+                            f"font-family:\"JetBrains Mono\",monospace;'>{_canli_fmt}</span>"
+                            f"<span style='font-size:0.56rem;color:rgba(255,255,255,0.45);"
+                            f"font-family:\"JetBrains Mono\",monospace;'>· {_canli_ts}</span>"
+                            f"</div>"
+                        )
+                        _show_canli = True
+        except Exception:
+            pass
+
+        # streamlit_autorefresh — sadece CANLI gösterilirken 60sn ping
+        try:
+            if _show_canli and _AUTOREFRESH_OK:
+                _st_autorefresh(interval=60_000, key=f"_canli_refresh_{_tk}")
+        except Exception:
+            pass
+
+        # CSS: nabız animasyonu (1 kere markdown'a basılır)
+        if _show_canli:
+            st.markdown(
+                "<style>@keyframes canli-pulse {0%,100%{opacity:1;transform:scale(1);}"
+                "50%{opacity:0.45;transform:scale(0.78);}}</style>",
+                unsafe_allow_html=True,
+            )
+
         _sinyal_block = (
             f"<div style='padding:4px 0 3px;border-bottom:1px solid {_CLR_DIVIDER};'>"
+            # Başlık satırı: SİNYAL ÖZETİ solda, CANLI sağda — flex row
+            f"<div style='display:flex;align-items:center;justify-content:space-between;'>"
             f"<div style='padding:2.5px 11px 4px;font-size:0.64rem;color:{_CLR_TEXT_SEC};"
             f"text-transform:uppercase;letter-spacing:0.5px;font-weight:800;'>📊 SİNYAL ÖZETİ</div>"
+            f"{_canli_html}"
+            f"</div>"
             + _so_row("🎯", "Genel Sağlık",     _so_master, 100, _so_color_100(_so_master),
                      f"{int(_so_master)}/100" if _so_master is not None else "—",
                      "Teknik Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)")
