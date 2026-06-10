@@ -841,6 +841,12 @@ def init_db():
         'ALTER TABLE scan_signals ADD COLUMN f_rel_obv_state TEXT',
         # ELIT: outperform_strong veya underperform_strong = karşı yönde ayrışma → 1
         'ALTER TABLE scan_signals ADD COLUMN f_rel_obv_divergence INTEGER',
+        # 10 Haz 2026 Oturum 20 — YAPISAL vs TACTICAL skor ayrımı
+        # Smart money sinyalleri iki ölçeğe ayrıştırılır:
+        # YAPISAL (haftalar/aylar) vs TACTICAL (saatler/günler).
+        # Hangisi hit oranını daha çok belirliyor backtest ile öğrenilecek.
+        'ALTER TABLE scan_signals ADD COLUMN f_smart_structural_score REAL',  # 0-100
+        'ALTER TABLE scan_signals ADD COLUMN f_smart_tactical_score REAL',    # 0-100
     ]:
         try:
             c.execute(_alter_col)
@@ -1592,6 +1598,9 @@ def _compute_signal_features(ticker: str) -> dict:
         # 10 Haz 2026 Oturum 20 — Relative OBV (hisse vs endeks)
         'f_rel_obv_state': None,
         'f_rel_obv_divergence': None,
+        # 10 Haz 2026 Oturum 20 — YAPISAL vs TACTICAL skor ayrımı
+        'f_smart_structural_score': None,
+        'f_smart_tactical_score': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1946,6 +1955,11 @@ def _compute_signal_features(ticker: str) -> dict:
             _conv = _compute_kurumsal_convergence(out)
             if _conv.get('f_kurumsal_anchor') is not None:
                 out['f_kurumsal_anchor'] = _conv['f_kurumsal_anchor']
+            # YAPISAL vs TACTICAL skor ayrımı (tüm flag'ler hesaplandıktan sonra)
+            _split = compute_smart_money_split_scores(out)
+            if _split:
+                out['f_smart_structural_score'] = _split.get('structural_score')
+                out['f_smart_tactical_score'] = _split.get('tactical_score')
         except Exception: pass
 
     except Exception as e:
@@ -2146,6 +2160,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_rel_obv_raw        = _ff('F_Rel_OBV_State', 'f_rel_obv_state', cast=str)
             f_rel_obv_state      = f_rel_obv_raw if f_rel_obv_raw else None
             f_rel_obv_div_v      = _ff('F_Rel_OBV_Div', 'f_rel_obv_divergence', cast=int)
+            # 10 Haz 2026 — YAPISAL vs TACTICAL skor
+            f_smart_struct_v     = _ff('F_Smart_Struct', 'f_smart_structural_score')
+            f_smart_tact_v       = _ff('F_Smart_Tact', 'f_smart_tactical_score')
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -2186,6 +2203,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_yab_anchor_v     is None: f_yab_anchor_v     = _feat.get('f_yabanci_anchor')
                 if f_rel_obv_state    is None: f_rel_obv_state    = _feat.get('f_rel_obv_state')
                 if f_rel_obv_div_v    is None: f_rel_obv_div_v    = _feat.get('f_rel_obv_divergence')
+                if f_smart_struct_v   is None: f_smart_struct_v   = _feat.get('f_smart_structural_score')
+                if f_smart_tact_v     is None: f_smart_tact_v     = _feat.get('f_smart_tactical_score')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -2199,8 +2218,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_threshold_asildi, f_insider_first_buy, f_kurumsal_anchor,
                     f_mfi_dual, f_rsi_mfi_bouquet,
                     f_yabanci_giris, f_yabanci_cikis, f_yabanci_streak, f_yabanci_anchor,
-                    f_rel_obv_state, f_rel_obv_divergence)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_rel_obv_state, f_rel_obv_divergence,
+                    f_smart_structural_score, f_smart_tactical_score)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
@@ -2212,7 +2232,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                  f_thresh_v, f_insider_first_v, f_anchor_v,
                  f_mfi_dual, f_rsi_mfi_bouquet_v,
                  f_yab_giris_v, f_yab_cikis_v, f_yab_streak_v, f_yab_anchor_v,
-                 f_rel_obv_state, f_rel_obv_div_v)
+                 f_rel_obv_state, f_rel_obv_div_v,
+                 f_smart_struct_v, f_smart_tact_v)
             )
         conn.commit()
         conn.close()
@@ -4238,6 +4259,194 @@ def compute_relative_obv_state(df_stock, df_bench, lookback=20):
             'stock_slope_pct': round(_s_slope_pct, 2),
             'bench_slope_pct': round(_b_slope_pct, 2),
             'diff_pct': round(_diff, 2),
+        }
+    except Exception:
+        return None
+
+
+def compute_smart_money_split_scores(feature_dict: dict) -> dict:
+    """Akıllı Para sinyallerini YAPISAL vs TACTICAL ölçeklere ayırır.
+
+    Sorun: 'Akıllı para birikiyor' demek iki farklı zaman ölçeği:
+      - YAPISAL: haftalar/aylar boyunca kurumsal pozisyon kurma
+        (TEFAS, KAP, MKK yabancı, OBV 20g+, CMF 20g, POC multi-TF)
+      - TACTICAL: saatler/günler içinde algo/scalp aktivitesi
+        (cum_delta 5g, MFI 5g, RVOL spike, climax, pocket pivot)
+
+    Bu fonksiyon her sinyali sınıflandırır ve iki ayrı 0-100 skor üretir.
+    Kullanıcı/AI tek bakışta görür:
+      - 'Yapısal güçlü ama tactical zayıf' → sabırlı, hareket olgun değil
+      - 'Yapısal zayıf ama tactical güçlü' → kısa vade fırsat, uzun temkinli
+      - 'Her ikisi güçlü' → uyum, ana hikaye
+      - 'Her ikisi zayıf' → beklemede
+
+    Args:
+        feature_dict: _compute_signal_features çıktısı. Her flag/state'i okur.
+    Returns:
+        {
+          'structural_score': 0-100,
+          'tactical_score': 0-100,
+          'structural_signals': [aktif yapısal sinyal listesi],
+          'tactical_signals': [aktif tactical sinyal listesi],
+          'verdict': string özet
+        }
+    """
+    try:
+        f = feature_dict or {}
+        # ─── YAPISAL puanlama (max +/- 100) ────────────────────────────
+        struct_score = 50.0  # nötr başla
+        struct_pos = []; struct_neg = []
+
+        # KURUMSAL ANCHOR (en güçlü yapısal sinyal)
+        if f.get('f_kurumsal_anchor') == 1:
+            struct_score += 25
+            struct_pos.append('Kurumsal Anchor (3+ kanal aynı yönde)')
+        # TEFAS (yerli fon akışı)
+        if f.get('f_tefas_konsensus_alim') == 1:
+            struct_score += 8; struct_pos.append('TEFAS yerli fon girişi')
+        if f.get('f_tefas_yeni_giris') == 1:
+            struct_score += 6; struct_pos.append('TEFAS yeni fon pozisyonu')
+        if f.get('f_tefas_konsensus_satim') == 1:
+            struct_score -= 10; struct_neg.append('TEFAS fon çıkışı')
+        # KAP (şirket buyback + pay sahipliği)
+        if f.get('f_buyback_aktif') == 1:
+            struct_score += 7; struct_pos.append('Şirket geri alımı aktif')
+        if f.get('f_buyback_dip_aliyor') == 1:
+            struct_score += 10; struct_pos.append('Yönetim 52H dip yakını alıyor')
+        if f.get('f_threshold_asildi') == 1:
+            struct_score += 6; struct_pos.append('%5/%10 eşik aşımı (büyük ortak)')
+        if f.get('f_insider_first_buy') == 1:
+            struct_score += 8; struct_pos.append('Yönetici 6 ay sonra ilk alım')
+        # MKK Yabancı
+        if f.get('f_yabanci_anchor') == 1:
+            struct_score += 15; struct_pos.append('Yabancı kurumsal anchor (giriş + streak)')
+        elif f.get('f_yabanci_giris') == 1:
+            struct_score += 6; struct_pos.append('Yabancı top-3 net alış listesinde')
+        if f.get('f_yabanci_streak') == 1:
+            struct_score += 4; struct_pos.append('Yabancı 3+ gün üst üste artış')
+        if f.get('f_yabanci_cikis') == 1:
+            struct_score -= 8; struct_neg.append('Yabancı top-3 net satış listesinde')
+        # Relative OBV (orta-uzun vade akış)
+        _rel = f.get('f_rel_obv_state')
+        if _rel == 'outperform_strong':
+            struct_score += 12; struct_pos.append('Endeksten güçlü ayrışma (OBV)')
+        elif _rel == 'outperform_mild':
+            struct_score += 5; struct_pos.append('Endeksten hızlı (OBV)')
+        elif _rel == 'underperform_strong':
+            struct_score -= 12; struct_neg.append('Endeksten negatif ayrışma')
+        elif _rel == 'underperform_mild':
+            struct_score -= 5; struct_neg.append('Endeksten yavaş')
+        # POC mıknatıs / confluence (multi-TF = yapısal)
+        if f.get('f_poc_magnet') == 1:
+            struct_score += 5; struct_pos.append('POC mıknatıs aktif')
+        if f.get('f_poc_confluence') == 1:
+            struct_score += 4; struct_pos.append('Multi-TF POC çakışması')
+        # CMF dual orta-uzun vade
+        _cmf = f.get('f_cmf_dual')
+        if _cmf in ('strong_pos', 'pos'):
+            struct_score += 4; struct_pos.append('CMF birikim')
+        elif _cmf in ('strong_neg', 'neg'):
+            struct_score -= 5; struct_neg.append('CMF dağıtım')
+
+        struct_score = max(0, min(100, struct_score))
+
+        # ─── TACTICAL puanlama (saatler/günler) ────────────────────────
+        tact_score = 50.0
+        tact_pos = []; tact_neg = []
+
+        # RSI/MFI Bouquet (climax = tactical extreme)
+        if f.get('f_rsi_mfi_bouquet') == 1:
+            tact_score += 15; tact_pos.append('RSI/MFI ÇİFT TEYİT (climax)')
+        # MFI dual (kısa pencere = tactical)
+        _mfi = f.get('f_mfi_dual')
+        if _mfi == 'oversold_both':
+            tact_score += 10; tact_pos.append('MFI iki pencere aşırı satım')
+        elif _mfi == 'overbought_both':
+            tact_score -= 8; tact_neg.append('MFI iki pencere aşırı alım')
+        elif _mfi == 'early_overbought':
+            tact_score += 8; tact_pos.append('MFI erken giriş sinyali')
+        elif _mfi == 'smart_money_recovery':
+            tact_score += 10; tact_pos.append('MFI dipten akıllı para dönüşü')
+        elif _mfi == 'cooling_smart_exit':
+            tact_score -= 12; tact_neg.append('MFI tepe yorgunluğu (smart exit)')
+        elif _mfi == 'early_oversold':
+            tact_score -= 3; tact_neg.append('MFI ani panik')
+        # RSI dual
+        _rsi = f.get('f_rsi_dual')
+        if _rsi == 'oversold_both':
+            tact_score += 6; tact_pos.append('RSI iki pencere aşırı satım')
+        elif _rsi == 'overbought_both':
+            tact_score -= 5; tact_neg.append('RSI iki pencere aşırı alım')
+        elif _rsi == 'dip_recovery':
+            tact_score += 6; tact_pos.append('RSI dip dönüşü')
+        elif _rsi == 'cooling_overheat':
+            tact_score -= 6; tact_neg.append('RSI tepe yorgunluğu')
+        # cum_delta dual (kısa+orta — büyük ağırlık kısa için)
+        _cd = f.get('f_cum_delta_dual')
+        if _cd == 'strong_pos':
+            tact_score += 8; tact_pos.append('Cumulative Delta güçlü pozitif')
+        elif _cd == 'strong_neg':
+            tact_score -= 10; tact_neg.append('Cumulative Delta güçlü negatif')
+        elif _cd == 'turning_up':
+            tact_score += 6; tact_pos.append('Cum delta kafa çeviriyor (yukarı)')
+        elif _cd == 'turning_down':
+            tact_score -= 6; tact_neg.append('Cum delta kafa çeviriyor (aşağı)')
+        # Breakout state (Kibar Type 1 = tactical kırılım)
+        _bo = f.get('f_breakout_state')
+        if _bo is not None:
+            try:
+                _bo_i = int(_bo)
+                if _bo_i == 3:
+                    tact_score += 15; tact_pos.append('Breakaway gap (Type 1)')
+                elif _bo_i == 2:
+                    tact_score += 10; tact_pos.append('Klasik breakout')
+                elif _bo_i == 1:
+                    tact_score += 3; tact_pos.append('Breakout testing')
+            except Exception: pass
+        # iFVG, BB (ICT-tactical, kısa vade)
+        if f.get('f_near_ifvg') == 1:
+            tact_score += 4; tact_pos.append('Inverse FVG yakını')
+        if f.get('f_breaker_block_active') == 1:
+            tact_score += 4; tact_pos.append('Breaker block aktif')
+        # VWAP -2σ (mean reversion tactical fırsat)
+        if f.get('f_at_vwap_minus_2sigma') == 1:
+            tact_score += 7; tact_pos.append('VWAP -2σ bölgesi (institutional buy zone)')
+
+        tact_score = max(0, min(100, tact_score))
+
+        # ─── VERDICT ──────────────────────────────────────────────────
+        _struct_strong = struct_score >= 65
+        _struct_weak   = struct_score <= 35
+        _tact_strong   = tact_score >= 65
+        _tact_weak     = tact_score <= 35
+
+        if _struct_strong and _tact_strong:
+            _verdict = "Çift onay: yapısal birikim + tactical patlama aynı yönde — güçlü ana hikaye"
+        elif _struct_strong and _tact_weak:
+            _verdict = "Yapısal güçlü, tactical zayıf — kurumsal birikim sürüyor ama bugün ek hareket yok; sabırlı bekleyin"
+        elif _struct_weak and _tact_strong:
+            _verdict = "Tactical güçlü, yapısal zayıf — kısa vade fırsat olabilir; uzun vade yatırım için temkinli"
+        elif _struct_weak and _tact_weak:
+            _verdict = "Hem yapısal hem tactical zayıf — net akıllı para izi yok, beklemede"
+        elif _struct_strong:
+            _verdict = "Yapısal güçlü, tactical nötr — kurumsal birikim ön planda"
+        elif _tact_strong:
+            _verdict = "Tactical güçlü, yapısal nötr — kısa vade hareket var"
+        elif _struct_weak:
+            _verdict = "Yapısal zayıf, tactical nötr — kurumsal çıkış izi"
+        elif _tact_weak:
+            _verdict = "Tactical zayıf, yapısal nötr — kısa vade satıcı baskın"
+        else:
+            _verdict = "Yapısal ve tactical her ikisi de nötr"
+
+        return {
+            'structural_score': round(struct_score, 1),
+            'tactical_score': round(tact_score, 1),
+            'structural_signals_pos': struct_pos,
+            'structural_signals_neg': struct_neg,
+            'tactical_signals_pos': tact_pos,
+            'tactical_signals_neg': tact_neg,
+            'verdict': _verdict,
         }
     except Exception:
         return None
@@ -21207,6 +21416,51 @@ def _render_genel_ozet_panel():
                     pulse=_rel_pulse
                 )
 
+                # 2.D) AKILLI PARA TİPİ — YAPISAL vs TACTICAL ayrımı
+                # 10 Haz 2026 Oturum 20: smart money sinyallerini iki ayrı
+                # zaman ölçeğine ayırır → kullanıcı kafa karışıklığı çözülür.
+                _smt_lbl = "—"; _smt_clr = _gs_neu
+                _smt_expl = "Akıllı para tipi verisi yok"
+                _smt_pulse = False
+                try:
+                    _ticker_smt = _ticker if '_ticker' in dir() else st.session_state.get('ticker', '')
+                    _vol_no_smt = (
+                        _ticker_smt.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                        or _ticker_smt.upper().endswith('=F')
+                        or '-USD' in _ticker_smt.upper()
+                    )
+                    if not _vol_no_smt:
+                        # Feature dict'i tekrar hesapla (cache'ten gelir)
+                        _smt_feat = _compute_signal_features(_ticker_smt) or {}
+                        _smt_res = compute_smart_money_split_scores(_smt_feat)
+                        if _smt_res:
+                            _ss = _smt_res['structural_score']
+                            _ts = _smt_res['tactical_score']
+                            # Renk: ikisinin ortalaması
+                            _avg = (_ss + _ts) / 2
+                            if _avg >= 65: _smt_clr = _gs_up_clr
+                            elif _avg <= 35: _smt_clr = _gs_dn_clr
+                            else: _smt_clr = _gs_neu
+                            # Label: iki rozet
+                            _ss_clr = (_gs_up_clr if _ss >= 65 else (_gs_dn_clr if _ss <= 35 else _gs_neu))
+                            _ts_clr = (_gs_up_clr if _ts >= 65 else (_gs_dn_clr if _ts <= 35 else _gs_neu))
+                            _smt_lbl = (f"<span style='color:{_ss_clr};font-weight:700;'>🏛 {_ss:.0f}</span>"
+                                        f"<span style='color:rgba(255,255,255,0.4);'> · </span>"
+                                        f"<span style='color:{_ts_clr};font-weight:700;'>⚡ {_ts:.0f}</span>")
+                            _smt_expl = _smt_res['verdict']
+                            # Pulse: her ikisi de aynı yönde güçlü
+                            _smt_pulse = ((_ss >= 65 and _ts >= 65) or (_ss <= 35 and _ts <= 35))
+                except Exception:
+                    pass
+
+                _gs_items_html += _gs_row(
+                    "Akıllı Para Tipi",
+                    _smt_lbl,
+                    explain=_smt_expl,
+                    lc=_smt_clr,
+                    pulse=_smt_pulse
+                )
+
                 # 3) RANGE KONUMU — 20g aralık × değişim matris (9 senaryo)
                 _rng_lbl = "—"; _rng_clr = _gs_neu; _rng_expl = "20g aralık verisi yok"
                 _rng_pos_pct = None
@@ -24985,6 +25239,36 @@ if st.session_state.generate_prompt:
     except Exception:
         pass
 
+    # YAPISAL vs TACTICAL Smart Money skor ayrımı
+    # 10 Haz 2026 Oturum 20: smart money sinyallerini iki ölçeğe ayırır.
+    # AI'ın 'akıllı para birikiyor' yorumunu ne kadar süreli olduğunu bilmesini sağlar.
+    _em_smart_split = ""
+    try:
+        _vol_no_smt_e = (
+            t.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+            or t.upper().endswith('=F')
+            or '-USD' in t.upper()
+        )
+        if not _vol_no_smt_e:
+            _smt_feat_e = _compute_signal_features(t) or {}
+            _smt_res_e = compute_smart_money_split_scores(_smt_feat_e)
+            if _smt_res_e:
+                _struct = _smt_res_e['structural_score']
+                _tact = _smt_res_e['tactical_score']
+                _verdict_smt = _smt_res_e['verdict']
+                # Yapısal ve tactical en güçlü sinyaller (max 3)
+                _struct_top = _smt_res_e['structural_signals_pos'][:3]
+                _tact_top = _smt_res_e['tactical_signals_pos'][:3]
+                _em_smart_split = _line(
+                    "smart_money_split",
+                    f"YAPISAL:{_struct}/100 (haftalar-aylar) · TACTICAL:{_tact}/100 (saatler-günler). "
+                    f"Yapısal pozitif sinyaller: {', '.join(_struct_top) if _struct_top else 'yok'}. "
+                    f"Tactical pozitif sinyaller: {', '.join(_tact_top) if _tact_top else 'yok'}. "
+                    f"YORUM: {_verdict_smt}"
+                )
+    except Exception:
+        pass
+
     # Stopping / Climax volume — sadece "Var/Pozitif" gibi tetiklendiyse emit
     _em_stop   = _line("stopping_volume", stop_vol_val)   if (stop_vol_val   and str(stop_vol_val).strip()   not in ("Yok", "yok", "0", "False", "None")) else ""
     _em_climax = _line("climax_volume",   climax_vol_val) if (climax_vol_val and str(climax_vol_val).strip() not in ("Yok", "yok", "0", "False", "None")) else ""
@@ -25537,6 +25821,8 @@ Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
 **MFI vs RSI okuma:** RSI fiyat momentumu, MFI hacim-ağırlıklı momentum (Wyckoff effort-vs-result). Aynı yönde uyumlu (mfi_dual ve rsi_dual aynı state) = ÇİFT TEYİT, güçlü. Divergent (örn RSI overbought ama MFI nötr) → "fiyat yorgun ama hacim destek vermiyor / fiyat üzerine çıkmaya çalışıyor ama akıllı para girmiyor" = SAHTE RALLY uyarısı. `rsi_mfi_bouquet` varsa = climax noktası, G1 açılışında merkeze al.
 
 **Relative OBV (rel_obv_state) okuma:** Hisse hacim akışı endeks hacim akışından ayrışıyor mu? Mansfield RS'in HACİM versiyonu. `outperform_strong` (hisse OBV↑ endeks OBV↓) = AKILLI PARA spesifik olarak bu hisseyi seçti, yapısal birikim — G1'de merkeze al. `underperform_strong` (hisse OBV↓ endeks OBV↑) = endeks akışı pozitif ama bu hisseden çıkış var, yapısal zayıflık — olumlu teze karşı dikkat uyarısı. Mild durumlar = destekleyici. Sadece OBV slope'una bakma yetmez, ENDEKSE GÖRE ayrışmasını da oku.
+
+**YAPISAL vs TACTICAL Smart Money okuma (smart_money_split):** Akıllı para sinyalleri iki ölçeğe ayrılır: YAPISAL (haftalar-aylar, kurumsal pozisyon kurma — TEFAS, KAP, MKK, OBV 20g+) ve TACTICAL (saatler-günler, algo/scalp — cum_delta_5g, MFI_5g, breakout, climax). Her ikisi 0-100 skor. "Akıllı para birikiyor" derken HANGİ ölçek kasdettiğini netleştir: (a) YAPISAL ≥65 + TACTICAL ≥65 → "her iki ölçek aynı yönde, güçlü ana hikaye" (b) YAPISAL ≥65 + TACTICAL ≤35 → "kurumsal birikim sürüyor ama bugün ek hareket yok, SABIRLI BEKLE" (c) YAPISAL ≤35 + TACTICAL ≥65 → "kısa vade hareket var ama yapısal değil, KISA VADE FIRSAT olabilir, uzun vade temkinli" (d) İkisi de zayıf → "net akıllı para izi yok, beklemede". G2 AKILLI PARA satırını bu çerçevede yaz.
 4) **TETİKLEYİCİ** (yaml.ict_pa.ob + fvg + sweep_silkeleme + yaml.targets): Hangi seviye kırılırsa ne olur? — Bu gözlenecek noktayı söyler.
 5) **YANLIŞLANMA** (yaml.targets + son swing low/high + yaml.asset.yillik_konum_52h): Tez hangi seviye altında çöker? — Bu risk noktası.
 
@@ -25800,7 +26086,7 @@ ict_pa:
   sfp_tuzak: {sfp_desc}
   harmonik_xabcd: {harm_txt}
 
-{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else ""))}
+{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else "") + (chr(10) + _em_smart_split if _em_smart_split else ""))}
 
 {("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
 
