@@ -3494,7 +3494,10 @@ def check_lazybear_squeeze_breakout(df):
         return False, False
 
     
-@st.cache_data(ttl=600)
+# 10 Haz 2026: TTL 600→60 — borsapy prev_close fix'in lokal yansıması için.
+# Anlık fiyat her zaman taze, intraday seans içi 1 dk güncellik. Master Scan'i
+# bozmaz (data fetch'ler get_safe_historical_data'da, o ayrı cache'te).
+@st.cache_data(ttl=60)
 def fetch_stock_info(ticker):
     try:
         t = yf.Ticker(ticker)
