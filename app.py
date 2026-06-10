@@ -20992,51 +20992,49 @@ def _render_genel_ozet_panel():
                         if len(_mfi5_s) > 0 and len(_mfi14_s) > 0:
                             _mfi5_v  = float(_mfi5_s.iloc[-1])
                             _mfi14_v = float(_mfi14_s.iloc[-1])
-                            # State + sade Türkçe açıklama
+                            # 9 senaryo — sade Türkçe etiket + tek cümle açıklama
+                            # (10 Haz 2026 Oturum 20 kullanıcı sadeleştirmesi)
                             if _mfi5_v >= 80 and _mfi14_v >= 75:
-                                _mfi_lbl = f"Aşırı Alım ★ ({_mfi14_v:.0f})"
-                                _mfi_clr = _gs_dn_clr
-                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
-                                             f"akıllı para tepede tam dolu (hacim teyitli aşırı alım, dönüş yakın)")
+                                _mfi_lbl  = "Aşırı Alım"
+                                _mfi_clr  = _gs_dn_clr
+                                _mfi_expl = "Akıllı Para tam dolu (hacim teyitli yüksek alım)"
                             elif _mfi5_v <= 20 and _mfi14_v <= 25:
-                                _mfi_lbl = f"Aşırı Satım ★ ({_mfi14_v:.0f})"
-                                _mfi_clr = _gs_up_clr
-                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
-                                             f"akıllı para dipte tam boş (hacim teyitli aşırı satım, dönüş yakın)")
+                                _mfi_lbl  = "Aşırı Satım"
+                                _mfi_clr  = _gs_up_clr
+                                _mfi_expl = "Akıllı Para boş (hacim teyitli yüksek satım)"
                             elif _mfi5_v >= 80 and _mfi14_v < 60:
-                                _mfi_lbl = f"Erken Giriş ↑↑ ({_mfi5_v:.0f})"
-                                _mfi_clr = _gs_up_clr
-                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
-                                             f"akıllı para agresif giriyor, fiyat henüz takip etmedi (erken alış sinyali)")
+                                _mfi_lbl  = "Erken Giriş?"
+                                _mfi_clr  = _gs_up_clr
+                                _mfi_expl = "Akıllı Para giriş işaretleri var (erken alış sinyali)"
                             elif _mfi5_v <= 20 and _mfi14_v > 40:
-                                _mfi_lbl = f"Ani Panik ↓↓ ({_mfi5_v:.0f})"
-                                _mfi_clr = _gs_dn_clr
-                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
-                                             f"ani panik satışı, ana hacim trendi hâlâ pozitif (geçici flush)")
+                                _mfi_lbl  = "Panik Satışı?"
+                                _mfi_clr  = _gs_dn_clr
+                                _mfi_expl = "Panik satışı, ama ana hacim trendi hâlâ pozitif"
                             elif _mfi5_v < 50 and _mfi14_v >= 75:
-                                _mfi_lbl = f"Tepe Yorgunluğu ↘ ({_mfi14_v:.0f})"
-                                _mfi_clr = _gs_dn_clr
-                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
-                                             f"akıllı para çıkmaya başladı, fiyat hâlâ tepede (sahte yükseliş riski)")
+                                _mfi_lbl  = "Tepe Yorgunluğu?"
+                                _mfi_clr  = _gs_dn_clr
+                                _mfi_expl = "Akıllı Para çıkıyor olabilir (sahte yükseliş riski)"
                             elif _mfi5_v > 50 and _mfi14_v <= 25:
-                                _mfi_lbl = f"Dip Dönüş ↗ ({_mfi14_v:.0f})"
-                                _mfi_clr = _gs_up_clr
-                                _mfi_expl = (f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — "
-                                             f"akıllı para dipten geri dönüyor, ana fiyat hâlâ baskı altında (erken dönüş)")
+                                _mfi_lbl  = "Dipten Dönüş?"
+                                _mfi_clr  = _gs_up_clr
+                                _mfi_expl = "Akıllı Para dipten geri dönüyor olabilir (erken dönüş)"
                             elif _mfi14_v >= 65:
-                                _mfi_lbl = f"Güçlü ↑ ({_mfi14_v:.0f})"; _mfi_clr = _gs_up_clr
-                                _mfi_expl = f"MFI 14g={_mfi14_v:.0f} — hacim destekli pozitif akış"
+                                _mfi_lbl  = "Güçlü Akış"
+                                _mfi_clr  = _gs_up_clr
+                                _mfi_expl = "Hacim destekli pozitif akış"
                             elif _mfi14_v <= 35:
-                                _mfi_lbl = f"Zayıf ↓ ({_mfi14_v:.0f})"; _mfi_clr = _gs_dn_clr
-                                _mfi_expl = f"MFI 14g={_mfi14_v:.0f} — hacim destekli negatif akış"
+                                _mfi_lbl  = "Zayıf Akış"
+                                _mfi_clr  = _gs_dn_clr
+                                _mfi_expl = "Hacim destekli negatif akış"
                             else:
-                                _mfi_lbl = f"Nötr ({_mfi14_v:.0f})"; _mfi_clr = _gs_neu
-                                _mfi_expl = f"MFI 5g={_mfi5_v:.0f} · 14g={_mfi14_v:.0f} — yön belirsiz, beklemede"
+                                _mfi_lbl  = "Nötr"
+                                _mfi_clr  = _gs_neu
+                                _mfi_expl = "Yön belirsiz, beklemedeyiz"
                 except Exception:
                     pass
 
-                # Aşırı alım / aşırı satım ★ → pulse
-                _mfi_pulse = ("★" in _mfi_lbl) or ("↑↑" in _mfi_lbl) or ("↓↓" in _mfi_lbl)
+                # Pulse — sadece "Aşırı Alım/Satım" iki extreme'de yan flash (dikkat çek)
+                _mfi_pulse = _mfi_lbl in ("Aşırı Alım", "Aşırı Satım")
                 _gs_items_html += _gs_row(
                     "Hacim Momentumu",
                     f"<span style='color:{_mfi_clr};'>{_mfi_lbl}</span>",
