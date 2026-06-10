@@ -1,6 +1,6 @@
 # Patron Terminal — CLAUDE.md
 # Hızlı navigasyon. Sistemin TAMAMI: `memory/SMR_SISTEM_OZETI.md` (tek kaynak).
-# Son güncelleme: 5 Haz 2026 Oturum 16 (auto-refresh + 52H/MA merge + İsyatirim Open bug + G3 anti-kalıp v3)
+# Son güncelleme: 10 Haz 2026 Oturum 20 (SMC kurumsal 4 ek + KURUMSAL TAKİP 8 STRONG flag + FİYAT kartı redesign)
 
 ---
 
@@ -156,7 +156,41 @@
 
 ---
 
-## Son Oturum Notu — 5 Haz 2026 Oturum 16
+## Son Oturum Notu — 10 Haz 2026 Oturum 20 (SMC kurumsal 4 ek + KURUMSAL TAKİP 8 STRONG flag + FİYAT kartı redesign)
+
+**Büyük bir oturum — 3 ana iş.**
+
+**1) FİYAT kartı (sağ üst) baştan tasarlandı.** Eski "FİYAT solda + YAPI 3-katmanlı sağda" düzeni kaldırıldı (kullanıcı: "yapı zaten başka yerlerde var"). Yeni: dikey stack — üstte kompakt header (FİYAT label + XBANK ticker büyük | fiyat + %değişim sağda), ortada **SİNYAL ÖZETİ matrisi** (5 farklı lens: 🎯 Genel Sağlık · 🧭 Pozisyon Eğilimi · 🗺 Yol Haritası · 🌟 Erken Radar · 🏛 Smart Money). Her satır icon + tam label + horizontal bar (severity rengiyle dinamik) + skor overlay (beyaz + text-shadow her bg'de okunur). ICT satırı **bias-aware** — bearish 5/5 ↓ artık kırmızı gösteriliyor (öncesinde yeşildi, ASTOR örneği bug ortaya çıkardı). Teknik Görünüm gauge başlığı **"GENEL SAĞLIK (Teknik Skor)"** olarak yeniden adlandırıldı (kullanıcı: "Master Skor yerine teknik veri lensi diyelim"). Alt RSI/MOMENTUM şeridi de yarıya küçültüldü. CANLI SİNYALLER chip'i artık `Teknik 36 · NEGATİF` formatında (kaynak netleşti). [[ASTOR ICT bias bug fix dahil]]
+
+**2) SMC grafiği kurumsal 4 ek (BIST backtest beklemede).** `_main_price_chart_plotly` genişledi: (a) **VWAP σ-bands** (±1σ/±2σ Citadel/Renaissance mean-reversion bölgesi, soft mor fill), (b) **Q/Y Opening** (Y-Open slate dashdot + Q-Open amber dashdot — JPM/GS kalibrasyon ref), (c) **FVG Mitigation State** (önceden mitigated FVG'leri SİLİYORDUK — AI yanlış destek diyordu, BUG. Şimdi state'li: 'fresh' (dolu kutu) / 'tested' (ince) / 'inverted' (zıt renk + 'iFVG↓' etiket — rolü ters dönmüş, eski destek artık direnç), (d) **Order Block tipleme** ('fresh' / 'mitigation' / 'breaker' BB — failed OB rolü tersi, 'BB↓'/'BB↑' etiket). 4 yeni flag scan_signals'a eklendi (`f_at_vwap_minus_2sigma`, `f_at_y_open`, `f_near_ifvg`, `f_breaker_block_active`). AI prompt institutional_ref'te koşullu emit, hepsi DESTEKLEYİCİ seviyede ("BIST backtest beklemede" ibaresi). Sağ kenar etiketleri için **çakışma önleme** (POC + nPOC + VWAP + aVWAP↑/↓ + Y/Q open + σ-bands → 12+ etiket, y'ye göre stagger + arrow ile orijinal seviye gösterimi).
+
+**3) KURUMSAL TAKİP (TEFAS + KAP) — 8 STRONG flag + Anchor.** Yeni boyut. Kullanıcı sorusu: "yabancıdan başka, yerli fonlar XBANK biriktiriyorsa nasıl bilinecek?" Çerçeve: 3 bağımsız kanaldan **kayda-değer-filtreli** sinyal. Kullanıcı sertçe doğruladı: "STRONG olarak işaretlediğin hepsi iyi, hadi yap." **TEFAS Fund Flow** (3 STRONG): konsensus_alim (≥3 fon 5g ≥%10 pozitif, AUM ≥100mn, ≥%1.5 portföy), konsensus_satim (≥%20 toplam çıkış), yeni_giris (≥2 büyük fon AUM ≥500mn ilk pozisyon). **KAP Hisse Geri Alım** (2 STRONG): buyback_aktif (5g icra), buyback_dip_aliyor (+52H dibine ≤%10). **KAP Pay Sahipliği** (2 STRONG): threshold_asildi (%5/%10/%25/%33/%50 statütör), insider_first_buy (yönetici 6 ay sessiz + ≥5mn TL). **Convergence ELIT** (1): `f_kurumsal_anchor` = 3+ STRONG aynı yönde → AI G1'de MUTLAKA merkez ("🏛 KURUMSAL ANCHOR"). 2 cache tablosu: `tefas_holdings` (günlük portföy snap) + `kap_events`. Master Scan adım 0.5: BIST kategorisinde TEFAS fetch, her durumda KAP fetch (`https://www.tefas.gov.tr/api/DB/BindHistoryAllocation` + `https://www.kap.org.tr/tr/api/disclosures`). Endpoint kararlılığı için defansif kod (başarısızsa flag NULL kalır). Detay: [[project-kurumsal-takip]]. Commit `10cad67`. Backup: `app_backup_oturum20_kurumsal_20260610_0938.py`.
+
+**Eylül 2026 backtest planı:** 8 SMC kurumsal flag + 8 KURUMSAL TAKİP flag → toplam **16 yeni feature** scan_signals'a yazılacak. 3 ay sonra `signal_returns` JOIN ile gerçek BIST hit/ret katkısı ölçülecek; hit ≥%65 + ret ≥%5 = TIER_1_ELIT, hit <%50 = AI'dan kaldır.
+
+---
+
+## Önceki Oturum Notu — 6 Haz 2026 Oturum 18 (POC/VWAP kanıt-tabanlı yeniden yapı)
+
+**3 + 3 katmanlı POC iyileştirmesi.** Helpers: `calculate_multi_tf_pocs` (20g/60g/250g + confluence), `calculate_anchored_vwap(df, anchor_idx)` (52H zirve+dip); mevcut `detect_naked_poc` aktive edildi. Ana grafiğe (`_main_price_chart_plotly`): 3 POC çizgisi farklı stil + confluence zarfı, 2 aVWAP eğrisi + anchor üçgenleri, en yakın 3 naked POC dashed cyan. AI prompt YAML `institutional_ref` blok 5 yeni KOŞULLU alan — hiçbiri varsayılan değil: `poc_mtf_confluence` (spread<%2), `avwap_52h_*` (|dist|<%3), `naked_poc_yakin` (|dist|<%2), `poc_magnet_active`. Görmüyorsa AI yoksayar, "veri yok" demez. 5 İLKE kural 4 EK NOT'a backtest kalibrasyon matrisi gömüldü (kanıt tabanı).
+
+**Backtest (`backtest_poc_retest.py`):** Standalone — 593 BIST hisse, 84.832 event, %43.4 baseline retest. **Segmente analiz** kritikti: ilk turda `Denge+below = %70+` extrapole etmiştim, segmente bakınca **%50.9** çıktı (yanlış). Gerçek lider hücreler: `Akümülasyon|Up|below %67.6`, `Denge|Up|below %62.0`. **Pattern: trend yönü vp_sekil'den daha belirleyici.** `poc_magnet` kuralı yeniden yazıldı: `trend_up (fiyat>SMA50 + 10g eğim>%1) + 20g POC altı + |dist|≥%3 + (vp=akümülasyon/denge)` → GÜÇLÜ/ORTA tier ayrımıyla emit. Yeni feedback memory: [[feedback-extrapolation-yasak]].
+
+**scan_signals: 7 → 10 feature.** Eklenen 3 INTEGER kolon: `f_poc_magnet`, `f_poc_confluence`, `f_avwap_test_zone`. `_compute_signal_features` artık 10 feature hesaplıyor. `log_scan_signal` alias-tolerant + fallback hazır. Ekim 2026 ortası live backtest hatırlatması MEMORY.md'de.
+
+**Görsel polish (Oturum başında):** GENEL ÖZET başlık rozeti (ticker code + cyan-mor gradient) + FİYAT hücresi vurgulandı (flex 1.45×, cyan→mor gradient ring, glow, beyaz değer). Detay: [[project-poc-features]].
+
+---
+
+## Önceki Oturum Notu — 5 Haz 2026 Oturum 17 (Streamlit Cloud → VPS self-host)
+
+**Streamlit Cloud bırakıldı (private repo desteği yok — OAuth App'i sadece public scope istiyor).** App artık VPS'te self-hosted: **http://34.153.19.220/patron/** — systemd `patron-radar.service` + nginx reverse-proxy `/patron/` (websocket pass-through, `^~` prefix öncelik — yoksa regex `\.(js|css)$` location'ı static asset'leri yakalayıp 404 veriyor). 2GB swap eklendi (RAM 958Mi yetmezdi). `~/smr/venv` → streamlit 1.58 + tüm deps. Yönetim: `sudo systemctl {status,restart} patron-radar` + `tail -f ~/smr/logs/patron-radar.log`. Nginx config: `/etc/nginx/sites-enabled/smr` direkt dosya (symlink değil) — sites-available'a yazınca enabled'a manuel kopyalanmalı. **Kod update workflow:** `scp app.py wm11tr@34.153.19.220:~/smr/ && ssh ... "sudo systemctl restart patron-radar"`.
+
+**Py3.10 f-string fix (app.py:22933):** `\"` escape vardı (Py3.12+ OK, VPS 3.10 SyntaxError). `_skor_html` değişkenine çekildi. Lokalde de geriye uyumlu. Commit `ca29137`. **VPS deploy öncesi `python -c "import ast; ast.parse(open('app.py').read())"` ile syntax check alışkanlık edinilmeli** — lokal Python sürümün VPS'ten yeni, sessizce takılır.
+
+**GitHub:** `patron-radar` (private) artık yedek mirror — sadece `app.py` + `requirements.txt`. Asıl repo `smr-bot`. Commit `1b91a00`.
+
+## Önceki Oturum Notu — 5 Haz 2026 Oturum 16
 
 **Auto-refresh (app.py:9 + ~23215):** `streamlit-autorefresh 1.0.1` venv'e kuruldu. `_render_left_col` başına 10 dk gate eklendi: `is_trading_day` + `get_session_hours` ile sadece BIST seans saatleri içinde tetiklenir. Refresh anında `get_batch_data_cached.clear()` → açık hisse %100 taze. Hisse değiştiğinde key resetlenir. TTL 900 korundu.
 
@@ -210,6 +244,8 @@
 
 ## Açık konular (devam eden)
 
+- ⏳ **YENİ — Eylül 2026 backtest: 16 yeni feature** (10 Haz 2026 Oturum 20): 8 SMC kurumsal (`f_at_vwap_minus_2sigma`, `f_at_y_open`, `f_near_ifvg`, `f_breaker_block_active`) + 8 KURUMSAL TAKİP (`f_tefas_konsensus_alim/satim/yeni_giris`, `f_buyback_aktif/dip_aliyor`, `f_threshold_asildi`, `f_insider_first_buy`, `f_kurumsal_anchor`). Eylül 2026 ortası `signal_returns × scan_signals` JOIN ile gerçek hit/ret katkısı ölçülecek → TIER ataması yapılacak veya kaldırılacak.
+- ⏳ **YENİ — TEFAS + KAP endpoint kararlılığı** (10 Haz 2026 Oturum 20): community-known public endpoint'ler defansif kodla yazıldı. İlk Master Scan sonrası `tail logs | grep -E "tefas|kap"` ile kontrol; başarısızlık yüksekse parsing/endpoint fix gerekir.
 - ✅ **Feature snapshot scanner-side yazım** — TAMAMLANDI (3 Haz Oturum 14): `_compute_signal_features` helper + `log_scan_signal` fallback. Sonraki Master Scan'den kolonlar dolacak.
 - ✅ **Bot tarafına AI Prompt v2 senkron** — TAMAMLANDI (3 Haz Oturum 14): smr_core.py PRO (build_ai_prompt) + ELITE (build_ai_prompt_gorev1) → Z-Score + POC/VWAP + KESİN YASAK 3 blok konsolide (1 birleşik Rehber), anti-kalıp mekanik kural (PRO+ELITE), ELITE ANLATIM KURALI Oturum 14 formatına geçti (insani cümle + parantezde kısaltma + İLHAM + anti-kopya). Net: 3282→3115 satır (-167). Backup: `smr_core_backup_pre_prompt_v2.py`. ⚠️ VPS deploy gerek: `git push` + `ssh wm11tr@34.153.19.220 "cd ~/smr && git pull && sudo systemctl restart smr-bot"`.
 - ⏳ **base_powers reranking** — `eval_20g ≥ 30` eşiği bekleniyor. Şu an Royal Flush 11/71. Eylül 2026 itibariyle olgunlaşır.
