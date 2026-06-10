@@ -828,6 +828,13 @@ def init_db():
         # "akıllı para çekildi" hipotezi güçlenir. Wyckoff effort-vs-result'un
         # algoritmik karşılığı. Nadir ama TIER_1 seviyesinde bekleniyor.
         'ALTER TABLE scan_signals ADD COLUMN f_rsi_mfi_bouquet INTEGER',
+        # 10 Haz 2026 Oturum 20 — MKK YABANCI NET ALIŞ (İş Yatırım RSS feed)
+        # Kaynak: arastirma.isyatirim.com.tr — günlük rapor, top 3 giriş/çıkış + streak
+        # Yabancı kurumsal akış = GERÇEK smart money izi (TEFAS yerli, MKK yabancı)
+        'ALTER TABLE scan_signals ADD COLUMN f_yabanci_giris INTEGER',         # son 5g top giriş listesinde
+        'ALTER TABLE scan_signals ADD COLUMN f_yabanci_cikis INTEGER',         # son 5g top çıkış listesinde
+        'ALTER TABLE scan_signals ADD COLUMN f_yabanci_streak INTEGER',        # 3+ gün üst üste yabancı artış
+        'ALTER TABLE scan_signals ADD COLUMN f_yabanci_anchor INTEGER',        # giriş + streak çakışması (ELIT)
     ]:
         try:
             c.execute(_alter_col)
@@ -876,6 +883,18 @@ def init_db():
         PRIMARY KEY (event_date, symbol, event_type, actor)
     )''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_kap_sym ON kap_events(symbol, event_date)')
+
+    # MKK Yabancı Net Alış cache (İş Yatırım RSS feed kaynağı)
+    c.execute('''CREATE TABLE IF NOT EXISTS mkk_yabanci (
+        report_date  TEXT NOT NULL,    -- YYYY-MM-DD
+        symbol       TEXT NOT NULL,    -- BIST kodu
+        direction    TEXT NOT NULL,    -- 'in' | 'out' | 'streak'
+        bps_change   REAL,             -- baz puan (sadece in/out için)
+        streak_days  INTEGER,          -- üst üste artış günü (sadece streak için)
+        PRIMARY KEY (report_date, symbol, direction)
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_mkk_sym ON mkk_yabanci(symbol, report_date)')
+
     conn.commit()
     conn.close()
 
@@ -1164,6 +1183,165 @@ def _fetch_kap_disclosures(days_back=30):
     return (_success, _fail)
 
 
+def _fetch_mkk_yabanci_rss(max_days=30):
+    """MKK yabancı net alış verisini İş Yatırım RSS feed'inden çeker.
+
+    Kaynak: https://arastirma.isyatirim.com.tr/category/gunluk-raporlar/gunluk-yabanci-oranlari/feed/
+
+    Her gün için 3 tip kayıt:
+      - top 3 yabancı GİRİŞ (positif bps)
+      - top 3 yabancı ÇIKIŞ (negatif bps)
+      - top 5 SÜREKLI ARTIŞ streak (N gün üst üste)
+
+    Returns: (success_count, fail_count)
+    """
+    import requests as _requests
+    import re as _re
+    import xml.etree.ElementTree as _ET
+    from datetime import datetime as _dt
+
+    _url = 'https://arastirma.isyatirim.com.tr/category/gunluk-raporlar/gunluk-yabanci-oranlari/feed/'
+
+    try:
+        _r = _requests.get(_url, timeout=15,
+                           headers={'User-Agent': 'Mozilla/5.0 (compatible; PatronRadar/1.0)'})
+        if _r.status_code != 200:
+            return (0, 1)
+        _root = _ET.fromstring(_r.text.encode('utf-8'))
+    except Exception as _ex:
+        try: log_error("mkk_rss_fetch", _ex)
+        except Exception: pass
+        return (0, 1)
+
+    _ns = {'content': 'http://purl.org/rss/1.0/modules/content/'}
+    _items = _root.findall('.//item')
+    if not _items:
+        return (0, 1)
+
+    # Parse pattern'leri
+    _pat_pair_bps = _re.compile(r'([A-Z]{2,7}):(-?\d+(?:[.,]\d+)?)\s*bps')
+    _pat_pair_gun = _re.compile(r'([A-Z]{2,7}):(\d+)\s*g[üu]n')
+    _pat_title_date = _re.compile(r'(\d{2})/(\d{2})/(\d{4})')
+
+    _conn = sqlite3.connect(DB_FILE)
+    _c = _conn.cursor()
+    _success = 0; _fail = 0
+
+    try:
+        from bs4 import BeautifulSoup as _BS
+    except ImportError:
+        # bs4 yok — text temizliği basit regex ile
+        _BS = None
+
+    for _item in _items[:max_days]:
+        try:
+            _title = _item.findtext('title', default='')
+            _m_date = _pat_title_date.search(_title)
+            if not _m_date:
+                _fail += 1; continue
+            _d, _m, _y = _m_date.groups()
+            _date_str = f'{_y}-{_m}-{_d}'
+
+            _cont_el = _item.find('content:encoded', _ns)
+            _cont = _cont_el.text if _cont_el is not None else ''
+            if _BS is not None:
+                _text = _BS(_cont, 'html.parser').get_text(separator=' ', strip=True)
+            else:
+                _text = _re.sub(r'<[^>]+>', ' ', _cont)
+            _text = ' '.join(_text.split())
+
+            # Tüm bps eşleşmeleri sırayla — ilk 3 artış, sonra 3 azalış
+            _all_bps = _pat_pair_bps.findall(_text)
+            _inc = _all_bps[:3]
+            _dec = _all_bps[3:6]
+            _streak = _pat_pair_gun.findall(_text)[:5]
+
+            # DB'ye yaz
+            for _sym, _bps_v in _inc:
+                try:
+                    _bf = float(str(_bps_v).replace(',', '.'))
+                    _c.execute('''INSERT OR REPLACE INTO mkk_yabanci
+                                  (report_date, symbol, direction, bps_change, streak_days)
+                                  VALUES (?, ?, 'in', ?, NULL)''',
+                               (_date_str, _sym.upper(), _bf))
+                except Exception: pass
+            for _sym, _bps_v in _dec:
+                try:
+                    _bf = float(str(_bps_v).replace(',', '.'))
+                    _c.execute('''INSERT OR REPLACE INTO mkk_yabanci
+                                  (report_date, symbol, direction, bps_change, streak_days)
+                                  VALUES (?, ?, 'out', ?, NULL)''',
+                               (_date_str, _sym.upper(), _bf))
+                except Exception: pass
+            for _sym, _gun_v in _streak:
+                try:
+                    _gf = int(_gun_v)
+                    _c.execute('''INSERT OR REPLACE INTO mkk_yabanci
+                                  (report_date, symbol, direction, bps_change, streak_days)
+                                  VALUES (?, ?, 'streak', NULL, ?)''',
+                               (_date_str, _sym.upper(), _gf))
+                except Exception: pass
+
+            _success += 1
+        except Exception:
+            _fail += 1
+
+    _conn.commit(); _conn.close()
+    return (_success, _fail)
+
+
+def _compute_mkk_yabanci_signals(ticker: str) -> dict:
+    """MKK yabancı net alış cache'inden 4 sinyali hesaplar.
+
+    f_yabanci_giris   : son 5g top giriş listesinde + bps>0
+    f_yabanci_cikis   : son 5g top çıkış listesinde + bps<0
+    f_yabanci_streak  : son raporda 3+ gün üst üste artış streak
+    f_yabanci_anchor  : (giriş + streak) çakışması → ELIT smart money
+
+    BIST hissesi değilse tüm None döner.
+    """
+    out = {
+        'f_yabanci_giris': None,
+        'f_yabanci_cikis': None,
+        'f_yabanci_streak': None,
+        'f_yabanci_anchor': None,
+    }
+    try:
+        _sym = ticker.upper().replace('.IS', '')
+        if any(_sym.startswith(p) for p in ('XU', 'XB', 'XT', 'XY', '^')) or '=' in _sym or '-' in _sym:
+            return out
+
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        # Son 5 işlem günü
+        c.execute('''SELECT direction, bps_change, streak_days, report_date FROM mkk_yabanci
+                     WHERE symbol = ?
+                       AND report_date >= date('now', '-5 day')
+                     ORDER BY report_date DESC''', (_sym,))
+        _rows = c.fetchall()
+        conn.close()
+
+        _has_in = 0
+        _has_out = 0
+        _max_streak = 0
+        for _dir, _bps, _streak, _rd in _rows:
+            if _dir == 'in' and _bps and _bps > 0:
+                _has_in = 1
+            elif _dir == 'out' and _bps and _bps < 0:
+                _has_out = 1
+            elif _dir == 'streak' and _streak:
+                _max_streak = max(_max_streak, int(_streak))
+
+        out['f_yabanci_giris']  = _has_in
+        out['f_yabanci_cikis']  = _has_out
+        out['f_yabanci_streak'] = 1 if _max_streak >= 3 else 0
+        out['f_yabanci_anchor'] = 1 if (_has_in == 1 and _max_streak >= 3) else 0
+    except Exception as _ex:
+        try: log_error("mkk_yabanci_signals", _ex, ctx={'ticker': ticker})
+        except Exception: pass
+    return out
+
+
 def _compute_tefas_signals(ticker: str) -> dict:
     """TEFAS portföy snapshot'larından 3 STRONG sinyali hesaplar.
 
@@ -1342,6 +1520,7 @@ def _compute_kap_ownership_signals(ticker: str) -> dict:
 def _compute_kurumsal_convergence(signals: dict) -> dict:
     """3+ STRONG sinyal aynı yöndeyse f_kurumsal_anchor = 1.
     Yön: pozitif sinyaller (alım) vs negatif (satım).
+    YABANCI net giriş + streak burada da count'a girer (MKK kanalı).
     """
     out = {'f_kurumsal_anchor': None}
     try:
@@ -1352,6 +1531,8 @@ def _compute_kurumsal_convergence(signals: dict) -> dict:
             1 if signals.get('f_buyback_dip_aliyor')   == 1 else 0,
             1 if signals.get('f_threshold_asildi')     == 1 else 0,
             1 if signals.get('f_insider_first_buy')    == 1 else 0,
+            1 if signals.get('f_yabanci_giris')        == 1 else 0,
+            1 if signals.get('f_yabanci_streak')       == 1 else 0,
         ])
         out['f_kurumsal_anchor'] = 1 if _pos_count >= _KURUMSAL_THRESHOLDS['anchor_min_signals'] else 0
     except Exception:
@@ -1397,6 +1578,11 @@ def _compute_signal_features(ticker: str) -> dict:
         # 10 Haz 2026 Oturum 20 — MFI Dual + RSI/MFI Bouquet
         'f_mfi_dual': None,
         'f_rsi_mfi_bouquet': None,
+        # 10 Haz 2026 Oturum 20 — MKK Yabancı Net Alış
+        'f_yabanci_giris': None,
+        'f_yabanci_cikis': None,
+        'f_yabanci_streak': None,
+        'f_yabanci_anchor': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1723,6 +1909,11 @@ def _compute_signal_features(ticker: str) -> dict:
             for _k in ('f_threshold_asildi', 'f_insider_first_buy'):
                 if _kow.get(_k) is not None:
                     out[_k] = _kow[_k]
+            # MKK Yabancı Net Alış (İş Yatırım RSS)
+            _mkk_y = _compute_mkk_yabanci_signals(ticker)
+            for _k in ('f_yabanci_giris', 'f_yabanci_cikis', 'f_yabanci_streak', 'f_yabanci_anchor'):
+                if _mkk_y.get(_k) is not None:
+                    out[_k] = _mkk_y[_k]
             # Convergence (anchor) — 3+ STRONG aynı yönde
             _conv = _compute_kurumsal_convergence(out)
             if _conv.get('f_kurumsal_anchor') is not None:
@@ -1918,6 +2109,11 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_mfi_dual_raw       = _ff('F_MFI_Dual', 'MFI_Dual', 'f_mfi_dual', cast=str)
             f_mfi_dual           = f_mfi_dual_raw if f_mfi_dual_raw else None
             f_rsi_mfi_bouquet_v  = _ff('F_RSI_MFI_Bouquet', 'f_rsi_mfi_bouquet', cast=int)
+            # 10 Haz 2026 — MKK Yabancı
+            f_yab_giris_v        = _ff('F_Yab_Giris', 'f_yabanci_giris', cast=int)
+            f_yab_cikis_v        = _ff('F_Yab_Cikis', 'f_yabanci_cikis', cast=int)
+            f_yab_streak_v       = _ff('F_Yab_Streak', 'f_yabanci_streak', cast=int)
+            f_yab_anchor_v       = _ff('F_Yab_Anchor', 'f_yabanci_anchor', cast=int)
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -1952,6 +2148,10 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_anchor_v         is None: f_anchor_v         = _feat.get('f_kurumsal_anchor')
                 if f_mfi_dual         is None: f_mfi_dual         = _feat.get('f_mfi_dual')
                 if f_rsi_mfi_bouquet_v is None: f_rsi_mfi_bouquet_v = _feat.get('f_rsi_mfi_bouquet')
+                if f_yab_giris_v      is None: f_yab_giris_v      = _feat.get('f_yabanci_giris')
+                if f_yab_cikis_v      is None: f_yab_cikis_v      = _feat.get('f_yabanci_cikis')
+                if f_yab_streak_v     is None: f_yab_streak_v     = _feat.get('f_yabanci_streak')
+                if f_yab_anchor_v     is None: f_yab_anchor_v     = _feat.get('f_yabanci_anchor')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -1963,8 +2163,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_tefas_konsensus_alim, f_tefas_konsensus_satim, f_tefas_yeni_giris,
                     f_buyback_aktif, f_buyback_dip_aliyor,
                     f_threshold_asildi, f_insider_first_buy, f_kurumsal_anchor,
-                    f_mfi_dual, f_rsi_mfi_bouquet)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_mfi_dual, f_rsi_mfi_bouquet,
+                    f_yabanci_giris, f_yabanci_cikis, f_yabanci_streak, f_yabanci_anchor)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
@@ -1974,7 +2175,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                  f_tefas_alim_v, f_tefas_satim_v, f_tefas_yeni_v,
                  f_buyback_aktif_v, f_buyback_dip_v,
                  f_thresh_v, f_insider_first_v, f_anchor_v,
-                 f_mfi_dual, f_rsi_mfi_bouquet_v)
+                 f_mfi_dual, f_rsi_mfi_bouquet_v,
+                 f_yab_giris_v, f_yab_cikis_v, f_yab_streak_v, f_yab_anchor_v)
             )
         conn.commit()
         conn.close()
@@ -22440,7 +22642,7 @@ with col_btn:
             # 0.5 KURUMSAL TAKİP cache refresh (9 Haz 2026 Oturum 20)
             # TEFAS günlük snapshot + KAP duyuru pencere fetch. Cache dolarsa
             # _compute_signal_features kurumsal flag'leri otomatik üretir.
-            my_bar.progress(7, text="🏛 Kurumsal akışlar (TEFAS + KAP) güncelleniyor...%7")
+            my_bar.progress(7, text="🏛 Kurumsal akışlar (TEFAS + KAP + MKK) güncelleniyor...%7")
             try:
                 # TEFAS — yalnızca BIST kategorisinde anlamlı, diğer kategorilerde atla
                 if "BIST" in str(st.session_state.get('category', '')):
@@ -22451,6 +22653,10 @@ with col_btn:
                 _kap_ok, _kap_fail = _fetch_kap_disclosures(days_back=30)
                 import logging
                 logging.info(f"[kap] disclosure fetch: {_kap_ok} olay, {_kap_fail} hata.")
+                # MKK Yabancı Net Alış — sadece BIST kategorisi için (10 Haz 2026)
+                if "BIST" in str(st.session_state.get('category', '')):
+                    _mkk_ok, _mkk_fail = _fetch_mkk_yabanci_rss(max_days=30)
+                    logging.info(f"[mkk] yabanci RSS: {_mkk_ok} rapor günü, {_mkk_fail} hata.")
             except Exception as _kf_ex:
                 try: log_error("kurumsal_fetch_master_scan", _kf_ex)
                 except Exception: pass
@@ -24363,6 +24569,31 @@ if st.session_state.generate_prompt:
                 "yapmamışken son 30g'de ≥5mn TL alım yaptı; içerden güçlü güven; "
                 "DESTEKLEYİCİ confluence — özellikle güçlü)"
             )
+        # MKK YABANCI NET ALIŞ (İş Yatırım RSS feed) — GERÇEK yabancı kurumsal akış izi
+        if _smc_extra.get('f_yabanci_anchor') == 1:
+            _poc_avwap_lines.append(
+                "  🏛 YABANCI KURUMSAL ANCHOR: True (MKK — son 5g'de hisse hem TOP-3 yabancı "
+                "GİRİŞ listesinde hem de 3+ gün üst üste yabancı oran artış streak'inde; "
+                "süreklilik + güncellik birlikte. Yabancı kurumsal pozisyon kuruyor demektir — "
+                "G1'de mutlaka 'yabancı akıllı para destekliyor' diye vurgula)"
+            )
+        elif _smc_extra.get('f_yabanci_giris') == 1:
+            _poc_avwap_lines.append(
+                "  yabanci_giris: True (MKK — son 5g'de hisse TOP-3 yabancı NET ALIŞ "
+                "listesinde göründü, bps tabanlı sıralama; yabancı kurumsal akış pozitif; "
+                "DESTEKLEYİCİ confluence)"
+            )
+        if _smc_extra.get('f_yabanci_streak') == 1:
+            _poc_avwap_lines.append(
+                "  yabanci_streak: True (MKK — yabancı oran 3+ gün ÜST ÜSTE artış gösteriyor; "
+                "süreklilik = yapısal birikim, tek günlük spike değil; DESTEKLEYİCİ confluence)"
+            )
+        if _smc_extra.get('f_yabanci_cikis') == 1:
+            _poc_avwap_lines.append(
+                "  yabanci_cikis: True (MKK — son 5g'de hisse TOP-3 yabancı NET SATIŞ "
+                "listesinde göründü, negatif bps; yabancı kurumsal çıkış izi; "
+                "DESTEKLEYİCİ uyarı — olumlu teze karşı riski vurgula)"
+            )
     except Exception: pass
 
     _poc_avwap_block = ("\n" + "\n".join(_poc_avwap_lines)) if _poc_avwap_lines else ""
@@ -25244,7 +25475,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
-• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 KURUMSAL ANCHOR` (3+ kurumsal kanal konverjansı — TEFAS+KAP+ownership aynı yönde — bu varsa G1'de MUTLAKA merkez), `tefas_konsensus_alim`/`tefas_konsensus_satim`/`tefas_yeni_giris` (TEFAS fon akış sinyalleri — STRONG, AI'da 1 cümle), `buyback_aktif`/`buyback_dip_aliyor` (KAP geri alım — özellikle dip alıyor varsa güçlü), `threshold_asildi`/`insider_first_buy` (KAP pay sahipliği — büyük ortak/yönetici hareketleri).
+• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 KURUMSAL ANCHOR` (3+ kurumsal kanal konverjansı — TEFAS+KAP+ownership aynı yönde — bu varsa G1'de MUTLAKA merkez), `tefas_konsensus_alim`/`tefas_konsensus_satim`/`tefas_yeni_giris` (TEFAS fon akış sinyalleri — STRONG, AI'da 1 cümle), `buyback_aktif`/`buyback_dip_aliyor` (KAP geri alım — özellikle dip alıyor varsa güçlü), `threshold_asildi`/`insider_first_buy` (KAP pay sahipliği — büyük ortak/yönetici hareketleri), `🏛 YABANCI KURUMSAL ANCHOR` (MKK — yabancı net giriş + streak çakışması, gerçek yabancı kurumsal pozisyon kuruyor → G1'de mutlaka 'yabancı destekliyor' vurgusu), `yabanci_giris`/`yabanci_streak`/`yabanci_cikis` (MKK — yabancı oran top-3 + süreklilik bilgisi, DESTEKLEYİCİ).
 • smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al).
 • trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
