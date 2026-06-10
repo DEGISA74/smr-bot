@@ -3213,6 +3213,40 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                                     df_new.loc[_rx, 'Volume'] = df_cached.loc[_rx, 'Volume']
                 if _is_bist_stock and interval == "1d":
                     df_new = _apply_split_adjustments(df_new)
+
+                # ── BORSAPY GAP-FILL (10 Haz 2026) ──
+                # Yahoo bazen iş gününü atlar (örn. XU100 9 Haz Pazartesi yok).
+                # BIST endeks/hisse için borsapy'den son 30g'i kontrol et,
+                # eksik tarihler varsa SATIRLARI EKLE (mevcut barlara dokunma).
+                _is_bist_any = (".IS" in ticker or "BIST" in ticker or ticker.startswith(("XU", "XB", "XT")))
+                if _is_bist_any and interval == "1d":
+                    try:
+                        import borsapy as _bp_gf
+                        _sym_gf = ticker.replace(".IS", "").upper()
+                        if ticker.startswith("XU") or ticker.startswith("^"):
+                            _obj_gf = _bp_gf.Index(_sym_gf.replace(".IS", ""))
+                        else:
+                            _obj_gf = _bp_gf.Ticker(_sym_gf)
+                        _df_gf = _obj_gf.history(period="3mo", interval="1d")
+                        if _df_gf is not None and len(_df_gf) > 5:
+                            if _df_gf.index.tz is not None:
+                                _df_gf.index = _df_gf.index.tz_localize(None)
+                            _df_gf.index = pd.DatetimeIndex([d.normalize() for d in _df_gf.index])
+                            _df_gf.index.name = df_new.index.name
+                            _df_gf = _df_gf[['Open','High','Low','Close','Volume']].copy()
+                            # Sadece df_new'da OLMAYAN tarihleri ekle
+                            _missing = _df_gf.index.difference(df_new.index)
+                            if len(_missing) > 0:
+                                import logging
+                                logging.info(f"[borsapy gap-fill] {ticker}: {len(_missing)} eksik bar → "
+                                             f"{[d.strftime('%Y-%m-%d') for d in _missing[-5:]]}")
+                                _add_rows = _df_gf.loc[_missing]
+                                df_new = pd.concat([df_new, _add_rows]).sort_index()
+                                df_new = df_new[~df_new.index.duplicated(keep='first')]
+                    except Exception as _gf_ex:
+                        import logging
+                        logging.warning(f"[borsapy gap-fill] {ticker} hata: {_gf_ex}")
+
                 df_new.to_parquet(file_path)
                 return apply_volume_projection(df_new.tail(500).copy(), ticker)
 
@@ -3273,6 +3307,34 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                         df_full = _fix_stale_volume(df_full, clean_ticker, interval)
                 if _is_bist_stock and interval == "1d":
                     df_full = _apply_split_adjustments(df_full)
+
+                # ── BORSAPY GAP-FILL (10 Haz 2026) — fresh download path ──
+                # Aynı bar atlama tespiti, parquet ilk oluşturulduğunda da uygula
+                _is_bist_any2 = (".IS" in ticker or "BIST" in ticker or ticker.startswith(("XU", "XB", "XT")))
+                if _is_bist_any2 and interval == "1d":
+                    try:
+                        import borsapy as _bp_gf2
+                        _sym_gf2 = ticker.replace(".IS", "").upper()
+                        if ticker.startswith("XU") or ticker.startswith("^"):
+                            _obj_gf2 = _bp_gf2.Index(_sym_gf2.replace(".IS", ""))
+                        else:
+                            _obj_gf2 = _bp_gf2.Ticker(_sym_gf2)
+                        _df_gf2 = _obj_gf2.history(period="3mo", interval="1d")
+                        if _df_gf2 is not None and len(_df_gf2) > 5:
+                            if _df_gf2.index.tz is not None:
+                                _df_gf2.index = _df_gf2.index.tz_localize(None)
+                            _df_gf2.index = pd.DatetimeIndex([d.normalize() for d in _df_gf2.index])
+                            _df_gf2.index.name = df_full.index.name
+                            _df_gf2 = _df_gf2[['Open','High','Low','Close','Volume']].copy()
+                            _missing2 = _df_gf2.index.difference(df_full.index)
+                            if len(_missing2) > 0:
+                                import logging
+                                logging.info(f"[borsapy gap-fill fresh] {ticker}: {len(_missing2)} eksik bar")
+                                _add_rows2 = _df_gf2.loc[_missing2]
+                                df_full = pd.concat([df_full, _add_rows2]).sort_index()
+                                df_full = df_full[~df_full.index.duplicated(keep='first')]
+                    except Exception: pass
+
                 df_full.to_parquet(file_path)
                 return apply_volume_projection(df_full.tail(500).copy(), ticker)
             else:
