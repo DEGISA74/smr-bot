@@ -847,6 +847,15 @@ def init_db():
         # Hangisi hit oranını daha çok belirliyor backtest ile öğrenilecek.
         'ALTER TABLE scan_signals ADD COLUMN f_smart_structural_score REAL',  # 0-100
         'ALTER TABLE scan_signals ADD COLUMN f_smart_tactical_score REAL',    # 0-100
+        # 10 Haz 2026 Oturum 20 — Up/Down Volume Ratio (Wyckoff Effort-vs-Result)
+        # UDVR = up_volume / down_volume, period bazlı.
+        # 5 state: strong_buyer/buyer/balanced/seller/strong_seller
+        'ALTER TABLE scan_signals ADD COLUMN f_udvr_20g REAL',                 # 20g UDVR oranı
+        'ALTER TABLE scan_signals ADD COLUMN f_udvr_state TEXT',               # 5 state
+        # Wyckoff Climax detection — fiyat extremde + UDVR ters yönde
+        # 'climax_top' (fiyat tepede + UDVR<0.8 = smart money çekiliyor)
+        # 'climax_bottom' (fiyat dipte + UDVR>1.25 = smart money giriyor)
+        'ALTER TABLE scan_signals ADD COLUMN f_udvr_climax TEXT',
     ]:
         try:
             c.execute(_alter_col)
@@ -1601,6 +1610,10 @@ def _compute_signal_features(ticker: str) -> dict:
         # 10 Haz 2026 Oturum 20 — YAPISAL vs TACTICAL skor ayrımı
         'f_smart_structural_score': None,
         'f_smart_tactical_score': None,
+        # 10 Haz 2026 Oturum 20 — Up/Down Volume Ratio (Wyckoff)
+        'f_udvr_20g': None,
+        'f_udvr_state': None,
+        'f_udvr_climax': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1950,6 +1963,13 @@ def _compute_signal_features(ticker: str) -> dict:
                             out['f_rel_obv_divergence'] = (
                                 1 if _rel_res['state'] in ('outperform_strong', 'underperform_strong') else 0
                             )
+                # Up/Down Volume Ratio (Wyckoff Effort-vs-Result, 20g pencere)
+                if not _vol_no_rel and df is not None and len(df) >= 21:
+                    _udvr_r = compute_updown_volume_ratio(df, period=20)
+                    if _udvr_r:
+                        out['f_udvr_20g'] = _udvr_r.get('ratio')
+                        out['f_udvr_state'] = _udvr_r.get('state')
+                        out['f_udvr_climax'] = _udvr_r.get('climax')
             except Exception: pass
             # Convergence (anchor) — 3+ STRONG aynı yönde
             _conv = _compute_kurumsal_convergence(out)
@@ -2163,6 +2183,12 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             # 10 Haz 2026 — YAPISAL vs TACTICAL skor
             f_smart_struct_v     = _ff('F_Smart_Struct', 'f_smart_structural_score')
             f_smart_tact_v       = _ff('F_Smart_Tact', 'f_smart_tactical_score')
+            # 10 Haz 2026 — Up/Down Volume Ratio (Wyckoff)
+            f_udvr_v             = _ff('F_UDVR_20g', 'f_udvr_20g')
+            f_udvr_state_raw     = _ff('F_UDVR_State', 'f_udvr_state', cast=str)
+            f_udvr_state         = f_udvr_state_raw if f_udvr_state_raw else None
+            f_udvr_climax_raw    = _ff('F_UDVR_Climax', 'f_udvr_climax', cast=str)
+            f_udvr_climax        = f_udvr_climax_raw if f_udvr_climax_raw else None
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -2205,6 +2231,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_rel_obv_div_v    is None: f_rel_obv_div_v    = _feat.get('f_rel_obv_divergence')
                 if f_smart_struct_v   is None: f_smart_struct_v   = _feat.get('f_smart_structural_score')
                 if f_smart_tact_v     is None: f_smart_tact_v     = _feat.get('f_smart_tactical_score')
+                if f_udvr_v           is None: f_udvr_v           = _feat.get('f_udvr_20g')
+                if f_udvr_state       is None: f_udvr_state       = _feat.get('f_udvr_state')
+                if f_udvr_climax      is None: f_udvr_climax      = _feat.get('f_udvr_climax')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -2219,8 +2248,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_mfi_dual, f_rsi_mfi_bouquet,
                     f_yabanci_giris, f_yabanci_cikis, f_yabanci_streak, f_yabanci_anchor,
                     f_rel_obv_state, f_rel_obv_divergence,
-                    f_smart_structural_score, f_smart_tactical_score)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_smart_structural_score, f_smart_tactical_score,
+                    f_udvr_20g, f_udvr_state, f_udvr_climax)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
@@ -2233,7 +2263,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                  f_mfi_dual, f_rsi_mfi_bouquet_v,
                  f_yab_giris_v, f_yab_cikis_v, f_yab_streak_v, f_yab_anchor_v,
                  f_rel_obv_state, f_rel_obv_div_v,
-                 f_smart_struct_v, f_smart_tact_v)
+                 f_smart_struct_v, f_smart_tact_v,
+                 f_udvr_v, f_udvr_state, f_udvr_climax)
             )
         conn.commit()
         conn.close()
@@ -4264,6 +4295,90 @@ def compute_relative_obv_state(df_stock, df_bench, lookback=20):
         return None
 
 
+def compute_updown_volume_ratio(df, period=20):
+    """Up/Down Volume Ratio — Wyckoff Effort-vs-Result'un en sade hali.
+
+    'Yükseliş günlerinin hacmi düşüş günlerinin hacminden ne kadar fazla?'
+    OBV cumulative pattern eski hareketler kirletebilir; CMF bar-içi kapanış
+    konumuna bakar. UDVR ham gerçek: son N gün net hacim yönü.
+
+    Klasik eşikler (sektör standardı):
+      ≥ 2.0  : strong_buyer   — alıcı net hakim
+      1.3-2.0: buyer          — alıcı egemen, sağlıklı yukarı baskı
+      0.77-1.3: balanced      — denge, yön kararsız
+      0.5-0.77: seller         — satıcı egemen
+      < 0.5  : strong_seller  — satıcı net hakim
+
+    Wyckoff Climax tespiti:
+      Fiyat yeni high yapıyor + UDVR < 0.8 → climax_top
+      Fiyat yeni low yapıyor + UDVR > 1.25 → climax_bottom
+      (Hacim Smart Money çekiliyor/giriyor)
+
+    Args:
+        df: 'Close','Volume' içeren DataFrame.
+        period: pencere (5g tactical, 20g orta, 50g uzun).
+    Returns:
+        {
+          'ratio': UDVR,
+          'state': 5 state,
+          'up_vol': toplam yükseliş hacmi,
+          'down_vol': toplam düşüş hacmi,
+          'climax': None|'climax_top'|'climax_bottom'
+        }
+    """
+    try:
+        if df is None or len(df) < period + 1: return None
+        if 'Close' not in df.columns or 'Volume' not in df.columns: return None
+
+        _seg = df.tail(period + 1)
+        _close = _seg['Close']
+        _vol = _seg['Volume']
+        _diff = _close.diff()
+
+        # period bar penceresi (ilk bar diff için kullanılır)
+        _up_mask = _diff > 0
+        _down_mask = _diff < 0
+        _up_vol = float(_vol.where(_up_mask, 0).iloc[1:].sum())
+        _down_vol = float(_vol.where(_down_mask, 0).iloc[1:].sum())
+
+        if _down_vol <= 1e-6:
+            _ratio = 99.0 if _up_vol > 0 else 1.0
+        else:
+            _ratio = _up_vol / _down_vol
+
+        # State sınıflandırma
+        if   _ratio >= 2.0:  _state = 'strong_buyer'
+        elif _ratio >= 1.3:  _state = 'buyer'
+        elif _ratio >= 0.77: _state = 'balanced'
+        elif _ratio >= 0.5:  _state = 'seller'
+        else:                _state = 'strong_seller'
+
+        # Climax detection — fiyat extremde ama hacim yönü tersi
+        _climax = None
+        try:
+            _high_full = df['High'].tail(period * 2) if 'High' in df.columns else df['Close'].tail(period * 2)
+            _low_full = df['Low'].tail(period * 2) if 'Low' in df.columns else df['Close'].tail(period * 2)
+            _cur_close = float(_close.iloc[-1])
+            _high_max = float(_high_full.max())
+            _low_min = float(_low_full.min())
+            # Fiyat son 2 pencerelik high'a ≥%98 yakın + UDVR zayıf → tepe climax
+            if _cur_close >= _high_max * 0.98 and _ratio < 0.8:
+                _climax = 'climax_top'
+            elif _cur_close <= _low_min * 1.02 and _ratio > 1.25:
+                _climax = 'climax_bottom'
+        except Exception: pass
+
+        return {
+            'ratio': round(_ratio, 2),
+            'state': _state,
+            'up_vol': _up_vol,
+            'down_vol': _down_vol,
+            'climax': _climax,
+        }
+    except Exception:
+        return None
+
+
 def compute_smart_money_split_scores(feature_dict: dict) -> dict:
     """Akıllı Para sinyallerini YAPISAL vs TACTICAL ölçeklere ayırır.
 
@@ -4411,6 +4526,22 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
         # VWAP -2σ (mean reversion tactical fırsat)
         if f.get('f_at_vwap_minus_2sigma') == 1:
             tact_score += 7; tact_pos.append('VWAP -2σ bölgesi (institutional buy zone)')
+        # UDVR (Up/Down Volume Ratio — Wyckoff Effort-vs-Result)
+        # Strong durumlar tactical sinyal, climax ELIT
+        _udvr_st = f.get('f_udvr_state')
+        _udvr_cx = f.get('f_udvr_climax')
+        if _udvr_cx == 'climax_bottom':
+            tact_score += 12; tact_pos.append('Wyckoff climax_bottom (fiyat dipte + UDVR güçlü)')
+        elif _udvr_cx == 'climax_top':
+            tact_score -= 14; tact_neg.append('Wyckoff climax_top (fiyat tepede + UDVR zayıf)')
+        elif _udvr_st == 'strong_buyer':
+            tact_score += 7; tact_pos.append('UDVR strong_buyer (alıcı 2×+ hakim)')
+        elif _udvr_st == 'buyer':
+            tact_score += 3; tact_pos.append('UDVR buyer (alıcı egemen)')
+        elif _udvr_st == 'strong_seller':
+            tact_score -= 8; tact_neg.append('UDVR strong_seller (satıcı 2×+ hakim)')
+        elif _udvr_st == 'seller':
+            tact_score -= 3; tact_neg.append('UDVR seller (satıcı egemen)')
 
         tact_score = max(0, min(100, tact_score))
 
@@ -21416,7 +21547,68 @@ def _render_genel_ozet_panel():
                     pulse=_rel_pulse
                 )
 
-                # 2.D) AKILLI PARA TİPİ — YAPISAL vs TACTICAL ayrımı
+                # 2.D) ALICI/SATICI DENGESİ — Up/Down Volume Ratio (Wyckoff)
+                _udvr_lbl = "—"; _udvr_clr = _gs_neu
+                _udvr_expl = "Hacim dengesi verisi yok"
+                _udvr_pulse = False
+                try:
+                    _ticker_udvr = _ticker if '_ticker' in dir() else st.session_state.get('ticker', '')
+                    _vol_no_udvr = (
+                        _ticker_udvr.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                        or _ticker_udvr.upper().endswith('=F')
+                        or '-USD' in _ticker_udvr.upper()
+                    )
+                    if not _vol_no_udvr and _gs_df is not None and len(_gs_df) >= 21 and 'Volume' in _gs_df.columns:
+                        _udvr_r = compute_updown_volume_ratio(_gs_df, period=20)
+                        if _udvr_r:
+                            _ratio = _udvr_r['ratio']
+                            _state = _udvr_r['state']
+                            _climax = _udvr_r['climax']
+                            # Climax durumları öncelik
+                            if _climax == 'climax_top':
+                                _udvr_lbl = "Tepe Climax ⚠"
+                                _udvr_clr = _gs_dn_clr
+                                _udvr_expl = (f"Fiyat tepede ama hacim alıcı yönde değil "
+                                              f"(UDVR={_ratio:.2f}) — Smart Money çekiliyor olabilir")
+                                _udvr_pulse = True
+                            elif _climax == 'climax_bottom':
+                                _udvr_lbl = "Dip Climax ⚡"
+                                _udvr_clr = _gs_up_clr
+                                _udvr_expl = (f"Fiyat dipte ama alıcı hacmi güçlü "
+                                              f"(UDVR={_ratio:.2f}) — Smart Money giriyor olabilir")
+                                _udvr_pulse = True
+                            elif _state == 'strong_buyer':
+                                _udvr_lbl = f"Güçlü Alıcı (×{_ratio:.1f})"
+                                _udvr_clr = _gs_up_clr
+                                _udvr_expl = f"Yükseliş günü hacmi düşüş gününün {_ratio:.1f}× — alıcı net hakim"
+                            elif _state == 'buyer':
+                                _udvr_lbl = f"Alıcı Egemen (×{_ratio:.2f})"
+                                _udvr_clr = _gs_up_clr
+                                _udvr_expl = f"Yükseliş günü hacmi daha fazla — sağlıklı yukarı baskı"
+                            elif _state == 'balanced':
+                                _udvr_lbl = f"Dengeli (×{_ratio:.2f})"
+                                _udvr_clr = _gs_neu
+                                _udvr_expl = "Alıcı-satıcı dengeli, yön kararsız"
+                            elif _state == 'seller':
+                                _udvr_lbl = f"Satıcı Egemen (×{_ratio:.2f})"
+                                _udvr_clr = _gs_dn_clr
+                                _udvr_expl = f"Düşüş günü hacmi daha fazla — aşağı baskı sürüyor"
+                            elif _state == 'strong_seller':
+                                _udvr_lbl = f"Güçlü Satıcı (×{_ratio:.2f})"
+                                _udvr_clr = _gs_dn_clr
+                                _udvr_expl = f"Düşüş günü hacmi yükseliş gününün {1/_ratio:.1f}× — satıcı net hakim"
+                except Exception:
+                    pass
+
+                _gs_items_html += _gs_row(
+                    "Alıcı/Satıcı Dengesi",
+                    f"<span style='color:{_udvr_clr};'>{_udvr_lbl}</span>",
+                    explain=_udvr_expl,
+                    lc=_udvr_clr,
+                    pulse=_udvr_pulse
+                )
+
+                # 2.E) AKILLI PARA TİPİ — YAPISAL vs TACTICAL ayrımı
                 # 10 Haz 2026 Oturum 20: smart money sinyallerini iki ayrı
                 # zaman ölçeğine ayırır → kullanıcı kafa karışıklığı çözülür.
                 _smt_lbl = "—"; _smt_clr = _gs_neu
@@ -25239,6 +25431,64 @@ if st.session_state.generate_prompt:
     except Exception:
         pass
 
+    # Up/Down Volume Ratio (Wyckoff Effort-vs-Result) — 20g pencere
+    # 10 Haz 2026 Oturum 20: hacim akışı yön analizi.
+    # Climax durumları öncelik (yapısal smart money tepe/dip teyit), strong durumlar
+    # tactical sinyal. Balanced state'te emit edilmez (gürültü).
+    _em_udvr = ""
+    try:
+        _vol_no_udvr_e = (
+            t.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+            or t.upper().endswith('=F')
+            or '-USD' in t.upper()
+        )
+        if not _vol_no_udvr_e and len(df_hist) >= 21:
+            _udvr_e = compute_updown_volume_ratio(df_hist, period=20)
+            if _udvr_e:
+                _ur = _udvr_e['ratio']
+                _us = _udvr_e['state']
+                _uc = _udvr_e['climax']
+                if _uc == 'climax_top':
+                    _em_udvr = _line(
+                        "udvr_wyckoff",
+                        f"⚠ Wyckoff CLIMAX_TOP: fiyat yeni high'larda (52H zirvesinin %98+ üstünde) AMA "
+                        f"UDVR (Up/Down Volume Ratio) {_ur:.2f} (alıcı zayıf, satıcı hacmi yüksek) — "
+                        f"klasik Smart Money çekilme sinyali. Olumlu teze karşı KRİTİK uyarı, "
+                        f"distribütion ihtimali yüksek."
+                    )
+                elif _uc == 'climax_bottom':
+                    _em_udvr = _line(
+                        "udvr_wyckoff",
+                        f"⚡ Wyckoff CLIMAX_BOTTOM: fiyat yeni low'larda (52H dibinin %98'inde) AMA "
+                        f"UDVR (Up/Down Volume Ratio) {_ur:.2f} (alıcı güçlü, düşüş hacmi düşük) — "
+                        f"klasik Smart Money giriş sinyali. Dipte birikim ihtimali yüksek, "
+                        f"olumlu hipotez için anchor."
+                    )
+                elif _us == 'strong_buyer':
+                    _em_udvr = _line(
+                        "udvr_state",
+                        f"udvr_strong_buyer: True (yükseliş günü hacmi düşüş gününün {_ur:.1f}× — "
+                        f"20g penceresinde alıcı net hakim, sağlıklı yukarı momentum). DESTEKLEYİCİ."
+                    )
+                elif _us == 'strong_seller':
+                    _em_udvr = _line(
+                        "udvr_state",
+                        f"udvr_strong_seller: True (düşüş günü hacmi yükseliş gününün {1/_ur:.1f}× — "
+                        f"20g penceresinde satıcı net hakim, aşağı baskı sürüyor). DESTEKLEYİCİ uyarı."
+                    )
+                elif _us == 'buyer':
+                    _em_udvr = _line(
+                        "udvr_state",
+                        f"udvr_buyer: True (UDVR={_ur:.2f}, alıcı egemen). DESTEKLEYİCİ."
+                    )
+                elif _us == 'seller':
+                    _em_udvr = _line(
+                        "udvr_state",
+                        f"udvr_seller: True (UDVR={_ur:.2f}, satıcı egemen). DESTEKLEYİCİ uyarı."
+                    )
+    except Exception:
+        pass
+
     # YAPISAL vs TACTICAL Smart Money skor ayrımı
     # 10 Haz 2026 Oturum 20: smart money sinyallerini iki ölçeğe ayırır.
     # AI'ın 'akıllı para birikiyor' yorumunu ne kadar süreli olduğunu bilmesini sağlar.
@@ -25816,9 +26066,11 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
 Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
 1) **YAPI** (yaml.ict_pa.structure + mss_yapi_kirilimi + GENEL ÖZET PANEL.YAPI): Trend bias ne? HH+HL mi LH+LL mi, BOS/CHoCH var mı? — Bu yönü söyler.
 2) **KONUM** (yaml.scenario.zone + yaml.smart_money.va_pos + yaml.asset.yillik_konum_52h): Fiyat ucuz mu pahalı mı? Discount/Premium, VA içinde/altında/üstünde, 52H konumu — Bu RR'ı söyler.
-3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + mfi_dual_window + smart_money.cum_delta_5g + vp_sekil): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi.
+3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + mfi_dual_window + udvr_state/udvr_wyckoff + rel_obv_state + smart_money.cum_delta_5g + vp_sekil + smart_money_split): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi. UDVR'nin climax durumlarına ayrıca dikkat: tepe/dip'te smart money'in girdiği/çıktığını gösterir.
 
 **MFI vs RSI okuma:** RSI fiyat momentumu, MFI hacim-ağırlıklı momentum (Wyckoff effort-vs-result). Aynı yönde uyumlu (mfi_dual ve rsi_dual aynı state) = ÇİFT TEYİT, güçlü. Divergent (örn RSI overbought ama MFI nötr) → "fiyat yorgun ama hacim destek vermiyor / fiyat üzerine çıkmaya çalışıyor ama akıllı para girmiyor" = SAHTE RALLY uyarısı. `rsi_mfi_bouquet` varsa = climax noktası, G1 açılışında merkeze al.
+
+**UDVR (udvr_state/udvr_wyckoff) okuma:** Up/Down Volume Ratio — Wyckoff Effort-vs-Result. "Yükseliş günlerinin toplam hacmi düşüş günlerinin hacminden ne kadar fazla?" OBV (cumulative) ve CMF (bar-içi) yanında ham gerçek üçüncü hacim katmanı. `climax_top` (fiyat 52H tepede + UDVR<0.8) = klasik Smart Money çekilme sinyali, distribütion ihtimali → G2 UYARI cümlesi. `climax_bottom` (fiyat 52H dipte + UDVR>1.25) = klasik Smart Money giriş sinyali, akümülasyon ihtimali → olumlu tezi anchor olarak güçlendir. `strong_buyer` (UDVR≥2.0) ve `strong_seller` (UDVR<0.5) durumları destekleyici teyit. Balanced/buyer/seller orta seviyeler — diğer sinyallerle çapraz oku.
 
 **Relative OBV (rel_obv_state) okuma:** Hisse hacim akışı endeks hacim akışından ayrışıyor mu? Mansfield RS'in HACİM versiyonu. `outperform_strong` (hisse OBV↑ endeks OBV↓) = AKILLI PARA spesifik olarak bu hisseyi seçti, yapısal birikim — G1'de merkeze al. `underperform_strong` (hisse OBV↓ endeks OBV↑) = endeks akışı pozitif ama bu hisseden çıkış var, yapısal zayıflık — olumlu teze karşı dikkat uyarısı. Mild durumlar = destekleyici. Sadece OBV slope'una bakma yetmez, ENDEKSE GÖRE ayrışmasını da oku.
 
@@ -25976,7 +26228,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
 • institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 KURUMSAL ANCHOR` (3+ kurumsal kanal konverjansı — TEFAS+KAP+ownership aynı yönde — bu varsa G1'de MUTLAKA merkez), `tefas_konsensus_alim`/`tefas_konsensus_satim`/`tefas_yeni_giris` (TEFAS fon akış sinyalleri — STRONG, AI'da 1 cümle), `buyback_aktif`/`buyback_dip_aliyor` (KAP geri alım — özellikle dip alıyor varsa güçlü), `threshold_asildi`/`insider_first_buy` (KAP pay sahipliği — büyük ortak/yönetici hareketleri), `🏛 YABANCI KURUMSAL ANCHOR` (MKK — yabancı net giriş + streak çakışması, gerçek yabancı kurumsal pozisyon kuruyor → G1'de mutlaka 'yabancı destekliyor' vurgusu), `yabanci_giris`/`yabanci_streak`/`yabanci_cikis` (MKK — yabancı oran top-3 + süreklilik bilgisi, DESTEKLEYİCİ).
-• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al), `rel_obv_state` (Relative OBV — hisse hacim akışı endeksten ayrışıyor mu; outperform_strong/underperform_strong = ELIT smart money izi, mild = destekleyici).
+• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al), `rel_obv_state` (Relative OBV — hisse hacim akışı endeksten ayrışıyor mu; outperform_strong/underperform_strong = ELIT smart money izi, mild = destekleyici), `udvr_state`/`udvr_wyckoff` (Up/Down Volume Ratio — klasik Wyckoff Effort-vs-Result, climax_top/bottom durumları = TIER_1 ELIT smart money tepe/dip teyidi; strong_buyer/strong_seller = destekleyici).
 • trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
 *** KALİBRASYON TABLOLARI — SADECE REFERANS, gördüğünde uygula ***
@@ -26086,7 +26338,7 @@ ict_pa:
   sfp_tuzak: {sfp_desc}
   harmonik_xabcd: {harm_txt}
 
-{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else "") + (chr(10) + _em_smart_split if _em_smart_split else ""))}
+{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else "") + (chr(10) + _em_udvr if _em_udvr else "") + (chr(10) + _em_smart_split if _em_smart_split else ""))}
 
 {("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
 
