@@ -168,6 +168,8 @@
 
 **Eylül 2026 backtest planı:** 8 SMC kurumsal flag + 8 KURUMSAL TAKİP flag → toplam **16 yeni feature** scan_signals'a yazılacak. 3 ay sonra `signal_returns` JOIN ile gerçek BIST hit/ret katkısı ölçülecek; hit ≥%65 + ret ≥%5 = TIER_1_ELIT, hit <%50 = AI'dan kaldır.
 
+**4) Akıllı Para 5'lik genişleme + Hacim Momentumu sadeleştirme + ICT Sniper rozeti.** Oturum 20 sonu (10 Haz akşam). Beşli plan: **(#1)** MKK Yabancı Net Alış — İş Yatırım RSS feed (`arastirma.isyatirim.com.tr/.../gunluk-yabanci-oranlari/feed/`) günlük top-3 giriş/çıkış + streak. 4 flag + `mkk_yabanci` tablo. **(#2)** Relative OBV (hisse vs endeks) — Mansfield RS'in hacim katmanı, 5 state. **(#3)** YAPISAL vs TACTICAL ayrımı — tüm akıllı para flag'leri 2 kovaya, ayrı 0-100 skor, 4 makro senaryo verdict. **(#4)** UDVR (Up/Down Volume Ratio) — klasik Wyckoff Effort-vs-Result, 5 state + climax detection ELIT. **(#6)** Force Index Dual + Divergence — Elder Triple Screen FI(2)+FI(13), 7 state + bullish/bearish divergence (TUPRS gerçek testte yakaladı). GENEL ÖZET'e 4 yeni satır eklendi. MFI 9 senaryo sade Türkçeye çevrildi (etiket+1 cümle, semboller temiz). Klasik Taramalar tablo altına koşullu ICT Sniper rejim rozeti ('XU100 SMA50 altı + 5g negatif + <100 sinyal' tetik). Toplam 13 yeni feature flag scan_signals'a, Eylül 2026 ortası `signal_returns` JOIN ile gerçek BIST katkısı ölçülecek. Commits: `687dd6d`+`3b93016`+`b839d11`+`744c9c9`+`3533854`+`ee141b1`+`10deb01`.
+
 ---
 
 ## Önceki Oturum Notu — 6 Haz 2026 Oturum 18 (POC/VWAP kanıt-tabanlı yeniden yapı)
