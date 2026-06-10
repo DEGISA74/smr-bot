@@ -856,6 +856,11 @@ def init_db():
         # 'climax_top' (fiyat tepede + UDVR<0.8 = smart money çekiliyor)
         # 'climax_bottom' (fiyat dipte + UDVR>1.25 = smart money giriyor)
         'ALTER TABLE scan_signals ADD COLUMN f_udvr_climax TEXT',
+        # 10 Haz 2026 Oturum 20 — Force Index Dual (Elder Triple Screen)
+        # 7 state: strong_pos/strong_neg/turning_up/turning_down/pos/neg/neutral
+        # Divergence: bullish (fiyat LL + FI HL) veya bearish (fiyat HH + FI LH)
+        'ALTER TABLE scan_signals ADD COLUMN f_force_index_dual TEXT',
+        'ALTER TABLE scan_signals ADD COLUMN f_force_index_divergence TEXT',
     ]:
         try:
             c.execute(_alter_col)
@@ -1614,6 +1619,9 @@ def _compute_signal_features(ticker: str) -> dict:
         'f_udvr_20g': None,
         'f_udvr_state': None,
         'f_udvr_climax': None,
+        # 10 Haz 2026 Oturum 20 — Force Index Dual (Elder)
+        'f_force_index_dual': None,
+        'f_force_index_divergence': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1970,6 +1978,12 @@ def _compute_signal_features(ticker: str) -> dict:
                         out['f_udvr_20g'] = _udvr_r.get('ratio')
                         out['f_udvr_state'] = _udvr_r.get('state')
                         out['f_udvr_climax'] = _udvr_r.get('climax')
+                # Force Index Dual (Elder Triple Screen)
+                if not _vol_no_rel and df is not None and len(df) >= 50:
+                    _fi_r = compute_force_index_dual(df, span_short=2, span_long=13)
+                    if _fi_r:
+                        out['f_force_index_dual'] = _fi_r.get('state')
+                        out['f_force_index_divergence'] = _fi_r.get('divergence')
             except Exception: pass
             # Convergence (anchor) — 3+ STRONG aynı yönde
             _conv = _compute_kurumsal_convergence(out)
@@ -2189,6 +2203,11 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_udvr_state         = f_udvr_state_raw if f_udvr_state_raw else None
             f_udvr_climax_raw    = _ff('F_UDVR_Climax', 'f_udvr_climax', cast=str)
             f_udvr_climax        = f_udvr_climax_raw if f_udvr_climax_raw else None
+            # 10 Haz 2026 — Force Index Dual (Elder)
+            f_fi_dual_raw        = _ff('F_FI_Dual', 'f_force_index_dual', cast=str)
+            f_fi_dual            = f_fi_dual_raw if f_fi_dual_raw else None
+            f_fi_div_raw         = _ff('F_FI_Div', 'f_force_index_divergence', cast=str)
+            f_fi_div             = f_fi_div_raw if f_fi_div_raw else None
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -2234,6 +2253,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_udvr_v           is None: f_udvr_v           = _feat.get('f_udvr_20g')
                 if f_udvr_state       is None: f_udvr_state       = _feat.get('f_udvr_state')
                 if f_udvr_climax      is None: f_udvr_climax      = _feat.get('f_udvr_climax')
+                if f_fi_dual          is None: f_fi_dual          = _feat.get('f_force_index_dual')
+                if f_fi_div           is None: f_fi_div           = _feat.get('f_force_index_divergence')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -2249,8 +2270,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_yabanci_giris, f_yabanci_cikis, f_yabanci_streak, f_yabanci_anchor,
                     f_rel_obv_state, f_rel_obv_divergence,
                     f_smart_structural_score, f_smart_tactical_score,
-                    f_udvr_20g, f_udvr_state, f_udvr_climax)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_udvr_20g, f_udvr_state, f_udvr_climax,
+                    f_force_index_dual, f_force_index_divergence)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
@@ -2264,7 +2286,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                  f_yab_giris_v, f_yab_cikis_v, f_yab_streak_v, f_yab_anchor_v,
                  f_rel_obv_state, f_rel_obv_div_v,
                  f_smart_struct_v, f_smart_tact_v,
-                 f_udvr_v, f_udvr_state, f_udvr_climax)
+                 f_udvr_v, f_udvr_state, f_udvr_climax,
+                 f_fi_dual, f_fi_div)
             )
         conn.commit()
         conn.close()
@@ -4295,6 +4318,121 @@ def compute_relative_obv_state(df_stock, df_bench, lookback=20):
         return None
 
 
+def compute_force_index_dual(df, span_short=2, span_long=13):
+    """Alexander Elder's Force Index — dual-window state machine + divergence.
+
+    Klasik formül:  FI = (Close - Close[-1]) × Volume
+    Smoothed: EMA(span)
+
+    Iki pencere:
+      - span=2  (kısa) — anlık güç sinyali (Elder 'trigger' katmanı)
+      - span=13 (uzun) — sürekli güç (Elder 'trend' katmanı)
+
+    7 state (CMF/MFI dual pattern ile aynı kalıp):
+      strong_pos    : ikisi de güçlü pozitif (alıcı tam egemen)
+      strong_neg    : ikisi de güçlü negatif (satıcı tam egemen)
+      turning_up    : trend negatif ama anlık dönüş — erken dönüş sinyali
+      turning_down  : trend pozitif ama anlık zayıflık — momentum yorgunluğu
+      pos           : sadece trend pozitif
+      neg           : sadece trend negatif
+      neutral       : ikisi de denge bölgesinde
+
+    Divergence detection (Elder klasik):
+      - Bullish divergence: Fiyat LL + FI(13) HL → alıcı dönüşü sinyali
+      - Bearish divergence: Fiyat HH + FI(13) LH → satıcı dönüşü sinyali
+
+    Args:
+        df: 'Close','Volume' içeren DataFrame.
+        span_short / span_long: EMA pencereleri.
+    Returns:
+        {
+          'state': 7 state,
+          'fi_short': son kısa FI değeri,
+          'fi_long': son uzun FI değeri,
+          'fi_short_norm': stdev normalize edilmiş kısa FI (z-score)
+          'fi_long_norm': stdev normalize edilmiş uzun FI (z-score)
+          'divergence': None|'bullish'|'bearish'
+        }
+    """
+    try:
+        if df is None or len(df) < max(span_long * 3, 50): return None
+        if 'Close' not in df.columns or 'Volume' not in df.columns: return None
+
+        _close = df['Close']
+        _vol = df['Volume']
+        _delta = _close.diff()
+        _fi_raw = _delta * _vol
+
+        _fi_short = _fi_raw.ewm(span=span_short, adjust=False).mean()
+        _fi_long = _fi_raw.ewm(span=span_long, adjust=False).mean()
+
+        # Z-score normalize — uzun pencere std'si baz alınır
+        _fi_std = _fi_long.rolling(50, min_periods=20).std()
+        _fi_std_last = float(_fi_std.iloc[-1]) if not pd.isna(_fi_std.iloc[-1]) and _fi_std.iloc[-1] > 0 else 1.0
+
+        _fis = float(_fi_short.iloc[-1])
+        _fil = float(_fi_long.iloc[-1])
+        _fis_norm = _fis / _fi_std_last
+        _fil_norm = _fil / _fi_std_last
+
+        # State (z-score eşikleri: ±0.5 = orta, ±1.0 = güçlü)
+        if   _fis_norm > 1.0 and _fil_norm > 0.5:  _state = 'strong_pos'
+        elif _fis_norm < -1.0 and _fil_norm < -0.5: _state = 'strong_neg'
+        elif _fis_norm > 0.5 and _fil_norm < -0.3:  _state = 'turning_up'    # trend neg + anlık dönüş
+        elif _fis_norm < -0.5 and _fil_norm > 0.3:  _state = 'turning_down'  # trend poz + anlık zayıflık
+        elif _fil_norm > 0.5:                        _state = 'pos'
+        elif _fil_norm < -0.5:                       _state = 'neg'
+        else:                                        _state = 'neutral'
+
+        # Divergence — son 30 bar pivot bazlı (basit)
+        _divergence = None
+        try:
+            _lookback = 30
+            if len(df) >= _lookback + 5:
+                _seg_close = _close.tail(_lookback)
+                _seg_fi = _fi_long.tail(_lookback)
+                # En düşük 2 close + en yüksek 2 close ara
+                _close_low_idx = _seg_close.values.argmin()
+                _close_high_idx = _seg_close.values.argmax()
+                # Pivot tespiti basit: son 5 bar içinde extremde mi?
+                _last_close = float(_seg_close.iloc[-1])
+                _last_fi = float(_seg_fi.iloc[-1])
+                _seg_close_vals = _seg_close.values
+                _seg_fi_vals = _seg_fi.values
+                # Önceki düşük dip (ilk 20 barda)
+                _prev_low_idx = _seg_close_vals[:20].argmin()
+                _prev_low_close = _seg_close_vals[_prev_low_idx]
+                _prev_low_fi = _seg_fi_vals[_prev_low_idx]
+                # Önceki yüksek tepe (ilk 20 barda)
+                _prev_high_idx = _seg_close_vals[:20].argmax()
+                _prev_high_close = _seg_close_vals[_prev_high_idx]
+                _prev_high_fi = _seg_fi_vals[_prev_high_idx]
+                # Son 5 bar içinde yeni LL mı?
+                _recent_close_min = _seg_close.iloc[-5:].min()
+                _recent_close_max = _seg_close.iloc[-5:].max()
+                _recent_fi_min = _seg_fi.iloc[-5:].min()
+                _recent_fi_max = _seg_fi.iloc[-5:].max()
+                if (_recent_close_min < _prev_low_close * 0.99
+                    and _recent_fi_min > _prev_low_fi * 1.05):
+                    _divergence = 'bullish'   # Fiyat LL + FI HL
+                elif (_recent_close_max > _prev_high_close * 1.01
+                      and _recent_fi_max < _prev_high_fi * 0.95):
+                    _divergence = 'bearish'   # Fiyat HH + FI LH
+        except Exception:
+            pass
+
+        return {
+            'state': _state,
+            'fi_short': _fis,
+            'fi_long': _fil,
+            'fi_short_norm': round(_fis_norm, 2),
+            'fi_long_norm': round(_fil_norm, 2),
+            'divergence': _divergence,
+        }
+    except Exception:
+        return None
+
+
 def compute_updown_volume_ratio(df, period=20):
     """Up/Down Volume Ratio — Wyckoff Effort-vs-Result'un en sade hali.
 
@@ -4542,6 +4680,23 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
             tact_score -= 8; tact_neg.append('UDVR strong_seller (satıcı 2×+ hakim)')
         elif _udvr_st == 'seller':
             tact_score -= 3; tact_neg.append('UDVR seller (satıcı egemen)')
+
+        # Force Index Dual (Elder Triple Screen)
+        # Divergence climax-level sinyal, state'ler destekleyici
+        _fi_st = f.get('f_force_index_dual')
+        _fi_dv = f.get('f_force_index_divergence')
+        if _fi_dv == 'bullish':
+            tact_score += 12; tact_pos.append('Force Index bullish divergence (fiyat LL + FI HL)')
+        elif _fi_dv == 'bearish':
+            tact_score -= 14; tact_neg.append('Force Index bearish divergence (fiyat HH + FI LH)')
+        if _fi_st == 'strong_pos':
+            tact_score += 8; tact_pos.append('Force Index güçlü pozitif (Elder alıcı egemen)')
+        elif _fi_st == 'strong_neg':
+            tact_score -= 8; tact_neg.append('Force Index güçlü negatif (Elder satıcı egemen)')
+        elif _fi_st == 'turning_up':
+            tact_score += 6; tact_pos.append('Force Index kafa çeviriyor yukarı (erken dönüş)')
+        elif _fi_st == 'turning_down':
+            tact_score -= 6; tact_neg.append('Force Index kafa çeviriyor aşağı (yorgunluk)')
 
         tact_score = max(0, min(100, tact_score))
 
@@ -21608,7 +21763,73 @@ def _render_genel_ozet_panel():
                     pulse=_udvr_pulse
                 )
 
-                # 2.E) AKILLI PARA TİPİ — YAPISAL vs TACTICAL ayrımı
+                # 2.E) FİYAT × HACİM GÜCÜ — Force Index Dual (Elder)
+                _fi_lbl = "—"; _fi_clr = _gs_neu
+                _fi_expl = "Fiyat-hacim gücü verisi yok"
+                _fi_pulse = False
+                try:
+                    _ticker_fi = _ticker if '_ticker' in dir() else st.session_state.get('ticker', '')
+                    _vol_no_fi = (
+                        _ticker_fi.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                        or _ticker_fi.upper().endswith('=F')
+                        or '-USD' in _ticker_fi.upper()
+                    )
+                    if not _vol_no_fi and _gs_df is not None and len(_gs_df) >= 50 and 'Volume' in _gs_df.columns:
+                        _fi_r = compute_force_index_dual(_gs_df, span_short=2, span_long=13)
+                        if _fi_r:
+                            _state = _fi_r['state']
+                            _div = _fi_r['divergence']
+                            # Divergence öncelikli
+                            if _div == 'bullish':
+                                _fi_lbl = "Boğa Uyumsuzluğu ⚡"
+                                _fi_clr = _gs_up_clr
+                                _fi_expl = "Fiyat yeni dip yapıyor ama Force Index daha yüksek dip — Smart Money giriyor"
+                                _fi_pulse = True
+                            elif _div == 'bearish':
+                                _fi_lbl = "Ayı Uyumsuzluğu ⚠"
+                                _fi_clr = _gs_dn_clr
+                                _fi_expl = "Fiyat yeni tepe yapıyor ama Force Index daha düşük tepe — Smart Money çekiliyor"
+                                _fi_pulse = True
+                            elif _state == 'strong_pos':
+                                _fi_lbl = "Güçlü Alıcı"
+                                _fi_clr = _gs_up_clr
+                                _fi_expl = "Hem anlık hem trend hacimli yukarı baskı (Elder alıcı egemen)"
+                            elif _state == 'strong_neg':
+                                _fi_lbl = "Güçlü Satıcı"
+                                _fi_clr = _gs_dn_clr
+                                _fi_expl = "Hem anlık hem trend hacimli aşağı baskı (Elder satıcı egemen)"
+                            elif _state == 'turning_up':
+                                _fi_lbl = "Yukarı Dönüş?"
+                                _fi_clr = _gs_up_clr
+                                _fi_expl = "Trend negatif ama anlık güç pozitif — erken dönüş ihtimali"
+                            elif _state == 'turning_down':
+                                _fi_lbl = "Aşağı Dönüş?"
+                                _fi_clr = _gs_dn_clr
+                                _fi_expl = "Trend pozitif ama anlık güç zayıf — momentum yorgunluğu"
+                            elif _state == 'pos':
+                                _fi_lbl = "Pozitif"
+                                _fi_clr = _gs_up_clr
+                                _fi_expl = "Orta vade Force Index pozitif yönde"
+                            elif _state == 'neg':
+                                _fi_lbl = "Negatif"
+                                _fi_clr = _gs_dn_clr
+                                _fi_expl = "Orta vade Force Index negatif yönde"
+                            else:
+                                _fi_lbl = "Nötr"
+                                _fi_clr = _gs_neu
+                                _fi_expl = "Fiyat-hacim gücü dengeli, yön belirsiz"
+                except Exception:
+                    pass
+
+                _gs_items_html += _gs_row(
+                    "Fiyat × Hacim Gücü",
+                    f"<span style='color:{_fi_clr};'>{_fi_lbl}</span>",
+                    explain=_fi_expl,
+                    lc=_fi_clr,
+                    pulse=_fi_pulse
+                )
+
+                # 2.F) AKILLI PARA TİPİ — YAPISAL vs TACTICAL ayrımı
                 # 10 Haz 2026 Oturum 20: smart money sinyallerini iki ayrı
                 # zaman ölçeğine ayırır → kullanıcı kafa karışıklığı çözülür.
                 _smt_lbl = "—"; _smt_clr = _gs_neu
@@ -25489,6 +25710,66 @@ if st.session_state.generate_prompt:
     except Exception:
         pass
 
+    # Force Index Dual (Elder Triple Screen) — fiyat × hacim gücü
+    # 10 Haz 2026 Oturum 20: Klasik Elder Force Index dual-window + divergence.
+    # Sadece güçlü state veya divergence varsa emit (gürültü engeli).
+    _em_force_index = ""
+    try:
+        _vol_no_fi_e = (
+            t.upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+            or t.upper().endswith('=F')
+            or '-USD' in t.upper()
+        )
+        if not _vol_no_fi_e and len(df_hist) >= 50:
+            _fi_e = compute_force_index_dual(df_hist, span_short=2, span_long=13)
+            if _fi_e:
+                _fst = _fi_e['state']
+                _fdv = _fi_e['divergence']
+                _fsn = _fi_e['fi_short_norm']
+                _fln = _fi_e['fi_long_norm']
+                if _fdv == 'bullish':
+                    _em_force_index = _line(
+                        "force_index_divergence",
+                        f"⚡ Force Index BULLISH DIVERGENCE: fiyat son 30g'de yeni dip yaptı AMA "
+                        f"Force Index daha yüksek dip yaptı (FI(2)σ={_fsn}, FI(13)σ={_fln}) — "
+                        f"Elder klasik tepki sinyali. Smart Money dipte birikim ihtimali yüksek, "
+                        f"olumlu hipotez için anchor."
+                    )
+                elif _fdv == 'bearish':
+                    _em_force_index = _line(
+                        "force_index_divergence",
+                        f"⚠ Force Index BEARISH DIVERGENCE: fiyat son 30g'de yeni tepe yaptı AMA "
+                        f"Force Index daha düşük tepe yaptı (FI(2)σ={_fsn}, FI(13)σ={_fln}) — "
+                        f"Elder klasik tepki sinyali. Smart Money tepede çekilme ihtimali yüksek, "
+                        f"olumlu teze karşı KRİTİK uyarı."
+                    )
+                elif _fst == 'strong_pos':
+                    _em_force_index = _line(
+                        "force_index_dual",
+                        f"force_index: strong_pos (FI(2)σ={_fsn}, FI(13)σ={_fln}) — "
+                        f"hem anlık hem trend hacimli yukarı baskı, Elder alıcı egemen. DESTEKLEYİCİ."
+                    )
+                elif _fst == 'strong_neg':
+                    _em_force_index = _line(
+                        "force_index_dual",
+                        f"force_index: strong_neg (FI(2)σ={_fsn}, FI(13)σ={_fln}) — "
+                        f"hem anlık hem trend hacimli aşağı baskı, Elder satıcı egemen. DESTEKLEYİCİ uyarı."
+                    )
+                elif _fst == 'turning_up':
+                    _em_force_index = _line(
+                        "force_index_dual",
+                        f"force_index: turning_up (FI(2)σ={_fsn} pozitif, FI(13)σ={_fln} negatif) — "
+                        f"trend hacmi negatif ama anlık dönüş, erken yukarı sinyali. DESTEKLEYİCİ."
+                    )
+                elif _fst == 'turning_down':
+                    _em_force_index = _line(
+                        "force_index_dual",
+                        f"force_index: turning_down (FI(2)σ={_fsn} negatif, FI(13)σ={_fln} pozitif) — "
+                        f"trend hacmi pozitif ama anlık zayıflık, momentum yorgunluğu. DESTEKLEYİCİ uyarı."
+                    )
+    except Exception:
+        pass
+
     # YAPISAL vs TACTICAL Smart Money skor ayrımı
     # 10 Haz 2026 Oturum 20: smart money sinyallerini iki ölçeğe ayırır.
     # AI'ın 'akıllı para birikiyor' yorumunu ne kadar süreli olduğunu bilmesini sağlar.
@@ -26070,6 +26351,8 @@ Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
 
 **MFI vs RSI okuma:** RSI fiyat momentumu, MFI hacim-ağırlıklı momentum (Wyckoff effort-vs-result). Aynı yönde uyumlu (mfi_dual ve rsi_dual aynı state) = ÇİFT TEYİT, güçlü. Divergent (örn RSI overbought ama MFI nötr) → "fiyat yorgun ama hacim destek vermiyor / fiyat üzerine çıkmaya çalışıyor ama akıllı para girmiyor" = SAHTE RALLY uyarısı. `rsi_mfi_bouquet` varsa = climax noktası, G1 açılışında merkeze al.
 
+**Force Index Dual (force_index_dual / force_index_divergence) okuma:** Alexander Elder'in Force Index — fiyat değişimi × hacim klasik formülü, dual-window (FI(2) anlık, FI(13) trend). `bullish_divergence` (fiyat LL + FI HL) = klasik Elder dipte tepki sinyali, Smart Money birikim ihtimali → olumlu anchor. `bearish_divergence` (fiyat HH + FI LH) = klasik Elder tepede çekilme sinyali → G2 KRİTİK UYARI. `strong_pos`/`strong_neg` = anlık+trend uyum, destekleyici teyit. `turning_up`/`turning_down` = pencereler çelişiyor, erken dönüş/yorgunluk sinyali. RSI/MFI divergence ile ÇAKIŞIRSA güç çift teyit olur.
+
 **UDVR (udvr_state/udvr_wyckoff) okuma:** Up/Down Volume Ratio — Wyckoff Effort-vs-Result. "Yükseliş günlerinin toplam hacmi düşüş günlerinin hacminden ne kadar fazla?" OBV (cumulative) ve CMF (bar-içi) yanında ham gerçek üçüncü hacim katmanı. `climax_top` (fiyat 52H tepede + UDVR<0.8) = klasik Smart Money çekilme sinyali, distribütion ihtimali → G2 UYARI cümlesi. `climax_bottom` (fiyat 52H dipte + UDVR>1.25) = klasik Smart Money giriş sinyali, akümülasyon ihtimali → olumlu tezi anchor olarak güçlendir. `strong_buyer` (UDVR≥2.0) ve `strong_seller` (UDVR<0.5) durumları destekleyici teyit. Balanced/buyer/seller orta seviyeler — diğer sinyallerle çapraz oku.
 
 **Relative OBV (rel_obv_state) okuma:** Hisse hacim akışı endeks hacim akışından ayrışıyor mu? Mansfield RS'in HACİM versiyonu. `outperform_strong` (hisse OBV↑ endeks OBV↓) = AKILLI PARA spesifik olarak bu hisseyi seçti, yapısal birikim — G1'de merkeze al. `underperform_strong` (hisse OBV↓ endeks OBV↑) = endeks akışı pozitif ama bu hisseden çıkış var, yapısal zayıflık — olumlu teze karşı dikkat uyarısı. Mild durumlar = destekleyici. Sadece OBV slope'una bakma yetmez, ENDEKSE GÖRE ayrışmasını da oku.
@@ -26228,7 +26511,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
 • institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 KURUMSAL ANCHOR` (3+ kurumsal kanal konverjansı — TEFAS+KAP+ownership aynı yönde — bu varsa G1'de MUTLAKA merkez), `tefas_konsensus_alim`/`tefas_konsensus_satim`/`tefas_yeni_giris` (TEFAS fon akış sinyalleri — STRONG, AI'da 1 cümle), `buyback_aktif`/`buyback_dip_aliyor` (KAP geri alım — özellikle dip alıyor varsa güçlü), `threshold_asildi`/`insider_first_buy` (KAP pay sahipliği — büyük ortak/yönetici hareketleri), `🏛 YABANCI KURUMSAL ANCHOR` (MKK — yabancı net giriş + streak çakışması, gerçek yabancı kurumsal pozisyon kuruyor → G1'de mutlaka 'yabancı destekliyor' vurgusu), `yabanci_giris`/`yabanci_streak`/`yabanci_cikis` (MKK — yabancı oran top-3 + süreklilik bilgisi, DESTEKLEYİCİ).
-• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al), `rel_obv_state` (Relative OBV — hisse hacim akışı endeksten ayrışıyor mu; outperform_strong/underperform_strong = ELIT smart money izi, mild = destekleyici), `udvr_state`/`udvr_wyckoff` (Up/Down Volume Ratio — klasik Wyckoff Effort-vs-Result, climax_top/bottom durumları = TIER_1 ELIT smart money tepe/dip teyidi; strong_buyer/strong_seller = destekleyici).
+• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al), `rel_obv_state` (Relative OBV — hisse hacim akışı endeksten ayrışıyor mu; outperform_strong/underperform_strong = ELIT smart money izi, mild = destekleyici), `udvr_state`/`udvr_wyckoff` (Up/Down Volume Ratio — klasik Wyckoff Effort-vs-Result, climax_top/bottom durumları = TIER_1 ELIT smart money tepe/dip teyidi; strong_buyer/strong_seller = destekleyici), `force_index_dual`/`force_index_divergence` (Alexander Elder Force Index dual — anlık FI(2) ve trend FI(13); bullish/bearish divergence = TIER_1 ELIT klasik Elder sinyali, strong/turning durumlar = destekleyici).
 • trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
 *** KALİBRASYON TABLOLARI — SADECE REFERANS, gördüğünde uygula ***
@@ -26338,7 +26621,7 @@ ict_pa:
   sfp_tuzak: {sfp_desc}
   harmonik_xabcd: {harm_txt}
 
-{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else "") + (chr(10) + _em_udvr if _em_udvr else "") + (chr(10) + _em_smart_split if _em_smart_split else ""))}
+{("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else "") + (chr(10) + _em_udvr if _em_udvr else "") + (chr(10) + _em_force_index if _em_force_index else "") + (chr(10) + _em_smart_split if _em_smart_split else ""))}
 
 {("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
 
