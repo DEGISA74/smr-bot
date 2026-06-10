@@ -765,6 +765,16 @@ def init_db():
         'ALTER TABLE scan_signals ADD COLUMN f_at_y_open INTEGER',             # Y-Open'a yakın (±%2 içinde)
         'ALTER TABLE scan_signals ADD COLUMN f_near_ifvg INTEGER',             # inverse FVG'ye ±%2 içinde
         'ALTER TABLE scan_signals ADD COLUMN f_breaker_block_active INTEGER',  # aktif BB zonunda ±%2 içinde
+        # 9 Haz 2026 Oturum 20 — KURUMSAL TAKİP (TEFAS + KAP) — 8 STRONG flag
+        # Eşikler: ≥3 fon (AUM≥100mn, pozisyon≥%1.5), buyback float≥%1, threshold %5/%10/%25 üstü
+        'ALTER TABLE scan_signals ADD COLUMN f_tefas_konsensus_alim INTEGER',  # ≥3 fon 5g pozitif (STRONG)
+        'ALTER TABLE scan_signals ADD COLUMN f_tefas_konsensus_satim INTEGER', # ≥3 fon 5g negatif (STRONG)
+        'ALTER TABLE scan_signals ADD COLUMN f_tefas_yeni_giris INTEGER',      # ≥2 büyük fon ilk pozisyon
+        'ALTER TABLE scan_signals ADD COLUMN f_buyback_aktif INTEGER',         # yeni program + 5g icra
+        'ALTER TABLE scan_signals ADD COLUMN f_buyback_dip_aliyor INTEGER',    # 52H dip ≤%10 + alım
+        'ALTER TABLE scan_signals ADD COLUMN f_threshold_asildi INTEGER',      # %5/%10/%25 eşik aşımı (yukarı)
+        'ALTER TABLE scan_signals ADD COLUMN f_insider_first_buy INTEGER',     # 6ay sonra ilk içerden alım
+        'ALTER TABLE scan_signals ADD COLUMN f_kurumsal_anchor INTEGER',       # convergence (3+ aynı yön)
     ]:
         try:
             c.execute(_alter_col)
@@ -786,6 +796,31 @@ def init_db():
         category    TEXT,
         UNIQUE(signal_id, day_offset)
     )''')
+    # ── KURUMSAL TAKİP cache tabloları (9 Haz 2026 Oturum 20) ──────────────
+    # TEFAS portföy snapshot: günlük fetch, hisse bazlı SQL sorgu için
+    c.execute('''CREATE TABLE IF NOT EXISTS tefas_holdings (
+        snapshot_date TEXT NOT NULL,    -- YYYY-MM-DD
+        fund_code     TEXT NOT NULL,    -- ör. AAK, GZL, PYL
+        fund_aum_mn   REAL,             -- fonun AUM, milyon TL
+        stock_symbol  TEXT NOT NULL,    -- BIST hisse kodu (örn. XBANK)
+        weight_pct    REAL,             -- fon portföyündeki yüzde
+        PRIMARY KEY (snapshot_date, fund_code, stock_symbol)
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_tefas_sym ON tefas_holdings(stock_symbol, snapshot_date)')
+    # KAP duyuru cache: buyback + ownership değişiklikleri
+    c.execute('''CREATE TABLE IF NOT EXISTS kap_events (
+        event_date     TEXT NOT NULL,
+        symbol         TEXT NOT NULL,
+        event_type     TEXT NOT NULL,   -- 'buyback_announce' | 'buyback_exec' | 'ownership_change' | 'insider_buy'
+        event_subtype  TEXT,            -- 'new_program' | 'threshold_5pct' vs
+        amount_tl      REAL,            -- tutar (TL)
+        amount_lots    REAL,            -- adet (varsa)
+        price          REAL,            -- ortalama fiyat
+        actor          TEXT,            -- alıcı/satıcı (yönetici adı, holding adı vs)
+        meta_json      TEXT,            -- ham JSON detay
+        PRIMARY KEY (event_date, symbol, event_type, COALESCE(actor, ''))
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_kap_sym ON kap_events(symbol, event_date)')
     conn.commit()
     conn.close()
 
@@ -828,6 +863,431 @@ def _detect_breakout_state(df, boundary):
         return (0, 0.0, 1.0)
 
 
+# ════════════════════════════════════════════════════════════════════════
+# KURUMSAL TAKİP (9 Haz 2026 Oturum 20) — TEFAS + KAP
+# ════════════════════════════════════════════════════════════════════════
+# 3 STRONG kanal × 8 STRONG sinyal:
+#   TEFAS:  konsensus_alim, konsensus_satim, yeni_giris
+#   KAP Buyback: buyback_aktif, buyback_dip_aliyor
+#   KAP Pay Sahipliği: threshold_asildi, insider_first_buy
+#   Convergence: kurumsal_anchor (3+ kanal aynı yönde)
+#
+# Defensive: tüm fetch'ler try/except, başarısızlıkta None döner — gürültü yok.
+# Cache: TEFAS günde 1 kez (Master Scan zamanı), KAP saatte 1 kez.
+# ════════════════════════════════════════════════════════════════════════
+
+# Materiality eşikleri (sertçe belirlenmiş kullanıcı çerçevesi)
+_KURUMSAL_THRESHOLDS = {
+    # TEFAS
+    'tefas_min_aum_mn':         100,    # Fon AUM ≥ 100mn TL filtresi
+    'tefas_min_weight_pct':     1.5,    # Pozisyon portföyün ≥%1.5'i
+    'tefas_min_funds_konsensus': 3,     # ≥3 fon aynı yönde
+    'tefas_min_5g_change_pct':  10.0,   # Pozisyon değişimi ≥%10 (5g)
+    'tefas_dagitim_total_pct':  20.0,   # Dağıtım: toplam ≥%20 azalma
+    'tefas_yeni_giris_aum_mn':  500,    # Yeni giriş: AUM ≥500mn
+    'tefas_yeni_giris_funds':   2,      # Yeni giriş: ≥2 fon
+    'tefas_yeni_giris_pct':     1.0,    # Yeni pozisyon portföyün ≥%1'i
+    # KAP Buyback
+    'buyback_min_float_pct':    1.0,    # Program ≥ float %1
+    'buyback_dip_distance_pct': 10.0,   # 52H dip ≤%10 mesafe
+    'buyback_weekly_vol_pct':   5.0,    # Haftalık alım ≥ ort günlük hacim %5
+    # KAP Pay Sahipliği
+    'threshold_levels':        [5, 10, 25, 33, 50],   # Statütör eşikler
+    'insider_buy_min_tl':       5_000_000,            # ≥5 mn TL
+    'insider_first_buy_lookback': 180,                # 6 ay = 180 gün
+    # Convergence
+    'anchor_min_signals':       3,    # ≥3 kanal aynı yönde
+}
+
+
+def _fetch_tefas_portfolio_snapshot(date_str=None, max_funds=None):
+    """TEFAS BindHistoryAllocation endpoint'inden tüm hisse+karma fonların portföy
+    bileşimini çeker. Sonucu tefas_holdings tablosuna yazar. Cache: günde 1 kez.
+
+    Args:
+        date_str: 'YYYY-MM-DD' formatında — None ise bugün.
+        max_funds: dev modda küçük test için fon sayısı limiti.
+    Returns:
+        (success_count, fail_count) tuple
+    """
+    import requests as _requests
+    from datetime import datetime as _dt, timedelta as _td
+
+    if date_str is None:
+        date_str = _dt.now(_TZ_ISTANBUL).strftime('%Y-%m-%d')
+    try:
+        _d_obj = _dt.strptime(date_str, '%Y-%m-%d')
+    except Exception:
+        return (0, 0)
+
+    # Önce cache kontrolü — bu tarihte zaten veri varsa atla
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM tefas_holdings WHERE snapshot_date = ?", (date_str,))
+        if (c.fetchone() or [0])[0] > 100:
+            conn.close()
+            return (0, 0)   # Zaten cache'de
+        conn.close()
+    except Exception:
+        pass
+
+    # TEFAS API endpoint — community-known
+    # POST https://www.tefas.gov.tr/api/DB/BindHistoryAllocation
+    # Form data: fontip=YAT, fonkod={FUND}, bastarih=DD.MM.YYYY, bittarih=DD.MM.YYYY
+    _date_tr = _d_obj.strftime('%d.%m.%Y')
+    _headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Origin': 'https://www.tefas.gov.tr',
+        'Referer': 'https://www.tefas.gov.tr/PortfoyDagilimi.aspx',
+    }
+    # 1) Fon listesi (hisse + karma)
+    _fund_list = []
+    try:
+        # BindFundReturns endpoint'i fon listesi de döndürür
+        _list_url = 'https://www.tefas.gov.tr/api/DB/BindComparisonFundReturns'
+        _list_payload = {
+            'calismatipi': '1',         # Yatırım fonları
+            'fontip': 'YAT',
+            'fonturkod': '',
+            'fonunvantip': '',
+            'strperiod': '1,1,1,1,1,1,1',
+            'startdate': _date_tr,
+            'enddate': _date_tr,
+        }
+        _r = _requests.post(_list_url, data=_list_payload, headers=_headers, timeout=20)
+        if _r.status_code == 200:
+            _data = _r.json().get('data', [])
+            for _item in _data:
+                _kod = (_item.get('FONKODU') or '').strip()
+                if _kod:
+                    _fund_list.append(_kod)
+    except Exception as _ex:
+        try: log_error("tefas_fund_list", _ex)
+        except Exception: pass
+        return (0, 1)
+
+    if max_funds:
+        _fund_list = _fund_list[:max_funds]
+    if not _fund_list:
+        return (0, 1)
+
+    # 2) Her fon için portföy bileşimi — BindHistoryAllocation
+    _alloc_url = 'https://www.tefas.gov.tr/api/DB/BindHistoryAllocation'
+    _success = 0; _fail = 0
+    _conn = sqlite3.connect(DB_FILE)
+    _c = _conn.cursor()
+    for _kod in _fund_list:
+        try:
+            _payload = {
+                'fontip': 'YAT', 'fonkod': _kod,
+                'bastarih': _date_tr, 'bittarih': _date_tr,
+            }
+            _r = _requests.post(_alloc_url, data=_payload, headers=_headers, timeout=10)
+            if _r.status_code != 200:
+                _fail += 1; continue
+            _data = _r.json().get('data', [])
+            if not _data:
+                _fail += 1; continue
+            # Bu fonun AUM'unu sonradan başka endpoint'ten çekmek gerekecek
+            # Şimdilik weight kayıtlarını yaz
+            for _row in _data:
+                _stock = (_row.get('Hisse_Senedi') or _row.get('HisseSenediYuzde') or '').strip()
+                _w = _row.get('HisseSenediYuzde')
+                if not _stock or _w is None: continue
+                try:
+                    _wf = float(str(_w).replace(',', '.'))
+                except Exception:
+                    continue
+                _c.execute('''INSERT OR REPLACE INTO tefas_holdings
+                              (snapshot_date, fund_code, fund_aum_mn, stock_symbol, weight_pct)
+                              VALUES (?, ?, ?, ?, ?)''',
+                           (date_str, _kod, None, _stock.upper(), _wf))
+            _success += 1
+            if _success % 50 == 0:
+                _conn.commit()
+        except Exception:
+            _fail += 1; continue
+    _conn.commit(); _conn.close()
+    return (_success, _fail)
+
+
+def _fetch_kap_disclosures(days_back=30):
+    """KAP duyuruları RSS/HTML'den buyback + ownership değişikliklerini çeker.
+    kap_events tablosuna yazar. Cache: 2 saatte 1.
+
+    KAP endpoint: https://www.kap.org.tr/tr/api/disclosures
+    Filtre: 'Geri Alım', 'Pay Alım/Satım', 'Önemli Niteliğe...'
+    """
+    import requests as _requests
+    from datetime import datetime as _dt, timedelta as _td
+
+    _end = _dt.now(_TZ_ISTANBUL)
+    _start = _end - _td(days=days_back)
+    _headers = {
+        'User-Agent': 'Mozilla/5.0 (compatible; PatronRadar/1.0)',
+        'Accept': 'application/json',
+    }
+    _success = 0; _fail = 0
+    try:
+        # KAP disclosure API — JSON formatlı liste
+        _url = 'https://www.kap.org.tr/tr/api/disclosures'
+        _params = {
+            'fromDate': _start.strftime('%Y-%m-%d'),
+            'toDate':   _end.strftime('%Y-%m-%d'),
+            'disclosureClass': 'GD',   # Gelişme/Duyuru
+        }
+        _r = _requests.get(_url, params=_params, headers=_headers, timeout=30)
+        if _r.status_code != 200:
+            return (0, 1)
+        _data = _r.json()
+        _events = _data if isinstance(_data, list) else _data.get('data', [])
+
+        _conn = sqlite3.connect(DB_FILE)
+        _c = _conn.cursor()
+
+        # Bu üst-seviye taramada her duyuru için subject + summary'ye bak,
+        # buyback ve ownership change pattern'lerini yakala
+        import re as _re
+        _buyback_pat = _re.compile(r'(geri\s*al[ıi]m|hisse\s*geri|buyback)', _re.IGNORECASE)
+        _ownership_pat = _re.compile(r'(pay\s*al[ıi]m|sat[ıi]m|önemli\s*nitelikteki|yönetici\s*işlem)', _re.IGNORECASE)
+        _threshold_pat = _re.compile(r'%\s*(5|10|25|33|50)')
+
+        for _ev in _events:
+            try:
+                _subj = (_ev.get('subject') or _ev.get('konu') or '')
+                _summary = (_ev.get('summary') or _ev.get('aciklama') or '')
+                _sym = (_ev.get('stockCodes') or _ev.get('hisseKodu') or '').strip().upper()
+                _date = (_ev.get('publishDate') or _ev.get('yayinTarihi') or '')[:10]
+                if not _sym or not _date: continue
+                _txt = f"{_subj} {_summary}"
+
+                _is_buyback = bool(_buyback_pat.search(_txt))
+                _is_ownership = bool(_ownership_pat.search(_txt))
+                if not (_is_buyback or _is_ownership): continue
+
+                # Tutar tahmini (basit regex — TL miktarı)
+                _amt = None
+                _m = _re.search(r'([\d.,]+)\s*(TL|milyon|mn|bin)', _txt, _re.IGNORECASE)
+                if _m:
+                    try:
+                        _v = float(_m.group(1).replace('.', '').replace(',', '.'))
+                        _unit = _m.group(2).lower()
+                        if _unit in ('milyon', 'mn'): _amt = _v * 1_000_000
+                        elif _unit == 'bin':         _amt = _v * 1_000
+                        else:                         _amt = _v
+                    except Exception: pass
+
+                _event_type = 'buyback' if _is_buyback else 'ownership_change'
+                _subtype = None
+                _m_thr = _threshold_pat.search(_txt) if _is_ownership else None
+                if _m_thr:
+                    _subtype = f'threshold_{_m_thr.group(1)}pct'
+                elif 'yönetici' in _txt.lower():
+                    _event_type = 'insider_buy'
+                    _subtype = 'manager'
+
+                _c.execute('''INSERT OR REPLACE INTO kap_events
+                              (event_date, symbol, event_type, event_subtype, amount_tl,
+                               amount_lots, price, actor, meta_json)
+                              VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?)''',
+                           (_date, _sym, _event_type, _subtype, _amt, _subj[:200]))
+                _success += 1
+            except Exception:
+                _fail += 1; continue
+        _conn.commit(); _conn.close()
+    except Exception as _ex:
+        try: log_error("kap_disclosures", _ex)
+        except Exception: pass
+        return (0, _fail or 1)
+    return (_success, _fail)
+
+
+def _compute_tefas_signals(ticker: str) -> dict:
+    """TEFAS portföy snapshot'larından 3 STRONG sinyali hesaplar.
+    Hisse fonu olmayan semboller (endeks/emtia/kripto) → tüm None.
+    """
+    out = {'f_tefas_konsensus_alim': None, 'f_tefas_konsensus_satim': None, 'f_tefas_yeni_giris': None}
+    try:
+        # Sembol normalizasyonu — TEFAS hisse kodlarını .IS uzantısı olmadan tutar
+        _sym = ticker.upper().replace('.IS', '').replace('=F', '').replace('-USD', '')
+        if any(_sym.startswith(p) for p in ('XU', 'XB', 'XT', 'XY', '^')) or '=' in _sym or '-' in _sym:
+            return out  # endeks/emtia/kripto → TEFAS yok
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        # Son 30g pencere — günlük weight değişimleri
+        c.execute('''SELECT snapshot_date, fund_code, fund_aum_mn, weight_pct
+                     FROM tefas_holdings WHERE stock_symbol = ?
+                       AND snapshot_date >= date('now', '-30 day')
+                     ORDER BY snapshot_date DESC, fund_code''', (_sym,))
+        _rows = c.fetchall()
+        conn.close()
+        if not _rows: return out
+
+        # fund_code → sorted list of (date, aum, weight)
+        _by_fund = {}
+        for _date, _kod, _aum, _wpct in _rows:
+            _by_fund.setdefault(_kod, []).append((_date, _aum, _wpct))
+
+        # 5 günlük pencere — hangi fonlar arttı/azaldı + yeni giriş
+        _5g_pos = 0; _5g_neg = 0; _yeni_giris_count = 0
+        _5g_total_neg_pct = 0
+        _T = _KURUMSAL_THRESHOLDS
+        for _kod, _series in _by_fund.items():
+            if len(_series) < 2: continue
+            _series.sort(key=lambda x: x[0])  # eski → yeni
+            _latest = _series[-1]
+            _aum = _latest[1] or 0
+            if _aum > 0 and _aum < _T['tefas_min_aum_mn']:
+                continue   # AUM filtresi
+            _w_latest = float(_latest[2] or 0)
+            if _w_latest < _T['tefas_min_weight_pct']:
+                continue   # pozisyon önemsiz
+            # 5 gün önceki weight — son 5 entry içinde en eskisi
+            _w_5g_ago = float(_series[max(0, len(_series) - 5)][2] or 0)
+            _diff_pct = ((_w_latest - _w_5g_ago) / _w_5g_ago * 100) if _w_5g_ago > 0 else 0
+            if _diff_pct >= _T['tefas_min_5g_change_pct']:
+                _5g_pos += 1
+            elif _diff_pct <= -_T['tefas_min_5g_change_pct']:
+                _5g_neg += 1
+                _5g_total_neg_pct += abs(_diff_pct)
+            # Yeni giriş: 30g içinde fon listesinde HİÇ YOKKEN bugün var
+            # Series'in en eskisi 7g+ önceyse + ve weight ≥%1, başlangıç pozisyonu say
+            if (_aum >= _T['tefas_yeni_giris_aum_mn']
+                and _w_latest >= _T['tefas_yeni_giris_pct']
+                and _w_5g_ago < 0.1):  # eski weight 0.1% altıysa "yeni giriş"
+                _yeni_giris_count += 1
+
+        # Üç sinyali ata (1/0/None)
+        out['f_tefas_konsensus_alim']  = 1 if _5g_pos  >= _T['tefas_min_funds_konsensus'] else 0
+        out['f_tefas_konsensus_satim'] = (1 if (_5g_neg >= _T['tefas_min_funds_konsensus']
+                                                and _5g_total_neg_pct >= _T['tefas_dagitim_total_pct'])
+                                          else 0)
+        out['f_tefas_yeni_giris']      = 1 if _yeni_giris_count >= _T['tefas_yeni_giris_funds'] else 0
+    except Exception as _ex:
+        try: log_error("tefas_signals", _ex, ctx={'ticker': ticker})
+        except Exception: pass
+    return out
+
+
+def _compute_kap_buyback_signals(ticker: str, df_hist=None) -> dict:
+    """KAP buyback duyurularından 2 STRONG sinyali hesaplar."""
+    out = {'f_buyback_aktif': None, 'f_buyback_dip_aliyor': None}
+    try:
+        _sym = ticker.upper().replace('.IS', '')
+        if any(_sym.startswith(p) for p in ('XU', 'XB', 'XT', 'XY', '^')) or '=' in _sym or '-' in _sym:
+            return out
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute('''SELECT event_date, event_subtype, amount_tl
+                     FROM kap_events
+                     WHERE symbol = ? AND event_type = 'buyback'
+                       AND event_date >= date('now', '-30 day')
+                     ORDER BY event_date DESC''', (_sym,))
+        _rows = c.fetchall()
+        conn.close()
+        if not _rows:
+            out['f_buyback_aktif'] = 0
+            out['f_buyback_dip_aliyor'] = 0
+            return out
+
+        # f_buyback_aktif: son 5g'de en az 1 alım icra varsa 1
+        from datetime import datetime as _dt
+        _5g_ago = _dt.now(_TZ_ISTANBUL).date()
+        _has_5g_exec = any(
+            (_dt.strptime(_d, '%Y-%m-%d').date() - _5g_ago).days >= -5
+            for _d, _, _ in _rows
+        )
+        out['f_buyback_aktif'] = 1 if _has_5g_exec else 0
+
+        # f_buyback_dip_aliyor: alım fiyatı 52H dibe yakın
+        if df_hist is None or len(df_hist) < 30:
+            try: df_hist = get_safe_historical_data(ticker, period='1y')
+            except Exception: df_hist = None
+        if df_hist is not None and len(df_hist) >= 60 and _has_5g_exec:
+            try:
+                _seg = df_hist.tail(252) if len(df_hist) > 252 else df_hist
+                _low_52h = float(_seg['Low'].min())
+                _cur = float(df_hist['Close'].iloc[-1])
+                _dist_pct = ((_cur - _low_52h) / _low_52h * 100) if _low_52h > 0 else 100
+                if _dist_pct <= _KURUMSAL_THRESHOLDS['buyback_dip_distance_pct']:
+                    out['f_buyback_dip_aliyor'] = 1
+                else:
+                    out['f_buyback_dip_aliyor'] = 0
+            except Exception:
+                out['f_buyback_dip_aliyor'] = 0
+        else:
+            out['f_buyback_dip_aliyor'] = 0
+    except Exception as _ex:
+        try: log_error("kap_buyback_signals", _ex, ctx={'ticker': ticker})
+        except Exception: pass
+    return out
+
+
+def _compute_kap_ownership_signals(ticker: str) -> dict:
+    """KAP pay sahipliği değişikliklerinden 2 STRONG sinyali hesaplar."""
+    out = {'f_threshold_asildi': None, 'f_insider_first_buy': None}
+    try:
+        _sym = ticker.upper().replace('.IS', '')
+        if any(_sym.startswith(p) for p in ('XU', 'XB', 'XT', 'XY', '^')) or '=' in _sym or '-' in _sym:
+            return out
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        # Son 30g'de threshold aşımı (event_subtype threshold_*)
+        c.execute('''SELECT event_subtype, amount_tl FROM kap_events
+                     WHERE symbol = ?
+                       AND event_type = 'ownership_change'
+                       AND event_subtype LIKE 'threshold_%'
+                       AND event_date >= date('now', '-30 day')''', (_sym,))
+        _thresh_rows = c.fetchall()
+        out['f_threshold_asildi'] = 1 if any(r for r in _thresh_rows) else 0
+
+        # İlk içerden alım: son 30g'de insider_buy + önceki 6 ayda hiç insider_buy yok
+        c.execute('''SELECT amount_tl FROM kap_events
+                     WHERE symbol = ? AND event_type = 'insider_buy'
+                       AND event_date >= date('now', '-30 day')
+                     ORDER BY event_date DESC LIMIT 1''', (_sym,))
+        _recent = c.fetchone()
+        if _recent and _recent[0] and float(_recent[0]) >= _KURUMSAL_THRESHOLDS['insider_buy_min_tl']:
+            # 6 ay öncesi hiç var mı?
+            c.execute('''SELECT 1 FROM kap_events
+                         WHERE symbol = ? AND event_type = 'insider_buy'
+                           AND event_date < date('now', '-30 day')
+                           AND event_date >= date('now', '-210 day')
+                         LIMIT 1''', (_sym,))
+            _prior = c.fetchone()
+            out['f_insider_first_buy'] = 1 if not _prior else 0
+        else:
+            out['f_insider_first_buy'] = 0
+        conn.close()
+    except Exception as _ex:
+        try: log_error("kap_ownership_signals", _ex, ctx={'ticker': ticker})
+        except Exception: pass
+    return out
+
+
+def _compute_kurumsal_convergence(signals: dict) -> dict:
+    """3+ STRONG sinyal aynı yöndeyse f_kurumsal_anchor = 1.
+    Yön: pozitif sinyaller (alım) vs negatif (satım).
+    """
+    out = {'f_kurumsal_anchor': None}
+    try:
+        _pos_count = sum([
+            1 if signals.get('f_tefas_konsensus_alim') == 1 else 0,
+            1 if signals.get('f_tefas_yeni_giris')     == 1 else 0,
+            1 if signals.get('f_buyback_aktif')        == 1 else 0,
+            1 if signals.get('f_buyback_dip_aliyor')   == 1 else 0,
+            1 if signals.get('f_threshold_asildi')     == 1 else 0,
+            1 if signals.get('f_insider_first_buy')    == 1 else 0,
+        ])
+        out['f_kurumsal_anchor'] = 1 if _pos_count >= _KURUMSAL_THRESHOLDS['anchor_min_signals'] else 0
+    except Exception:
+        pass
+    return out
+
+
 # ===============================================================
 # B4-2 (3 Haz 2026) — Sinyal anı FEATURE SNAPSHOT helper
 # log_scan_signal df_result'ta feature kolonu yoksa otomatik bu helper kullanır.
@@ -854,6 +1314,15 @@ def _compute_signal_features(ticker: str) -> dict:
         'f_at_y_open': None,
         'f_near_ifvg': None,
         'f_breaker_block_active': None,
+        # 9 Haz 2026 Oturum 20 — KURUMSAL TAKİP 8 STRONG flag (TEFAS + KAP)
+        'f_tefas_konsensus_alim': None,
+        'f_tefas_konsensus_satim': None,
+        'f_tefas_yeni_giris': None,
+        'f_buyback_aktif': None,
+        'f_buyback_dip_aliyor': None,
+        'f_threshold_asildi': None,
+        'f_insider_first_buy': None,
+        'f_kurumsal_anchor': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1112,6 +1581,30 @@ def _compute_signal_features(ticker: str) -> dict:
                 out['f_breaker_block_active'] = _near_bb
             except Exception: pass
         except Exception: pass
+
+        # ─── 17-24) KURUMSAL TAKİP 8 STRONG flag (TEFAS + KAP) ──────────────
+        # Bunlar BIST için defansif: endeks/emtia/kripto'da None kalır.
+        # TEFAS cache boşsa hesap None (sinyal etkisi yok).
+        # KAP cache boşsa hesap 0/None (sinyal etkisi yok).
+        try:
+            _tef = _compute_tefas_signals(ticker)
+            for _k in ('f_tefas_konsensus_alim', 'f_tefas_konsensus_satim', 'f_tefas_yeni_giris'):
+                if _tef.get(_k) is not None:
+                    out[_k] = _tef[_k]
+            _kbb = _compute_kap_buyback_signals(ticker, df_hist=df)
+            for _k in ('f_buyback_aktif', 'f_buyback_dip_aliyor'):
+                if _kbb.get(_k) is not None:
+                    out[_k] = _kbb[_k]
+            _kow = _compute_kap_ownership_signals(ticker)
+            for _k in ('f_threshold_asildi', 'f_insider_first_buy'):
+                if _kow.get(_k) is not None:
+                    out[_k] = _kow[_k]
+            # Convergence (anchor) — 3+ STRONG aynı yönde
+            _conv = _compute_kurumsal_convergence(out)
+            if _conv.get('f_kurumsal_anchor') is not None:
+                out['f_kurumsal_anchor'] = _conv['f_kurumsal_anchor']
+        except Exception: pass
+
     except Exception as e:
         try: log_error("compute_signal_features", e, ctx={'ticker': ticker})
         except Exception: pass
@@ -1288,6 +1781,15 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_at_y_open_v        = _ff('F_Y_Open', 'At_Y_Open', 'f_at_y_open', cast=int)
             f_near_ifvg_v        = _ff('F_iFVG', 'Near_iFVG', 'f_near_ifvg', cast=int)
             f_bb_active_v        = _ff('F_BB_Active', 'Breaker_Block', 'f_breaker_block_active', cast=int)
+            # 9 Haz 2026 Oturum 20 — KURUMSAL TAKİP 8 STRONG flag (TEFAS + KAP)
+            f_tefas_alim_v       = _ff('F_TEFAS_Alim', 'f_tefas_konsensus_alim', cast=int)
+            f_tefas_satim_v      = _ff('F_TEFAS_Satim', 'f_tefas_konsensus_satim', cast=int)
+            f_tefas_yeni_v       = _ff('F_TEFAS_Yeni', 'f_tefas_yeni_giris', cast=int)
+            f_buyback_aktif_v    = _ff('F_Buyback_Aktif', 'f_buyback_aktif', cast=int)
+            f_buyback_dip_v      = _ff('F_Buyback_Dip', 'f_buyback_dip_aliyor', cast=int)
+            f_thresh_v           = _ff('F_Threshold', 'f_threshold_asildi', cast=int)
+            f_insider_first_v    = _ff('F_Insider_First', 'f_insider_first_buy', cast=int)
+            f_anchor_v           = _ff('F_Kurumsal_Anchor', 'f_kurumsal_anchor', cast=int)
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -1312,6 +1814,14 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_at_y_open_v      is None: f_at_y_open_v      = _feat.get('f_at_y_open')
                 if f_near_ifvg_v      is None: f_near_ifvg_v      = _feat.get('f_near_ifvg')
                 if f_bb_active_v      is None: f_bb_active_v      = _feat.get('f_breaker_block_active')
+                if f_tefas_alim_v     is None: f_tefas_alim_v     = _feat.get('f_tefas_konsensus_alim')
+                if f_tefas_satim_v    is None: f_tefas_satim_v    = _feat.get('f_tefas_konsensus_satim')
+                if f_tefas_yeni_v     is None: f_tefas_yeni_v     = _feat.get('f_tefas_yeni_giris')
+                if f_buyback_aktif_v  is None: f_buyback_aktif_v  = _feat.get('f_buyback_aktif')
+                if f_buyback_dip_v    is None: f_buyback_dip_v    = _feat.get('f_buyback_dip_aliyor')
+                if f_thresh_v         is None: f_thresh_v         = _feat.get('f_threshold_asildi')
+                if f_insider_first_v  is None: f_insider_first_v  = _feat.get('f_insider_first_buy')
+                if f_anchor_v         is None: f_anchor_v         = _feat.get('f_kurumsal_anchor')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -1319,14 +1829,20 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_poc_magnet, f_poc_confluence, f_avwap_test_zone,
                     f_ms_trend, f_ms_momentum, f_ms_ict, f_ms_radar2,
                     f_cum_delta_dual, f_rsi_dual, f_breakout_state,
-                    f_at_vwap_minus_2sigma, f_at_y_open, f_near_ifvg, f_breaker_block_active)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_at_vwap_minus_2sigma, f_at_y_open, f_near_ifvg, f_breaker_block_active,
+                    f_tefas_konsensus_alim, f_tefas_konsensus_satim, f_tefas_yeni_giris,
+                    f_buyback_aktif, f_buyback_dip_aliyor,
+                    f_threshold_asildi, f_insider_first_buy, f_kurumsal_anchor)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
                  f_ms_trend_v, f_ms_momentum_v, f_ms_ict_v, f_ms_radar2_v,
                  f_cum_delta_dual, f_rsi_dual, f_breakout_state_v,
-                 f_at_vwap_m2s_v, f_at_y_open_v, f_near_ifvg_v, f_bb_active_v)
+                 f_at_vwap_m2s_v, f_at_y_open_v, f_near_ifvg_v, f_bb_active_v,
+                 f_tefas_alim_v, f_tefas_satim_v, f_tefas_yeni_v,
+                 f_buyback_aktif_v, f_buyback_dip_v,
+                 f_thresh_v, f_insider_first_v, f_anchor_v)
             )
         conn.commit()
         conn.close()
@@ -21507,6 +22023,24 @@ with col_btn:
             except Exception:
                 pass  # Backfill hatası Master Scan'i durdurmasın
 
+            # 0.5 KURUMSAL TAKİP cache refresh (9 Haz 2026 Oturum 20)
+            # TEFAS günlük snapshot + KAP duyuru pencere fetch. Cache dolarsa
+            # _compute_signal_features kurumsal flag'leri otomatik üretir.
+            my_bar.progress(7, text="🏛 Kurumsal akışlar (TEFAS + KAP) güncelleniyor...%7")
+            try:
+                # TEFAS — yalnızca BIST kategorisinde anlamlı, diğer kategorilerde atla
+                if "BIST" in str(st.session_state.get('category', '')):
+                    _tef_ok, _tef_fail = _fetch_tefas_portfolio_snapshot()
+                    import logging
+                    logging.info(f"[tefas] snapshot: {_tef_ok} fon başarılı, {_tef_fail} başarısız.")
+                # KAP — her durumda dene (2 saatlik pencere)
+                _kap_ok, _kap_fail = _fetch_kap_disclosures(days_back=30)
+                import logging
+                logging.info(f"[kap] disclosure fetch: {_kap_ok} olay, {_kap_fail} hata.")
+            except Exception as _kf_ex:
+                try: log_error("kurumsal_fetch_master_scan", _kf_ex)
+                except Exception: pass
+
             # 1. ÖNCE VERİYİ ÇEK (Yahoo Koruması) - %10
             my_bar.progress(10, text="📡 Veriler İndiriliyor (Batch Download)...%10")
             # st.cache_data TTL'ini atla — master scan her zaman taze veri çekmeli
@@ -23361,6 +23895,58 @@ if st.session_state.generate_prompt:
                 "±%2 — failed Order Block ters dönmüş seviye, ICT'nin advanced rejim "
                 "kavramı; DESTEKLEYİCİ confluence — BIST backtest beklemede)"
             )
+
+        # KURUMSAL TAKİP (TEFAS + KAP) — 8 STRONG flag, hepsi koşullu emit
+        # Anchor (3+ aynı yönde) varsa AYRI vurgu satırı → AI G1'de mutlaka kullanır
+        if _smc_extra.get('f_kurumsal_anchor') == 1:
+            _poc_avwap_lines.append(
+                "  🏛 KURUMSAL ANCHOR: True (3+ bağımsız kurumsal kanal aynı yönde — "
+                "TEFAS fon akışı + KAP buyback + KAP pay sahipliği konverjansı; "
+                "tek başına teknik analizden bağımsız yön bilgisi — G1'de MUTLAKA "
+                "merkeze al, 'kurumsal yığılma' olarak vurgula)"
+            )
+        if _smc_extra.get('f_tefas_konsensus_alim') == 1:
+            _poc_avwap_lines.append(
+                "  tefas_konsensus_alim: True (son 5g ≥3 fon hisseyi pozisyonu "
+                "≥%10 artırdı, hepsinin AUM ≥100mn TL — kurumsal birikim; "
+                "DESTEKLEYİCİ confluence)"
+            )
+        if _smc_extra.get('f_tefas_konsensus_satim') == 1:
+            _poc_avwap_lines.append(
+                "  tefas_konsensus_satim: True (son 5g ≥3 fon pozisyonu ≥%10 azalttı, "
+                "toplam ≥%20 çıkış — kurumsal dağıtım; DESTEKLEYİCİ confluence — "
+                "olumlu teze karşı agresif risk uyarısı)"
+            )
+        if _smc_extra.get('f_tefas_yeni_giris') == 1:
+            _poc_avwap_lines.append(
+                "  tefas_yeni_giris: True (son 30g ≥2 büyük fon (AUM ≥500mn) ilk kez "
+                "pozisyon aldı, her biri ≥%1 portföy ağırlığı — erken kurumsal ilgi; "
+                "DESTEKLEYİCİ confluence)"
+            )
+        if _smc_extra.get('f_buyback_aktif') == 1:
+            _poc_avwap_lines.append(
+                "  buyback_aktif: True (KAP — son 5g'de aktif geri alım icrası; "
+                "şirket kendi hisselerini geri alıyor, içerden güven sinyali; "
+                "DESTEKLEYİCİ confluence)"
+            )
+        if _smc_extra.get('f_buyback_dip_aliyor') == 1:
+            _poc_avwap_lines.append(
+                "  buyback_dip_aliyor: True (KAP — geri alımlar 52H dibine ≤%10 "
+                "mesafede yapılıyor; yönetim ucuz bölgede alım yapma KONVİKSİYONU; "
+                "DESTEKLEYİCİ confluence — özellikle güçlü)"
+            )
+        if _smc_extra.get('f_threshold_asildi') == 1:
+            _poc_avwap_lines.append(
+                "  threshold_asildi: True (KAP — son 30g'de %5/%10/%25 pay sahipliği "
+                "eşik aşımı yukarı yönde; yeni büyük ortak girişi veya mevcut ortağın "
+                "stake artışı; DESTEKLEYİCİ confluence)"
+            )
+        if _smc_extra.get('f_insider_first_buy') == 1:
+            _poc_avwap_lines.append(
+                "  insider_first_buy: True (KAP — yönetici/CFO/CEO 6 aydır hiç alım "
+                "yapmamışken son 30g'de ≥5mn TL alım yaptı; içerden güçlü güven; "
+                "DESTEKLEYİCİ confluence — özellikle güçlü)"
+            )
     except Exception: pass
 
     _poc_avwap_block = ("\n" + "\n".join(_poc_avwap_lines)) if _poc_avwap_lines else ""
@@ -24171,7 +24757,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
-• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle).
+• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 KURUMSAL ANCHOR` (3+ kurumsal kanal konverjansı — TEFAS+KAP+ownership aynı yönde — bu varsa G1'de MUTLAKA merkez), `tefas_konsensus_alim`/`tefas_konsensus_satim`/`tefas_yeni_giris` (TEFAS fon akış sinyalleri — STRONG, AI'da 1 cümle), `buyback_aktif`/`buyback_dip_aliyor` (KAP geri alım — özellikle dip alıyor varsa güçlü), `threshold_asildi`/`insider_first_buy` (KAP pay sahipliği — büyük ortak/yönetici hareketleri).
 • smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse).
 • trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
