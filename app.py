@@ -200,23 +200,23 @@ def _fetch_bist_ohlcv_borsapy(symbol, period="1y", interval="1d"):
     Returns: DataFrame (Open, High, Low, Close, Volume) veya None
     """
     try:
-        from borsapy import BorsaPy
+        import borsapy as _bp
     except ImportError:
         return None
     try:
-        _b = BorsaPy()
         _sym = symbol.replace(".IS", "").upper()
-        _h = _b.hisse(_sym)
-        _df = _h.history(period=period, interval=interval)
-        if _df is None or _df.empty:
+        _t = _bp.Ticker(_sym)
+        _df = _t.history(period=period, interval=interval)
+        if _df is None or len(_df) == 0:
             return None
         # Sütun normalize
         _df.columns = [str(c).capitalize() for c in _df.columns]
         _need = {'Open', 'High', 'Low', 'Close', 'Volume'}
         if not _need.issubset(_df.columns):
             return None
+        # Index tz temizliği
         if _df.index.tz is not None:
-            _df.index = _df.index.tz_convert(None)
+            _df.index = _df.index.tz_localize(None)
         return _df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
     except Exception as _ex:
         import logging
