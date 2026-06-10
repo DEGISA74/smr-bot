@@ -808,17 +808,19 @@ def init_db():
     )''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_tefas_sym ON tefas_holdings(stock_symbol, snapshot_date)')
     # KAP duyuru cache: buyback + ownership değişiklikleri
+    # NOT: SQLite PRIMARY KEY içinde COALESCE/expression kabul etmez.
+    # actor kolonunu NOT NULL DEFAULT '' yapıp doğrudan PK'ye koyduk.
     c.execute('''CREATE TABLE IF NOT EXISTS kap_events (
         event_date     TEXT NOT NULL,
         symbol         TEXT NOT NULL,
-        event_type     TEXT NOT NULL,   -- 'buyback_announce' | 'buyback_exec' | 'ownership_change' | 'insider_buy'
+        event_type     TEXT NOT NULL,   -- 'buyback' | 'ownership_change' | 'insider_buy'
         event_subtype  TEXT,            -- 'new_program' | 'threshold_5pct' vs
         amount_tl      REAL,            -- tutar (TL)
         amount_lots    REAL,            -- adet (varsa)
         price          REAL,            -- ortalama fiyat
-        actor          TEXT,            -- alıcı/satıcı (yönetici adı, holding adı vs)
+        actor          TEXT NOT NULL DEFAULT '',  -- alıcı/satıcı (yönetici/holding adı)
         meta_json      TEXT,            -- ham JSON detay
-        PRIMARY KEY (event_date, symbol, event_type, COALESCE(actor, ''))
+        PRIMARY KEY (event_date, symbol, event_type, actor)
     )''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_kap_sym ON kap_events(symbol, event_date)')
     conn.commit()
@@ -1092,8 +1094,8 @@ def _fetch_kap_disclosures(days_back=30):
                 _c.execute('''INSERT OR REPLACE INTO kap_events
                               (event_date, symbol, event_type, event_subtype, amount_tl,
                                amount_lots, price, actor, meta_json)
-                              VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?)''',
-                           (_date, _sym, _event_type, _subtype, _amt, _subj[:200]))
+                              VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)''',
+                           (_date, _sym, _event_type, _subtype, _amt, '', _subj[:200]))
                 _success += 1
             except Exception:
                 _fail += 1; continue
