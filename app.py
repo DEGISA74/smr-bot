@@ -3562,6 +3562,35 @@ def fetch_stock_info(ticker):
             except Exception:
                 pass
 
+        # FIX (10 Haz 2026 Oturum 20): BIST endeks / hisse — Yahoo eksik bar
+        # detection. Yahoo bazen bir önceki seansı ATLIYOR (örn. 10 Haz'da Yahoo
+        # 9 Haz Pazartesi kapanışını veremedi, 8→10 atladı). prev_close=8 Haz
+        # geliyor, gerçek dün=9 Haz → %değişim YANLIŞ.
+        # Çözüm: borsapy ile dünün gerçek kapanışını doğrula (borsapy intraday/EOD
+        # daha güvenilir). Yahoo prev_close ile borsapy'nin son 2 günlük close
+        # arasında >%1 fark varsa borsapy'yi kullan.
+        if _is_bist and not _closed_now and price and prev_close:
+            try:
+                import borsapy as _bp
+                _sym_b = ticker.replace(".IS", "").upper()
+                # XU100 için Index, hisse için Ticker
+                if ticker.startswith("XU") or ticker.startswith("^"):
+                    _obj_b = _bp.Index(_sym_b.replace(".IS", ""))
+                else:
+                    _obj_b = _bp.Ticker(_sym_b)
+                _df_b = _obj_b.history(period="5d", interval="1d")
+                if _df_b is not None and len(_df_b) >= 2:
+                    _bp_prev = float(_df_b['Close'].iloc[-2])
+                    # Yahoo prev_close ile borsapy'nin dünkü kapanışı arasında >%1 fark
+                    # = Yahoo bar atlamış → borsapy'yi kullan
+                    if _bp_prev > 0 and abs(_bp_prev - prev_close) / _bp_prev > 0.01:
+                        import logging
+                        logging.info(f"[fetch_stock_info] {ticker}: Yahoo prev_close "
+                                     f"{prev_close:.2f} → borsapy düzeltme {_bp_prev:.2f}")
+                        prev_close = _bp_prev
+                        change_pct = ((price - prev_close) / prev_close * 100)
+            except Exception: pass
+
         return { "price": price, "change_pct": change_pct, "volume": volume or 0, "sector": "-", "target": "-" }
     except: return None
 
