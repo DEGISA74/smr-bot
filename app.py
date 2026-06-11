@@ -2892,6 +2892,74 @@ def on_scan_result_click(symbol):
 # Parquet önbellek, canlı fiyat yaması ve retry mekanizması burada.
 # ==============================================================================
 
+def _compute_volume_quality_label(ticker, df=None, vol_missing=False):
+    """
+    Bugünkü hacim verisinin GÜVENİLİRLİK ETİKETİ.
+    AI prompt YAML'ına enjekte edilir; AI bu etikete göre RVOL yorumunu kalibre eder.
+
+    Dönen değerler:
+      "FINAL"             — Seans kapanmış (>=18:15) veya hafta sonu/tatil.
+                            Hacim son finalize değeri, GÜVENİLİR.
+      "FINAL_ISYATIRIM"   — finalize_volume.py marker dosyası varsa (bugün İsyatirim
+                            override yapıldı), KESİN doğru.
+      "PROJECTED_LATE"    — Seans son 2 saatte (16:15-18:15). Projeksiyon sapması <%10.
+      "PROJECTED_MID"     — Seans orta dilim (11:55-16:15). Sapma %10-25.
+      "PROJECTED_EARLY"   — İlk 2 saat (09:55-11:55). Projeksiyon güvensiz.
+      "PRE_SESSION"       — Saat 09:55 öncesi, dünden kalma final.
+      "DATA_MISSING"      — RVOL hesaplanmadı (vol_missing_flag=True).
+      "NON_BIST"          — BIST dışı sembol (kripto/ABD/endeks); ayrı kurallarla bak.
+    """
+    if vol_missing:
+        return "DATA_MISSING"
+    try:
+        # Sembol kategorisi
+        _is_bist = ".IS" in ticker and not ticker.startswith("XU") and not ticker.startswith("X")
+        # ".IS" eki var ama XU100/XBANK gibi endeks değil → gerçek hisse
+        if not (".IS" in ticker and not ticker.upper().startswith("XU") and not ticker.upper().startswith("XBANK") and not ticker.upper().startswith("XBIST")):
+            # BIST dışı (kripto, ABD, endeks, emtia)
+            if "-USD" in ticker:
+                return "NON_BIST"  # Kripto 7/24, ayrı yorum
+            if "^" in ticker or ticker.startswith("XU") or "=F" in ticker:
+                return "NON_BIST"
+        # Finalize marker kontrolü — finalize_volume.py bugün çalıştıysa "FINAL_ISYATIRIM"
+        try:
+            _marker = os.path.join(CACHE_DIR, ".finalize_marker")
+            if os.path.exists(_marker):
+                with open(_marker, "r", encoding="utf-8") as _f:
+                    _mdate = _f.read().strip()
+                if _mdate == datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d"):
+                    # Sadece BIST hisseleri için geçerli
+                    if ".IS" in ticker:
+                        return "FINAL_ISYATIRIM"
+        except Exception:
+            pass
+        # Saat tabanlı kalite — sadece BIST için
+        if ".IS" not in ticker:
+            return "FINAL"  # BIST dışı varsayılan
+        _now = datetime.now(_TZ_ISTANBUL)
+        # Hafta sonu veya tatil → dünkü kapanış değeri zaten final
+        if _now.weekday() >= 5:
+            return "FINAL"
+        try:
+            if _BIST_CAL_OK and not _bist_is_trading_day(_now):
+                return "FINAL"
+        except Exception:
+            pass
+        _now_min = _now.hour * 60 + _now.minute
+        # BIST normal seans: 09:55–18:15 = 595–1095 dk
+        if _now_min < 595:
+            return "PRE_SESSION"
+        if _now_min >= 1095:
+            return "FINAL"
+        if _now_min < 715:  # 09:55-11:55 (ilk 2 saat)
+            return "PROJECTED_EARLY"
+        if _now_min < 975:  # 11:55-16:15 (orta dilim)
+            return "PROJECTED_MID"
+        return "PROJECTED_LATE"  # 16:15-18:15 (son 2 saat)
+    except Exception:
+        return "FINAL"  # Hata varsa muhafazakar
+
+
 def apply_volume_projection(df, ticker=""):
     if df is None or df.empty or 'Volume' not in df.columns:
         return df
@@ -24739,6 +24807,7 @@ if st.session_state.generate_prompt:
     sv_extra = pa_data.get('smart_volume', {})
     rvol_val           = sv_extra.get('rvol', 1.0)
     _vol_missing_flag  = sv_extra.get('vol_data_missing', False)
+    _volume_quality    = _compute_volume_quality_label(t, vol_missing=_vol_missing_flag)
     stop_vol_val       = sv_extra.get('stopping', 'Yok')
     climax_vol_val     = sv_extra.get('climax', 'Yok')
     # --- PROMPT İÇİN POC VERİLERİNİ HAZIRLAMA ---
@@ -26629,7 +26698,7 @@ ict_pa:
 
 {("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else "") + (chr(10) + _em_udvr if _em_udvr else "") + (chr(10) + _em_force_index if _em_force_index else "") + (chr(10) + _em_smart_split if _em_smart_split else ""))}
 
-{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
+{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x") + chr(10) + f"  volume_quality: {_volume_quality}" + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
 
 institutional_ref:
   vwap: {v_val:.2f}
@@ -26687,6 +26756,17 @@ REHBER: YAPI = HH+HL/LH+LL trend, CHoCH dönüş; MOMENTUM SLOPE = RSI 5g hızı
 
 *** HACİM ANOMALİLERİ ***
 {("VERİ EKSİK — RVOL hesaplanmamış, hacim yorumu yapma." if _vol_missing_flag else "RVOL: 1.0=normal · 2.0+=kurumsal aktivite · <0.5=ilgisiz. 2.0x + fiyat sabit = Churning (dağıtım); yüksek + kırılım = gerçek katılım; >1.5x + dar bant = Sessiz Birikim/Dağıtım; <0.8x + fiyat ↑ = Zayıf El.")}
+
+🚨 **VOLUME_QUALITY OKUMA (yaml.smart_money.volume_quality):** RVOL'a yorum yapmadan önce bu etikete bak — hacim verisinin GÜVENİLİRLİK seviyesidir:
+• `FINAL_ISYATIRIM` → İsyatirim resmi BIST verisi, kapanış sonrası finalize. RVOL KESİN doğru, tam güven.
+• `FINAL` → Seans kapanmış (>=18:15) veya hafta sonu/tatil. Son finalize değeri, GÜVENİLİR.
+• `PROJECTED_LATE` → 16:15-18:15 arası, projeksiyon sapması <%10. RVOL'a normal yorum yap.
+• `PROJECTED_MID` → 11:55-16:15 arası, sapma %10-25 olabilir. RVOL'u "tahmini" olarak ele al — "Hacim normalden yüksek/düşük görünüyor" dilini kullan, "ortalamanın 2 katı" kesin ifadeden kaçın.
+• `PROJECTED_EARLY` → 09:55-11:55 (ilk 2 saat). Projeksiyon GÜVENSİZ. RVOL'u yoruma KATMA, "seans henüz erken, hacim profili netleşmedi" notu düş.
+• `PRE_SESSION` → Seans öncesi, dünkü kapanış. RVOL geçerli ama "bugün için değil".
+• `DATA_MISSING` → Hacim verisi yok, yorum yapma.
+• `NON_BIST` → Kripto/ABD/endeks; ayrı rejim, BIST kuralları uygulanmaz.
+Bu etiket FINAL veya FINAL_ISYATIRIM değilse RVOL'u TEK BAŞINA "kurumsal aktivite kanıtı" olarak kullanma — diğer hacim göstergeleriyle (OBV, CMF, cum_delta) çapraz teyit ara.
 
 *** SIFIRINCI GÖREV — HOOK (ÖZELLEŞTİRİLMİŞ, EN BAŞA YAZ) ***
 Algoritmik default başlık: {hook_baslik} — bunu AYNEN KOPYALAMA. Analizdeki en çarpıcı çelişki/bulguya dayanan özelleştirilmiş hook üret.
