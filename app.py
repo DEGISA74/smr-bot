@@ -21642,13 +21642,14 @@ def _render_genel_ozet_panel():
 
                 # Pulse — sadece "Aşırı Alım/Satım" iki extreme'de yan flash (dikkat çek)
                 _mfi_pulse = _mfi_lbl in ("Aşırı Alım", "Aşırı Satım")
-                _gs_items_html += _gs_row(
-                    "Hacim Momentumu",
-                    f"<span style='color:{_mfi_clr};'>{_mfi_lbl}</span>",
-                    explain=_mfi_expl,
-                    lc=_mfi_clr,
-                    pulse=_mfi_pulse
-                )
+                if _mfi_lbl != "—":
+                    _gs_items_html += _gs_row(
+                        "Hacim Momentumu",
+                        f"<span style='color:{_mfi_clr};'>{_mfi_lbl}</span>",
+                        explain=_mfi_expl,
+                        lc=_mfi_clr,
+                        pulse=_mfi_pulse
+                    )
 
                 # 2.C) ENDEKSE GÖRE (Relative OBV) — hacim akışı ayrışması
                 # 10 Haz 2026 Oturum 20: Mansfield RS hacim katmanı.
@@ -21694,13 +21695,14 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
 
-                _gs_items_html += _gs_row(
-                    "Endekse Göre",
-                    f"<span style='color:{_rel_clr};'>{_rel_lbl}</span>",
-                    explain=_rel_expl,
-                    lc=_rel_clr,
-                    pulse=_rel_pulse
-                )
+                if _rel_lbl != "—":
+                    _gs_items_html += _gs_row(
+                        "Endekse Göre",
+                        f"<span style='color:{_rel_clr};'>{_rel_lbl}</span>",
+                        explain=_rel_expl,
+                        lc=_rel_clr,
+                        pulse=_rel_pulse
+                    )
 
                 # 2.D) ALICI/SATICI DENGESİ — Up/Down Volume Ratio (Wyckoff)
                 _udvr_lbl = "—"; _udvr_clr = _gs_neu
@@ -21755,13 +21757,14 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
 
-                _gs_items_html += _gs_row(
-                    "Alıcı/Satıcı Dengesi",
-                    f"<span style='color:{_udvr_clr};'>{_udvr_lbl}</span>",
-                    explain=_udvr_expl,
-                    lc=_udvr_clr,
-                    pulse=_udvr_pulse
-                )
+                if _udvr_lbl != "—":
+                    _gs_items_html += _gs_row(
+                        "Alıcı/Satıcı Dengesi",
+                        f"<span style='color:{_udvr_clr};'>{_udvr_lbl}</span>",
+                        explain=_udvr_expl,
+                        lc=_udvr_clr,
+                        pulse=_udvr_pulse
+                    )
 
                 # 2.E) FİYAT × HACİM GÜCÜ — Force Index Dual (Elder)
                 _fi_lbl = "—"; _fi_clr = _gs_neu
@@ -21821,13 +21824,14 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
 
-                _gs_items_html += _gs_row(
-                    "Fiyat × Hacim Gücü",
-                    f"<span style='color:{_fi_clr};'>{_fi_lbl}</span>",
-                    explain=_fi_expl,
-                    lc=_fi_clr,
-                    pulse=_fi_pulse
-                )
+                if _fi_lbl != "—":
+                    _gs_items_html += _gs_row(
+                        "Fiyat × Hacim Gücü",
+                        f"<span style='color:{_fi_clr};'>{_fi_lbl}</span>",
+                        explain=_fi_expl,
+                        lc=_fi_clr,
+                        pulse=_fi_pulse
+                    )
 
                 # 2.F) AKILLI PARA TİPİ — YAPISAL vs TACTICAL ayrımı
                 # 10 Haz 2026 Oturum 20: smart money sinyallerini iki ayrı
@@ -21866,13 +21870,14 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
 
-                _gs_items_html += _gs_row(
-                    "Akıllı Para Tipi",
-                    _smt_lbl,
-                    explain=_smt_expl,
-                    lc=_smt_clr,
-                    pulse=_smt_pulse
-                )
+                if _smt_lbl != "—":
+                    _gs_items_html += _gs_row(
+                        "Akıllı Para Tipi",
+                        _smt_lbl,
+                        explain=_smt_expl,
+                        lc=_smt_clr,
+                        pulse=_smt_pulse
+                    )
 
                 # 3) RANGE KONUMU — 20g aralık × değişim matris (9 senaryo)
                 _rng_lbl = "—"; _rng_clr = _gs_neu; _rng_expl = "20g aralık verisi yok"
@@ -23000,25 +23005,26 @@ with st.sidebar:
     if st.session_state.get('ticker'):
         render_erken_radar_panel(st.session_state.ticker)
 
-    # (Genel Sağlık + Canlı Sinyaller artık _render_health_signals_panel() ile sağ sütunda gösteriliyor)
+    # 🎯 GENEL SAĞLIK (Teknik Skor) — ENDEKS RADARI'nın hemen altına taşındı
+    _render_health_signals_panel()
 
     # --------------------------------------------------
     # --- TEMEL ANALİZ DETAYLARI (DÜZELTİLMİŞ & TEK PARÇA) ---
     sentiment_verisi = calculate_sentiment_score(st.session_state.ticker)
 
-    # 1. PİYASA DUYGUSU (En Üstte)
+    st.divider()
+    # 4. AI ANALIST PANELİ
+    with st.expander("🤖 AI Analist (Prompt)", expanded=True):
+        st.caption("Verileri toplayıp Yapay Zeka için hazır metin oluşturur.")
+        if st.button("📋 Analiz Metnini Hazırla", type="primary"):
+            st.session_state.generate_prompt = True
+
+    # 💼 KURUMSAL İLGİ — AI Prompt panelinin altına taşındı
     sentiment_verisi = calculate_sentiment_score(st.session_state.ticker)
     if sentiment_verisi:
         render_sentiment_card(sentiment_verisi)
 
     st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-
-    st.divider()
-    # 4. AI ANALIST PANELİ
-    with st.expander("🤖 AI Analist (Prompt)", expanded=True):
-        st.caption("Verileri toplayıp Yapay Zeka için hazır metin oluşturur.")
-        if st.button("📋 Analiz Metnini Hazırla", type="primary"): 
-            st.session_state.generate_prompt = True
 
     st.divider()
     # MINERVINI PANELİ (Hatasız Versiyon)
@@ -27340,6 +27346,21 @@ def _render_left_col():
                                 get_batch_data_cached.clear()
                             except Exception:
                                 pass
+                    elif _now_t > (_eh, _em):
+                        # ── SEANS SONU TEK-SHOT TAZELEME ──────────────────────
+                        # Sabah/seans içinde çekilmiş yarım hacim verisi gece
+                        # boyunca cache'te kalıyor; kullanıcı akşam açtığında
+                        # RVOL eksik görünüyor. İsyatirim Volume override
+                        # ~18:30'da finalize olur — kapanış sonrası ilk açılışta
+                        # bir defalık temizle.
+                        _today_key = _now_tr.strftime("%Y%m%d")
+                        _flag_key  = f"_post_close_refresh_{_cur_ticker}_{_today_key}"
+                        if not st.session_state.get(_flag_key, False):
+                            try:
+                                get_batch_data_cached.clear()
+                            except Exception:
+                                pass
+                            st.session_state[_flag_key] = True
     except Exception:
         pass
     # ───────────────────────────────────────────────────────────────────────────
@@ -29362,8 +29383,7 @@ def _render_right_col():
     # --- BİRLEŞİK SİNYAL PANELİ (Canlı Sinyaller + Tarama Sonuçları) ---
     render_unified_signals_panel(st.session_state.ticker)
 
-    # --- TEKNİK GÖRÜNÜM (GAUGE) — sidebar'dan taşındı ---
-    _render_health_signals_panel()
+    # (GENEL SAĞLIK (Teknik Skor) → sidebar'a, ENDEKS RADARI altına taşındı)
 
     # --- ICT BOTTOM LINE (SONUÇ) — sidebar'dan taşındı ---
     try:
