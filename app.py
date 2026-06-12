@@ -1409,6 +1409,17 @@ def _compute_tefas_signals(ticker: str) -> dict:
         conn.close()
         if not _rows: return out
 
+        # ── Veri-güvenilirlik kapısı (12 Haz fix) ───────────────────────────
+        # Bug: hem konsensus_alim hem konsensus_satim her hisse için 1 basıyordu.
+        # Kök neden: (a) sadece 3 snapshot günü → 5g penceresi gerçek değil,
+        #            (b) fund_aum_mn TÜM satırlarda None → AUM materiality filtresi ölü.
+        # Çöp veriyle sinyal üretmektense NULL bırak (memory'deki orijinal söz:
+        # "başarısızsa flag NULL kalır"). Pipeline düzelince kapı kendiliğinden açılır.
+        _distinct_dates = {r[0] for r in _rows}
+        _has_aum = any(r[2] is not None for r in _rows)
+        if len(_distinct_dates) < 5 or not _has_aum:
+            return out   # güvenilmez veri → 3 sinyal de None
+
         # fund_code → sorted list of (date, aum, weight)
         _by_fund = {}
         for _date, _kod, _aum, _wpct in _rows:
@@ -1579,6 +1590,13 @@ def _compute_kurumsal_convergence(signals: dict) -> dict:
 # ===============================================================
 SPIKE_DOM_THRESHOLD = 0.60  # bugün >%60 ise dominant
 
+# (12 Haz) near_ifvg + breaker_block flag'leri piyasanın >%50'sinde ateşliyor
+# (±%2 band + TÜM tarihsel zone'lar sayılıyor) → ayırt edici değil, gürültü.
+# scan_signals'a YAZILMAYA devam eder (Eylül 2026 backtest ölçecek), ama AI
+# prompt'a ve YAPISAL/TACTICAL kompozit skora KATILMAZ. Backtest hit ≥%55 +
+# ret ≥%3 verirse True yap → AI'a geri ekle.
+SMC_IFVG_BB_AI_ENABLED = False
+
 def _spike_dom_ratio(today_delta, window_delta):
     """0..1+ döner. Aynı yönde değilse 0, pencere ~0 ise 0. >0.6 = dominant."""
     try:
@@ -1675,8 +1693,8 @@ def _compute_signal_features(ticker: str) -> dict:
         except Exception: pass
         # 3) f_cmf_dual — 5g + 20g state machine (7 state)
         try:
-            cmf5  = float(compute_cmf(df, period=5).iloc[-1])
-            cmf20 = float(compute_cmf(df, period=20).iloc[-1])
+            cmf5  = float(compute_cmf(df, period=5))    # compute_cmf float döner, .iloc[-1] YOK (12 Haz fix)
+            cmf20 = float(compute_cmf(df, period=20))
             if cmf5 > 0.05 and cmf20 > 0.05:    out['f_cmf_dual'] = 'strong_pos'
             elif cmf5 < -0.05 and cmf20 < -0.05: out['f_cmf_dual'] = 'strong_neg'
             elif cmf5 > 0 and cmf20 < 0:         out['f_cmf_dual'] = 'turning_up'
@@ -4425,10 +4443,17 @@ def compute_relative_obv_state(df_stock, df_bench, lookback=20):
         _x = _np.arange(lookback, dtype=float)
         _s_slope_raw = _np.polyfit(_x, _s_obv[-lookback:], 1)[0]
         _b_slope_raw = _np.polyfit(_x, _b_obv[-lookback:], 1)[0]
-        _s_last = abs(_s_obv[-1]) if abs(_s_obv[-1]) > 1e-6 else 1.0
-        _b_last = abs(_b_obv[-1]) if abs(_b_obv[-1]) > 1e-6 else 1.0
-        _s_slope_pct = (_s_slope_raw / _s_last) * 100
-        _b_slope_pct = (_b_slope_raw / _b_last) * 100
+        # Normalize: slope'u (OBV-birimi/gün) ortalama günlük HACME böl → kararlı ölçek.
+        # (12 Haz fix) Eski normalizör abs(OBV[-1]) idi; OBV cumsum sıfır etrafında
+        # salınınca payda ~0 olup yüzde patlıyordu. Benchmark (XU100) tüm hisselerde
+        # ortak olduğundan bu instabilite herkese yayılıp %57'sini 'outperform_strong'
+        # gösteriyordu. Ortalama hacim sabit/anlamlı bir ölçek (boyutsuz birikim hızı).
+        _s_vol_scale = float(_s['Volume'].tail(lookback).mean())
+        _b_vol_scale = float(_b['Volume'].tail(lookback).mean())
+        _s_vol_scale = _s_vol_scale if _s_vol_scale > 1e-6 else 1.0
+        _b_vol_scale = _b_vol_scale if _b_vol_scale > 1e-6 else 1.0
+        _s_slope_pct = (_s_slope_raw / _s_vol_scale) * 100
+        _b_slope_pct = (_b_slope_raw / _b_vol_scale) * 100
         _diff = _s_slope_pct - _b_slope_pct
 
         # State (eşikler 5g/20g CMF/MFI dual pattern ile uyumlu)
@@ -4793,10 +4818,11 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
                 elif _bo_i == 1:
                     tact_score += 3; tact_pos.append('Breakout testing')
             except Exception: pass
-        # iFVG, BB (ICT-tactical, kısa vade)
-        if f.get('f_near_ifvg') == 1:
+        # iFVG, BB (ICT-tactical, kısa vade) — gürültü nedeniyle skora KATILMAZ
+        # (12 Haz: >%50 ateşliyor, SMC_IFVG_BB_AI_ENABLED=False ile pasif)
+        if SMC_IFVG_BB_AI_ENABLED and f.get('f_near_ifvg') == 1:
             tact_score += 4; tact_pos.append('Inverse FVG yakını')
-        if f.get('f_breaker_block_active') == 1:
+        if SMC_IFVG_BB_AI_ENABLED and f.get('f_breaker_block_active') == 1:
             tact_score += 4; tact_pos.append('Breaker block aktif')
         # VWAP -2σ (mean reversion tactical fırsat)
         if f.get('f_at_vwap_minus_2sigma') == 1:
@@ -25674,14 +25700,14 @@ if st.session_state.generate_prompt:
                 "kurumsal kalibrasyon noktası, yıllık performans referansı; "
                 "DESTEKLEYİCİ bağlam — BIST backtest beklemede)"
             )
-        if _smc_extra.get('f_near_ifvg') == 1:
+        if SMC_IFVG_BB_AI_ENABLED and _smc_extra.get('f_near_ifvg') == 1:
             _poc_avwap_lines.append(
                 "  near_inverse_fvg: True (fiyat 'iFVG' bölgesinde ±%2 — eski "
                 "FVG'nin rolü ters dönmüş: eskiden destek olan bull FVG artık direnç "
                 "veya tersi; DESTEKLEYİCİ confluence, bias OBV/Delta'dan gelir — "
                 "BIST backtest beklemede)"
             )
-        if _smc_extra.get('f_breaker_block_active') == 1:
+        if SMC_IFVG_BB_AI_ENABLED and _smc_extra.get('f_breaker_block_active') == 1:
             _poc_avwap_lines.append(
                 "  breaker_block_active: True (fiyat aktif 'Breaker Block' bölgesinde "
                 "±%2 — failed Order Block ters dönmüş seviye, ICT'nin advanced rejim "
