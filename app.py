@@ -861,6 +861,11 @@ def init_db():
         # Divergence: bullish (fiyat LL + FI HL) veya bearish (fiyat HH + FI LH)
         'ALTER TABLE scan_signals ADD COLUMN f_force_index_dual TEXT',
         'ALTER TABLE scan_signals ADD COLUMN f_force_index_divergence TEXT',
+        # 12 Haz 2026 — Tek-mum dominance bitmask (path-aware koruma)
+        # Bit 0=OBV(5g), 1=CumDelta(5g), 2=CMF(5g), 3=RSI(5), 4=MFI(5).
+        # Bugünkü mumun ilgili dual-window deltasının >%60'ını oluşturduğu durumlar
+        # set edilir. AI prompt ve OBV panelinde "teyit bekleniyor" rozetine bağlanır.
+        'ALTER TABLE scan_signals ADD COLUMN f_spike_dominance INTEGER',
     ]:
         try:
             c.execute(_alter_col)
@@ -1567,6 +1572,26 @@ def _compute_kurumsal_convergence(signals: dict) -> dict:
 
 
 # ===============================================================
+# 12 Haz 2026 — Tek-mum dominance helper (path-aware koruma)
+# Dual-window state'ler (OBV/CMF/CumDelta/RSI/MFI) bugün >X% katkıyla
+# şişirilmişse "teyit bekleniyor" olarak işaretlemek için kullanılır.
+# Aynı işaret + bugünkü delta / pencere deltası > eşik.
+# ===============================================================
+SPIKE_DOM_THRESHOLD = 0.60  # bugün >%60 ise dominant
+
+def _spike_dom_ratio(today_delta, window_delta):
+    """0..1+ döner. Aynı yönde değilse 0, pencere ~0 ise 0. >0.6 = dominant."""
+    try:
+        td = float(today_delta); wd = float(window_delta)
+        if abs(wd) < 1e-9: return 0.0
+        if (td > 0) != (wd > 0): return 0.0
+        r = abs(td) / abs(wd)
+        return r if r == r else 0.0  # NaN guard
+    except Exception:
+        return 0.0
+
+
+# ===============================================================
 # B4-2 (3 Haz 2026) — Sinyal anı FEATURE SNAPSHOT helper
 # log_scan_signal df_result'ta feature kolonu yoksa otomatik bu helper kullanır.
 # 7 feature: f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days, f_vp_shape, f_master_score.
@@ -1622,6 +1647,10 @@ def _compute_signal_features(ticker: str) -> dict:
         # 10 Haz 2026 Oturum 20 — Force Index Dual (Elder)
         'f_force_index_dual': None,
         'f_force_index_divergence': None,
+        # 12 Haz 2026 — Tek-mum dominance bitmask
+        # Bit 0=OBV(5g), 1=CumDelta(5g), 2=CMF(5g), 3=RSI(5), 4=MFI(5).
+        # >%60 katkı = bit set. 0 = saf, dual-window "iki periyot teyit" gerçek.
+        'f_spike_dominance': 0,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1655,6 +1684,14 @@ def _compute_signal_features(ticker: str) -> dict:
             elif cmf20 > 0.05:                    out['f_cmf_dual'] = 'pos'
             elif cmf20 < -0.05:                   out['f_cmf_dual'] = 'neg'
             else:                                 out['f_cmf_dual'] = 'neutral'
+            # Spike dominance bit 2 — bugünkü money flow vol / 5g toplam money flow vol
+            try:
+                _rng_cmf = (df['High'] - df['Low']).replace(0, np.nan)
+                _mfm = ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / _rng_cmf
+                _mfv = (_mfm * df['Volume']).fillna(0)
+                if _spike_dom_ratio(_mfv.iloc[-1], _mfv.tail(5).sum()) > SPIKE_DOM_THRESHOLD:
+                    out['f_spike_dominance'] |= (1 << 2)
+            except Exception: pass
         except Exception: pass
         # 4) f_omi_sigma — EMA(OBV,5) − EMA(OBV,20), 50-bar std normalize
         try:
@@ -1664,6 +1701,13 @@ def _compute_signal_features(ticker: str) -> dict:
             std = omi.rolling(50).std().iloc[-1]
             if std and std > 0:
                 out['f_omi_sigma'] = round(float(omi.iloc[-1] / std), 2)
+            # Spike dominance bit 0 — bugünkü OBV katkısı / 5g OBV deltası
+            try:
+                _obv_td = float(obv.iloc[-1] - obv.iloc[-2])
+                _obv_5w = float(obv.iloc[-1] - obv.iloc[-6])
+                if _spike_dom_ratio(_obv_td, _obv_5w) > SPIKE_DOM_THRESHOLD:
+                    out['f_spike_dominance'] |= (1 << 0)
+            except Exception: pass
         except Exception: pass
         # 5) f_squeeze_days — BB ⊂ Keltner kaç gündür (trailing count)
         try:
@@ -1737,6 +1781,11 @@ def _compute_signal_features(ticker: str) -> dict:
             elif _p20 > 5:                out['f_cum_delta_dual'] = 'pos'
             elif _p20 < -5:               out['f_cum_delta_dual'] = 'neg'
             else:                         out['f_cum_delta_dual'] = 'neutral'
+            # Spike dominance bit 1 — bugünkü volume delta / 5g toplam
+            try:
+                if _spike_dom_ratio(_vd.iloc[-1], _cum5) > SPIKE_DOM_THRESHOLD:
+                    out['f_spike_dominance'] |= (1 << 1)
+            except Exception: pass
         except Exception: pass
 
         # 12) f_rsi_dual — RSI(5)/RSI(14) state (7 state)
@@ -1758,6 +1807,14 @@ def _compute_signal_features(ticker: str) -> dict:
                 elif _rsi5 < 50  and _rsi14 >= 70: out['f_rsi_dual'] = 'cooling_overheat'  # tepe yorgunluğu
                 elif _rsi5 > 50  and _rsi14 <= 30: out['f_rsi_dual'] = 'dip_recovery'      # erken dönüş
                 else:                              out['f_rsi_dual'] = 'neutral'
+                # Spike dominance bit 3 — bugünkü RSI(5) hareketi / 5g toplam hareket
+                try:
+                    _rsi5_series = (100 - (100 / (1 + _rs5)))
+                    _rsi_td = float(_rsi5_series.iloc[-1] - _rsi5_series.iloc[-2])
+                    _rsi_5w = float(_rsi5_series.iloc[-1] - _rsi5_series.iloc[-6])
+                    if _spike_dom_ratio(_rsi_td, _rsi_5w) > SPIKE_DOM_THRESHOLD:
+                        out['f_spike_dominance'] |= (1 << 3)
+                except Exception: pass
         except Exception: pass
 
         # 12.5) f_mfi_dual — MFI(5)/MFI(14) dual-window state (7 state)
@@ -1787,6 +1844,13 @@ def _compute_signal_features(ticker: str) -> dict:
                     elif _mfi5 < 50  and _mfi14 >= 75: out['f_mfi_dual'] = 'cooling_smart_exit'    # smart money çıkmaya başladı, fiyat hâlâ tepede
                     elif _mfi5 > 50  and _mfi14 <= 25: out['f_mfi_dual'] = 'smart_money_recovery'  # smart money dipten dönüyor, ana fiyat hâlâ baskı altında
                     else:                              out['f_mfi_dual'] = 'neutral'
+                    # Spike dominance bit 4 — bugünkü MFI(5) hareketi / 5g toplam
+                    try:
+                        _mfi_td = float(_mfi5_series.iloc[-1] - _mfi5_series.iloc[-2])
+                        _mfi_5w = float(_mfi5_series.iloc[-1] - _mfi5_series.iloc[-6])
+                        if _spike_dom_ratio(_mfi_td, _mfi_5w) > SPIKE_DOM_THRESHOLD:
+                            out['f_spike_dominance'] |= (1 << 4)
+                    except Exception: pass
 
                     # f_rsi_mfi_bouquet — ELIT confluence flag
                     # AÇIKLAMA: RSI ve MFI aynı yönde ekstreme + dual-window aynı durumda.
@@ -2208,6 +2272,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_fi_dual            = f_fi_dual_raw if f_fi_dual_raw else None
             f_fi_div_raw         = _ff('F_FI_Div', 'f_force_index_divergence', cast=str)
             f_fi_div             = f_fi_div_raw if f_fi_div_raw else None
+            # 12 Haz 2026 — Spike Dominance bitmask
+            f_spike_dom_v        = _ff('F_Spike_Dominance', 'f_spike_dominance')
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -2255,6 +2321,7 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_udvr_climax      is None: f_udvr_climax      = _feat.get('f_udvr_climax')
                 if f_fi_dual          is None: f_fi_dual          = _feat.get('f_force_index_dual')
                 if f_fi_div           is None: f_fi_div           = _feat.get('f_force_index_divergence')
+                if f_spike_dom_v      is None: f_spike_dom_v      = _feat.get('f_spike_dominance')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -2271,8 +2338,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_rel_obv_state, f_rel_obv_divergence,
                     f_smart_structural_score, f_smart_tactical_score,
                     f_udvr_20g, f_udvr_state, f_udvr_climax,
-                    f_force_index_dual, f_force_index_divergence)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_force_index_dual, f_force_index_divergence,
+                    f_spike_dominance)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
@@ -2287,7 +2355,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                  f_rel_obv_state, f_rel_obv_div_v,
                  f_smart_struct_v, f_smart_tact_v,
                  f_udvr_v, f_udvr_state, f_udvr_climax,
-                 f_fi_dual, f_fi_div)
+                 f_fi_dual, f_fi_div,
+                 f_spike_dom_v)
             )
         conn.commit()
         conn.close()
@@ -4868,6 +4937,19 @@ def get_obv_divergence_status(ticker):
         price_14g_up = p_now > p_14
         is_obv_strong = obv_now > obv_sma_now
 
+        # 12 Haz 2026 — Tek-mum dominance check
+        # Bugünkü OBV katkısı, 5g deltasının >%60'ı ise dual-window okuması
+        # şişirilmiş. Pozitif/güçlü etiketlere "(⚠ tek-mum ağırlıklı: %X)" eklenir.
+        try:
+            _obv_today = obv_now - float(obv.iloc[-2])
+            _obv_5g_d  = obv_now - obv_5
+            _spike_r   = (abs(_obv_today) / abs(_obv_5g_d)) if abs(_obv_5g_d) > 1e-9 else 0.0
+            _same_dir  = (_obv_today > 0) == (_obv_5g_d > 0)
+            _spike_dom = (_spike_r > 0.60) and _same_dir
+            _spike_tag = f"  (⚠ tek-mum ağırlıklı: bugünkü mum 5g akışın %{_spike_r*100:.0f}'ini oluşturdu — teyit bekleniyor)" if _spike_dom else ""
+        except Exception:
+            _spike_dom = False; _spike_tag = ""
+
         # 3. Karar Mekanizması — dual window çakışma mantığı
         # ── Kafa çevirme tespiti ──────────────────────────────────────────
         if obv_5g_up and not obv_14g_up:
@@ -4891,10 +4973,10 @@ def get_obv_divergence_status(ticker):
                             "negatif — bar içi satış baskısı sürüyor. OBV'nin gördüğü 'giriş' büyük "
                             "ihtimalle gece/açılış hacmi; gün içi gerçek alış yok."
                             + cmf_txt)
-                return ("🔥 GÜÇLÜ GİZLİ GİRİŞ", "#16a34a",
+                return ("🔥 GÜÇLÜ GİZLİ GİRİŞ" + (" ⚠ tek-mum" if _spike_dom else ""), "#16a34a",
                         "Hem 5 hem 14 günlük OBV yukarı — fiyat düşerken akıllı para iki periyotta da "
                         "birikimi sürdürüyor. OBV 20 günlük ortalamasını da aştı: güçlü akümülasyon sinyali."
-                        + cmf_txt)
+                        + cmf_txt + _spike_tag)
             else:
                 return ("👀 Olası Toplama (Zayıf)", "#d97706",
                         "5 ve 14 günlük OBV fiyat düşüşüne rağmen yükseliyor, ancak henüz 20 günlük "
@@ -4917,10 +4999,10 @@ def get_obv_divergence_status(ticker):
                             "baskın — OBV yanıltıcı (muhtemel gap/açılış etkisi). Gerçek bir "
                             "emilim sinyali değil."
                             + cmf_txt)
-                return ("🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "#d97706",
+                return ("🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)" + (" ⚠ tek-mum" if _spike_dom else ""), "#d97706",
                         "Bugün fiyat geri çekilse de hem 5 hem 14 günlük OBV yukarı ve 20 günlük "
                         "ortalamanın üzerinde. Panik satışları kurumsal alımla karşılanıyor."
-                        + cmf_txt)
+                        + cmf_txt + _spike_tag)
             else:
                 # CMF teyitli sağlıklı trend; CMF negatifse "Zayıf Teyit"
                 if cmf_strong_neg:
@@ -4929,10 +5011,10 @@ def get_obv_divergence_status(ticker):
                             "Yükselişin arkasında bar içi gerçek alıcı yok — kapanışlar günün "
                             "alt yarısında. Trend kırılgan."
                             + cmf_txt)
-                return ("✅ SAĞLIKLI TREND (Hacim Onaylı)", "#15803d",
+                return ("✅ SAĞLIKLI TREND (Hacim Onaylı)" + (" ⚠ tek-mum" if _spike_dom else ""), "#15803d",
                         "5 ve 14 günlük OBV fiyat yükselişini iki periyotta da teyit ediyor. "
                         "Trendin arkasında tutarlı akıllı para desteği var."
-                        + cmf_txt)
+                        + cmf_txt + _spike_tag)
 
         return ("⚖️ ZAYIF İVME (Hacimsiz Bölge)", "#64748B",
                 "OBV 20 günlük ortalamasının altında; 5 ve 14 günlük pencerede net yön yok. "
@@ -25076,6 +25158,18 @@ if st.session_state.generate_prompt:
             cmf_dual_txt = f"Orta vade negatif (20g {_cmf_20:+.3f}) — satıcı baskısı sürüyor"
         else:
             cmf_dual_txt = f"Nötr (5g {_cmf_5:+.3f}, 20g {_cmf_20:+.3f}) — net yön yok"
+        # 12 Haz 2026 — Tek-mum dominance prefix (bugünkü mfv / 5g mfv toplamı)
+        # Sadece yön-anlamlı durumlarda etiket ekle (Nötr'e dokunma — zaten emit edilmiyor)
+        try:
+            if not cmf_dual_txt.startswith("Nötr"):
+                _rng_p = (df_hist['High'] - df_hist['Low']).replace(0, np.nan)
+                _mfm_p = ((df_hist['Close'] - df_hist['Low']) - (df_hist['High'] - df_hist['Close'])) / _rng_p
+                _mfv_p = (_mfm_p * df_hist['Volume']).fillna(0)
+                _t  = float(_mfv_p.iloc[-1])
+                _w5 = float(_mfv_p.tail(5).sum())
+                if abs(_w5) > 1e-9 and (_t > 0) == (_w5 > 0) and abs(_t)/abs(_w5) > 0.60:
+                    cmf_dual_txt = f"[⚠ tek-mum ağırlıklı] {cmf_dual_txt}"
+        except Exception: pass
     except Exception:
         pass
 
@@ -25579,6 +25673,12 @@ if st.session_state.generate_prompt:
             elif _p5_d > 0  and _p20_d < 0:  _cdd_txt = f"Kafa çeviriyor / toparlanma (5g %{_p5_d:+.1f} pozitif, 20g %{_p20_d:+.1f} negatif) — short toparlanma, ana dağıtım era'sı sürüyor"
             elif _p5_d < 0  and _p20_d > 0:  _cdd_txt = f"Kafa çeviriyor / zayıflama (5g %{_p5_d:+.1f} negatif, 20g %{_p20_d:+.1f} pozitif) — short profit-taking, ana birikim era'sı"
             if _cdd_txt:
+                # 12 Haz 2026 — Tek-mum dominance prefix
+                try:
+                    _vd_td = float(_vd_d.iloc[-1])
+                    if _c5_d != 0 and (_vd_td > 0) == (_c5_d > 0) and abs(_vd_td)/abs(_c5_d) > 0.60:
+                        _cdd_txt = f"[⚠ tek-mum ağırlıklı] {_cdd_txt}"
+                except Exception: pass
                 _em_cum_delta_dual = _line("cum_delta_dual_window", _cdd_txt)
     except Exception:
         pass
@@ -25604,6 +25704,14 @@ if st.session_state.generate_prompt:
             elif _r5 < 50  and _r14 >= 70: _rd_txt = f"Tepe yorgunluğu (RSI5 {_r5:.0f} soğuyor, RSI14 {_r14:.0f} hâlâ aşırı alımda) — momentum kırılıyor"
             elif _r5 > 50  and _r14 <= 30: _rd_txt = f"Erken dip dönüşü (RSI5 {_r5:.0f} toparlanıyor, RSI14 {_r14:.0f} hâlâ dipte) — dönüş işareti"
             if _rd_txt:
+                # 12 Haz 2026 — Tek-mum dominance prefix (bugünkü RSI5 hareketi / 5g hareketi)
+                try:
+                    _r5_series = (100 - (100 / (1 + (_g5r / _l5r))))
+                    _r_td = float(_r5_series.iloc[-1] - _r5_series.iloc[-2])
+                    _r_5w = float(_r5_series.iloc[-1] - _r5_series.iloc[-6])
+                    if abs(_r_5w) > 1e-9 and (_r_td > 0) == (_r_5w > 0) and abs(_r_td)/abs(_r_5w) > 0.60:
+                        _rd_txt = f"[⚠ tek-mum ağırlıklı] {_rd_txt}"
+                except Exception: pass
                 _em_rsi_dual = _line("rsi_dual_window", _rd_txt)
     except Exception:
         pass
@@ -25646,6 +25754,13 @@ if st.session_state.generate_prompt:
                     _md_state = 'smart_money_recovery'
                     _md_txt = f"Dipten dönüş (MFI5 {_m5:.0f} toparlanıyor, MFI14 {_m14:.0f} hâlâ dipte) — akıllı para geri giriyor, erken dönüş işareti"
                 if _md_txt:
+                    # 12 Haz 2026 — Tek-mum dominance prefix
+                    try:
+                        _m_td = float(_mfi5_e.iloc[-1] - _mfi5_e.iloc[-2])
+                        _m_5w = float(_mfi5_e.iloc[-1] - _mfi5_e.iloc[-6])
+                        if abs(_m_5w) > 1e-9 and (_m_td > 0) == (_m_5w > 0) and abs(_m_td)/abs(_m_5w) > 0.60:
+                            _md_txt = f"[⚠ tek-mum ağırlıklı] {_md_txt}"
+                    except Exception: pass
                     _em_mfi_dual = _line("mfi_dual_window", _md_txt)
 
                 # RSI vs MFI Bouquet — ELIT confluence flag
@@ -26423,6 +26538,8 @@ Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
 1) **YAPI** (yaml.ict_pa.structure + mss_yapi_kirilimi + GENEL ÖZET PANEL.YAPI): Trend bias ne? HH+HL mi LH+LL mi, BOS/CHoCH var mı? — Bu yönü söyler.
 2) **KONUM** (yaml.scenario.zone + yaml.smart_money.va_pos + yaml.asset.yillik_konum_52h): Fiyat ucuz mu pahalı mı? Discount/Premium, VA içinde/altında/üstünde, 52H konumu — Bu RR'ı söyler.
 3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + mfi_dual_window + udvr_state/udvr_wyckoff + rel_obv_state + smart_money.cum_delta_5g + vp_sekil + smart_money_split): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi. UDVR'nin climax durumlarına ayrıca dikkat: tepe/dip'te smart money'in girdiği/çıktığını gösterir.
+
+**[⚠ tek-mum ağırlıklı] rozeti okuma (KRİTİK):** Bir dual-window state'in (cmf_dual_window / cum_delta_dual_window / rsi_dual_window / mfi_dual_window) ya da yaml.obv_cmf.durum'un başında `[⚠ tek-mum ağırlıklı]` rozeti varsa, o state'i "iki periyotta birikim teyitli" diye okuma. Bugünkü tek mum 5 günlük deltanın >%60'ını oluşturmuş — yani okuma tek günün şişirmesinden geliyor, gerçek path-tabanlı birikim/dağıtım değil. Bu durumda: (a) state'i DESTEKLEYİCİ değil "TEYİT BEKLENİYOR" olarak yansıt, (b) G2'de "tek mumla şişirilmiş okumayı 2-3 gün izlemek lazım, geri verirse sahte güç" tarzı somut uyarı yaz, (c) "iki pencerede birikim sürüyor", "kalıcı kurumsal", "akıllı para iki periyotta da" gibi yapısal cümleleri KULLANMA. AI yorumunda rozeti açıkça "tek mum ağırlıklı" ya da "bugünkü tek bar okumayı şişirmiş" olarak yansıt — yutma.
 
 **MFI vs RSI okuma:** RSI fiyat momentumu, MFI hacim-ağırlıklı momentum (Wyckoff effort-vs-result). Aynı yönde uyumlu (mfi_dual ve rsi_dual aynı state) = ÇİFT TEYİT, güçlü. Divergent (örn RSI overbought ama MFI nötr) → "fiyat yorgun ama hacim destek vermiyor / fiyat üzerine çıkmaya çalışıyor ama akıllı para girmiyor" = SAHTE RALLY uyarısı. `rsi_mfi_bouquet` varsa = climax noktası, G1 açılışında merkeze al.
 
