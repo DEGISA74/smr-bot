@@ -2987,7 +2987,7 @@ Bu durumda zorunlu:
 
 🏛 REJİM DEĞİŞİMİ vs [gelişim] ROZETİ OKUMA (KRİTİK — 12 Haz 2026):
 Data block'ta şu rozetler görülebilir:
-- "🏛 REJİM DEĞİŞTİ — 20g önce {faz_X} → bugün {faz_Y}" (faz_txt'te). Bu ANCHOR seviyesi — analiz açılışında bu rejim kaymasını MUTLAKA merkez yap, ana hikaye burası: "Hisse geçen ay {faz_X}'teydi, bu hafta {faz_Y}'ye geçti — yeni piyasa fazı."
+- "🏛 REJİM DEĞİŞTİ — 20g önce {{faz_X}} → bugün {{faz_Y}}" (faz_txt'te). Bu ANCHOR seviyesi — analiz açılışında bu rejim kaymasını MUTLAKA merkez yap, ana hikaye burası: "Hisse geçen ay {{faz_X}}'teydi, bu hafta {{faz_Y}}'ye geçti — yeni piyasa fazı."
 - 52H trajectory "20g önce %X'deydi → +/-Y puan yükseliyor/düşüyor" — bağlam rengi. Yön anlamlıysa (≥5 puan) kısa mention, yatay ise atla.
 - RVOL "5g ort X.Yx → bugün ZX sıçrama, SPIKE" vs "SÜREKLİ ilgi" — SPIKE bugünün yeni ilgi, SÜREKLİ kovalanma. İki farklı hikaye, ayırt et.
 "yatay" / "küçük drift" rozetleri görürsen → o veriyi mention etme, bağlamı zaten anlamsız. Eşik altı varyans = konu yok.
@@ -3372,7 +3372,7 @@ Bu durumda zorunlu:
 
 🏛 REJİM DEĞİŞİMİ vs [gelişim] ROZETİ OKUMA (KRİTİK — 12 Haz 2026):
 Data block'ta şu rozetler görülebilir:
-- "🏛 REJİM DEĞİŞTİ — 20g önce {faz_X} → bugün {faz_Y}" (faz_txt'te). Bu ANCHOR seviyesi — analiz açılışında bu rejim kaymasını MUTLAKA merkez yap, ana hikaye burası: "Hisse geçen ay {faz_X}'teydi, bu hafta {faz_Y}'ye geçti — yeni piyasa fazı."
+- "🏛 REJİM DEĞİŞTİ — 20g önce {{faz_X}} → bugün {{faz_Y}}" (faz_txt'te). Bu ANCHOR seviyesi — analiz açılışında bu rejim kaymasını MUTLAKA merkez yap, ana hikaye burası: "Hisse geçen ay {{faz_X}}'teydi, bu hafta {{faz_Y}}'ye geçti — yeni piyasa fazı."
 - 52H trajectory "20g önce %X'deydi → +/-Y puan yükseliyor/düşüyor" — bağlam rengi. Yön anlamlıysa (≥5 puan) kısa mention, yatay ise atla.
 - RVOL "5g ort X.Yx → bugün ZX sıçrama, SPIKE" vs "SÜREKLİ ilgi" — SPIKE bugünün yeni ilgi, SÜREKLİ kovalanma. İki farklı hikaye, ayırt et.
 "yatay" / "küçük drift" rozetleri görürsen → o veriyi mention etme, bağlamı zaten anlamsız. Eşik altı varyans = konu yok.
