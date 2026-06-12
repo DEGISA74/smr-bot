@@ -1,6 +1,6 @@
 # Patron Terminal — CLAUDE.md
 # Hızlı navigasyon. Sistemin TAMAMI: `memory/SMR_SISTEM_OZETI.md` (tek kaynak).
-# Son güncelleme: 10 Haz 2026 Oturum 20 (SMC kurumsal 4 ek + KURUMSAL TAKİP 8 STRONG flag + FİYAT kartı redesign)
+# Son güncelleme: 12 Haz 2026 Oturum 21 (flag bug avı: TEFAS çelişki + CMF ölü + rel_obv şişik düzeltildi · 19:00 bülten faz_X fix · /bulten admin komutu)
 
 ---
 
@@ -156,7 +156,25 @@
 
 ---
 
-## Son Oturum Notu — 10 Haz 2026 Oturum 20 (SMC kurumsal 4 ek + KURUMSAL TAKİP 8 STRONG flag + FİYAT kartı redesign)
+## Son Oturum Notu — 12 Haz 2026 Oturum 21 (flag bug avı + bülten kurtarma)
+
+**Stratejik soru ("app.py'yi nasıl ileri taşırız, analysis-paralysis olmadan") → eyleme döndü.** Teşhis: sorun feature eksikliği değil, **validasyon borcu** — son 2 oturumda 29 flag eklendi, çoğu "Eylül backtest beklemede". Doktrin: (1) tek kâhin = `signal_returns × scan_signals` JOIN, (2) ~3 haftada bir budama (ret≤0 / hit<%50 → AI'dan çık), (3) ölçülemeyen flag AI'a kalıcı girmez. Kullanıcı "envanter çıkar" (A) dedi → bugünkü Master Scan flag-doluluk taraması **3 bozuk + 1 ölü sistem** ortaya döktü:
+
+- **TEFAS konsensus çelişkisi (CANLI ZARAR):** `f_tefas_konsensus_alim` VE `_satim` her hisseye 1 basıyordu (843/843). Kök: `_BIST_TOTAL_` makro sorgu + 3 günlük veri + `fund_aum_mn` tümü None → 5g penceresi sahte, AUM materiality ölü. AI'a "her hisse hem alım hem satım" gidiyordu. **Fix:** `_compute_tefas_signals`'a veri-güvenilirlik kapısı (<5 gün veya AUM yoksa → **NULL**). `kap_events`=0 satır → buyback/threshold/insider zaten ölü (veri yok). `mkk_yabanci`=132 satır → çalışıyor.
+- **`f_cmf_dual` %0 boş + spike bit-2 ölü:** `compute_cmf` **float** döner ama çağrı `.iloc[-1]` yapıyordu (satır ~1696) → sessiz AttributeError. `.iloc` kaldırıldı. Diğer 9 çağrı zaten float kullanıyor (izole).
+- **`f_rel_obv` %57 "outperform_strong":** slope `abs(OBV[-1])` keyfi paydaya bölünüyordu → sıfıra yakın payda yüzdeyi patlatıyor, benchmark ortak olduğu için herkese yayılıyor. **Fix:** payda → ortalama günlük hacim (kararlı ölçek). Sadece GENEL ÖZET'te (AI prompt'ta değil).
+- **near_ifvg %63 / breaker %53 = gürültü:** ±%2 + tüm tarihsel zone. Eşik sezgiyle ayarlamak [[feedback-extrapolation-yasak]] çiğner → `SMC_IFVG_BB_AI_ENABLED=False` toggle ile AI prompt + kompozit skordan çekildi, **scan_signals yazımı korundu** (Eylül backtest ölçsün; hit≥%55+ret≥%3 verirse geri aç).
+- **Bugünün 1317 stale satırı temizlendi** (843 çelişkili + 483 şişik kolon NULL). AI canlı recompute ettiği için (`_compute_signal_features`, ~25664) fix'ler anında geçerli, yeniden tarama gerekmedi.
+
+**19:00 bülten hatası — PRO+ELITE fallback aldı.** Gerçek sebep "yoğunluk" DEĞİL → **`faz_X` NameError** (smr_core). 12 Haz'da eklenen "REJİM DEĞİŞİMİ rozeti okuma" bloğundaki `{faz_X}`/`{faz_Y}` literal placeholder'ları f-string içinde değişken sanılıp PRO+ELITE prompt'larını patlattı. **Fix:** çift-parantez escape (`{{faz_X}}`). Canlı render + re-send doğrulandı (PRO 4441 kr, ELITE 3703 kr, Gemini 200). smr_core'da CMF/rel_obv/tefas YOK (app.py-only) → paralel bug yok.
+
+**Yeni: `/bulten` admin komutu (smr_bot).** 19:00 otomatik gönderim patlarsa admin elle tetikler → `send_daily_bulletin(context)`. ⚠️ **Olay:** `git add smr_bot.py` sırasında kullanıcının commit'lenmemiş "SIZINTI KORUMASI v2" WIP'i (Gemini çıktısından prompt-leak strip, `call_gemini_gorev3` içinde) bu commit'e karıştı ve canlıya gitti — kullanıcı "canlı kalsın" dedi (iyi defansif iş, over-strip görülmedi). Ders → [[feedback-validate-before-ship]].
+
+Commits: `cecf58a` (faz_X) · `8926ee7` (3 flag fix) · `2a3c432` (/bulten + leak WIP). VPS deploy: `reset --hard origin/main` (stale scp mod'ları stash'te) + smr-bot/patron-radar restart. Backup'lar: `app_backup_pre_flag_fixes_12haz.py` · `smr_core_backup_pre_fazX_fix.py`.
+
+---
+
+## Önceki Oturum Notu — 10 Haz 2026 Oturum 20 (SMC kurumsal 4 ek + KURUMSAL TAKİP 8 STRONG flag + FİYAT kartı redesign)
 
 **Büyük bir oturum — 3 ana iş.**
 
@@ -246,8 +264,8 @@
 
 ## Açık konular (devam eden)
 
-- ⏳ **YENİ — Eylül 2026 backtest: 16 yeni feature** (10 Haz 2026 Oturum 20): 8 SMC kurumsal (`f_at_vwap_minus_2sigma`, `f_at_y_open`, `f_near_ifvg`, `f_breaker_block_active`) + 8 KURUMSAL TAKİP (`f_tefas_konsensus_alim/satim/yeni_giris`, `f_buyback_aktif/dip_aliyor`, `f_threshold_asildi`, `f_insider_first_buy`, `f_kurumsal_anchor`). Eylül 2026 ortası `signal_returns × scan_signals` JOIN ile gerçek hit/ret katkısı ölçülecek → TIER ataması yapılacak veya kaldırılacak.
-- ⏳ **YENİ — TEFAS + KAP endpoint kararlılığı** (10 Haz 2026 Oturum 20): community-known public endpoint'ler defansif kodla yazıldı. İlk Master Scan sonrası `tail logs | grep -E "tefas|kap"` ile kontrol; başarısızlık yüksekse parsing/endpoint fix gerekir.
+- ⚠️ **DÜZELTİLDİ (12 Haz Oturum 21) — Eylül backtest feature'larının çoğu BOZUK/ÖLÜ çıktı:** Bugünkü flag-doluluk taraması: **TEFAS 8 flag** ya çelişkili (alim+satim ikisi de 1) ya ölü (`kap_events`=0 satır → buyback/threshold/insider hep 0; `f_kurumsal_anchor` hiç ateşlemedi). `_compute_tefas_signals` artık veri güvenilmezse NULL döner → **TEFAS flag'leri Eylül backtest'e kadar büyük olasılıkla NULL kalacak** (endpoint/parsing düzeltilene dek). `f_near_ifvg`/`f_breaker_block_active` = gürültü (>%50) → AI prompt + kompozit skordan çekildi (`SMC_IFVG_BB_AI_ENABLED=False`) ama scan_signals'a yazılmaya devam → Eylül'de yine ölçülebilir. **Sağlam çıkan SMC kurumsal:** `f_at_vwap_minus_2sigma` (%1), `f_at_y_open` (selektif) — bunlar Eylül backtest'e değer. `mkk_yabanci` (132 satır) + `f_rel_obv` (normalize fix sonrası) çalışıyor.
+- ⏳ **TEFAS + KAP endpoint DÜZELT (öncelik yükseldi, 12 Haz):** Veri kanıtlandı ÇÖP — `tefas_holdings` sadece 3 gün + `fund_aum_mn` tümü None; `kap_events` boş. Defansif kapı şu an sinyali NULL'luyor (zarar durdu) ama **sistem pratikte çalışmıyor**. Pipeline'ı düzeltmeden TEFAS/KAP'tan değer çıkmaz. `tail logs | grep -E "tefas|kap"` + fetch fonksiyonlarını gözden geçir.
 - ✅ **Feature snapshot scanner-side yazım** — TAMAMLANDI (3 Haz Oturum 14): `_compute_signal_features` helper + `log_scan_signal` fallback. Sonraki Master Scan'den kolonlar dolacak.
 - ✅ **Bot tarafına AI Prompt v2 senkron** — TAMAMLANDI (3 Haz Oturum 14): smr_core.py PRO (build_ai_prompt) + ELITE (build_ai_prompt_gorev1) → Z-Score + POC/VWAP + KESİN YASAK 3 blok konsolide (1 birleşik Rehber), anti-kalıp mekanik kural (PRO+ELITE), ELITE ANLATIM KURALI Oturum 14 formatına geçti (insani cümle + parantezde kısaltma + İLHAM + anti-kopya). Net: 3282→3115 satır (-167). Backup: `smr_core_backup_pre_prompt_v2.py`. ⚠️ VPS deploy gerek: `git push` + `ssh wm11tr@34.153.19.220 "cd ~/smr && git pull && sudo systemctl restart smr-bot"`.
 - ⏳ **base_powers reranking** — `eval_20g ≥ 30` eşiği bekleniyor. Şu an Royal Flush 11/71. Eylül 2026 itibariyle olgunlaşır.
