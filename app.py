@@ -24668,6 +24668,41 @@ if st.session_state.generate_prompt:
     p_change_pct = info.get('change_pct', 0) if info else 0
     degisim_str = f"+%{p_change_pct:.2f}" if p_change_pct > 0 else f"-%{abs(p_change_pct):.2f}"
     master_txt = f"{master_score}/100"
+
+    # 12 Haz 2026 (Prompt v3 — Trajectory) — Master Score 20g eğilimi
+    # scan_signals'tan ~15-25g önceki en yakın snapshot. Eşikler:
+    #   |delta| ≥ 20 → ELIT_ANCHOR (rejim kayması, G1 merkez olabilir)
+    #   15 ≤ |delta| < 20 → [gelişim] DESTEKLEYİCİ (anchor değil)
+    #   |delta| < 15 → SUS (mikro drift, emit yok)
+    _master_trajectory_txt = ""
+    try:
+        import sqlite3 as _sql_traj
+        _conn_traj = _sql_traj.connect(DB_FILE)
+        _ct = _conn_traj.cursor()
+        _ct.execute("""
+            SELECT f_master_score, scan_date FROM scan_signals
+            WHERE symbol = ? AND f_master_score IS NOT NULL
+              AND date(scan_date) <= date('now', '-15 days')
+              AND date(scan_date) >= date('now', '-25 days')
+            ORDER BY scan_date DESC LIMIT 1
+        """, (t,))
+        _row_traj = _ct.fetchone()
+        _conn_traj.close()
+        if _row_traj:
+            _ms_past = float(_row_traj[0])
+            _ms_now  = float(master_score)
+            _ms_delta = _ms_now - _ms_past
+            _ms_days_ago = _row_traj[1]
+            if abs(_ms_delta) >= 20:
+                _yon_ms = "RALLİSİ" if _ms_delta > 0 else "ÇÖKÜŞÜ"
+                _master_trajectory_txt = (f"🏛 master_score_rejim: ~20g önce ({_ms_days_ago}) {_ms_past:.0f} → "
+                                          f"bugün {_ms_now:.0f} ({_ms_delta:+.0f} puan {_yon_ms}) — momentum rejim değişimi, ana hikaye")
+            elif abs(_ms_delta) >= 15:
+                _yon_ms = "yükseliyor" if _ms_delta > 0 else "soğuyor"
+                _master_trajectory_txt = (f"[gelişim] master_score_egilim: ~20g önce {_ms_past:.0f} → "
+                                          f"bugün {_ms_now:.0f} ({_ms_delta:+.0f} puan, {_yon_ms})")
+    except Exception:
+        pass
     pros_txt = ", ".join(pros[:5])
     
     st_txt = f"{'YÜKSELİŞ' if levels_data.get('st_dir')==1 else 'DÜŞÜŞ'} | {levels_data.get('st_val',0):.2f}" if levels_data else "-"
@@ -25365,6 +25400,7 @@ if st.session_state.generate_prompt:
 
     # 11) Volume Profile — HVN/LVN (yüksek/düşük hacim düğümleri = ek S/D)
     # Lookback 60g: 20g kısa vadeli gürültü, 60g kurumsal birikim seviyesi yansıtır.
+    _poc_velocity_txt = ""  # 12 Haz 2026 (Prompt v3) — trajectory emit guard
     try:
         _vp_lookback = min(60, len(df_hist))
         _vp_df  = df_hist.tail(_vp_lookback)
@@ -25420,6 +25456,28 @@ if st.session_state.generate_prompt:
                 _curr_bin = min(max(np.digitize(_curr_p, _vp_edges) - 1, 0), _vp_bins - 1)
                 fiyat_lvn_icinde_txt = "evet" if _curr_bin in _lvn_idx else "hayır"
                 fiyat_poc_konumu_txt = f"{'üstünde' if _curr_p > _poc_price else 'altında'} (POC: {_poc_price})"
+                # 12 Haz 2026 (Prompt v3 — Trajectory) — Fiyat→POC yaklaşma hızı
+                # 5g önceki POC mesafesi (aynı POC referans) vs bugünkü mesafe.
+                # |delta dist| ≥ %3 = anlamlı yaklaşma/uzaklaşma · küçük → sus.
+                try:
+                    if len(df_hist) >= 6 and _poc_price > 0:
+                        _p_5g = float(df_hist['Close'].iloc[-6])
+                        _dist_now = (_curr_p - _poc_price) / _poc_price * 100.0
+                        _dist_5g  = (_p_5g    - _poc_price) / _poc_price * 100.0
+                        _delta_dist = _dist_now - _dist_5g
+                        if abs(_delta_dist) >= 3.0:
+                            if abs(_dist_now) < abs(_dist_5g):
+                                _yon_pt = "POC'A YAKLAŞIYOR"
+                            else:
+                                _yon_pt = "POC'TAN UZAKLAŞIYOR"
+                            _poc_velocity_txt = (f"[gelişim] fiyat_poc_yaklasma: 5g önce %{_dist_5g:+.1f} → "
+                                                 f"bugün %{_dist_now:+.1f} ({_delta_dist:+.1f} puan, {_yon_pt})")
+                        else:
+                            _poc_velocity_txt = ""
+                    else:
+                        _poc_velocity_txt = ""
+                except Exception:
+                    _poc_velocity_txt = ""
             except Exception:
                 hvn_en_yakin_txt = "(veri eksik)"
                 fiyat_lvn_icinde_txt = "(veri eksik)"
@@ -25455,6 +25513,51 @@ if st.session_state.generate_prompt:
                 vp_sekil_txt = "Dağıtım (POC değer bölgesinin üst yarısında — kurumsal tepede satış)"
             else:
                 vp_sekil_txt = "Denge (POC ortada — adil değer, mean revert beklenir)"
+    except Exception:
+        pass
+
+    # 12 Haz 2026 (Prompt v3 — Trajectory) — VP şekil rejim değişimi tespiti
+    # 10g ve 20g önceki VP şekli ile karşılaştır. Değişti = ELIT_ANCHOR.
+    # Değişmediyse → sus (mikro drift gürültüsü, görüntü kirliliği yapma).
+    _vp_sekil_trajectory_txt = ""
+    def _quick_vp_shape(_df_slice):
+        try:
+            if _df_slice is None or len(_df_slice) < 30: return None
+            _prices = ((_df_slice['High'] + _df_slice['Low']) / 2).values
+            _vols   = _df_slice['Volume'].values
+            _hist, _edges = np.histogram(_prices, bins=30, weights=_vols)
+            _tot = float(_hist.sum())
+            if _tot <= 0: return None
+            _poc_i = int(np.argmax(_hist))
+            _poc_p = (_edges[_poc_i] + _edges[_poc_i+1]) / 2
+            _ord_i = np.argsort(_hist)[::-1]
+            _inc = set(); _cum = 0.0
+            for _i in _ord_i:
+                _inc.add(int(_i)); _cum += _hist[_i]
+                if _cum / _tot >= 0.70: break
+            _inc_s = sorted(_inc)
+            _val = _edges[_inc_s[0]]; _vah = _edges[_inc_s[-1]+1]
+            if _vah <= _val: return None
+            _pos = (_poc_p - _val) / (_vah - _val)
+            if _pos < 0.4:   return 'Akümülasyon'
+            elif _pos > 0.6: return 'Dağıtım'
+            else:            return 'Denge'
+        except Exception:
+            return None
+    try:
+        # Bugünkü ana şekil zaten vp_sekil_txt'in başında yazılı (Akümülasyon/Dağıtım/Denge)
+        _vp_now_key = vp_sekil_txt.split(' (')[0] if vp_sekil_txt and not vp_sekil_txt.startswith("(") else None
+        if _vp_now_key in ('Akümülasyon', 'Dağıtım', 'Denge') and len(df_hist) >= 80:
+            _vp_10g = _quick_vp_shape(df_hist.iloc[-70:-10])
+            _vp_20g = _quick_vp_shape(df_hist.iloc[-80:-20])
+            if _vp_10g and _vp_20g:
+                if _vp_now_key != _vp_20g:
+                    _vp_sekil_trajectory_txt = (f"🏛 vp_sekil_rejim_degisimi: 20g önce {_vp_20g} → bugün {_vp_now_key} "
+                                                f"(yeni faz başlıyor — ana hikaye merkezi olabilir)")
+                elif _vp_now_key != _vp_10g and _vp_now_key == _vp_20g:
+                    _vp_sekil_trajectory_txt = (f"🏛 vp_sekil_rejim_degisimi: 10g önce {_vp_10g}'ye saptı → bugün tekrar {_vp_now_key} "
+                                                f"(geçici sapma sonrası ana faza dönüş)")
+                # Değişmediyse → sus (mikro drift, emit yok)
     except Exception:
         pass
 
@@ -26671,7 +26774,7 @@ Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
 3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + mfi_dual_window + udvr_state/udvr_wyckoff + rel_obv_state + smart_money.cum_delta_5g + vp_sekil + smart_money_split): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi. UDVR'nin climax durumlarına ayrıca dikkat: tepe/dip'te smart money'in girdiği/çıktığını gösterir.
 
 **ALAN TIER ETİKETLERİ (KRİTİK — G1 merkez seçimi):** YAML alanları üç katmandadır.
-🏛 ELIT_ANCHOR (varsa G1 açılışını MUTLAKA bu alan merkez yap): `confluence_count` (varsa hep) · `kurumsal_anchor=1` · `rsi_mfi_bouquet` · `udvr.climax_bottom/top` · `rel_obv_state: outperform_strong/underperform_strong` · `breakout_alert` (BREAKAWAY GAP > BREAKOUT) · `force_index_divergence: bullish/bearish` · `naked_poc_yakin` (≤%2) · `poc_mtf_confluence` · `poc_magnet` (TIER_1 + Akümülasyon|Up|below).
+🏛 ELIT_ANCHOR (varsa G1 açılışını MUTLAKA bu alan merkez yap): `confluence_count` (varsa hep) · `kurumsal_anchor=1` · `rsi_mfi_bouquet` · `udvr.climax_bottom/top` · `rel_obv_state: outperform_strong/underperform_strong` · `breakout_alert` (BREAKAWAY GAP > BREAKOUT) · `force_index_divergence: bullish/bearish` · `naked_poc_yakin` (≤%2) · `poc_mtf_confluence` · `poc_magnet` (TIER_1 + Akümülasyon|Up|below) · `master_score_rejim` (🏛 prefixli, |delta|≥20 puan) · `vp_sekil_rejim_degisimi` (🏛 prefixli, rejim değişti).
 ⚠ UYARI (tezi sorgulayan negatif teyit — atlamak yanlış): `obv_cmf.durum` ŞÜPHELİ/SAHTE GÜÇ/ZAYIF TEYİT/YANILTICI ile başlıyorsa · `mum_kapanis_durumu: YANILTICI` · `[⚠ tek-mum ağırlıklı]` rozeti · `52H trajectory` "düşüyor" + RSI aşırı alım · CONS satırı dolu.
 💧 DESTEKLEYİCİ (varsayılan — diğer her şey): cmf_dual_window pos/neg, rsi/mfi tek-yönlü, omi_sigma, vp_sekil, fiyat_poc_konumu, vwap, rs_alpha, scanner_tiers_aktif TIER_2/3.
 G1 açılışı sırası: 🏛 ELIT_ANCHOR varsa → o · yoksa hâkim DESTEKLEYİCİ çoğunluk · UYARI hep G2'de yer almalı (atlanamaz).
@@ -26684,6 +26787,10 @@ G1 açılışı sırası: 🏛 ELIT_ANCHOR varsa → o · yoksa hâkim DESTEKLEY
 - 52H trajectory "düşüyor" (20g önce daha yüksek) + bias=bullish → ana trend bozulmuş, ralliye dikkat: "düşüş içinde tepki" mi yoksa "dipten dönüş" mü ayır (zone + cmf_dual_window + rel_obv ile çapraz oku).
 - breakout_alert var AMA RVOL 5g ortalama düşük (≤0.9x) → kırılım hacimle desteklenmemiş; "düşük hacimli kırılım — geri test/fakeout ihtimali" diye yansıt.
 - Genel kural: 🏛 ELIT_ANCHOR vs ⚠ UYARI → UYARI'yı yok sayma, "X anchor güçlü AMA Y uyarısı var" şeklinde ikisini birden geç. Daha riskli ama daha dürüst sinyal.
+
+**`[gelişim]` rozeti okuma:** YAML'da `[gelişim]` ile başlayan alanlar SADECE **bağlam rengi** — mevcut anchor'ı güçlendiren kısa mention için. Tek başına G1 merkez YAPMA, ana hikaye olarak yorumlama. Örnek: `[gelişim] fiyat_poc_yaklasma: 5g önce %+5 → bugün %+1 (POC'A YAKLAŞIYOR)` → ana hikaye POC mıknatısı (varsa anchor), bu satır sadece "5g'de hızla yaklaştı" şeklinde 1 yan-cümle olabilir. `[gelişim] master_score_egilim` (delta 15-19 puan) → master breakdown cümlesinde "skor son 3 haftada yükseliyor" gibi destek. **|delta| < 15 puan / |dist delta| < %3 / vp_sekil aynı** durumlarda emit ZATEN YOK — mikro drift'ten haber çıkarmaya çalışma.
+
+**🏛 prefixli rejim değişimleri (anchor seviyesi):** `master_score_rejim` |delta|≥20 puan veya `vp_sekil_rejim_degisimi` rejim değişti veya `breakout_alert` veya `kurumsal_anchor` aktif olduğunda → G1 açılışında merkez yap. Bunların ötesi (trajectory benzeri sayısal hareket) anchor değil — `confluence_count` zaten net anchor sayısını söyler.
 
 **[⚠ tek-mum ağırlıklı] rozeti okuma (KRİTİK):** Bir dual-window state'in (cmf_dual_window / cum_delta_dual_window / rsi_dual_window / mfi_dual_window) ya da yaml.obv_cmf.durum'un başında `[⚠ tek-mum ağırlıklı]` rozeti varsa, o state'i "iki periyotta birikim teyitli" diye okuma. Bugünkü tek mum 5 günlük deltanın >%60'ını oluşturmuş — yani okuma tek günün şişirmesinden geliyor, gerçek path-tabanlı birikim/dağıtım değil. Bu durumda: (a) state'i DESTEKLEYİCİ değil "TEYİT BEKLENİYOR" olarak yansıt, (b) G2'de "tek mumla şişirilmiş okumayı 2-3 gün izlemek lazım, geri verirse sahte güç" tarzı somut uyarı yaz, (c) "iki pencerede birikim sürüyor", "kalıcı kurumsal", "akıllı para iki periyotta da" gibi yapısal cümleleri KULLANMA. AI yorumunda rozeti açıkça "tek mum ağırlıklı" ya da "bugünkü tek bar okumayı şişirmiş" olarak yansıt — yutma.
 
@@ -26893,7 +27000,7 @@ meta:
   ticker: {t}
   fiyat: {fiyat_str}
   gunluk_degisim: {degisim_str}
-  master_score: {master_txt}
+  master_score: {master_txt}{(chr(10) + "  " + _master_trajectory_txt) if _master_trajectory_txt else ""}
   master_breakdown: {master_breakdown_txt}
   pros: {pros_txt}
   cons: {cons_txt}
@@ -26961,7 +27068,7 @@ ict_pa:
 
 {("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else "") + (chr(10) + _em_udvr if _em_udvr else "") + (chr(10) + _em_force_index if _em_force_index else "") + (chr(10) + _em_smart_split if _em_smart_split else ""))}
 
-{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x{_rvol_5g_str}") + chr(10) + f"  volume_quality: {_volume_quality}" + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
+{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + (chr(10) + "  " + _poc_velocity_txt if _poc_velocity_txt else "") + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + "  " + _vp_sekil_trajectory_txt if _vp_sekil_trajectory_txt else "") + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x{_rvol_5g_str}") + chr(10) + f"  volume_quality: {_volume_quality}" + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
 
 institutional_ref:
   vwap: {v_val:.2f}
