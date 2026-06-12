@@ -180,7 +180,6 @@ def _volume_is_stale(df, ticker):
         return False
 
 
-
 def _fetch_bist_ohlcv_borsapy(symbol, period="1y", interval="1d"):
     """
     borsapy library — TradingView WebSocket üzerinden gerçek-zamanlı OHLCV.
@@ -967,251 +966,10 @@ def _detect_breakout_state(df, boundary):
     except Exception:
         return (0, 0.0, 1.0)
 
+# (12 Haz Oturum 21) KURUMSAL TAKİP (TEFAS + KAP) KALDIRILDI — _KURUMSAL_THRESHOLDS
+# dict + fetch/compute fonksiyonları silindi. TEFAS hisse-bazlı veri vermiyor
+# (makro-rejim yasağı), KAP endpoint bloklu (666). MKK yabancı korundu (aşağıda).
 
-# ════════════════════════════════════════════════════════════════════════
-# KURUMSAL TAKİP (9 Haz 2026 Oturum 20) — TEFAS + KAP
-# ════════════════════════════════════════════════════════════════════════
-# 3 STRONG kanal × 8 STRONG sinyal:
-#   TEFAS:  konsensus_alim, konsensus_satim, yeni_giris
-#   KAP Buyback: buyback_aktif, buyback_dip_aliyor
-#   KAP Pay Sahipliği: threshold_asildi, insider_first_buy
-#   Convergence: kurumsal_anchor (3+ kanal aynı yönde)
-#
-# Defensive: tüm fetch'ler try/except, başarısızlıkta None döner — gürültü yok.
-# Cache: TEFAS günde 1 kez (Master Scan zamanı), KAP saatte 1 kez.
-# ════════════════════════════════════════════════════════════════════════
-
-# Materiality eşikleri (sertçe belirlenmiş kullanıcı çerçevesi)
-_KURUMSAL_THRESHOLDS = {
-    # TEFAS
-    'tefas_min_aum_mn':         100,    # Fon AUM ≥ 100mn TL filtresi
-    'tefas_min_weight_pct':     1.5,    # Pozisyon portföyün ≥%1.5'i
-    'tefas_min_funds_konsensus': 3,     # ≥3 fon aynı yönde
-    'tefas_min_5g_change_pct':  10.0,   # Pozisyon değişimi ≥%10 (5g)
-    'tefas_dagitim_total_pct':  20.0,   # Dağıtım: toplam ≥%20 azalma
-    'tefas_yeni_giris_aum_mn':  500,    # Yeni giriş: AUM ≥500mn
-    'tefas_yeni_giris_funds':   2,      # Yeni giriş: ≥2 fon
-    'tefas_yeni_giris_pct':     1.0,    # Yeni pozisyon portföyün ≥%1'i
-    # KAP Buyback
-    'buyback_min_float_pct':    1.0,    # Program ≥ float %1
-    'buyback_dip_distance_pct': 10.0,   # 52H dip ≤%10 mesafe
-    'buyback_weekly_vol_pct':   5.0,    # Haftalık alım ≥ ort günlük hacim %5
-    # KAP Pay Sahipliği
-    'threshold_levels':        [5, 10, 25, 33, 50],   # Statütör eşikler
-    'insider_buy_min_tl':       5_000_000,            # ≥5 mn TL
-    'insider_first_buy_lookback': 180,                # 6 ay = 180 gün
-    # Convergence
-    'anchor_min_signals':       3,    # ≥3 kanal aynı yönde
-}
-
-
-def _fetch_tefas_portfolio_snapshot(date_str=None, max_funds=None):
-    """TEFAS portföy snapshot fetcher — 10 Haz 2026 GÜNCELLEME.
-
-    TEFAS Haziran 2026'da eski `tefas.gov.tr/api/DB/BindHistory*` endpoint'lerini
-    emekliye ayırdı. Yeni endpoint: `tefas.gov.tr/api/funds/...`.
-
-    ÖNEMLİ KISITLAMA: Yeni public API hisse-bazlı detay vermiyor. Sadece
-    kategorik allocation yüzdeleri var (`stock_pct`, `government_bond_pct`,
-    `eurobond_pct` vs — 58 kategori). Yani "X fonunun XBANK'a %3 ağırlığı var"
-    demiyor, "X fonunun toplam %25'i hisseler" diyor.
-
-    Bu yumuşak ama hâlâ kullanılabilir bir sinyal:
-      - Fon stock_pct 5g'de %15 → %28 çıkmış = BIST'e net para AKIYOR (genel yön)
-      - AUM × stock_pct = piyasaya akan toplam para tahmini
-      - Toplam BIST exposure değişimi = makro fon yönü
-
-    Yaklaşım: `pytefas` library'sini kullan (yeni endpoint, 58 kolon breakdown).
-
-    Args:
-        date_str: 'YYYY-MM-DD' — None ise bugün.
-        max_funds: dev test için (None = hepsi).
-    Returns:
-        (success_count, fail_count)
-    """
-    from datetime import datetime as _dt
-    if date_str is None:
-        date_str = _dt.now(_TZ_ISTANBUL).strftime('%Y-%m-%d')
-
-    # Cache kontrolü — aynı tarihte zaten >100 kayıt varsa atla
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM tefas_holdings WHERE snapshot_date = ?", (date_str,))
-        if (c.fetchone() or [0])[0] > 100:
-            conn.close()
-            return (0, 0)
-        conn.close()
-    except Exception:
-        pass
-
-    # ── pytefas library — yeni TEFAS API (Haziran 2026 endpoint) ──────
-    try:
-        from pytefas import Crawler  # pip install pytefas
-    except ImportError:
-        import logging
-        logging.warning("[tefas] pytefas kurulu değil — `pip install pytefas`")
-        return (0, 1)
-
-    try:
-        _tefas = Crawler()
-        # columns='breakdown' → 58 kolonluk portföy bileşim yüzdeleri
-        _df = _tefas.fetch(start=date_str, end=date_str, columns='breakdown')
-        if _df is None or len(_df) == 0:
-            return (0, 1)
-    except Exception as _ex:
-        try: log_error("pytefas_fetch", _ex)
-        except Exception: pass
-        return (0, 1)
-
-    # Toplam fiyat + AUM için ayrı bir info call (price + market_cap kolonları)
-    _df_info = None
-    try:
-        _df_info = _tefas.fetch(start=date_str, end=date_str, columns='info')
-    except Exception:
-        _df_info = None
-
-    # ── Yeni strateji: stock_pct 'in 5%+'sı olan fonları kaydet ───────
-    _success = 0; _fail = 0
-    try:
-        _df_hisse = _df[_df['stock_pct'].fillna(0) >= 5.0].copy()
-        if max_funds:
-            _df_hisse = _df_hisse.head(max_funds)
-    except Exception:
-        return (0, 1)
-
-    _conn = sqlite3.connect(DB_FILE)
-    _c = _conn.cursor()
-    for _, _row in _df_hisse.iterrows():
-        try:
-            _kod = str(_row.get('fund_code', '')).strip().upper()
-            if not _kod:
-                _fail += 1; continue
-
-            # AUM: info df'ten lookup
-            _aum_mn = None
-            if _df_info is not None and len(_df_info) > 0:
-                try:
-                    _info_row = _df_info[_df_info['fund_code'] == _kod]
-                    if len(_info_row) > 0:
-                        _mcap = float(_info_row.iloc[0].get('market_cap', 0) or 0)
-                        if _mcap > 0:
-                            _aum_mn = _mcap / 1_000_000.0
-                except Exception: pass
-
-            # Toplam hisse exposure'ını '_BIST_TOTAL_' özel sembol ile kaydet
-            _stock_pct = float(_row.get('stock_pct', 0) or 0)
-            _c.execute('''INSERT OR REPLACE INTO tefas_holdings
-                          (snapshot_date, fund_code, fund_aum_mn, stock_symbol, weight_pct)
-                          VALUES (?, ?, ?, ?, ?)''',
-                       (date_str, _kod, _aum_mn, '_BIST_TOTAL_', _stock_pct))
-
-            # Ayrıca yabancı hisse exposure'ı ayrı kayıt (foreign_stock_pct kolonu)
-            _foreign_pct = float(_row.get('foreign_stock_pct', 0) or 0)
-            if _foreign_pct > 0:
-                _c.execute('''INSERT OR REPLACE INTO tefas_holdings
-                              (snapshot_date, fund_code, fund_aum_mn, stock_symbol, weight_pct)
-                              VALUES (?, ?, ?, ?, ?)''',
-                           (date_str, _kod, _aum_mn, '_FOREIGN_STOCK_', _foreign_pct))
-
-            _success += 1
-            if _success % 50 == 0:
-                _conn.commit()
-        except Exception:
-            _fail += 1
-    _conn.commit(); _conn.close()
-    return (_success, _fail)
-
-
-def _fetch_kap_disclosures(days_back=30):
-    """KAP duyuruları RSS/HTML'den buyback + ownership değişikliklerini çeker.
-    kap_events tablosuna yazar. Cache: 2 saatte 1.
-
-    KAP endpoint: https://www.kap.org.tr/tr/api/disclosures
-    Filtre: 'Geri Alım', 'Pay Alım/Satım', 'Önemli Niteliğe...'
-    """
-    import requests as _requests
-    from datetime import datetime as _dt, timedelta as _td
-
-    _end = _dt.now(_TZ_ISTANBUL)
-    _start = _end - _td(days=days_back)
-    _headers = {
-        'User-Agent': 'Mozilla/5.0 (compatible; PatronRadar/1.0)',
-        'Accept': 'application/json',
-    }
-    _success = 0; _fail = 0
-    try:
-        # KAP disclosure API — JSON formatlı liste
-        _url = 'https://www.kap.org.tr/tr/api/disclosures'
-        _params = {
-            'fromDate': _start.strftime('%Y-%m-%d'),
-            'toDate':   _end.strftime('%Y-%m-%d'),
-            'disclosureClass': 'GD',   # Gelişme/Duyuru
-        }
-        _r = _requests.get(_url, params=_params, headers=_headers, timeout=30)
-        if _r.status_code != 200:
-            return (0, 1)
-        _data = _r.json()
-        _events = _data if isinstance(_data, list) else _data.get('data', [])
-
-        _conn = sqlite3.connect(DB_FILE)
-        _c = _conn.cursor()
-
-        # Bu üst-seviye taramada her duyuru için subject + summary'ye bak,
-        # buyback ve ownership change pattern'lerini yakala
-        import re as _re
-        _buyback_pat = _re.compile(r'(geri\s*al[ıi]m|hisse\s*geri|buyback)', _re.IGNORECASE)
-        _ownership_pat = _re.compile(r'(pay\s*al[ıi]m|sat[ıi]m|önemli\s*nitelikteki|yönetici\s*işlem)', _re.IGNORECASE)
-        _threshold_pat = _re.compile(r'%\s*(5|10|25|33|50)')
-
-        for _ev in _events:
-            try:
-                _subj = (_ev.get('subject') or _ev.get('konu') or '')
-                _summary = (_ev.get('summary') or _ev.get('aciklama') or '')
-                _sym = (_ev.get('stockCodes') or _ev.get('hisseKodu') or '').strip().upper()
-                _date = (_ev.get('publishDate') or _ev.get('yayinTarihi') or '')[:10]
-                if not _sym or not _date: continue
-                _txt = f"{_subj} {_summary}"
-
-                _is_buyback = bool(_buyback_pat.search(_txt))
-                _is_ownership = bool(_ownership_pat.search(_txt))
-                if not (_is_buyback or _is_ownership): continue
-
-                # Tutar tahmini (basit regex — TL miktarı)
-                _amt = None
-                _m = _re.search(r'([\d.,]+)\s*(TL|milyon|mn|bin)', _txt, _re.IGNORECASE)
-                if _m:
-                    try:
-                        _v = float(_m.group(1).replace('.', '').replace(',', '.'))
-                        _unit = _m.group(2).lower()
-                        if _unit in ('milyon', 'mn'): _amt = _v * 1_000_000
-                        elif _unit == 'bin':         _amt = _v * 1_000
-                        else:                         _amt = _v
-                    except Exception: pass
-
-                _event_type = 'buyback' if _is_buyback else 'ownership_change'
-                _subtype = None
-                _m_thr = _threshold_pat.search(_txt) if _is_ownership else None
-                if _m_thr:
-                    _subtype = f'threshold_{_m_thr.group(1)}pct'
-                elif 'yönetici' in _txt.lower():
-                    _event_type = 'insider_buy'
-                    _subtype = 'manager'
-
-                _c.execute('''INSERT OR REPLACE INTO kap_events
-                              (event_date, symbol, event_type, event_subtype, amount_tl,
-                               amount_lots, price, actor, meta_json)
-                              VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)''',
-                           (_date, _sym, _event_type, _subtype, _amt, '', _subj[:200]))
-                _success += 1
-            except Exception:
-                _fail += 1; continue
-        _conn.commit(); _conn.close()
-    except Exception as _ex:
-        try: log_error("kap_disclosures", _ex)
-        except Exception: pass
-        return (0, _fail or 1)
-    return (_success, _fail)
 
 
 def _fetch_mkk_yabanci_rss(max_days=30):
@@ -1370,215 +1128,6 @@ def _compute_mkk_yabanci_signals(ticker: str) -> dict:
     except Exception as _ex:
         try: log_error("mkk_yabanci_signals", _ex, ctx={'ticker': ticker})
         except Exception: pass
-    return out
-
-
-def _compute_tefas_signals(ticker: str) -> dict:
-    """TEFAS portföy snapshot'larından 3 STRONG sinyali hesaplar.
-
-    KISITLAMA NOTU (10 Haz 2026): Yeni TEFAS public API hisse-bazlı detay
-    vermiyor. Sadece kategorik allocation (stock_pct) var. Bu yüzden sinyaller
-    ARTIK HİSSE-SPESİFİK DEĞİL — BIST-geneli kurumsal akış sinyali olur.
-
-    Tüm BIST hisseleri için aynı sinyal döner (PİYASA GENELİ trend):
-      - konsensus_alim: ≥3 fon stock_pct 5g'de ≥%10 artırmış → BIST'e net giriş
-      - konsensus_satim: ≥3 fon stock_pct 5g'de ≥%10 azaltmış → BIST'ten çıkış
-      - yeni_giris: ≥2 büyük fon (AUM ≥500mn) BIST exposure'ını 0→≥%5 yapmış
-
-    Bu sinyal hisse-spesifik olmasa da MAKRO yön bilgisi verir — AI prompt'a
-    "kurumsal para BIST'e yöneliyor/çıkıyor" diye geçer.
-
-    Endeks/emtia/kripto → tüm None (BIST için anlamlı).
-    """
-    out = {'f_tefas_konsensus_alim': None, 'f_tefas_konsensus_satim': None, 'f_tefas_yeni_giris': None}
-    try:
-        # BIST hissesi mi?
-        _sym = ticker.upper().replace('.IS', '').replace('=F', '').replace('-USD', '')
-        if any(_sym.startswith(p) for p in ('XU', 'XB', 'XT', 'XY', '^')) or '=' in _sym or '-' in _sym:
-            return out  # endeks/emtia/kripto → TEFAS yok
-
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        # _BIST_TOTAL_ özel sembol — fonların TOPLAM BIST exposure'ı
-        c.execute('''SELECT snapshot_date, fund_code, fund_aum_mn, weight_pct
-                     FROM tefas_holdings
-                     WHERE stock_symbol = '_BIST_TOTAL_'
-                       AND snapshot_date >= date('now', '-30 day')
-                     ORDER BY snapshot_date DESC, fund_code''')
-        _rows = c.fetchall()
-        conn.close()
-        if not _rows: return out
-
-        # ── Veri-güvenilirlik kapısı (12 Haz fix) ───────────────────────────
-        # Bug: hem konsensus_alim hem konsensus_satim her hisse için 1 basıyordu.
-        # Kök neden: (a) sadece 3 snapshot günü → 5g penceresi gerçek değil,
-        #            (b) fund_aum_mn TÜM satırlarda None → AUM materiality filtresi ölü.
-        # Çöp veriyle sinyal üretmektense NULL bırak (memory'deki orijinal söz:
-        # "başarısızsa flag NULL kalır"). Pipeline düzelince kapı kendiliğinden açılır.
-        _distinct_dates = {r[0] for r in _rows}
-        _has_aum = any(r[2] is not None for r in _rows)
-        if len(_distinct_dates) < 5 or not _has_aum:
-            return out   # güvenilmez veri → 3 sinyal de None
-
-        # fund_code → sorted list of (date, aum, weight)
-        _by_fund = {}
-        for _date, _kod, _aum, _wpct in _rows:
-            _by_fund.setdefault(_kod, []).append((_date, _aum, _wpct))
-
-        # 5 günlük pencere — hangi fonlar BIST exposure'ı arttırdı/azalttı
-        _5g_pos = 0; _5g_neg = 0; _yeni_giris_count = 0
-        _5g_total_neg_pct = 0
-        _T = _KURUMSAL_THRESHOLDS
-        for _kod, _series in _by_fund.items():
-            if len(_series) < 2: continue
-            _series.sort(key=lambda x: x[0])  # eski → yeni
-            _latest = _series[-1]
-            _aum = _latest[1] or 0
-            if _aum > 0 and _aum < _T['tefas_min_aum_mn']:
-                continue   # AUM filtresi
-            _w_latest = float(_latest[2] or 0)
-            # 5 gün önceki weight
-            _w_5g_ago = float(_series[max(0, len(_series) - 5)][2] or 0)
-            _diff_pct = ((_w_latest - _w_5g_ago) / _w_5g_ago * 100) if _w_5g_ago > 0 else 0
-            if _diff_pct >= _T['tefas_min_5g_change_pct']:
-                _5g_pos += 1
-            elif _diff_pct <= -_T['tefas_min_5g_change_pct']:
-                _5g_neg += 1
-                _5g_total_neg_pct += abs(_diff_pct)
-            # Yeni giriş: önceden BIST exposure ~0, bugün ≥%5
-            if (_aum >= _T['tefas_yeni_giris_aum_mn']
-                and _w_latest >= 5.0
-                and _w_5g_ago < 1.0):  # önceden BIST'te yok
-                _yeni_giris_count += 1
-
-        # 3 sinyali ata
-        out['f_tefas_konsensus_alim']  = 1 if _5g_pos  >= _T['tefas_min_funds_konsensus'] else 0
-        out['f_tefas_konsensus_satim'] = (1 if (_5g_neg >= _T['tefas_min_funds_konsensus']
-                                                and _5g_total_neg_pct >= _T['tefas_dagitim_total_pct'])
-                                          else 0)
-        out['f_tefas_yeni_giris']      = 1 if _yeni_giris_count >= _T['tefas_yeni_giris_funds'] else 0
-    except Exception as _ex:
-        try: log_error("tefas_signals", _ex, ctx={'ticker': ticker})
-        except Exception: pass
-    return out
-
-
-def _compute_kap_buyback_signals(ticker: str, df_hist=None) -> dict:
-    """KAP buyback duyurularından 2 STRONG sinyali hesaplar."""
-    out = {'f_buyback_aktif': None, 'f_buyback_dip_aliyor': None}
-    try:
-        _sym = ticker.upper().replace('.IS', '')
-        if any(_sym.startswith(p) for p in ('XU', 'XB', 'XT', 'XY', '^')) or '=' in _sym or '-' in _sym:
-            return out
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute('''SELECT event_date, event_subtype, amount_tl
-                     FROM kap_events
-                     WHERE symbol = ? AND event_type = 'buyback'
-                       AND event_date >= date('now', '-30 day')
-                     ORDER BY event_date DESC''', (_sym,))
-        _rows = c.fetchall()
-        conn.close()
-        if not _rows:
-            out['f_buyback_aktif'] = 0
-            out['f_buyback_dip_aliyor'] = 0
-            return out
-
-        # f_buyback_aktif: son 5g'de en az 1 alım icra varsa 1
-        from datetime import datetime as _dt
-        _5g_ago = _dt.now(_TZ_ISTANBUL).date()
-        _has_5g_exec = any(
-            (_dt.strptime(_d, '%Y-%m-%d').date() - _5g_ago).days >= -5
-            for _d, _, _ in _rows
-        )
-        out['f_buyback_aktif'] = 1 if _has_5g_exec else 0
-
-        # f_buyback_dip_aliyor: alım fiyatı 52H dibe yakın
-        if df_hist is None or len(df_hist) < 30:
-            try: df_hist = get_safe_historical_data(ticker, period='1y')
-            except Exception: df_hist = None
-        if df_hist is not None and len(df_hist) >= 60 and _has_5g_exec:
-            try:
-                _seg = df_hist.tail(252) if len(df_hist) > 252 else df_hist
-                _low_52h = float(_seg['Low'].min())
-                _cur = float(df_hist['Close'].iloc[-1])
-                _dist_pct = ((_cur - _low_52h) / _low_52h * 100) if _low_52h > 0 else 100
-                if _dist_pct <= _KURUMSAL_THRESHOLDS['buyback_dip_distance_pct']:
-                    out['f_buyback_dip_aliyor'] = 1
-                else:
-                    out['f_buyback_dip_aliyor'] = 0
-            except Exception:
-                out['f_buyback_dip_aliyor'] = 0
-        else:
-            out['f_buyback_dip_aliyor'] = 0
-    except Exception as _ex:
-        try: log_error("kap_buyback_signals", _ex, ctx={'ticker': ticker})
-        except Exception: pass
-    return out
-
-
-def _compute_kap_ownership_signals(ticker: str) -> dict:
-    """KAP pay sahipliği değişikliklerinden 2 STRONG sinyali hesaplar."""
-    out = {'f_threshold_asildi': None, 'f_insider_first_buy': None}
-    try:
-        _sym = ticker.upper().replace('.IS', '')
-        if any(_sym.startswith(p) for p in ('XU', 'XB', 'XT', 'XY', '^')) or '=' in _sym or '-' in _sym:
-            return out
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        # Son 30g'de threshold aşımı (event_subtype threshold_*)
-        c.execute('''SELECT event_subtype, amount_tl FROM kap_events
-                     WHERE symbol = ?
-                       AND event_type = 'ownership_change'
-                       AND event_subtype LIKE 'threshold_%'
-                       AND event_date >= date('now', '-30 day')''', (_sym,))
-        _thresh_rows = c.fetchall()
-        out['f_threshold_asildi'] = 1 if any(r for r in _thresh_rows) else 0
-
-        # İlk içerden alım: son 30g'de insider_buy + önceki 6 ayda hiç insider_buy yok
-        c.execute('''SELECT amount_tl FROM kap_events
-                     WHERE symbol = ? AND event_type = 'insider_buy'
-                       AND event_date >= date('now', '-30 day')
-                     ORDER BY event_date DESC LIMIT 1''', (_sym,))
-        _recent = c.fetchone()
-        if _recent and _recent[0] and float(_recent[0]) >= _KURUMSAL_THRESHOLDS['insider_buy_min_tl']:
-            # 6 ay öncesi hiç var mı?
-            c.execute('''SELECT 1 FROM kap_events
-                         WHERE symbol = ? AND event_type = 'insider_buy'
-                           AND event_date < date('now', '-30 day')
-                           AND event_date >= date('now', '-210 day')
-                         LIMIT 1''', (_sym,))
-            _prior = c.fetchone()
-            out['f_insider_first_buy'] = 1 if not _prior else 0
-        else:
-            out['f_insider_first_buy'] = 0
-        conn.close()
-    except Exception as _ex:
-        try: log_error("kap_ownership_signals", _ex, ctx={'ticker': ticker})
-        except Exception: pass
-    return out
-
-
-def _compute_kurumsal_convergence(signals: dict) -> dict:
-    """3+ STRONG sinyal aynı yöndeyse f_kurumsal_anchor = 1.
-    Yön: pozitif sinyaller (alım) vs negatif (satım).
-    YABANCI net giriş + streak burada da count'a girer (MKK kanalı).
-    """
-    out = {'f_kurumsal_anchor': None}
-    try:
-        _pos_count = sum([
-            1 if signals.get('f_tefas_konsensus_alim') == 1 else 0,
-            1 if signals.get('f_tefas_yeni_giris')     == 1 else 0,
-            1 if signals.get('f_buyback_aktif')        == 1 else 0,
-            1 if signals.get('f_buyback_dip_aliyor')   == 1 else 0,
-            1 if signals.get('f_threshold_asildi')     == 1 else 0,
-            1 if signals.get('f_insider_first_buy')    == 1 else 0,
-            1 if signals.get('f_yabanci_giris')        == 1 else 0,
-            1 if signals.get('f_yabanci_streak')       == 1 else 0,
-        ])
-        out['f_kurumsal_anchor'] = 1 if _pos_count >= _KURUMSAL_THRESHOLDS['anchor_min_signals'] else 0
-    except Exception:
-        pass
     return out
 
 
@@ -2013,24 +1562,13 @@ def _compute_signal_features(ticker: str) -> dict:
             except Exception: pass
         except Exception: pass
 
-        # ─── 17-24) KURUMSAL TAKİP 8 STRONG flag (TEFAS + KAP) ──────────────
-        # Bunlar BIST için defansif: endeks/emtia/kripto'da None kalır.
-        # TEFAS cache boşsa hesap None (sinyal etkisi yok).
-        # KAP cache boşsa hesap 0/None (sinyal etkisi yok).
+        # ─── MKK Yabancı + Relative OBV + UDVR + Force Index ────────────────
+        # (12 Haz Oturum 21) TEFAS + KAP KALDIRILDI: TEFAS yeni API hisse-bazlı veri
+        # vermiyor (sadece makro fon allocation = kalıcı rejim yasağı kapsamında),
+        # KAP endpoint bloklu (status 666). f_tefas_*/f_buyback_*/f_threshold_*/
+        # f_insider_*/f_kurumsal_anchor kolonları NULL kalır (backtest schema korunur).
         try:
-            _tef = _compute_tefas_signals(ticker)
-            for _k in ('f_tefas_konsensus_alim', 'f_tefas_konsensus_satim', 'f_tefas_yeni_giris'):
-                if _tef.get(_k) is not None:
-                    out[_k] = _tef[_k]
-            _kbb = _compute_kap_buyback_signals(ticker, df_hist=df)
-            for _k in ('f_buyback_aktif', 'f_buyback_dip_aliyor'):
-                if _kbb.get(_k) is not None:
-                    out[_k] = _kbb[_k]
-            _kow = _compute_kap_ownership_signals(ticker)
-            for _k in ('f_threshold_asildi', 'f_insider_first_buy'):
-                if _kow.get(_k) is not None:
-                    out[_k] = _kow[_k]
-            # MKK Yabancı Net Alış (İş Yatırım RSS)
+            # MKK Yabancı Net Alış (İş Yatırım RSS) — KORUNDU (hisse-bazlı, çalışıyor)
             _mkk_y = _compute_mkk_yabanci_signals(ticker)
             for _k in ('f_yabanci_giris', 'f_yabanci_cikis', 'f_yabanci_streak', 'f_yabanci_anchor'):
                 if _mkk_y.get(_k) is not None:
@@ -2067,10 +1605,6 @@ def _compute_signal_features(ticker: str) -> dict:
                         out['f_force_index_dual'] = _fi_r.get('state')
                         out['f_force_index_divergence'] = _fi_r.get('divergence')
             except Exception: pass
-            # Convergence (anchor) — 3+ STRONG aynı yönde
-            _conv = _compute_kurumsal_convergence(out)
-            if _conv.get('f_kurumsal_anchor') is not None:
-                out['f_kurumsal_anchor'] = _conv['f_kurumsal_anchor']
             # YAPISAL vs TACTICAL skor ayrımı (tüm flag'ler hesaplandıktan sonra)
             _split = compute_smart_money_split_scores(out)
             if _split:
@@ -3323,8 +2857,6 @@ def get_batch_data_cached(asset_list, period="1y"):
     if combined_dict:
         return pd.concat(combined_dict.values(), axis=1, keys=combined_dict.keys())
     return pd.DataFrame()
-
-
 
 
 # ── BİNANCE VERİ ÇEKİCİ (KRİPTO PARALAR İÇİN) ──────────────────────
@@ -4712,26 +4244,8 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
         struct_score = 50.0  # nötr başla
         struct_pos = []; struct_neg = []
 
-        # KURUMSAL ANCHOR (en güçlü yapısal sinyal)
-        if f.get('f_kurumsal_anchor') == 1:
-            struct_score += 25
-            struct_pos.append('Kurumsal Anchor (3+ kanal aynı yönde)')
-        # TEFAS (yerli fon akışı)
-        if f.get('f_tefas_konsensus_alim') == 1:
-            struct_score += 8; struct_pos.append('TEFAS yerli fon girişi')
-        if f.get('f_tefas_yeni_giris') == 1:
-            struct_score += 6; struct_pos.append('TEFAS yeni fon pozisyonu')
-        if f.get('f_tefas_konsensus_satim') == 1:
-            struct_score -= 10; struct_neg.append('TEFAS fon çıkışı')
-        # KAP (şirket buyback + pay sahipliği)
-        if f.get('f_buyback_aktif') == 1:
-            struct_score += 7; struct_pos.append('Şirket geri alımı aktif')
-        if f.get('f_buyback_dip_aliyor') == 1:
-            struct_score += 10; struct_pos.append('Yönetim 52H dip yakını alıyor')
-        if f.get('f_threshold_asildi') == 1:
-            struct_score += 6; struct_pos.append('%5/%10 eşik aşımı (büyük ortak)')
-        if f.get('f_insider_first_buy') == 1:
-            struct_score += 8; struct_pos.append('Yönetici 6 ay sonra ilk alım')
+        # (12 Haz Oturum 21) TEFAS + KAP + f_kurumsal_anchor skor katkıları KALDIRILDI
+        # (TEFAS makro-rejim yasağı, KAP endpoint bloklu). Yabancı + rel_obv korundu.
         # MKK Yabancı
         if f.get('f_yabanci_anchor') == 1:
             struct_score += 15; struct_pos.append('Yabancı kurumsal anchor (giriş + streak)')
@@ -7910,8 +7424,6 @@ def process_single_breakout(symbol, df):
             }
         return None
     except: return None
-
-
 
 
 # ==============================================================================
@@ -11986,8 +11498,6 @@ def calculate_harmonic_patterns(ticker, df):
         return None
 
 
-
-
 def render_harmonic_banner(ticker):
     """
     BİREYSEL HİSSE — Harmonik formasyon varsa banner gösterir.
@@ -12979,8 +12489,6 @@ def _gauge_chart_b64(score, dark_mode):
     return base64.b64encode(buf.read()).decode()
 
 
-
-
 def _compute_smc_elements(highs_arr, lows_arr, opens_arr, closes_arr, n_pivot=5):
     """Pure-Python SMC: FVG, Order Blocks, BOS/CHoCH, EQH/EQL, Premium/Discount.
 
@@ -13170,8 +12678,6 @@ def _compute_smc_elements(highs_arr, lows_arr, opens_arr, closes_arr, n_pivot=5)
         result['swing_low']  = min(p[1] for p in pl[-4:])
 
     return result
-
-
 
 
 def _main_price_chart_plotly(symbol, dark_mode):
@@ -14010,7 +13516,6 @@ def _main_price_chart_plotly(symbol, dark_mode):
     except Exception as _e:
         import traceback; traceback.print_exc()
         return str(_e), {}   # hata mesajını döndür, None değil
-
 
 
 def _rsi_bar_html(rsi_val):
@@ -17071,9 +16576,6 @@ def _er_rs_pct(close, bench_close, days, _aligned=None):
         return 0.0
 
 
-
-
-
 def _er_rs_new_high(close, bench_close, lookback=20):
     """RS oranı son N gün'ün en yüksek %98'inde"""
     if bench_close is None:
@@ -17090,7 +16592,6 @@ def _er_rs_new_high(close, bench_close, lookback=20):
         return recent_max > 0 and current >= recent_max * 0.98
     except Exception:
         return False
-
 
 
 def _er_index_falling(bench_close, days=10):
@@ -18696,7 +18197,6 @@ def calculate_8_point_roadmap(ticker, cat=None):
         }
     except Exception as e:
         return None
-
 
 
 def _build_pattern_analysis(chart_data, curr_price, ticker):
@@ -23650,23 +23150,15 @@ with col_btn:
             except Exception:
                 pass  # Backfill hatası Master Scan'i durdurmasın
 
-            # 0.5 KURUMSAL TAKİP cache refresh (9 Haz 2026 Oturum 20)
-            # TEFAS günlük snapshot + KAP duyuru pencere fetch. Cache dolarsa
-            # _compute_signal_features kurumsal flag'leri otomatik üretir.
-            my_bar.progress(7, text="🏛 Kurumsal akışlar (TEFAS + KAP + MKK) güncelleniyor...%7")
+            # 0.5 MKK Yabancı cache refresh (10 Haz 2026 Oturum 20)
+            # (12 Haz Oturum 21) TEFAS + KAP fetch KALDIRILDI — TEFAS hisse-bazlı veri
+            # vermiyor (makro-rejim yasağı), KAP endpoint bloklu (666). Sadece MKK kaldı.
+            my_bar.progress(7, text="🏛 Yabancı net akış (MKK) güncelleniyor...%7")
             try:
-                # TEFAS — yalnızca BIST kategorisinde anlamlı, diğer kategorilerde atla
-                if "BIST" in str(st.session_state.get('category', '')):
-                    _tef_ok, _tef_fail = _fetch_tefas_portfolio_snapshot()
-                    import logging
-                    logging.info(f"[tefas] snapshot: {_tef_ok} fon başarılı, {_tef_fail} başarısız.")
-                # KAP — her durumda dene (2 saatlik pencere)
-                _kap_ok, _kap_fail = _fetch_kap_disclosures(days_back=30)
-                import logging
-                logging.info(f"[kap] disclosure fetch: {_kap_ok} olay, {_kap_fail} hata.")
                 # MKK Yabancı Net Alış — sadece BIST kategorisi için (10 Haz 2026)
                 if "BIST" in str(st.session_state.get('category', '')):
                     _mkk_ok, _mkk_fail = _fetch_mkk_yabanci_rss(max_days=30)
+                    import logging
                     logging.info(f"[mkk] yabanci RSS: {_mkk_ok} rapor günü, {_mkk_fail} hata.")
             except Exception as _kf_ex:
                 try: log_error("kurumsal_fetch_master_scan", _kf_ex)
@@ -25714,59 +25206,9 @@ if st.session_state.generate_prompt:
                 "kavramı; DESTEKLEYİCİ confluence — BIST backtest beklemede)"
             )
 
-        # KURUMSAL TAKİP (TEFAS + KAP) — 8 STRONG flag, hepsi koşullu emit
-        # Anchor (3+ aynı yönde) varsa AYRI vurgu satırı → AI G1'de mutlaka kullanır
-        if _smc_extra.get('f_kurumsal_anchor') == 1:
-            _poc_avwap_lines.append(
-                "  🏛 KURUMSAL ANCHOR: True (3+ bağımsız kurumsal kanal aynı yönde — "
-                "TEFAS fon akışı + KAP buyback + KAP pay sahipliği konverjansı; "
-                "tek başına teknik analizden bağımsız yön bilgisi — G1'de MUTLAKA "
-                "merkeze al, 'kurumsal yığılma' olarak vurgula)"
-            )
-        # TEFAS sinyalleri: MAKRO/BIST-GENELİ (TEFAS yeni API hisse-bazlı detay vermiyor,
-        # sadece kategorik exposure: fonların toplam BIST ağırlığı).
-        if _smc_extra.get('f_tefas_konsensus_alim') == 1:
-            _poc_avwap_lines.append(
-                "  tefas_bist_genel_giris: True (son 5g ≥3 TEFAS fonu (AUM ≥100mn) "
-                "BIST exposure'ını ≥%10 ARTIRDI — yerli kurumsal para BIST'e net giriyor; "
-                "MAKRO destekleyici, hisseye değil piyasaya yön — DESTEKLEYİCİ confluence)"
-            )
-        if _smc_extra.get('f_tefas_konsensus_satim') == 1:
-            _poc_avwap_lines.append(
-                "  tefas_bist_genel_cikis: True (son 5g ≥3 fon BIST exposure'ını ≥%10 "
-                "AZALTTI, toplam ≥%20 çıkış — yerli kurumsal para BIST'ten ÇIKIYOR; "
-                "MAKRO uyarı, yön olumluya karşı dikkat — DESTEKLEYİCİ confluence)"
-            )
-        if _smc_extra.get('f_tefas_yeni_giris') == 1:
-            _poc_avwap_lines.append(
-                "  tefas_yeni_bist_acilis: True (son 30g ≥2 büyük fon (AUM ≥500mn) "
-                "BIST'e ilk kez ağırlık verdi — yeni kurumsal ilgi başlangıcı; "
-                "MAKRO destekleyici — DESTEKLEYİCİ confluence)"
-            )
-        if _smc_extra.get('f_buyback_aktif') == 1:
-            _poc_avwap_lines.append(
-                "  buyback_aktif: True (KAP — son 5g'de aktif geri alım icrası; "
-                "şirket kendi hisselerini geri alıyor, içerden güven sinyali; "
-                "DESTEKLEYİCİ confluence)"
-            )
-        if _smc_extra.get('f_buyback_dip_aliyor') == 1:
-            _poc_avwap_lines.append(
-                "  buyback_dip_aliyor: True (KAP — geri alımlar 52H dibine ≤%10 "
-                "mesafede yapılıyor; yönetim ucuz bölgede alım yapma KONVİKSİYONU; "
-                "DESTEKLEYİCİ confluence — özellikle güçlü)"
-            )
-        if _smc_extra.get('f_threshold_asildi') == 1:
-            _poc_avwap_lines.append(
-                "  threshold_asildi: True (KAP — son 30g'de %5/%10/%25 pay sahipliği "
-                "eşik aşımı yukarı yönde; yeni büyük ortak girişi veya mevcut ortağın "
-                "stake artışı; DESTEKLEYİCİ confluence)"
-            )
-        if _smc_extra.get('f_insider_first_buy') == 1:
-            _poc_avwap_lines.append(
-                "  insider_first_buy: True (KAP — yönetici/CFO/CEO 6 aydır hiç alım "
-                "yapmamışken son 30g'de ≥5mn TL alım yaptı; içerden güçlü güven; "
-                "DESTEKLEYİCİ confluence — özellikle güçlü)"
-            )
+        # (12 Haz Oturum 21) TEFAS + KAP + f_kurumsal_anchor emit blokları KALDIRILDI:
+        # TEFAS hisse-bazlı veri vermiyor (makro-rejim yasağı kapsamında), KAP endpoint
+        # bloklu (666). Yabancı net alış (MKK, hisse-bazlı) korundu — aşağıda.
         # MKK YABANCI NET ALIŞ (İş Yatırım RSS feed) — GERÇEK yabancı kurumsal akış izi
         if _smc_extra.get('f_yabanci_anchor') == 1:
             _poc_avwap_lines.append(
@@ -26758,8 +26200,7 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
     # seçimini netleştirir, 3 ayrı paragrafa bakıp kendisi çıkarmasın.
     _conf_active = []
     try:
-        if _smc_extra.get('f_kurumsal_anchor') == 1:
-            _conf_active.append('kurumsal_anchor')
+        # (12 Haz Oturum 21) kurumsal_anchor (TEFAS+KAP) kaldırıldı — confluence'tan çıktı
         if _mfi_bouquet_active:
             _conf_active.append('rsi_mfi_bouquet')
         # UDVR climax
@@ -26800,7 +26241,7 @@ Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
 3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + mfi_dual_window + udvr_state/udvr_wyckoff + rel_obv_state + smart_money.cum_delta_5g + vp_sekil + smart_money_split): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi. UDVR'nin climax durumlarına ayrıca dikkat: tepe/dip'te smart money'in girdiği/çıktığını gösterir.
 
 **ALAN TIER ETİKETLERİ (KRİTİK — G1 merkez seçimi):** YAML alanları üç katmandadır.
-🏛 ELIT_ANCHOR (varsa G1 açılışını MUTLAKA bu alan merkez yap): `confluence_count` (varsa hep) · `kurumsal_anchor=1` · `rsi_mfi_bouquet` · `udvr.climax_bottom/top` · `rel_obv_state: outperform_strong/underperform_strong` · `breakout_alert` (BREAKAWAY GAP > BREAKOUT) · `force_index_divergence: bullish/bearish` · `naked_poc_yakin` (≤%2) · `poc_mtf_confluence` · `poc_magnet` (TIER_1 + Akümülasyon|Up|below) · `master_score_rejim` (🏛 prefixli, |delta|≥20 puan) · `vp_sekil_rejim_degisimi` (🏛 prefixli, rejim değişti).
+🏛 ELIT_ANCHOR (varsa G1 açılışını MUTLAKA bu alan merkez yap): `confluence_count` (varsa hep) · `rsi_mfi_bouquet` · `udvr.climax_bottom/top` · `rel_obv_state: outperform_strong/underperform_strong` · `breakout_alert` (BREAKAWAY GAP > BREAKOUT) · `force_index_divergence: bullish/bearish` · `naked_poc_yakin` (≤%2) · `poc_mtf_confluence` · `poc_magnet` (TIER_1 + Akümülasyon|Up|below) · `master_score_rejim` (🏛 prefixli, |delta|≥20 puan) · `vp_sekil_rejim_degisimi` (🏛 prefixli, rejim değişti).
 ⚠ UYARI (tezi sorgulayan negatif teyit — atlamak yanlış): `obv_cmf.durum` ŞÜPHELİ/SAHTE GÜÇ/ZAYIF TEYİT/YANILTICI ile başlıyorsa · `mum_kapanis_durumu: YANILTICI` · `[⚠ tek-mum ağırlıklı]` rozeti · `52H trajectory` "düşüyor" + RSI aşırı alım · CONS satırı dolu.
 💧 DESTEKLEYİCİ (varsayılan — diğer her şey): cmf_dual_window pos/neg, rsi/mfi tek-yönlü, omi_sigma, vp_sekil, fiyat_poc_konumu, vwap, rs_alpha, scanner_tiers_aktif TIER_2/3.
 G1 açılışı sırası: 🏛 ELIT_ANCHOR varsa → o · yoksa hâkim DESTEKLEYİCİ çoğunluk · UYARI hep G2'de yer almalı (atlanamaz).
@@ -26816,7 +26257,7 @@ G1 açılışı sırası: 🏛 ELIT_ANCHOR varsa → o · yoksa hâkim DESTEKLEY
 
 **`[gelişim]` rozeti okuma:** YAML'da `[gelişim]` ile başlayan alanlar SADECE **bağlam rengi** — mevcut anchor'ı güçlendiren kısa mention için. Tek başına G1 merkez YAPMA, ana hikaye olarak yorumlama. Örnek: `[gelişim] fiyat_poc_yaklasma: 5g önce %+5 → bugün %+1 (POC'A YAKLAŞIYOR)` → ana hikaye POC mıknatısı (varsa anchor), bu satır sadece "5g'de hızla yaklaştı" şeklinde 1 yan-cümle olabilir. `[gelişim] master_score_egilim` (delta 15-19 puan) → master breakdown cümlesinde "skor son 3 haftada yükseliyor" gibi destek. **|delta| < 15 puan / |dist delta| < %3 / vp_sekil aynı** durumlarda emit ZATEN YOK — mikro drift'ten haber çıkarmaya çalışma.
 
-**🏛 prefixli rejim değişimleri (anchor seviyesi):** `master_score_rejim` |delta|≥20 puan veya `vp_sekil_rejim_degisimi` rejim değişti veya `breakout_alert` veya `kurumsal_anchor` aktif olduğunda → G1 açılışında merkez yap. Bunların ötesi (trajectory benzeri sayısal hareket) anchor değil — `confluence_count` zaten net anchor sayısını söyler.
+**🏛 prefixli rejim değişimleri (anchor seviyesi):** `master_score_rejim` |delta|≥20 puan veya `vp_sekil_rejim_degisimi` rejim değişti veya `breakout_alert` aktif olduğunda → G1 açılışında merkez yap. Bunların ötesi (trajectory benzeri sayısal hareket) anchor değil — `confluence_count` zaten net anchor sayısını söyler.
 
 **[⚠ tek-mum ağırlıklı] rozeti okuma (KRİTİK):** Bir dual-window state'in (cmf_dual_window / cum_delta_dual_window / rsi_dual_window / mfi_dual_window) ya da yaml.obv_cmf.durum'un başında `[⚠ tek-mum ağırlıklı]` rozeti varsa, o state'i "iki periyotta birikim teyitli" diye okuma. Bugünkü tek mum 5 günlük deltanın >%60'ını oluşturmuş — yani okuma tek günün şişirmesinden geliyor, gerçek path-tabanlı birikim/dağıtım değil. Bu durumda: (a) state'i DESTEKLEYİCİ değil "TEYİT BEKLENİYOR" olarak yansıt, (b) G2'de "tek mumla şişirilmiş okumayı 2-3 gün izlemek lazım, geri verirse sahte güç" tarzı somut uyarı yaz, (c) "iki pencerede birikim sürüyor", "kalıcı kurumsal", "akıllı para iki periyotta da" gibi yapısal cümleleri KULLANMA. AI yorumunda rozeti açıkça "tek mum ağırlıklı" ya da "bugünkü tek bar okumayı şişirmiş" olarak yansıt — yutma.
 
@@ -26981,7 +26422,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
-• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 KURUMSAL ANCHOR` (3+ kurumsal kanal konverjansı — TEFAS+KAP+ownership aynı yönde — bu varsa G1'de MUTLAKA merkez), `tefas_konsensus_alim`/`tefas_konsensus_satim`/`tefas_yeni_giris` (TEFAS fon akış sinyalleri — STRONG, AI'da 1 cümle), `buyback_aktif`/`buyback_dip_aliyor` (KAP geri alım — özellikle dip alıyor varsa güçlü), `threshold_asildi`/`insider_first_buy` (KAP pay sahipliği — büyük ortak/yönetici hareketleri), `🏛 YABANCI KURUMSAL ANCHOR` (MKK — yabancı net giriş + streak çakışması, gerçek yabancı kurumsal pozisyon kuruyor → G1'de mutlaka 'yabancı destekliyor' vurgusu), `yabanci_giris`/`yabanci_streak`/`yabanci_cikis` (MKK — yabancı oran top-3 + süreklilik bilgisi, DESTEKLEYİCİ).
+• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 YABANCI KURUMSAL ANCHOR` (MKK — yabancı net giriş + streak çakışması, gerçek yabancı kurumsal pozisyon kuruyor → G1'de mutlaka 'yabancı destekliyor' vurgusu), `yabanci_giris`/`yabanci_streak`/`yabanci_cikis` (MKK — yabancı oran top-3 + süreklilik bilgisi, DESTEKLEYİCİ).
 • smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al), `rel_obv_state` (Relative OBV — hisse hacim akışı endeksten ayrışıyor mu; outperform_strong/underperform_strong = ELIT smart money izi, mild = destekleyici), `udvr_state`/`udvr_wyckoff` (Up/Down Volume Ratio — klasik Wyckoff Effort-vs-Result, climax_top/bottom durumları = TIER_1 ELIT smart money tepe/dip teyidi; strong_buyer/strong_seller = destekleyici), `force_index_dual`/`force_index_divergence` (Alexander Elder Force Index dual — anlık FI(2) ve trend FI(13); bullish/bearish divergence = TIER_1 ELIT klasik Elder sinyali, strong/turning durumlar = destekleyici).
 • trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
@@ -29159,7 +28600,6 @@ def _render_left_col():
                             on_scan_result_click(_hzs); st.rerun()
             else:
                 st.caption("Altın Set-up & VIP Formasyon bulunamadı.")
-    
     
     
     # 5. GELİŞMİŞ SMR ALGORİTMİK HİSSE RAPORU
