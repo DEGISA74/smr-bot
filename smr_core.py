@@ -806,7 +806,7 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
             dow_pattern = f"{h_txt} / {l_txt}"
             if h1 > h2 and l1 > l2:     dow_desc = "Güçlü Yükseliş Zinciri"
             elif h1 < h2 and l1 < l2:   dow_desc = "Güçlü Düşüş Zinciri"
-            elif h1 < h2 and l1 > l2:   dow_desc = "Sıkışma (Zayıflayan Momentum / Düzeltme)"
+            elif h1 < h2 and l1 > l2:   dow_desc = "Sıkışma (Daralan Range — Kırılım Yakın)"
             elif h1 > h2 and l1 < l2:   dow_desc = "Genişleyen Volatilite (Yön Arayışı)"
 
         # Bias & Yapı
@@ -819,11 +819,30 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
 
         last_candle_body = abs(open_.iloc[-1] - close.iloc[-1])
         avg_vol_20 = df["Volume"].rolling(20).mean().iloc[-1]
-        vol_confirmed = float(df["Volume"].iloc[-1]) > avg_vol_20 * 1.2
-        if last_candle_body > avg_body_size.iloc[-1] * 1.1 and vol_confirmed:
+        _vol_last = float(df["Volume"].iloc[-1])
+        # (12 Haz Oturum 21) Displacement ENDEKS + GAP farkında.
+        # Eski metrik SADECE gün-içi gövde (open-close) + hacme bakıyordu → XU100
+        # gibi endekslerde Volume=0 ve gap-driven günlerde +%1.5'luk dönüş hareketini
+        # bile "Zayıf/Hacimsiz" sanıyordu (AI'ı yanlış 'dağıtım' yorumuna itiyordu).
+        # Artık: hacim güvenilmezse gücü FİYATLA yargıla (gap dahil net hareket + range).
+        _vol_reliable = _vol_last > 0 and pd.notna(avg_vol_20) and avg_vol_20 > 0
+        vol_confirmed = _vol_reliable and _vol_last > avg_vol_20 * 1.2
+        _net_move = abs((close.iloc[-1] - prev_close) / prev_close) if prev_close > 0 else 0.0
+        _day_range = float(high.iloc[-1] - low.iloc[-1])
+        _big_body = last_candle_body > avg_body_size.iloc[-1] * 1.1
+        _strong_range = bool(atr) and atr > 0 and _day_range > atr * 1.2
+        # Güçlü hamle: büyük gövde VEYA (önceki kapanışa göre ≥%1 net hareket + geniş range)
+        _price_strong = _big_body or (_net_move >= 0.01 and _strong_range)
+        if _price_strong and vol_confirmed:
             displacement_txt = "🔥 Güçlü Displacement (Hacim Onaylı)"
-        elif last_candle_body > avg_body_size.iloc[-1] * 1.1:
+        elif _price_strong and not _vol_reliable:
+            displacement_txt = "🔥 Güçlü Displacement (Fiyat Hareketi)"
+        elif _price_strong:
             displacement_txt = "⚠️ Hacimsiz Hareket (Sahte Olabilir)"
+        elif not _vol_reliable:
+            displacement_txt = "Zayıf (Dar Range)"
+        else:
+            displacement_txt = "Zayıf (Hacimsiz Hareket)"
 
         bmu = (curr_price - last_sh) / last_sh if last_sh > 0 else 0
         bmd = (last_sl - curr_price) / last_sl if last_sl > 0 else 0
