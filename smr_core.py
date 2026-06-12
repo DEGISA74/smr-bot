@@ -1448,6 +1448,78 @@ def _find_breakout_boundary_bot(df):
         return None, None
 
 
+# ─── PORT EDİLEN FEATURE'LAR (app.py'den, 12 Haz Oturum 21) ──────────────────
+# Tek-hisseyle hesaplanabilen (df-only) app.py feature'ları botun ince motorunu
+# zenginleştirmek için taşındı. Batch 1: UDVR + Force Index Dual.
+def compute_updown_volume_ratio(df, period=20):
+    """Up/Down Volume Ratio — Wyckoff Effort-vs-Result. app.py'den port (12 Haz).
+    Yükseliş günü hacmi / düşüş günü hacmi → alıcı vs satıcı eforu."""
+    try:
+        if df is None or len(df) < period + 1: return None
+        if 'Close' not in df.columns or 'Volume' not in df.columns: return None
+        _seg = df.tail(period + 1)
+        _close = _seg['Close']; _vol = _seg['Volume']; _diff = _close.diff()
+        _up_vol = float(_vol.where(_diff > 0, 0).iloc[1:].sum())
+        _down_vol = float(_vol.where(_diff < 0, 0).iloc[1:].sum())
+        _ratio = (99.0 if _up_vol > 0 else 1.0) if _down_vol <= 1e-6 else _up_vol / _down_vol
+        if   _ratio >= 2.0:  _state = 'strong_buyer'
+        elif _ratio >= 1.3:  _state = 'buyer'
+        elif _ratio >= 0.77: _state = 'balanced'
+        elif _ratio >= 0.5:  _state = 'seller'
+        else:                _state = 'strong_seller'
+        _climax = None
+        try:
+            _high_full = df['High'].tail(period * 2) if 'High' in df.columns else df['Close'].tail(period * 2)
+            _low_full = df['Low'].tail(period * 2) if 'Low' in df.columns else df['Close'].tail(period * 2)
+            _cur_close = float(_close.iloc[-1])
+            if _cur_close >= float(_high_full.max()) * 0.98 and _ratio < 0.8:
+                _climax = 'climax_top'
+            elif _cur_close <= float(_low_full.min()) * 1.02 and _ratio > 1.25:
+                _climax = 'climax_bottom'
+        except Exception: pass
+        return {'ratio': round(_ratio, 2), 'state': _state, 'climax': _climax}
+    except Exception:
+        return None
+
+
+def compute_force_index_dual(df, span_short=2, span_long=13):
+    """Alexander Elder Force Index — dual-window + divergence. app.py'den port (12 Haz).
+    FI = (Close - Close[-1]) × Volume; kısa(2)=tetik, uzun(13)=trend; z-score normalize."""
+    try:
+        if df is None or len(df) < max(span_long * 3, 50): return None
+        if 'Close' not in df.columns or 'Volume' not in df.columns: return None
+        _close = df['Close']; _vol = df['Volume']
+        _fi_raw = _close.diff() * _vol
+        _fi_short = _fi_raw.ewm(span=span_short, adjust=False).mean()
+        _fi_long = _fi_raw.ewm(span=span_long, adjust=False).mean()
+        _fi_std = _fi_long.rolling(50, min_periods=20).std()
+        _fi_std_last = float(_fi_std.iloc[-1]) if not pd.isna(_fi_std.iloc[-1]) and _fi_std.iloc[-1] > 0 else 1.0
+        _fis_norm = float(_fi_short.iloc[-1]) / _fi_std_last
+        _fil_norm = float(_fi_long.iloc[-1]) / _fi_std_last
+        if   _fis_norm > 1.0 and _fil_norm > 0.5:   _state = 'strong_pos'
+        elif _fis_norm < -1.0 and _fil_norm < -0.5: _state = 'strong_neg'
+        elif _fis_norm > 0.5 and _fil_norm < -0.3:  _state = 'turning_up'
+        elif _fis_norm < -0.5 and _fil_norm > 0.3:  _state = 'turning_down'
+        elif _fil_norm > 0.5:                       _state = 'pos'
+        elif _fil_norm < -0.5:                      _state = 'neg'
+        else:                                       _state = 'neutral'
+        _divergence = None
+        try:
+            if len(df) >= 35:
+                _seg_close = _close.tail(30); _seg_fi = _fi_long.tail(30)
+                _scv = _seg_close.values; _sfv = _seg_fi.values
+                _plc = _scv[:20].min(); _plf = _sfv[:20][_scv[:20].argmin()]
+                _phc = _scv[:20].max(); _phf = _sfv[:20][_scv[:20].argmax()]
+                if _seg_close.iloc[-5:].min() < _plc * 0.99 and _seg_fi.iloc[-5:].min() > _plf * 1.05:
+                    _divergence = 'bullish'
+                elif _seg_close.iloc[-5:].max() > _phc * 1.01 and _seg_fi.iloc[-5:].max() < _phf * 0.95:
+                    _divergence = 'bearish'
+        except Exception: pass
+        return {'state': _state, 'fi_long_norm': round(_fil_norm, 2), 'divergence': _divergence}
+    except Exception:
+        return None
+
+
 # ─── AI PROMPT ÜRET ──────────────────────────────────────────────────────────
 def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tuple:
     """Ortak veri bloğu — hem Görev 1 hem Görev 3 kullanır."""
@@ -1989,6 +2061,47 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     except Exception:
         pass
 
+    # ── UDVR (alıcı/satıcı eforu) + Force Index (fiyat×hacim gücü) ────────────
+    # (12 Haz Oturum 21) app.py'den port — botun ince hacim motorunu zenginleştir.
+    # Volume proxy fix ile birlikte endeks/0-hacim günlerinde de doğru çalışır.
+    udvr_txt = "Hesaplanamadı"
+    try:
+        _udvr = compute_updown_volume_ratio(df, period=20)
+        if _udvr:
+            _ur = _udvr['ratio']
+            udvr_txt = {
+                'strong_buyer':  f"GÜÇLÜ ALICI EFORU (yükseliş hacmi düşüşün {_ur}x'i)",
+                'buyer':         f"ALICI EGEMEN ({_ur}x — sağlıklı yukarı baskı)",
+                'balanced':      f"DENGE ({_ur}x — yön kararsız)",
+                'seller':        f"SATICI EGEMEN ({_ur}x)",
+                'strong_seller': f"GÜÇLÜ SATICI EFORU ({_ur}x)",
+            }.get(_udvr['state'], f"{_udvr['state']} ({_ur}x)")
+            if _udvr.get('climax') == 'climax_bottom':
+                udvr_txt += " · ⚠ DİP CLIMAX (fiyat dipte ama alıcı hacmi güçlü — dönüş sinyali)"
+            elif _udvr.get('climax') == 'climax_top':
+                udvr_txt += " · ⚠ TEPE CLIMAX (fiyat zirvede ama satıcı hacmi güçlü — dönüş sinyali)"
+    except Exception: pass
+
+    fi_txt = "Hesaplanamadı"
+    try:
+        _fi = compute_force_index_dual(df)
+        if _fi:
+            _fn = _fi['fi_long_norm']
+            fi_txt = {
+                'strong_pos':   f"GÜÇLÜ ALICI (z {_fn:+.1f} — alıcı tam egemen)",
+                'strong_neg':   f"GÜÇLÜ SATICI (z {_fn:+.1f} — satıcı tam egemen)",
+                'turning_up':   "DÖNÜŞ YUKARI (trend negatif ama anlık alıcı dönüşü)",
+                'turning_down': "YORGUNLUK (trend pozitif ama anlık zayıflık)",
+                'pos':          f"POZİTİF (z {_fn:+.1f})",
+                'neg':          f"NEGATİF (z {_fn:+.1f})",
+                'neutral':      f"NÖTR (z {_fn:+.1f})",
+            }.get(_fi['state'], f"{_fi['state']} (z {_fn:+.1f})")
+            if _fi.get('divergence') == 'bullish':
+                fi_txt += " · 🔄 BOĞA UYUMSUZLUĞU (fiyat yeni dip ama FI yükseliyor — dönüş)"
+            elif _fi.get('divergence') == 'bearish':
+                fi_txt += " · 🔄 AYI UYUMSUZLUĞU (fiyat yeni zirve ama FI düşüyor — dönüş)"
+    except Exception: pass
+
     data_block = f"""═══════════════════════════════════════
 📊 HİSSE: {ticker} | Fiyat: {fiyat_str}
 📅 Veri Tarihi: {data_timestamp_txt}
@@ -2033,6 +2146,8 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • OMI (OBV Momentum Index): {omi_txt}
 • 5G Kümülatif Delta: {delta5_txt}
 • Hacim Kalitesi : {hacim_kal_txt}{rs_line}
+• Alıcı/Satıcı Eforu (UDVR): {udvr_txt}
+• Fiyat × Hacim Gücü (Force Index): {fi_txt}
 💡 ICT SONUÇ: {ict.get('bottom_line', '-')}{_breakout_line}
 ═══════════════════════════════════════"""
 
@@ -3098,7 +3213,7 @@ KONTROL: İlk cümlenin ilk 3 kelimesi sayı/rakam/seviye içeriyor mu? İçermi
 × "Displacement, yani hacimsiz hareketin zayıflığı..." (YANLIŞ — displacement = sert ivmeli kırılım hareketi)
 × "alıcılı bölge / satıcılı bölge / yorulma emareleri / hacimsizlik zayıflığı" (bilinen finans terimi DEĞİL — uydurma)
 ✓ Tanımını bilmediğin terimi KULLANMA. ANLATIM KURALI ve JARGON FİLTRESİ'nde izinli terim listesi var; başkasını uydurma.
-✓ Sadece şu ICT/SMC terimleri tanımlı ve kullanılabilir: HH+HL, LH+LL, CHoCH, BOS, OB, FVG, VWAP, OBV, RVOL, VSA, CMF, HARSI, RSI, SMA/EMA, Discount/Premium, Climax/No Demand/No Supply, Regular/Hidden Bull/Bear Divergence.
+✓ Sadece şu ICT/SMC terimleri tanımlı ve kullanılabilir: HH+HL, LH+LL, CHoCH, BOS, OB, FVG, VWAP, OBV, RVOL, VSA, CMF, HARSI, RSI, SMA/EMA, Discount/Premium, Climax/No Demand/No Supply, Regular/Hidden Bull/Bear Divergence, UDVR (Up/Down Volume Ratio — alıcı/satıcı eforu), Force Index (Elder — fiyat×hacim gücü).
 
 İhlal 5 — YAPI SENARYOSU TUTARSIZLIĞI:
 × Açılışta "LH/HL", maddede "HL" tek başına (tutarsız okuma — "LH/HL" diye bir senaryo yok)
@@ -3483,7 +3598,7 @@ KONTROL: İlk cümlenin ilk 3 kelimesi sayı/rakam/seviye içeriyor mu? İçermi
 × "Displacement, yani hacimsiz hareketin zayıflığı..." (YANLIŞ — displacement = sert ivmeli kırılım hareketi)
 × "alıcılı bölge / satıcılı bölge / yorulma emareleri / hacimsizlik zayıflığı" (bilinen finans terimi DEĞİL — uydurma)
 ✓ Tanımını bilmediğin terimi KULLANMA. ANLATIM KURALI ve JARGON FİLTRESİ'nde izinli terim listesi var; başkasını uydurma.
-✓ Sadece şu ICT/SMC terimleri tanımlı ve kullanılabilir: HH+HL, LH+LL, CHoCH, BOS, OB, FVG, VWAP, OBV, RVOL, VSA, CMF, HARSI, RSI, SMA/EMA, Discount/Premium, Climax/No Demand/No Supply, Regular/Hidden Bull/Bear Divergence.
+✓ Sadece şu ICT/SMC terimleri tanımlı ve kullanılabilir: HH+HL, LH+LL, CHoCH, BOS, OB, FVG, VWAP, OBV, RVOL, VSA, CMF, HARSI, RSI, SMA/EMA, Discount/Premium, Climax/No Demand/No Supply, Regular/Hidden Bull/Bear Divergence, UDVR (Up/Down Volume Ratio — alıcı/satıcı eforu), Force Index (Elder — fiyat×hacim gücü).
 
 İhlal 5 — YAPI SENARYOSU TUTARSIZLIĞI:
 × Açılışta "LH/HL", maddede "HL" tek başına (tutarsız okuma — "LH/HL" diye bir senaryo yok)
