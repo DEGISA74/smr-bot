@@ -25,6 +25,23 @@ _SIGNALS_DB = pathlib.Path(__file__).parent / "signals.db"
 _CACHE_DIR   = pathlib.Path(os.environ.get("SMR_CACHE_DIR",
                 pathlib.Path(__file__).parent / "veriler"))
 
+# ── 12 Haz 2026 — Tek-mum dominance helper (path-aware koruma) ──────────────
+# Bugünkü mum X-pencere okumasının ne kadarını oluşturdu? >%60 = dominant.
+# OBV / CMF / cum_delta dual-window state'lerini "iki periyot teyit" diye
+# okumaktan korur. app.py'daki aynı kuralın bot karşılığı.
+SPIKE_DOM_THRESHOLD_SC = 0.60
+
+def _spike_dom_ratio_sc(today_delta, window_delta):
+    """0..1+ döner. Aynı yönde değilse 0, pencere ~0 ise 0. >0.6 = dominant."""
+    try:
+        td = float(today_delta); wd = float(window_delta)
+        if abs(wd) < 1e-9: return 0.0
+        if (td > 0) != (wd > 0): return 0.0
+        r = abs(td) / abs(wd)
+        return r if r == r else 0.0  # NaN guard
+    except Exception:
+        return 0.0
+
 # ── BIST Takvim Modülü (tatil / arefe / RVOL normalizer) ──────────────────────
 try:
     from bist_calendar import (
@@ -1533,6 +1550,10 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     except: pass
 
     # ── OBV Para Akışı ────────────────────────────────────────────────────────
+    # 12 Haz 2026 — Tek-mum dominance koruması: bugünkü mum 5g OBV deltasının
+    # >%60'ını oluşturduysa pozitif/güçlü etiketlere "(⚠ tek-mum ağırlıklı)"
+    # rozeti eklenir. AI bunu "iki periyot teyit" diye okumaz, "teyit bekleniyor"
+    # olarak yansıtmak zorundadır (rehber kuralı PRO+ELITE).
     para_akisi = "Veri Yok"
     try:
         if n > 20:
@@ -1542,12 +1563,25 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
             p_now, p_old = float(close.iloc[-1]), float(close.iloc[-11])
             o_now, o_old = float(obv.iloc[-1]), float(obv.iloc[-11])
             strong_obv   = o_now > float(obv_sma.iloc[-1])
+
+            # Tek-mum dominance check (bugünkü OBV katkısı vs 5g OBV deltası)
+            _spike_tag_obv_sc = ""
+            try:
+                if n >= 6:
+                    _obv_td_sc = float(obv.iloc[-1] - obv.iloc[-2])
+                    _obv_5w_sc = float(obv.iloc[-1] - obv.iloc[-6])
+                    _spike_r_obv_sc = _spike_dom_ratio_sc(_obv_td_sc, _obv_5w_sc)
+                    if _spike_r_obv_sc > SPIKE_DOM_THRESHOLD_SC:
+                        _spike_tag_obv_sc = f" (⚠ tek-mum ağırlıklı: bugünkü mum 5g akışın %{_spike_r_obv_sc*100:.0f}'ini oluşturdu — teyit bekleniyor)"
+            except Exception:
+                pass
+
             if p_now < p_old and o_now > o_old:
-                para_akisi = "🟢 Gizli Giriş (OBV Pozitif Ayrışma — Fiyat düşerken para giriyor)"
+                para_akisi = "🟢 Gizli Giriş (OBV Pozitif Ayrışma — Fiyat düşerken para giriyor)" + _spike_tag_obv_sc
             elif p_now > p_old and o_now < o_old:
                 para_akisi = "🔴 Gizli Çıkış (OBV Negatif Ayrışma — Fiyat yükselirken para çıkıyor)"
             elif strong_obv:
-                para_akisi = "🟢 Sağlıklı Trend (OBV ortalamanın üzerinde, trend onaylı)"
+                para_akisi = "🟢 Sağlıklı Trend (OBV ortalamanın üzerinde, trend onaylı)" + _spike_tag_obv_sc
             else:
                 para_akisi = "🟡 Zayıf İvme (OBV ortalamanın altında, momentum kırılgın)"
     except: pass
@@ -1831,6 +1865,8 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     except Exception: pass
 
     # ── OBV + CMF (Bar içi alış/satış teyit katmanı) ─────────────────────────
+    # 12 Haz 2026 — CMF tek-mum dominance ek koruması: bugünkü mfv 5g toplam
+    # mfv'nin >%60'ı ise TEYİTLİ ALIM rozetine "(⚠ tek-mum ağırlıklı)" eklenir.
     obv_cmf_txt = "(veri eksik)"
     try:
         if "Volume" in df.columns and n >= 20:
@@ -1844,6 +1880,17 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
             # Çelişki tespiti — para_akisi (yukarıda) Gizli Giriş/Çıkış tespit ediyor
             _is_pos_div = "Pozitif Ayrışma" in para_akisi
             _is_neg_div = "Negatif Ayrışma" in para_akisi
+            # CMF tek-mum dominance check (bugünkü mfv vs 5g mfv toplamı)
+            _spike_tag_cmf_sc = ""
+            try:
+                _mfv_td_sc = float(_mfv.iloc[-1])
+                _mfv_5w_sc = float(_mfv.tail(5).sum())
+                _spike_r_cmf_sc = _spike_dom_ratio_sc(_mfv_td_sc, _mfv_5w_sc)
+                if _spike_r_cmf_sc > SPIKE_DOM_THRESHOLD_SC:
+                    _spike_tag_cmf_sc = f" (⚠ tek-mum ağırlıklı: bugünkü mum 5g CMF akışın %{_spike_r_cmf_sc*100:.0f}'ini oluşturdu — teyit bekleniyor)"
+            except Exception:
+                pass
+
             if _is_pos_div and _cmf_strong_neg:
                 obv_cmf_txt = f"ŞÜPHELİ GİRİŞ (CMF: {_cmf20:+.3f} ✗) — OBV birikim diyor ama bar içi satış baskısı var"
             elif _is_neg_div and _cmf_strong_pos:
@@ -1851,7 +1898,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
             elif _cmf_strong_pos and not _obv_pos_5d:
                 obv_cmf_txt = f"SAHTE GÜÇ İHTİMALİ (CMF: {_cmf20:+.3f} ✓ ama fiyat 5g aşağı) — bar içi alıcı var, momentum yok"
             elif _cmf_strong_pos:
-                obv_cmf_txt = f"TEYİTLİ ALIM (CMF: {_cmf20:+.3f} ✓) — bar içi alıcı baskısı güçlü"
+                obv_cmf_txt = f"TEYİTLİ ALIM (CMF: {_cmf20:+.3f} ✓) — bar içi alıcı baskısı güçlü" + _spike_tag_cmf_sc
             elif _cmf_strong_neg:
                 obv_cmf_txt = f"TEYİTLİ SATIŞ (CMF: {_cmf20:+.3f} ✗) — bar içi satıcı baskısı güçlü"
             else:
@@ -2927,6 +2974,17 @@ ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sin
 M1 ALT-SKOR SIRALAMASI YASAK: "Sistem skoru X/100; trend Y, momentum Z, ICT W" formatı = metodoloji anlatmak. Yerine NİTEL özet: "Sistem skoru orta — yapı tarafı baskın" / "Skor düşük; ICT katmanı tek pozitif sinyal".
 🚨 RSI DIVERGENCE ZORUNLU CHECK: yaml.ict_pa.rsi_divergence (veya rsi_divergence alanı) değerini AYNEN yansıt. yaml="Uyumlu" + panel="Hidden Bull" → "Uyumlu" yaz, "gizli pozitif"/"hidden bull"/"gizli yükseliş" YASAK. yaml="Klasik Negatif" + panel="Hidden Bear" → "Klasik Negatif" yaz. Panel etiketini YAML üzerine asla bindirme.
 
+[⚠ tek-mum ağırlıklı] ROZETİ OKUMA (KRİTİK — 12 Haz 2026):
+Data block'ta `🟢 Sağlıklı Trend` / `🟢 Gizli Giriş` / `TEYİTLİ ALIM` etiketlerinin sonunda
+`(⚠ tek-mum ağırlıklı: bugünkü mum 5g akışın %X'ini oluşturdu — teyit bekleniyor)` rozeti
+varsa, o etiketi "iki periyot teyit / kalıcı kurumsal birikim / akıllı para sürekli alıyor"
+diye OKUMA. Bugünkü tek mum 5g okumayı şişirmiş — gerçek path-tabanlı birikim değil.
+Bu durumda zorunlu:
+(a) Etiketi "TEYİT BEKLENİYOR" olarak yansıt — "Sağlıklı Trend" / "TEYİTLİ ALIM" kelimelerini AYNEN kopyalama
+(b) "Bugünkü tek mum okumayı şişirmiş, 2-3 gün izlemek lazım — geri verirse sahte güç" tarzı somut uyarı
+(c) "iki pencerede birikim sürüyor / kalıcı kurumsal / akıllı para sürekli" gibi yapısal cümleler YASAK
+(d) AI yorumunda rozeti açıkça "tek mum ağırlıklı" diye yansıt — yutma, gizleme
+
 🏛 REJİM DEĞİŞİMİ vs [gelişim] ROZETİ OKUMA (KRİTİK — 12 Haz 2026):
 Data block'ta şu rozetler görülebilir:
 - "🏛 REJİM DEĞİŞTİ — 20g önce {faz_X} → bugün {faz_Y}" (faz_txt'te). Bu ANCHOR seviyesi — analiz açılışında bu rejim kaymasını MUTLAKA merkez yap, ana hikaye burası: "Hisse geçen ay {faz_X}'teydi, bu hafta {faz_Y}'ye geçti — yeni piyasa fazı."
@@ -3300,6 +3358,17 @@ A) YASAKLI MADDE AÇILIŞLARI (madde/alt-başlık açılışı şunlardan hiçbi
 ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sinyali — somut sayı + bağlam. ✓ "Hisse 3 gündür SMA50'nin %1.8 altında — kısa vade baskı altında." · ✓ "Delta -%51.6, son 5g'in en sert dağıtımı." · ✓ "RSI 25, aşırı satım — dipler hâlâ daha derin." · ❌ "Master skor 21 — trend 0, hacim 50" (alt-skor zinciri = K3 ihlali).
 M1 ALT-SKOR SIRALAMASI YASAK: "Sistem skoru X/100; trend Y, momentum Z, ICT W" formatı = metodoloji anlatmak. Yerine NİTEL özet: "Sistem skoru orta — yapı tarafı baskın" / "Skor düşük; ICT katmanı tek pozitif sinyal".
 🚨 RSI DIVERGENCE ZORUNLU CHECK: yaml.ict_pa.rsi_divergence (veya rsi_divergence alanı) değerini AYNEN yansıt. yaml="Uyumlu" + panel="Hidden Bull" → "Uyumlu" yaz, "gizli pozitif"/"hidden bull"/"gizli yükseliş" YASAK. yaml="Klasik Negatif" + panel="Hidden Bear" → "Klasik Negatif" yaz. Panel etiketini YAML üzerine asla bindirme.
+
+[⚠ tek-mum ağırlıklı] ROZETİ OKUMA (KRİTİK — 12 Haz 2026):
+Data block'ta `🟢 Sağlıklı Trend` / `🟢 Gizli Giriş` / `TEYİTLİ ALIM` etiketlerinin sonunda
+`(⚠ tek-mum ağırlıklı: bugünkü mum 5g akışın %X'ini oluşturdu — teyit bekleniyor)` rozeti
+varsa, o etiketi "iki periyot teyit / kalıcı kurumsal birikim / akıllı para sürekli alıyor"
+diye OKUMA. Bugünkü tek mum 5g okumayı şişirmiş — gerçek path-tabanlı birikim değil.
+Bu durumda zorunlu:
+(a) Etiketi "TEYİT BEKLENİYOR" olarak yansıt — "Sağlıklı Trend" / "TEYİTLİ ALIM" kelimelerini AYNEN kopyalama
+(b) "Bugünkü tek mum okumayı şişirmiş, 2-3 gün izlemek lazım — geri verirse sahte güç" tarzı somut uyarı
+(c) "iki pencerede birikim sürüyor / kalıcı kurumsal / akıllı para sürekli" gibi yapısal cümleler YASAK
+(d) AI yorumunda rozeti açıkça "tek mum ağırlıklı" diye yansıt — yutma, gizleme
 
 🏛 REJİM DEĞİŞİMİ vs [gelişim] ROZETİ OKUMA (KRİTİK — 12 Haz 2026):
 Data block'ta şu rozetler görülebilir:
