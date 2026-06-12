@@ -1499,6 +1499,26 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
                 else "Normal" if rvol > 0.7
                 else "⚠️ Düşük Hacim") + _arefe_tag + _closed_tag
 
+    # 12 Haz 2026 (Prompt v3) — RVOL trajectory: 5g RVOL ortalaması
+    # Bugün 1.8x; 5g ort 0.9x = SPIKE (yeni ilgi) · 5g ort 1.6x = SÜREKLİ (kovalama)
+    try:
+        if "Volume" in df.columns and avg_vol > 0 and n >= 25:
+            _vol_clean_sc = df["Volume"].replace(0, float("nan")).dropna()
+            if len(_vol_clean_sc) >= 6:
+                _vol5_sc = _vol_clean_sc.tail(5)
+                _rvol_5g_seq_sc = _vol5_sc / (avg_vol * _rvol_af)
+                _rvol_5g_avg_sc = float(_rvol_5g_seq_sc.mean())
+                if _rvol_5g_avg_sc > 0:
+                    _spike_r_sc = rvol / _rvol_5g_avg_sc if _rvol_5g_avg_sc > 0 else 1.0
+                    if _spike_r_sc >= 1.5 and rvol >= 1.3:
+                        rvol_tag += f" · 5g ort {_rvol_5g_avg_sc:.1f}x → bugün {_spike_r_sc:.1f}× sıçrama, SPIKE"
+                    elif _spike_r_sc <= 0.7 and rvol <= 1.0:
+                        rvol_tag += f" · 5g ort {_rvol_5g_avg_sc:.1f}x → bugün soğuma"
+                    elif _rvol_5g_avg_sc >= 1.3:
+                        rvol_tag += f" · 5g ort {_rvol_5g_avg_sc:.1f}x — SÜREKLİ ilgi"
+    except Exception:
+        pass
+
     # ── 5 Günlük Net Delta (alım/satış baskısı) ───────────────────────────────
     delta5_txt = "Hesaplanamadı"
     try:
@@ -1613,6 +1633,29 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
                 faz_txt = "FAZ 4 — DÜŞÜŞ 🔴 (SMA200 altında, trend aşağı — kısa vadeli ralliler satılabilir)"
             else:
                 faz_txt = "FAZ 1 — BİRİKİM 🔵 (SMA200 altında ama SMA200 düzleşiyor — dip arama süreci)"
+
+            # 12 Haz 2026 (Prompt v3) — Faz rejim değişimi tespiti
+            # 20g önceki faz vs bugün. Değişti = 🏛 rejim kayması, G1 merkez.
+            # Aynıysa SUS (mikro drift değil yapısal değişimi yakalıyoruz).
+            try:
+                if n >= 40:
+                    _sma200_20g  = float(close.iloc[:-20].rolling(200).mean().iloc[-1])
+                    _sma200_p20g = float(close.iloc[:-20].rolling(200).mean().iloc[-20])
+                    _sma50_20g   = float(close.iloc[:-20].rolling(50).mean().iloc[-1])
+                    _c_20g_sc    = float(close.iloc[-21])
+                    _a200_20g    = _c_20g_sc > _sma200_20g
+                    _s200_rise20 = _sma200_20g > _sma200_p20g
+                    _a50_20g     = _c_20g_sc > _sma50_20g
+                    if _a200_20g and _s200_rise20 and _a50_20g:           _faz_20g = "FAZ 2"
+                    elif _a200_20g and _s200_rise20 and not _a50_20g:     _faz_20g = "FAZ 2/3 GEÇİŞ"
+                    elif _a200_20g and not _s200_rise20:                   _faz_20g = "FAZ 3"
+                    elif not _a200_20g and not _s200_rise20:               _faz_20g = "FAZ 4"
+                    else:                                                  _faz_20g = "FAZ 1"
+                    _faz_now_key = faz_txt.split(" —")[0]  # "FAZ 2" vs
+                    if _faz_now_key != _faz_20g:
+                        faz_txt = f"🏛 REJİM DEĞİŞTİ — 20g önce {_faz_20g} → bugün {_faz_now_key} (yeni piyasa fazı, ana hikaye merkezi). Detay: {faz_txt}"
+            except Exception:
+                pass
     except: pass
 
     # ── Smart SR (Kümelenmiş Destek/Direnç) ──────────────────────────────────
@@ -1657,7 +1700,9 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
                     rs_txt = f"XU100'ün %{rs_abs:.1f} GERİSİNDE 📉 (Zayıf RS — kurumsal ilgisizlik)"
     except: pass
 
-    # ── 52 HAFTALIK MENZIL KONUMU (yıllık bağlam) ────────────────────────────
+    # ── 52 HAFTALIK MENZIL KONUMU (yıllık bağlam) + 20g trajectory ──────────
+    # 12 Haz 2026 (Prompt v3): 20g önceki konum delta eklendi.
+    # Aynı %47 farklı hikaye: "%80'den düşüyor" vs "%20'den yükseliyor".
     range_52h_txt = "(veri eksik)"
     try:
         _yearly = close.iloc[-252:] if n >= 252 else close
@@ -1667,9 +1712,22 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
             _y_pos = (curr - _y_low) / (_y_high - _y_low) * 100
             _from_high = ((curr / _y_high) - 1) * 100
             _from_low  = ((curr / _y_low) - 1) * 100
+            _traj_str_sc = ""
+            try:
+                if n >= 21:
+                    _curr_p_20g_sc = float(close.iloc[-21])
+                    _y_pos_20g_sc = ((_curr_p_20g_sc - _y_low) / (_y_high - _y_low) * 100) if _y_high > _y_low else 50.0
+                    _delta_20g_sc = _y_pos - _y_pos_20g_sc
+                    if abs(_delta_20g_sc) >= 5:
+                        _yon_sc = "yükseliyor" if _delta_20g_sc > 0 else "düşüyor"
+                        _traj_str_sc = f" | 20g önce %{_y_pos_20g_sc:.0f}'deydi → {_delta_20g_sc:+.0f} puan {_yon_sc}"
+                    else:
+                        _traj_str_sc = f" | 20g önce %{_y_pos_20g_sc:.0f}'deydi (yatay)"
+            except Exception: pass
             range_52h_txt = (f"Yıllık %{_y_pos:.0f} konumunda | "
                             f"Zirve: {_fmt(_y_high)} ({_from_high:+.1f}%) | "
-                            f"Dip: {_fmt(_y_low)} ({_from_low:+.1f}%)")
+                            f"Dip: {_fmt(_y_low)} ({_from_low:+.1f}%)"
+                            f"{_traj_str_sc}")
     except Exception: pass
 
     # ── BOLLINGER-KELTNER SQUEEZE + SÜRE ─────────────────────────────────────
@@ -2869,6 +2927,13 @@ ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sin
 M1 ALT-SKOR SIRALAMASI YASAK: "Sistem skoru X/100; trend Y, momentum Z, ICT W" formatı = metodoloji anlatmak. Yerine NİTEL özet: "Sistem skoru orta — yapı tarafı baskın" / "Skor düşük; ICT katmanı tek pozitif sinyal".
 🚨 RSI DIVERGENCE ZORUNLU CHECK: yaml.ict_pa.rsi_divergence (veya rsi_divergence alanı) değerini AYNEN yansıt. yaml="Uyumlu" + panel="Hidden Bull" → "Uyumlu" yaz, "gizli pozitif"/"hidden bull"/"gizli yükseliş" YASAK. yaml="Klasik Negatif" + panel="Hidden Bear" → "Klasik Negatif" yaz. Panel etiketini YAML üzerine asla bindirme.
 
+🏛 REJİM DEĞİŞİMİ vs [gelişim] ROZETİ OKUMA (KRİTİK — 12 Haz 2026):
+Data block'ta şu rozetler görülebilir:
+- "🏛 REJİM DEĞİŞTİ — 20g önce {faz_X} → bugün {faz_Y}" (faz_txt'te). Bu ANCHOR seviyesi — analiz açılışında bu rejim kaymasını MUTLAKA merkez yap, ana hikaye burası: "Hisse geçen ay {faz_X}'teydi, bu hafta {faz_Y}'ye geçti — yeni piyasa fazı."
+- 52H trajectory "20g önce %X'deydi → +/-Y puan yükseliyor/düşüyor" — bağlam rengi. Yön anlamlıysa (≥5 puan) kısa mention, yatay ise atla.
+- RVOL "5g ort X.Yx → bugün ZX sıçrama, SPIKE" vs "SÜREKLİ ilgi" — SPIKE bugünün yeni ilgi, SÜREKLİ kovalanma. İki farklı hikaye, ayırt et.
+"yatay" / "küçük drift" rozetleri görürsen → o veriyi mention etme, bağlamı zaten anlamsız. Eşik altı varyans = konu yok.
+
 B) FİİL ZİNCİRİ YASAĞI:
 Aşağıdaki pasif analiz fiilleri bir madde/paragraf içinde MAKSİMUM 1 KEZ kullanılır:
 "işaret ediyor / yansıtıyor / doğruluyor / gösteriyor / fısıldıyor / sunuyor / üretiyor / onaylıyor / kanıtlıyor / gözler önüne seriyor"
@@ -3235,6 +3300,13 @@ A) YASAKLI MADDE AÇILIŞLARI (madde/alt-başlık açılışı şunlardan hiçbi
 ANCHOR-ÖNCE: İlk cümle/alt-başlık o veri noktasının EN VURUCU rakamı/sinyali — somut sayı + bağlam. ✓ "Hisse 3 gündür SMA50'nin %1.8 altında — kısa vade baskı altında." · ✓ "Delta -%51.6, son 5g'in en sert dağıtımı." · ✓ "RSI 25, aşırı satım — dipler hâlâ daha derin." · ❌ "Master skor 21 — trend 0, hacim 50" (alt-skor zinciri = K3 ihlali).
 M1 ALT-SKOR SIRALAMASI YASAK: "Sistem skoru X/100; trend Y, momentum Z, ICT W" formatı = metodoloji anlatmak. Yerine NİTEL özet: "Sistem skoru orta — yapı tarafı baskın" / "Skor düşük; ICT katmanı tek pozitif sinyal".
 🚨 RSI DIVERGENCE ZORUNLU CHECK: yaml.ict_pa.rsi_divergence (veya rsi_divergence alanı) değerini AYNEN yansıt. yaml="Uyumlu" + panel="Hidden Bull" → "Uyumlu" yaz, "gizli pozitif"/"hidden bull"/"gizli yükseliş" YASAK. yaml="Klasik Negatif" + panel="Hidden Bear" → "Klasik Negatif" yaz. Panel etiketini YAML üzerine asla bindirme.
+
+🏛 REJİM DEĞİŞİMİ vs [gelişim] ROZETİ OKUMA (KRİTİK — 12 Haz 2026):
+Data block'ta şu rozetler görülebilir:
+- "🏛 REJİM DEĞİŞTİ — 20g önce {faz_X} → bugün {faz_Y}" (faz_txt'te). Bu ANCHOR seviyesi — analiz açılışında bu rejim kaymasını MUTLAKA merkez yap, ana hikaye burası: "Hisse geçen ay {faz_X}'teydi, bu hafta {faz_Y}'ye geçti — yeni piyasa fazı."
+- 52H trajectory "20g önce %X'deydi → +/-Y puan yükseliyor/düşüyor" — bağlam rengi. Yön anlamlıysa (≥5 puan) kısa mention, yatay ise atla.
+- RVOL "5g ort X.Yx → bugün ZX sıçrama, SPIKE" vs "SÜREKLİ ilgi" — SPIKE bugünün yeni ilgi, SÜREKLİ kovalanma. İki farklı hikaye, ayırt et.
+"yatay" / "küçük drift" rozetleri görürsen → o veriyi mention etme, bağlamı zaten anlamsız. Eşik altı varyans = konu yok.
 
 B) FİİL ZİNCİRİ YASAĞI:
 Aşağıdaki pasif analiz fiilleri bir madde/paragraf içinde MAKSİMUM 1 KEZ kullanılır:
