@@ -209,6 +209,53 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
                 )
             )
             text = response.text.strip() if response.text else ""
+
+            # 🔒 DEFANSİF SIZINTI KORUMASI v2 — iç denetim/talimat blokları abone mesajına sızmasın
+            # gemini-flash-lite (PRO) bazen "DON'T COPY THIS" uyarısını bile kopyalıyor.
+            # 2 aşamalı strip:
+            #   (1) ═══ ile çevrili İÇ DENETİM/KATMAN/ÇIKIŞ-ÖNCESI/ÜÇ SATIR blokları (hashtag öncesi dahil)
+            #   (2) Hashtag satırından sonra her şey
+            import re as _re_leak
+
+            _orig_len = len(text)
+
+            # (1) Sızıntı bloğu: ═══...(KATMAN|İÇ DENETİM|ÇIKIŞ-ÖNCESI|ÜÇ SATIR|YASAKLI KELİME)...═══
+            # Çoklu pass — iç içe / ardışık bloklar için
+            _leak_block_re = _re_leak.compile(
+                r'\n*═{10,}[^\n]*\n(?:[^\n]*\n)*?[^\n]*(?:İÇ DENETİM|KATMAN [0-9]|ÇIKIŞ-ÖNCESI|ÜÇ SATIR KONTROL|YASAKLI KELİME|KARA LİSTE)[^\n]*\n(?:[^\n]*\n)*?═{10,}[^\n]*\n?',
+                _re_leak.IGNORECASE,
+            )
+            for _ in range(5):  # max 5 iterasyon
+                _new = _leak_block_re.sub('\n', text)
+                if _new == text:
+                    break
+                text = _new
+
+            # Tekil sızıntı satırları (blok dışında kalmış olabilir)
+            # Satırın HERHANGİ BİR YERİNDE marker geçerse o satırın tamamı atılır
+            _stray_re = _re_leak.compile(
+                r'^[^\n]*(?:İÇ DENETİM|KATMAN [0-9]|ÇIKIŞ-ÖNCESI|ÜÇ SATIR KONTROL|YASAKLI KELİME|KARA LİSTE|YANITA DAHİL ETMEK|Aşağıdaki katmanları yanıtı|katmanları geçemeyen analiz|kafadan uygula|abone Telegram\'ına GÖNDEREMEZSİN|gönderimden hemen önce)[^\n]*\n?',
+                _re_leak.MULTILINE | _re_leak.IGNORECASE,
+            )
+            text = _stray_re.sub('', text)
+
+            # ═══ tek başına satırlar — prompt bloğu artığı, legitimate output'ta yok
+            _bar_re = _re_leak.compile(r'^[ \t]*═{5,}[^\n]*\n?', _re_leak.MULTILINE)
+            text = _bar_re.sub('', text)
+
+            # Boş satır temizliği (3+ ardışık boş → 1)
+            text = _re_leak.sub(r'\n{3,}', '\n\n', text)
+
+            # (2) Hashtag satırından sonrasını kes
+            _hashtag_re = _re_leak.compile(r'(#SmartMoneyRadar\s+#\S+)', _re_leak.IGNORECASE)
+            _hashtag_match = _hashtag_re.search(text)
+            if _hashtag_match:
+                text = text[:_hashtag_match.end()].rstrip()
+
+            _cut = _orig_len - len(text)
+            if _cut > 20:
+                log.warning(f"🔒 Sızıntı koruması: {_cut} karakter atıldı (prompt artığı temizlendi)")
+
             log.info(f"AI üretildi: {len(text)} karakter (deneme {attempt})")
 
             # Günlük sayacı artır ve eşik bildirimlerini gönder
@@ -1179,6 +1226,27 @@ async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[MYID] user_id={uid} username={uname!r}")
 
 
+async def cmd_bulten(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/bulten — günlük XU100 bültenini PRO+ELITE kanallarına ELLE gönderir (admin).
+    19:00 otomatik gönderim atlanır/patlarsa manuel kurtarma."""
+    msg = update.message or update.channel_post
+    if not msg:
+        return
+    user_id = msg.from_user.id if msg.from_user else msg.chat_id
+    if not _is_admin(user_id):
+        await msg.reply_text("⛔ Bu komut sadece admin içindir.")
+        return
+    await msg.reply_text("📤 Bülten ELLE gönderiliyor (PRO + ELITE)... bu birkaç dakika sürebilir.")
+    log.info(f"[BULTEN-MANUEL] admin user_id={user_id} tetikledi")
+    try:
+        await send_daily_bulletin(context)
+        await msg.reply_text("✅ Bülten gönderildi (PRO + ELITE).")
+        log.info("[BULTEN-MANUEL] tamamlandı")
+    except Exception as e:
+        log.error(f"[BULTEN-MANUEL] hata: {e}", exc_info=True)
+        await msg.reply_text(f"❌ Bülten gönderiminde hata: {e}")
+
+
 async def cmd_durum(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/durum — kullanıcı kendi aboneliğini sorgular"""
     msg = update.message
@@ -1850,6 +1918,7 @@ def main():
     app.add_handler(CommandHandler("listusers",  cmd_listusers))
     app.add_handler(CommandHandler("durum",      cmd_durum))
     app.add_handler(CommandHandler("myid",       cmd_myid))
+    app.add_handler(CommandHandler("bulten",     cmd_bulten))
 
     # Sohbet grubu moderasyonu
     app.add_handler(MessageHandler(filters.Chat(CHAT_ID) & filters.TEXT, handle_chat_group), group=0)
@@ -1883,10 +1952,11 @@ def main():
     )
 
     # 19:00 — Pzt-Cuma günlük bülten (Cmt + Paz hariç)
+    # NOT: APScheduler bu sürümde 0=Pzr konvansiyonu kullanıyor → 1-5 = Pzt-Cuma
     app.job_queue.run_daily(
         send_daily_bulletin,
         time=datetime.strptime("19:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
-        days=(0, 1, 2, 3, 4),  # Pzt-Cuma
+        days=(1, 2, 3, 4, 5),  # Pzt-Cuma (APScheduler: 0=sun, 1=mon, ..., 5=fri)
         name="daily_bulletin"
     )
 
@@ -1894,7 +1964,7 @@ def main():
     app.job_queue.run_daily(
         send_daily_bulletin,
         time=datetime.strptime("21:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
-        days=(6,),  # Sadece Pazar
+        days=(0,),  # Sadece Pazar (APScheduler: 0=sun)
         name="sunday_bulletin"
     )
 
