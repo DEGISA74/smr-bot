@@ -453,6 +453,28 @@ def _strip_holiday_bars(df: "pd.DataFrame", sym: str = "") -> "pd.DataFrame":
         return df
 
 
+def _fix_last_bar_volume(df):
+    """(12 Haz Oturum 21) Son barın hacmi 0/eksikse son ~20 günün medyanıyla doldur.
+
+    yfinance XU100 gibi ENDEKSLERDE (ve günün tamamlanmamış barında) son barı
+    Volume=0 döndürüyor. Bu 0, OBV + cumulative delta + hacim-kalitesi +
+    displacement'ı zehirliyordu → +%1.5 yükseliş günü 'sıfır katılım = kurumsal
+    dağıtım' gibi yorumlanıyordu (AI yanlış 'gizli satış' yazıyordu). Fiyat
+    değişmişken hacim 0 = gerçek değil, veri eksikliği (işlem yoksa fiyat da
+    oynamaz). Sadece SON bar düzeltilir; geçmiş veriye dokunulmaz."""
+    try:
+        if df is None or len(df) < 6 or "Volume" not in df.columns:
+            return df
+        _last_v = float(df["Volume"].iloc[-1])
+        _med = float(df["Volume"].iloc[-21:-1].median())   # son bar hariç medyan
+        if _med > 0 and _last_v < _med * 0.05:             # 0 veya ~sıfır → eksik bar
+            df = df.copy()
+            df.iloc[-1, df.columns.get_loc("Volume")] = _med
+    except Exception:
+        pass
+    return df
+
+
 # ─── VERİ ÇEK ────────────────────────────────────────────────────────────────
 def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
     """
@@ -467,7 +489,7 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
         log.debug(f"get_data: {yf_sym} → parquet cache hit")
         # FIX (30 May 2026): cache-hit yolu da tatil hayalet-barlarından temizlensin
         # (eskiden ham dönüyordu → kapalı günlerde donmuş veri).
-        return _strip_holiday_bars(_cached, yf_sym)
+        return _fix_last_bar_volume(_strip_holiday_bars(_cached, yf_sym))
 
     # ── Fallback: yfinance (cache yok veya çok eski)
     try:
@@ -559,6 +581,7 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
                 if not split_found:
                     break
 
+        df = _fix_last_bar_volume(df)
         log.info(f"get_data: {yf_sym} → {len(df)} bar")
         return df
 
@@ -825,24 +848,21 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
         # gibi endekslerde Volume=0 ve gap-driven günlerde +%1.5'luk dönüş hareketini
         # bile "Zayıf/Hacimsiz" sanıyordu (AI'ı yanlış 'dağıtım' yorumuna itiyordu).
         # Artık: hacim güvenilmezse gücü FİYATLA yargıla (gap dahil net hareket + range).
-        _vol_reliable = _vol_last > 0 and pd.notna(avg_vol_20) and avg_vol_20 > 0
-        vol_confirmed = _vol_reliable and _vol_last > avg_vol_20 * 1.2
+        vol_confirmed = pd.notna(avg_vol_20) and avg_vol_20 > 0 and _vol_last > avg_vol_20 * 1.2
         _net_move = abs((close.iloc[-1] - prev_close) / prev_close) if prev_close > 0 else 0.0
         _day_range = float(high.iloc[-1] - low.iloc[-1])
         _big_body = last_candle_body > avg_body_size.iloc[-1] * 1.1
         _strong_range = bool(atr) and atr > 0 and _day_range > atr * 1.2
-        # Güçlü hamle: büyük gövde VEYA (önceki kapanışa göre ≥%1 net hareket + geniş range)
+        # Displacement FİYAT-öncelikli: büyük gövde VEYA (önceki kapanışa göre ≥%1
+        # net hareket [gap dahil] + geniş range). Hacim sadece TEYİT rozeti — endeks/
+        # 0-hacim barında "Hacimsiz/Zayıf" yanlış etiketi artık yok.
         _price_strong = _big_body or (_net_move >= 0.01 and _strong_range)
         if _price_strong and vol_confirmed:
             displacement_txt = "🔥 Güçlü Displacement (Hacim Onaylı)"
-        elif _price_strong and not _vol_reliable:
-            displacement_txt = "🔥 Güçlü Displacement (Fiyat Hareketi)"
         elif _price_strong:
-            displacement_txt = "⚠️ Hacimsiz Hareket (Sahte Olabilir)"
-        elif not _vol_reliable:
-            displacement_txt = "Zayıf (Dar Range)"
+            displacement_txt = "🔥 Güçlü Displacement (Fiyat Hareketi)"
         else:
-            displacement_txt = "Zayıf (Hacimsiz Hareket)"
+            displacement_txt = "Zayıf (Dar Hareket)"
 
         bmu = (curr_price - last_sh) / last_sh if last_sh > 0 else 0
         bmd = (last_sl - curr_price) / last_sl if last_sl > 0 else 0
