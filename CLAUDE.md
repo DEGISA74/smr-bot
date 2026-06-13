@@ -1,6 +1,6 @@
 # Patron Terminal — CLAUDE.md
 # Hızlı navigasyon. Sistemin TAMAMI: `memory/SMR_SISTEM_OZETI.md` (tek kaynak).
-# Son güncelleme: 12 Haz 2026 Oturum 21 (flag bug avı: TEFAS çelişki + CMF ölü + rel_obv şişik düzeltildi · 19:00 bülten faz_X fix · /bulten admin komutu)
+# Son güncelleme: 13 Haz 2026 Oturum 21 (flag bug avı + TEFAS/KAP kaldırıldı + bülten faz_X fix + LEAN PROMPT bot&app.py + UDVR/FI port · SONRAKİ: web üyelik/monetizasyon → memory/project_web_membership.md)
 
 ---
 
@@ -171,6 +171,8 @@
 **Yeni: `/bulten` admin komutu (smr_bot).** 19:00 otomatik gönderim patlarsa admin elle tetikler → `send_daily_bulletin(context)`. ⚠️ **Olay:** `git add smr_bot.py` sırasında kullanıcının commit'lenmemiş "SIZINTI KORUMASI v2" WIP'i (Gemini çıktısından prompt-leak strip, `call_gemini_gorev3` içinde) bu commit'e karıştı ve canlıya gitti — kullanıcı "canlı kalsın" dedi (iyi defansif iş, over-strip görülmedi). Ders → [[feedback-validate-before-ship]].
 
 Commits: `cecf58a` (faz_X) · `8926ee7` (3 flag fix) · `2a3c432` (/bulten + leak WIP). VPS deploy: `reset --hard origin/main` (stale scp mod'ları stash'te) + smr-bot/patron-radar restart. Backup'lar: `app_backup_pre_flag_fixes_12haz.py` · `smr_core_backup_pre_fazX_fix.py`.
+
+**13 Haz devamı (aynı oturum):** TEFAS/KAP tamamen kaldırıldı (`11ad6a3`, endpoint bloklu/veri yok) · smr_core endeks 0-hacim proxy fix + displacement fiyat-öncelikli (`fd1bcdc`+`35cd485`) · UDVR + Force Index app.py→smr_core port (`b65921e`) · **LEAN PROMPT**: bot (`3e43bbb`) + app.py (`ff5920c`) yasak/anti-kalıp blokları çıkarıldı + analist çekirdeği eklendi (flag'li geri alınır: `LEAN_PROMPT_ENABLED` / `APP_PROMPT_LEAN`). Detay → `MEMORY.md`. **Stratejik karar:** mobil app DEĞİL → smartmoneyradar.app'i light-app.py HTML üyelik sitesine çevirme + otomatik abonelik (iyzico) → **sonraki oturum, detay: `memory/project_web_membership.md`**.
 
 ---
 
