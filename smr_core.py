@@ -1520,6 +1520,41 @@ def compute_force_index_dual(df, span_short=2, span_long=13):
         return None
 
 
+# ─── LEAN PROMPT (12 Haz Oturum 21) ─────────────────────────────────────────
+# A/B test (10 hisse + tam gövde): yasak/anti-kalıp + İÇ DENETİM bloklarını analiz
+# prompt'undan çıkarınca substance ZENGİNLEŞTİ (AI veriye daha çok baktı, UDVR vb.
+# sinyalleri kullandı, daha dengeli yazdı) — lost-in-the-middle. Tek yan etki ELITE'te
+# "Peki ...mi?" soru-tiki idi; sona eklenen kısa kalıp-yasağıyla öldü (5→0, 4→0).
+# PRO'da zaten tik yoktu (yapılandırılmış kart). Geri almak için: LEAN_PROMPT_ENABLED=False.
+# NOT: "güçlü tekrarı" gibi SAYIM kuralları prompt'ta çalışmıyor (LLM kendini sayamaz)
+# → ileride gerekirse deterministik post-pass'e bırakılır.
+LEAN_PROMPT_ENABLED = True
+_LEAN_ANTITIK_RULE = """
+
+🚫 KALIP TİKİ YASAĞI (EN SON OKU — KRİTİK):
+1) Hiçbir maddeyi/paragrafı SORU cümlesiyle bitirme. "Peki ...mi?", "...sürdürülebilir mi?", "...olabilir mi?", "ne yöne kırılacak?", "Şimdi sorgulamak gerekiyor", "merak uyandırıyor" gibi retorik soru / cliffhanger / merak-bırakma kesinlikle YASAK. Her madde somut bir SONUÇ, SEVİYE veya net çıkarımla biter — soruyla değil.
+2) Aynı cümle iskeletini ("[sinyal] görülüyor, bu da [ima] gösteriyor") arka arkaya tekrarlama; her maddede cümle yapısını değiştir."""
+
+
+def _apply_lean_prompt(p):
+    """Yasak/anti-kalıp + İÇ DENETİM öz-kontrol bloklarını analiz prompt'undan çıkar,
+    sona kısa hedefli anti-tik kuralını ekle. PRO + ELITE ortak (aynı marker'lar).
+    smr_bot.get_analysis prompt'u kurduktan sonra çağırır (tek choke point)."""
+    if not LEAN_PROMPT_ENABLED or not p:
+        return p
+    try:
+        import re as _re_lean
+        # 1) ANTİ-KALIP MEKANİK KURAL + GENİŞLETİLMİŞ KARA LİSTE bloğu (→ ANLAŞILIRLIK FİLTRESİ öncesi)
+        p = _re_lean.sub(r'\*\*\* ANTİ-KALIP MEKANİK KURAL.*?(?=\*\*\* ANLAŞILIRLIK FİLTRESİ)', '', p, flags=_re_lean.DOTALL)
+        # 2) İÇ DENETİM ÖZ-KONTROL bloğu
+        p = _re_lean.sub(r'═{10,}\n🔒 İÇ DENETİM ÖZ-KONTROL.*?Şimdi gerçek yanıtı yaz:\n═{10,}\n', '', p, flags=_re_lean.DOTALL)
+        # 3) sona hedefli anti-tik kuralı (yüksek-dikkat/recency noktası)
+        p = p.rstrip() + _LEAN_ANTITIK_RULE
+    except Exception:
+        pass
+    return p
+
+
 # ─── AI PROMPT ÜRET ──────────────────────────────────────────────────────────
 def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tuple:
     """Ortak veri bloğu — hem Görev 1 hem Görev 3 kullanır."""

@@ -364,6 +364,10 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
                     else:
                         prompt = smr_core.build_ai_prompt(ticker, ict, info, df)
 
+                    # (12 Haz Oturum 21) LEAN PROMPT: yasak/anti-kalıp + İÇ DENETİM
+                    # bloklarını çıkar + anti-tik kuralı ekle (tek choke point, PRO+ELITE)
+                    prompt = smr_core._apply_lean_prompt(prompt)
+
                     if prompt:
                         log.info(f"[{ticker}] Gemini'ye gönderiliyor tier={tier} ({len(prompt)} kr)")
                         ai_text = await asyncio.wait_for(
