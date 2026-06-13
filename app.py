@@ -26857,6 +26857,28 @@ GÖREVLER ÇIKIŞ SIRASI: SIFIRINCI (HOOK) → 4 → 2 → 3 → 1.
             .replace("sadece bugünün durumunu",   "sadece son seansın durumunu")
             .replace("Verininsadece bugünün",     "Verinin sadece son seansın")
         )
+    # (13 Haz Oturum 21) PROMPT LEAN — en büyük 2 şişkinlik bloğunu çıkar, analist
+    # önceliklendirme çekirdeğini en başa (yüksek dikkat) ekle. Kesilen: SES VE RİTM
+    # insan-dili makinesi (~7.7k) + 15 maddelik ÇIKIŞ ÖZ-DENETLEME tekrarı (~5.7k).
+    # Hiç bilgi kaybı yok — "robotik olma"yı 4 kez söylemek yerine analist çekirdeği
+    # 1 kez net söyler. Geri al: APP_PROMPT_LEAN = False.
+    APP_PROMPT_LEAN = True
+    if APP_PROMPT_LEAN:
+        import re as _lean_re
+        prompt = _lean_re.sub(r'═{10,}\n🎙️ SES VE RİTM.*?(?=Persona \(sadece TON belirler)', '', prompt, flags=_lean_re.DOTALL)
+        prompt = _lean_re.sub(r'═{10,}\n🚨 ÇIKIŞ ÖZ-DENETLEME.*?(?=GÖREVLER ÇIKIŞ SIRASI)', '', prompt, flags=_lean_re.DOTALL)
+        _analyst_core = (
+            "🎯 ANALİST ÖNCELİKLENDİRME — YAZMADAN ÖNCE BU MERCEKLE DÜŞÜN (her şeyin üstünde):\n"
+            "Sen 25 yıllık uzmansın; veriyi TARTARSIN, eşit sıralamazsın.\n"
+            "1. TART: Her sinyale kanıt gücü kadar ağırlık ver. Bugün +%5 + hacim sıçraması = BÜYÜK, merkeze al; RSI 49 / %0 / 1.0x = küçük, anma bile. Küçüğe büyük anlam yükleme, büyüğü yutma.\n"
+            "2. YENİYİ YAKALA: Son seansta DEĞİŞEN ne? (rejim değişimi · sert RSI dönüşü · ani kırılım · climax · hacim sıçraması) — ani gelişen sinyal statik durumdan ÖNCE gelir.\n"
+            "3. RİSK ↔ GETİRİ: Net söyle — yukarıda ne var (hedef), nerede yanılırsın (iptal). İkisi birden, tek taraf değil.\n"
+            "4. TEK HİKAYE: En baskın 1 bulgu merkez, gerisi ona bağlanır. Eşit ağırlıkta madde dökmek = liste, analiz değil.\n"
+            "5. İNSAN GİBİ, TO-THE-POINT: Sayı söyle → sonra kendi cümlenle 'ne demek' de. Dolgu yok, robot eki (-dır/-mektedir) yok, lafı uzatma.\n\n"
+        )
+        prompt = prompt.replace(
+            "*** ANALİZ İSKELETİ (HER GÖREVDE BU SIRAYLA DÜŞÜN) ***",
+            _analyst_core + "*** ANALİZ İSKELETİ (HER GÖREVDE BU SIRAYLA DÜŞÜN) ***", 1)
     with st.sidebar:
         st.code(prompt, language="text")
         st.success("Prompt Güncellendi")
