@@ -2410,6 +2410,21 @@ raw_bist_stocks = list(set(raw_bist_stocks) - set(priority_bist_indices))
 raw_bist_stocks.sort()
 final_bist100_list = priority_bist_indices + raw_bist_stocks
 
+# 16 Haz 2026 — BIST whitelist (`.IS`'siz çağrıları normalize etmek için).
+# Bug: bazı çağıranlar bare "BERA" geçiyor → cache "BERA_1d.parquet" yazıyor
+# (yanlış ad) + İsyatirim/borsapy override yolları kapanıyor (Yahoo-ham veri).
+_BIST_TICKER_SET = {t.replace(".IS", "") for t in (priority_bist_indices + raw_bist_stocks)}
+
+def _normalize_bist_ticker(ticker: str) -> str:
+    """Bare BIST ticker'a `.IS` ekler. Diğer her şeyi olduğu gibi döner."""
+    if not isinstance(ticker, str) or not ticker:
+        return ticker
+    if ticker.endswith(".IS"):
+        return ticker
+    if ticker in _BIST_TICKER_SET:
+        return f"{ticker}.IS"
+    return ticker
+
 ASSET_GROUPS = {
     "BIST 500 ": final_bist100_list,
     "S&P 500": final_sp500_list,
@@ -3498,6 +3513,9 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
     _ensure_parquet_on_disk: cache'in bellek sonucu döndürdüğü durumlarda
     parquet'in diske yazılmasını garanti eder.
     """
+    # 16 Haz 2026 — bare BIST ticker (örn. "BERA") gelirse `.IS` ekle.
+    # Yoksa cache yanlış isimle yazılır (BERA_1d.parquet) + İsyatirim/borsapy bypass olur.
+    ticker = _normalize_bist_ticker(ticker)
     _ensure_parquet_on_disk(ticker, interval)
 
     # ── BÖLÜNME / TEMETTÜ TESPİTİ ────────────────────────────────────────────
