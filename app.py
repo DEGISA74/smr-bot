@@ -1685,18 +1685,31 @@ def get_active_scanner_tiers(ticker: str) -> list:
                 out.append({'scan_type': _scan_type, 'tier': _t[0],
                             'hit10': _t[1], 'avg10': _t[2], 'display': _t[3], 'note': _t[4]})
 
-        # Erken Radar — _er_batch_df, ScenarioId kolonu
+        # Erken Radar — önce Master Scan batch (erken_radar_data) sonra tek-hisse cache.
+        # 16 Haz 2026 — Restart sonrası session_state boş kalınca KONTR gibi TIER_1
+        # hissede yeşil kart çıkmıyordu. render_erken_radar_panel() zaten
+        # evaluate_erken_radar çağırıyor — sonucu _er_single_cache'e yaz, burası da oku.
+        _matched_ids = []
         _er = st.session_state.get('erken_radar_data')
         if _er is not None and hasattr(_er, 'empty') and not _er.empty:
             if 'Sembol' in _er.columns and 'ScenarioId' in _er.columns:
                 _rows = _er[_er['Sembol'] == ticker]
                 for _, _r in _rows.iterrows():
-                    _sid = str(_r.get('ScenarioId', ''))
-                    _key = f"er_{_sid}"
-                    if _key in SCANNER_TIER_MAP:
-                        _t = SCANNER_TIER_MAP[_key]
-                        out.append({'scan_type': _key, 'tier': _t[0],
-                                    'hit10': _t[1], 'avg10': _t[2], 'display': _t[3], 'note': _t[4]})
+                    _matched_ids.append(str(_r.get('ScenarioId', '')))
+        # Fallback — Master Scan yoksa tek-hisse render cache'i kullan
+        if not _matched_ids:
+            _single = st.session_state.get('_er_single_cache', {}).get(ticker)
+            if _single:
+                if _single.get('primary'):
+                    _matched_ids.append(str(_single['primary'].get('id', '')))
+                for _c in _single.get('confirmations', []) or []:
+                    _matched_ids.append(str(_c.get('id', '')))
+        for _sid in _matched_ids:
+            _key = f"er_{_sid}"
+            if _key in SCANNER_TIER_MAP:
+                _t = SCANNER_TIER_MAP[_key]
+                out.append({'scan_type': _key, 'tier': _t[0],
+                            'hit10': _t[1], 'avg10': _t[2], 'display': _t[3], 'note': _t[4]})
     except Exception:
         pass
     # Tier önceliği: TIER_1 > TIER_2 > TIER_VADE_UZUN > TIER_3
@@ -5257,11 +5270,17 @@ def scan_chart_patterns(asset_list):
                         try:
                             cup_arr = close.iloc[sh1_i:sh2_i + 1].values.astype(float)
                             if len(cup_arr) < 10: continue
+                            # 16 Haz 2026 — Polinom fit 5g EMA üzerinde yapılır.
+                            # Volatil dipli klasik fincanlarda (TOASO: R²=0.69 ham, ~%23 derinlik,
+                            # %1 rim hizası, akademik fincan ama trend rallisi gürültüsü polinomu
+                            # bozuyordu) yakalama oranı yükselir; R² eşiği bozulmadan.
+                            # Slope/shape kontrolleri (_validate_cup_shape) ham cup_arr ile devam eder.
+                            cup_smooth = pd.Series(cup_arr).ewm(span=5, adjust=False).mean().values
                             xf  = np.linspace(0, 1, len(cup_arr))
-                            cf  = np.polyfit(xf, cup_arr, 2)
+                            cf  = np.polyfit(xf, cup_smooth, 2)
                             yp  = np.polyval(cf, xf)
-                            ss_res = np.sum((cup_arr - yp) ** 2)
-                            ss_tot = np.sum((cup_arr - cup_arr.mean()) ** 2)
+                            ss_res = np.sum((cup_smooth - yp) ** 2)
+                            ss_tot = np.sum((cup_smooth - cup_smooth.mean()) ** 2)
                             r2  = 1 - ss_res / ss_tot if ss_tot > 0 else 0
                             if cf[0] <= 0: continue  # Konkav yukarı zorunlu
                         except: continue
@@ -5947,11 +5966,14 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         try:
                             cup_arr = close.iloc[sh1_i:sh2_i + 1].values.astype(float)
                             if len(cup_arr) < 10: continue
+                            # 16 Haz 2026 — Polinom fit 5g EMA üzerinde (smoothing fix).
+                            # scan_chart_patterns ile aynı kalıp — TOASO örneği ders.
+                            cup_smooth = pd.Series(cup_arr).ewm(span=5, adjust=False).mean().values
                             xf = np.linspace(0, 1, len(cup_arr))
-                            cf = np.polyfit(xf, cup_arr, 2)
+                            cf = np.polyfit(xf, cup_smooth, 2)
                             yp = np.polyval(cf, xf)
-                            ss_res = np.sum((cup_arr - yp) ** 2)
-                            ss_tot = np.sum((cup_arr - cup_arr.mean()) ** 2)
+                            ss_res = np.sum((cup_smooth - yp) ** 2)
+                            ss_tot = np.sum((cup_smooth - cup_smooth.mean()) ** 2)
                             r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0
                             if cf[0] <= 0: continue
                         except: continue
@@ -15718,6 +15740,19 @@ def render_erken_radar_panel(ticker):
     er = evaluate_erken_radar(ticker, df, bench_df)
     if er is None:
         return
+
+    # 16 Haz 2026 — Tek-hisse cache: get_active_scanner_tiers Master Scan
+    # batch yokken buradan okur → 🏆 ELİT TARAMA kartı session_state boş
+    # restart sonrasında da görünür.
+    try:
+        _cache = st.session_state.get('_er_single_cache', {})
+        _cache[ticker] = {
+            'primary': er.get('primary'),
+            'confirmations': er.get('confirmations', []) or [],
+        }
+        st.session_state['_er_single_cache'] = _cache
+    except Exception:
+        pass
 
     display_name = get_display_name(ticker)
     quality      = er.get('overall_quality', 0)
