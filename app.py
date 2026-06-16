@@ -15761,13 +15761,22 @@ def render_erken_radar_panel(ticker):
     row_bg      = "#0d1829"
 
     # Status etiketi
+    # 16 Haz 2026 — Boş senaryo durumunda bağlamsal mesaj. Erken Radar
+    # "hareket ÖNCESİ" motor; setup kırılıma dönüşünce sıfırlanır. 5g önce
+    # skor ≥45 ise "setup tetiklendi → hareket başladı" (TOASO örneği),
+    # değilse "pencere dışında". Sadece "Belirgin Sinyal Yok" yetersiz —
+    # kullanıcı sağdaki Breakout/ALIM BASKINI ile sahte çelişki sanıyordu.
+    _er_setup_fired = (not primary and not red_flags and
+                       quality_5g is not None and quality_5g >= 45)
     if primary:
         cat_label = {'A': 'GERİ DÖNÜŞ', 'B': 'SIKIŞMA', 'C': 'TREND DEVAMI', 'D': 'UYARI'}.get(primary['category'], '')
         status_text = f"{primary['name']} · {cat_label}"
     elif red_flags:
         status_text = "DİKKAT — Risk Sinyali"
+    elif _er_setup_fired:
+        status_text = "Setup → Harekete Dönüştü"
     else:
-        status_text = "Belirgin Sinyal Yok"
+        status_text = "Sakin Seyir — Pencere Dışında"
 
     # Stars helper
     def _stars_html(n, clr=None):
@@ -15812,11 +15821,29 @@ def render_erken_radar_panel(ticker):
             f'</div>'
         )
     else:
-        primary_html = (
-            f'<div style="background:#0d1829;border:1px solid #1e3a5f;border-radius:8px;padding:14px 11px;margin-bottom:6px;text-align:center;">'
-            f'<div style="font-size:0.82rem;color:{text_muted};font-style:italic;">Bu hissede şu an aktif bir Erken Radar senaryosu tetiklenmiyor.</div>'
-            f'</div>'
-        )
+        # 16 Haz 2026 — Boş senaryo: 5g önce setup vardıysa "harekete dönüştü"
+        # mesajı; yoksa "pencere dışında" notu. Sahte çelişki algısını yok eder.
+        if _er_setup_fired:
+            primary_html = (
+                f'<div style="background:linear-gradient(135deg,#052e2e,#0d4f4f);'
+                f'border:1px solid #2dd4bf;border-left:3px solid #2dd4bf;border-radius:8px;'
+                f'padding:11px 12px;margin-bottom:6px;">'
+                f'<div style="font-size:0.74rem;font-weight:800;color:#2dd4bf;letter-spacing:0.5px;margin-bottom:4px;">'
+                f'🚀 SETUP TETİKLENDİ</div>'
+                f'<div style="font-size:0.82rem;font-weight:700;color:{text_main};line-height:1.35;margin-bottom:3px;">'
+                f'Erken Radar penceresi kapandı — hareket başladı.</div>'
+                f'<div style="font-size:0.72rem;color:#94e8e0;font-style:italic;">'
+                f'5G önce: {quality_5g}/100 → bugün senaryolar yetişmiyor (giriş fırsatı kaçtı).'
+                f'</div></div>'
+            )
+        else:
+            primary_html = (
+                f'<div style="background:#0d1829;border:1px solid #1e3a5f;border-radius:8px;padding:14px 11px;margin-bottom:6px;text-align:center;">'
+                f'<div style="font-size:1.1rem;margin-bottom:4px;">💤</div>'
+                f'<div style="font-size:0.82rem;color:{text_muted};font-style:italic;line-height:1.4;">'
+                f'Bu hisse şu an Erken Radar penceresinde değil — sakin/yatay seyir.</div>'
+                f'</div>'
+            )
 
     # Ek teyitler bloğu
     confirms_html = ""
@@ -29336,6 +29363,70 @@ def _render_right_col():
         if st.button(f"🔮 {_hdsp}-{_hpat}", use_container_width=True, key="btn_harmonik_dialog"):
             _harmonik_dialog(st.session_state.ticker, _hres, _hprice, _hdsp, _hdrk)
     
+    # --- 🏆 ELİT TARAMA MİNİ PANELİ (16 Haz 2026) ---
+    # TIER_1_ELIT scanner flag varsa (er_A8 / er_A1 / er_B1 / prelaunch_bos)
+    # sağ sütunda backtest istatistiğini gösteren kompakt kart — sol rozetin
+    # detaylı kardeşi. TIER yoksa kart hiç çıkmaz (sessizce).
+    try:
+        _et_tiers = get_active_scanner_tiers(st.session_state.ticker)
+        _et_t1 = [_t for _t in _et_tiers if _t.get('tier') == 'TIER_1_ELIT']
+        _et_t2 = [_t for _t in _et_tiers if _t.get('tier') == 'TIER_2_GUVENILIR']
+        if _et_t1:
+            _et_main = _et_t1[0]
+            _et_extra = ""
+            if len(_et_t1) > 1:
+                _et_others = " · ".join([_e['display'] for _e in _et_t1[1:3]])
+                _et_more   = f" +{len(_et_t1)-3}" if len(_et_t1) > 3 else ""
+                _et_extra = (f"<div style='margin-top:6px;padding-top:6px;"
+                             f"border-top:1px solid rgba(255,255,255,0.18);"
+                             f"font-size:0.68rem;color:#bbf7d0;font-weight:600;'>"
+                             f"➕ {_et_others}{_et_more}</div>")
+            st.markdown(
+                f"<div style='margin-bottom:8px;border-radius:10px;overflow:hidden;"
+                f"border:2px solid #4ade80;box-shadow:0 4px 14px rgba(74,222,128,0.28);'>"
+                f"<div style='padding:7px 12px;background:linear-gradient(90deg,#14532d,#15803d);"
+                f"display:flex;align-items:center;gap:7px;font-size:0.82rem;font-weight:900;"
+                f"color:#f0fdf4;letter-spacing:0.05em;border-bottom:1px solid #4ade80;'>"
+                f"<span style='font-size:1.05rem;line-height:1;'>🏆</span>"
+                f"ELİT TARAMA — Backtest Kanıtladı"
+                f"</div>"
+                f"<div style='background:linear-gradient(135deg,#052e16,#14532d);padding:9px 12px;'>"
+                f"<div style='font-size:0.86rem;font-weight:800;color:#f0fdf4;line-height:1.3;"
+                f"margin-bottom:4px;'>{_et_main['display']}</div>"
+                f"<div style='display:inline-block;background:rgba(74,222,128,0.15);"
+                f"border:1px solid rgba(74,222,128,0.4);border-radius:5px;padding:2px 9px;"
+                f"font-family:\"JetBrains Mono\",monospace;font-size:0.7rem;font-weight:700;"
+                f"color:#bbf7d0;letter-spacing:0.02em;'>{_et_main['note']}</div>"
+                f"{_et_extra}"
+                f"</div></div>",
+                unsafe_allow_html=True
+            )
+        elif _et_t2:
+            # TIER_2 GÜVENİLİR — sarı varyant (TIER_1 yoksa)
+            _et_main2 = _et_t2[0]
+            st.markdown(
+                f"<div style='margin-bottom:8px;border-radius:10px;overflow:hidden;"
+                f"border:1px solid #fbbf24;box-shadow:0 3px 10px rgba(251,191,36,0.2);'>"
+                f"<div style='padding:6px 11px;background:linear-gradient(90deg,#78350f,#a16207);"
+                f"display:flex;align-items:center;gap:7px;font-size:0.78rem;font-weight:900;"
+                f"color:#fef9c3;letter-spacing:0.05em;border-bottom:1px solid #fbbf24;'>"
+                f"<span style='font-size:1rem;line-height:1;'>🥈</span>"
+                f"GÜVENİLİR TARAMA"
+                f"</div>"
+                f"<div style='background:linear-gradient(135deg,#451a03,#78350f);padding:8px 11px;'>"
+                f"<div style='font-size:0.82rem;font-weight:800;color:#fef9c3;line-height:1.3;"
+                f"margin-bottom:4px;'>{_et_main2['display']}</div>"
+                f"<div style='display:inline-block;background:rgba(251,191,36,0.12);"
+                f"border:1px solid rgba(251,191,36,0.35);border-radius:5px;padding:2px 9px;"
+                f"font-family:\"JetBrains Mono\",monospace;font-size:0.68rem;font-weight:700;"
+                f"color:#fef3c7;'>{_et_main2['note']}</div>"
+                f"</div></div>",
+                unsafe_allow_html=True
+            )
+        # else: hiç scanner flag yok → kart hiç görünmez
+    except Exception:
+        pass
+
     # --- BİRLEŞİK SİNYAL PANELİ (Canlı Sinyaller + Tarama Sonuçları) ---
     render_unified_signals_panel(st.session_state.ticker)
 
