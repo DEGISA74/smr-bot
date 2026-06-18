@@ -332,10 +332,12 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
 
         try:
             # Tek seferlik fetch + analiz + grafik — yfinance yalnızca 1 kez çağrılır
-            # 60 sn timeout: yfinance askıda kalırsa bot çökmez
+            # 120 sn timeout: soğuk cache turunda Yahoo + mplfinance + ICT toplamı 60sn'yi
+            # aşabiliyor (17 Haz 2026 PRO bülten patladı). Gemini için zaten 120sn var,
+            # buranın da onunla aynı tavanda olması orantılı.
             df, ict, info, img_bytes = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: smr_core.fetch_and_analyze(ticker)),
-                timeout=60
+                timeout=120
             )
 
             if df is None or len(df) < 60:
@@ -392,7 +394,7 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
             return img_bytes if img_bytes else None, ict_text, ai_text
 
         except asyncio.TimeoutError:
-            log.error(f"[{ticker}] Analiz timeout (60sn) — yfinance yanıt vermedi")
+            log.error(f"[{ticker}] Analiz timeout (120sn) — yfinance yanıt vermedi")
             return None, "", ""
         except Exception as e:
             log.error(f"get_analysis hatası [{ticker}]: {e}", exc_info=True)
@@ -1251,6 +1253,46 @@ async def cmd_bulten(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(f"❌ Bülten gönderiminde hata: {e}")
 
 
+async def cmd_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/leads — toplanan e-posta lead'lerini özetler (admin). Kaç farklı kişi geldi."""
+    msg = update.message or update.channel_post
+    if not msg:
+        return
+    user_id = msg.from_user.id if msg.from_user else msg.chat_id
+    if not _is_admin(user_id):
+        await msg.reply_text("⛔ Bu komut sadece admin içindir.")
+        return
+    import json as _j, os as _o
+    base = _o.path.dirname(_o.path.abspath(__file__))
+    def _ld(p, d):
+        try:
+            with open(_o.path.join(base, p), encoding="utf-8") as f:
+                return _j.load(f)
+        except Exception:
+            return d
+    leads = _ld("email_leads.json", [])
+    free  = _ld("free_users.json", {})
+    uniq = {}
+    for l in leads:
+        e = (l.get("email", "") or "").strip().lower()
+        if e:
+            uniq.setdefault(e, l.get("source", "waitlist"))
+    for e in free:
+        uniq.setdefault(e.strip().lower(), "showcase_free")
+    son = leads[-10:]
+    son_txt = "\n".join(f"• {l.get('email','?')} [{l.get('source','waitlist')}]" for l in son) or "—"
+    await msg.reply_text(
+        f"📊 *Lead Raporu*\n"
+        f"━━━━━━━━━━━━━\n"
+        f"👥 Farklı kişi: *{len(uniq)}*\n"
+        f"📝 Toplam kayıt: {len(leads)}\n"
+        f"🚀 Ücretsiz araç girişi: {len(free)}\n"
+        f"━━━━━━━━━━━━━\n"
+        f"Son 10:\n{son_txt}",
+        parse_mode="Markdown"
+    )
+
+
 async def cmd_durum(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/durum — kullanıcı kendi aboneliğini sorgular"""
     msg = update.message
@@ -1595,6 +1637,36 @@ async def kick_expired_users(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+# ─── WEB ÜYELİK (email-login) — app.py ile paylaşılan members.json'a yaz ─────
+def _web_member_add(email: str, tier: str, days: int, oid: int) -> str:
+    """members.json'a email-anahtarlı web üyelik yazar/uzatır (yenileme = süre ekleme).
+    Yeni bitiş tarihini döner. NOT: bot ile app.py aynı dizinde olmalı (members.json paylaşılır)."""
+    import json as _j, datetime as _dt, os as _o
+    path = _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "members.json")
+    key = (email or "").strip().lower()
+    if not key:
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            db = _j.load(f)
+    except Exception:
+        db = {}
+    today = _dt.date.today()
+    cur   = db.get(key, {})
+    base  = today
+    try:
+        ce = _dt.date.fromisoformat(str(cur.get("expires", "")))
+        if ce > today:          # mevcut abonelik hâlâ geçerliyse üstüne ekle (yenileme)
+            base = ce
+    except Exception:
+        pass
+    new_exp = (base + _dt.timedelta(days=days)).isoformat()
+    db[key] = {"tier": tier, "expires": new_exp, "order_id": oid}
+    with open(path, "w", encoding="utf-8") as f:
+        _j.dump(db, f, ensure_ascii=False, indent=2)
+    return new_exp
+
+
 # ─── SHOPİER API — PERİYODİK SİPARİŞ KONTROLÜ ───────────────────────────────
 async def check_shopier_orders(context=None):
     """
@@ -1667,6 +1739,17 @@ async def check_shopier_orders(context=None):
                 tier, days = "PRO", 30
             else:
                 tier, days = "?", 30
+
+            # ── WEB ÜYELİK (email-login) — Telegram'dan bağımsız, email yeterli ──
+            web_status = ""
+            if email and email != "?" and tier != "?":
+                try:
+                    _web_exp = _web_member_add(email, tier, days, oid)
+                    web_status = f"🌐 Web erişimi: {email} → {tier} (bitiş {_web_exp})"
+                    log.info(f"[Shopier] Web üyelik: {email} → {tier} bitiş:{_web_exp}")
+                except Exception as _we:
+                    web_status = f"⚠️ Web üyelik yazılamadı: {_we}"
+                    log.error(f"[Shopier] Web üyelik hatası #{oid}: {_we}", exc_info=True)
 
             # ── Otomatik abonelik ekleme ──────────────────────────────────────
             auto_status = ""
@@ -1743,7 +1826,8 @@ async def check_shopier_orders(context=None):
                 f"💵 Tutar: {tutar}₺\n"
                 f"🔖 Sipariş No: {oid}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"{auto_status}"
+                f"{auto_status}\n"
+                f"{web_status}"
             )
             await bot.send_message(
                 chat_id=ADMIN_ID,
@@ -1758,48 +1842,71 @@ async def check_shopier_orders(context=None):
 
 # ─── SİTE MONİTÖR ────────────────────────────────────────────────────────────
 _site_alert_last_sent: float = 0.0   # cooldown: 30dk tekrar alert gönderme
+_site_prev_fail: dict = {}           # önceki turun fail durumu (hedef adı → mesaj veya yok)
 
 async def check_site_health(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Her 5 dakikada smartmoneyradar.app'i ping atar. Yanıt gelmezse admin'e DM."""
-    global _site_alert_last_sent
+    """Her 5 dakikada site + zengin araç (/test) + free_gate API'yi kontrol eder.
+    Alarm kuralı: İKİ ARDIŞIK TUR aynı hedef fail olursa DM atar (geçici ağ takılmaları susturulur).
+    Tek izole timeout sadece warning olarak log'a yazılır."""
+    global _site_alert_last_sent, _site_prev_fail
     import time
     import aiohttp as _aiohttp
 
-    SITE_URL  = "https://smartmoneyradar.app"
-    TIMEOUT   = 10      # saniye
-    COOLDOWN  = 1800    # 30dk — aynı alarmı tekrar gönderme süresi
-    ADMIN_ID  = next(iter(UNLIMITED_USERS))  # 1034525990
+    TIMEOUT  = 10
+    COOLDOWN = 1800   # 30dk — aynı alarmı tekrar gönderme
+    ADMIN_ID = next(iter(UNLIMITED_USERS))
+    targets = [
+        ("Site",                "https://smartmoneyradar.app"),
+        ("Zengin araç (/test)", "http://127.0.0.1:8502/test/healthz"),
+        ("free_gate API",       "http://127.0.0.1:8090/api/free-check?ticker=XU100"),
+    ]
 
-    msg = None
+    current_fail: dict = {}    # hedef adı → fail mesajı
     try:
         async with _aiohttp.ClientSession() as session:
-            async with session.get(
-                SITE_URL,
-                timeout=_aiohttp.ClientTimeout(total=TIMEOUT),
-                allow_redirects=True,
-            ) as resp:
-                if resp.status == 200:
-                    return  # ✅ site sağlıklı
-                msg = f"⚠️ Site erişilebilir ama hata kodu: {resp.status}\n{SITE_URL}"
-    except _aiohttp.ClientConnectorError:
-        msg = f"🔴 Site bağlantı hatası (DNS/network)\n{SITE_URL}"
-    except asyncio.TimeoutError:
-        msg = f"🔴 Site yanıt vermiyor — {TIMEOUT}sn timeout\n{SITE_URL}"
+            for name, url in targets:
+                try:
+                    async with session.get(url, timeout=_aiohttp.ClientTimeout(total=TIMEOUT),
+                                           allow_redirects=True) as resp:
+                        if resp.status != 200:
+                            current_fail[name] = f"⚠️ {name}: HTTP {resp.status}"
+                except asyncio.TimeoutError:
+                    current_fail[name] = f"🔴 {name}: yanıt yok ({TIMEOUT}sn timeout)"
+                except Exception as e:
+                    current_fail[name] = f"🔴 {name}: {type(e).__name__}"
     except Exception as e:
-        msg = f"🔴 Site kontrol hatası: {e}\n{SITE_URL}"
+        current_fail["_monitor"] = f"🔴 Monitör hatası: {e}"
 
-    if msg is None:
+    # İki ardışık fail kontrolü
+    confirmed_fails = [msg for name, msg in current_fail.items() if name in _site_prev_fail]
+    new_fails       = [msg for name, msg in current_fail.items() if name not in _site_prev_fail]
+    recovered       = [name for name in _site_prev_fail.keys() if name not in current_fail]
+
+    # Sonraki turun karşılaştırması için durumu güncelle
+    _site_prev_fail = current_fail.copy()
+
+    # İlk fail (tek seferlik) → sadece logla
+    if new_fails:
+        log.warning(f"[Monitor] Tekil fail (henüz alarm yok, sonraki turu bekliyor): {' | '.join(new_fails)}")
+
+    # Önceki turda fail olan ama bu turda toparlanan hedef
+    if recovered:
+        log.info(f"[Monitor] Toparlandı: {', '.join(recovered)}")
+
+    # İki ardışık fail YOKSA DM atma
+    if not confirmed_fails:
         return
 
+    msg = "🚨 *Sistem Sağlık Uyarısı* (2 ardışık tur fail)\n" + "\n".join(confirmed_fails)
     now = time.time()
     if now - _site_alert_last_sent < COOLDOWN:
-        log.warning(f"[Monitor] {msg} (cooldown aktif, DM gönderilmedi)")
+        log.warning(f"[Monitor] {msg} (cooldown aktif, DM yok)")
         return
 
     _site_alert_last_sent = now
     try:
-        await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
-        log.warning(f"[Monitor] Alert DM gönderildi: {msg}")
+        await context.bot.send_message(chat_id=ADMIN_ID, text=msg, parse_mode="Markdown")
+        log.warning(f"[Monitor] Alert DM: {msg}")
     except Exception as e:
         log.error(f"[Monitor] DM gönderilemedi: {e}")
 
@@ -1923,6 +2030,7 @@ def main():
     app.add_handler(CommandHandler("durum",      cmd_durum))
     app.add_handler(CommandHandler("myid",       cmd_myid))
     app.add_handler(CommandHandler("bulten",     cmd_bulten))
+    app.add_handler(CommandHandler("leads",      cmd_leads))
 
     # Sohbet grubu moderasyonu
     app.add_handler(MessageHandler(filters.Chat(CHAT_ID) & filters.TEXT, handle_chat_group), group=0)
