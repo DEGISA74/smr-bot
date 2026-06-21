@@ -23935,6 +23935,203 @@ def _render_genel_ozet_panel():
         pass
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# HAFTALIK GENEL ÇERÇEVE (21 Haz 2026) — hafta sonu (Cmt/Paz) özel
+# Günlük veriyi haftalığa çevirip 5 blok üretir: Konum · Dow birincil trend ·
+# Piyasa yapısı · Günlük×Haftalık uyum · Haftalık mum. Panel (sol sütun en alt,
+# tıklayınca açılır) + hafta sonu AI prompt'a EN ÖNE enjekte edilir. Ortak kaynak.
+# ═══════════════════════════════════════════════════════════════════════════
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def compute_weekly_frame(ticker):
+    """Hafta sonu büyük-resim çerçevesi. Dict döner (5 blok + ai_block) veya None."""
+    try:
+        df_d = get_safe_historical_data(ticker, period="2y")
+    except Exception:
+        df_d = None
+    if df_d is None or len(df_d) < 80 or 'Close' not in df_d.columns:
+        return None
+    try:
+        df_w = df_d.resample('W-FRI').agg(
+            {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
+        ).dropna()
+    except Exception:
+        return None
+    if len(df_w) < 30:
+        return None
+
+    cw = df_w['Close']; hw = df_w['High']; lw = df_w['Low']; ow = df_w['Open']
+    n = len(df_w)
+    last = float(cw.iloc[-1])
+    UP = "#10b981"; DN = "#f87171"; NEU = "#f59e0b"; MUT = "#94a3b8"
+
+    # ── Blok 1: KONUM (uzun vade) ────────────────────────────────────────────
+    w50 = cw.rolling(min(50, n - 1)).mean()
+    above50 = last > float(w50.iloc[-1])
+    slope50 = float(w50.iloc[-1]) - float(w50.iloc[-min(8, n - 1)])
+    win52 = df_w.tail(52)
+    hi52 = float(win52['High'].max()); lo52 = float(win52['Low'].min())
+    pos52 = ((last - lo52) / (hi52 - lo52) * 100) if hi52 > lo52 else 50.0
+    if above50 and slope50 > 0:
+        pos_lbl, pos_clr = "Uzun vade YUKARI", UP
+        pos_det = (f"Fiyat 50-haftalık ortalamanın üzerinde ve ortalama yükseliyor — ana eğilim "
+                   f"alıcıda. 52-hafta bandında %{pos52:.0f} seviyesinde.")
+    elif (not above50) and slope50 < 0:
+        pos_lbl, pos_clr = "Uzun vade AŞAĞI", DN
+        pos_det = (f"Fiyat 50-haftalık ortalamanın altında ve ortalama düşüyor — ana eğilim "
+                   f"satıcıda. 52-hafta bandında %{pos52:.0f} seviyesinde.")
+    else:
+        pos_lbl, pos_clr = "Uzun vade YATAY/KARARSIZ", NEU
+        pos_det = (f"Fiyat ile 50-haftalık ortalama net yön vermiyor — denge bölgesi. "
+                   f"52-hafta bandında %{pos52:.0f}.")
+
+    # ── Blok 2: DOW birincil trend (haftalık salınım yapısı) ─────────────────
+    k = 2
+    sh = []; sl = []
+    _h = hw.values; _l = lw.values
+    for i in range(k, n - k):
+        if _h[i] == _h[i - k:i + k + 1].max(): sh.append((i, float(_h[i])))
+        if _l[i] == _l[i - k:i + k + 1].min(): sl.append((i, float(_l[i])))
+    dow_lbl, dow_clr = "Belirsiz / Yatay", NEU
+    dow_det = "Haftalık salınım yapısı net bir birincil yön vermiyor."
+    if len(sh) >= 2 and len(sl) >= 2:
+        hh = sh[-1][1] > sh[-2][1]; hl = sl[-1][1] > sl[-2][1]
+        lh = sh[-1][1] < sh[-2][1]; ll = sl[-1][1] < sl[-2][1]
+        if hh and hl:
+            dow_lbl, dow_clr = "Birincil YÜKSELİŞ", UP
+            dow_det = ("Dow teorisi: yükselen tepe + yükselen dip → birincil trend yukarı. "
+                       "Düzeltmeler alım fırsatı sayılır.")
+        elif lh and ll:
+            dow_lbl, dow_clr = "Birincil DÜŞÜŞ", DN
+            dow_det = ("Dow teorisi: alçalan tepe + alçalan dip → birincil trend aşağı. "
+                       "Yükselişler satış/tepki sayılır.")
+        else:
+            dow_lbl, dow_clr = "Geçiş / Yatay", NEU
+            dow_det = ("Dow teorisi: tepe-dip yapısı karışık → trend geçiş aşamasında, yön belirsiz.")
+
+    # ── Blok 3: PİYASA YAPISI (son kırılım) ──────────────────────────────────
+    conf_sh = [p for (i, p) in sh if i <= n - 1 - k]
+    conf_sl = [p for (i, p) in sl if i <= n - 1 - k]
+    struct_lbl, struct_clr = "Bant içinde", MUT
+    struct_det = "Fiyat son salınım tepe/dibi arasında — yapı korunuyor, kırılım yok."
+    if conf_sh and last > max(conf_sh[-2:]):
+        struct_lbl, struct_clr = "Yukarı yapı kırılımı (BOS↑)", UP
+        struct_det = (f"Haftalık kapanış son onaylı salınım tepesini ({max(conf_sh[-2:]):.2f}) aştı — "
+                      f"yukarı yapı kırılımı, alıcı kontrolü güçlendi.")
+    elif conf_sl and last < min(conf_sl[-2:]):
+        struct_lbl, struct_clr = "Aşağı yapı kırılımı (BOS↓)", DN
+        struct_det = (f"Haftalık kapanış son onaylı salınım dibini ({min(conf_sl[-2:]):.2f}) kırdı — "
+                      f"aşağı yapı kırılımı, satıcı kontrolü güçlendi.")
+
+    # ── Blok 4: GÜNLÜK × HAFTALIK UYUM ───────────────────────────────────────
+    w_dir = 1 if (above50 and slope50 > 0) else (-1 if ((not above50) and slope50 < 0) else 0)
+    cd = df_d['Close']
+    d50 = cd.rolling(50).mean()
+    _d50_last = d50.iloc[-1]
+    if pd.isna(_d50_last):
+        d_dir = 0
+    else:
+        d_above = float(cd.iloc[-1]) > float(_d50_last)
+        d_slope = float(_d50_last) - float(d50.iloc[-min(10, len(d50) - 1)])
+        d_dir = 1 if (d_above and d_slope > 0) else (-1 if ((not d_above) and d_slope < 0) else 0)
+    if w_dir != 0 and w_dir == d_dir:
+        align_lbl = "UYUMLU — güçlü teyit"; align_clr = UP if w_dir > 0 else DN
+        align_det = ("Günlük ve haftalık trend aynı yönde — en güvenilir senaryo. "
+                     "İki zaman dilimi birbirini doğruluyor.")
+    elif w_dir != 0 and d_dir != 0 and w_dir != d_dir:
+        align_lbl, align_clr = "ÇELİŞKİ — dikkat", NEU
+        align_det = ("Günlük ve haftalık trend ZIT yönde — tuzak riski. Kısa vade hareketi ana "
+                     "eğilime karşı; teyit beklemek mantıklı.")
+    else:
+        align_lbl, align_clr = "KISMİ — biri nötr", MUT
+        align_det = ("Bir zaman dilimi net yön verirken diğeri kararsız — geçiş ortamı, acele etme.")
+
+    # ── Blok 5: HAFTALIK MUM ÖZETİ ───────────────────────────────────────────
+    lo_ = float(lw.iloc[-1]); hi_ = float(hw.iloc[-1]); oo = float(ow.iloc[-1]); cc = last
+    rng = (hi_ - lo_) if hi_ > lo_ else 1e-9
+    body_pct = abs(cc - oo) / rng * 100
+    green = cc >= oo
+    upper_w = (hi_ - max(cc, oo)) / rng * 100
+    lower_w = (min(cc, oo) - lo_) / rng * 100
+    _wk_rsi_s = _er_rsi(cw)
+    wk_rsi = float(_wk_rsi_s.iloc[-1]) if not pd.isna(_wk_rsi_s.iloc[-1]) else 50.0
+    n8 = min(8, n - 1)
+    chg8 = (last / float(cw.iloc[-1 - n8]) - 1) * 100 if n8 > 0 else 0.0
+    greens = int((cw.diff().tail(n8) > 0).sum())
+    if green and body_pct >= 55:
+        cdl_lbl, cdl_clr = "Güçlü yeşil mum", UP
+    elif (not green) and body_pct >= 55:
+        cdl_lbl, cdl_clr = "Güçlü kırmızı mum", DN
+    elif upper_w >= 40:
+        cdl_lbl, cdl_clr = "Üst fitilli — satış baskısı", NEU
+    elif lower_w >= 40:
+        cdl_lbl, cdl_clr = "Alt fitilli — alıcı geldi", NEU
+    else:
+        cdl_lbl, cdl_clr = (("Yeşil" if green else "Kırmızı") + " — kararsız gövde"), NEU
+    cdl_det = (f"Son haftalık mum: {cdl_lbl.lower()} (gövde %{body_pct:.0f}). Haftalık RSI {wk_rsi:.0f}. "
+               f"Son {n8} hafta: {greens} yeşil / {n8 - greens} kırmızı, net %{chg8:+.1f}.")
+
+    ai_block = (
+        "HAFTALIK GENEL ÇERÇEVE (BÜYÜK RESİM — analizi BUNUNLA AÇ, genel özet bununla kurulur):\n"
+        f"  • Konum (uzun vade): {pos_lbl} — {pos_det}\n"
+        f"  • Dow birincil trend: {dow_lbl} — {dow_det}\n"
+        f"  • Piyasa yapısı: {struct_lbl} — {struct_det}\n"
+        f"  • Günlük×Haftalık uyum: {align_lbl} — {align_det}\n"
+        f"  • Haftalık mum: {cdl_lbl} — {cdl_det}\n"
+    )
+
+    return {
+        'pos': (pos_lbl, pos_det, pos_clr),
+        'dow': (dow_lbl, dow_det, dow_clr),
+        'structure': (struct_lbl, struct_det, struct_clr),
+        'align': (align_lbl, align_det, align_clr),
+        'candle': (cdl_lbl, cdl_det, cdl_clr),
+        'pos52': pos52, 'wk_rsi': wk_rsi, 'n_weeks': n,
+        'ai_block': ai_block,
+    }
+
+
+def _render_weekly_frame_panel(ticker):
+    """Sol sütun EN ALT — sadece Cmt/Paz, tıklayınca açılan Haftalık Genel Çerçeve."""
+    try:
+        if datetime.now(_TZ_ISTANBUL).weekday() < 5:
+            return
+    except Exception:
+        return
+    _wf = compute_weekly_frame(ticker)
+    if not _wf:
+        return
+
+    def _wf_row(icon, title, payload):
+        lbl, det, clr = payload
+        return (
+            f'<div style="display:flex;flex-direction:column;gap:2px;padding:8px 10px;'
+            f'border-left:3px solid {clr};background:rgba(255,255,255,0.02);'
+            f'border-radius:4px;margin-bottom:7px;">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+            f'<span style="color:#94a3b8;font-size:0.72rem;font-weight:700;letter-spacing:0.3px;">{icon} {title}</span>'
+            f'<span style="color:{clr};font-size:0.8rem;font-weight:900;text-align:right;">{lbl}</span></div>'
+            f'<div style="color:#cbd5e1;font-size:0.72rem;line-height:1.35;">{det}</div>'
+            f'</div>'
+        )
+
+    _rows = (
+        _wf_row("📍", "KONUM", _wf['pos'])
+        + _wf_row("🧭", "DOW BİRİNCİL TREND", _wf['dow'])
+        + _wf_row("🏗", "PİYASA YAPISI", _wf['structure'])
+        + _wf_row("🔗", "GÜNLÜK × HAFTALIK", _wf['align'])
+        + _wf_row("🕯", "HAFTALIK MUM", _wf['candle'])
+    )
+    with st.expander("📅 HAFTALIK GENEL ÇERÇEVE — Büyük Resim (hafta sonu özel)", expanded=False):
+        st.markdown(
+            '<div style="font-size:0.7rem;color:#64748b;font-style:italic;margin-bottom:8px;">'
+            'Günlük gürültüden uzak — haftalık mumlar ve Dow teorisine göre hissenin genel duruşu. '
+            'Sadece Cumartesi–Pazar gösterilir.</div>'
+            + _rows,
+            unsafe_allow_html=True
+        )
+
+
 def _render_health_signals_panel():
     # --- YENİ YERİ: GENEL SAĞLIK PANELİ (SIDEBAR İÇİN OPTİMİZE EDİLDİ) ---
     try:
@@ -27984,7 +28181,23 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
     _algo_vurgu_g1_open = _algo_vurgu[1]   # Görev 1 ana açılış paragrafı
     _algo_vurgu_g1_pin  = _algo_vurgu[2]   # Görev 1 📍 listesi başı (kritik gözlem)
 
-    prompt = f"""{_ai_holiday_note}*** KİMLİĞİN ***
+    # ── HAFTA SONU — Haftalık Genel Çerçeve (sadece Cmt/Paz, prompt'un EN ÖNÜNE) ──
+    _ai_weekly_note = ""
+    try:
+        if datetime.now(_TZ_ISTANBUL).weekday() >= 5:
+            _wf_ai = compute_weekly_frame(t)
+            if _wf_ai and _wf_ai.get('ai_block'):
+                _ai_weekly_note = (
+                    "\n\n*** 📅 HAFTALIK GENEL ÇERÇEVE — ÖNCE BUNU OKU, ANALİZİ BUNUNLA AÇ ***\n"
+                    "Bugün hafta sonu. Aşağıdaki büyük-resim çerçevesini analizinin EN BAŞINA koy ve "
+                    "genel özetini bununla kur; günlük detaylara SONRA in. Haftalık mum + Dow teorisi + "
+                    "piyasa yapısı bu hissenin nerede durduğunu söyler — günlük gürültü bunu değiştirmez.\n"
+                    + _wf_ai['ai_block']
+                )
+    except Exception:
+        _ai_weekly_note = ""
+
+    prompt = f"""{_ai_weekly_note}{_ai_holiday_note}*** KİMLİĞİN ***
 25 yıllık portföy yöneticisi analistsin. Alanında uzmansın ve deneylimlisin. Karmaşık veriyi sadeleştirirsin, ama bilgiyi kaybetmezsin. Ne korkutursun ne umutlandırırsın — veri ne diyorsa onu söylersin. Soğukkanlısın, sezgilisin, hem yükselişi hem düşüşü bekliyorsun. Hem finans bilen hem bilmeyen okuyacak; teknik terimi ANLATIM KURALI'ndaki gibi benzetmeyle ver, sonra çıplak kısaltmayı kullan. Sohbet dili — robot değil.
 
 *** ANALİZ İSKELETİ (HER GÖREVDE BU SIRAYLA DÜŞÜN) ***
@@ -30923,6 +31136,12 @@ def _render_left_col():
                     st.info("Henüz değerlendirilebilir sinyal yok (min 5g geçmesi gerekir).")
             except Exception as _bt_e:
                 st.warning(f"backtest_results.json okunamadı: {_bt_e}")
+
+    # ── HAFTALIK GENEL ÇERÇEVE — sol sütun EN ALT (sadece Cmt/Paz) ───────────
+    try:
+        _render_weekly_frame_panel(_cur_ticker)
+    except Exception:
+        pass
 
     # --- SAĞ SÜTUN ---
 
