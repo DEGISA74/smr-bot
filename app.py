@@ -24149,6 +24149,80 @@ def _render_weekly_frame_panel(ticker):
         )
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# VERİ DOĞRULAMA KAPISI (21 Haz 2026) — merkezi "Sıfır Güven" denetimi.
+# AI'ın kendi yaptığı tutarsızlık avını BİZ deterministik olarak, AI'dan ÖNCE
+# yaparız. Bozuk veri zaten apply_volume_projection'da ONARILIR (split/hayalet
+# bar); burada SADECE DENETLENİR ve bir "güven damgası" üretilir. AI artık
+# tutarsızlık aramaz — damgaya güvenir (TEMİZ) ya da işaretli metriğe güvenmez.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _data_integrity_check(df, ticker):
+    """Veriyi denetler, güven damgası döndürür (ONARMAZ).
+    {'clean': bool, 'durum': 'TEMİZ'|'ŞÜPHELİ', 'issues': [insan-okur], 'distrust': [metrik]}"""
+    issues = []
+    distrust = []
+    try:
+        if df is None or len(df) < 20 or 'Close' not in df.columns:
+            return {'clean': False, 'durum': 'ŞÜPHELİ',
+                    'issues': ['veri yetersiz (<20 bar)'], 'distrust': ['hepsi']}
+
+        is_index = str(ticker).upper().startswith(("XU", "XB", "XT", "XY"))
+        c = df['Close']; h = df.get('High'); l = df.get('Low'); v = df.get('Volume')
+
+        # 1) NaN / sıfır kapanış (son 60 bar)
+        if c.tail(60).isna().any() or (c.tail(60) <= 0).any():
+            issues.append('son 60 günde NaN/sıfır kapanış')
+            distrust.append('fiyat')
+
+        # 2) OHLC bütünlüğü (son 60 bar)
+        if h is not None and l is not None:
+            if int((h.tail(60) < l.tail(60)).sum()) > 0:
+                issues.append('Yüksek < Düşük olan bar(lar)')
+                distrust.append('mum')
+            try:
+                _out = int(((c.tail(60) > h.tail(60) + 1e-6) |
+                            (c.tail(60) < l.tail(60) - 1e-6)).sum())
+                if _out > 2:
+                    issues.append(f'{_out} barda kapanış mum aralığı dışında')
+                    distrust.append('mum')
+            except Exception:
+                pass
+
+        # 3) Ölçek / işlenmemiş bölünme kalıntısı (hisse)
+        if not is_index and len(df) >= 60:
+            win = df.tail(252)
+            hi = float(win['High'].max()); last = float(c.iloc[-1])
+            if hi > 0 and 0 < last < hi * 0.04:
+                issues.append(f"son fiyat 52H zirvenin %{last/hi*100:.0f}'i — işlenmemiş bölünme şüphesi")
+                distrust.extend(['52h_zirve', 'master_score'])
+            if bool((c.pct_change().tail(252) < -0.35).any()):
+                issues.append('son 1 yılda düzeltilmemiş >%35 tek-gün düşüş')
+                distrust.extend(['52h_zirve', 'getiri'])
+
+        # 4) Tekrar / büyük veri deliği
+        if bool(df.index.duplicated().any()):
+            issues.append('tekrarlı tarih (duplicate gün)')
+        try:
+            if not is_index and int((df.index.to_series().diff().dt.days.tail(60) > 6).sum()) > 0:
+                issues.append('son 60 günde >6 günlük veri deliği')
+        except Exception:
+            pass
+
+        # 5) Sıfır-hacim serisi (endeks hariç)
+        if v is not None and not is_index:
+            if int((v.tail(10) <= 0).sum()) >= 5:
+                issues.append('son 10 günde 5+ sıfır-hacim bar')
+                distrust.append('hacim')
+    except Exception as _e:
+        return {'clean': False, 'durum': 'ŞÜPHELİ',
+                'issues': [f'denetim hatası: {_e}'], 'distrust': []}
+
+    clean = (len(issues) == 0)
+    return {'clean': clean, 'durum': 'TEMİZ' if clean else 'ŞÜPHELİ',
+            'issues': issues, 'distrust': sorted(set(distrust))}
+
+
 def _render_health_signals_panel():
     # --- YENİ YERİ: GENEL SAĞLIK PANELİ (SIDEBAR İÇİN OPTİMİZE EDİLDİ) ---
     try:
@@ -28214,7 +28288,29 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
     except Exception:
         _ai_weekly_note = ""
 
-    prompt = f"""{_ai_weekly_note}{_ai_holiday_note}*** KİMLİĞİN ***
+    # ── VERİ GÜVEN DAMGASI (21 Haz 2026) — merkezi kapı; AI kendi tutarsızlık avına çıkmasın ──
+    _ai_data_note = ""
+    try:
+        _di = _data_integrity_check(df, t)
+        if _di['clean']:
+            _ai_data_note = (
+                "\n\n*** ✅ VERİ GÜVEN DAMGASI: TEMİZ ***\n"
+                "Veri merkezi doğrulama kapısından geçti (bölünme, ölçek, mum bütünlüğü, tarih, hacim). "
+                "Tutarsızlık avına ÇIKMA, 'veri bozuk/şüpheli' DEME — veriye güven, analize odaklan.\n"
+            )
+        else:
+            _dt = ", ".join(_di['distrust']) if _di['distrust'] else "işaretli metrik"
+            _ai_data_note = (
+                "\n\n*** ⚠️ VERİ GÜVEN DAMGASI: ŞÜPHELİ — ÖNCE BUNU OKU ***\n"
+                "Merkezi doğrulama kapısı şunu işaretledi: " + "; ".join(_di['issues']) + ".\n"
+                f"Bu yüzden ŞU metriğe/metriklere GÜVENME: {_dt}. Bunları analizde kullanma; gerekiyorsa "
+                "'veride işlenmemiş bir düzeltme olabilir' diye KISACA geç. Uzun uzun 'tutarsızlık' "
+                "tartışması AÇMA — biz zaten işaretledik. Sağlam diğer verilerle yorum yap.\n"
+            )
+    except Exception:
+        _ai_data_note = ""
+
+    prompt = f"""{_ai_data_note}{_ai_weekly_note}{_ai_holiday_note}*** KİMLİĞİN ***
 25 yıllık portföy yöneticisi analistsin. Alanında uzmansın ve deneylimlisin. Karmaşık veriyi sadeleştirirsin, ama bilgiyi kaybetmezsin. Ne korkutursun ne umutlandırırsın — veri ne diyorsa onu söylersin. Soğukkanlısın, sezgilisin, hem yükselişi hem düşüşü bekliyorsun. Hem finans bilen hem bilmeyen okuyacak; teknik terimi ANLATIM KURALI'ndaki gibi benzetmeyle ver, sonra çıplak kısaltmayı kullan. Sohbet dili — robot değil.
 
 *** ANALİZ İSKELETİ (HER GÖREVDE BU SIRAYLA DÜŞÜN) ***
