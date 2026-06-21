@@ -28378,7 +28378,32 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
     except Exception:
         _ai_data_note = ""
 
-    prompt = f"""{_ai_data_note}{_ai_weekly_note}{_ai_holiday_note}*** KİMLİĞİN ***
+    # ── PARA AKIŞI SIRALAMASI (21 Haz 2026) — universe araştırmasında REJİM-DAYANIKLI çıkan
+    # tek faktör (CMF çapraz-kesitsel). factor_rank tablosundan (universe_snapshot.py --publish).
+    # Destekleyici seviye (tek dönem backtest) — ana hikaye değil. ──
+    _ai_flow_note = ""
+    try:
+        _frc = sqlite3.connect(DB_FILE)
+        _fr = _frc.execute("SELECT cmf_pct FROM factor_rank WHERE symbol=? ORDER BY rank_date DESC LIMIT 1",
+                           (t,)).fetchone()
+        _frc.close()
+        if _fr and _fr[0] is not None:
+            _pct = float(_fr[0]); _ust = 100 - _pct
+            if _pct >= 70:
+                _yorum = f"tüm BIST'te para akışında ÜST %{_ust:.0f} dilimde — akış lehte, destekleyici güç"
+            elif _pct <= 30:
+                _yorum = f"para akışında ALT %{_pct:.0f} dilimde — akış zayıf/aleyhte"
+            else:
+                _yorum = f"para akışında orta dilimde (üst %{_ust:.0f})"
+            _ai_flow_note = (
+                f"\n📊 PARA AKIŞI SIRALAMASI (kanıt-temelli tek dayanıklı faktör): {_yorum}. "
+                f"Bunu DESTEKLEYİCİ bir kanıt olarak kullan (ana hikaye değil); CMF tüm-evren + rejim "
+                f"testinde tutan tek sinyaldi.\n"
+            )
+    except Exception:
+        _ai_flow_note = ""
+
+    prompt = f"""{_ai_data_note}{_ai_flow_note}{_ai_weekly_note}{_ai_holiday_note}*** KİMLİĞİN ***
 25 yıllık portföy yöneticisi analistsin. Alanında uzmansın ve deneylimlisin. Karmaşık veriyi sadeleştirirsin, ama bilgiyi kaybetmezsin. Ne korkutursun ne umutlandırırsın — veri ne diyorsa onu söylersin. Soğukkanlısın, sezgilisin, hem yükselişi hem düşüşü bekliyorsun. Hem finans bilen hem bilmeyen okuyacak; teknik terimi ANLATIM KURALI'ndaki gibi benzetmeyle ver, sonra çıplak kısaltmayı kullan. Sohbet dili — robot değil.
 
 *** ANALİZ İSKELETİ (HER GÖREVDE BU SIRAYLA DÜŞÜN) ***
