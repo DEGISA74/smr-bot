@@ -1205,6 +1205,35 @@ def init_db():
         category    TEXT,
         UNIQUE(scan_date, symbol, scan_type)
     )''')
+    # 19 Haz 2026 — GOLD MINE VİTRİN LOG (meta-backtest): her Master Scan'de vitrinin gösterdiği
+    # top hisseler rank+puanla kaydedilir. Sonra signal_results JOIN ile "vitrin sıralaması
+    # gerçekten kazandırdı mı, rank1 > rank10 mu" ölçülür. confluence_count = kaç tarama çakıştı.
+    c.execute('''CREATE TABLE IF NOT EXISTS goldmine_log (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        scan_date        TEXT NOT NULL,
+        symbol           TEXT NOT NULL,
+        rank             INTEGER,
+        score            REAL,
+        scanner          TEXT,
+        confluence_count INTEGER,
+        unmeasured       INTEGER DEFAULT 0,
+        category         TEXT,
+        UNIQUE(scan_date, symbol)
+    )''')
+    # 19 Haz 2026 Faz 3 — ANALİZ LOG: hisse analiz edilince birleşik verdict snapshot (kanıt+risk).
+    # Sonra forward getiriyle "yüksek kanıt-skorlu + düşük riskli analizler tuttu mu" ölçülür (ürün isabeti).
+    c.execute('''CREATE TABLE IF NOT EXISTS analysis_log (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        scan_date     TEXT NOT NULL,
+        symbol        TEXT NOT NULL,
+        kanit_skoru   REAL,
+        guven         REAL,
+        master_score  REAL,
+        risk_level    TEXT,
+        liquidity_tier TEXT,
+        manip_risk    TEXT,
+        UNIQUE(scan_date, symbol)
+    )''')
     # B4-1 (1 Haz 2026): OBV+CMF durumu kalibrasyon için. Eski tablo varsa idempotent ekle.
     try:
         c.execute('ALTER TABLE scan_signals ADD COLUMN obv_status TEXT')
@@ -1263,6 +1292,21 @@ def init_db():
         'ALTER TABLE scan_signals ADD COLUMN f_tavan_skor REAL',           # tavan motoru ham skor
         'ALTER TABLE scan_signals ADD COLUMN f_tavan_kat TEXT',            # A/C/E/D (dominant kalıp)
         'ALTER TABLE scan_signals ADD COLUMN f_tavan_confluence_n INTEGER',# 50+ skor alan kalıp sayısı
+        # 18 Haz 2026 — Risk profili (global banka 3'lüsü): beta + drawdown + HV oranı
+        # Eylül 2026 ortası signal_returns JOIN ile beta/DD seviyelerine göre hit/ret farklılaşması ölç.
+        'ALTER TABLE scan_signals ADD COLUMN f_beta_xu100 REAL',           # 60g XU100 beta
+        'ALTER TABLE scan_signals ADD COLUMN f_dd_zirveden REAL',          # 1y zirveden % drawdown
+        'ALTER TABLE scan_signals ADD COLUMN f_hv_oran REAL',              # 20g/60g HV oranı (sıkışma teyit)
+        'ALTER TABLE scan_signals ADD COLUMN f_skew_60g REAL',             # 60g günlük getiri asimetrisi (şok yön bias)
+        # 19 Haz 2026 audit — eskiden loglanmayan "kör" skorlar (Sentiment/ICT-model/SmartMoney).
+        # Prominently gösteriliyordu ama backtest edilemiyordu → Temmuz'da getiriyle test için loglanır.
+        'ALTER TABLE scan_signals ADD COLUMN f_sentiment_score REAL',
+        'ALTER TABLE scan_signals ADD COLUMN f_ict_model REAL',
+        'ALTER TABLE scan_signals ADD COLUMN f_smart_money_score REAL',
+        # 19 Haz 2026 Faz 1 — likidite + manipülasyon kalkanı (BIST koruması)
+        'ALTER TABLE scan_signals ADD COLUMN f_adv_tl REAL',           # 20g ort günlük TL hacim (milyon)
+        'ALTER TABLE scan_signals ADD COLUMN f_liquidity_tier TEXT',   # yüksek/orta/düşük
+        'ALTER TABLE scan_signals ADD COLUMN f_manip_risk TEXT',       # yok/orta/yüksek
         # 10 Haz 2026 Oturum 20 — MFI (Money Flow Index) — hacim-ağırlıklı RSI
         # 7 state dual-window (RSI_dual ile aynı kalıp):
         #   overbought_both / oversold_both / early_overbought / early_oversold /
@@ -1605,18 +1649,191 @@ def _spike_dom_ratio(today_delta, window_delta):
 
 
 # ===============================================================
+# B4-3 (18 Haz 2026) — Risk Profili (Beta + Drawdown + HV)
+# Global banka tarzı 3 metrik. Helper bağımsız — get_safe_historical_data
+# cache'inden okur, ayrı veri çekimi yok. NULL-tolerant.
+# ===============================================================
+@st.cache_data(ttl=600)
+def _compute_risk_profile(ticker: str) -> dict:
+    """3 risk metriği hesaplar. Hata olursa None ile döner.
+    Çıktı: beta_xu100, dd_zirveden, dd_max_1y, dipten_recovery, hv_oran."""
+    out = {
+        'beta_xu100': None,
+        'dd_zirveden': None,
+        'dd_max_1y': None,
+        'dipten_recovery': None,
+        'hv_oran': None,
+        'skew_60g': None,    # Asimetri — pozitif: yukarı sıçramaya eğilimli, negatif: aşağı çakılmaya
+    }
+    try:
+        df = get_safe_historical_data(ticker, period="1y")
+        if df is None or df.empty or len(df) < 60:
+            return out
+        close = df['Close'].dropna()
+        if len(close) < 60: return out
+
+        # ── DRAWDOWN ──
+        last = float(close.iloc[-1])
+        high_1y = float(close.max())
+        low_1y = float(close.min())
+        out['dd_zirveden'] = round(((last/high_1y) - 1) * 100, 1) if high_1y > 0 else None
+        # Max drawdown = cumulative running max'tan en derin düşüş
+        cum_max = close.cummax()
+        dd_series = (close / cum_max - 1) * 100
+        out['dd_max_1y'] = round(float(dd_series.min()), 1)
+        # Dipten toparlanma: 1y dibinden bu yana
+        out['dipten_recovery'] = round(((last/low_1y) - 1) * 100, 1) if low_1y > 0 else None
+
+        # ── BETA (XU100'e göre, son 60g) ──
+        try:
+            bench = get_safe_historical_data("XU100.IS", period="1y")
+            if bench is not None and not bench.empty and len(bench) >= 60:
+                stock_ret = close.pct_change().dropna()
+                bench_ret = bench['Close'].pct_change().dropna()
+                aligned = pd.concat([stock_ret, bench_ret], axis=1, join='inner').dropna()
+                if len(aligned) >= 60:
+                    a = aligned.tail(60).iloc[:, 0].values
+                    b = aligned.tail(60).iloc[:, 1].values
+                    var_b = float(np.var(b))
+                    if var_b > 0:
+                        beta = float(np.cov(a, b)[0][1] / var_b)
+                        out['beta_xu100'] = round(beta, 2)
+        except Exception:
+            pass
+
+        # ── HV ORANI (20g/60g günlük std × sqrt(252)) ──
+        try:
+            ret = close.pct_change().dropna()
+            if len(ret) >= 60:
+                hv20 = float(ret.tail(20).std() * np.sqrt(252))
+                hv60 = float(ret.tail(60).std() * np.sqrt(252))
+                if hv60 > 0:
+                    out['hv_oran'] = round(hv20 / hv60, 2)
+                # ── ASİMETRİ (Skewness 60g günlük getiri) ──
+                # > 0: pozitif kuyruk (yukarı sıçramaya eğilimli)
+                # < 0: negatif kuyruk (aşağı çakılmaya eğilimli)
+                # |skew| < 0.2: simetrik (büyük hareketler iki yönde dengeli)
+                _skew = float(ret.tail(60).skew())
+                if not np.isnan(_skew) and abs(_skew) < 10:   # outlier guard
+                    out['skew_60g'] = round(_skew, 2)
+        except Exception:
+            pass
+    except Exception as _ex:
+        try: log_error("risk_profile", _ex, ctx={'ticker': ticker})
+        except Exception: pass
+    return out
+
+
+# ===============================================================
 # B4-2 (3 Haz 2026) — Sinyal anı FEATURE SNAPSHOT helper
 # log_scan_signal df_result'ta feature kolonu yoksa otomatik bu helper kullanır.
 # 7 feature: f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days, f_vp_shape, f_master_score.
 # Cache'li: aynı ticker birden fazla scanner log'unda tek hesap. NULL-tolerant — feature hata verirse None kalır.
 # ===============================================================
 @st.cache_data(ttl=600, show_spinner=False)
+def _liquidity_manip(df):
+    """Faz 1 (19 Haz 2026) — BIST LİKİDİTE + MANİPÜLASYON kalkanı.
+    ADV = 20g ort günlük TL hacim (fiyat×hacim). İnce + dik koşu + hacim sıçraması = pompa riski.
+    Dönüş: dict(adv_mn [milyon TL], tier [yüksek/orta/düşük], manip [yok/orta/yüksek])."""
+    out = {'adv_mn': None, 'tier': None, 'manip': None}
+    try:
+        c = df['Close']; v = df['Volume']
+        if len(c) < 20:
+            return out
+        adv = float((c * v).tail(20).mean())
+        out['adv_mn'] = round(adv / 1e6, 1)
+        # 19 Haz 2026 VERİYLE KALİBRE (606 BIST: medyan 89mn, %23'ü <30mn). Enflasyonla periyodik
+        # gözden geçir. düşük<30mn = en ince ~%23 (riskli) · yüksek≥300mn = en likit ~%21.
+        out['tier'] = 'yüksek' if adv >= 300e6 else ('orta' if adv >= 30e6 else 'düşük')
+        avgv = float(v.tail(20).mean())
+        rvol = float(v.iloc[-1] / avgv) if avgv > 0 else 0.0
+        run5  = float(c.iloc[-1] / c.iloc[-6] - 1)  if len(c) > 6  else 0.0
+        run10 = float(c.iloc[-1] / c.iloc[-11] - 1) if len(c) > 11 else 0.0
+        # Manipülasyon İNCE TAHTA gerektirir — likit hissedeki sıçrama meşru momentum olabilir.
+        thin  = out['tier'] in ('düşük', 'orta')
+        steep = (run5 > 0.20) or (run10 > 0.40)     # dik koşu (limit-up serisi gibi)
+        spike = rvol > 3                             # hacim sıçraması
+        if thin and steep and spike:
+            out['manip'] = 'yüksek'
+        elif thin and (steep or spike):
+            out['manip'] = 'orta'
+        else:
+            out['manip'] = 'yok'
+    except Exception:
+        pass
+    return out
+
+
+def _risk_profile(ticker):
+    """Faz 2 (19 Haz 2026) — RİSK PROFİLİ: beta/volatilite/drawdown/skew + likidite/manip → sade
+    etiketler + genel seviye. Eşikler Haziran scan_signals dağılımıyla. 'Risk nerede' önce gelir."""
+    out = {'rows': [], 'level': None}
+    try:
+        f = _compute_signal_features(ticker) or {}
+        beta = f.get('f_beta_xu100'); dd = f.get('f_dd_zirveden'); hv = f.get('f_hv_oran')
+        skew = f.get('f_skew_60g'); liq = f.get('f_liquidity_tier'); manip = f.get('f_manip_risk')
+        rows = []; pts = 0  # rows: (etiket, sade açıklama, yön 'high'/'mid'/'low')
+        if beta is not None:
+            if beta > 1.1:   rows.append(("Oynaklık", f"endeksin {beta:.1f}× — daha sert oynuyor", 'high')); pts += 1
+            elif beta < 0.6: rows.append(("Oynaklık", f"endeksin {beta:.1f}× — sakin", 'low'))
+            else:            rows.append(("Oynaklık", f"endeksle uyumlu ({beta:.1f}×)", 'mid'))
+        if hv is not None:
+            if hv > 1.2:     rows.append(("Volatilite trendi", "son dönemde ARTIYOR", 'high')); pts += 1
+            elif hv < 0.75:  rows.append(("Volatilite trendi", "sakinleşiyor", 'low'))
+            else:            rows.append(("Volatilite trendi", "stabil", 'mid'))
+        if dd is not None:
+            if dd < -35:     rows.append(("Zirveden uzaklık", f"%{abs(dd):.0f} aşağıda — derin düşüşte", 'high')); pts += 1
+            elif dd > -10:   rows.append(("Zirveden uzaklık", f"zirveye yakın (%{abs(dd):.0f})", 'low'))
+            else:            rows.append(("Zirveden uzaklık", f"%{abs(dd):.0f} geride", 'mid'))
+        if skew is not None:
+            if skew < -0.5:  rows.append(("Asimetri", "aşağı çakılma kuyruğu — ani düşüş riski", 'high')); pts += 1
+            elif skew > 0.5: rows.append(("Asimetri", "yukarı sıçrama eğilimli", 'low'))
+            else:            rows.append(("Asimetri", "dengeli", 'mid'))
+        if liq:
+            if liq == 'düşük':  rows.append(("Likidite", "DÜŞÜK — ince tahta", 'high')); pts += 2
+            elif liq == 'orta': rows.append(("Likidite", "orta", 'mid'))
+            else:               rows.append(("Likidite", "yüksek — rahat al-sat", 'low'))
+        if manip and manip != 'yok':
+            rows.append(("Manipülasyon", f"{manip} pompa riski", 'high')); pts += 2
+        out['rows'] = rows
+        out['level'] = 'yüksek' if pts >= 3 else ('orta' if pts >= 1 else 'düşük')
+    except Exception:
+        pass
+    return out
+
+
+def log_analysis_snapshot(ticker):
+    """Faz 3 (19 Haz 2026) — hisse analiz edilince birleşik verdict snapshot'ı analysis_log'a yazar.
+    Idempotent (gün+ticker bir kez). Forward getiriyle ÜRÜN isabeti ölçülür (girdileri değil)."""
+    try:
+        _tc = str(ticker).replace('.IS', '')
+        if not _tc or ticker.upper().startswith(('XU', 'XB', 'XT', 'XY', '^')) or ticker.upper().endswith('=F'):
+            return  # endeks/emtia atla
+        today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
+        kz = _compute_kanit_ozeti(ticker) or {}
+        rp = _risk_profile(ticker) or {}
+        f = _compute_signal_features(ticker) or {}
+        conn = sqlite3.connect(DB_FILE); c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO analysis_log "
+                  "(scan_date, symbol, kanit_skoru, guven, master_score, risk_level, liquidity_tier, manip_risk) "
+                  "VALUES (?,?,?,?,?,?,?,?)",
+                  (today, _tc, kz.get('skor'), kz.get('guven'), f.get('f_master_score'),
+                   rp.get('level'), f.get('f_liquidity_tier'), f.get('f_manip_risk')))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+
 def _compute_signal_features(ticker: str) -> dict:
     """Sinyal anında hisseye özel 7 feature snapshot. Cache 10dk."""
     out = {
         'f_52h_pos': None, 'f_rsi': None, 'f_cmf_dual': None,
         'f_omi_sigma': None, 'f_squeeze_days': None,
         'f_vp_shape': None, 'f_master_score': None,
+        # 19 Haz 2026 audit — eskiden loglanmayan "kör" skorlar
+        'f_sentiment_score': None, 'f_ict_model': None, 'f_smart_money_score': None,
+        # 19 Haz 2026 Faz 1 — likidite + manipülasyon kalkanı
+        'f_adv_tl': None, 'f_liquidity_tier': None, 'f_manip_risk': None,
         # 6 Haz 2026 — POC backtest-doğrulamalı flag'ler
         'f_poc_magnet': None, 'f_poc_confluence': None, 'f_avwap_test_zone': None,
         # 6 Haz 2026 — Master Score breakdown sub-skorlar (component analizi için)
@@ -1664,6 +1881,11 @@ def _compute_signal_features(ticker: str) -> dict:
         # Bit 0=OBV(5g), 1=CumDelta(5g), 2=CMF(5g), 3=RSI(5), 4=MFI(5).
         # >%60 katkı = bit set. 0 = saf, dual-window "iki periyot teyit" gerçek.
         'f_spike_dominance': 0,
+        # 18 Haz 2026 — Risk profili (Beta + DD + HV + Skew)
+        'f_beta_xu100': None,
+        'f_dd_zirveden': None,
+        'f_hv_oran': None,
+        'f_skew_60g': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -1773,6 +1995,34 @@ def _compute_signal_features(ticker: str) -> dict:
                     if 'radar2'   in _bd: out['f_ms_radar2']   = round(float(_bd['radar2'].get('score', 0)), 1)
             elif isinstance(_ms_ret, tuple) and len(_ms_ret) >= 1:
                 out['f_master_score'] = round(float(_ms_ret[0]), 1)
+        except Exception: pass
+
+        # 7b) KÖR SKORLAR (19 Haz 2026 audit) — Sentiment/ICT-model/SmartMoney prominently
+        # gösteriliyordu ama hiç loglanmıyordu → backtest edilemiyordu (Master Skor gibi ters
+        # olabilirler, bilemiyorduk). Artık loglanıyor; sadece taramaya yakalanan hisseler için
+        # (cache'li) hesaplanır → performans sınırlı. Temmuz'da getiriyle test edilecek.
+        try:
+            _snt = calculate_sentiment_score(ticker)
+            if isinstance(_snt, dict) and _snt.get('total') is not None:
+                out['f_sentiment_score'] = round(float(_snt['total']), 1)
+        except Exception: pass
+        try:
+            _ictd = calculate_ict_deep_analysis(ticker)
+            if isinstance(_ictd, dict) and _ictd.get('model_score') is not None:
+                out['f_ict_model'] = round(float(_ictd['model_score']), 1)
+        except Exception: pass
+        try:
+            _smq = calculate_smart_money_score(ticker)
+            if isinstance(_smq, dict) and _smq.get('score') is not None:
+                out['f_smart_money_score'] = round(float(_smq['score']), 1)
+        except Exception: pass
+
+        # 7c) Faz 1 (19 Haz 2026) — Likidite + manipülasyon kalkanı
+        try:
+            _lm = _liquidity_manip(df)
+            out['f_adv_tl']         = _lm['adv_mn']
+            out['f_liquidity_tier'] = _lm['tier']
+            out['f_manip_risk']     = _lm['manip']
         except Exception: pass
 
         # 11) f_cum_delta_dual — 5g/20g cum_delta state (CMF disiplini, 7 state)
@@ -2019,6 +2269,18 @@ def _compute_signal_features(ticker: str) -> dict:
             for _k in ('f_yabanci_giris', 'f_yabanci_cikis', 'f_yabanci_streak', 'f_yabanci_anchor'):
                 if _mkk_y.get(_k) is not None:
                     out[_k] = _mkk_y[_k]
+            # Risk profili (18 Haz 2026) — Beta + Drawdown + HV + Skew
+            try:
+                _rp_feat = _compute_risk_profile(ticker)
+                if _rp_feat.get('beta_xu100') is not None:
+                    out['f_beta_xu100'] = _rp_feat['beta_xu100']
+                if _rp_feat.get('dd_zirveden') is not None:
+                    out['f_dd_zirveden'] = _rp_feat['dd_zirveden']
+                if _rp_feat.get('hv_oran') is not None:
+                    out['f_hv_oran'] = _rp_feat['hv_oran']
+                if _rp_feat.get('skew_60g') is not None:
+                    out['f_skew_60g'] = _rp_feat['skew_60g']
+            except Exception: pass
             # Relative OBV (hisse vs endeks) — hacim akışı ayrışması
             # Volume güvenilmez sembollerde atla; benchmark fetch ile çakışıyor olabilir
             try:
@@ -2095,7 +2357,15 @@ SCANNER_TIER_MAP = {
     'er_A3':         ('TIER_2_GUVENILIR',64.3,  3.26, '🔄 Erken Radar A3 (İkili Dip)',            '10g · hit %64 ret %+3.3'),
     'er_A7':         ('TIER_2_GUVENILIR',62.6,  3.53, '🔄 Erken Radar A7 (Hacimli Toparlanma)',   '10g · hit %63 ret %+3.5'),
     'er_C11':        ('TIER_2_GUVENILIR',66.7,  2.77, '🚀 Erken Radar C11 (Trendde Momentum)',    '10g · hit %67 ret %+2.8'),
+    # 19 Haz 2026 — GERİ ALINDI: 8 Haz'da "10g ret ≤0" diye çıkarılmıştı ama o karar dar/boğa-ağırlıklı
+    # veridendi. İki-rejim (Mayıs boğa + Haziran ayı, 222 sinyal/118 hisse) ölçümü: HER vadede hit>%50 +
+    # pozitif getiri, İKİ REJİMDE de pozitif (Haziran 10g +%1.0 — çoğu er_* ayıda çökerken bu dayandı),
+    # 20g %59/+%4.4. Tazede mevcut TIER_2 olan er_C2'yi (gerçek 10g %51/+1.6) geçiyor → TIER_2 hak ediyor.
+    'er_D2':         ('TIER_2_GUVENILIR',52.7,  1.72, '⚠ Erken Radar D2 (Karışık ama Dayanıklı)', '10g · hit %53 ret %+1.7 · 20g %59/+%4.4 · 222 sinyal · İKİ REJİMDE pozitif (ayıda bile) — 19 Haz 2026 geri alındı'),
     # TIER_3_ORTA: hit %50-65 + ret %2-3 (zayıf ama negatif değil)
+    # 19 Haz 2026 — GERİ ALINDI ama sadece destekleyici: 5g güçlü (%62/+%1.9) ancak ayı ayında 10g
+    # negatife dönüyor (-%1.1), 20g örneği yetersiz (9). Kısa vade fırsatı, ana hikaye DEĞİL.
+    'er_C6':         ('TIER_3_ORTA',     48.5,  0.59, '🚀 Erken Radar C6 (Piyasa Lideri)',        '5g güçlü %62 ama 10g %49 · ayıda uzun vade zayıflar · destekleyici · 19 Haz 2026 geri alındı'),
     'er_C7':         ('TIER_3_ORTA',     56.3,  3.34, '🚀 Erken Radar C7 (Sağlam Trend Yapısı)',  '10g · hit %56 ret %+3.3 · tüm MA hizalı (fiyat>SMA20>SMA50) + tüm vadelerde endeksi yeniyor — temiz trend görünümü, hit düşük destekleyici aranır'),
     'er_A4':         ('TIER_3_ORTA',     59.2,  2.98, '🔄 Erken Radar A4 (Yön Değiştiriyor)',     '10g · hit %59 ret %+3.0'),
     'er_D4':         ('TIER_3_ORTA',     49.4,  2.96, '⚠ Erken Radar D4 (Kurumsal Satış Riski)',  '10g · hit %49 ret %+3.0 · hit zayıf'),
@@ -2112,10 +2382,270 @@ SCANNER_TIER_MAP = {
     #   Önceki TIER_VADE_UZUN hipotezi (20g hit %81.8) REDDEDİLDİ. UI'da kalır, AI'dan çıkar.
     # • ICT Sniper: 534 sinyal, hit %39, exp -%0.40, PF 0.88 — yeterli kanıt + negatif beklenti.
     # • Radar 1 (analyze_market_intelligence): 2097 sinyal, hit %40.5, exp -%0.16 — çok denedi, zayıf.
-    # • er_D2, er_C6, guclu_donus, er_C1 (8 Haz 2026): 10g ret ≤0 — zaten kaldırılmıştı.
+    # • er_C1, guclu_donus (8 Haz 2026): 10g ret ≤0 — kaldırıldı, hâlâ zayıf (er_C1 ayıda %36/-0.5).
+    #   NOT: er_D2 + er_C6 (8 Haz'da burada listeliydi) 19 Haz 2026 iki-rejim veriyle GERİ ALINDI
+    #   (yukarıda TIER_2 / TIER_3_ORTA). Eski karar dar/boğa-ağırlıklı veriden hatalıymış.
     # Bu scanner'lar UI'da çalışmaya devam (operatörün gözünden gizlenmedi); sadece AI'ın
     # institutional_ref.scanner_tiers_aktif bloğunda görünmüyor. Q4 2026'da yeniden değerlendir.
 }
+
+# Erken Radar — iki-rejim (Mayıs boğa + Haziran ayı) backtest PUANI (19 Haz 2026, scanner_karne).
+# Yüksek = gerçekten kazandırıyor. ELİT panel + mini panel SIRALAMA + FİLTRE bunu kullanır.
+# Eski yıldız sistemi tasarımcının ilk tahminiydi (er_C6 5★ ama vasat, er_D2 2★ ama #2 kazanan) —
+# bu puan gerçek getiri + iki-rejim dayanıklılık kanıtı. Altın madenlerini ÖNE çıkarır.
+ER_BACKTEST_SCORE = {
+    'B8': 100, 'D2': 74, 'C2': 71, 'C5': 66, 'C6': 60, 'A2': 58, 'B5': 53, 'A1': 53,
+    'A7': 46, 'D1': 46, 'A8': 36, 'D4': 35, 'D5': 34, 'A3': 29, 'A4': 26, 'A5': 24,
+    'C8': 19, 'B11': 15, 'D3': 13, 'C11': 13, 'A9': 12, 'C3': 11, 'C9': 10, 'C7': 6,
+    'C1': 4, 'A6': 0, 'B1': 0,
+}
+ER_ELIT_SCORE_MIN = 45   # ELİT panelde gösterim eşiği — bunun altı "gold mine değil", gizlenir
+
+def _er_kisa_aciklama(scenario_id):
+    """Senaryonun sade açıklaması — kod bilmeyen son kullanıcının anlayacağı dilde.
+    Örn. B8 → 'Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı.'
+    İlk cümle çok kısaysa (genel) ikinci cümleyi de ekler."""
+    try:
+        d = ERKEN_RADAR_SCENARIOS.get(str(scenario_id), {}).get('description', '')
+        if not d:
+            return ''
+        parts = [p.strip() for p in d.replace(' — ', '. ').split('. ') if p.strip()]
+        if not parts:
+            return ''
+        out = parts[0]
+        if len(out) < 45 and len(parts) > 1:   # ilk cümle genel/kısaysa ikinciyi de al
+            out = out.rstrip('.') + '. ' + parts[1]
+        if not out.endswith(('.', '?', '!')):
+            out += '.'
+        return out
+    except Exception:
+        return ''
+
+# Tarama açıklamaları — SADE, GERÇEK, jargonsuz (19 Haz 2026 — "hiç bilmeyen biri bile anlasın").
+# Her cümle taramanın GERÇEKTE ne aradığını anlatır; pazarlama/fluff yok.
+SCANNER_PLAIN_DESC = {
+    'platin':    'Hem borsadan güçlü, hem yükseliş trendinde, hem de henüz aşırı pahalı değil — sistemin en seçici, en nadir sinyali.',
+    'altin':     'Borsanın genelinden daha iyi gidiyor ve işlem hacmi artıyor; üstelik fiyatı henüz son ayların ucuz bölgesinde.',
+    'prelaunch': 'Uzun süre dar bir bantta sıkıştıktan sonra önemli bir direnç seviyesini yukarı kırdı — büyük hareket yeni başlıyor olabilir.',
+    'harmonik':  'Fiyat, geçmişte sık sık yön değiştirdiği bir "dönüş bölgesine" belirli bir grafik kalıbıyla ulaştı.',
+    'vip':       'Borsadan güçlü bir hissede tanınmış bir formasyon (fincan-kulp, üçgen gibi) oluştu.',
+    'erken':     'Hisse asıl harekete geçmeden önce, hareketin ilk küçük işaretlerini verdi.',
+    'gizli':     'Fiyat sakin dururken işlem hacmi sessizce artıyor — birileri belli etmeden topluyor olabilir.',
+    'minervini': 'Hisse istikrarlı bir yükseliş trendinde; kısa ve uzun vadeli fiyat ortalamalarının hepsinin üstünde.',
+    'rs':        'Son dönemde borsa endeksinden belirgin daha çok kazandırdı — piyasanın önünde gidiyor.',
+}
+
+def _guc_plain(guc):
+    """🟢/🔴 yerine son kullanıcının anlayacağı sade konum ifadesi."""
+    if '🟢' in guc: return ("şu an güçlü konumda", "#22c55e")
+    if '🔴' in guc: return ("şu an zayıf/dipte konumda", "#ef4444")
+    return ("şu an orta konumda", "#f59e0b")
+
+
+# Güç-filtreli taramalarda 🟢/🟡/🔴 → backtest-temelli efektif puan (19 Haz 2026).
+# harmonik: iki-rejim ölçümü (tepe %90-100 / orta / dip %35) → güç gerçekten ayrıştırıyor.
+# vip/prelaunch: ham düşük ama güçlü subset belirgin daha iyi (segmentasyon kanıtı).
+GUC_SCORE = {
+    'harmonik_confluence': {'🟢': 88, '🟡': 63, '🔴': 35},
+    'vip_formasyon':       {'🟢': 58, '🟡': 40, '🔴': 22},
+    'prelaunch_bos':       {'🟢': 48, '🟡': 30, '🔴': 12},
+}
+
+def _guc_score(scanner, guc):
+    m = GUC_SCORE.get(scanner, {})
+    if '🟢' in str(guc): return m.get('🟢', 50)
+    if '🔴' in str(guc): return m.get('🔴', 20)
+    return m.get('🟡', 40)
+
+
+def _compute_goldmine_entries():
+    """🏆 GOLD MINE sıralamasını hesaplar — render + loglama ORTAK kullanır (19 Haz 2026).
+    TÜM tarama session df'lerinden hisse-başı en güçlü sinyali toplar, backtest puanına göre
+    sıralar. Kanıtı olmayan (Platin/Altın/Minervini) 'kanıt bekliyor', en sonda.
+    Dönüş: puana göre sıralı list[dict] (boşsa [])."""
+    try:
+        entries = {}  # sym_clean -> dict(en yüksek puanlı sinyal) + extra sayacı
+
+        def _push(sembol, icon, scanner, score, plain, guc=None, unmeasured=False):
+            _sc = str(sembol).replace('.IS', '')
+            if not _sc:
+                return
+            _cur = entries.get(_sc)
+            if _cur is None:
+                entries[_sc] = {'sym': _sc, 'sembol': sembol, 'icon': icon, 'scanner': scanner,
+                                'score': score, 'plain': plain, 'guc': guc,
+                                'unmeasured': unmeasured, 'extra': 0}
+            else:
+                _cur['extra'] += 1
+                # daha yüksek puanlı sinyal gelirse baş sinyali güncelle
+                _cmp_new = -1 if unmeasured else score
+                _cmp_old = -1 if _cur['unmeasured'] else _cur['score']
+                if _cmp_new > _cmp_old:
+                    _cur.update({'icon': icon, 'scanner': scanner, 'score': score,
+                                 'plain': plain, 'guc': guc, 'unmeasured': unmeasured})
+
+        # 1) Erken Radar (senaryo bazlı, ER_BACKTEST_SCORE ≥ eşik)
+        _er = st.session_state.get('erken_radar_data')
+        if _er is not None and hasattr(_er, 'empty') and not _er.empty and {'Sembol', 'ScenarioId', 'Role'} <= set(_er.columns):
+            _erp = _er[_er['Role'].isin(['primary', 'confirmation'])].copy()
+            _erp['_sc'] = _erp['ScenarioId'].apply(lambda s: ER_BACKTEST_SCORE.get(str(s), 0))
+            _erp = _erp[_erp['_sc'] >= ER_ELIT_SCORE_MIN].sort_values('_sc', ascending=False)
+            for _, r in _erp.iterrows():
+                _push(r['Sembol'], '🎯', f"Erken Radar {r['ScenarioId']}", int(r['_sc']),
+                      _er_kisa_aciklama(r['ScenarioId']), r.get('Guc'))
+
+        # 2) Harmonik Confluence (güç-temelli puan)
+        _hc = st.session_state.get('harmonic_confluence_data')
+        if _hc is not None and hasattr(_hc, 'empty') and not _hc.empty and 'Sembol' in _hc.columns:
+            for _, r in _hc.iterrows():
+                _push(r['Sembol'], '⚡', 'Harmonik Confluence',
+                      _guc_score('harmonik_confluence', r.get('Guc', '')),
+                      SCANNER_PLAIN_DESC['harmonik'], r.get('Guc'))
+
+        # 3) Pre-Launch BOS — 52H GÜÇ KALDIRILDI (20 Haz 2026). Denetim: 🟢(52H≥60) 5g −%2.31 /
+        # 10g −%4.06 PARA KAYBETTİRİYOR (VIP'ten beter), 🟡-orta +%1.09. Mantık: zirveye yakınsa
+        # fırlama ÇOKTAN olmuş = geç → 52H yine yanlış eksen. 🔴 dışlaması + 🟢 boost iyi sinyalleri
+        # atıp kaybedenleri tutuyordu. Düz nötr puan, guc=None. Candidate (🟡-orta) izlemede, n ince.
+        _pb = st.session_state.get('prelaunch_bos_data')
+        if _pb is not None and hasattr(_pb, 'empty') and not _pb.empty and 'Sembol' in _pb.columns:
+            for _, r in _pb.iterrows():
+                _push(r['Sembol'], '🚀', 'Pre-Launch BOS', 30, SCANNER_PLAIN_DESC['prelaunch'])
+
+        # 4) VIP Formasyon — 52H GÜÇ KALDIRILDI (20 Haz 2026). Backtest: 🟢(5g +%0.45) zayıf
+        # 🔴(+%0.81)'den KÖTÜ çıktı + Çift Dip gibi dönüş formasyonu doğası gereği DİPTE → 52H
+        # yanlış eksen, üstelik 🔴 dışlaması iyi sinyalleri atıyordu. Artık dışlama+boost YOK; tek
+        # nötr puan (genel 5g +%0.91 = modest). RSI 55-70 adayı İZLEMEDE (Haz-only, Temmuz cross-rejim
+        # doğrulaması — bkz memory project-scoring-roadmap). guc=None → yanıltıcı 🟢/🔴 etiketi yok.
+        _gp = st.session_state.get('golden_pattern_data')
+        _fdf = _gp.get('formations') if isinstance(_gp, dict) else None
+        if _fdf is not None and hasattr(_fdf, 'empty') and not _fdf.empty and 'Sembol' in _fdf.columns:
+            for _, r in _fdf.iterrows():
+                _push(r['Sembol'], '📐', 'VIP Formasyon', 32, SCANNER_PLAIN_DESC['vip'])
+
+        # 5) Gizli Birikim (ham backtest 19 — düşük ama gösterilir)
+        _ac = st.session_state.get('accum_data')
+        if _ac is not None and hasattr(_ac, 'empty') and not _ac.empty and 'Sembol' in _ac.columns:
+            for _, r in _ac.iterrows():
+                _push(r['Sembol'], '🔍', 'Gizli Birikim', 19, SCANNER_PLAIN_DESC['gizli'])
+
+        # NOT (19 Haz 2026 — düzeltme): Altın/Platin/Minervini vitrine ALINMIYOR. Backtest puanları
+        # yok ("kanıt bekliyor") + generic açıklamaları yanıltıcıydı (AKBNK 60g %91/RSI83 iken
+        # "henüz pahalılaşmamış" diyordu). Vitrin = SADECE backtest-kanıtlı. Onlar alttaki dedike
+        # "Altın Set-up & VIP" panelinde + mini panelde gerçek verisiyle duruyor.
+
+        if not entries:
+            return []
+        # Sırala: (1) backtest puanı yüksek, (2) aynı puanda GÜÇLÜ konum öne (🟢<🟡<🔴), (3) alfabe
+        def _grank(g):
+            g = str(g or '')
+            return 0 if '🟢' in g else (2 if '🔴' in g else 1)
+        _ranked = sorted(entries.values(), key=lambda e: (-e.get('score', 0), _grank(e.get('guc')), e['sym']))
+        # Tarama çeşitliliği: tek senaryo (örn. B8) tüm vitrini doldurmasın — tarama başına max 5
+        _capped = []; _seen = {}
+        for e in _ranked:
+            k = e.get('scanner', '')
+            _seen[k] = _seen.get(k, 0) + 1
+            if _seen[k] <= 5:
+                _capped.append(e)
+        return _capped
+    except Exception:
+        return []
+
+
+def log_goldmine_selection(category="", top_n=20):
+    """Vitrinin o günkü top seçimlerini goldmine_log'a yazar (META-BACKTEST için, 19 Haz 2026).
+    Master Scan sonunda çağrılır. Idempotent (INSERT OR IGNORE: aynı gün+sembol bir kez).
+    Sonra signal_results JOIN ile vitrin sıralamasının gerçek getirisi ölçülür."""
+    try:
+        ranked = _compute_goldmine_entries()
+        if not ranked:
+            return
+        today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        for i, e in enumerate(ranked[:top_n]):
+            try:
+                c.execute(
+                    "INSERT OR IGNORE INTO goldmine_log "
+                    "(scan_date, symbol, rank, score, scanner, confluence_count, unmeasured, category) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (today, str(e.get('sembol', e['sym'])), i + 1,
+                     None if e.get('unmeasured') else float(e.get('score', 0)),
+                     str(e.get('scanner', '')), int(e.get('extra', 0)) + 1,
+                     1 if e.get('unmeasured') else 0, category)
+                )
+            except Exception:
+                continue
+        conn.commit()
+        conn.close()
+    except Exception as _e:
+        try:
+            log_error("log_goldmine_selection", _e, category)
+        except Exception:
+            pass
+
+
+def render_gold_mine_showcase():
+    """🏆 GOLD MINE VİTRİNİ — İKİ SÜTUN (19 Haz 2026): güç AYRAÇ, puan sütun-içi sıra.
+    Sol = kanıtlı + güçlü/orta konum (hazır) · Sağ = kanıtlı ama zayıf konum (izle).
+    Dönüş: True (içerik gösterildi) / False (boş)."""
+    try:
+        _ranked = _compute_goldmine_entries()
+        if not _ranked:
+            return False
+
+        def _is_weak(e):
+            return '🔴' in str(e.get('guc') or '')
+        _left = [e for e in _ranked if not _is_weak(e)][:10]   # hazır (güçlü/orta/güç-yok)
+        _right = [e for e in _ranked if _is_weak(e)][:10]       # izle (zayıf konum)
+
+        st.markdown(
+            "<div style='background:linear-gradient(90deg,#422006,#1c1917);border:1px solid #a16207;"
+            "border-radius:8px;padding:6px 11px;margin:6px 0 5px 0;font-size:0.82rem;font-weight:900;"
+            "color:#fbbf24;letter-spacing:0.03em;'>🏆 GOLD MINE — Backtest-Kanıtlı Sinyaller</div>",
+            unsafe_allow_html=True
+        )
+
+        def _gm_col(items, side, title, sub, accent, empty_msg):
+            st.markdown(
+                f"<div style='background:{accent}14;border:1px solid {accent}55;border-radius:7px;"
+                f"padding:5px 9px;margin-bottom:5px;'>"
+                f"<div style='font-size:0.76rem;font-weight:900;color:{accent};'>{title}</div>"
+                f"<div style='font-size:0.64rem;color:#94a3b8;line-height:1.2;'>{sub}</div></div>",
+                unsafe_allow_html=True
+            )
+            if not items:
+                st.markdown(f"<div style='border:1px dashed {accent}44;border-radius:6px;padding:12px 8px;"
+                            f"text-align:center;color:#94a3b8;font-size:0.72rem;'>{empty_msg}</div>",
+                            unsafe_allow_html=True)
+                return
+            with st.container(height=320, border=False):
+                for _i, e in enumerate(items):
+                    if st.button(f"{_i+1}. {e['icon']} {e['sym']} · {e['scanner']}",
+                                 key=f"gm_{side}_{e['sym']}_{_i}", use_container_width=True):
+                        on_scan_result_click(e['sembol']); st.rerun()
+                    _d = e['plain']
+                    if len(_d) > 70:
+                        _d = _d[:67].rstrip() + '…'
+                    _extra = f" · +{e['extra']} tarama" if e['extra'] else ""
+                    st.markdown(
+                        f"<div style='font-size:0.69rem;color:#cbd5e1;margin:-6px 0 4px 6px;line-height:1.3;'>"
+                        f"<span style='color:#fbbf24;font-weight:800;'>puan {e['score']}</span>{_extra} — {_d}</div>",
+                        unsafe_allow_html=True
+                    )
+
+        _cL, _cR = st.columns(2)
+        with _cL:
+            _gm_col(_left, "L", "💪 HEM KANITLI HEM HAZIR",
+                    "Geçmişte kazandırdı + şu an konumu güçlü", "#22c55e",
+                    "Şu an hem kanıtlı hem güçlü konumda sinyal yok.")
+        with _cR:
+            _gm_col(_right, "R", "⏳ İYİ KURULUM, AMA ACELE ETME",
+                    "Geçmişte kazandırdı ama şu an dipte/zayıf — izle", "#f59e0b",
+                    "Şu an zayıf konumda kanıtlı sinyal yok.")
+        return True
+    except Exception:
+        return False
 
 
 def get_active_scanner_tiers(ticker: str) -> list:
@@ -2174,6 +2704,41 @@ def get_active_scanner_tiers(ticker: str) -> list:
     return out
 
 
+def _scanner_setup_strength(ticker: str) -> list:
+    """Güç-filtreli 3 tarama (Harmonik/VIP/Erken Radar) bu ticker'da ateşlediyse
+    52H/RSI güç etiketini döndürür. İki-rejim backtest kanıtlı (19 Haz 2026):
+    güçlü kurulum ayı ayında bile tutar, zayıf kurulum çöker.
+    Returns: list of (scanner, guc_str, deger)."""
+    out = []
+    _tu = str(ticker).upper(); _tc = _tu.replace('.IS', '')
+
+    def _match(df, isiz=False):
+        if df is None or (hasattr(df, 'empty') and df.empty) or 'Sembol' not in getattr(df, 'columns', []):
+            return None
+        try:
+            _ser = df['Sembol'].astype(str).str.upper()
+            _hit = df[(_ser == _tu) | (_ser == _tc)]
+            return _hit.iloc[0] if not _hit.empty else None
+        except Exception:
+            return None
+
+    try:
+        _r = _match(st.session_state.get('harmonic_confluence_data'))
+        if _r is not None and _r.get('Guc'):
+            out.append(('harmonik_confluence', str(_r.get('Guc')), _r.get('Guc_52h')))
+        # VIP Formasyon güç → AI'a EMIT EDİLMİYOR (20 Haz 2026): 52H güç backtest'te ters çıktı
+        # (dönüş formasyonu dipte olur). RSI 55-70 adayı izlemede, Temmuz cross-rejim doğrulanınca
+        # gerçek güç olarak eklenecek. Yanıltıcı 52H etiketini AI'a sokmuyoruz.
+        _r = _match(st.session_state.get('erken_radar_data'), isiz=True)
+        if _r is not None and _r.get('Guc'):
+            out.append(('erken_radar', str(_r.get('Guc')), _r.get('Guc_rsi')))
+        # Pre-Launch BOS güç → AI'a EMIT EDİLMİYOR (20 Haz 2026): 52H güç denetimde TERS+ZARARLI
+        # çıktı (🟢 5g −%2.31/10g −%4.06). Yanıltıcı etiketi AI'a sokmuyoruz. VIP ile aynı işlem.
+    except Exception:
+        pass
+    return out
+
+
 def log_scan_signal(scan_type: str, df_result, category: str = ""):
     """
     Scan sonuçlarını signals.db'ye (patron.db içinde scan_signals tablosuna) yazar.
@@ -2188,20 +2753,23 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
     _feat_cache = {}
     if not _has_feat_cols:
         try:
-            for _sym in df_result.get('Sembol', pd.Series()).dropna().unique():
-                if _sym and _sym not in _feat_cache:
-                    _feat_cache[str(_sym)] = _compute_signal_features(str(_sym))
+            # 20 Haz 2026 — sembol kolonu alias-tolerant (Altın/Platin 'Hisse' kullanıyor, 'Sembol' değil)
+            _sym_col = next((cc for cc in ('Sembol', 'Hisse', 'Ticker', 'symbol') if cc in df_result.columns), None)
+            if _sym_col:
+                for _sym in df_result[_sym_col].dropna().unique():
+                    if _sym and str(_sym) not in _feat_cache:
+                        _feat_cache[str(_sym)] = _compute_signal_features(str(_sym))
         except Exception:
             pass
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         for _, row in df_result.iterrows():
-            symbol = row.get('Sembol', '')
+            symbol = row.get('Sembol', '') or row.get('Hisse', '') or row.get('Ticker', '') or row.get('symbol', '')
             if not symbol:
                 continue
             entry_raw   = row.get('Fiyat', row.get('fiyat', None))
-            score_raw   = row.get('ToplamSkor', row.get('Raw_Score', row.get('Skor', row.get('score', None))))
+            score_raw   = row.get('ToplamSkor', row.get('Raw_Score', row.get('Skor', row.get('score', row.get('Teknik_Skor', None)))))
             stop_raw    = row.get('Stop', row.get('stop_level', row.get('StopSeviye', None)))
             try:
                 entry_price = float(str(entry_raw).replace(',', '.')) if entry_raw is not None else None
@@ -2300,6 +2868,13 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_tavan_kat_raw      = _ff('F_Tavan_Kat', 'f_tavan_kat', 'tavan_kat', cast=str)
             f_tavan_kat          = f_tavan_kat_raw if f_tavan_kat_raw else None
             f_tavan_conf_v       = _ff('F_Tavan_Confluence', 'f_tavan_confluence_n', cast=int)
+            # 18 Haz 2026 — Risk profili (Beta + DD + HV + Skew)
+            f_beta_xu100_v       = _ff('F_Beta_XU100', 'f_beta_xu100', 'beta_xu100')
+            f_dd_zirveden_v      = _ff('F_DD_Zirveden', 'f_dd_zirveden', 'dd_zirveden')
+            f_hv_oran_v          = _ff('F_HV_Oran', 'f_hv_oran', 'hv_oran')
+            f_skew_60g_v         = _ff('F_Skew_60g', 'f_skew_60g', 'skew_60g')
+            f_sentiment_v = f_ict_model_v = f_smart_money_v = None  # 19 Haz audit — kör skorlar (sadece _feat'ten)
+            f_adv_tl_v = f_liq_tier_v = f_manip_v = None            # 19 Haz Faz 1 — likidite/manip (sadece _feat'ten)
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -2348,6 +2923,17 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_fi_dual          is None: f_fi_dual          = _feat.get('f_force_index_dual')
                 if f_fi_div           is None: f_fi_div           = _feat.get('f_force_index_divergence')
                 if f_spike_dom_v      is None: f_spike_dom_v      = _feat.get('f_spike_dominance')
+                if f_beta_xu100_v     is None: f_beta_xu100_v     = _feat.get('f_beta_xu100')
+                if f_dd_zirveden_v    is None: f_dd_zirveden_v    = _feat.get('f_dd_zirveden')
+                if f_hv_oran_v        is None: f_hv_oran_v        = _feat.get('f_hv_oran')
+                if f_skew_60g_v       is None: f_skew_60g_v       = _feat.get('f_skew_60g')
+                if f_sentiment_v   is None: f_sentiment_v   = _feat.get('f_sentiment_score')
+                if f_ict_model_v   is None: f_ict_model_v   = _feat.get('f_ict_model')
+                if f_smart_money_v is None: f_smart_money_v = _feat.get('f_smart_money_score')
+                if f_adv_tl_v      is None: f_adv_tl_v      = _feat.get('f_adv_tl')
+                if f_liq_tier_v    is None: f_liq_tier_v    = _feat.get('f_liquidity_tier')
+                if f_manip_v       is None: f_manip_v       = _feat.get('f_manip_risk')
+            symbol_db = str(symbol).replace('.IS', '')  # 19 Haz audit — .IS tutarlılığı (er ile aynı biçim)
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -2366,9 +2952,12 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_udvr_20g, f_udvr_state, f_udvr_climax,
                     f_force_index_dual, f_force_index_divergence,
                     f_spike_dominance,
-                    f_tavan_skor, f_tavan_kat, f_tavan_confluence_n)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (today, symbol, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
+                    f_tavan_skor, f_tavan_kat, f_tavan_confluence_n,
+                    f_beta_xu100, f_dd_zirveden, f_hv_oran, f_skew_60g,
+                    f_sentiment_score, f_ict_model, f_smart_money_score,
+                    f_adv_tl, f_liquidity_tier, f_manip_risk)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (today, symbol_db, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
                  f_ms_trend_v, f_ms_momentum_v, f_ms_ict_v, f_ms_radar2_v,
@@ -2384,7 +2973,10 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                  f_udvr_v, f_udvr_state, f_udvr_climax,
                  f_fi_dual, f_fi_div,
                  f_spike_dom_v,
-                 f_tavan_skor_v, f_tavan_kat, f_tavan_conf_v)
+                 f_tavan_skor_v, f_tavan_kat, f_tavan_conf_v,
+                 f_beta_xu100_v, f_dd_zirveden_v, f_hv_oran_v, f_skew_60g_v,
+                 f_sentiment_v, f_ict_model_v, f_smart_money_v,
+                 f_adv_tl_v, f_liq_tier_v, f_manip_v)
             )
         conn.commit()
         conn.close()
@@ -2747,7 +3339,7 @@ init_db()
 # tüm ticker listeleri ve display ad sözlüğü burada tanımlıdır.
 # ==============================================================================
 # --- VARLIK LİSTELERİ ---
-priority_sp = ["^GSPC", "^DJI", "^NDX", "^IXIC", "^RUT", "RKLB", "META", "TSPY", "ARCC", "JEPI", "QQQI", "SPYI"]
+priority_sp = ["^GSPC", "^DJI", "^NDX", "^IXIC", "^RUT", "NVDA", "GOOGL", "RKLB", "META", "MSFT", "TSPY", "ARCC", "JEPI", "QQQI", "SPYI"]
 
 # S&P 500'ün Tamamı (503 Hisse - Güncel)
 raw_sp500_rest = [
@@ -3999,6 +4591,133 @@ def _ensure_parquet_on_disk(ticker: str, interval: str = "1d") -> None:
         _lg3.warning(f"[ensure_parquet] {ticker} hata: {_ep}")
 
 
+@st.cache_data(ttl=3600)
+def _fetch_index_isyatirim_cached(symbol):
+    """20 Haz 2026 — İsyatirim endeks kapanış serisi (XU100 vb. gap-fill için). Cache 1sa.
+    Yahoo endeksi ara işlem günü atlayabiliyor; İsyatirim VALUE tam → delik doldurma kaynağı.
+    Dönüş: {Timestamp(normalize): close_float}."""
+    try:
+        import isyatirimhisse as _iy
+        from datetime import datetime as _dtt, timedelta as _tdd
+        _e = _dtt.now(); _s = _e - _tdd(days=400)
+        ix = _iy.fetch_index_data(indices=symbol.replace('.IS', '').upper(),
+                                  start_date=_s.strftime('%d-%m-%Y'), end_date=_e.strftime('%d-%m-%Y'))
+        if ix is None or ix.empty or 'DATE' not in ix.columns or 'VALUE' not in ix.columns:
+            return {}
+        ix = ix.copy(); ix['DATE'] = pd.to_datetime(ix['DATE'])
+        return {pd.Timestamp(d).normalize(): float(v) for d, v in zip(ix['DATE'], ix['VALUE']) if v and float(v) > 0}
+    except Exception:
+        return {}
+
+
+def _validate_index_fill(v, prev_close, next_close, limit=0.12):
+    """20 Haz 2026 — DOĞRULAMA KAPISI. Doldurulacak endeks değeri makul mü?
+    Kaynağa GÜVENMEK yerine DEĞERİ komşu gerçek barlarla kıyasla: endeks günlük ~%10 oynar,
+    eklenen değerin komşulara implike ettiği hareket ±%12 üstüyse → çöp/typo/ölçek hatası, REDDET.
+    Bu HER kaynaktan (İsyatirim dahil) gelen bozuk değeri yakalar. Dönüş: (ok: bool, reason: str)."""
+    try:
+        v = float(v)
+        if v <= 0:
+            return False, "değer ≤0"
+        if prev_close and float(prev_close) > 0:
+            mv_in = v / float(prev_close) - 1
+            if abs(mv_in) > limit:
+                return False, f"önceki güne göre %{mv_in*100:+.1f} (limit ±%{limit*100:.0f})"
+        if next_close and float(next_close) > 0:
+            mv_out = float(next_close) / v - 1
+            if abs(mv_out) > limit:
+                return False, f"sonraki güne göre %{mv_out*100:+.1f} (limit ±%{limit*100:.0f})"
+        return True, "ok"
+    except Exception as e:
+        return False, f"doğrulama hatası: {str(e)[:30]}"
+
+
+def _log_gapfill_rejects(ticker, rejects):
+    """Reddedilen (şüpheli) endeks dolum değerlerini logs/gapfill_rejects.json'a yaz.
+    Heartbeat/data_integrity bunu okuyup 'değer şüpheli, doldurulMADI' diye admin'e bildirir."""
+    try:
+        import json as _json
+        _base = os.path.dirname(os.path.abspath(__file__))
+        _ld = os.path.join(_base, 'logs')
+        os.makedirs(_ld, exist_ok=True)
+        _fp = os.path.join(_ld, 'gapfill_rejects.json')
+        _cur = []
+        if os.path.exists(_fp):
+            try:
+                _cur = _json.load(open(_fp, encoding='utf-8'))
+            except Exception:
+                _cur = []
+        _now = pd.Timestamp.now().isoformat()
+        for (d, v, pc, nc, reason) in rejects:
+            _cur.append({'ticker': str(ticker), 'date': pd.Timestamp(d).date().isoformat(),
+                         'value': float(v), 'prev': pc, 'next': nc, 'reason': reason, 'logged_at': _now})
+        _cur = _cur[-50:]   # son 50 kayıt yeter
+        _json.dump(_cur, open(_fp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+
+
+def _gapfill_index_isyatirim(df, ticker):
+    """20 Haz 2026 — Yahoo endeks (XU100 vb.) ARA işlem günü deliklerini İsyatirim VALUE ile doldur.
+    Sadece eksik işlem günlerini (bist_calendar) ekler; mevcut Yahoo barlarına DOKUNMAZ.
+    Endeks olduğu için eklenen barda OHLC=kapanış, Volume=0 (sistem endeks 0-hacmi zaten yönetiyor).
+    DOĞRULAMA KAPISI: her dolum değeri _validate_index_fill'den geçer; şüpheliyi enjekte ETMEZ, loglar."""
+    try:
+        if df is None or getattr(df, 'empty', True) or len(df) < 5:
+            return df
+        import bist_calendar as _bc
+        _last = pd.Timestamp(df.index[-1]).normalize()
+        _have = set(pd.Timestamp(d).normalize() for d in df.index)
+        _exp = []
+        _d = _last - pd.Timedelta(days=35)
+        while _d <= _last:
+            if _bc.is_trading_day(_d.date()):
+                _exp.append(_d.normalize())
+            _d += pd.Timedelta(days=1)
+        _miss = [d for d in _exp if d not in _have]
+        if not _miss:
+            return df
+        _imap = _fetch_index_isyatirim_cached(ticker)
+        if not _imap:
+            return df
+        # DOĞRULAMA KAPISI: her aday değeri komşu gerçek barlarla sına; şüpheliyi enjekte etme.
+        _close = df['Close']
+        _rows = []; _rejects = []
+        for d in _miss:
+            if d not in _imap:
+                continue
+            v = _imap[d]
+            _pv = _close[_close.index < d]
+            _nx = _close[_close.index > d]
+            pc = float(_pv.iloc[-1]) if len(_pv) else None
+            nc = float(_nx.iloc[0]) if len(_nx) else None
+            ok, reason = _validate_index_fill(v, pc, nc)
+            if ok:
+                _rows.append((d, v))
+            else:
+                _rejects.append((d, v, pc, nc, reason))
+        if _rejects:
+            _log_gapfill_rejects(ticker, _rejects)
+        if not _rows:
+            return df
+        # OHLC: İsyatirim sadece kapanış (VALUE) verir → O=C=kapanış. H/L'ye MİNİK spread (±%0.01)
+        # ekliyoruz ki "düz bar" (O=H=L=C) sayılıp HAYALET-BAR temizliğine TAKILMASIN. Endeks V=0 +
+        # düz = tatil hayaleti sanılıp siliniyordu → grafik 18 Haz'ı göstermiyordu (kapanış-tabanlı
+        # %değişim doğruydu ama grafik bara kalıyordu). Spread görünmez (close-tabanlı hesaplara etkisiz).
+        _add = pd.DataFrame(
+            {'Open':   [v for _, v in _rows],
+             'High':   [round(v * 1.0001, 4) for _, v in _rows],
+             'Low':    [round(v * 0.9999, 4) for _, v in _rows],
+             'Close':  [v for _, v in _rows],
+             'Volume': [0] * len(_rows)},
+            index=[d for d, _ in _rows])
+        out = pd.concat([df, _add]).sort_index()
+        out = out[~out.index.duplicated(keep='first')]
+        return out
+    except Exception:
+        return df
+
+
 def get_safe_historical_data(ticker, period="1y", interval="1d"):
     """
     Public wrapper — önce cache'li OHLCV'yi alır, sonra
@@ -4037,6 +4756,17 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
     # ─────────────────────────────────────────────────────────────────────────
 
     df = _get_safe_historical_data_cached(ticker, period=period, interval=interval)
+    # 20 Haz 2026 — ENDEKS GAP-FILL: Yahoo XU100 vb. ara işlem günü atlayabiliyor (% değişim +
+    # beta/RS bozuluyor). İsyatirim'den (cache'li) eksik günleri doldur. Sadece endeks ticker'larda.
+    if interval == "1d" and ticker.upper().startswith(("XU", "XB", "XT", "XY")):
+        _df_gf = _gapfill_index_isyatirim(df, ticker)
+        if _df_gf is not df:   # delik dolduruldu → parquet'e de yaz (karne/backfill/data_integrity için)
+            try:
+                _ct_gf = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
+                _df_gf.to_parquet(os.path.join(CACHE_DIR, f"{_ct_gf}_1d.parquet"))
+            except Exception:
+                pass
+        df = _df_gf
     return _patch_live_price(df, ticker, interval)
 
 def calculate_harsi(df, period=14):
@@ -6689,6 +7419,22 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                 if "SMA200 Altında" in warning_text: base_score -= 8
                 if "Kararsız Mum" in warning_text: base_score -= 5
 
+                # ── VIP FORMASYON GÜÇ FİLTRESİ (19 Haz 2026 — iki-rejim backtest kanıtlı) ──
+                # Mayıs(boğa)+Haziran(ayı) 711 sinyal: RSI 55-70 (May %67/Haz %52) ve
+                # 52H zirveye yakın (May %72/Haz %58) kazandırır; RSI<40 / dipte (Haz %31)
+                # batırır. HER İKİ rejimde geçerli → güçlüyü öne sırala.
+                try:
+                    _seg_v = df.tail(252)
+                    _hv, _lv = float(_seg_v['High'].max()), float(_seg_v['Low'].min())
+                    _p52_v = (curr_price - _lv) / (_hv - _lv) * 100 if _hv > _lv else None
+                except Exception:
+                    _p52_v = None
+                if _p52_v is not None and _p52_v >= 50 and last_rsi >= 55:
+                    _guc_v, _guc_rank_v = '🟢 GÜÇLÜ', 0
+                elif _p52_v is not None and (_p52_v < 40 or last_rsi < 45):
+                    _guc_v, _guc_rank_v = '🔴 ZAYIF', 2
+                else:
+                    _guc_v, _guc_rank_v = '🟡 ORTA', 1
                 results.append({
                     "Sembol":    symbol,
                     "Puan":      int(min(max(base_score, 10), 100)),
@@ -6696,6 +7442,9 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                     "Mansfield": round(mansfield_gp, 1),
                     "Hacim_Kat": round(vol_ratio, 1),
                     "Detay":     p_name + warning_text,
+                    "Guc":       _guc_v,
+                    "Guc_52h":   round(_p52_v, 1) if _p52_v is not None else None,
+                    "_guc_rank": _guc_rank_v,
                     "is_nadir":  is_platin,
                 })
             else:
@@ -6720,7 +7469,8 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
             continue
 
     formations_df = (pd.DataFrame(results)
-                       .sort_values(by=["is_nadir", "Puan"], ascending=[False, False])
+                       .sort_values(by=["is_nadir", "_guc_rank", "Puan"], ascending=[False, True, False])
+                       .drop(columns=["_guc_rank"])
                        .reset_index(drop=True)) if results else pd.DataFrame()  # is_nadir sütunu is_platin değerini taşır
     hazirlik_df   = (pd.DataFrame(hazirlik_list)
                        .sort_values(by=["is_nadir", "Mansfield"], ascending=[False, False])
@@ -8432,6 +9182,12 @@ def scan_prelaunch_bos(asset_list):
                 continue
             res = calculate_prelaunch_bos(symbol, df, bist100_close)
             if res:
+                # Güç etiketi (19 Haz 2026) — prelaunch_bos amiral gemisi TIER_1, ama Haziran
+                # ayısında 5-10g çöktü (52H dip<%40 en zayıf %40). Güç teyidi AI'a aksın ki
+                # zayıf hissede ateşlediğinde "sert kural" körü körüne merkeze taşımasın.
+                _pg, _pr, _pp = _harmonik_52h_strength(df)
+                res['Guc'] = _pg
+                res['Guc_52h'] = _pp
                 results.append(res)
         except Exception:
             continue
@@ -12255,6 +13011,29 @@ def render_harmonic_confluence_banner(ticker):
         pass
 
 
+# ── HARMONİK 52H GÜÇ FİLTRESİ (19 Haz 2026 — iki-rejim backtest kanıtlı) ──
+# Mayıs(boğa)+Haziran(ayı) 441 sinyal segmentasyonu: hisse 52H zirvesine yakınken
+# (52H konum ≥%60) harmonik confluence Mayıs %90 / Haziran %100 isabet; dibe yakınken
+# (<%40) Mayıs %49 / Haziran %35. +53 puan, HER İKİ rejimde de geçerli (rejim değil,
+# kurulum kalitesi). Bu yüzden güçlü/zayıf işaretle + güçlüyü öne sırala.
+# HARMONIK_HIDE_WEAK=True → zayıf (52H<%40) sinyaller tamamen gizlenir (geri al: False).
+HARMONIK_HIDE_WEAK = False
+
+def _harmonik_52h_strength(df):
+    """52H konuma göre (etiket, sıra_rank, konum%) döndürür. Düşük rank = güçlü."""
+    try:
+        seg = df.tail(252)
+        h52, l52, cv = float(seg['High'].max()), float(seg['Low'].min()), float(df['Close'].iloc[-1])
+        if h52 <= l52:
+            return '', 1, None
+        p52 = (cv - l52) / (h52 - l52) * 100
+        if p52 >= 60:   return '🟢 GÜÇLÜ', 0, round(p52, 1)
+        elif p52 >= 40: return '🟡 ORTA',  1, round(p52, 1)
+        else:           return '🔴 ZAYIF', 2, round(p52, 1)
+    except Exception:
+        return '', 1, None
+
+
 @st.cache_data(ttl=900)
 def scan_harmonic_confluence_batch(asset_list):
     """
@@ -12283,6 +13062,12 @@ def scan_harmonic_confluence_batch(asset_list):
             if res:
                 emoji = _EMOJI.get(res['pattern'], '🔮')
                 dir_e = '🟢' if res['direction'] == 'Bullish' else '🔴'
+                # 52H güç filtresi (iki-rejim backtest kanıtlı)
+                _guc, _guc_rank, _p52 = _harmonik_52h_strength(df)
+                if HARMONIK_HIDE_WEAK and _guc_rank >= 2:
+                    continue  # zayıf (dip<%40) sinyali gizle
+                _base_badge = res.get('badge_str', '')
+                _badge_full = f"{_guc}{(' | ' + _base_badge) if _base_badge else ''}" if _guc else _base_badge
                 results.append({
                     'Sembol':    symbol,
                     'Fiyat':     round(res['prz'], 2),
@@ -12292,8 +13077,11 @@ def scan_harmonic_confluence_batch(asset_list):
                     'ICT_Zone':  res['zone'],
                     'RSI_Div':   res['div_type'],
                     'Durum':     '✅ Taze' if res['state'] == 'fresh' else '📍 Yaklaşıyor',
-                    'Badges':    res.get('badge_str', ''),
+                    'Guc':       _guc,
+                    'Guc_52h':   _p52,
+                    'Badges':    _badge_full,
                     'Aciklama':  res.get('Aciklama', ''),
+                    '_guc_rank': _guc_rank,
                 })
         except Exception:
             continue
@@ -12301,10 +13089,10 @@ def scan_harmonic_confluence_batch(asset_list):
     if not results:
         return pd.DataFrame()
     df_out = pd.DataFrame(results)
-    # Bullish önce
+    # Sıralama: önce güç (güçlü en üstte), sonra bullish önce
     df_out['_s'] = df_out['Yön'].apply(lambda x: 0 if 'Bullish' in x else 1)
-    df_out.sort_values('_s', inplace=True)
-    df_out.drop(columns=['_s'], inplace=True)
+    df_out.sort_values(['_guc_rank', '_s'], inplace=True)
+    df_out.drop(columns=['_s', '_guc_rank'], inplace=True)
     df_out.reset_index(drop=True, inplace=True)
     return df_out
 
@@ -14510,10 +15298,18 @@ def render_smart_volume_panel(ticker):
             if _df_cl is not None and len(_df_cl) >= 22:
                 _last_back = 0
                 for _b in range(1, min(15, len(_df_cl))):
-                    if float(_df_cl['Volume'].iloc[-_b]) > 0:
+                    _cv = float(_df_cl['Volume'].iloc[-_b])
+                    _ch = float(_df_cl['High'].iloc[-_b]); _cl_ = float(_df_cl['Low'].iloc[-_b])
+                    _cc = float(_df_cl['Close'].iloc[-_b])
+                    if _cv > 0 or (_cc > 0 and _ch > _cl_):
                         _last_back = _b
                         break
                 if _last_back > 0:
+                    # Tarih etiketi — hacimden BAĞIMSIZ (endeks hacim=0 ama gün geçerli)
+                    try:
+                        _last_sess_str = _df_cl.index[-_last_back].strftime("%d.%m")
+                    except Exception:
+                        _last_sess_str = ""
                     _df_cl_d = calculate_volume_delta(_df_cl)
                     _last_v  = float(_df_cl_d['Volume'].iloc[-_last_back])
                     if _last_v > 0:
@@ -14526,10 +15322,6 @@ def render_smart_volume_panel(ticker):
                             _avg_v = float(_vol_valid.mean())
                             if _avg_v > 0:
                                 rvol = _last_v / _avg_v
-                        try:
-                            _last_sess_str = _df_cl.index[-_last_back].strftime("%d.%m")
-                        except Exception:
-                            _last_sess_str = ""
                         _vol_data_missing = False
         except Exception:
             pass
@@ -16612,6 +17404,27 @@ def scan_erken_radar_batch(asset_list):
             price = float(df_hist['Close'].iloc[-1])
             quality = er.get('overall_quality', 0) or 0
             sym = ticker.replace('.IS', '')
+            # ── ERKEN RADAR GÜÇ ETİKETİ (19 Haz 2026 — iki-rejim backtest kanıtlı) ──
+            # 12.381 sinyal (Mayıs boğa + Haziran ayı): RSI>70 olduğunda Erken Radar
+            # ayı ayında BİLE çalışır (May %61 / Haz %59 isabet); RSI<40 dipte ise
+            # Haziran'da %35'e çöker. Tek-rejim "5★ şampiyon" rakamları boğa şişmesiydi.
+            try:
+                _ce = df_hist['Close']; _de = _ce.diff()
+                _ge = _de.where(_de > 0, 0).rolling(14).mean()
+                _le2 = (-_de.where(_de < 0, 0)).rolling(14).mean()
+                _rsi_er = float((100 - 100 / (1 + _ge / _le2)).iloc[-1])
+                _seg_e = df_hist.tail(252)
+                _he, _le = float(_seg_e['High'].max()), float(_seg_e['Low'].min())
+                _p52_e = (price - _le) / (_he - _le) * 100 if _he > _le else None
+            except Exception:
+                _rsi_er, _p52_e = None, None
+            if _rsi_er is not None and _rsi_er >= 70:
+                _guc_e = '🟢 GÜÇLÜ'
+            elif _rsi_er is not None and _rsi_er < 45 and (_p52_e is None or _p52_e < 40):
+                _guc_e = '🔴 ZAYIF'
+            else:
+                _guc_e = '🟡 ORTA'
+            _guc_fields = {'Guc': _guc_e, 'Guc_rsi': round(_rsi_er, 1) if _rsi_er is not None else None}
             # Primary
             primary = er.get('primary')
             if primary:
@@ -16624,6 +17437,7 @@ def scan_erken_radar_batch(asset_list):
                     'Category':     primary['category'],
                     'Stars':        primary['stars'],
                     'Role':         'primary',
+                    **_guc_fields,
                 })
             # Confirmations
             for c in (er.get('confirmations') or []):
@@ -16636,6 +17450,7 @@ def scan_erken_radar_batch(asset_list):
                     'Category':     c['category'],
                     'Stars':        c['stars'],
                     'Role':         'confirmation',
+                    **_guc_fields,
                 })
             # Red flags
             for rf in (er.get('red_flags') or []):
@@ -16648,6 +17463,7 @@ def scan_erken_radar_batch(asset_list):
                     'Category':     rf['category'],
                     'Stars':        rf['stars'],
                     'Role':         'red_flag',
+                    **_guc_fields,
                 })
         except Exception:
             continue
@@ -16663,6 +17479,17 @@ def log_erken_radar_signals(df_batch, category=""):
     if df_batch is None or df_batch.empty:
         return
     today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
+    # 20 Haz 2026 — ER FEATURE SNAPSHOT: eskiden ER doğrudan INSERT ediyordu (feature BAYPAS) →
+    # 14.446 sinyalin 0'ında f_rsi vardı → RSI güç filtresi DENETLENEMİYORDU. Artık her sembol için
+    # f_rsi/f_52h_pos/f_master_score yazılıyor (cache'li, sembol başı tek hesap). Böylece ER güç de
+    # backtest'le denetlenebilir hale gelir (forward — eski sinyaller point-in-time geri-doldurulamaz).
+    _er_feat = {}
+    try:
+        for _s in df_batch.get('Sembol', pd.Series()).dropna().astype(str).unique():
+            if _s and _s not in _er_feat:
+                _er_feat[_s] = _compute_signal_features(_s) or {}
+    except Exception:
+        pass
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
@@ -16684,11 +17511,14 @@ def log_erken_radar_signals(df_batch, category=""):
                 score = None
             stars = row.get('Stars')
             bias = 'bearish' if row.get('Role') == 'red_flag' else 'bullish'
+            _ft = _er_feat.get(str(sym), {}) or {}
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
-                   (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                (today, sym, scan_type, score, bias, price, None, category)
+                   (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category,
+                    f_rsi, f_52h_pos, f_master_score)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (today, sym, scan_type, score, bias, price, None, category,
+                 _ft.get('f_rsi'), _ft.get('f_52h_pos'), _ft.get('f_master_score'))
             )
         conn.commit()
         conn.close()
@@ -21146,10 +21976,14 @@ def _render_genel_ozet_panel():
                 try:
                     if _gs_today_closed and _gs_df is not None and len(_gs_df) >= 22:
                         pass  # _gs_today_label zaten session_state'ten geldi
-                        # Son volume>0 olan barı bul
+                        # Son GEÇERLİ seansı bul — hacim VEYA fiyat hareketi (endeks hacim=0 ama
+                        # fiyat oynar; tatil hayalet barı düpdüz kopya O=Y=D=K → atlanır)
                         _gs_last_back = 0
                         for _b in range(1, min(15, len(_gs_df))):
-                            if float(_gs_df['Volume'].iloc[-_b]) > 0:
+                            _gv = float(_gs_df['Volume'].iloc[-_b])
+                            _gh = float(_gs_df['High'].iloc[-_b]); _gl = float(_gs_df['Low'].iloc[-_b])
+                            _gc = float(_gs_df['Close'].iloc[-_b])
+                            if _gv > 0 or (_gc > 0 and _gh > _gl):
                                 _gs_last_back = _b
                                 break
                         if _gs_last_back >= 1:
@@ -23935,6 +24769,31 @@ with col_btn:
                         st.toast(f"🚀 Tavan Motoru: {len(_tav_alarm)} alarm + {len(_tav_top30)} TOP30", icon="✅")
             except Exception as _tav_e:
                 log_error("master_scan_tavan_motoru", _tav_e, _cat)
+
+            # 🏆 GOLD MINE META-BACKTEST LOG (19 Haz 2026 — Build 1) — tüm taramalar dolu,
+            # vitrinin o günkü top seçimlerini kaydet. Sonra signal_results JOIN ile vitrin
+            # sıralamasının gerçek getirisi ölçülecek (rank1 > rank10 mu?). Veri bugünden birikir.
+            try:
+                log_goldmine_selection(category=_cat, top_n=20)
+            except Exception as _gm_e:
+                log_error("master_scan_goldmine_log", _gm_e, _cat)
+
+            # 🔄 patron.db → VPS SYNC (19 Haz 2026) — bot DB köprüsü (smr_core kanıt katmanı) taze
+            # kalsın. SADECE lokal Windows admin makinesinden (os.name=='nt'); VPS (Linux) kendine
+            # sync etmez. Fire-and-forget (Popen) — Master Scan'i bloklamaz, hata UI'ı bozmaz.
+            try:
+                import os as _os_sync
+                if _os_sync.name == 'nt':
+                    import subprocess as _sp_sync
+                    _sp_sync.Popen(
+                        ['scp', '-o', 'StrictHostKeyChecking=no', 'patron.db',
+                         'wm11tr@34.153.19.220:~/smr/patron.db'],
+                        stdout=_sp_sync.DEVNULL, stderr=_sp_sync.DEVNULL
+                    )
+                    st.toast("🔄 patron.db VPS'e gönderiliyor (bot kanıt katmanı tazeleniyor)", icon="🔄")
+            except Exception as _sync_e:
+                log_error("master_scan_patrondb_sync", _sync_e, _cat)
+
             # Debug toast — kaç hisse/senaryo bulundu
             if _er_batch_df is not None and not _er_batch_df.empty:
                 _er_primary_n = int((_er_batch_df['Role'] == 'primary').sum())
@@ -25050,7 +25909,10 @@ if st.session_state.generate_prompt:
             pass  # _ai_today_label zaten session_state'ten geldi
             _ai_last_back = 0
             for _b in range(1, min(15, len(df))):
-                if float(df['Volume'].iloc[-_b]) > 0:
+                _av = float(df['Volume'].iloc[-_b])
+                _ah = float(df['High'].iloc[-_b]); _al = float(df['Low'].iloc[-_b])
+                _ac = float(df['Close'].iloc[-_b])
+                if _av > 0 or (_ac > 0 and _ah > _al):
                     _ai_last_back = _b
                     break
             if _ai_last_back >= 1:
@@ -26309,6 +27171,81 @@ if st.session_state.generate_prompt:
     except Exception:
         pass
     _em_scanner_tiers = ("\n  scanner_tiers_aktif:\n" + "\n".join(_scanner_tier_lines)) if _scanner_tier_lines else ""
+
+    # KURULUM GÜCÜ TEYİDİ (19 Haz 2026, 6-ay verisiyle düzeltildi) — güç-filtreli 3 tarama
+    # bu hissede ateşlediyse 52H/RSI gücünü AI'ya bildir. 6 aylık (Oca-Haz, 3 boğa + 2 ayı,
+    # 16.800 örnek) bulgu: güçlü kurulum getiri olarak ÖNDE (20g +%5 vs +%2.5) ve DÜŞÜŞ
+    # ortamında zayıfı net ezer; ama YÜKSELİŞTE dip alımı da iş görür → mutlak değil, varsayılan.
+    # AI taramanın ADINA/yıldızına değil gücüne göre tartsın; zayıfı silmeyiz, teyit aratırız.
+    _em_setup_strength = ""
+    try:
+        _ss = _scanner_setup_strength(t)
+        if _ss:
+            _ss_lines = []
+            for _scn, _guc, _deger in _ss:
+                if '🟢' in _guc:
+                    _gn = ("konum güçlü (zirveye yakın). NOT (19 Haz audit): bazı kurulumlarda "
+                           "(örn. Harmonik) bu çok olumlu, AMA aşırı uzamış güçlü hisse kısa vadede "
+                           "geri çekilebilir (mean-reversion). Tek başına kesin alım sayma — kurulumun "
+                           "kendi kanıtıyla birlikte tart.")
+                elif '🔴' in _guc:
+                    _gn = ("DÜŞÜK güven — audit teyitli: dipte/zayıf konum kısa-orta vadede zayıf eğilim. "
+                           "Tek başına ana hikaye YAPMA, başka teyit (hacim/POC/trend) ara. "
+                           "Not: net YÜKSELİŞ trendinde dip alımı işe yarayabilir, peşinen çöp deme.")
+                else:
+                    _gn = ("ORTA konum — 19 Haz audit: aslında en iyi performans dilimi (iki uç da "
+                           "geri çekiliyor, orta sağlıklı). Sağlam destekleyici.")
+                _ss_lines.append(f"    - {_scn}: {_guc} → {_gn}")
+            _em_setup_strength = "\n  kurulum_gucu_teyidi:\n" + "\n".join(_ss_lines)
+    except Exception:
+        pass
+
+    # KANIT SKORU + GÜVEN/ÇELİŞKİ (Build 2, 19 Haz 2026) — hissenin yakalandığı kanıtlı
+    # taramaların backtest-temelli özeti. Master 'görünüm', bu 'kanıt'. Çelişki varsa AI temkinli.
+    _em_kanit = ""
+    try:
+        _kz_ai = _compute_kanit_ozeti(t)
+        if _kz_ai['skor'] is not None:
+            _cl = ("ÇELİŞKİ VAR (boğa+ayı sinyalleri birlikte) — tek yön iddia etme, dengeli ver"
+                   if _kz_ai['celiski'] else "sinyaller hemfikir")
+            _em_kanit = (f"\n  kanit_skoru: {_kz_ai['skor']}/100 (en güçlü: {_kz_ai['best']}, "
+                         f"{_kz_ai['n_scanner']} kanıtlı tarama) · güven %{_kz_ai['guven']} · {_cl}. "
+                         f"NOT: bu KANIT (geçmiş backtest), master_score AYRI bir GÖRÜNÜM ölçüsü.")
+        elif _kz_ai['label'] == 'kanıt bekliyor':
+            _em_kanit = "\n  kanit_skoru: kanıt bekliyor (Platin/Altın gibi henüz backtest verisi olmayan sınıf)"
+    except Exception:
+        pass
+
+    # LİKİDİTE + MANİPÜLASYON KALKANI (Faz 1, 19 Haz 2026) — BIST koruması; sadece riskliyse emit
+    _em_liq = ""
+    try:
+        _lmdf = get_safe_historical_data(t, period="1y")
+        if _lmdf is not None and len(_lmdf) >= 20:
+            _lm = _liquidity_manip(_lmdf)
+            _lq = []
+            if _lm['tier'] == 'düşük':
+                _lq.append(f"DÜŞÜK LİKİDİTE (~{_lm['adv_mn']}mn TL/gün) — ince tahta, tek oyuncu oynatabilir; "
+                           f"sinyal ne olursa olsun TEMKİN + likidite/çıkış riskini analizde belirt")
+            if _lm['manip'] in ('orta', 'yüksek'):
+                _lq.append(f"⚠ POMPA RİSKİ ({_lm['manip']}) — ince tahta + dik koşu + hacim sıçraması birlikte; "
+                           f"'manipülatif/sürdürülemez olabilir' uyarısını AÇIKÇA yaz, peşinen olumlu sayma")
+            if _lq:
+                _em_liq = "\n  likidite_manip_uyari:\n    - " + "\n    - ".join(_lq)
+    except Exception:
+        pass
+
+    # RİSK PROFİLİ (Faz 2, 19 Haz 2026) — "risk nerede" fırsattan ÖNCE
+    _em_risk = ""
+    try:
+        _rp = _risk_profile(t)
+        if _rp['level']:
+            _highs = [f"{_lbl}: {_d}" for _lbl, _d, _y in _rp['rows'] if _y == 'high']
+            _em_risk = (f"\n  risk_profili: GENEL RİSK {_rp['level'].upper()}"
+                        + (" — DİKKAT: " + " · ".join(_highs) if _highs else " (belirgin risk yok)")
+                        + ". Risk yüksekse fırsattan ÖNCE riski belirt, dengeli ver.")
+    except Exception:
+        pass
+
     # ELIT_FLAG_AKTIF açık etiketi — AI'nin gözünden kaçmasın
     if _has_tier1_flag:
         _em_scanner_tiers = "\n  elit_flag_aktif: TRUE  # 🏆 TIER_1_ELIT scanner bu hissede flag — analiz merkezine taşı" + _em_scanner_tiers
@@ -26392,6 +27329,35 @@ if st.session_state.generate_prompt:
             hidden_acc_txt = "Tarama yapılmamış"
     except Exception:
         hidden_acc_txt = "(veri eksik)"
+
+    # 7d) Platin Fırsat (19 Haz 2026) — en güçlü kurulum sınıfı: Altın Set-up (3/3) +
+    # SMA200 üstü + SMA50 üstü + RSI<70. Batch membership (platin_results / tekli_altin_results).
+    try:
+        _tc_p = str(t).upper().replace('.IS', '')
+        _platin_hit = False
+        for _pk in ('platin_results', 'tekli_altin_results'):
+            _pdf = st.session_state.get(_pk)
+            if _pdf is None or not hasattr(_pdf, 'empty') or _pdf.empty:
+                continue
+            for _pcol in ('Hisse', 'Sembol', 'Ticker'):
+                if _pcol in _pdf.columns:
+                    _ser = _pdf[_pcol].astype(str).str.upper()
+                    _sub = _pdf[(_ser == str(t).upper()) | (_ser == _tc_p)]
+                    if _pk == 'tekli_altin_results' and 'is_platin' in _pdf.columns:
+                        _sub = _sub[_sub['is_platin'] == True]
+                    if not _sub.empty:
+                        _platin_hit = True
+                    break
+            if _platin_hit:
+                break
+        if _platin_hit:
+            platin_txt = "AKTİF — NADİR: Altın Set-up (3/3) + SMA200 üstü + SMA50 üstü + RSI<70 (en güçlü kurulum sınıfı, master_score'dan önce vurgula)"
+        elif st.session_state.get('platin_results') is not None:
+            platin_txt = "Hisse Platin listesinde değil"
+        else:
+            platin_txt = "Tarama yapılmamış"
+    except Exception:
+        platin_txt = "(veri eksik)"
 
 # ==============================================================================
 # BÖLÜM 35 — AI PROMPT SİSTEMİ
@@ -26894,6 +27860,63 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
     if len(_conf_active) >= 2:
         _em_confluence = f"\nconfluence_count: {len(_conf_active)} aktif (G1 merkezi: {' + '.join(_conf_active)}) — 2+ bağımsız teyit · ana hikaye burada\n"
 
+    # ─── RISK PROFİLİ (18 Haz 2026) — Beta + Drawdown + HV (global banka 3'lüsü) ───
+    # YAML'a önem sırasıyla emit edilir: Drawdown YÜKSEK · Beta ORTA · HV DÜŞÜK önem.
+    # NULL alanlar emit edilmez (koşullu YAML kuralı).
+    _em_risk_profile = ""
+    try:
+        _rp = _compute_risk_profile(t)
+        _rp_lines = []
+        # Etiketler insan Türkçesi — sayıyı görsel olarak ne ifade ettiğine bağla
+        if _rp.get('dd_zirveden') is not None:
+            _dd_zir = _rp['dd_zirveden']
+            _zir_yorum = ("12 ayın zirvesinden yarıdan fazla geri çekilmiş" if _dd_zir <= -50 else
+                          "12 ayın zirvesinden ciddi geri çekilmiş" if _dd_zir <= -20 else
+                          "12 ayın zirvesinden hafif geri çekilmiş" if _dd_zir <= -5 else
+                          "12 ayın zirvesine yakın")
+            _rp_lines.append(f"  yillik_zirveden_uzaklik: {_dd_zir:+.1f}% — {_zir_yorum}")
+        if _rp.get('dd_max_1y') is not None:
+            _max_dd = _rp['dd_max_1y']
+            _rp_lines.append(f"  yillik_en_kotu_dusus: {_max_dd:+.1f}% — geçen 12 ayda görülmüş en derin düşüş (tarihsel risk referansı)")
+        if _rp.get('dipten_recovery') is not None:
+            _rec = _rp['dipten_recovery']
+            _rec_yorum = ("dipten güçlü toparlanma" if _rec >= 40 else
+                          "dipten orta seviyede toparlanma" if _rec >= 15 else
+                          "dipten henüz az toparlanmış" if _rec >= 5 else
+                          "hâlâ dibe yakın")
+            _rp_lines.append(f"  yillik_dipten_toparlanma: {_rec:+.1f}% — {_rec_yorum}")
+        if _rp.get('skew_60g') is not None:
+            _sk = _rp['skew_60g']
+            # İnsan Türkçesi yorum — kuyruk ve şok yönüne odaklı
+            if _sk >= 0.5:
+                _sk_yorum = "büyük günlük hareketler ağırlıkla yukarı yönde — hisse istatistiksel olarak ani sıçramalara eğilimli"
+            elif _sk >= 0.2:
+                _sk_yorum = "hareket dengesi hafifçe yukarı yöne kayık"
+            elif _sk > -0.2:
+                _sk_yorum = "yukarı ve aşağı büyük hareketler simetrik dengede"
+            elif _sk > -0.5:
+                _sk_yorum = "hareket dengesi hafifçe aşağı yöne kayık"
+            else:
+                _sk_yorum = "büyük günlük hareketler ağırlıkla aşağı yönde — hisse istatistiksel olarak ani çakılmalara eğilimli"
+            _rp_lines.append(f"  yon_egilimi: {_sk:+.2f} — {_sk_yorum}")
+        if _rp.get('beta_xu100') is not None:
+            _b = _rp['beta_xu100']
+            _b_yorum = ("endeksten belirgin daha hareketli (1 birim endeks → 1+ birim hisse)" if _b > 1.3 else
+                        "endeksten daha sakin (endeks oynaması bu hisseyi daha az etkiliyor)" if _b < 0.7 else
+                        "endeksten neredeyse bağımsız (kendi hikayesi var)" if _b < 0.3 else
+                        "endeksle aynı tempoda")
+            _rp_lines.append(f"  endekse_gore_hareketlilik: {_b:.2f} — {_b_yorum}")
+        if _rp.get('hv_oran') is not None:
+            _h = _rp['hv_oran']
+            _h_yorum = ("son 1 ayda günlük oynama son 3 aydan belirgin düşük — sıkışma sürüyor" if _h < 0.7 else
+                        "son 1 ayda günlük oynama son 3 aydan belirgin yüksek — hareketleniyor" if _h > 1.3 else
+                        "son 1 ayın oynaması son 3 ayla uyumlu")
+            _rp_lines.append(f"  son_ay_vs_uc_ay_oynama_orani: {_h:.2f} — {_h_yorum}")
+        if _rp_lines:
+            _em_risk_profile = "\nrisk_profile:\n" + "\n".join(_rp_lines) + "\n"
+    except Exception:
+        _em_risk_profile = ""
+
     # ─── TWITTER VARYASYON SİSTEMİ (15 Haz 2026) ─────────────────────────────
     # Her analiz için 15 hook tipinden rastgele 5 + 5 gövde formatından rastgele 1 seçilir.
     # AI bu seçimlere göre 5 farklı hook ve seçilen gövde formatında abone özeti üretir.
@@ -27166,9 +28189,9 @@ POC RETEST (84.832 event, BIST 593 hisse, 1y; retest = POC'a %1 yakına ≤10g):
 SCANNER TIER (11.797 sinyal backtest, 29 Nis-31 May 2026, 31 scan_type tier'lı) — `scanner_tiers_aktif` varsa:
   🚨 **TIER_1_ELIT VARSA = ANA HİKAYE (sert kural, 8 Haz 2026 Oturum 19):** prelaunch_bos/er_A8/er_B1 flag'i bu ticker'da varsa → G1 açılış paragrafı + G4 GENEL YORUM açılışı o TIER_1 senaryosundan başlar. Backtest hit %75+ kanıt-tabanı en güçlü olandır → `scenario.algoritmik_baslik`'ten, `asset.master_score`'dan ve diğer scanner'lardan ÖNCE gelir. Birden fazla TIER_1 flag varsa en yüksek hit'i öne çıkar (er_A8 %100 > prelaunch_bos %78 > er_B1 %75). Atlanırsa = ihlal — G1/G4'te TIER_1 adı en az 1 kez ZORUNLU geçer + "backtest kanıtı: hit %X, ret %+Y" notu eklenir.
   **TIER_1_ELIT** (prelaunch_bos, er_A8, er_B1): hit %75+, ret %+4 ila %+13 → yukarıdaki sert kural geçerli
-  **TIER_2_GUVENILIR** (er_C3/D3/C9/D1/A9/C2/A3/A7/C11): hit %62-68, ret %+2.7-5.9 → destekleyici teyit, ana hikaye olabilir
-  **TIER_3_ORTA** (er_C7/A4/D4/D5/C5/B11/B5/A5/A1/C8/A2/B8/A6): hit %42-75 ama ret %+1.2-3.3 → zayıf, ana hikaye kurma; **diğer teyitler aranır** (POC, OBV, mum)
-  **TIER_3_ZAYIF** (er_D2/C6/C1, guclu_donus): ret negatif/sıfır → adı çekici ama gerçek kazandırma yok; "diğer teyitler güçlüyse" notuyla geç. guclu_donus özel: 20g'de %+4.2 → "geç giriş riski" notu uygun.
+  **TIER_2_GUVENILIR** (er_C3/D3/C9/D1/A9/C2/A3/A7/C11/D2): hit %53-68, ret %+1.7-5.9 → destekleyici teyit, ana hikaye olabilir. er_D2 (19 Haz 2026 geri alındı): iki-rejimde dayanıklı, ayıda bile pozitif.
+  **TIER_3_ORTA** (er_C7/A4/D4/D5/C5/B11/B5/A5/A1/C8/A2/B8/A6/C6): hit %42-75 ama ret %+1.2-3.3 → zayıf, ana hikaye kurma; **diğer teyitler aranır** (POC, OBV, mum). er_C6: 5g güçlü ama uzun vade ayıda zayıf.
+  **TIER_3_ZAYIF** (er_C1, guclu_donus): ret negatif/sıfır → adı çekici ama gerçek kazandırma yok; "diğer teyitler güçlüyse" notuyla geç. guclu_donus özel: 20g'de %+4.2 → "geç giriş riski" notu uygun.
   **TIER_VADE_UZUN** (nadir_firsat): 10g düşük (%29/%0.2) ama 20g hit %81 + ret %+17 → "20g vade, SABIR" notunu açıkça yaz, 5-10g beklenti kurma.
   Hisse listede yoksa sus, ekstrapolasyon yapma.
 
@@ -27202,6 +28225,7 @@ meta:
   pros: {pros_txt}
   cons: {cons_txt}
   golden_trio: {is_golden}
+  platin_firsat: {platin_txt}
   royal_flush: {is_nadir}
   hidden_accumulation: {hidden_acc_txt}
   yillik_konum_52h: {range_52h_txt}
@@ -27210,7 +28234,7 @@ volatility:
   atr14: {atr_txt}
   bb_keltner_squeeze: {squeeze_txt}
   sikisma_suresi: {squeeze_duration_txt}
-
+{_em_risk_profile}
 scenario:
   algoritmik_baslik: {ai_scenario_title}
   ozet: {ai_mood_instruction}
@@ -27272,7 +28296,7 @@ institutional_ref:
   fiyat_vwap_uzaklik_pct: {v_diff:.1f}
   vwap_etiket: {vwap_ai_txt}
   rs_piyasa_gucu: {rs_ai_txt}
-  alpha: {alpha_val:.1f}{_poc_avwap_block}{_em_scanner_tiers}{_em_breakout_alert}
+  alpha: {alpha_val:.1f}{_poc_avwap_block}{_em_scanner_tiers}{_em_setup_strength}{_em_kanit}{_em_liq}{_em_risk}{_em_breakout_alert}
 
 targets:
   direnc_fib: {fib_res}
@@ -27282,6 +28306,69 @@ targets:
 ═══════════════════════════════════════════════════════════════════════
 
 *** KISA YORUM REHBERİ — Her bloğun nasıl okunduğu ***
+
+**RISK_PROFILE okuma (3 metrik — önem azalarak):**
+
+🚨 ANLATIM ZORUNLU İNSAN TÜRKÇESİ: Bu bölüm prompt'a en geç eklendi ve EN ÇOK SIZINTI RİSKİ taşıyor. AŞAĞIDAKİ ŞEYLER YASAK:
+  ❌ Yunan harfi β (beta için) — kullanırsan jargon · YASAK
+  ❌ Çıplak rakam + simge zinciri ("%47, %62, %27") — sayıları hikayenin İÇİNE göm
+  ❌ İngilizce "stress", "drawdown", "recovery", "squeeze" — hep Türkçe karşılık
+  ❌ Kısaltma DD, HV, RR, β, σ — okuyucu bilmiyor
+  ❌ "endeks oyuncağı" / "endeks aşırı reaktif" — robot etiketi
+  ❌ "matematik teyitli" / "sayısal teyit" — kuru ifade
+
+✅ DOĞRU: Sayıyı al, ne demek olduğunu KENDİ CÜMLENLE anlat. Benzetme kur. Türkçe konuş.
+
+🥇 DRAWDOWN (YÜKSEK ÖNEM — anchor adayı):
+Üç sayı birlikte hikaye kurar: zirveden ne kadar uzakta · geçen yıl en kötü hali · dipten ne kadar toparlanmış.
+
+  ❌ KÖTÜ örnekler (kopyalama, bunlar YASAK):
+     "Drawdown -%47, max DD -%62, recovery +%27"
+     "Hisse %47 drawdown'da, geçen yıl daha kötüsünü gördü"
+     "Derin değer ama alıcı yetersiz"
+
+  ✅ İYİ örnekler (ton model):
+     "Yıllık zirvesinden neredeyse yarı yarıya gerilemiş — ama bu en kötüsü değil; geçen yıl üçte ikilik bir düşüş bile görmüş. Dipten gelen toparlanma henüz üçte bire ulaşmış, alıcı işin başında."
+     "Hisse 12 ayın zirvesinden yarı yola çekilmiş. İyi tarafı: geçen yılki dipten yaklaşık %30 yukarıda — taban örmüş gibi görünüyor."
+
+  Kullanım yeri: Discount/değer tezinde G1'de, momentum/dönüş tezinde G2-G3'te 1 cümle.
+
+🥈 YÖN EĞİLİMİ — ASİMETRİ (YÜKSEK-ORTA ÖNEM — şok yön bias):
+Geçen 3 ayın günlük getirilerinin dağılımı. Pozitif sayı = büyük günlük hareketler ağırlıkla yukarı yönde (yukarı sıçrayan tip). Negatif sayı = aşağı çakılma riski yukarı sürprize göre daha yüksek.
+
+  ❌ KÖTÜ: "Skew +0.42" / "pozitif kuyruk eğilimi" / "asimetri pozitif"
+
+  ✅ İYİ örnekler:
+     "Geçen 3 aydaki büyük günlük hareketler ağırlıkla yukarı yöne işaret etti — bu hisseyi tutarken aşağı kaza ihtimali, yukarı sürprize göre nispeten daha düşük görünüyor."
+     "Hisse istatistiksel olarak ani çakılmalara eğilimli — son aylarda büyük günlük hareketler ağırlıkla aşağı yönde olmuş, stop disiplini önemli."
+     "Büyük günlük hareketler iki yönde de dengeli — ne ani sıçrama ne ani çakılma açısından belirgin bir eğilim yok."
+
+  Kullanım yeri: |değer| ≥ 0.3 olduğunda zikret. Drawdown ile çakışırsa anchor seviyesine çıkar ("derin değer + yukarı sıçrama eğilimi" → güçlü dönüş tezi). Pozisyon yönetimi cümlesinde 1 kez geçer. |değer| < 0.3 ise sus.
+
+🥉 BETA (ORTA ÖNEM — pozisyon yönetimi):
+Hissenin endekse göre adım büyüklüğü. Yön DEĞİL, ŞİDDET söyler.
+
+  ❌ KÖTÜ: "β=1.42 yüksek beta" / "endeks aşırı reaktif" / "stress'inde fazla vurur"
+
+  ✅ İYİ örnekler:
+     "Endeks bir adım atınca bu hisse 1.4 adım atıyor — yukarı dönerse hızlı koşar, aşağı dönerse beklenenden fazla geri verir."
+     "Hisse endeksten daha sakin — endeks oynasa bile kendi seyrinde gidiyor (1 birimlik endeks hareketinde sadece 0.6 birim hareket var)."
+     "Endeksten neredeyse bağımsız — kendi hikayesi var, BIST'in genel havası burada belirleyici değil."
+
+  Kullanım yeri: Risk/pozisyon bağlamında 1 cümle. β > 1.3 veya β < 0.7 olursa zikret; arası sus.
+
+▫ HV ORAN (DÜŞÜK ÖNEM — destekleyici teyit):
+Hissenin son 1 aydaki günlük oynama büyüklüğü, son 3 ayın oynama büyüklüğüne kıyasla.
+
+  ❌ KÖTÜ: "HV oranı 0.62" / "kısa vade vol sıkışmış" / "matematik teyitli"
+
+  ✅ İYİ örnekler:
+     "Son 1 ayda günlük oynaması son 3 ayın yaklaşık yarısı kadar olmuş — fıçı dolduruluyor gibi, kırılım enerjisi birikiyor."
+     "Hisse normalden hareketli bir aydan geçiyor — son 3 ayın hızına göre üçte bir daha oynak. Trend hızlanıyor olabilir."
+
+  Kullanım yeri: SADECE sıkışma (BB Squeeze) veya breakout senaryosunda 1 yan cümle. Diğer durumlarda SUS.
+
+⚠ KISALTMA/SİMGE YASAKLI: Çıktıda "β", "DD", "HV", "1y", "20g/60g", "drawdown", "recovery" kelimeleri AYNEN GEÇMEZ. Sayıları hikayeye göm: "%47" yerine "neredeyse yarı yarıya", "+%27" yerine "üçte birlik toparlanma", "0.62" yerine "yaklaşık yarısı".
 
 **SCENARIO + REGIME + CONVICTION:** Algoritmik başlık ön-tanıdır; grafik veya YAML 2+ bağımsız sinyalle çelişiyorsa "algoritma X diyor ama Y gösteriyor" şeklinde sun. Faz 3/4 + AL sinyali = karşı-trend (riski vurgula). Konviksiyon <45 + pozitif senaryo çiziyorsan "algoritmanın genel eğilimiyle çelişiyor" açıkça belirt.
 
@@ -27369,6 +28456,7 @@ Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlı
 - ALTIN SET-UP EVET → RS + ICT discount + ivme 3/3 onay, tarihsel düşük frekans vurgu.
 - ROYAL FLUSH EVET → 4/4 kesişim, analiz başında ana hikaye.
 - 🚨 **TIER_1_ELIT FLAG VARSA → açılış paragrafında ana hikaye merkez** (prelaunch_bos/er_A8/er_B1). master_score'dan ve scenario.algoritmik_baslik'ten önce gelir. "Backtest kanıtı: hit %X, ret %+Y" notu eklenir. Bkz. KALİBRASYON TABLOLARI sert kural.
+- ⚖️ **GÜÇ TEYİDİ — temkinli kullan (19 Haz audit):** `kurulum_gucu_teyidi`'nde 🔴 (zayıf/dipte) ise → o sinyali, TIER_1 bile olsa, tek başına açılış merkezine taşıma; "kurulum henüz zayıf, teyit bekleniyor" diliyle ver. 🟢 (zirveye yakın) güç GARANTİ değil — audit'te aşırı uzamış güçlü hisseler kısa vadede geri çekildi (orta-konum aslında en iyi dilim). 🟢'yı "kesin güçlü" diye merkeze alma; kurulumun KENDİ kanıt skoruyla birlikte değerlendir.
 
 **SONUÇ:** 3-4 cümle vurucu özet.
 **UYARI:** Sadece gerçek risk varsa (RSI uyumsuzluk / stopping volume / boğa-ayı tuzağı / gizli satış); küçük harf, doğal cümle.
@@ -27576,7 +28664,7 @@ Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." + "#BIST100"
 12) **İNFERENTIAL MOOD SAYACI:** "varmış gibi / sanki / izlenimi veriyor / duruyor / bekliyor gibi / yorulmuş gibi / izleme modunda" — analiz içinde EN AZ 2 kez geçti mi? Hayırsa çelişkili/belirsiz cümlelerden 2 tanesini bu mood'a çevir. Kesinlik (-iyor, -dir) tek başına haber dili.
 13) **GEÇİŞ KONUMU KONTROLÜ:** G1 veya G4'ün AÇILIŞ cümlesi "Tuhafı şu / Açıkçası / Mantıken / Yani / Toparlarsak" ile başlıyorsa SİL — bu summative geçişler önce bağlam ister, başta yapay. Yerine: direkt başla (sayıyla aç) veya "Bakın / İşte / X tahtasında ilk somut hareket geldi —" gibi AÇILIŞ geçişlerinden biri. Summative geçişler 2-4. cümle ya da SONUÇ paragrafında doğal.
 14) **🚨 YAML FIELD NAME SAYACI (CRITICAL — Patch 4):** Aşağıdaki YAML alan adları analiz içinde TOPLAM 0 (sıfır) kez görünmeli. Tek geçiş bile ihlal. Parantezle kısaltma (CD) (CMF) (VP) (OMI) gibi kalıplar da YASAK.
-ÇIPLAK YASAK LİSTE: "cum_delta_5g · cum_delta_dual_window · OMI sigma · OMI · CMF Dual-Window · CMF Dual · CMF Dual-Window state · VP Şekli · VP · OBV durum başlığı · fiyat_poc_konumu · mum_kapanis_durumu · stopping_volume · climax_volume · poc_magnet_active · scanner_tiers_aktif · master_breakdown · F_MS_Trend · f_rsi_dual · f_cum_delta_dual · çift pencere · çift pencerede · iki pencerede · iki farklı zaman diliminde · iki farklı pencere · dual window · dual pencere"
+ÇIPLAK YASAK LİSTE: "cum_delta_5g · cum_delta_dual_window · OMI sigma · OMI · CMF Dual-Window · CMF Dual · CMF Dual-Window state · VP Şekli · VP · OBV durum başlığı · fiyat_poc_konumu · mum_kapanis_durumu · stopping_volume · climax_volume · poc_magnet_active · scanner_tiers_aktif · kurulum_gucu_teyidi · kanit_skoru · likidite_manip_uyari · risk_profili · master_breakdown · F_MS_Trend · f_rsi_dual · f_cum_delta_dual · çift pencere · çift pencerede · iki pencerede · iki farklı zaman diliminde · iki farklı pencere · dual window · dual pencere"
 🚨 ÇIFT PENCERE → SADE TÜRKÇE: Dual-window kavramlarını "çift pencere" diye Türkçeleştirme — robotik durur. YERINE:
   ❌ "Çift pencere momentum göstergesinde RSI14 81, RSI5 89" → ✅ "RSI kısa vadede 89, uzun vadede 81 — ikisi de aşırı alım bölgesinde"
   ❌ "İki farklı zaman diliminde aşırı alım" → ✅ "Hem 5g hem 14g periyodunda aşırı alım"
@@ -28084,6 +29172,21 @@ def _render_left_col():
                         _ar_count = _st_autorefresh(
                             interval=600_000,  # 10 dk
                             key=f"_auto_refresh_{_cur_ticker}",
+                        )
+                        if _ar_count and _ar_count > 0:
+                            try:
+                                get_batch_data_cached.clear()
+                            except Exception:
+                                pass
+                    elif (18, 15) <= _now_t <= (18, 35):
+                        # ── KAPANIŞ SONRASI YOĞUN TAZELEME (18 Haz 2026) ──
+                        # Yahoo 18:00 kapanışı 18:20-18:35 arası publish eder.
+                        # Bu pencerede 5dk'da bir tetik → gerçek kapanış değeri
+                        # ekrana hızlı yansır. Yahoo ban riski göz ardı edilebilir
+                        # (gün toplamı sadece ~3 ek tetik / +%7).
+                        _ar_count = _st_autorefresh(
+                            interval=300_000,  # 5 dk
+                            key=f"_auto_refresh_close_{_cur_ticker}",
                         )
                         if _ar_count and _ar_count > 0:
                             try:
@@ -29076,6 +30179,12 @@ def _render_left_col():
             desc="İki katmanlı pre-move radarı: senaryo bazlı erken tespit (hazır) + sıkışma sonrası kurumsal kırılım (başlayan)"
         ), unsafe_allow_html=True)
 
+        # 🏆 GOLD MINE VİTRİNİ — tüm taramalar tek listede, backtest puanına göre sıralı (19 Haz 2026)
+        _gm_shown = render_gold_mine_showcase()
+        if _gm_shown:
+            st.markdown("<div style='font-size:0.68rem;color:#94a3b8;text-align:center;margin:2px 0 6px;'>"
+                        "↓ tarama-tarama detay listeleri</div>", unsafe_allow_html=True)
+
         # ── İki sub-kolon: sol=HAREKETE HAZIR (Erken Radar), sağ=HAREKETE BAŞLAYAN (Pre-Launch BOS) ──
         _sub_er, _sub_pb = st.columns(2)
 
@@ -29084,11 +30193,9 @@ def _render_left_col():
             _er_df = st.session_state.get('erken_radar_data')
             # Unique hisse = primary rolündeki ≥3 yıldızlı satır sayısı (kalite filtresi)
             if _er_df is not None and hasattr(_er_df, 'empty') and not _er_df.empty:
-                def _stars_int_q(v):
-                    try: return int(v)
-                    except: return 0
-                _er_count = int(((_er_df['Role'] == 'primary') &
-                                 (_er_df['Stars'].apply(_stars_int_q) >= 3)).sum())
+                _er_count = int(_er_df[(_er_df['Role'] == 'primary') &
+                    (_er_df['ScenarioId'].apply(lambda s: ER_BACKTEST_SCORE.get(str(s), 0) >= ER_ELIT_SCORE_MIN))
+                    ]['Sembol'].nunique())
             else:
                 _er_count = 0
             st.markdown(f"<div style='background:linear-gradient(135deg,#3b82f618,#3b82f606);"
@@ -29103,25 +30210,21 @@ def _render_left_col():
                     try: return int(v)
                     except: return 0
                 _er_clean['_stars_n'] = _er_clean['Stars'].apply(_stars_int)
-                # Kalite filtresi: sadece ≥3 yıldızlı hisseler (1-2 yıldız çok gürültülü)
-                _er_clean = _er_clean[_er_clean['_stars_n'] >= 3]
-                # Hisse başına en güçlü senaryoyu öne çıkar (primary öncelikli + yıldız desc)
+                # 19 Haz 2026 — KALİTE FİLTRESİ ARTIK BACKTEST PUANI (eski yıldız DEĞİL).
+                # İki-rejimde kanıtlanmış senaryolar (B8/D2/C2/C5...) öne çıkar; yıldızı yüksek
+                # ama vasat (er_C6 5★) veya düşük puanlılar ELİT panelden elenir. Gold mine = en üstte.
+                _er_clean['_bt_score'] = _er_clean['ScenarioId'].apply(lambda s: ER_BACKTEST_SCORE.get(str(s), 0))
+                _er_clean = _er_clean[_er_clean['_bt_score'] >= ER_ELIT_SCORE_MIN]
                 _er_clean['_role_rank'] = _er_clean['Role'].map({'primary': 0, 'confirmation': 1})
                 # Hisse başına senaryo sayısı (çoklu teyit tespiti — primary + confirmation toplamı)
                 _scenario_counts = _er_clean.groupby('Sembol').size().to_dict()
                 _er_clean['_sc_count'] = _er_clean['Sembol'].map(_scenario_counts).fillna(1).astype(int)
-                # 15 Haz 2026 — TIER bazlı önceliklendirme: A8/B1/A1 (TIER_1_ELIT) önce.
-                _tier_rank_map = {'TIER_1_ELIT': 0, 'TIER_2_GUVENILIR': 1, 'TIER_3_ORTA': 2}
-                def _tier_rank_for_scenario(_sid):
-                    _key = f"er_{_sid}"
-                    _t = SCANNER_TIER_MAP.get(_key, (None,))[0]
-                    return _tier_rank_map.get(_t, 9)
-                _er_clean['_tier_rank'] = _er_clean['ScenarioId'].apply(_tier_rank_for_scenario)
-                _sym_best_tier = _er_clean.groupby('Sembol')['_tier_rank'].min().to_dict()
-                _er_clean['_sym_tier'] = _er_clean['Sembol'].map(_sym_best_tier).fillna(9).astype(int)
+                # Hisse başına EN YÜKSEK backtest puanı → o puana göre sırala (en kazandıran en üstte)
+                _sym_best_score = _er_clean.groupby('Sembol')['_bt_score'].max().to_dict()
+                _er_clean['_sym_score'] = _er_clean['Sembol'].map(_sym_best_score).fillna(0)
                 _er_clean = _er_clean.sort_values(
-                    by=['_sym_tier', '_role_rank', '_stars_n', '_sc_count', 'Sembol'],
-                    ascending=[True, True, False, False, True]
+                    by=['_sym_score', '_role_rank', '_bt_score', '_sc_count', 'Sembol'],
+                    ascending=[False, True, False, False, True]
                 )
                 # Aging: her (sym, scenario) için ardışık gün sayısı
                 _aging_pairs = [(str(_r['Sembol']), str(_r['ScenarioId'])) for _, _r in _er_clean.iterrows()]
@@ -29171,6 +30274,7 @@ def _render_left_col():
                         'stars_n': _erstars_n, 'stars_s': _erstars_s,
                         'age': _er_age, 'sc_count': _sc_count,
                         'in_elit': _er_in_elit, 'other_scns': _other_scns,
+                        'desc': _er_kisa_aciklama(_erscid),   # sade açıklama (19 Haz 2026)
                     })
 
                 # CSS — kart görünümlü butonlar (sol kenar rengi = kategori rengi)
@@ -29200,10 +30304,14 @@ def _render_left_col():
                                                 else (" +1✦" if _cd['sc_count'] == 2 else ""))
                                 _elit_badge  = " 💎🎯" if _cd['in_elit'] else (" 💎" if _cd['sym'] in _elit_syms_clean else "")
                                 _conf_badge  = f" +{','.join(_cd['other_scns'][:2])}" if _cd['other_scns'] else ""
-                                # 3 satır label: hisse+fiyat / yıldız+id+yaş / senaryo adı
+                                # 3 satır label: hisse+fiyat / senaryo adı+rozet / SADE AÇIKLAMA
+                                # (19 Haz 2026 — yıldız yerine herkesin anlayacağı açıklama öne çıkar)
+                                _desc_txt = _cd.get('desc', '') or _cd['name']
+                                if len(_desc_txt) > 88:
+                                    _desc_txt = _desc_txt[:85].rstrip() + '…'
                                 _lbl = (f"{_cd['cat_icon']} {_cd['sym']}  {_cd['price']}{_elit_badge}\n"
-                                        f"{_cd['stars_s']} {_cd['scid']}{_age_badge}{_multi_badge}{_conf_badge}\n"
-                                        f"{_cd['name'][:24]}")
+                                        f"⭐ {_cd['name']}{_age_badge}{_multi_badge}{_conf_badge}\n"
+                                        f"{_desc_txt}")
                                 _key = f"er_card_{_cd['sym']}_{_cd['eri']}"
                                 if st.button(_lbl, key=_key, use_container_width=True):
                                     on_scan_result_click(_cd['sembol']); st.rerun()
@@ -30221,9 +31329,189 @@ with col_left:
         _render_left_col()
 
 
+def _compute_kanit_ozeti(ticker):
+    """Tek hisse KANIT SKORU (0-100) + GÜVEN/ÇELİŞKİ ölçer (19 Haz 2026, Build 2).
+    - Kanıt Skoru = hissenin yakalandığı EN GÜÇLÜ kanıtlı taramanın backtest puanı + confluence
+      bonusu (her ek kanıtlı tarama +6, max +18). Master 'görünüm', bu 'kanıt'.
+    - Güven = boğa-diyen vs ayı-diyen sinyal dengesi; ikisi de varsa 'çelişki'.
+    Vitrin hesabını (_compute_goldmine_entries) yeniden kullanır — verimli."""
+    out = {'skor': None, 'label': 'kanıt yok', 'n_scanner': 0, 'best': '',
+           'guven': None, 'celiski': False, 'boga': 0, 'ayi': 0}
+    try:
+        _tc = str(ticker).upper().replace('.IS', '')
+        ent = next((e for e in _compute_goldmine_entries() if e['sym'].upper() == _tc), None)
+        if ent is not None:
+            out['n_scanner'] = ent.get('extra', 0) + 1
+            out['best'] = ent.get('scanner', '')
+            if ent.get('unmeasured'):
+                out['label'] = 'kanıt bekliyor'
+            else:
+                _bonus = min((out['n_scanner'] - 1) * 6, 18)
+                out['skor'] = min(int(ent.get('score', 0)) + _bonus, 100)
+                out['label'] = 'kanıtlı'
+        # Yön sayımı (boğa vs ayı)
+        boga = out['n_scanner'] if out['skor'] else 0      # kanıtlı kurulumlar boğa lehine
+        ayi = 0
+        _er = st.session_state.get('erken_radar_data')
+        if _er is not None and hasattr(_er, 'empty') and not _er.empty and {'Sembol', 'Role'} <= set(_er.columns):
+            _ser = _er['Sembol'].astype(str).str.upper()
+            ayi += len(_er[((_ser == str(ticker).upper()) | (_ser == _tc)) & (_er['Role'] == 'red_flag')])
+        _hc = st.session_state.get('harmonic_confluence_data')
+        if _hc is not None and hasattr(_hc, 'empty') and not _hc.empty and 'Sembol' in _hc.columns:
+            _ser = _hc['Sembol'].astype(str).str.upper()
+            for _, r in _hc[(_ser == str(ticker).upper()) | (_ser == _tc)].iterrows():
+                if 'Bearish' in str(r.get('Yön', '')):
+                    ayi += 1
+        try:
+            _bias = str((calculate_ict_deep_analysis(ticker) or {}).get('bias', '')).lower()
+            if any(k in _bias for k in ('bear', 'düşüş', 'ayı', 'short')):
+                ayi += 1
+            elif any(k in _bias for k in ('bull', 'yükseliş', 'boğa', 'long')):
+                boga += 1
+        except Exception:
+            pass
+        out['boga'], out['ayi'] = boga, ayi
+        if boga + ayi > 0:
+            out['guven'] = int(boga / (boga + ayi) * 100)
+            out['celiski'] = (boga > 0 and ayi > 0)
+    except Exception:
+        pass
+    return out
+
+
+def render_risk_profile_card(ticker):
+    """Faz 2 (19 Haz 2026) — RİSK PROFİLİ kartı (risk-ÖNCE). Sade etiketler + genel seviye rozeti."""
+    try:
+        rp = _risk_profile(ticker)
+        if not rp['rows']:
+            return
+        _lvl = rp['level'] or 'orta'
+        _lcol = {'yüksek': '#ef4444', 'orta': '#f59e0b', 'düşük': '#22c55e'}.get(_lvl, '#94a3b8')
+        _hdr = (f"<div style='background:linear-gradient(90deg,#1e293b,#0f172a);border:1px solid #334155;"
+                f"border-radius:8px 8px 0 0;padding:6px 11px;font-size:0.8rem;font-weight:800;color:#cbd5e1;"
+                f"display:flex;justify-content:space-between;align-items:center;'><span>🛡️ RİSK PROFİLİ</span>"
+                f"<span style='color:{_lcol};font-size:0.74rem;'>GENEL: {_lvl.upper()}</span></div>")
+        _ic = {'high': '🔴', 'mid': '🟡', 'low': '🟢'}
+        _body = "".join(
+            f"<div style='display:flex;justify-content:space-between;gap:8px;padding:4px 11px;"
+            f"border-bottom:1px solid rgba(100,116,139,0.12);font-size:0.73rem;'>"
+            f"<span style='color:#e2e8f0;font-weight:600;white-space:nowrap;'>{_ic.get(_y,'·')} {_l}</span>"
+            f"<span style='color:#94a3b8;text-align:right;'>{_d}</span></div>"
+            for _l, _d, _y in rp['rows'])
+        st.markdown(f"<div style='margin:8px 0;border:1px solid #334155;border-radius:8px;overflow:hidden;"
+                    f"background:#0b1220;'>{_hdr}{_body}</div>", unsafe_allow_html=True)
+    except Exception:
+        pass
+
+
+def render_scanner_membership_panel(ticker):
+    """📡 BU HİSSE HANGİ TARAMALARDA? — tek bakışta birleşik mini panel (19 Haz 2026).
+    CANLI SİNYALLER'in hemen altında. Güç-filtreli 4 taramada (Harmonik/VIP/Erken Radar/
+    Pre-Launch) 🟢/🔴 güç rozeti gösterir; Altın/Platin/Gizli Birikim/Minervini üyeliğini de
+    toplar. Veriler batch (Master Scan) + canlı Erken Radar kaynaklı."""
+    try:
+        _tu = str(ticker).upper(); _tc = _tu.replace('.IS', '')
+
+        def _in(key, sub=None):
+            df = st.session_state.get(key)
+            if sub and isinstance(df, dict):
+                df = df.get(sub)
+            if df is None or (hasattr(df, 'empty') and df.empty):
+                return False
+            for col in ('Sembol', 'Hisse', 'Ticker'):
+                if col in getattr(df, 'columns', []):
+                    ser = df[col].astype(str).str.upper()
+                    if ((ser == _tu) | (ser == _tc)).any():
+                        return True
+            return False
+
+        # Güç-filtreli 4 tarama (52H/RSI gücü)
+        _strength = {s: g for s, g, _v in _scanner_setup_strength(ticker)}
+
+        # rows: (icon, label, sade_açıklama, guc_or_None)
+        PD = SCANNER_PLAIN_DESC
+        rows = []
+        if _in('platin_results'):              rows.append(("♛", "Platin Fırsat", PD['platin'], None))
+        if _in('golden_results'):              rows.append(("💎", "Altın Set-up", PD['altin'], None))
+        if 'prelaunch_bos' in _strength:       rows.append(("🚀", "Pre-Launch BOS", PD['prelaunch'], _strength['prelaunch_bos']))
+        if 'harmonik_confluence' in _strength: rows.append(("⚡", "Harmonik Confluence", PD['harmonik'], _strength['harmonik_confluence']))
+        if 'vip_formasyon' in _strength:       rows.append(("📐", "VIP Formasyon", PD['vip'], _strength['vip_formasyon']))
+        elif _in('golden_pattern_data', sub='formations'): rows.append(("📐", "VIP Formasyon", PD['vip'], None))
+        if 'erken_radar' in _strength:         rows.append(("🎯", "Erken Radar", PD['erken'], _strength['erken_radar']))
+        if _in('accum_data'):                  rows.append(("🔍", "Gizli Birikim", PD['gizli'], None))
+        if _in('minervini_data'):              rows.append(("🏆", "Minervini SEPA", PD['minervini'], None))
+        if _in('rs_leaders_data'):             rows.append(("📊", "RS Momentum Lideri", PD['rs'], None))
+
+        # KANIT SKORU + GÜVEN/ÇELİŞKİ (Build 2, 19 Haz 2026) — başlıkta özetle
+        _kz = _compute_kanit_ozeti(ticker)
+        if _kz['skor'] is not None:
+            _ks_col = "#22c55e" if _kz['skor'] >= 60 else ("#f59e0b" if _kz['skor'] >= 35 else "#94a3b8")
+            _ks_chip = f"<span style='color:{_ks_col};font-weight:800;'>Kanıt {_kz['skor']}/100</span>"
+        elif _kz['label'] == 'kanıt bekliyor':
+            _ks_chip = "<span style='color:#a8a29e;font-weight:700;'>Kanıt: bekliyor</span>"
+        else:
+            _ks_chip = "<span style='color:#64748b;font-weight:700;'>Kanıt yok</span>"
+        if _kz['celiski']:
+            _gv_chip = f" · <span style='color:#f87171;font-weight:800;'>⚠ çelişkili (güven %{_kz['guven']})</span>"
+        elif _kz['guven'] is not None:
+            _gv_chip = f" · <span style='color:#22c55e;font-weight:700;'>güven %{_kz['guven']}</span>"
+        else:
+            _gv_chip = ""
+        # Başlık + gövde — yeşil/kırmızı nokta yerine HERKESİN ANLAYACAĞI sade açıklama (19 Haz 2026)
+        _hdr = ("<div style='background:linear-gradient(90deg,#1e293b,#0f172a);border:1px solid #334155;"
+                "border-radius:8px 8px 0 0;padding:6px 11px;font-size:0.8rem;font-weight:800;color:#38bdf8;"
+                "letter-spacing:0.04em;display:flex;justify-content:space-between;align-items:center;gap:8px;'>"
+                "<span>📡 BU HİSSE HANGİ TARAMALARDA?</span>"
+                f"<span style='font-size:0.72rem;'>{_ks_chip}{_gv_chip}</span></div>")
+        if rows:
+            _parts = []
+            for ic, lbl, desc, guc in rows:
+                if guc:
+                    _gw, _gc = _guc_plain(guc)
+                    _chip = (f"<span style='font-size:0.66rem;font-weight:700;color:{_gc};"
+                             f"background:{_gc}1a;border:1px solid {_gc}55;border-radius:4px;"
+                             f"padding:1px 6px;white-space:nowrap;'>{_gw}</span>")
+                else:
+                    _chip = ""
+                _parts.append(
+                    f"<div style='padding:6px 11px;border-bottom:1px solid rgba(100,116,139,0.15);'>"
+                    f"<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;'>"
+                    f"<span style='color:#f1f5f9;font-weight:700;font-size:0.82rem;'>{ic} {lbl}</span>{_chip}</div>"
+                    f"<div style='color:#94a3b8;font-size:0.73rem;line-height:1.35;margin-top:2px;'>{desc}</div>"
+                    f"</div>"
+                )
+            _body = "".join(_parts)
+        else:
+            _body = ("<div style='padding:9px 11px;font-size:0.74rem;color:#94a3b8;font-style:italic;'>"
+                     "Bu hisse aktif taramaların hiçbirinde çıkmadı "
+                     "(veya bu oturumda Master Scan çalışmadı).</div>")
+        # Faz 1 (19 Haz 2026) — likidite/manipülasyon uyarı bandı (riskliyse, gövdenin başına)
+        try:
+            _lmdf2 = get_safe_historical_data(ticker, period="1y")
+            _lm2 = _liquidity_manip(_lmdf2) if _lmdf2 is not None else {}
+            _warn = []
+            if _lm2.get('tier') == 'düşük':
+                _warn.append(f"🔻 Düşük likidite (~{_lm2.get('adv_mn')}mn TL/gün) — ince tahta, dikkat")
+            if _lm2.get('manip') in ('orta', 'yüksek'):
+                _warn.append(f"⚠ Pompa riski ({_lm2.get('manip')}) — sürdürülemez olabilir")
+            if _warn:
+                _wbar = ("<div style='background:#7f1d1d33;border-bottom:1px solid #ef444455;"
+                         "padding:5px 11px;font-size:0.72rem;color:#fca5a5;font-weight:700;'>"
+                         + " · ".join(_warn) + "</div>")
+                _body = _wbar + _body
+        except Exception:
+            pass
+        st.markdown(
+            f"<div style='margin:8px 0;border:1px solid #334155;border-radius:8px;overflow:hidden;"
+            f"background:#0b1220;'>{_hdr}{_body}</div>", unsafe_allow_html=True
+        )
+    except Exception:
+        pass
+
+
 def _render_right_col():
     info = fetch_stock_info(st.session_state.ticker)
-    
+
     # 1. Fiyat Kartı — 2 sütun hero tasarım
     if info and info.get('price'):
         display_ticker = get_display_name(st.session_state.ticker)
@@ -30649,6 +31937,14 @@ def _render_right_col():
 
     # --- BİRLEŞİK SİNYAL PANELİ (Canlı Sinyaller + Tarama Sonuçları) ---
     render_unified_signals_panel(st.session_state.ticker)
+
+    # --- 📡 BU HİSSE HANGİ TARAMALARDA? — birleşik üyelik + güç rozeti (19 Haz 2026) ---
+    render_risk_profile_card(st.session_state.ticker)   # Faz 2 — risk ÖNCE (üyelik panelinin üstünde)
+    render_scanner_membership_panel(st.session_state.ticker)
+    try:
+        log_analysis_snapshot(st.session_state.ticker)  # Faz 3 — ürün isabeti için verdict snapshot (idempotent)
+    except Exception:
+        pass
 
     # (GENEL SAĞLIK (Teknik Skor) → sidebar'a, ENDEKS RADARI altına taşındı)
 
