@@ -24088,13 +24088,75 @@ def compute_weekly_frame(ticker):
     cdl_det = (f"Son haftalık mum: {cdl_lbl.lower()} (gövde %{body_pct:.0f}). Haftalık RSI {wk_rsi:.0f}. "
                f"Son {n8} hafta: {greens} yeşil / {n8 - greens} kırmızı, net %{chg8:+.1f}.")
 
-    ai_block = (
-        "HAFTALIK GENEL ÇERÇEVE (BÜYÜK RESİM — analizi BUNUNLA AÇ, genel özet bununla kurulur):\n"
-        f"  • Konum (uzun vade): {pos_lbl} — {pos_det}\n"
-        f"  • Dow birincil trend: {dow_lbl} — {dow_det}\n"
-        f"  • Piyasa yapısı: {struct_lbl} — {struct_det}\n"
-        f"  • Günlük×Haftalık uyum: {align_lbl} — {align_det}\n"
-        f"  • Haftalık mum: {cdl_lbl} — {cdl_det}\n"
+    # ══ GELİŞTİRMELER (21 Haz 2026) — hacim + yapısal likidite ile güçlendirme ══
+    # 1) 1y Hacim Profili POC (uzun vade maliyetlenme) → KONUM
+    _poc1y = None; poc_side = "—"
+    try:
+        _poc1y = calculate_volume_profile_poc(df_d, lookback=min(250, len(df_d)), bins=30)
+        if _poc1y and not pd.isna(_poc1y) and _poc1y > 0:
+            _pdif = (last - _poc1y) / _poc1y * 100
+            poc_side = "üstünde" if _pdif >= 0 else "altında"
+            pos_det += (f" 1y hacim merkezi (POC) {_poc1y:.2f} — fiyat %{abs(_pdif):.0f} {poc_side}, "
+                        f"yani yıllık maliyetlenmenin {poc_side}.")
+        else:
+            _poc1y = None
+    except Exception:
+        _poc1y = None
+
+    # 2) Trend iptal seviyesi (MSS) — son onaylı yükselen dip → DOW
+    mss_level = float(conf_sl[-1]) if conf_sl else None
+    if dow_clr == UP and mss_level is not None:
+        dow_det += f" Trend iptal seviyesi: {mss_level:.2f} (haftalık kapanış bu seviyenin altında → yükselen yapı bozulur)."
+
+    # 3) Premium/Discount (EQ %50) + bant likiditesi (BSL/SSL mesafe) → PİYASA YAPISI
+    eq = (hi52 + lo52) / 2
+    zone = "premium (pahalı yarı)" if last > eq else "discount (ucuz yarı)"
+    bsl_dist = (hi52 - last) / last * 100 if last > 0 else 0.0
+    ssl_dist = (last - lo52) / last * 100 if last > 0 else 0.0
+    struct_det += (f" Denge çizgisi (EQ %50): {eq:.2f} → fiyat {zone}. Üst likidite (52H zirve) "
+                   f"%{bsl_dist:.0f} yukarıda, alt likidite (52H dip) %{ssl_dist:.0f} aşağıda.")
+
+    # 4) Günlük momentum uyumsuzluğu (divergence) → GÜNLÜK×HAFTALIK tuzak filtresi
+    div_bear = False
+    try:
+        if w_dir > 0:
+            div_bear = bool(_er_bearish_div(df_d['High'], _er_rsi(df_d['Close'])))
+    except Exception:
+        div_bear = False
+    if div_bear and "UYUMLU" in align_lbl:
+        align_lbl, align_clr = "TEYİT AMA UYUMSUZLUK", NEU
+        align_det = ("Günlük ve haftalık yön aynı GÖRÜNÜYOR ama günlük fiyat yeni tepe yaparken RSI "
+                     "daha düşük tepe yapıyor (negatif momentum uyumsuzluğu) — 'güçlü teyit' bir tuzağa "
+                     "dönebilir, momentum alttan zayıflıyor.")
+
+    # 5) Haftalık Göreceli Hacim (RVol) → HAFTALIK MUM teyit katmanı
+    wk_rvol = None; rvol_str = "—"
+    try:
+        _vw = df_w['Volume']
+        _avg20 = float(_vw.iloc[-21:-1].mean()) if len(_vw) > 21 else float(_vw.iloc[:-1].mean())
+        _lastvol = float(_vw.iloc[-1])
+        if _avg20 > 0 and _lastvol > 0:
+            wk_rvol = _lastvol / _avg20
+            rvol_str = f"{wk_rvol:.1f}x"
+            if wk_rvol >= 1.2:
+                cdl_det += f" Hacim ortalamanın üstünde (RVol {rvol_str}) — kurumsal katılım, hareket gerçek."
+            elif wk_rvol < 0.8:
+                cdl_det += f" Hacim ortalamanın altında (RVol {rvol_str}) — sığ piyasa, gövde büyük olsa da teyit zayıf."
+            else:
+                cdl_det += f" Hacim ortalama civarı (RVol {rvol_str})."
+    except Exception:
+        pass
+
+    # ── AI için HAM VERİ NOTLARI (bitmiş cümle DEĞİL — papağanlamayı önler, AI sentezler) ──
+    _gh = ('uyumsuzluk: günlük fiyat yeni tepe ama RSI düşük tepe (tuzak riski)'
+           if div_bear else align_lbl.lower())
+    ai_data = (
+        f"- uzun vade: {pos_lbl.replace('Uzun vade ','').lower()}, 52H bandında %{pos52:.0f}, "
+        f"1y hacim merkezi (POC) {('%.2f'%_poc1y) if _poc1y else '—'} → fiyat {poc_side}\n"
+        f"- Dow yapısı: {dow_lbl.lower()}; trend iptal seviyesi {('%.2f'%mss_level) if mss_level else '—'}\n"
+        f"- bölge: {zone}; üst likidite %{bsl_dist:.0f} yukarı / alt likidite %{ssl_dist:.0f} aşağı\n"
+        f"- günlük×haftalık: {_gh}\n"
+        f"- son hafta mumu: {'yeşil' if green else 'kırmızı'}, gövde %{body_pct:.0f}, RVol {rvol_str}, haftalık RSI {wk_rsi:.0f}\n"
     )
 
     return {
@@ -24104,7 +24166,7 @@ def compute_weekly_frame(ticker):
         'align': (align_lbl, align_det, align_clr),
         'candle': (cdl_lbl, cdl_det, cdl_clr),
         'pos52': pos52, 'wk_rsi': wk_rsi, 'n_weeks': n,
-        'ai_block': ai_block,
+        'ai_data': ai_data,
     }
 
 
@@ -28277,13 +28339,19 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
     try:
         if datetime.now(_TZ_ISTANBUL).weekday() >= 5:
             _wf_ai = compute_weekly_frame(t)
-            if _wf_ai and _wf_ai.get('ai_block'):
+            if _wf_ai and _wf_ai.get('ai_data'):
                 _ai_weekly_note = (
-                    "\n\n*** 📅 HAFTALIK GENEL ÇERÇEVE — ÖNCE BUNU OKU, ANALİZİ BUNUNLA AÇ ***\n"
-                    "Bugün hafta sonu. Aşağıdaki büyük-resim çerçevesini analizinin EN BAŞINA koy ve "
-                    "genel özetini bununla kur; günlük detaylara SONRA in. Haftalık mum + Dow teorisi + "
-                    "piyasa yapısı bu hissenin nerede durduğunu söyler — günlük gürültü bunu değiştirmez.\n"
-                    + _wf_ai['ai_block']
+                    "\n\n*** 📅 HAFTALIK BÜYÜK RESİM — analizini BUNUNLA AÇ ***\n"
+                    "Aşağısı HAM VERİ NOTLARI (bitmiş cümle değil, senin için çıkarılmış çiğ veri).\n"
+                    "‼️ Bunları MADDE MADDE OKUMA. Etiketleri/kısaltmaları (Dow, POC, RVol, EQ, BSL, "
+                    "likidite, '52H bandı %X') ham haliyle ALT ALTA SIRALAMA, kopyalama. Tek AKICI "
+                    "paragrafta, KENDİ cümlelerinle, bir yatırımcıya hissenin büyük resmini anlatır gibi "
+                    "ERİT: uzun vadede nerede duruyor (maliyetin neresinde), hangi fiyat trendi bitirir, "
+                    "pahalı mı ucuz bölgede mi, günlük ile haftalık birbirini doğruluyor mu yoksa "
+                    "momentumda çatlak mı var, son haftanın çıkışı hacimle gerçek mi yoksa sığ mı. "
+                    "Robotik liste/şablon ve 'şu metrik şu' kalıbı YASAK — ANLATIM KURALI'ndaki insani, "
+                    "akıcı dille yaz; sonra günlük detaylara in.\n"
+                    + _wf_ai['ai_data']
                 )
     except Exception:
         _ai_weekly_note = ""
