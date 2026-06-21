@@ -3189,7 +3189,12 @@ def backfill_signal_returns():
             _fp = os.path.join(CACHE_DIR, f"{_ct}_1d.parquet")
             if not os.path.exists(_fp):
                 return None
-            return pd.read_parquet(_fp)
+            _dfp = pd.read_parquet(_fp)
+            # Split-düzeltmesi (21 Haz 2026) — işlenmemiş bölünme backtest getirisini
+            # bozar (arada kalan split = sahte -%78 getiri). BIST hisse, idempotent.
+            if (".IS" in _ct or ".IS" in ticker) and not _ct.startswith(("XU", "XB", "XT", "XY")):
+                _dfp = _apply_split_adjustments(_dfp)
+            return _dfp
         except Exception:
             return None
 
@@ -3675,6 +3680,18 @@ def apply_volume_projection(df, ticker=""):
     df = _strip_holiday_bars(df, ticker)
     if df is None or df.empty:
         return df
+
+    # FIX (21 Haz 2026): İşlenmemiş BIST bedelli/bedelsiz (split) düzeltmesi — MERKEZİ.
+    # Bozuk parquet bir kez oluşunca cache-hit serve yolu (4291/4335/4440) split-adj'i
+    # ATLIYORDU → FENER gibi çok-bölünmüş hisselerde 52H zirvesi eski ölçekte kalıp
+    # sahte -%90 düşüş + master_score çöküşü + AI "veri tutarsızlığı" üretiyordu.
+    # _apply_split_adjustments idempotent (>%20 tek-gün düşüş kalmadıysa no-op). SADECE
+    # BIST HİSSE — endeks/kripto/FX/futures'ta >%20 günlük düşüş gerçek olabilir → hariç.
+    try:
+        if (".IS" in ticker) and not ticker.startswith(("XU", "XB", "XT", "XY")):
+            df = _apply_split_adjustments(df)
+    except Exception:
+        pass
 
     # Türkiye saatini güvenli şekilde al
     try:
