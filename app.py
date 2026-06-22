@@ -31566,6 +31566,13 @@ def _tav_compute_panel(_cache_key="default"):
             feat = _tav_features(df, i)
             if feat is None: continue
             if feat['vol_tl'] < MIN_VOL_TL: continue
+            # 21 Haz 2026 — Likidite+manip kalkanı: ince tahta + dik koşu + hacim sıçraması =
+            # pompa (BRMEN tipi), motordan ele. _tav_is_manipulated bunu kaçırıyordu.
+            try:
+                if _liquidity_manip(df).get('manip') == 'yüksek':
+                    continue
+            except Exception:
+                pass
             sA = _tav_score_A(feat) * agirlik['A']
             sC = _tav_score_C(feat) * agirlik['C']
             sE = _tav_score_E(feat) * agirlik['E']
