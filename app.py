@@ -31376,6 +31376,14 @@ def _tav_is_manipulated(df, i):
     range çöküşü çok. En az 2 ölçüt kırmızıysa True döner — hisse motordan elenir.
     60g backtest'te listeden ~30-50 düşük kalite hisse çıkarır (likit + sağlıklı kalsın)."""
     import numpy as np
+    # 21 Haz 2026 — YAKIN-DÖNEM DİKEY TAVAN (BRMEN tipi: bugün tavanda ya da son 5g'de 2+
+    # tavan) → manipülasyona açık, DİREKT ELE (kronik filtre bunu seyreltip kaçırıyordu).
+    _rc = df['Close'].pct_change() * 100
+    try:
+        if _rc.iloc[i] >= 9.0 or int((_rc.iloc[max(0, i - 4):i + 1] >= 9.0).sum()) >= 2:
+            return True
+    except Exception:
+        pass
     if i < 60: return False
     last30 = df.iloc[i-30:i]
     rng = last30['High'] - last30['Low']
