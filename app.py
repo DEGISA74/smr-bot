@@ -25120,6 +25120,18 @@ with col_btn:
             except Exception as _tav_e:
                 log_error("master_scan_tavan_motoru", _tav_e, _cat)
 
+            # ── 💧 PARA AKIŞI LİDERLERİ (21 Haz 2026) — scan_signals'a yaz (Tarama Performansı backtest)
+            # CMF+momentum+filtreli ilk 10. 'para_akisi_lider' scan_type olarak birikir, backtest'lenir.
+            try:
+                if "BIST" in _cat.upper():
+                    my_bar.progress(99, text="💧 Para Akışı Liderleri (CMF+momentum) loglanıyor...%99")
+                    _pal_df = scan_para_akisi_liderleri(scan_list, _cat)
+                    if _pal_df is not None and not _pal_df.empty:
+                        log_scan_signal("para_akisi_lider", _pal_df, category=_cat)
+                        st.toast(f"💧 Para Akışı Liderleri: {len(_pal_df)} hisse loglandı", icon="✅")
+            except Exception as _pal_e:
+                log_error("master_scan_para_akisi", _pal_e, _cat)
+
             # 🏆 GOLD MINE META-BACKTEST LOG (19 Haz 2026 — Build 1) — tüm taramalar dolu,
             # vitrinin o günkü top seçimlerini kaydet. Sonra signal_results JOIN ile vitrin
             # sıralamasının gerçek getirisi ölçülecek (rank1 > rank10 mu?). Veri bugünden birikir.
@@ -31644,6 +31656,45 @@ def _tav_hikaye(r):
     if k == 'D':
         return f"52H'nin %{r['pos_52h']}'inde · RSI {r['RSI']} · sessiz"
     return ""
+
+def scan_para_akisi_liderleri(ticker_list, category=""):
+    """Para Akışı Liderleri scan — CMF (para akışı) en güçlü + momentum>0 trendde + büyük-cap
+    (250M TL) + manipülasyon/tavan filtreli ilk 10. Master Scan'de hesaplanıp scan_signals'a
+    'para_akisi_lider' yazılır → Tarama Performansı panelinde backtest'lenir. App'in
+    split-düzeltilmiş verisini kullanır (standalone flow_leaders ile aynı mantık)."""
+    cands = []
+    for tk in ticker_list:
+        try:
+            _ct = str(tk) if str(tk).endswith('.IS') else f"{tk}.IS"
+            _fp = os.path.join(CACHE_DIR, f"{_ct}_1d.parquet")
+            if not os.path.exists(_fp):
+                continue
+            df = _apply_split_adjustments(pd.read_parquet(_fp))   # network yok + split-temiz
+            if df is None or len(df) < 235 or 'Close' not in df.columns:
+                continue
+            c = df['Close']; v = df['Volume']
+            if float((c * v).tail(20).mean()) < 250e6:            # büyük-cap tabanı
+                continue
+            if _liquidity_manip(df).get('manip') == 'yüksek':     # ince-tahta pompa
+                continue
+            if _tav_is_manipulated(df, len(df) - 1):              # manip + yakın-dönem tavan
+                continue
+            mom = (float(c.iloc[-21]) / float(c.iloc[-231]) - 1) * 100   # ~11 ay momentum
+            if not (0 < mom <= 150):                              # yükselen ama parabolik değil
+                continue
+            rng = (df['High'] - df['Low']).replace(0, np.nan)
+            mfv = (((c - df['Low']) - (df['High'] - c)) / rng * v).fillna(0)
+            vol20 = float(v.rolling(20).sum().iloc[-1])
+            cmf20 = float(mfv.rolling(20).sum().iloc[-1] / vol20) if vol20 else 0.0
+            cands.append({'Sembol': tk, 'Fiyat': round(float(c.iloc[-1]), 2),
+                          'Skor': round(cmf20 * 100, 1), '_cmf': cmf20})
+        except Exception:
+            continue
+    if not cands:
+        return pd.DataFrame()
+    out = pd.DataFrame(cands).sort_values('_cmf', ascending=False).head(10).reset_index(drop=True)
+    return out.drop(columns=['_cmf'])
+
 
 def _render_flow_leaders_panel():
     """💧 PARA AKIŞI LİDERLERİ — CMF (para akışı) + momentum (trend), büyük-cap, manipülasyon/

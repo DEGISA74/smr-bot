@@ -88,6 +88,9 @@ CLASSIC_LABELS = {
     'radar2':         '🚀 Radar 2',
     'harmonik_confluence': '🎵 Harmonik Confluence',
     'vip_formasyon':  '💎 VIP Formasyon',
+    'para_akisi_lider': '💧 Para Akışı Liderleri',
+    'tavan_alarm':    '🚀 Tavan Alarm (Skor≥150)',
+    'tavan_top30':    '🚀 Tavan TOP 30',
 }
 
 
