@@ -30860,11 +30860,16 @@ def _render_left_col():
     st.markdown("<hr style='margin:12px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
-    # 🚀 TAVAN ADAYLARI — Ana içerik (sağ sütun değil) (18 Haz 2026 — B38)
+    # İKİ SÜTUN: 🚀 TAVAN ADAYLARI (sol) + 💧 PARA AKIŞI LİDERLERİ (sağ) — 21 Haz 2026
     # ══════════════════════════════════════════════════════════
-    # 60g 1109 örnekli backtest sonucu. TOP 30 ortalama hit %10 (random × 1.93).
-    # Yarın için A/C/E/D kalıp skorlu kısa-vade aday liste.
-    _render_tavan_adaylari_panel()
+    # Sol: 60g backtest kısa-vade tavan adayları (spekülatif).
+    # Sağ: CMF+momentum büyük-cap, 14ay backtest+rejim testi (kanıtlı). İkisi yan yana koşar,
+    # canlı karne hangisi baş köşeye onu söyler.
+    _tav_c1, _tav_c2 = st.columns(2)
+    with _tav_c1:
+        _render_tavan_adaylari_panel()
+    with _tav_c2:
+        _render_flow_leaders_panel()
 
     st.markdown("<hr style='margin:12px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
 
@@ -31624,6 +31629,60 @@ def _tav_hikaye(r):
     if k == 'D':
         return f"52H'nin %{r['pos_52h']}'inde · RSI {r['RSI']} · sessiz"
     return ""
+
+def _render_flow_leaders_panel():
+    """💧 PARA AKIŞI LİDERLERİ — CMF (para akışı) + momentum (trend), büyük-cap, manipülasyon/
+    tavan filtreli. 14 ay backtest + rejim testinde tutan combo. flow_leaders tablosundan
+    okur (universe_snapshot --publish + weekly_list --leaders nightly üretir)."""
+    try:
+        _flc = sqlite3.connect(DB_FILE)
+        _rows = _flc.execute("SELECT rank,symbol,cmf_pct,mom_pct FROM flow_leaders "
+                             "WHERE snap_date=(SELECT MAX(snap_date) FROM flow_leaders) ORDER BY rank").fetchall()
+        _sdr = _flc.execute("SELECT MAX(snap_date) FROM flow_leaders").fetchone()
+        _flc.close()
+        _sd = _sdr[0] if _sdr else None
+    except Exception:
+        _rows, _sd = [], None
+    try:
+        _ds = datetime.strptime(_sd, '%Y-%m-%d').strftime('%d.%m.%Y') if _sd else ''
+    except Exception:
+        _ds = _sd or ''
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, rgba(6,182,212,0.12) 0%, rgba(16,185,129,0.05) 100%);
+                border: 1px solid rgba(6,182,212,0.30); border-radius: 10px;
+                padding: 8px 14px; margin-top: 12px; margin-bottom: 8px;
+                display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div style="font-weight: 800; font-size: 0.95rem; color: #06b6d4; letter-spacing: 0.3px; white-space:nowrap;">
+            💧 PARA AKIŞI LİDERLERİ
+        </div>
+        <div style="font-size:0.7rem; color:#94a3b8; font-style:italic; flex:1; min-width:120px;">
+            Akıllı para (CMF) + yükselen trend · büyük-cap · backtest-kanıtlı
+        </div>
+        <div style="font-size:0.68rem; color:#64748b; white-space:nowrap;">{_ds} · CMF+momentum · 14ay backtest-kanıtlı</div>
+    </div>
+    """, unsafe_allow_html=True)
+    if not _rows:
+        st.caption("Para akışı listesi henüz üretilmedi (her gece güncellenir).")
+        return
+    _items = ""
+    for _rank, _sym, _cmf, _mom in _rows:
+        _items += (
+            f'<div style="display:flex; align-items:center; gap:8px; padding:5px 10px;'
+            f'border-bottom:1px solid rgba(255,255,255,0.05);">'
+            f'<span style="color:#475569; font-size:0.72rem; width:18px; font-weight:700;">{_rank}</span>'
+            f'<span style="color:#e2e8f0; font-weight:800; font-size:0.86rem; width:66px;">{_sym.replace(".IS","")}</span>'
+            f'<span style="background:rgba(6,182,212,0.15); color:#22d3ee; border-radius:5px;'
+            f'padding:1px 7px; font-size:0.7rem; font-weight:700;">akış {_cmf:.0f}</span>'
+            f'<span style="color:#10b981; font-size:0.72rem; font-weight:700;">trend +%{_mom:.0f}</span>'
+            f'</div>'
+        )
+    st.markdown(
+        f'<div style="background:#0a0f1a; border:1px solid rgba(6,182,212,0.20); border-radius:8px; overflow:hidden;">{_items}</div>'
+        f'<div style="font-size:0.66rem; color:#64748b; font-style:italic; margin-top:6px; padding:0 4px;">'
+        f'Tek faktör listesi (al-sat sinyali değil); haftalık karne birikiyor. CMF = tek rejim-dayanıklı sinyal.</div>',
+        unsafe_allow_html=True
+    )
+
 
 def _render_tavan_adaylari_panel():
     """TOP 30 tavan adayları. Master Scan çalıştırdıysa session_state'ten okur,
