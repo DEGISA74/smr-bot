@@ -1,0 +1,10 @@
+[Unit]
+Description=SMR WeekTweet timer (Cmt+Paz 10:00 Istanbul = 07:00 UTC)
+
+[Timer]
+# VPS UTC; Istanbul = UTC+3 (kalici, DST yok). 07:00 UTC = 10:00 Istanbul.
+OnCalendar=Sat,Sun *-*-* 07:00:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

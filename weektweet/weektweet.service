@@ -1,0 +1,13 @@
+[Unit]
+Description=SMR WeekTweet (hafta sonu ansiklopedik thread taslagi -> admin Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=wm11tr
+WorkingDirectory=/home/wm11tr/weektweet
+EnvironmentFile=/home/wm11tr/weektweet/.env
+ExecStart=/home/wm11tr/insider/venv/bin/python /home/wm11tr/weektweet/weektweet.py
+StandardOutput=append:/home/wm11tr/weektweet/weektweet.log
+StandardError=append:/home/wm11tr/weektweet/weektweet.log
