@@ -359,18 +359,6 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
     return ""
 
 
-# ─── SMR ELITE GÖRSELİ — yeni Plotly/chromium infografik paneli ─────────────
-def _render_elite_infografik(ticker: str):
-    """SMR ELITE için yeni görsel paneli (app.py 'Görsel Analiz' infografiği) PNG bayt olarak üretir.
-    Başarısızsa (chromium yok / parquet verisi yok) None → çağıran eski matplotlib görseline düşer."""
-    try:
-        import infografik_build as _ib
-        return _ib.render_bytes(ticker)
-    except Exception as e:
-        log.warning(f"[{ticker}] ELITE infografik render hatası: {e}")
-        return None
-
-
 # ─── CORE ANALİZ (smr_core.py üzerinden) ────────────────────────────────────
 async def get_analysis(ticker: str, tier: str = "free") -> tuple:
     """
@@ -402,25 +390,6 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
             if df is None or len(df) < 60:
                 log.warning(f"[{ticker}] Yetersiz veri — analiz iptal")
                 return None, "", ""
-
-            # ── SMR ELITE → YENİ görsel panel (Plotly/chromium infografik) ──────
-            # Eski matplotlib görselinin (generate_chart) yerini alır. Render başarısız
-            # olursa (chromium yok / parquet yok) img_bytes değişmez → eski görsel korunur.
-            if tier == "elite":
-                try:
-                    _ig_bytes = await asyncio.wait_for(
-                        loop.run_in_executor(None, lambda: _render_elite_infografik(ticker)),
-                        timeout=90
-                    )
-                    if _ig_bytes:
-                        img_bytes = _ig_bytes
-                        log.info(f"[{ticker}] ELITE yeni infografik paneli kullanıldı ({len(_ig_bytes)} bayt)")
-                    else:
-                        log.info(f"[{ticker}] ELITE infografik üretilemedi — eski görsele düşüldü")
-                except asyncio.TimeoutError:
-                    log.warning(f"[{ticker}] ELITE infografik 90sn'de yetişemedi — eski görsel")
-                except Exception as _e_ig:
-                    log.warning(f"[{ticker}] ELITE infografik hatası — eski görsel: {_e_ig}")
 
             # Teknik Özet — FREE / PRO / ELITE için aynı kısa kart
             ict_text = await loop.run_in_executor(
