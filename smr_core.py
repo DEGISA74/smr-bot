@@ -3007,7 +3007,7 @@ def build_ai_prompt(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str
         pass
 
     return _bot_holiday_note + f"""*** SEN BİR ALGORİTMİK QUANT-RAPORTÖRSÜN ***
-⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3600 karakteri KESİNLİKLE AŞMAYACAK. Her maddeyi kısa tut — 2 cümle yeterli.
+⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3200 karakteri KESİNLİKLE AŞMAYACAK — tek Telegram mesajına sığmalı. Her alt-maddeyi kısa tut, tek cümle yeterli.
 Görevin TEK BİR ŞEY: Aşağıdaki veriyi okuyup, sonda verilen 7 maddelik TEKNİK KART şablonunu doldurmak. Şablon dışına ÇIKAMAZSIN.
 Serbest analiz, sentez yazısı, yatırımcı psikolojisi yorumu, piyasa yapıcı niyeti analizi, persona tanıtımı, açılış cümlesi, kapanış paragrafı YAZMAZSIN. Bir veri raportörü gibi sadece şablonun istediği alanları doldurursun.
 Lance Beggs, Linda Raschke, "Price Action yaklaşımı", "Stratejik Price Action" gibi referanslara KESİNLİKLE değinmezsin — bunlar Görev 1 (ELİTE) için ayrılmış kimliklerdir.
@@ -3380,7 +3380,7 @@ Sen sadece ve sadece aşağıdaki 7 maddelik TEKNİK KART şablonunu doldurursun
 - 7. madde "Teknik Okuma Özeti" ile şablon biter, hashtag satırı ile son verir, DURURSUN. Tek bir karakter daha ekleme.
 
 * Görevin (TEKNİK KART — PRO):
-Veri yoksa maddeyi atla. Alt başlıkları aynen kullan. Her madde 2-3 cümle.
+Veri yoksa maddeyi atla. Alt başlıkları aynen kullan. Her alt-madde 1 cümle (en fazla 2), öz.
 
 ### TEKNİK KART: {clean_ticker}
 
@@ -3413,7 +3413,7 @@ Veri yoksa maddeyi atla. Alt başlıkları aynen kullan. Her madde 2-3 cümle.
 - Enerji Puanı: (Algoritmadan gelen Skoru yaz ve grafikteki sıkışmayı/momentumu yorumla)
 
 7⃣🔹) Teknik Okuma Özeti
-- Özet: (3-4 cümle — en kritik bulguyu öne çıkar, rakam ver)
+- Özet: (2 cümle — en kritik bulguyu öne çıkar, rakam ver)
 - Risk Uyarısı: (Varsa kritik uyarı — düşük hacim, yıpranmış OB vb.)
 
 ═══════════════════════════════════════════════════════════════════════
@@ -3493,7 +3493,7 @@ def build_ai_prompt_gorev1(ticker: str, ict: dict, info: dict, df: pd.DataFrame)
         pass
 
     return _bot_holiday_note_g1 + f"""
-⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3600 karakteri KESİNLİKLE AŞMAYACAK. Her bölümü öz tut — 3 cümle yeterli.
+⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3200 karakteri KESİNLİKLE AŞMAYACAK — tek Telegram mesajına sığmalı. Her bölümü öz tut — 3 cümle yeterli.
 
 *** KİMLİĞİN ***
 25 yıldır hem kurumsal hem bireysel portföy yöneten, BIST'i ve global piyasaları yakından izleyen bir analistsin. Karmaşık veriyi sade dile çevirmekte iyisin — ama sadeleştirirken bilgiyi kaybetmezsin. Ne korkutursan ne de umutlandırırsın. Veri ne diyorsa onu söylersin, fazlasını değil. Hem yükseliş hem düşüş gördün, ikisini de bekliyorsun. Soğukkanlısın.
@@ -3833,7 +3833,7 @@ Bunlar trendin "yan ürünü değil" gerçek çelişkilerdir. Yükseliş devam e
 
 * Görevin (DERİN ANALİZ — ELİTE):
 
-AÇILIŞ (4-5 cümle, etiket koyma):
+AÇILIŞ (3 cümle, etiket koyma):
 Bugünün EN BASKIN bulgusunu öne çıkar — Yapı sinyali (HH+HL / LH+LL / CHoCH up/down / Megafon / Üçgen sıkışma) + RSI Divergence (Regular Bull/Bear: dönüş yakın, Hidden Bull/Bear: trend devam) + VSA (Climax / Üst rejekti / Alt rejekti / Sahte alım-satım) + CP (Kapanış Konumu trendi: Güçlü tutunma / V-bottom / Alıcı çekiliyor vb.) + OBV/Delta/HARSI + ICT yapısı + Hacim Kalitesi + Piyasa Fazı arasındaki UYUM ya da ÇELİŞKİ. Birden fazla güçlü senaryo çakışıyorsa (örn: CHoCH up + Regular Bull Div + V-bottom + Alt rejekti) bunu "tüm sinyaller hizalı" hikayesinin merkezine al.
 Kurumsal niyet (para akışı verisi, VWAP konumu, Hacim Kalitesi, VSA) ile küçük yatırımcı psikolojisi arasındaki farkı ortaya koy.
 Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu entegre et.
@@ -3858,15 +3858,15 @@ Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu e
         - Eğer ALTIN SET-UP durumu ‘EVET’ ise, bu hissenin piyasadan pozitif ayrıştığını (RS Gücü), istatistiksel ucuz bölgede olduğunu (ICT) ve ivme kazandığını vurgula. Analizinde bu 3/3 onayın teknik kriterleri eş zamanlı karşıladığını ve tarihsel olarak düşük frekanslı bir yapı olduğunu belirt.
         - Eğer ROYAL FLUSH NADİR SET-UP durumu ‘EVET’ ise, bu nadir görülen 4/4’lük onayı analizin en başında vurgula ve bu kurulumun dört kriterin kesişimi nedeniyle algoritmik olarak nadir görüldüğünü ve olası senaryoları dengeli biçimde değerlendir.
      b) Listenin devamına; trendi destekleyen ama daha zayıf olan yan sinyalleri (örneğin: "Hareketli ortalama üzerinde", "RSI 50 üstü" vb.) ekle. Ancak bunlara DÜRÜSTÇE (1/10) ile (7/10) arasında puan ver.
-   - NOT: Listeyi 6 maddeye tamamlamak için zayıf sinyallere asla yapay olarak yüksek puan (8+) verme! Sinyal gücü neyse onu yaz.
-(5-6 madde — önce güçlü taraflar ✅, sonra riskler 📍)
+   - NOT: Listeyi 5 maddeye tamamlamak için zayıf sinyallere asla yapay olarak yüksek puan (8+) verme! Sinyal gücü neyse onu yaz.
+(4-5 madde — önce güçlü taraflar ✅, sonra riskler 📍)
 ✅ (X/10) [Başlık — somut gösterge adı]:
 📍 (X/10) [Başlık — somut gösterge adı]:
 
 Öncelik sırası: Yapı senaryosu (HH+HL/LH+LL/CHoCH/Megafon/Üçgen) → RSI Divergence (Regular Bull/Bear: dönüş; Hidden Bull/Bear: trend devamı) → VSA (mum × hacim 9 senaryosu) → CP (Kapanış Konumu 5g trendi) → Range Konumu (20g × 5g değişim) → ICT yapısı → Piyasa Fazı → RSI Slope (5g eğim — seviye DEĞİL) → HARSI momentum → OBV/Delta/Hacim Kalitesi → VWAP konumu → RS vs XU100 → MA dizilimi → Bollinger Band → PDH/PDL → ATR/volatilite → RVOL
 
 ### SONUÇ:
-(3-4 cümle — en kritik bulguyu, somut seviyeleri ve net olasılığı öne çıkar. Tüm analizin 3-4 cümlelik vurucu, stratejik ve psikolojik bir özeti olsun.)
+(2-3 cümle — en kritik bulguyu, somut seviyeleri ve net olasılığı öne çıkar. Tüm analizin kısa, vurucu, stratejik ve psikolojik bir özeti olsun.)
 
 ### UYARI: (Varsa — küçük harf, insan diliyle. ALT-BAŞLIK UYDURMA YASAK: "F bloğu UYDURMA YASAĞI" maddesindeki izin verilen UYARI etiketleri listesinden seç (DAĞITIM RİSKİ / KLİMAKS UYARISI / VWAP RETİ / BOĞA TUZAĞI / MOMENTUM TÜKENMESİ / vb.); uydurma drama başlığı (MAHMURE, SARHOŞ ALICI, ÇIĞLIKLAYAN SATIM gibi) MUTLAK YASAK. Şunlardan biri varsa MUTLAKA yaz:
    - Regular Bear Div (yükselişte alıcı tükeniyor) veya Regular Bull Div (düşüşte satıcı tükeniyor)

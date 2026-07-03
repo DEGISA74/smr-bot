@@ -456,7 +456,8 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
 def format_ai_message(ticker: str, raw_text: str, tier: str = "pro") -> list[str]:
     """
     Gemini'den gelen AI metnini Telegram için hazırla.
-    Max 4096 karakter olan Telegram mesaj limiti aşılmasın diye böler.
+    Her zaman TEK parça döner — sığmazsa kapanış (disclaimer + hashtag) korunarak
+    gövde sondan cümle sınırında kırpılır. (Eskiden 4096'yı aşınca ikiye bölüyordu.)
     """
     if not raw_text:
         return []
@@ -491,25 +492,44 @@ def format_ai_message(ticker: str, raw_text: str, tier: str = "pro") -> list[str
         prev_empty = is_empty
     cleaned = "\n".join(cleaned_lines).strip()
 
-    # Telegram 4096 karakter limiti — gerekirse parçala
-    MAX_LEN = 3800
-    parts = []
+    # ── TEK PARÇA GARANTİSİ ──────────────────────────────────────────────────
+    # Bülten + interaktif kart HER ZAMAN tek Telegram mesajı olarak gider (artık
+    # ikiye bölünmüyor). Telegram sınırı 4096 kod-birimi; emoji payı için 4000'de
+    # tutuyoruz. İçerik sığmazsa: yasal kapanış bloğunu (ayraç + disclaimer +
+    # hashtag) KORU, gövdeyi sondan cümle sınırında kırp.
+    MAX_LEN = 4000
     full_text = header + intro + cleaned
 
     if len(full_text) <= MAX_LEN:
-        parts.append(full_text)
+        return [full_text]
+
+    # Kapanış bloğunu ayır: son 8 satır içindeki yatay ayraç çizgisinden itibaren
+    # gelen her şey (disclaimer + hashtag) footer sayılır ve korunur.
+    _lines = full_text.split("\n")
+    _footer_at = None
+    for _i in range(len(_lines) - 1, max(-1, len(_lines) - 9), -1):
+        _s = _lines[_i].strip()
+        if len(_s) >= 3 and set(_s) <= set("-─═—_•. "):
+            _footer_at = _i
+            break
+    if _footer_at is not None:
+        footer = "\n".join(_lines[_footer_at:]).rstrip()
+        body   = "\n".join(_lines[:_footer_at]).rstrip()
     else:
-        # İlk parça header ile
-        parts.append(header + cleaned[:MAX_LEN - len(header)])
-        remaining = cleaned[MAX_LEN - len(header):]
+        footer = ""
+        body   = full_text
 
-        # Kalan parçalar
-        while remaining:
-            chunk = remaining[:MAX_LEN]
-            parts.append(chunk)
-            remaining = remaining[MAX_LEN:]
+    budget = MAX_LEN - (len(footer) + 2 if footer else 0) - 2  # "\n…" payı
+    if len(body) > budget:
+        body = body[:budget]
+        cut = max(body.rfind("\n"), body.rfind(". "),
+                  body.rfind("! "), body.rfind("? "))
+        if cut > budget * 0.5:
+            body = body[:cut + 1]
+        body = body.rstrip() + "\n…"
 
-    return parts
+    result = body + (("\n" + footer) if footer else "")
+    return [result[:MAX_LEN]]
 
 
 # ─── TELEGRAM HANDLER ────────────────────────────────────────────────────────
