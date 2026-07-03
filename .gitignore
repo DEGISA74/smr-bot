@@ -60,3 +60,6 @@ public/frontend/latest.json
 
 # Tavan kalibrasyon önerisi (VPS'te üretilir)
 tavan_weights_onerilen.json
+
+# Tavan canli takip state (VPS'te birikir)
+tavan_takip.json

@@ -18,9 +18,8 @@ warnings.filterwarnings('ignore')
 VERILER = 'veriler'
 
 
-# ───────────────────── Ana motor ─────────────────────
-def run(target_date=None, top_n=30, min_vol_tl=te.MIN_VOL_TL):
-    print('Veriler yükleniyor...')
+# ───────────────────── Tarama (I/O'suz, tekrar kullanılabilir) ─────────────────────
+def _load_all():
     ALL = {}
     for f in glob.glob(f'{VERILER}/*.IS_1d.parquet'):
         tk = os.path.basename(f).replace('.IS_1d.parquet', '')
@@ -30,9 +29,16 @@ def run(target_date=None, top_n=30, min_vol_tl=te.MIN_VOL_TL):
                 ALL[tk] = df
         except Exception:
             pass
-    print(f'{len(ALL)} hisse yüklendi.')
+    return ALL
 
-    # Hedef gün
+
+def scan(target_date=None, min_vol_tl=te.MIN_VOL_TL, ALL=None):
+    """Bir gün için skor DataFrame'i döner (yazma/print YOK).
+    Döner: (df, target_ts, rejim, chg). tavan_tracker ve run() bunu kullanır."""
+    if ALL is None:
+        ALL = _load_all()
+    if not ALL:
+        return pd.DataFrame(), None, 'BILINMEZ', 0.0
     ref = ALL['AKBNK'] if 'AKBNK' in ALL else next(iter(ALL.values()))
     if target_date is None:
         target = ref.index[-1]
@@ -40,50 +46,50 @@ def run(target_date=None, top_n=30, min_vol_tl=te.MIN_VOL_TL):
         target = pd.Timestamp(target_date)
         if target not in ref.index:
             target = ref.index[ref.index <= target][-1]
-    print(f'\n=== HEDEF GÜN: {target.date()} ({target.strftime("%A")}) ===')
 
-    # Rejim (XU100 son 10g)
     xu = ALL.get('XU100')
     if xu is not None and target in xu.index:
         i_xu = xu.index.get_loc(target)
         rejim, chg = te.detect_rejim(xu['Close'], i_xu, lookback=10)
-        print(f'Rejim: {rejim} (XU100 10g {chg:+.2f}%)')
     else:
-        rejim, chg = 'BILINMEZ', 0
-        print('Rejim: BİLİNMEZ (XU100 verisi yok)')
-
+        rejim, chg = 'BILINMEZ', 0.0
     agirlik = te.REJIM_AGIRLIK[rejim]
 
-    # Tarama
     rows = []
     for tk, df in ALL.items():
+        if tk in ('XU100', 'XU030', 'XU050', 'XBANK', 'XUSIN', 'XUMAL'):
+            continue
         if target not in df.index:
             continue
         i = df.index.get_loc(target)
         f = te.features(df, i)
-        if f is None:
+        if f is None or f['vol_tl'] < min_vol_tl:
             continue
-        if f['vol_tl'] < min_vol_tl:
-            continue
-
         sc = te.score_row(f, agirlik)
         rows.append({
-            'tk': tk,
-            'fiyat': round(f['close'], 2),
-            'kat': sc['kat'],
-            'skor': round(sc['skor'], 1),
+            'tk': tk, 'fiyat': round(f['close'], 2),
+            'kat': sc['kat'], 'skor': round(sc['skor'], 1),
             'A': round(sc['A'], 0), 'C': round(sc['C'], 0),
             'E': round(sc['E'], 0), 'D': round(sc['D'], 0),
-            'RSI': round(f['rsi'], 0),
-            '52H%': round(f['pos_52h'], 0),
-            'BBrank': round(f['bb_rank'], 0),
-            'VolT': round(f['vr_t'], 2),
-            'NearH20': round(f['near_h20'], 0),
-            'Ret10g': round(f['ret_10g'], 1),
+            'RSI': round(f['rsi'], 0), '52H%': round(f['pos_52h'], 0),
+            'BBrank': round(f['bb_rank'], 0), 'VolT': round(f['vr_t'], 2),
+            'NearH20': round(f['near_h20'], 0), 'Ret10g': round(f['ret_10g'], 1),
             'vol_mTL': round(f['vol_tl'] / 1e6, 1),
         })
+    df = pd.DataFrame(rows).sort_values('skor', ascending=False).reset_index(drop=True)
+    return df, target, rejim, chg
 
-    df = pd.DataFrame(rows).sort_values('skor', ascending=False)
+
+# ───────────────────── Ana motor (CLI + rapor) ─────────────────────
+def run(target_date=None, top_n=30, min_vol_tl=te.MIN_VOL_TL):
+    print('Veriler yükleniyor...')
+    df, target, rejim, chg = scan(target_date, min_vol_tl=min_vol_tl)
+    if target is None:
+        print('Veri yok (veriler/*.parquet bulunamadı).')
+        return df
+    print(f'\n=== HEDEF GÜN: {target.date()} ({target.strftime("%A")}) ===')
+    print(f'Rejim: {rejim} (XU100 10g {chg:+.2f}%)')
+    agirlik = te.REJIM_AGIRLIK[rejim]
     df.to_csv(f'tavan_skoru_{target.date()}.csv', index=False)
 
     # Rapor
