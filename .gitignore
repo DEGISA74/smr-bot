@@ -57,3 +57,6 @@ backtest_results.json
 # Site (dinamik cron çıktısı — VPS'te üretilir)
 public/frontend/latest.json
 # erken_radar_preview.json — local Master Scan üretir, git ile deploy edilir (gitignore'dan çıkarıldı)
+
+# Tavan kalibrasyon önerisi (VPS'te üretilir)
+tavan_weights_onerilen.json
