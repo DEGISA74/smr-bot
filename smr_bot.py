@@ -196,19 +196,51 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
         log.warning("Gemini API key ayarlanmamış — AI atlanıyor")
         return ""
 
-    max_retries = 5
+    # 30 Haz 2026: gemini-2.5-flash-lite her gün 19:00'da (Google'ın zirve saati)
+    # 503 "aşırı yük" dönüyordu. Eskiden aynı tıkalı modeli 3 kez 30/60/90sn
+    # bekleyerek tekrar deniyorduk → 220sn timeout → fallback metni gidiyordu.
+    # Gemini'de yük VE kota model-bazlı ayrı havuzlardadır; bu yüzden 503/429
+    # gelince beklemek yerine SIRADAKİ MODELE geçiyoruz (ayrı kapasite + ayrı kota).
+    # Her eleman: (model_adı, denemeden_önce_beklenecek_saniye).
+    _attempts = [
+        ("gemini-2.5-flash-lite",  0),   # birincil (ucuz, hızlı)
+        ("gemini-2.5-flash",       3),   # yedek 1 — ayrı kapasite havuzu
+        ("gemini-flash-latest",    3),   # yedek 2 — ayrı alias havuzu
+        ("gemini-2.5-flash-lite", 20),   # birincil ikinci tur (yük geçmiş olabilir)
+        ("gemini-2.5-flash",      20),   # son şans
+    ]
+    max_retries = len(_attempts)
+    _last_err = ""
 
-    for attempt in range(1, max_retries + 1):
+    for attempt, (_model_name, _wait_before) in enumerate(_attempts, 1):
+        if _wait_before:
+            await asyncio.sleep(_wait_before)
         try:
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: _genai_client.models.generate_content(
-                    model="gemini-2.5-flash-lite",
+                lambda mdl=_model_name: _genai_client.models.generate_content(
+                    model=mdl,
                     contents=gorev3_prompt,
-                    config=genai_types.GenerateContentConfig(max_output_tokens=3000)
+                    # 30 Haz 2026: gemini-2.5-flash "düşünen" model — düşünme açıkken
+                    # token bütçesini iç akıl yürütmeye harcayıp görünür metni
+                    # cümle ortasında kesiyordu (finish=MAX_TOKENS). Bu bir YAZI
+                    # görevi, akıl yürütmeye gerek yok → düşünmeyi kapat (budget=0),
+                    # tüm bütçe metne gitsin (test: 2064 kr kesik → 4517 kr tam).
+                    config=genai_types.GenerateContentConfig(
+                        max_output_tokens=3000,
+                        thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
+                    )
                 )
             )
             text = response.text.strip() if response.text else ""
+
+            # Model "başarılı" dönüp boş metin verebilir (ör. düşünme bütçesini
+            # tüketip çıktı bırakmaması). Boşsa hata sayıp sıradaki modele geç.
+            if not text:
+                _last_err = f"{_model_name}: boş yanıt"
+                log.warning(f"Gemini {_model_name} boş yanıt döndü (deneme {attempt}/{max_retries}) "
+                            f"— sıradaki modele geçiliyor")
+                continue
 
             # 🔒 DEFANSİF SIZINTI KORUMASI v2 — iç denetim/talimat blokları abone mesajına sızmasın
             # gemini-flash-lite (PRO) bazen "DON'T COPY THIS" uyarısını bile kopyalıyor.
@@ -218,6 +250,7 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
             import re as _re_leak
 
             _orig_len = len(text)
+            _pre_block = text   # 2 Tem 2026 — greedy blok-strip yanlış eşleşirse geri dönmek için
 
             # (1) Sızıntı bloğu: ═══...(KATMAN|İÇ DENETİM|ÇIKIŞ-ÖNCESI|ÜÇ SATIR|YASAKLI KELİME)...═══
             # Çoklu pass — iç içe / ardışık bloklar için
@@ -230,6 +263,15 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
                 if _new == text:
                     break
                 text = _new
+
+            # 🛡 GÜVENLİK KAPISI (2 Tem 2026): greedy blok regex bazen ilk ═══'den son ═══'e
+            # kadar HER ŞEYİ yiyip analizi yok ediyordu (XU100 ELITE bülteni: 5263→23 kr →
+            # abonelere boş mesaj gitti). İçeriğin %60'ından fazlası gittiyse = yanlış eşleşme
+            # → blok-strip'i İPTAL ET, sadece güvenli satır-bazlı temizliğe (aşağıda) güven.
+            if len(text) < 0.4 * _orig_len:
+                log.warning(f"🛡 Blok-strip fazla agresif ({_orig_len}→{len(text)} kr) — "
+                            f"iptal edildi, satır-bazlı temizliğe düşülüyor")
+                text = _pre_block
 
             # Tekil sızıntı satırları (blok dışında kalmış olabilir)
             # Satırın HERHANGİ BİR YERİNDE marker geçerse o satırın tamamı atılır
@@ -256,7 +298,7 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
             if _cut > 20:
                 log.warning(f"🔒 Sızıntı koruması: {_cut} karakter atıldı (prompt artığı temizlendi)")
 
-            log.info(f"AI üretildi: {len(text)} karakter (deneme {attempt})")
+            log.info(f"AI üretildi: {len(text)} karakter (deneme {attempt}, model={_model_name})")
 
             # Günlük sayacı artır ve eşik bildirimlerini gönder
             global _gemini_daily_count
@@ -292,24 +334,41 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
 
         except Exception as e:
             err_str = str(e)
-            # 429 = kota/rate limit → uzun bekleme
-            if "429" in err_str or "quota" in err_str.lower() or "ResourceExhausted" in err_str:
-                wait_sec = 60 * attempt  # 60/120/180/240/300sn
-                log.warning(f"Gemini kota aşımı (deneme {attempt}/{max_retries}) — {wait_sec}sn bekleniyor")
-                await asyncio.sleep(wait_sec)
-            # 500/502/503/504 = geçici sunucu sorunu → kısa bekleme
-            elif any(c in err_str for c in ("500", "502", "503", "504")) or \
-                 any(k in err_str for k in ("UNAVAILABLE", "INTERNAL", "high demand", "Bad Gateway", "Gateway Timeout")):
-                wait_sec = 30 * attempt  # 30/60/90/120/150sn
-                log.warning(f"Gemini geçici hata (deneme {attempt}/{max_retries}) — {wait_sec}sn bekleniyor: {err_str[:80]}")
-                await asyncio.sleep(wait_sec)
+            _last_err = err_str
+            _is_quota = ("429" in err_str or "quota" in err_str.lower()
+                         or "ResourceExhausted" in err_str)
+            _is_transient = (any(c in err_str for c in ("500", "502", "503", "504"))
+                             or any(k in err_str for k in (
+                                 "UNAVAILABLE", "INTERNAL", "high demand", "overloaded",
+                                 "Bad Gateway", "Gateway Timeout")))
+            if _is_quota or _is_transient:
+                # Aynı modeli bekleyip tekrar denemek yerine → sıradaki modele geç.
+                _reason = "kota/limit" if _is_quota else "geçici yük (503)"
+                log.warning(
+                    f"Gemini {_model_name} {_reason} (deneme {attempt}/{max_retries}) "
+                    f"— sıradaki modele geçiliyor: {err_str[:90]}"
+                )
+                continue
             else:
-                # 400/401/403/404 vb. — retry anlamsız
-                log.error(f"Gemini API hatası: {e}")
+                # 400/401/403/404 vb. — model değiştirmek de fayda etmez
+                log.error(f"Gemini API hatası ({_model_name}): {e}")
                 return ""
 
-    log.error("Gemini: max retry aşıldı — AI atlanıyor")
+    log.error(f"Gemini: tüm modeller denendi, hepsi başarısız — AI atlanıyor. "
+              f"Son hata: {_last_err[:120]}")
     return ""
+
+
+# ─── SMR ELITE GÖRSELİ — yeni Plotly/chromium infografik paneli ─────────────
+def _render_elite_infografik(ticker: str):
+    """SMR ELITE için yeni görsel paneli (app.py 'Görsel Analiz' infografiği) PNG bayt olarak üretir.
+    Başarısızsa (chromium yok / parquet verisi yok) None → çağıran eski matplotlib görseline düşer."""
+    try:
+        import infografik_build as _ib
+        return _ib.render_bytes(ticker)
+    except Exception as e:
+        log.warning(f"[{ticker}] ELITE infografik render hatası: {e}")
+        return None
 
 
 # ─── CORE ANALİZ (smr_core.py üzerinden) ────────────────────────────────────
@@ -344,6 +403,25 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
                 log.warning(f"[{ticker}] Yetersiz veri — analiz iptal")
                 return None, "", ""
 
+            # ── SMR ELITE → YENİ görsel panel (Plotly/chromium infografik) ──────
+            # Eski matplotlib görselinin (generate_chart) yerini alır. Render başarısız
+            # olursa (chromium yok / parquet yok) img_bytes değişmez → eski görsel korunur.
+            if tier == "elite":
+                try:
+                    _ig_bytes = await asyncio.wait_for(
+                        loop.run_in_executor(None, lambda: _render_elite_infografik(ticker)),
+                        timeout=90
+                    )
+                    if _ig_bytes:
+                        img_bytes = _ig_bytes
+                        log.info(f"[{ticker}] ELITE yeni infografik paneli kullanıldı ({len(_ig_bytes)} bayt)")
+                    else:
+                        log.info(f"[{ticker}] ELITE infografik üretilemedi — eski görsele düşüldü")
+                except asyncio.TimeoutError:
+                    log.warning(f"[{ticker}] ELITE infografik 90sn'de yetişemedi — eski görsel")
+                except Exception as _e_ig:
+                    log.warning(f"[{ticker}] ELITE infografik hatası — eski görsel: {_e_ig}")
+
             # Teknik Özet — FREE / PRO / ELITE için aynı kısa kart
             ict_text = await loop.run_in_executor(
                 None, lambda: smr_core.build_teknik_ozet(ticker, df, ict, info)
@@ -372,8 +450,12 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
 
                     if prompt:
                         log.info(f"[{ticker}] Gemini'ye gönderiliyor tier={tier} ({len(prompt)} kr)")
+                        # 26 Haz 2026: 120sn tavan, 503 (Google tarafı aşırı yük) yeniden
+                        # deneme bütçesiyle (30+60+90=180sn, 3 deneme) uyumsuzdu — 3. deneme
+                        # tamamlanamadan kesiliyordu (XU100 PRO+ELITE bülten fallback'e düştü,
+                        # 25-26 Haz art arda). 220sn: 3 tam deneme + ağ payı sığar.
                         ai_text = await asyncio.wait_for(
-                            call_gemini_gorev3(prompt, ticker), timeout=120
+                            call_gemini_gorev3(prompt, ticker), timeout=220
                         )
 
                 except asyncio.TimeoutError:
@@ -907,6 +989,126 @@ async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[ADMIN] adduser: @{uname} → {tier} ({days}g) bitiş:{expiry}")
 
 
+# ── 🎁 HEDİYE PRO (1 Tem 2026) — /hediye @kullanici → 3 günlük PRO + otomatik hoş geldin ──
+GIFT_TIER = "PRO"
+GIFT_DAYS = 3
+GIFT_NOTE = "🎁 hediye"
+
+def _pro_gift_welcome(invite_link: str = "") -> str:
+    """Hediye alan kullanıcıya gidecek tam hoş geldin metni (Markdown). 'Botu nasıl açarsın'
+    kısmı YOK — bu mesaj kişi zaten bot içindeyken (DM ya da /start sonrası) gösterilir."""
+    _inv = f"\n\n🔗 *PRO kanal daveti* (48 saat geçerli):\n{invite_link}" if invite_link else ""
+    return (
+        "🎁 *Sana 3 günlük SMR PRO hediye edildi!*\n\n"
+        "Merhaba! Smart Money Radar PRO'yu 3 gün boyunca ücretsiz kullanabilirsin. "
+        "Neler yapabileceğini anlatayım:\n\n"
+        "*💎 SMR PRO'da neler var*\n\n"
+        "📊 *Hisse Analizi* _(günde 3 hak)_\n"
+        "Bir hisse kodu yazıyorsun, o hissenin komple röntgenini çıkarıyorum:\n"
+        "• Temiz grafik — hareketli ortalamalar, POC/VWAP, kurumsal bölgeler\n"
+        "• *ICT Smart Money* — kurum blokları (OB), fiyat boşlukları (FVG), akıllı paranın yönü\n"
+        "• Teknik skor + risk profili + yakın/uzak hedefler\n"
+        "• *AI yorumu* — tüm veriyi okuyup sade Türkçeyle ne diyor, ne bekleniyor diye özetliyorum\n\n"
+        "📰 *Her akşam 19:00 — BIST100 Bülteni*\n"
+        "Gün kapanınca otomatik gelir: XU100 nereye gidiyor, hangi hisseler öne çıktı, "
+        "akıllı para nerede — piyasanın özeti tek mesajda.\n\n"
+        "*📲 Nasıl kullanılır — adım adım*\n"
+        "1️⃣ Bu sohbete bir *hisse kodu* yaz (örn. `THYAO`, `EREGL`) → analizini sana özel yollarım.\n"
+        "2️⃣ Her akşam 19:00'da bülten otomatik düşer — hiçbir şey yapma.\n"
+        "3️⃣ Aşağıdaki linkle PRO kanalına katıl."
+        f"{_inv}\n\n"
+        "⏳ 3 gün sonunda otomatik biter, hiçbir ücret çıkmaz. "
+        "Beğenirsen Twitter'da *@SMRadar\\_26*'nın kampanyalarını takip etmeye devam et. "
+        "Eminim yakında bir kampanya daha yapacaktır :)"
+    )
+
+async def _safe_dm(context, chat_id: int, text: str) -> bool:
+    """Markdown ile DM dener, parse hatası olursa düz metinle tekrar dener. Ulaşamazsa False."""
+    try:
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+        return True
+    except Exception:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=text)
+            return True
+        except Exception:
+            return False
+
+async def _fresh_pro_invite(context) -> str:
+    """48 saat geçerli tek-kullanımlık PRO kanal davet linki. Başarısızsa boş string."""
+    try:
+        from datetime import timedelta
+        expire_ts = int((datetime.now() + timedelta(hours=48)).timestamp())
+        inv = await context.bot.create_chat_invite_link(chat_id=PRO_ID, member_limit=1, expire_date=expire_ts)
+        return inv.invite_link
+    except Exception:
+        return ""
+
+async def cmd_hediye(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/hediye @kullanici — 3 günlük PRO hediye + otomatik hoş geldin (admin).
+    Kişi botu başlatmışsa mesajı direkt DM'ler; başlatmamışsa admin'e 'ilet' metni verir."""
+    msg = update.message or update.channel_post
+    if not msg:
+        return
+    user_id  = msg.from_user.id if msg.from_user else 0
+    username = msg.from_user.username or "" if msg.from_user else ""
+    if not _is_admin(user_id, username):
+        await msg.reply_text("⛔ Bu komut sadece admin içindir.")
+        return
+    args = context.args
+    if not args or not args[0].lstrip("@").strip():
+        await msg.reply_text("❌ Kullanım: /hediye @kullaniciadi\nÖrnek: /hediye @DenizDegirmenci  (3 günlük PRO otomatik)")
+        return
+    uname = args[0].lstrip("@").strip()
+    try:
+        expiry = smr_core.sub_add_by_username(uname, GIFT_TIER, GIFT_DAYS, GIFT_NOTE)
+    except Exception as e:
+        await msg.reply_text(f"❌ Hediye eklenemedi: {e}")
+        return
+    log.info(f"[HEDIYE] admin={username} → @{uname} PRO {GIFT_DAYS}g bitiş:{expiry}")
+
+    rec = smr_core.sub_get_by_username(uname)
+    started = bool(rec and rec.get("user_id", 0) > 0)
+    if started:
+        invite = await _fresh_pro_invite(context)
+        sent = await _safe_dm(context, rec["user_id"], _pro_gift_welcome(invite))
+        if sent:
+            await msg.reply_text(
+                f"✅ @{uname} → 3 günlük PRO verildi (bitiş `{expiry}`).\n"
+                f"📩 Hoş geldin mesajı + kanal daveti *ona gönderildi*.", parse_mode="Markdown")
+        else:
+            await msg.reply_text(
+                f"✅ @{uname} → 3 günlük PRO verildi (bitiş `{expiry}`).\n"
+                f"⚠️ Mesaj ulaşmadı — *şunu ona ilet:*\n\n"
+                f"🎁 Sana 3 günlük SMR PRO hediye edildi! Aç: t.me/SMRBorsaBot → *START*'a bas.",
+                parse_mode="Markdown")
+    else:
+        await msg.reply_text(
+            f"✅ @{uname} → 3 günlük PRO verildi (bitiş `{expiry}`).\n"
+            f"ℹ️ Kullanıcı botu henüz başlatmamış — bot ona doğrudan yazamaz. *Şu metni ona ilet:*\n\n"
+            f"🎁 Sana 3 günlük SMR PRO hediye edildi! Açmak için: t.me/SMRBorsaBot → *START*'a bas. "
+            f"Gerisi (analiz + bülten) otomatik gelir.\n\n"
+            f"_(START'a basınca tam tanıtım otomatik gidecek.)_",
+            parse_mode="Markdown")
+
+
+async def check_scheduled_messages(context: ContextTypes.DEFAULT_TYPE):
+    """Vakti gelen zamanlanmış mesajları gönderir (DB-tabanlı, restart'a dayanıklı, her 60sn).
+    send_at 'YYYY-MM-DD HH:MM' Europe/Istanbul yerel; bot kapalıyken vakti geçse bile açılınca yakalar."""
+    try:
+        import pytz
+        _now = datetime.now(pytz.timezone("Europe/Istanbul")).strftime("%Y-%m-%d %H:%M")
+        for m in smr_core.sched_due(_now):
+            try:
+                await context.bot.send_message(chat_id=m["chat_id"], text=m["text"])
+                smr_core.sched_mark_sent(m["id"])
+                log.info(f"[SCHED] gönderildi id={m['id']} chat={m['chat_id']}")
+            except Exception as e:
+                log.error(f"[SCHED] gönderilemedi id={m['id']} chat={m['chat_id']}: {e}")
+    except Exception as e:
+        log.warning(f"[SCHED] kontrol hatası: {e}")
+
+
 async def cmd_addcredit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/addcredit @kullanici 5  —  bugün için N ek sorgu hakkı verir."""
     msg     = update.message or update.channel_post
@@ -1010,6 +1212,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Tier'a göre tek kullanımlık davet linki oluştur
             tier_channel = {"FREE": FREE_ID, "PRO": PRO_ID, "ELITE": ELITE_ID}.get(tier)
             invite_text = ""
+            _raw_invite = ""
             if tier_channel:
                 try:
                     from datetime import timedelta
@@ -1017,15 +1220,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     inv = await context.bot.create_chat_invite_link(
                         chat_id=tier_channel, member_limit=1, expire_date=expire_ts
                     )
+                    _raw_invite = inv.invite_link
                     invite_text = f"\n\n📨 Kanala katılmak için (48 saat geçerli):\n{inv.invite_link}"
                 except Exception:
                     invite_text = "\n\n📨 Kanal linki için admin'e yaz: @SmartMoneyRadar26"
-            await msg.reply_text(
-                f"{emoji} *Aboneliğin aktif!*\n"
-                f"Tier: *{tier}* | Bitiş: `{expiry}`"
-                f"{invite_text}",
-                parse_mode="Markdown"
-            )
+            # 🎁 Hediye PRO (note='🎁 hediye') → tam hoş geldin tanıtımı gönder; değilse sade aktif mesajı
+            _note = (sub.get("note") or "").lower()
+            if tier == "PRO" and ("hediye" in _note or "🎁" in _note):
+                try:
+                    await msg.reply_text(_pro_gift_welcome(_raw_invite), parse_mode="Markdown")
+                except Exception:
+                    await msg.reply_text(_pro_gift_welcome(_raw_invite))
+            else:
+                await msg.reply_text(
+                    f"{emoji} *Aboneliğin aktif!*\n"
+                    f"Tier: *{tier}* | Bitiş: `{expiry}`"
+                    f"{invite_text}",
+                    parse_mode="Markdown"
+                )
         else:
             await msg.reply_text(
                 f"⚠️ *{tier}* aboneliğin `{expiry}` tarihinde sona erdi.\n"
@@ -2030,6 +2242,7 @@ def main():
     app.add_handler(CommandHandler("durum",      cmd_durum))
     app.add_handler(CommandHandler("myid",       cmd_myid))
     app.add_handler(CommandHandler("bulten",     cmd_bulten))
+    app.add_handler(CommandHandler("hediye",     cmd_hediye))
     app.add_handler(CommandHandler("leads",      cmd_leads))
 
     # Sohbet grubu moderasyonu
@@ -2112,6 +2325,15 @@ def main():
         name="site_monitor"
     )
     log.info("✅ Site monitor aktif (5dk) — smartmoneyradar.app")
+
+    # Zamanlanmış mesaj kontrolü — her 60sn (DB-tabanlı, restart'a dayanıklı)
+    app.job_queue.run_repeating(
+        check_scheduled_messages,
+        interval=60,
+        first=20,
+        name="scheduled_msgs"
+    )
+    log.info("✅ Zamanlanmış mesaj kontrolü aktif (60sn)")
 
     log.info("✅ Bot aktif. Bülten: Pzt-Cuma 19:00, Paz 21:00 | Renewal: 10:00 | Sıfırlama: 00:00 | KickExpired: 00:05")
 
