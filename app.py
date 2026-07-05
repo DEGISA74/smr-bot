@@ -10210,14 +10210,16 @@ def calculate_ict_deep_analysis(ticker):
         is_prev_bearish = prev_close < last_sl
         is_prev_bullish = prev_close > last_sh
 
-        last_candle_body = abs(open_.iloc[-1] - close.iloc[-1])
-        avg_vol_20 = df['Volume'].rolling(20).mean().iloc[-1]
-        vol_confirmed = float(df['Volume'].iloc[-1]) > avg_vol_20 * 1.2
-        if last_candle_body > avg_body_size.iloc[-1] * 1.1 and vol_confirmed:
-            displacement_txt = "🔥 Güçlü Displacement (Hacim Onaylı)"
-        elif last_candle_body > avg_body_size.iloc[-1] * 1.1:
-            displacement_txt = "⚠️ Hacimsiz Hareket (Sahte Olabilir)"
-        
+        # 5 Tem 2026 — Displacement ORTAK fonksiyona taşındı (ict_core).
+        # Bot'un 13 Haz endeks/0-hacim fix'i app'e geldi: fiyat-öncelikli ölçüm,
+        # hacim sadece teyit rozeti. XU100 gibi 0-hacim endekslerde "Hacimsiz
+        # Hareket (Sahte Olabilir)" yanlış etiketi artık üretilmez.
+        displacement_txt = ict_core.displacement_status(
+            open_.values, close.values, high.values, low.values,
+            df['Volume'].values,
+            float(atr) if pd.notna(atr) else 0.0,
+            float(avg_body_size.iloc[-1]) if pd.notna(avg_body_size.iloc[-1]) else 0.0)
+
         breakout_margin_up   = (curr_price - last_sh) / last_sh if last_sh > 0 else 0
         breakout_margin_down = (last_sl - curr_price) / last_sl if last_sl > 0 else 0
 
@@ -17340,7 +17342,7 @@ def render_ict_deep_panel(ticker):
         struct_desc = "Ana trendin tersine bir düzeltme hareketi (Internal Range) yaşanıyor olabilir. Piyasada kararsızlık hakim."
 
     energy_title = "ENERJİ DURUMU"
-    energy_desc = "Zayıf (Hacimsiz Hareket)\nMum gövdeleri küçük, hacimsiz bir hareket. Kurumsal oyuncular henüz oyuna tam girmemiş olabilir. Kırılımlar tuzak olabilir."
+    energy_desc = "Zayıf (Dar Hareket)\nMum gövdeleri küçük, hareket dar. Kurumsal oyuncular henüz oyuna tam girmemiş olabilir. Kırılımlar tuzak olabilir."
     if "Hacim Onaylı" in data['displacement']:
         energy_desc = "Güçlü (Hacim Onaylı)\nFiyat hem güçlü mum gövdesiyle hem de ortalamanın üzerinde hacimle hareket etti. Bu, 'Akıllı Para'nın (Smart Money) gerçek ayak sesidir."
     elif "Hacimsiz Hareket" in data['displacement']:

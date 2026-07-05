@@ -21,6 +21,8 @@ import logging
 import sqlite3
 import pathlib
 
+import ict_core  # 5 Tem 2026 — ICT paketi ORTAK modül (app paneli ile aynı kurallar)
+
 _SIGNALS_DB = pathlib.Path(__file__).parent / "signals.db"
 _CACHE_DIR   = pathlib.Path(os.environ.get("SMR_CACHE_DIR",
                 pathlib.Path(__file__).parent / "veriler"))
@@ -141,26 +143,26 @@ def sub_get(user_id: int) -> dict | None:
     """Kullanıcının abonelik kaydını döndürür. Yoksa None."""
     con = sqlite3.connect(_SIGNALS_DB)
     row = con.execute(
-        "SELECT user_id, username, tier, expiry_date FROM subscribers WHERE user_id=?",
+        "SELECT user_id, username, tier, expiry_date, note FROM subscribers WHERE user_id=?",
         (user_id,)
     ).fetchone()
     con.close()
     if not row:
         return None
-    return {"user_id": row[0], "username": row[1], "tier": row[2], "expiry_date": row[3]}
+    return {"user_id": row[0], "username": row[1], "tier": row[2], "expiry_date": row[3], "note": row[4]}
 
 def sub_get_by_username(username: str) -> dict | None:
     """Kullanıcı adıyla abone kaydını döndürür."""
     uname = username.lstrip("@").lower()
     con = sqlite3.connect(_SIGNALS_DB)
     row = con.execute(
-        "SELECT user_id, username, tier, expiry_date FROM subscribers WHERE LOWER(username)=?",
+        "SELECT user_id, username, tier, expiry_date, note FROM subscribers WHERE LOWER(username)=?",
         (uname,)
     ).fetchone()
     con.close()
     if not row:
         return None
-    return {"user_id": row[0], "username": row[1], "tier": row[2], "expiry_date": row[3]}
+    return {"user_id": row[0], "username": row[1], "tier": row[2], "expiry_date": row[3], "note": row[4]}
 
 def sub_is_active(user_id: int) -> tuple[bool, str]:
     """
@@ -341,6 +343,41 @@ def sub_add_by_username(username: str, tier: str, days: int, note: str = "") -> 
 
     con.commit(); con.close()
     return new_expiry
+
+
+# ── ⏰ ZAMANLANMIŞ MESAJ (1 Tem 2026) — DB-tabanlı, restart'a dayanıklı ──
+def _init_sched_table():
+    con = sqlite3.connect(_SIGNALS_DB)
+    con.execute("""CREATE TABLE IF NOT EXISTS scheduled_msgs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        send_at TEXT, chat_id INTEGER, text TEXT, sent INTEGER DEFAULT 0, added TEXT)""")
+    con.commit(); con.close()
+
+def sched_add(send_at: str, chat_id: int, text: str) -> int:
+    """Zamanlanmış mesaj ekle. send_at = 'YYYY-MM-DD HH:MM' (Europe/Istanbul yerel)."""
+    from datetime import datetime as _dt
+    _init_sched_table()
+    con = sqlite3.connect(_SIGNALS_DB)
+    cur = con.execute(
+        "INSERT INTO scheduled_msgs (send_at, chat_id, text, sent, added) VALUES (?,?,?,0,?)",
+        (send_at, int(chat_id), text, _dt.now().isoformat(timespec='seconds')))
+    con.commit(); rid = cur.lastrowid; con.close()
+    return rid
+
+def sched_due(now_iso: str) -> list:
+    """send_at <= now (Istanbul, 'YYYY-MM-DD HH:MM') ve henüz gönderilmemiş mesajlar."""
+    _init_sched_table()
+    con = sqlite3.connect(_SIGNALS_DB)
+    rows = con.execute(
+        "SELECT id, chat_id, text FROM scheduled_msgs WHERE sent=0 AND send_at<=? ORDER BY send_at",
+        (now_iso,)).fetchall()
+    con.close()
+    return [{"id": r[0], "chat_id": r[1], "text": r[2]} for r in rows]
+
+def sched_mark_sent(msg_id: int):
+    con = sqlite3.connect(_SIGNALS_DB)
+    con.execute("UPDATE scheduled_msgs SET sent=1 WHERE id=?", (int(msg_id),))
+    con.commit(); con.close()
 
 
 def log_scan_signal(symbol: str, scan_type: str, ict: dict, category: str = ""):
@@ -554,7 +591,11 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
                             df_isy.index = df_isy.index.tz_localize(None)
                         common = df.index.intersection(df_isy.index)
                         if len(common) > 0:
-                            df.loc[common, "Volume"] = df_isy.loc[common, "_vol"]
+                            # 5 Tem 2026 — dtype fix (app.py Oturum 23 C ile aynı):
+                            # Yahoo Volume int64, İsyatirim float64 → önce cast,
+                            # sonra atama. FutureWarning spam'i biter.
+                            df["Volume"] = df["Volume"].astype("float64")
+                            df.loc[common, "Volume"] = df_isy.loc[common, "_vol"].astype("float64")
             except Exception:
                 pass
 
@@ -803,14 +844,10 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
         atr = tr.rolling(14).mean().iloc[-1]
         avg_body_size = abs(open_ - close).rolling(20).mean()
 
-        sw_highs = []; sw_lows = []
-        for i in range(2, len(df) - 2):
-            try:
-                if high.iloc[i] >= max(high.iloc[i-2:i]) and high.iloc[i] >= max(high.iloc[i+1:i+3]):
-                    sw_highs.append((df.index[i], high.iloc[i], i))
-                if low.iloc[i] <= min(low.iloc[i-2:i]) and low.iloc[i] <= min(low.iloc[i+1:i+3]):
-                    sw_lows.append((df.index[i], low.iloc[i], i))
-            except: continue
+        # 5 Tem 2026 — Swing tespiti ict_core'dan (app ile AYNI): 5-bar fraktal
+        # + fitil uçları + volatiliteye uyarlanan pivot budama. Bias artık tek
+        # gürültülü pivota göre dönmez.
+        sw_highs, sw_lows = ict_core.ict_swings(df)
 
         if not sw_highs or not sw_lows:
             return error_ret
@@ -840,29 +877,14 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
         is_prev_bearish = prev_close < last_sl
         is_prev_bullish = prev_close > last_sh
 
-        last_candle_body = abs(open_.iloc[-1] - close.iloc[-1])
-        avg_vol_20 = df["Volume"].rolling(20).mean().iloc[-1]
-        _vol_last = float(df["Volume"].iloc[-1])
-        # (12 Haz Oturum 21) Displacement ENDEKS + GAP farkında.
-        # Eski metrik SADECE gün-içi gövde (open-close) + hacme bakıyordu → XU100
-        # gibi endekslerde Volume=0 ve gap-driven günlerde +%1.5'luk dönüş hareketini
-        # bile "Zayıf/Hacimsiz" sanıyordu (AI'ı yanlış 'dağıtım' yorumuna itiyordu).
-        # Artık: hacim güvenilmezse gücü FİYATLA yargıla (gap dahil net hareket + range).
-        vol_confirmed = pd.notna(avg_vol_20) and avg_vol_20 > 0 and _vol_last > avg_vol_20 * 1.2
-        _net_move = abs((close.iloc[-1] - prev_close) / prev_close) if prev_close > 0 else 0.0
-        _day_range = float(high.iloc[-1] - low.iloc[-1])
-        _big_body = last_candle_body > avg_body_size.iloc[-1] * 1.1
-        _strong_range = bool(atr) and atr > 0 and _day_range > atr * 1.2
-        # Displacement FİYAT-öncelikli: büyük gövde VEYA (önceki kapanışa göre ≥%1
-        # net hareket [gap dahil] + geniş range). Hacim sadece TEYİT rozeti — endeks/
-        # 0-hacim barında "Hacimsiz/Zayıf" yanlış etiketi artık yok.
-        _price_strong = _big_body or (_net_move >= 0.01 and _strong_range)
-        if _price_strong and vol_confirmed:
-            displacement_txt = "🔥 Güçlü Displacement (Hacim Onaylı)"
-        elif _price_strong:
-            displacement_txt = "🔥 Güçlü Displacement (Fiyat Hareketi)"
-        else:
-            displacement_txt = "Zayıf (Dar Hareket)"
+        # 5 Tem 2026 — Displacement ORTAK fonksiyona taşındı (ict_core).
+        # 12 Haz'daki fiyat-öncelikli + endeks/0-hacim farkındalı mantık artık
+        # tek kaynakta; app paneli de aynı fonksiyonu kullanıyor.
+        displacement_txt = ict_core.displacement_status(
+            open_.values, close.values, high.values, low.values,
+            df["Volume"].values,
+            float(atr) if pd.notna(atr) else 0.0,
+            float(avg_body_size.iloc[-1]) if pd.notna(avg_body_size.iloc[-1]) else 0.0)
 
         bmu = (curr_price - last_sh) / last_sh if last_sh > 0 else 0
         bmd = (last_sl - curr_price) / last_sl if last_sl > 0 else 0
@@ -871,11 +893,16 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
             if is_prev_bearish:       structure = f"MSS (Trend Döndü) 🐂 | {dow_desc}"
             elif bmu < 0.005:         structure = f"⚠️ Zayıf Kırılım — Onay Bekleniyor 🐂 | {dow_desc}"
             else:                     structure = f"BOS (Yükseliş Kırılımı) 🐂 | {dow_desc}"
+            # 5 Tem — kırılım onay katmanı (app ile aynı): kaç gündür üstte?
+            _bc = ict_core.break_confirm(close.values, float(last_sh), bullish=True)
+            structure += f" [{_bc['label']}]"
             bias = "bullish"
         elif curr_price < last_sl:
             if is_prev_bullish:       structure = f"MSS (Trend Döndü) 🐻 | {dow_desc}"
             elif bmd < 0.005:         structure = f"⚠️ Zayıf Kırılım — Onay Bekleniyor 🐻 | {dow_desc}"
             else:                     structure = f"BOS (Düşüş Kırılımı) 🐻 | {dow_desc}"
+            _bc = ict_core.break_confirm(close.values, float(last_sl), bullish=False)
+            structure += f" [{_bc['label']}]"
             bias = "bearish"
         else:
             if len(sw_highs) >= 2 and len(sw_lows) >= 2:
@@ -886,7 +913,12 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
                 else:                          structure = f"Internal Range | Dow: {dow_pattern}"
             else:
                 structure = f"Internal Range | Dow: {dow_pattern}"
-            bias = "bullish_retrace" if close.iloc[-1] > open_.iloc[-1] else "bearish_retrace"
+            # 5 Tem — sahte kırılım etiketi + tek-mum-rengi yerine Dow/eğim yönü
+            if ict_core.fake_break(close.values, float(last_sh), bullish=True):
+                structure = f"🪤 Sahte Yukarı Kırılım (tuzak olabilir) | {structure}"
+            elif ict_core.fake_break(close.values, float(last_sl), bullish=False):
+                structure = f"🪤 Sahte Aşağı Kırılım (silkeleme) | {structure}"
+            bias = ict_core.retrace_bias(close.values, dow_desc)
 
         # Mıknatıs hedefi
         next_bsl = min([h[1] for h in sw_highs if h[1] > curr_price], default=float(high.max()))
@@ -895,7 +927,8 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
 
         # EQH / EQL
         eqh_eql_txt = "Yok"; sweep_txt = "Yok"
-        tol = curr_price * 0.003
+        # 5 Tem — eşitlik toleransı volatiliteye uyarlanır (eski sabit %0.3)
+        tol = curr_price * ict_core.eq_tolerance(close.values)
         if len(sw_lows) >= 2:
             l1v = sw_lows[-1][1]; l2v = sw_lows[-2][1]
             if abs(l1v - l2v) < tol: eqh_eql_txt = f"EQL (Eşit Dipler): {l1v:.2f}"
@@ -904,7 +937,9 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
             if abs(h1v - h2v) < tol:
                 eqh_eql_txt = f"EQH (Eşit Tepeler): {h1v:.2f}" if eqh_eql_txt == "Yok" else eqh_eql_txt + f" | EQH: {h1v:.2f}"
 
-        recent_lows = low.iloc[-3:]; recent_highs = high.iloc[-3:]
+        # 5 Tem — sweep penceresi volatiliteye uyarlanır (oynak 3 / sakin 5 bar)
+        _sw_win = ict_core.sweep_window(close.values)
+        recent_lows = low.iloc[-_sw_win:]; recent_highs = high.iloc[-_sw_win:]
         if (recent_highs.max() > last_sh) and (close.iloc[-1] < last_sh):
             sweep_txt = f"🧹 BSL Sweep (Tepe Avı): {last_sh:.2f}"
         elif (recent_lows.min() < last_sl) and (close.iloc[-1] > last_sl):
@@ -925,6 +960,11 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
                 gap = low.iloc[i-2] - high.iloc[i]
                 if gap > atr * 0.05:
                     bearish_fvgs.append({"top": low.iloc[i-2], "bot": high.iloc[i], "idx": i})
+
+        # 5 Tem — Mitigasyon filtresi: sonradan TAMAMEN doldurulan FVG "açık"
+        # değildir; test edilen etiketlenir (app ile aynı).
+        bullish_fvgs = ict_core.filter_open_fvgs(bullish_fvgs, low.values, high.values, bullish=True)
+        bearish_fvgs = ict_core.filter_open_fvgs(bearish_fvgs, low.values, high.values, bullish=False)
 
         active_ob_txt = "Yok"; mean_threshold = 0.0
         lookback = 20; start_idx = max(0, len(df) - lookback)
@@ -956,7 +996,8 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
         if bias in ("bullish", "bullish_retrace"):
             if bullish_fvgs:
                 f = bullish_fvgs[-1]
-                active_fvg_txt = f"Açık FVG var (Destek): {f['bot']:.2f} - {f['top']:.2f}"
+                _fst = " · test edildi" if f.get('state') == 'tested' else ""
+                active_fvg_txt = f"Açık FVG var (Destek): {f['bot']:.2f} - {f['top']:.2f}{_fst}"
                 fvg_bar_idx = f["idx"]; _fvg_l = f["bot"]; _fvg_h = f["top"]
             lowest_idx = df["Low"].iloc[start_idx:].idxmin()
             if isinstance(lowest_idx, pd.Timestamp): lowest_idx = df.index.get_loc(lowest_idx)
@@ -972,7 +1013,8 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
         elif bias in ("bearish", "bearish_retrace"):
             if bearish_fvgs:
                 f = bearish_fvgs[-1]
-                active_fvg_txt = f"Açık FVG var (Direnç): {f['bot']:.2f} - {f['top']:.2f}"
+                _fst = " · test edildi" if f.get('state') == 'tested' else ""
+                active_fvg_txt = f"Açık FVG var (Direnç): {f['bot']:.2f} - {f['top']:.2f}{_fst}"
                 fvg_bar_idx = f["idx"]; _fvg_l = f["bot"]; _fvg_h = f["top"]
             highest_idx = df["High"].iloc[start_idx:].idxmax()
             if isinstance(highest_idx, pd.Timestamp): highest_idx = df.index.get_loc(highest_idx)
@@ -987,7 +1029,9 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
 
         range_high = float(high.tail(60).max()); range_low = float(low.tail(60).min())
         range_loc = (curr_price - range_low) / (range_high - range_low) if (range_high - range_low) > 0 else 0.5
-        zone = "PREMIUM (Pahalı)" if range_loc > 0.5 else "DISCOUNT (Ucuz)"
+        # 5 Tem — üçlü bölge: %45-55 arası DENGE (app ile aynı; AI metni bölge
+        # adını olduğu gibi okur, setup şartları DENGE'de açılmaz — kasıtlı)
+        zone = ict_core.zone_of(range_loc)
 
         if mean_threshold == 0.0:
             mean_threshold = (range_high + range_low) / 2
@@ -1013,6 +1057,7 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
 
         # Setup kararı
         setup_type = "BEKLE"; entry_price = 0.0; stop_loss = 0.0; rr_ratio = 0.0
+        take_profit = 0.0
         final_target = magnet_target
         setup_desc = "İdeal bir setup (Entry) bekleniyor. Mevcut yön mıknatısı takip ediliyor."
 
@@ -1065,13 +1110,17 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
         struct_ssl_list = sorted([l[1] for l in sw_lows  if l[1] < curr_price * (1 - MIN_NEAR)], reverse=True)
 
         if "bearish" in bias:
-            final_target = float(nearest_ssl.iloc[0]) if len(nearest_ssl) > 0 else curr_price * (1 - MIN_NEAR * 2)
+            # 5 Tem — FIX: SHORT setup varsa kâr-al hedefi EZİLMEZ (app ile aynı)
+            _near_tgt = float(nearest_ssl.iloc[0]) if len(nearest_ssl) > 0 else curr_price * (1 - MIN_NEAR * 2)
+            final_target = take_profit if (setup_type == "SHORT" and take_profit > 0) else _near_tgt
             _far_ssl = [v for v in struct_ssl_list if v < final_target * (1 - MIN_FAR)]
             derin_hedef = _far_ssl[0] if _far_ssl else final_target * (1 - MIN_FAR)
             ileri_hedef = curr_price * 1.02
             safety_lvl  = float(nearest_bsl.iloc[0]) if len(nearest_bsl) > 0 else curr_price * (1 + MIN_NEAR)
         else:
-            final_target = float(nearest_bsl.iloc[0]) if len(nearest_bsl) > 0 else curr_price * (1 + MIN_NEAR * 2)
+            # 5 Tem — FIX: LONG setup varsa kâr-al hedefi EZİLMEZ (app ile aynı)
+            _near_tgt = float(nearest_bsl.iloc[0]) if len(nearest_bsl) > 0 else curr_price * (1 + MIN_NEAR * 2)
+            final_target = take_profit if (setup_type == "LONG" and take_profit > 0) else _near_tgt
             _far_bsl = [v for v in struct_bsl_list if v > final_target * (1 + MIN_FAR)]
             ileri_hedef = _far_bsl[0] if _far_bsl else final_target * (1 + MIN_FAR)
             derin_hedef = curr_price * 0.98
@@ -1111,7 +1160,16 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
         bull_range = f"{ft}–{ih}" if second_gap >= 0.5 else ft
         bear_range = f"{ft}–{dh}" if deep_gap   >= 0.5 else ft
 
-        if is_bullish and not is_premium:
+        if "DENGE" in zone:
+            # 5 Tem — DENGE bölgesi: ne ucuz ne pahalı; metin tarafsız (app ile aynı)
+            lines = [
+                f"Trend yukarı ancak fiyat 60 günlük aralığın ortasında (denge bölgesi) — ne ucuz ne pahalı. İlk izlenecek seviye {hedef_1_txt}; iptal noktası {safety_txt}.",
+                f"Yapı pozitif fakat fiyat denge bölgesinde: kurumsallar için ne cazip alım ne kâr-al noktası. {ft} üzeri kalıcılık yükselişi ivmelendirir; {safety_txt} altı yapıyı bozar.",
+            ] if is_bullish else [
+                f"Trend aşağı ve fiyat denge bölgesinde — satıcılar baskın ama fiyat ne pahalı ne ucuz. {ft} altına sarkma düşüşü derinleştirir; dönüş için {safety_txt} üzeri kapanış gerekir.",
+                f"Yapı negatif fakat fiyat aralığın ortasında. Kısa vadede {bear_range} bölgesi izlenmeli; {safety_txt} üzerinde kalıcılık dengeyi alıcılara çevirir.",
+            ]
+        elif is_bullish and not is_premium:
             lines = [
                 f"Trend yukarı (Bullish) ve fiyat cazip (Discount) bölgesinde. Kurumsal alım iştahı ivmeleniyor. İlk olarak {hedef_1_txt} doğru hareket, ardından {hedef_2_txt} yürüyüşü izlenebilir. Sermaye koruması için {safety_txt} yakından takip edilmeli.",
                 f"İdeal 'Smart Money' koşulları devrede: Yön yukarı, fiyat iskontolu. Toplanan emirlerle {hedef_1_txt} doğru likidite avı hedefleniyor. Olası tuzaklara karşı {safety_txt} seviyesinin altı yapısal iptal alanıdır.",
@@ -1144,7 +1202,8 @@ def calculate_ict_analysis(ticker: str, df: "pd.DataFrame | None" = None) -> dic
                 f"Aşırı satım bölgesi! Hedefler birbirine yakın ({bear_range}); büyük fonlar bu dar bantta stop avı yapabilir. Trend dönüşü için {safety_txt} üzerinde kalıcılık gerekli.",
             ]
 
-        bottom_line = random.choice(lines)
+        # 5 Tem — deterministik seçim: aynı hisse aynı gün hep AYNI cümle
+        bottom_line = random.Random(f"{ticker}|{df.index[-1]}").choice(lines)
 
         # PA override
         try:
@@ -3442,6 +3501,91 @@ Hashtag yanıtının SON satırıdır — sonrasında HİÇBİR ŞEY YAZMA.
 """
 
 
+# ── KANIT KATMANI — app.py'den port (19 Haz 2026, sadece ELITE/Görev 1) ──
+# #1 güç tag tek-hisse canlı; #3 DB köprüsü patron.db scan_signals'tan okur (tazelik kapılı).
+# _ER_GOOD: app.py ER_BACKTEST_SCORE'da puanı ≥45 olan senaryolar (iki-rejim kanıtlı). DRIFT
+# uyarısı: app.py ER_BACKTEST_SCORE değişirse burayı da güncelle.
+_ER_GOOD = {'B8', 'D2', 'C2', 'C5', 'C6', 'A2', 'B5', 'A1', 'A7', 'D1'}
+_SCANNER_NAMES_EV = {
+    'harmonik_confluence': 'Harmonik Confluence (geometrik dönüş bölgesi)',
+    'prelaunch_bos':       'Pre-Launch BOS (kurumsal kırılım başlangıcı)',
+    'minervini':           'Minervini SEPA (güçlü uzun-vade trend şablonu)',
+    'platin_setup':        'Platin Set-up (en güçlü kurulum sınıfı)',
+    'altin_setup':         'Altın Set-up (güçlü ama henüz pahalılaşmamış)',
+    'gizli_birikim':       'Gizli Birikim (sessiz kurumsal toplama)',
+    'vip_formasyon':       'VIP Formasyon (güçlü hisse + teknik formasyon)',
+}
+
+
+def _guc_tag_g1(df: pd.DataFrame) -> str:
+    """#1 — 52H/RSI KURULUM GÜCÜ (tek-hisse canlı, iki-rejim backtest kanıtlı)."""
+    try:
+        c = df["Close"]; seg = df.tail(252)
+        h, l, cv = float(seg["High"].max()), float(seg["Low"].min()), float(c.iloc[-1])
+        if h <= l:
+            return ""
+        p52 = (cv - l) / (h - l) * 100
+        d = c.diff(); g = d.where(d > 0, 0).rolling(14).mean(); ls = (-d.where(d < 0, 0)).rolling(14).mean()
+        rsi = float((100 - 100 / (1 + g / ls)).iloc[-1])
+        if p52 >= 60 and rsi >= 55:
+            lvl = "🟢 GÜÇLÜ kurulum (zirveye yakın + RSI güçlü)"
+        elif p52 < 40 or rsi < 45:
+            lvl = "🔴 ZAYIF kurulum (dipte / RSI zayıf)"
+        else:
+            lvl = "🟡 ORTA kurulum"
+        return (f"\n*** KURULUM GÜCÜ (iki-rejim backtest — 19 Haz 2026) ***\n"
+                f"52H konumu %{p52:.0f}, RSI {rsi:.0f} → {lvl}. "
+                f"Backtest dersi: güçlü kurulum düşüş ortamında bile getiride önde; zayıf kurulum yatay/düşüşte "
+                f"çöker (ama net YÜKSELİŞ trendinde dip alımı işe yarayabilir — peşinen reddetme). "
+                f"Bu gücü analizinin güven seviyesine yansıt.\n")
+    except Exception:
+        return ""
+
+
+def _db_evidence_g1(ticker: str) -> str:
+    """#3 — DB KÖPRÜSÜ: patron.db scan_signals'tan bu hissenin SON taramada hangi kanıtlı
+    taramalarda çıktığını okur. TAZELİK KAPISI ≤7 gün — bayatsa boş döner (zehir yok)."""
+    try:
+        import datetime as _dt
+        pdb = pathlib.Path(__file__).parent / "patron.db"
+        if not pdb.exists():
+            return ""
+        sym = ticker.replace(".IS", "")
+        # TAZELİK + .IS tutarsızlığı: son 7 günün TAMAMINA bak (tek güne değil — farklı scanner'lar
+        # sembolü .IS'li/.IS'siz tutar, MAX tek gün kanıtlı er'i kaçırabiliyordu).
+        cutoff = (_dt.date.today() - _dt.timedelta(days=7)).strftime("%Y-%m-%d")
+        con = sqlite3.connect(str(pdb)); cur = con.cursor()
+        cur.execute("SELECT DISTINCT scan_type, scan_date FROM scan_signals "
+                    "WHERE (symbol=? OR symbol=?) AND scan_date >= ?", (ticker, sym, cutoff))
+        rows = cur.fetchall()
+        con.close()
+        if not rows:
+            return ""   # son 7 günde kayıt yok (bayat/yok) → sus
+        types = {r[0] for r in rows}
+        last = max(r[1] for r in rows)
+        hits = []
+        for t in types:
+            if str(t).startswith("er_"):
+                code = str(t)[3:]
+                if code in _ER_GOOD:
+                    hits.append(f"Erken Radar {code} (backtest-kanıtlı senaryo)")
+            elif t in _SCANNER_NAMES_EV:
+                hits.append(_SCANNER_NAMES_EV[t])
+        if not hits:
+            return ""
+        return ("\n*** KANIT KATMANI (son tarama " + last + " — geçmiş backtest'te değer üretmiş kurulumlar) ***\n"
+                "Bu hisse son piyasa taramasında şu KANIT-tabanlı taramalarda çıktı:\n- " + "\n- ".join(hits) +
+                "\nBunları analizde bir GÜVEN katmanı olarak kullan (geçmişte kazandırmış kurulumlar) — "
+                "ama tek başına kehanet sayma, mevcut fiyat yapısıyla birlikte değerlendir.\n")
+    except Exception:
+        return ""
+
+
+def _evidence_block_g1(ticker: str, df: pd.DataFrame) -> str:
+    """ELITE prompt'una eklenen kanıt katmanı: güç tag (#1) + DB köprüsü (#3)."""
+    return _guc_tag_g1(df) + _db_evidence_g1(ticker)
+
+
 def build_ai_prompt_gorev1(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str:
     """
     Görev 1 — Derin Uzman Analiz (ELITE tier).
@@ -3450,6 +3594,9 @@ def build_ai_prompt_gorev1(ticker: str, ict: dict, info: dict, df: pd.DataFrame)
     if ict.get("status") != "OK":
         return ""
     data_block, clean_ticker, fiyat_str = _base_data_block(ticker, ict, info, df)
+
+    # KANIT KATMANI (19 Haz 2026 — app.py'den port, ELITE'e özel): güç tag + DB köprüsü
+    _evidence_g1 = _evidence_block_g1(ticker, df)
 
     # ── BIST Kapalı Gün — AI'ya kritik bağlam notu (ELITE prompt başına) ──
     _bot_holiday_note_g1 = ""
@@ -3830,6 +3977,7 @@ Bunlar trendin "yan ürünü değil" gerçek çelişkilerdir. Yükseliş devam e
 → Stopping/Climax Volume tespit edilmişse (dönüş ihtimali artar)
 
 {data_block}
+{_evidence_g1}
 
 * Görevin (DERİN ANALİZ — ELİTE):
 

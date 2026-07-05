@@ -174,6 +174,37 @@ def sweep_window(close_arr):
 
 
 # ---------------------------------------------------------------------------
+# Displacement — FİYAT-öncelikli ORTAK ölçüm (5 Tem 2026)
+# smr_core'un 13 Haz endeks/0-hacim fix'inin tek-kaynak hali: app paneli +
+# bot bülteni aynı fonksiyonu kullanır. Hacim sadece TEYİT rozetidir —
+# endeks/0-hacim barında "Hacimsiz Hareket" yanlış etiketi üretilmez.
+# ---------------------------------------------------------------------------
+def displacement_status(open_arr, close_arr, high_arr, low_arr, vol_arr, atr, avg_body_last):
+    try:
+        o = np.asarray(open_arr, dtype=float); c = np.asarray(close_arr, dtype=float)
+        h = np.asarray(high_arr, dtype=float); l = np.asarray(low_arr, dtype=float)
+        v = np.asarray(vol_arr, dtype=float)
+        if len(c) < 21:
+            return "Zayıf (Dar Hareket)"
+        body = abs(c[-1] - o[-1])
+        prev = c[-2]
+        net = abs((c[-1] - prev) / prev) if prev > 0 else 0.0
+        rng = float(h[-1] - l[-1])
+        v20 = float(np.nanmean(v[-21:-1]))
+        vol_ok = bool(v20 > 0 and v[-1] > v20 * 1.2)
+        big_body = bool(avg_body_last and avg_body_last > 0 and body > avg_body_last * 1.1)
+        strong_rng = bool(atr and atr > 0 and rng > atr * 1.2)
+        price_strong = big_body or (net >= 0.01 and strong_rng)
+        if price_strong and vol_ok:
+            return "🔥 Güçlü Displacement (Hacim Onaylı)"
+        if price_strong:
+            return "🔥 Güçlü Displacement (Fiyat Hareketi)"
+        return "Zayıf (Dar Hareket)"
+    except Exception:
+        return "Zayıf (Dar Hareket)"
+
+
+# ---------------------------------------------------------------------------
 # 9 — Bölge: üçlü (Premium / Denge / Discount)
 # ---------------------------------------------------------------------------
 def zone_of(range_loc):
