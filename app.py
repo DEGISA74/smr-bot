@@ -22,6 +22,22 @@ _TZ_ISTANBUL = pytz.timezone("Europe/Istanbul")
 import numpy as np
 import sqlite3
 import os
+import radar_core  # Fırsat Radarı formasyon motoru (firsat_radari botu ile paylaşımlı tek kaynak)
+import pattern_core  # 4 Tem 2026 — formasyon geliştirme paketi (ön-trend, hacim imzası, retest, adaptif eşik)
+import ict_core  # 4 Tem 2026 — ICT paneli geliştirme paketi (swing kalitesi, kırılım onayı, denge bölgesi)
+from data_policy import AUTO_ADJUST, drop_adj_close  # 3 Tem 2026 — veri politikası TEK KAYNAK (fetcher ile aynı)
+# 4 Tem 2026 — BÖLME ADIM 4: saf hesap fonksiyonları indicators.py içinde
+from indicators import (
+    _spike_dom_ratio, calculate_harsi, check_lazybear_squeeze_breakout, check_lazybear_squeeze,
+    compute_mfi, compute_relative_obv_state, compute_force_index_dual, compute_updown_volume_ratio,
+    compute_cmf, find_smart_sr_levels, detect_darvas_box, calculate_volume_delta, detect_classic_candle_patterns,
+    calculate_volume_profile_poc, calculate_full_volume_profile, calculate_multi_tf_pocs, calculate_anchored_vwap,
+    detect_naked_poc, detect_supply_demand_zones, _harmonik_52h_strength, calculate_supertrend,
+    calculate_fib_levels, calculate_z_score_live, _z_score_details, detect_market_regime)
+# 4 Tem 2026 — BÖLME ADIM 5: DB çekirdeği db_layer.py içinde
+from db_layer import (DB_FILE, log_error, init_db, _fetch_mkk_yabanci_rss,
+                      _compute_mkk_yabanci_signals, load_watchlist_db, add_watchlist_db,
+                      remove_watchlist_db, get_scanner_optimal_windows, get_scenario_ages_batch)
 import concurrent.futures
 import re
 import altair as alt
@@ -31,6 +47,22 @@ import base64
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+# ── KONSOL GÜRÜLTÜ SUSTURMA (24 Haz 2026) ─────────────────────────────────────
+# 1) pandas FutureWarning (int64↔float Volume atama vb.) — düzeltildi ama kalan
+#    izole yerler konsolu doldurmasın. 2) Streamlit "missing ScriptRunContext"
+#    (ThreadPoolExecutor işçileri st.* çağırınca) zararsız ama on binlerce satır
+#    basıyordu — Streamlit logger'ını ERROR'a çekerek sustur.
+import warnings as _warnings
+_warnings.simplefilter("ignore", category=FutureWarning)
+try:
+    import logging as _logging_init
+    for _noisy in ("streamlit.runtime.scriptrunner_utils.script_run_context",
+                   "streamlit.runtime.scriptrunner.script_run_context",
+                   "streamlit"):
+        _logging_init.getLogger(_noisy).setLevel(_logging_init.ERROR)
+except Exception:
+    pass
 
 # ── BIST Takvim Modülü (tatil / arefe / RVOL normalizer) ──────────────────────
 try:
@@ -63,6 +95,16 @@ _DEFAULT_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "veril
 CACHE_DIR = os.environ.get("SMR_CACHE_DIR", _DEFAULT_CACHE)
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _firsat_radar_scan():
+    """Fırsat Radarı — radar_core.scan_universe (firsat_radari botu ile AYNI motor).
+    Likit (≥500M) BIST formasyon kırılımlarını 3 kutuya ayırır: (hazir, sikis, kirdi, tarih)."""
+    try:
+        return radar_core.scan_universe(CACHE_DIR)
+    except Exception:
+        return ([], [], [], None)
 
 # Cache telemetri — bir oturum boyunca hit/miss sayacı (debug için)
 _CACHE_STATS = {'hit': 0, 'miss': 0, 'split_detected': 0}
@@ -104,20 +146,9 @@ else:
 # Sessizce yutulan hataları görünür kılmak için tek kaynak.
 # Kullanım: except Exception as e: log_error("scan_ict_batch", e, symbol)
 # Dosya: proje kökünde errors.log (gitignore'a eklenmeli).
-_ERROR_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "errors.log")
+# -> db_layer.py (Adim 5, 4 Tem 2026): _ERROR_LOG_PATH
 
-def log_error(where, exc, context=""):
-    """Yakalanan istisnayı errors.log'a tek satır olarak yazar.
-    where: fonksiyon/konum adı | exc: Exception nesnesi | context: opsiyonel ek bilgi (örn. ticker).
-    Loglamanın kendisi asla uygulamayı bozmamalı → tüm yazma try/except içinde."""
-    try:
-        _ts = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d %H:%M:%S")
-        _ctx = f" [{context}]" if context else ""
-        _line = f"{_ts} | {where}{_ctx} | {type(exc).__name__}: {exc}\n"
-        with open(_ERROR_LOG_PATH, "a", encoding="utf-8") as _f:
-            _f.write(_line)
-    except Exception:
-        pass  # log yazımı başarısızsa sessizce geç — uygulama akışı korunur
+# -> db_layer.py (Adim 5, 4 Tem 2026): log_error
 
 # ── TARAMA SONUCU AGRESİF CACHE (Piyasa Dışı Saatler) ───────────────────────
 SCAN_CACHE_DIR = os.path.join(CACHE_DIR, "scan_cache")
@@ -340,21 +371,31 @@ def _fetch_futures_volume_yahoo_active(symbol, period="6mo"):
         return None
     try:
         import yfinance as _yf
+        import logging as _lg0
+        # 2 Tem 2026 — Aday kontratların bir kısmı TASARIM GEREĞİ expired (GCM26 Haziran
+        # geçince boş döner). Fonksiyon bunu zaten `continue` ile atlıyor ama yfinance'in
+        # KENDİ logger'ı her expired probe'ta ERROR basıyordu (log spam). Probe boyunca sustur.
+        _yf_log = _lg0.getLogger("yfinance")
+        _yf_prev = _yf_log.level
+        _yf_log.setLevel(_lg0.CRITICAL)
         frames = []
-        for _c in candidates:
-            try:
-                _df = _yf.download(_c, period=period, progress=False, auto_adjust=False, threads=False)
-                if _df is None or _df.empty:
+        try:
+            for _c in candidates:
+                try:
+                    _df = _yf.download(_c, period=period, progress=False, auto_adjust=False, threads=False)
+                    if _df is None or _df.empty:
+                        continue
+                    if isinstance(_df.columns, pd.MultiIndex):
+                        _df.columns = _df.columns.get_level_values(0)
+                    if "Volume" not in _df.columns:
+                        continue
+                    _v = pd.to_numeric(_df["Volume"], errors="coerce").fillna(0)
+                    _v.name = _c
+                    frames.append(_v)
+                except Exception:
                     continue
-                if isinstance(_df.columns, pd.MultiIndex):
-                    _df.columns = _df.columns.get_level_values(0)
-                if "Volume" not in _df.columns:
-                    continue
-                _v = pd.to_numeric(_df["Volume"], errors="coerce").fillna(0)
-                _v.name = _c
-                frames.append(_v)
-            except Exception:
-                continue
+        finally:
+            _yf_log.setLevel(_yf_prev)      # yfinance logger seviyesini geri yükle
         if not frames:
             return None
         merged = pd.concat(frames, axis=1).fillna(0)
@@ -403,6 +444,39 @@ def _apply_futures_volume_override(df, symbol):
     return df
 
 
+# 2 Tem 2026 — ÖLÜ/DELISTED SEMBOL KARA LİSTESİ. Bu semboller her taramada
+# Yahoo+İsyatirim+borsapy üçüne de boşuna gidip "delisted/404" seli + yavaşlık +
+# log kirliliği üretiyordu. Ağ denemesi atlanır (cache varsa son bilinen veri gösterilir).
+# Yeni ölü sembol logda "possibly delisted / no 1y data" tekrarlarsa buraya EKLE (çıplak ad).
+_DEAD_SYMBOLS = frozenset({
+    "UMPAS", "ISATR", "ROYAL", "RTALB", "FRIGO", "GOKNR", "YYLGD", "LKMNH",
+})
+
+
+def _has_recent_gap(df, lookback_days=45):
+    """2 Tem 2026 — borsapy gap-fill'i SADECE gerçekten eksik işlem günü olan
+    sembollerde çağırmak için ucuz kapı. Önceden gap-fill HER BIST sembolü için
+    borsapy'a gidiyordu (yüzlerce çağrı → TradingView throttle → 'No data received').
+    Burada bist_calendar ile df'in son 45 gününde tamamlanmış (bugün HARİÇ) bir işlem
+    günü eksikse True döner → sadece o zaman borsapy. Şüphede False (borsapy'ı yorma)."""
+    try:
+        import bist_calendar as _bc
+        import datetime as _dt
+        if df is None or df.empty:
+            return False
+        have = set(pd.DatetimeIndex(df.index).normalize().date)
+        last = df.index[-1].date()
+        today = _dt.date.today()
+        d = last - _dt.timedelta(days=lookback_days)
+        while d < today:                       # bugünü hariç tut (oturmamış bar tetiklemesin)
+            if _bc.is_trading_day(d) and d not in have:
+                return True                     # tamamlanmış bir işlem günü eksik = delik
+            d += _dt.timedelta(days=1)
+        return False
+    except Exception:
+        return False
+
+
 def _apply_split_adjustments(df):
     """
     BIST bedelsiz artırım / bölünme tespiti ve geriye dönük fiyat düzeltmesi.
@@ -416,6 +490,12 @@ def _apply_split_adjustments(df):
     price_cols = [c for c in ['Open', 'High', 'Low', 'Close'] if c in df.columns]
     if 'Close' not in df.columns:
         return df
+    # 24 Haz 2026 — Volume int64'e float ratio atanınca her bölünmede FutureWarning
+    # üretiyordu (yüz binlerce konsol satırı → Master Scan boğuluyordu). Önce float64'e
+    # çevir ki tip uyumsuzluğu uyarısı çıkmasın.
+    for _c in price_cols + (['Volume'] if 'Volume' in df.columns else []):
+        if df[_c].dtype != 'float64':
+            df[_c] = df[_c].astype('float64')
     import logging as _lg
     for _ in range(10):  # max 10 bölünme — sonsuz döngü koruması
         closes = df['Close'].ffill().values
@@ -674,7 +754,7 @@ if SHOWCASE_MODE:
         with _fc2:
             _fin = st.text_input("E-posta", key="_free_email_input",
                                  label_visibility="collapsed", placeholder="ornek@mail.com")
-            if st.button("🚀 Ücretsiz Eriş", type="primary", use_container_width=True):
+            if st.button("🚀 Ücretsiz Eriş", type="primary", width='stretch'):
                 _fe2 = str(_fin or "").strip().lower()
                 if _fe2 and "@" in _fe2 and "." in _fe2.split("@")[-1]:
                     _free_record(_fe2)
@@ -732,7 +812,7 @@ elif _MM_FORCE or (MEMBER_MODE and not _mm_is_admin()):
         with _mm_cc:
             _mm_in = st.text_input("E-posta", key="_mm_email_input",
                                    label_visibility="collapsed", placeholder="ornek@mail.com")
-            if st.button("Giriş", type="primary", use_container_width=True):
+            if st.button("Giriş", type="primary", width='stretch'):
                 _mm_try = str(_mm_in or "").strip().lower()
                 _mm_r   = _mm_db.get(_mm_try)
                 if _mm_r and str(_mm_r.get("expires", "9999-12-31")) >= _mm_today:
@@ -1182,241 +1262,14 @@ section[data-testid="stSidebar"] > div:first-child {
 # ==============================================================================
 # 2. VERİTABANI VE LİSTELER
 # ==============================================================================
-DB_FILE = "patron.db"
+# -> db_layer.py (Adim 5, 4 Tem 2026): DB_FILE
 
 # ==============================================================================
 # BÖLÜM 3 — VERİTABANI (SQLite)
 # Sinyal geçmişi, izleme listesi ve performans takibi için SQLite bağlantısı.
 # signals.db ve patron.db burada yönetilir.
 # ==============================================================================
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('CREATE TABLE IF NOT EXISTS watchlist (symbol TEXT PRIMARY KEY)')
-    c.execute('''CREATE TABLE IF NOT EXISTS scan_signals (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        scan_date   TEXT NOT NULL,
-        symbol      TEXT NOT NULL,
-        scan_type   TEXT NOT NULL,
-        score       REAL,
-        bias        TEXT DEFAULT 'bullish',
-        entry_price REAL,
-        stop_level  REAL,
-        category    TEXT,
-        UNIQUE(scan_date, symbol, scan_type)
-    )''')
-    # 19 Haz 2026 — GOLD MINE VİTRİN LOG (meta-backtest): her Master Scan'de vitrinin gösterdiği
-    # top hisseler rank+puanla kaydedilir. Sonra signal_results JOIN ile "vitrin sıralaması
-    # gerçekten kazandırdı mı, rank1 > rank10 mu" ölçülür. confluence_count = kaç tarama çakıştı.
-    c.execute('''CREATE TABLE IF NOT EXISTS goldmine_log (
-        id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        scan_date        TEXT NOT NULL,
-        symbol           TEXT NOT NULL,
-        rank             INTEGER,
-        score            REAL,
-        scanner          TEXT,
-        confluence_count INTEGER,
-        unmeasured       INTEGER DEFAULT 0,
-        category         TEXT,
-        UNIQUE(scan_date, symbol)
-    )''')
-    # 19 Haz 2026 Faz 3 — ANALİZ LOG: hisse analiz edilince birleşik verdict snapshot (kanıt+risk).
-    # Sonra forward getiriyle "yüksek kanıt-skorlu + düşük riskli analizler tuttu mu" ölçülür (ürün isabeti).
-    c.execute('''CREATE TABLE IF NOT EXISTS analysis_log (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        scan_date     TEXT NOT NULL,
-        symbol        TEXT NOT NULL,
-        kanit_skoru   REAL,
-        guven         REAL,
-        master_score  REAL,
-        risk_level    TEXT,
-        liquidity_tier TEXT,
-        manip_risk    TEXT,
-        UNIQUE(scan_date, symbol)
-    )''')
-    # B4-1 (1 Haz 2026): OBV+CMF durumu kalibrasyon için. Eski tablo varsa idempotent ekle.
-    try:
-        c.execute('ALTER TABLE scan_signals ADD COLUMN obv_status TEXT')
-    except sqlite3.OperationalError:
-        pass  # kolon zaten var
-    # B4-2 (3 Haz 2026): FEATURE SNAPSHOT kolonları — başarılı sinyalleri ayıran
-    # özellikleri retroaktif analiz için kaydet. Scanner df'i bu kolonları içerirse yazılır,
-    # yoksa NULL kalır (geriye uyumlu). 2-3 hafta veri birikince:
-    #   SELECT scan_type, AVG(f_rsi), AVG(f_52h_pos)... FROM scan_signals sg
-    #   JOIN signal_results sr ON sg.id=sr.signal_id WHERE sr.hit_10g=1 vs hit_10g=0
-    # → başarılı vs başarısız sinyalin feature dağılımı çıkar, kriter tuning veri-tabanlı olur.
-    for _alter_col in [
-        'ALTER TABLE scan_signals ADD COLUMN f_52h_pos REAL',        # yıllık konum %
-        'ALTER TABLE scan_signals ADD COLUMN f_rsi REAL',            # 14g RSI
-        'ALTER TABLE scan_signals ADD COLUMN f_cmf_dual TEXT',       # 5g/20g CMF state (strong_pos/turning_up vs)
-        'ALTER TABLE scan_signals ADD COLUMN f_omi_sigma REAL',      # OBV Momentum Index σ
-        'ALTER TABLE scan_signals ADD COLUMN f_squeeze_days INTEGER',# BB ⊂ Keltner kaç gündür
-        'ALTER TABLE scan_signals ADD COLUMN f_vp_shape TEXT',       # Akümülasyon/Dağıtım/Denge
-        'ALTER TABLE scan_signals ADD COLUMN f_master_score REAL',   # Master Score (0-100)
-        # 6 Haz 2026 — POC tabanlı 3 backtest doğrulamalı flag (0/1, NULL if veri yok):
-        'ALTER TABLE scan_signals ADD COLUMN f_poc_magnet INTEGER',      # 20g POC altı + ana trend yukarı + stretched
-        'ALTER TABLE scan_signals ADD COLUMN f_poc_confluence INTEGER', # 20g/60g/250g POC spread < %2
-        'ALTER TABLE scan_signals ADD COLUMN f_avwap_test_zone INTEGER',# 52H zirve/dip aVWAP %2 içinde test
-        # 6 Haz 2026 Oturum 18+ — Master Score breakdown 4 alt skor (component winners/losers analizi için):
-        'ALTER TABLE scan_signals ADD COLUMN f_ms_trend REAL',          # 0-100
-        'ALTER TABLE scan_signals ADD COLUMN f_ms_momentum REAL',       # 0-100
-        'ALTER TABLE scan_signals ADD COLUMN f_ms_ict REAL',            # 0-100
-        'ALTER TABLE scan_signals ADD COLUMN f_ms_radar2 REAL',         # 0-100
-        # 8 Haz 2026 Oturum 19 — Dual-window feature genişlemesi (CMF disiplinini cum_delta + RSI'ya yay):
-        'ALTER TABLE scan_signals ADD COLUMN f_cum_delta_dual TEXT',    # 5g/20g cum_delta state (7 state, CMF ile aynı kalıp)
-        'ALTER TABLE scan_signals ADD COLUMN f_rsi_dual TEXT',          # RSI(5)/RSI(14) state (7 state — overbought/oversold/early/cooling/dip_recovery)
-        # 9 Haz 2026 Oturum 20 — Breakout state (Kibar Type 1): 0 forming · 1 testing · 2 breakout · 3 breakaway gap
-        'ALTER TABLE scan_signals ADD COLUMN f_breakout_state INTEGER',
-        # 9 Haz 2026 Oturum 20 son — SMC kurumsal 4 yeni flag (BACKTEST: Eylül 2026 ortası
-        # signal_returns × bu flag'ler JOIN ile her birinin BIST hit/ret katkısı ölçülecek):
-        'ALTER TABLE scan_signals ADD COLUMN f_at_vwap_minus_2sigma INTEGER',  # fiyat -2σ VWAP zonunda (≤ ±%0.5)
-        'ALTER TABLE scan_signals ADD COLUMN f_at_y_open INTEGER',             # Y-Open'a yakın (±%2 içinde)
-        'ALTER TABLE scan_signals ADD COLUMN f_near_ifvg INTEGER',             # inverse FVG'ye ±%2 içinde
-        'ALTER TABLE scan_signals ADD COLUMN f_breaker_block_active INTEGER',  # aktif BB zonunda ±%2 içinde
-        # 9 Haz 2026 Oturum 20 — KURUMSAL TAKİP (TEFAS + KAP) — 8 STRONG flag
-        # Eşikler: ≥3 fon (AUM≥100mn, pozisyon≥%1.5), buyback float≥%1, threshold %5/%10/%25 üstü
-        'ALTER TABLE scan_signals ADD COLUMN f_tefas_konsensus_alim INTEGER',  # ≥3 fon 5g pozitif (STRONG)
-        'ALTER TABLE scan_signals ADD COLUMN f_tefas_konsensus_satim INTEGER', # ≥3 fon 5g negatif (STRONG)
-        'ALTER TABLE scan_signals ADD COLUMN f_tefas_yeni_giris INTEGER',      # ≥2 büyük fon ilk pozisyon
-        'ALTER TABLE scan_signals ADD COLUMN f_buyback_aktif INTEGER',         # yeni program + 5g icra
-        'ALTER TABLE scan_signals ADD COLUMN f_buyback_dip_aliyor INTEGER',    # 52H dip ≤%10 + alım
-        'ALTER TABLE scan_signals ADD COLUMN f_threshold_asildi INTEGER',      # %5/%10/%25 eşik aşımı (yukarı)
-        'ALTER TABLE scan_signals ADD COLUMN f_insider_first_buy INTEGER',     # 6ay sonra ilk içerden alım
-        'ALTER TABLE scan_signals ADD COLUMN f_kurumsal_anchor INTEGER',       # convergence (3+ aynı yön)
-        # 18 Haz 2026 — Tavan Motoru (60g 1131 örnek backtest, skor ≥150 hit %11.24 random×3.44):
-        # Master Scan adım son'da çalışır, scan_signals'a iki scan_type olarak yazılır:
-        #   tavan_alarm = skor ≥150 (günde ~12 hisse, en yüksek precision)
-        #   tavan_top30 = sıra ≤30 (günde 30 hisse, geniş izleme)
-        # Eylül 2026 ortası signal_returns × bu flag'ler JOIN → gerçek hit/ret katkısı
-        # ölçülür, kalibrasyon DB tabanlı güncellenir.
-        'ALTER TABLE scan_signals ADD COLUMN f_tavan_skor REAL',           # tavan motoru ham skor
-        'ALTER TABLE scan_signals ADD COLUMN f_tavan_kat TEXT',            # A/C/E/D (dominant kalıp)
-        'ALTER TABLE scan_signals ADD COLUMN f_tavan_confluence_n INTEGER',# 50+ skor alan kalıp sayısı
-        # 18 Haz 2026 — Risk profili (global banka 3'lüsü): beta + drawdown + HV oranı
-        # Eylül 2026 ortası signal_returns JOIN ile beta/DD seviyelerine göre hit/ret farklılaşması ölç.
-        'ALTER TABLE scan_signals ADD COLUMN f_beta_xu100 REAL',           # 60g XU100 beta
-        'ALTER TABLE scan_signals ADD COLUMN f_dd_zirveden REAL',          # 1y zirveden % drawdown
-        'ALTER TABLE scan_signals ADD COLUMN f_hv_oran REAL',              # 20g/60g HV oranı (sıkışma teyit)
-        'ALTER TABLE scan_signals ADD COLUMN f_skew_60g REAL',             # 60g günlük getiri asimetrisi (şok yön bias)
-        # 19 Haz 2026 audit — eskiden loglanmayan "kör" skorlar (Sentiment/ICT-model/SmartMoney).
-        # Prominently gösteriliyordu ama backtest edilemiyordu → Temmuz'da getiriyle test için loglanır.
-        'ALTER TABLE scan_signals ADD COLUMN f_sentiment_score REAL',
-        'ALTER TABLE scan_signals ADD COLUMN f_ict_model REAL',
-        'ALTER TABLE scan_signals ADD COLUMN f_smart_money_score REAL',
-        # 19 Haz 2026 Faz 1 — likidite + manipülasyon kalkanı (BIST koruması)
-        'ALTER TABLE scan_signals ADD COLUMN f_adv_tl REAL',           # 20g ort günlük TL hacim (milyon)
-        'ALTER TABLE scan_signals ADD COLUMN f_liquidity_tier TEXT',   # yüksek/orta/düşük
-        'ALTER TABLE scan_signals ADD COLUMN f_manip_risk TEXT',       # yok/orta/yüksek
-        # 10 Haz 2026 Oturum 20 — MFI (Money Flow Index) — hacim-ağırlıklı RSI
-        # 7 state dual-window (RSI_dual ile aynı kalıp):
-        #   overbought_both / oversold_both / early_overbought / early_oversold /
-        #   cooling_smart_exit / smart_money_recovery / neutral
-        'ALTER TABLE scan_signals ADD COLUMN f_mfi_dual TEXT',
-        # ELIT confluence flag — RSI ve MFI aynı yönde divergence verirse
-        # tek başına RSI div'inin teyit gücü yetmez; MFI hacim teyidi eklenince
-        # "akıllı para çekildi" hipotezi güçlenir. Wyckoff effort-vs-result'un
-        # algoritmik karşılığı. Nadir ama TIER_1 seviyesinde bekleniyor.
-        'ALTER TABLE scan_signals ADD COLUMN f_rsi_mfi_bouquet INTEGER',
-        # 10 Haz 2026 Oturum 20 — MKK YABANCI NET ALIŞ (İş Yatırım RSS feed)
-        # Kaynak: arastirma.isyatirim.com.tr — günlük rapor, top 3 giriş/çıkış + streak
-        # Yabancı kurumsal akış = GERÇEK smart money izi (TEFAS yerli, MKK yabancı)
-        'ALTER TABLE scan_signals ADD COLUMN f_yabanci_giris INTEGER',         # son 5g top giriş listesinde
-        'ALTER TABLE scan_signals ADD COLUMN f_yabanci_cikis INTEGER',         # son 5g top çıkış listesinde
-        'ALTER TABLE scan_signals ADD COLUMN f_yabanci_streak INTEGER',        # 3+ gün üst üste yabancı artış
-        'ALTER TABLE scan_signals ADD COLUMN f_yabanci_anchor INTEGER',        # giriş + streak çakışması (ELIT)
-        # 10 Haz 2026 Oturum 20 — Relative OBV (hisse OBV trendi vs endeks OBV trendi)
-        # 5 state: outperform_strong/outperform_mild/inline/underperform_mild/underperform_strong
-        # Mansfield RS'in hacim katmanı — gerçek akıllı para ayrışması
-        'ALTER TABLE scan_signals ADD COLUMN f_rel_obv_state TEXT',
-        # ELIT: outperform_strong veya underperform_strong = karşı yönde ayrışma → 1
-        'ALTER TABLE scan_signals ADD COLUMN f_rel_obv_divergence INTEGER',
-        # 10 Haz 2026 Oturum 20 — YAPISAL vs TACTICAL skor ayrımı
-        # Smart money sinyalleri iki ölçeğe ayrıştırılır:
-        # YAPISAL (haftalar/aylar) vs TACTICAL (saatler/günler).
-        # Hangisi hit oranını daha çok belirliyor backtest ile öğrenilecek.
-        'ALTER TABLE scan_signals ADD COLUMN f_smart_structural_score REAL',  # 0-100
-        'ALTER TABLE scan_signals ADD COLUMN f_smart_tactical_score REAL',    # 0-100
-        # 10 Haz 2026 Oturum 20 — Up/Down Volume Ratio (Wyckoff Effort-vs-Result)
-        # UDVR = up_volume / down_volume, period bazlı.
-        # 5 state: strong_buyer/buyer/balanced/seller/strong_seller
-        'ALTER TABLE scan_signals ADD COLUMN f_udvr_20g REAL',                 # 20g UDVR oranı
-        'ALTER TABLE scan_signals ADD COLUMN f_udvr_state TEXT',               # 5 state
-        # Wyckoff Climax detection — fiyat extremde + UDVR ters yönde
-        # 'climax_top' (fiyat tepede + UDVR<0.8 = smart money çekiliyor)
-        # 'climax_bottom' (fiyat dipte + UDVR>1.25 = smart money giriyor)
-        'ALTER TABLE scan_signals ADD COLUMN f_udvr_climax TEXT',
-        # 10 Haz 2026 Oturum 20 — Force Index Dual (Elder Triple Screen)
-        # 7 state: strong_pos/strong_neg/turning_up/turning_down/pos/neg/neutral
-        # Divergence: bullish (fiyat LL + FI HL) veya bearish (fiyat HH + FI LH)
-        'ALTER TABLE scan_signals ADD COLUMN f_force_index_dual TEXT',
-        'ALTER TABLE scan_signals ADD COLUMN f_force_index_divergence TEXT',
-        # 12 Haz 2026 — Tek-mum dominance bitmask (path-aware koruma)
-        # Bit 0=OBV(5g), 1=CumDelta(5g), 2=CMF(5g), 3=RSI(5), 4=MFI(5).
-        # Bugünkü mumun ilgili dual-window deltasının >%60'ını oluşturduğu durumlar
-        # set edilir. AI prompt ve OBV panelinde "teyit bekleniyor" rozetine bağlanır.
-        'ALTER TABLE scan_signals ADD COLUMN f_spike_dominance INTEGER',
-    ]:
-        try:
-            c.execute(_alter_col)
-        except sqlite3.OperationalError:
-            pass  # kolon zaten var
-    # ── Günlük getiri takip tablosu (1-20 işlem günü, backtest için) ─────────
-    # Her scan_signals satırına karşılık 20 satır — day_offset 1..20.
-    # close_price / return_pct başta NULL; backfill_signal_returns() doldurur.
-    c.execute('''CREATE TABLE IF NOT EXISTS signal_returns (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        signal_id   INTEGER NOT NULL,
-        scan_type   TEXT NOT NULL,
-        symbol      TEXT NOT NULL,
-        signal_date TEXT NOT NULL,
-        entry_price REAL,
-        day_offset  INTEGER NOT NULL,
-        close_price REAL,
-        return_pct  REAL,
-        category    TEXT,
-        UNIQUE(signal_id, day_offset)
-    )''')
-    # ── KURUMSAL TAKİP cache tabloları (9 Haz 2026 Oturum 20) ──────────────
-    # TEFAS portföy snapshot: günlük fetch, hisse bazlı SQL sorgu için
-    c.execute('''CREATE TABLE IF NOT EXISTS tefas_holdings (
-        snapshot_date TEXT NOT NULL,    -- YYYY-MM-DD
-        fund_code     TEXT NOT NULL,    -- ör. AAK, GZL, PYL
-        fund_aum_mn   REAL,             -- fonun AUM, milyon TL
-        stock_symbol  TEXT NOT NULL,    -- BIST hisse kodu (örn. XBANK)
-        weight_pct    REAL,             -- fon portföyündeki yüzde
-        PRIMARY KEY (snapshot_date, fund_code, stock_symbol)
-    )''')
-    c.execute('CREATE INDEX IF NOT EXISTS idx_tefas_sym ON tefas_holdings(stock_symbol, snapshot_date)')
-    # KAP duyuru cache: buyback + ownership değişiklikleri
-    # NOT: SQLite PRIMARY KEY içinde COALESCE/expression kabul etmez.
-    # actor kolonunu NOT NULL DEFAULT '' yapıp doğrudan PK'ye koyduk.
-    c.execute('''CREATE TABLE IF NOT EXISTS kap_events (
-        event_date     TEXT NOT NULL,
-        symbol         TEXT NOT NULL,
-        event_type     TEXT NOT NULL,   -- 'buyback' | 'ownership_change' | 'insider_buy'
-        event_subtype  TEXT,            -- 'new_program' | 'threshold_5pct' vs
-        amount_tl      REAL,            -- tutar (TL)
-        amount_lots    REAL,            -- adet (varsa)
-        price          REAL,            -- ortalama fiyat
-        actor          TEXT NOT NULL DEFAULT '',  -- alıcı/satıcı (yönetici/holding adı)
-        meta_json      TEXT,            -- ham JSON detay
-        PRIMARY KEY (event_date, symbol, event_type, actor)
-    )''')
-    c.execute('CREATE INDEX IF NOT EXISTS idx_kap_sym ON kap_events(symbol, event_date)')
-
-    # MKK Yabancı Net Alış cache (İş Yatırım RSS feed kaynağı)
-    c.execute('''CREATE TABLE IF NOT EXISTS mkk_yabanci (
-        report_date  TEXT NOT NULL,    -- YYYY-MM-DD
-        symbol       TEXT NOT NULL,    -- BIST kodu
-        direction    TEXT NOT NULL,    -- 'in' | 'out' | 'streak'
-        bps_change   REAL,             -- baz puan (sadece in/out için)
-        streak_days  INTEGER,          -- üst üste artış günü (sadece streak için)
-        PRIMARY KEY (report_date, symbol, direction)
-    )''')
-    c.execute('CREATE INDEX IF NOT EXISTS idx_mkk_sym ON mkk_yabanci(symbol, report_date)')
-
-    conn.commit()
-    conn.close()
+# -> db_layer.py (Adim 5, 4 Tem 2026): init_db
 
 # ===============================================================
 # 9 Haz 2026 — BREAKOUT STATE helper (Kibar Type 1)
@@ -1462,163 +1315,10 @@ def _detect_breakout_state(df, boundary):
 
 
 
-def _fetch_mkk_yabanci_rss(max_days=30):
-    """MKK yabancı net alış verisini İş Yatırım RSS feed'inden çeker.
-
-    Kaynak: https://arastirma.isyatirim.com.tr/category/gunluk-raporlar/gunluk-yabanci-oranlari/feed/
-
-    Her gün için 3 tip kayıt:
-      - top 3 yabancı GİRİŞ (positif bps)
-      - top 3 yabancı ÇIKIŞ (negatif bps)
-      - top 5 SÜREKLI ARTIŞ streak (N gün üst üste)
-
-    Returns: (success_count, fail_count)
-    """
-    import requests as _requests
-    import re as _re
-    import xml.etree.ElementTree as _ET
-    from datetime import datetime as _dt
-
-    _url = 'https://arastirma.isyatirim.com.tr/category/gunluk-raporlar/gunluk-yabanci-oranlari/feed/'
-
-    try:
-        _r = _requests.get(_url, timeout=15,
-                           headers={'User-Agent': 'Mozilla/5.0 (compatible; PatronRadar/1.0)'})
-        if _r.status_code != 200:
-            return (0, 1)
-        _root = _ET.fromstring(_r.text.encode('utf-8'))
-    except Exception as _ex:
-        try: log_error("mkk_rss_fetch", _ex)
-        except Exception: pass
-        return (0, 1)
-
-    _ns = {'content': 'http://purl.org/rss/1.0/modules/content/'}
-    _items = _root.findall('.//item')
-    if not _items:
-        return (0, 1)
-
-    # Parse pattern'leri
-    _pat_pair_bps = _re.compile(r'([A-Z]{2,7}):(-?\d+(?:[.,]\d+)?)\s*bps')
-    _pat_pair_gun = _re.compile(r'([A-Z]{2,7}):(\d+)\s*g[üu]n')
-    _pat_title_date = _re.compile(r'(\d{2})/(\d{2})/(\d{4})')
-
-    _conn = sqlite3.connect(DB_FILE)
-    _c = _conn.cursor()
-    _success = 0; _fail = 0
-
-    try:
-        from bs4 import BeautifulSoup as _BS
-    except ImportError:
-        # bs4 yok — text temizliği basit regex ile
-        _BS = None
-
-    for _item in _items[:max_days]:
-        try:
-            _title = _item.findtext('title', default='')
-            _m_date = _pat_title_date.search(_title)
-            if not _m_date:
-                _fail += 1; continue
-            _d, _m, _y = _m_date.groups()
-            _date_str = f'{_y}-{_m}-{_d}'
-
-            _cont_el = _item.find('content:encoded', _ns)
-            _cont = _cont_el.text if _cont_el is not None else ''
-            if _BS is not None:
-                _text = _BS(_cont, 'html.parser').get_text(separator=' ', strip=True)
-            else:
-                _text = _re.sub(r'<[^>]+>', ' ', _cont)
-            _text = ' '.join(_text.split())
-
-            # Tüm bps eşleşmeleri sırayla — ilk 3 artış, sonra 3 azalış
-            _all_bps = _pat_pair_bps.findall(_text)
-            _inc = _all_bps[:3]
-            _dec = _all_bps[3:6]
-            _streak = _pat_pair_gun.findall(_text)[:5]
-
-            # DB'ye yaz
-            for _sym, _bps_v in _inc:
-                try:
-                    _bf = float(str(_bps_v).replace(',', '.'))
-                    _c.execute('''INSERT OR REPLACE INTO mkk_yabanci
-                                  (report_date, symbol, direction, bps_change, streak_days)
-                                  VALUES (?, ?, 'in', ?, NULL)''',
-                               (_date_str, _sym.upper(), _bf))
-                except Exception: pass
-            for _sym, _bps_v in _dec:
-                try:
-                    _bf = float(str(_bps_v).replace(',', '.'))
-                    _c.execute('''INSERT OR REPLACE INTO mkk_yabanci
-                                  (report_date, symbol, direction, bps_change, streak_days)
-                                  VALUES (?, ?, 'out', ?, NULL)''',
-                               (_date_str, _sym.upper(), _bf))
-                except Exception: pass
-            for _sym, _gun_v in _streak:
-                try:
-                    _gf = int(_gun_v)
-                    _c.execute('''INSERT OR REPLACE INTO mkk_yabanci
-                                  (report_date, symbol, direction, bps_change, streak_days)
-                                  VALUES (?, ?, 'streak', NULL, ?)''',
-                               (_date_str, _sym.upper(), _gf))
-                except Exception: pass
-
-            _success += 1
-        except Exception:
-            _fail += 1
-
-    _conn.commit(); _conn.close()
-    return (_success, _fail)
+# -> db_layer.py (Adim 5, 4 Tem 2026): _fetch_mkk_yabanci_rss
 
 
-def _compute_mkk_yabanci_signals(ticker: str) -> dict:
-    """MKK yabancı net alış cache'inden 4 sinyali hesaplar.
-
-    f_yabanci_giris   : son 5g top giriş listesinde + bps>0
-    f_yabanci_cikis   : son 5g top çıkış listesinde + bps<0
-    f_yabanci_streak  : son raporda 3+ gün üst üste artış streak
-    f_yabanci_anchor  : (giriş + streak) çakışması → ELIT smart money
-
-    BIST hissesi değilse tüm None döner.
-    """
-    out = {
-        'f_yabanci_giris': None,
-        'f_yabanci_cikis': None,
-        'f_yabanci_streak': None,
-        'f_yabanci_anchor': None,
-    }
-    try:
-        _sym = ticker.upper().replace('.IS', '')
-        if any(_sym.startswith(p) for p in ('XU', 'XB', 'XT', 'XY', '^')) or '=' in _sym or '-' in _sym:
-            return out
-
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        # Son 5 işlem günü
-        c.execute('''SELECT direction, bps_change, streak_days, report_date FROM mkk_yabanci
-                     WHERE symbol = ?
-                       AND report_date >= date('now', '-5 day')
-                     ORDER BY report_date DESC''', (_sym,))
-        _rows = c.fetchall()
-        conn.close()
-
-        _has_in = 0
-        _has_out = 0
-        _max_streak = 0
-        for _dir, _bps, _streak, _rd in _rows:
-            if _dir == 'in' and _bps and _bps > 0:
-                _has_in = 1
-            elif _dir == 'out' and _bps and _bps < 0:
-                _has_out = 1
-            elif _dir == 'streak' and _streak:
-                _max_streak = max(_max_streak, int(_streak))
-
-        out['f_yabanci_giris']  = _has_in
-        out['f_yabanci_cikis']  = _has_out
-        out['f_yabanci_streak'] = 1 if _max_streak >= 3 else 0
-        out['f_yabanci_anchor'] = 1 if (_has_in == 1 and _max_streak >= 3) else 0
-    except Exception as _ex:
-        try: log_error("mkk_yabanci_signals", _ex, ctx={'ticker': ticker})
-        except Exception: pass
-    return out
+# -> db_layer.py (Adim 5, 4 Tem 2026): _compute_mkk_yabanci_signals
 
 
 # ===============================================================
@@ -1635,17 +1335,12 @@ SPIKE_DOM_THRESHOLD = 0.60  # bugün >%60 ise dominant
 # prompt'a ve YAPISAL/TACTICAL kompozit skora KATILMAZ. Backtest hit ≥%55 +
 # ret ≥%3 verirse True yap → AI'a geri ekle.
 SMC_IFVG_BB_AI_ENABLED = False
+# 30 Haz 2026 feature_karne: f_at_y_open (near_y_open) 10K örnekte +0.23 yayılım =
+# SIFIR AYRIM → AI prompt'tan çekildi. scan_signals'a YAZILMAYA devam (Eylül backtest).
+# Karne hit/ret anlamlı edge verirse True yap → AI'a geri ekle.
+SMC_YOPEN_AI_ENABLED = False
 
-def _spike_dom_ratio(today_delta, window_delta):
-    """0..1+ döner. Aynı yönde değilse 0, pencere ~0 ise 0. >0.6 = dominant."""
-    try:
-        td = float(today_delta); wd = float(window_delta)
-        if abs(wd) < 1e-9: return 0.0
-        if (td > 0) != (wd > 0): return 0.0
-        r = abs(td) / abs(wd)
-        return r if r == r else 0.0  # NaN guard
-    except Exception:
-        return 0.0
+# -> indicators.py (Adim 4, 4 Tem 2026): _spike_dom_ratio
 
 
 # ===============================================================
@@ -1774,27 +1469,27 @@ def _risk_profile(ticker):
         skew = f.get('f_skew_60g'); liq = f.get('f_liquidity_tier'); manip = f.get('f_manip_risk')
         rows = []; pts = 0  # rows: (etiket, sade açıklama, yön 'high'/'mid'/'low')
         if beta is not None:
-            if beta > 1.1:   rows.append(("Oynaklık", f"endeksin {beta:.1f}× — daha sert oynuyor", 'high')); pts += 1
-            elif beta < 0.6: rows.append(("Oynaklık", f"endeksin {beta:.1f}× — sakin", 'low'))
-            else:            rows.append(("Oynaklık", f"endeksle uyumlu ({beta:.1f}×)", 'mid'))
+            if beta > 1.1:   rows.append(("Oynaklık", f"Endeksten %{(beta-1)*100:.0f} daha sert oynuyor ({beta:.1f}×)", 'high')); pts += 1
+            elif beta < 0.6: rows.append(("Oynaklık", f"Endeksten daha sakin ({beta:.1f}×)", 'low'))
+            else:            rows.append(("Oynaklık", f"Endeksle uyumlu ({beta:.1f}×)", 'mid'))
         if hv is not None:
-            if hv > 1.2:     rows.append(("Volatilite trendi", "son dönemde ARTIYOR", 'high')); pts += 1
-            elif hv < 0.75:  rows.append(("Volatilite trendi", "sakinleşiyor", 'low'))
-            else:            rows.append(("Volatilite trendi", "stabil", 'mid'))
+            if hv > 1.2:     rows.append(("Volatilite trendi", "Artıyor; son dönemde sertleşiyor", 'high')); pts += 1
+            elif hv < 0.75:  rows.append(("Volatilite trendi", "Azalıyor; sakinleşiyor", 'low'))
+            else:            rows.append(("Volatilite trendi", "Sabit; son dönemde değişmedi", 'mid'))
         if dd is not None:
-            if dd < -35:     rows.append(("Zirveden uzaklık", f"%{abs(dd):.0f} aşağıda — derin düşüşte", 'high')); pts += 1
-            elif dd > -10:   rows.append(("Zirveden uzaklık", f"zirveye yakın (%{abs(dd):.0f})", 'low'))
-            else:            rows.append(("Zirveden uzaklık", f"%{abs(dd):.0f} geride", 'mid'))
+            if dd < -35:     rows.append(("Zirveden uzaklık", f"Zirvesinin %{abs(dd):.0f} altında; derin düşüşte", 'high')); pts += 1
+            elif dd > -10:   rows.append(("Zirveden uzaklık", f"Zirvesine yakın (%{abs(dd):.0f} altında)", 'low'))
+            else:            rows.append(("Zirveden uzaklık", f"Zirvesinin %{abs(dd):.0f} altında", 'mid'))
         if skew is not None:
-            if skew < -0.5:  rows.append(("Asimetri", "aşağı çakılma kuyruğu — ani düşüş riski", 'high')); pts += 1
-            elif skew > 0.5: rows.append(("Asimetri", "yukarı sıçrama eğilimli", 'low'))
-            else:            rows.append(("Asimetri", "dengeli", 'mid'))
+            if skew < -0.5:  rows.append(("Sürpriz yönü", "Dikkat: ani sert düşüş eğilimli", 'high')); pts += 1
+            elif skew > 0.5: rows.append(("Sürpriz yönü", "Ani yukarı sıçrama eğilimli", 'low'))
+            else:            rows.append(("Sürpriz yönü", "Dengeli; ani çakılma da sıçrama da eğilimi yok", 'mid'))
         if liq:
-            if liq == 'düşük':  rows.append(("Likidite", "DÜŞÜK — ince tahta", 'high')); pts += 2
-            elif liq == 'orta': rows.append(("Likidite", "orta", 'mid'))
-            else:               rows.append(("Likidite", "yüksek — rahat al-sat", 'low'))
+            if liq == 'düşük':  rows.append(("Likidite", "Dikkat: bu tahta sığ, zor çıkarsın", 'high')); pts += 2
+            elif liq == 'orta': rows.append(("Likidite", "Orta; idare eder", 'mid'))
+            else:               rows.append(("Likidite", "Yüksek; rahat girip çıkarsın", 'low'))
         if manip and manip != 'yok':
-            rows.append(("Manipülasyon", f"{manip} pompa riski", 'high')); pts += 2
+            rows.append(("Manipülasyon", "Dikkat: manipülasyona açık, tahtacı olabilir", 'high')); pts += 2
         out['rows'] = rows
         out['level'] = 'yüksek' if pts >= 3 else ('orta' if pts >= 1 else 'düşük')
     except Exception:
@@ -1813,7 +1508,7 @@ def log_analysis_snapshot(ticker):
         kz = _compute_kanit_ozeti(ticker) or {}
         rp = _risk_profile(ticker) or {}
         f = _compute_signal_features(ticker) or {}
-        conn = sqlite3.connect(DB_FILE); c = conn.cursor()
+        conn = sqlite3.connect(DB_FILE, timeout=30); c = conn.cursor()
         c.execute("INSERT OR IGNORE INTO analysis_log "
                   "(scan_date, symbol, kanit_skoru, guven, master_score, risk_level, liquidity_tier, manip_risk) "
                   "VALUES (?,?,?,?,?,?,?,?)",
@@ -1826,6 +1521,7 @@ def log_analysis_snapshot(ticker):
 
 def _compute_signal_features(ticker: str) -> dict:
     """Sinyal anında hisseye özel 7 feature snapshot. Cache 10dk."""
+    ticker = _normalize_bist_ticker(ticker)   # 24 Haz: çıplak sembol (EREGL→EREGL.IS) — Yahoo 404 selini/donmayı önler
     out = {
         'f_52h_pos': None, 'f_rsi': None, 'f_cmf_dual': None,
         'f_omi_sigma': None, 'f_squeeze_days': None,
@@ -1886,6 +1582,8 @@ def _compute_signal_features(ticker: str) -> dict:
         'f_dd_zirveden': None,
         'f_hv_oran': None,
         'f_skew_60g': None,
+        # 29 Haz 2026 — Kurumsal-tarz faktörler (kesitsel; sıralama READ-time panelde)
+        'f_mom_12_1': None, 'f_vol_60g': None, 'f_sharpe_mom': None, 'f_trend_persist': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -2320,6 +2018,34 @@ def _compute_signal_features(ticker: str) -> dict:
                 out['f_smart_tactical_score'] = _split.get('tactical_score')
         except Exception: pass
 
+        # ─── KURUMSAL-TARZ FAKTÖRLER (29 Haz 2026) ──────────────────────────
+        # GS/JPM tarzı: gösterge değil faktör. Ham değerleri burada loglanır,
+        # KESİTSEL SIRALAMA (quintile) okuma anında "Kriter Performansı" panelinde
+        # cohort içinde yapılır. Hepsi fiyat-only → ek veri/maliyet yok.
+        try:
+            _cf = c.astype(float)
+            _ret_d = _cf.pct_change().dropna()
+            # 1) Momentum 12-1 ay: 252g önce → 21g önce (son ay atlanır, kurumsal standart)
+            if len(_cf) >= 252:
+                _p_then = float(_cf.iloc[-252]); _p_skip = float(_cf.iloc[-21])
+                if _p_then > 0:
+                    out['f_mom_12_1'] = round((_p_skip / _p_then - 1.0) * 100.0, 2)
+            # 2) Düşük-vol faktörü: 60g günlük getiri std, yıllıklandırılmış %
+            if len(_ret_d) >= 60:
+                out['f_vol_60g'] = round(float(_ret_d.tail(60).std()) * (252 ** 0.5) * 100.0, 2)
+            # 3) Riske-göre momentum: 120g ortalama/std, yıllık Sharpe-benzeri
+            if len(_ret_d) >= 120:
+                _seg = _ret_d.tail(120); _sd = float(_seg.std())
+                if _sd > 0:
+                    out['f_sharpe_mom'] = round(float(_seg.mean()) / _sd * (252 ** 0.5), 2)
+            # 4) Trend kalıcılığı: son 120g'de kapanışın SMA50 üstünde kalma %
+            if len(_cf) >= 80:
+                _sma50 = _cf.rolling(50).mean()
+                _above = (_cf > _sma50).dropna().tail(120)
+                if len(_above) >= 20:
+                    out['f_trend_persist'] = round(float(_above.mean()) * 100.0, 1)
+        except Exception: pass
+
     except Exception as e:
         try: log_error("compute_signal_features", e, ctx={'ticker': ticker})
         except Exception: pass
@@ -2327,79 +2053,12 @@ def _compute_signal_features(ticker: str) -> dict:
 
 
 # ===============================================================
-# 6 Haz 2026 — SCANNER TIER MAP (signal_results backtest)
-# Kaynak: backtest hit_10g + avg_ret_10g + sample size.
-# AI prompt'a koşullu emit edilir — sadece bu ticker tier'lı bir scanner'dan flag aldıysa.
+# 4 Tem 2026 — BÖLME ADIM 3: kanıt tabloları evidence.py'ye taşındı (birebir).
+# SCANNER_TIER_MAP · ER_BACKTEST_SCORE · ER_ELIT_SCORE_MIN · SCANNER_PLAIN_DESC
+# GUC_SCORE · _guc_score · _guc_plain — kalibrasyon günlüğü de evidence.py içinde.
 # ===============================================================
-# 15 Haz 2026 GÜNCELLEME — 29.023 sinyal backtest panelinden yeniden kalibre edildi.
-# Değişiklikler:
-#   • er_A1: TIER_3_ORTA → TIER_1_ELIT (hit %66.7, exp %+4.02, 12/99 — kategori şampiyonu Geri Dönüş)
-#   • er_B8: TIER_3_ORTA → TIER_2_GUVENILIR (hit %69.2, exp %+3.70, 26/46 — kategori şampiyonu Sıkışma)
-#   • nadir_firsat (Royal Flush): KALDIRILDI — TIER_VADE_UZUN hipotezi REDDEDİLDİ
-#     (5g/10g/20g hit %24-34, exp -%0.35, 71 sinyal — yeterli kanıt, AI'dan ÇIKAR)
-#   • ICT Sniper, Radar 1: Zaten map'te yoktu (AI'da emit edilmiyor) — backtest negatif beklenti doğruladı,
-#     map'e eklemiyoruz. UI'da çalışmaya devam, AI context'inde yok.
-# ===============================================================
-SCANNER_TIER_MAP = {
-    # scan_type: (tier, hit_10g_pct, avg_ret_10g_pct, display_name, vade_notu)
-    # Eşikler: TIER_1 (hit≥65 AND ret≥3.5) · TIER_2 (hit≥60 AND ret≥2.5) · TIER_3 (zayıf hit/ret)
-    'prelaunch_bos': ('TIER_1_ELIT',     78.6, 12.89, '🚀 Pre-Launch BOS',                       '5-10g · hit %78.6 ret %+12.9'),
-    'er_A8':         ('TIER_1_ELIT',    100.0, 12.41, '⭐ Erken Radar A8 (Ucuz+Hacimli Atak)',     '5-10g · hit %100 ret %+12.4'),
-    'er_B1':         ('TIER_1_ELIT',     75.0,  4.61, '📐 Erken Radar B1 (Mükemmel Sıkışma)',     '10g · hit %75 ret %+4.6'),
-    'er_A1':         ('TIER_1_ELIT',     66.7,  4.02, '🔄 Erken Radar A1 (Dipte Sessizlik)',      '10g · hit %66.7 ret %+4.0 · 99 sinyal · KATEGORİ ŞAMPİYONU Geri Dönüş · 15 Haz 2026'),
-    'er_C3':         ('TIER_2_GUVENILIR',68.0,  4.00, '🚀 Erken Radar C3 (Pullback+Hacimli Alım)', '10g · hit %68 ret %+4.0'),
-    'er_D3':         ('TIER_2_GUVENILIR',67.1,  4.26, '⚠ Erken Radar D3 (Erken Aşama)',           '10g · hit %67 ret %+4.3 · hisse ucuz bölgede + hacim kurudu, henüz dönüş teyidi yok — sabırlı izleme aşaması'),
-    'er_B8':         ('TIER_2_GUVENILIR',69.2,  3.70, '📐 Erken Radar B8 (Sıkışma Sonu)',         '10g · hit %69.2 ret %+3.7 · 46 sinyal · KATEGORİ ŞAMPİYONU Sıkışma · 15 Haz 2026'),
-    'er_C9':         ('TIER_2_GUVENILIR',62.2,  5.91, '🔄 Erken Radar C9 (Pullback Başlıyor)',    '10g · hit %62 ret %+5.9'),
-    'er_D1':         ('TIER_2_GUVENILIR',66.7,  5.07, '⚠ Erken Radar D1 (Tek Güçlü Sinyal)',      '10g · hit %67 ret %+5.1 · bugün hacimli alım var ama hisse SMA50 altında ve diğer kriterler desteklemiyor — yalnız sinyal, riskli'),
-    'er_A9':         ('TIER_2_GUVENILIR',66.7,  3.54, '🔄 Erken Radar A9 (Ucuz Bölgede Bekleyiş)','10g · hit %67 ret %+3.5 · büyük örnek (1302)'),
-    'er_C2':         ('TIER_2_GUVENILIR',62.2,  3.65, '🚀 Erken Radar C2 (Ortalama Testi)',       '10g · hit %62 ret %+3.7 · yukarı trendde fiyat SMA20/50\'ye çekildi, oradan tepki — pullback bitti, trend devamı bekleniyor'),
-    'er_A3':         ('TIER_2_GUVENILIR',64.3,  3.26, '🔄 Erken Radar A3 (İkili Dip)',            '10g · hit %64 ret %+3.3'),
-    'er_A7':         ('TIER_2_GUVENILIR',62.6,  3.53, '🔄 Erken Radar A7 (Hacimli Toparlanma)',   '10g · hit %63 ret %+3.5'),
-    'er_C11':        ('TIER_2_GUVENILIR',66.7,  2.77, '🚀 Erken Radar C11 (Trendde Momentum)',    '10g · hit %67 ret %+2.8'),
-    # 19 Haz 2026 — GERİ ALINDI: 8 Haz'da "10g ret ≤0" diye çıkarılmıştı ama o karar dar/boğa-ağırlıklı
-    # veridendi. İki-rejim (Mayıs boğa + Haziran ayı, 222 sinyal/118 hisse) ölçümü: HER vadede hit>%50 +
-    # pozitif getiri, İKİ REJİMDE de pozitif (Haziran 10g +%1.0 — çoğu er_* ayıda çökerken bu dayandı),
-    # 20g %59/+%4.4. Tazede mevcut TIER_2 olan er_C2'yi (gerçek 10g %51/+1.6) geçiyor → TIER_2 hak ediyor.
-    'er_D2':         ('TIER_2_GUVENILIR',52.7,  1.72, '⚠ Erken Radar D2 (Karışık ama Dayanıklı)', '10g · hit %53 ret %+1.7 · 20g %59/+%4.4 · 222 sinyal · İKİ REJİMDE pozitif (ayıda bile) — 19 Haz 2026 geri alındı'),
-    # TIER_3_ORTA: hit %50-65 + ret %2-3 (zayıf ama negatif değil)
-    # 19 Haz 2026 — GERİ ALINDI ama sadece destekleyici: 5g güçlü (%62/+%1.9) ancak ayı ayında 10g
-    # negatife dönüyor (-%1.1), 20g örneği yetersiz (9). Kısa vade fırsatı, ana hikaye DEĞİL.
-    'er_C6':         ('TIER_3_ORTA',     48.5,  0.59, '🚀 Erken Radar C6 (Piyasa Lideri)',        '5g güçlü %62 ama 10g %49 · ayıda uzun vade zayıflar · destekleyici · 19 Haz 2026 geri alındı'),
-    'er_C7':         ('TIER_3_ORTA',     56.3,  3.34, '🚀 Erken Radar C7 (Sağlam Trend Yapısı)',  '10g · hit %56 ret %+3.3 · tüm MA hizalı (fiyat>SMA20>SMA50) + tüm vadelerde endeksi yeniyor — temiz trend görünümü, hit düşük destekleyici aranır'),
-    'er_A4':         ('TIER_3_ORTA',     59.2,  2.98, '🔄 Erken Radar A4 (Yön Değiştiriyor)',     '10g · hit %59 ret %+3.0'),
-    'er_D4':         ('TIER_3_ORTA',     49.4,  2.96, '⚠ Erken Radar D4 (Kurumsal Satış Riski)',  '10g · hit %49 ret %+3.0 · hit zayıf'),
-    'er_D5':         ('TIER_3_ORTA',     41.7,  2.91, '⚠ Erken Radar D5 (Trend Bozuldu)',         '10g · hit %42 ret %+2.9 · hit çok düşük'),
-    'er_C5':         ('TIER_3_ORTA',     47.1,  2.60, '🚀 Erken Radar C5 (Bayrak Formasyonu)',    '10g · hit %47 ret %+2.6 · hit zayıf'),
-    'er_B11':        ('TIER_3_ORTA',     51.1,  2.32, '📐 Erken Radar B11 (Tepe Yakını Sıkışma)', '10g · hit %51 ret %+2.3'),
-    'er_B5':         ('TIER_3_ORTA',     54.2,  2.29, '📐 Erken Radar B5 (Üçgen Daralma)',        '10g · hit %54 ret %+2.3'),
-    'er_A5':         ('TIER_3_ORTA',     54.2,  2.00, '🔄 Erken Radar A5 (Toparlanma Başlıyor)',  '10g · hit %54 ret %+2.0'),
-    'er_C8':         ('TIER_3_ORTA',     64.3,  1.94, '🚀 Erken Radar C8 (Yukarı Kanal Testi)',   '10g · hit %64 ama ret düşük %+1.9'),
-    'er_A2':         ('TIER_3_ORTA',     66.7,  1.35, '🔄 Erken Radar A2 (Hacimli Tepki)',        '10g · hit %67 ama ret düşük %+1.4'),
-    'er_A6':         ('TIER_3_ORTA',     52.6,  1.16, '🔄 Erken Radar A6 (Dipte Sıkışma)',        '10g · hit %53 ret %+1.2'),
-    # TIER_3_ZAYIF / KALDIRILDI — AI prompt context'inden çıkarıldı:
-    # • Royal Flush (nadir_firsat): 15 Haz 2026 — 71 sinyalde hit %24-34 (5g/10g/20g), exp -%0.35.
-    #   Önceki TIER_VADE_UZUN hipotezi (20g hit %81.8) REDDEDİLDİ. UI'da kalır, AI'dan çıkar.
-    # • ICT Sniper: 534 sinyal, hit %39, exp -%0.40, PF 0.88 — yeterli kanıt + negatif beklenti.
-    # • Radar 1 (analyze_market_intelligence): 2097 sinyal, hit %40.5, exp -%0.16 — çok denedi, zayıf.
-    # • er_C1, guclu_donus (8 Haz 2026): 10g ret ≤0 — kaldırıldı, hâlâ zayıf (er_C1 ayıda %36/-0.5).
-    #   NOT: er_D2 + er_C6 (8 Haz'da burada listeliydi) 19 Haz 2026 iki-rejim veriyle GERİ ALINDI
-    #   (yukarıda TIER_2 / TIER_3_ORTA). Eski karar dar/boğa-ağırlıklı veriden hatalıymış.
-    # Bu scanner'lar UI'da çalışmaya devam (operatörün gözünden gizlenmedi); sadece AI'ın
-    # institutional_ref.scanner_tiers_aktif bloğunda görünmüyor. Q4 2026'da yeniden değerlendir.
-}
-
-# Erken Radar — iki-rejim (Mayıs boğa + Haziran ayı) backtest PUANI (19 Haz 2026, scanner_karne).
-# Yüksek = gerçekten kazandırıyor. ELİT panel + mini panel SIRALAMA + FİLTRE bunu kullanır.
-# Eski yıldız sistemi tasarımcının ilk tahminiydi (er_C6 5★ ama vasat, er_D2 2★ ama #2 kazanan) —
-# bu puan gerçek getiri + iki-rejim dayanıklılık kanıtı. Altın madenlerini ÖNE çıkarır.
-ER_BACKTEST_SCORE = {
-    'B8': 100, 'D2': 74, 'C2': 71, 'C5': 66, 'C6': 60, 'A2': 58, 'B5': 53, 'A1': 53,
-    'A7': 46, 'D1': 46, 'A8': 36, 'D4': 35, 'D5': 34, 'A3': 29, 'A4': 26, 'A5': 24,
-    'C8': 19, 'B11': 15, 'D3': 13, 'C11': 13, 'A9': 12, 'C3': 11, 'C9': 10, 'C7': 6,
-    'C1': 4, 'A6': 0, 'B1': 0,
-}
-ER_ELIT_SCORE_MIN = 45   # ELİT panelde gösterim eşiği — bunun altı "gold mine değil", gizlenir
+from evidence import (SCANNER_TIER_MAP, ER_BACKTEST_SCORE, ER_ELIT_SCORE_MIN,
+                      SCANNER_PLAIN_DESC, GUC_SCORE, _guc_score, _guc_plain)
 
 def _er_kisa_aciklama(scenario_id):
     """Senaryonun sade açıklaması — kod bilmeyen son kullanıcının anlayacağı dilde.
@@ -2421,41 +2080,47 @@ def _er_kisa_aciklama(scenario_id):
     except Exception:
         return ''
 
-# Tarama açıklamaları — SADE, GERÇEK, jargonsuz (19 Haz 2026 — "hiç bilmeyen biri bile anlasın").
-# Her cümle taramanın GERÇEKTE ne aradığını anlatır; pazarlama/fluff yok.
-SCANNER_PLAIN_DESC = {
-    'platin':    'Hem borsadan güçlü, hem yükseliş trendinde, hem de henüz aşırı pahalı değil — sistemin en seçici, en nadir sinyali.',
-    'altin':     'Borsanın genelinden daha iyi gidiyor ve işlem hacmi artıyor; üstelik fiyatı henüz son ayların ucuz bölgesinde.',
-    'prelaunch': 'Uzun süre dar bir bantta sıkıştıktan sonra önemli bir direnç seviyesini yukarı kırdı — büyük hareket yeni başlıyor olabilir.',
-    'harmonik':  'Fiyat, geçmişte sık sık yön değiştirdiği bir "dönüş bölgesine" belirli bir grafik kalıbıyla ulaştı.',
-    'vip':       'Borsadan güçlü bir hissede tanınmış bir formasyon (fincan-kulp, üçgen gibi) oluştu.',
-    'erken':     'Hisse asıl harekete geçmeden önce, hareketin ilk küçük işaretlerini verdi.',
-    'gizli':     'Fiyat sakin dururken işlem hacmi sessizce artıyor — birileri belli etmeden topluyor olabilir.',
-    'minervini': 'Hisse istikrarlı bir yükseliş trendinde; kısa ve uzun vadeli fiyat ortalamalarının hepsinin üstünde.',
-    'rs':        'Son dönemde borsa endeksinden belirgin daha çok kazandırdı — piyasanın önünde gidiyor.',
-}
-
-def _guc_plain(guc):
-    """🟢/🔴 yerine son kullanıcının anlayacağı sade konum ifadesi."""
-    if '🟢' in guc: return ("şu an güçlü konumda", "#22c55e")
-    if '🔴' in guc: return ("şu an zayıf/dipte konumda", "#ef4444")
-    return ("şu an orta konumda", "#f59e0b")
 
 
-# Güç-filtreli taramalarda 🟢/🟡/🔴 → backtest-temelli efektif puan (19 Haz 2026).
-# harmonik: iki-rejim ölçümü (tepe %90-100 / orta / dip %35) → güç gerçekten ayrıştırıyor.
-# vip/prelaunch: ham düşük ama güçlü subset belirgin daha iyi (segmentasyon kanıtı).
-GUC_SCORE = {
-    'harmonik_confluence': {'🟢': 88, '🟡': 63, '🔴': 35},
-    'vip_formasyon':       {'🟢': 58, '🟡': 40, '🔴': 22},
-    'prelaunch_bos':       {'🟢': 48, '🟡': 30, '🔴': 12},
-}
-
-def _guc_score(scanner, guc):
-    m = GUC_SCORE.get(scanner, {})
-    if '🟢' in str(guc): return m.get('🟢', 50)
-    if '🔴' in str(guc): return m.get('🔴', 20)
-    return m.get('🟡', 40)
+@st.cache_data(ttl=600, show_spinner=False)
+def get_scanner_scores():
+    """29 Haz 2026 — VERİ-TEMELLİ PUAN: backtest_results.json summary'den her tarama için
+    EN İYİ VADE'de (5/10/20g) ölçülen BEKLENTİ'ye göre 0-100 puan türetir. Otomatik —
+    özet gece güncellendikçe puanlar kendiliğinden tazelenir (elle ER_BACKTEST_SCORE bitti).
+    puan = clip(40 + beklenti*15). Örnek < MIN_N → puan yok (çağıran eski sabite düşer).
+    Dönüş: {scan_type: {'score','window','exp','n'}}."""
+    MIN_N = 30
+    try:
+        import json as _ssj
+        from pathlib import Path as _ssP
+        _p = _ssP(__file__).parent / "backtest_results.json"
+        if not _p.exists():
+            return {}
+        _summ = _ssj.loads(_p.read_text(encoding='utf-8')).get('summary', [])
+    except Exception:
+        return {}
+    out = {}
+    for r in _summ:
+        _st = r.get('scan_type')
+        if not _st:
+            continue
+        # Vadeyi ADİL kıyasla: GÜNLÜK beklenti (beklenti/vade). Yoksa 20g hep kazanır
+        # (uzun vade = mekanik olarak daha büyük mutlak getiri). En yüksek günlük-
+        # beklentili vade seçilir → gerçek "en iyi vade" + tüm taramalar kıyaslanabilir.
+        _best = None  # (window, expectancy, per_day, n)
+        for _w in (5, 10, 20):
+            _exp = r.get(f'expectancy_{_w}g'); _n = r.get(f'eval_{_w}g') or 0
+            if _exp is None or _n < MIN_N:
+                continue
+            _pd = _exp / _w
+            if _best is None or _pd > _best[2]:
+                _best = (_w, _exp, _pd, _n)
+        if _best is None:
+            continue
+        _w, _exp, _pd, _n = _best
+        out[_st] = {'score': int(max(0, min(100, round(40 + _pd * 150)))),
+                    'window': _w, 'exp': round(_exp, 2), 'n': _n}
+    return out
 
 
 def _compute_goldmine_entries():
@@ -2484,11 +2149,18 @@ def _compute_goldmine_entries():
                     _cur.update({'icon': icon, 'scanner': scanner, 'score': score,
                                  'plain': plain, 'guc': guc, 'unmeasured': unmeasured})
 
-        # 1) Erken Radar (senaryo bazlı, ER_BACKTEST_SCORE ≥ eşik)
+        # 0) Veri-temelli puanlar (backtest özetinden, EN İYİ VADE beklenti). Bulunmazsa
+        #    (özet yok/örnek az) eski elle-girilmiş sabite düşer — geriye uyumlu.
+        _SS = get_scanner_scores()
+        def _sscore(scan_type, fallback):
+            v = _SS.get(scan_type)
+            return int(v['score']) if v else fallback
+
+        # 1) Erken Radar (senaryo bazlı, veri-temelli puan ≥ eşik)
         _er = st.session_state.get('erken_radar_data')
         if _er is not None and hasattr(_er, 'empty') and not _er.empty and {'Sembol', 'ScenarioId', 'Role'} <= set(_er.columns):
             _erp = _er[_er['Role'].isin(['primary', 'confirmation'])].copy()
-            _erp['_sc'] = _erp['ScenarioId'].apply(lambda s: ER_BACKTEST_SCORE.get(str(s), 0))
+            _erp['_sc'] = _erp['ScenarioId'].apply(lambda s: _sscore(f"er_{s}", ER_BACKTEST_SCORE.get(str(s), 0)))
             _erp = _erp[_erp['_sc'] >= ER_ELIT_SCORE_MIN].sort_values('_sc', ascending=False)
             for _, r in _erp.iterrows():
                 _push(r['Sembol'], '🎯', f"Erken Radar {r['ScenarioId']}", int(r['_sc']),
@@ -2509,7 +2181,7 @@ def _compute_goldmine_entries():
         _pb = st.session_state.get('prelaunch_bos_data')
         if _pb is not None and hasattr(_pb, 'empty') and not _pb.empty and 'Sembol' in _pb.columns:
             for _, r in _pb.iterrows():
-                _push(r['Sembol'], '🚀', 'Pre-Launch BOS', 30, SCANNER_PLAIN_DESC['prelaunch'])
+                _push(r['Sembol'], '🚀', 'Pre-Launch BOS', _sscore('prelaunch_bos', 30), SCANNER_PLAIN_DESC['prelaunch'])
 
         # 4) VIP Formasyon — 52H GÜÇ KALDIRILDI (20 Haz 2026). Backtest: 🟢(5g +%0.45) zayıf
         # 🔴(+%0.81)'den KÖTÜ çıktı + Çift Dip gibi dönüş formasyonu doğası gereği DİPTE → 52H
@@ -2520,13 +2192,13 @@ def _compute_goldmine_entries():
         _fdf = _gp.get('formations') if isinstance(_gp, dict) else None
         if _fdf is not None and hasattr(_fdf, 'empty') and not _fdf.empty and 'Sembol' in _fdf.columns:
             for _, r in _fdf.iterrows():
-                _push(r['Sembol'], '📐', 'VIP Formasyon', 32, SCANNER_PLAIN_DESC['vip'])
+                _push(r['Sembol'], '📐', 'VIP Formasyon', _sscore('vip_formasyon', 32), SCANNER_PLAIN_DESC['vip'])
 
         # 5) Gizli Birikim (ham backtest 19 — düşük ama gösterilir)
         _ac = st.session_state.get('accum_data')
         if _ac is not None and hasattr(_ac, 'empty') and not _ac.empty and 'Sembol' in _ac.columns:
             for _, r in _ac.iterrows():
-                _push(r['Sembol'], '🔍', 'Gizli Birikim', 19, SCANNER_PLAIN_DESC['gizli'])
+                _push(r['Sembol'], '🔍', 'Gizli Birikim', _sscore('gizli_birikim', 19), SCANNER_PLAIN_DESC['gizli'])
 
         # NOT (19 Haz 2026 — düzeltme): Altın/Platin/Minervini vitrine ALINMIYOR. Backtest puanları
         # yok ("kanıt bekliyor") + generic açıklamaları yanıltıcıydı (AKBNK 60g %91/RSI83 iken
@@ -2561,7 +2233,7 @@ def log_goldmine_selection(category="", top_n=20):
         if not ranked:
             return
         today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, timeout=30)
         c = conn.cursor()
         for i, e in enumerate(ranked[:top_n]):
             try:
@@ -2622,7 +2294,7 @@ def render_gold_mine_showcase():
             with st.container(height=320, border=False):
                 for _i, e in enumerate(items):
                     if st.button(f"{_i+1}. {e['icon']} {e['sym']} · {e['scanner']}",
-                                 key=f"gm_{side}_{e['sym']}_{_i}", use_container_width=True):
+                                 key=f"gm_{side}_{e['sym']}_{_i}", width='stretch'):
                         on_scan_result_click(e['sembol']); st.rerun()
                     _d = e['plain']
                     if len(_d) > 70:
@@ -2739,11 +2411,30 @@ def _scanner_setup_strength(ticker: str) -> list:
     return out
 
 
+_SCAN_LOG_DISABLED = False   # tek-hisse canlı tarama sırasında True → DB'ye yazma (backtest kirlenmesin)
+# 4 Tem 2026 (5c): global bool yerine TICKER-BAZLI atlama seti. Eski bool tüm
+# yazımı kapatıyordu → eşzamanlı başka oturumun Master Scan logları da sessizce
+# kaçabiliyordu. Set sadece canlı-tek-hisse bakılan ticker'ın satırını süzer.
+_SCAN_LOG_SKIP = set()
+
+
 def log_scan_signal(scan_type: str, df_result, category: str = ""):
     """
     Scan sonuçlarını signals.db'ye (patron.db içinde scan_signals tablosuna) yazar.
     Aynı gün aynı scan_type + symbol kombinasyonu varsa INSERT OR IGNORE ile atlar.
     """
+    if _SCAN_LOG_DISABLED:
+        return   # tek-hisse canlı tarama → DB log'u atla
+    if _SCAN_LOG_SKIP and df_result is not None and hasattr(df_result, 'columns'):
+        # sadece atlama setindeki ticker satırlarını süz — diğer semboller loglanır
+        try:
+            for _c in ('Sembol', 'Hisse', 'Ticker', 'Symbol'):
+                if _c in df_result.columns:
+                    _u = df_result[_c].astype(str).str.upper().str.replace('.IS', '', regex=False)
+                    df_result = df_result[~_u.isin(_SCAN_LOG_SKIP)]
+                    break
+        except Exception:
+            return
     if df_result is None or (hasattr(df_result, 'empty') and df_result.empty):
         return
     today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
@@ -2762,7 +2453,7 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
         except Exception:
             pass
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, timeout=30)
         c = conn.cursor()
         for _, row in df_result.iterrows():
             symbol = row.get('Sembol', '') or row.get('Hisse', '') or row.get('Ticker', '') or row.get('symbol', '')
@@ -2873,6 +2564,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             f_dd_zirveden_v      = _ff('F_DD_Zirveden', 'f_dd_zirveden', 'dd_zirveden')
             f_hv_oran_v          = _ff('F_HV_Oran', 'f_hv_oran', 'hv_oran')
             f_skew_60g_v         = _ff('F_Skew_60g', 'f_skew_60g', 'skew_60g')
+            # 29 Haz 2026 — Kurumsal-tarz faktörler (scanner df üretmez → sadece _feat'ten gelir)
+            f_mom_12_1_v = f_vol_60g_v = f_sharpe_mom_v = f_trend_persist_v = None
             f_sentiment_v = f_ict_model_v = f_smart_money_v = None  # 19 Haz audit — kör skorlar (sadece _feat'ten)
             f_adv_tl_v = f_liq_tier_v = f_manip_v = None            # 19 Haz Faz 1 — likidite/manip (sadece _feat'ten)
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
@@ -2927,6 +2620,10 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                 if f_dd_zirveden_v    is None: f_dd_zirveden_v    = _feat.get('f_dd_zirveden')
                 if f_hv_oran_v        is None: f_hv_oran_v        = _feat.get('f_hv_oran')
                 if f_skew_60g_v       is None: f_skew_60g_v       = _feat.get('f_skew_60g')
+                if f_mom_12_1_v       is None: f_mom_12_1_v       = _feat.get('f_mom_12_1')
+                if f_vol_60g_v        is None: f_vol_60g_v        = _feat.get('f_vol_60g')
+                if f_sharpe_mom_v     is None: f_sharpe_mom_v     = _feat.get('f_sharpe_mom')
+                if f_trend_persist_v  is None: f_trend_persist_v  = _feat.get('f_trend_persist')
                 if f_sentiment_v   is None: f_sentiment_v   = _feat.get('f_sentiment_score')
                 if f_ict_model_v   is None: f_ict_model_v   = _feat.get('f_ict_model')
                 if f_smart_money_v is None: f_smart_money_v = _feat.get('f_smart_money_score')
@@ -2955,8 +2652,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                     f_tavan_skor, f_tavan_kat, f_tavan_confluence_n,
                     f_beta_xu100, f_dd_zirveden, f_hv_oran, f_skew_60g,
                     f_sentiment_score, f_ict_model, f_smart_money_score,
-                    f_adv_tl, f_liquidity_tier, f_manip_risk)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    f_adv_tl, f_liquidity_tier, f_manip_risk,
+                    f_mom_12_1, f_vol_60g, f_sharpe_mom, f_trend_persist)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (today, symbol_db, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
@@ -2976,7 +2674,8 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
                  f_tavan_skor_v, f_tavan_kat, f_tavan_conf_v,
                  f_beta_xu100_v, f_dd_zirveden_v, f_hv_oran_v, f_skew_60g_v,
                  f_sentiment_v, f_ict_model_v, f_smart_money_v,
-                 f_adv_tl_v, f_liq_tier_v, f_manip_v)
+                 f_adv_tl_v, f_liq_tier_v, f_manip_v,
+                 f_mom_12_1_v, f_vol_60g_v, f_sharpe_mom_v, f_trend_persist_v)
             )
         conn.commit()
         conn.close()
@@ -2984,30 +2683,11 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
         import logging
         logging.warning(f"[log_scan_signal] HATA — scan_type={scan_type}: {e}")
 
-def load_watchlist_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('SELECT symbol FROM watchlist')
-    data = c.fetchall()
-    conn.close()
-    return [x[0] for x in data]
+# -> db_layer.py (Adim 5, 4 Tem 2026): load_watchlist_db
 
-def add_watchlist_db(symbol):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    try:
-        c.execute('INSERT INTO watchlist (symbol) VALUES (?)', (symbol,))
-        conn.commit()
-    except sqlite3.IntegrityError: 
-        pass
-    conn.close()
+# -> db_layer.py (Adim 5, 4 Tem 2026): add_watchlist_db
 
-def remove_watchlist_db(symbol):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('DELETE FROM watchlist WHERE symbol = ?', (symbol,))
-    conn.commit()
-    conn.close()
+# -> db_layer.py (Adim 5, 4 Tem 2026): remove_watchlist_db
 
 @st.cache_data(ttl=600, show_spinner=False)
 def evaluate_signals(lookback_days=90, forward_windows=None):
@@ -3022,7 +2702,7 @@ def evaluate_signals(lookback_days=90, forward_windows=None):
         forward_windows = [5, 10, 20]
 
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, timeout=30)
         signals = pd.read_sql(
             "SELECT * FROM scan_signals WHERE scan_date >= date('now', ?)",
             conn,
@@ -3141,6 +2821,535 @@ def get_signal_performance_summary(lookback_days=90):
     return pd.DataFrame(summary)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# KRİTER PERFORMANSI (29 Haz 2026) — feature → ileri getiri sıralaması
+# Mevcut altyapıyı kullanır: scan_signals.f_* (sinyal anı snapshot) ×
+# signal_returns.return_pct (ileri getiri). Tarayıcı tipine göre DEĞİL,
+# TEK KRİTER DURUMUNA göre gruplar → "hangi feature durumu kazandırdı".
+# Kombinasyon değil tek-kriter (n yeterli olan tek güvenilir kesim).
+# Kurumsal-tarz faktörler quintile ile KESİTSEL sıralanır (cohort içi rank).
+# ═══════════════════════════════════════════════════════════════════════════
+
+# kind: 'categorical' (durum) | 'fixed' (sabit eşik) | 'quintile' (kesitsel rank)
+_FEATURE_PERF_CATALOG = {
+    'f_rsi':          {'label': 'RSI (14g)', 'kind': 'fixed',
+                       'edges': [-0.01, 30, 40, 50, 60, 70, 100.01],
+                       'labels': ['<30 aşırı satım', '30-40', '40-50', '50-60', '60-70', '70+ aşırı alım']},
+    'f_52h_pos':      {'label': '52H konum %', 'kind': 'fixed',
+                       'edges': [-0.01, 20, 40, 60, 80, 100.01],
+                       'labels': ['dip %0-20', '%20-40', '%40-60', '%60-80', 'zirve %80-100']},
+    'f_master_score': {'label': 'Master Skor', 'kind': 'fixed',
+                       'edges': [-0.01, 40, 55, 70, 100.01],
+                       'labels': ['<40 zayıf', '40-55', '55-70', '70+ güçlü']},
+    'f_omi_sigma':    {'label': 'OBV Momentum (σ)', 'kind': 'fixed',
+                       'edges': [-999, -1, 0, 1, 999],
+                       'labels': ['<-1σ', '-1..0', '0..1σ', '>1σ']},
+    'f_cmf_dual':     {'label': 'CMF durumu (5g/20g)', 'kind': 'categorical'},
+    'f_vp_shape':     {'label': 'Hacim profili şekli', 'kind': 'categorical'},
+    'f_rsi_dual':     {'label': 'RSI dual durumu', 'kind': 'categorical'},
+    'f_udvr_state':   {'label': 'Up/Down Volume durumu', 'kind': 'categorical'},
+    'f_mom_12_1':     {'label': '🏛 Momentum 12-1 ay (kesitsel)', 'kind': 'quintile',
+                       'labels': ['Q1 en düşük', 'Q2', 'Q3', 'Q4', 'Q5 en yüksek']},
+    'f_vol_60g':      {'label': '🏛 Düşük-vol faktörü (60g)', 'kind': 'quintile',
+                       'labels': ['Q1 en sakin', 'Q2', 'Q3', 'Q4', 'Q5 en oynak']},
+    'f_sharpe_mom':   {'label': '🏛 Riske-göre momentum', 'kind': 'quintile',
+                       'labels': ['Q1 en düşük', 'Q2', 'Q3', 'Q4', 'Q5 en yüksek']},
+    'f_trend_persist':{'label': '🏛 Trend kalıcılığı (SMA50 üstü %)', 'kind': 'fixed',
+                       'edges': [-0.01, 25, 50, 75, 100.01],
+                       'labels': ['%0-25', '%25-50', '%50-75', '%75-100']},
+}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_feature_performance(feature_key: str, day_offset: int = 10, lookback_days: int = 180):
+    """Tek bir feature'ın durumuna göre ileri getiri (hit% + ort getiri + n).
+    scan_signals × signal_returns JOIN. feature_key SADECE katalogdan (SQL güvenliği).
+    Dönüş: bucket başına satır DataFrame (Ort Getiri'ye göre azalan)."""
+    spec = _FEATURE_PERF_CATALOG.get(feature_key)
+    if not spec:
+        return pd.DataFrame()
+    # İleri getiri signal_results tablosunda (ret_5g/10g/20g, sinyal başına 1 satır).
+    _ret_col = {5: 'ret_5g', 10: 'ret_10g', 20: 'ret_20g'}.get(int(day_offset), 'ret_10g')
+    try:
+        conn = sqlite3.connect(DB_FILE, timeout=30)
+        q = (f"SELECT ss.{feature_key} AS feat, sr.{_ret_col} AS ret "
+             f"FROM scan_signals ss JOIN signal_results sr ON ss.id = sr.signal_id "
+             f"WHERE ss.scan_date >= date('now', ?) "
+             f"AND ss.{feature_key} IS NOT NULL AND sr.{_ret_col} IS NOT NULL")
+        df = pd.read_sql(q, conn, params=(f'-{int(lookback_days)} days',))
+        conn.close()
+    except Exception:
+        return pd.DataFrame()
+    if df.empty or len(df) < 5:
+        return pd.DataFrame()
+
+    kind = spec.get('kind', 'categorical')
+    if kind == 'categorical':
+        df['bucket'] = df['feat'].astype(str)
+    elif kind == 'fixed':
+        df['bucket'] = pd.cut(pd.to_numeric(df['feat'], errors='coerce'),
+                              bins=spec['edges'], labels=spec['labels'])
+    elif kind == 'quintile':
+        # KESİTSEL: cohort içinde rank → 5 eşit dilim (eşik değil sıralama)
+        _ser = pd.to_numeric(df['feat'], errors='coerce')
+        try:
+            df['bucket'] = pd.qcut(_ser.rank(method='first'), 5, labels=spec['labels'])
+        except Exception:
+            return pd.DataFrame()
+    else:
+        return pd.DataFrame()
+
+    df = df.dropna(subset=['bucket'])
+    if df.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for b, g in df.groupby('bucket', observed=True):
+        n = len(g)
+        rows.append({
+            'Kriter Durumu': str(b),
+            'n': n,
+            'Hit %': round(float((g['ret'] > 0).mean()) * 100.0, 1),
+            'Ort Getiri %': round(float(g['ret'].mean()), 2),
+            '_guven': ('güçlü' if n >= 30 else ('zayıf' if n >= 12 else 'yetersiz')),
+        })
+    out = pd.DataFrame(rows).sort_values('Ort Getiri %', ascending=False).reset_index(drop=True)
+    return out
+
+
+
+@st.fragment
+def render_tarama_performans_panel():
+    # ── TARAMA PERFORMANSI — Backtest (sol sütun EN ALT) ─────────────────────
+    with st.expander("🏆 TARAMA PERFORMANSI — Backtest (Son 90 Gün)", expanded=False):
+        import json as _bt_json
+        from pathlib import Path as _bt_Path
+        _bt_path = _bt_Path(__file__).parent / "backtest_results.json"
+
+        # 🚀 TAVAN ADAYLARI — 60g standalone backtest sonucu (18 Haz 2026)
+        # signal_returns × scan_signals JOIN'ine entegre değil — standalone hesaplama
+        # 3-4 hafta gözlem sonrası DB entegrasyonu yapılacak (B versiyonu)
+        st.markdown(
+            '<div style="background:linear-gradient(135deg,rgba(168,85,247,0.10) 0%,rgba(239,68,68,0.04) 100%);'
+            'border:1px solid rgba(168,85,247,0.30);border-radius:8px;padding:10px 14px;margin-bottom:12px;">'
+            '<div style="font-weight:800;color:#a855f7;font-size:0.9rem;margin-bottom:6px;">'
+            '🚀 Tavan Adayları (Yeni) — 60g Standalone Backtest'
+            '<span style="font-weight:400;color:#94a3b8;font-size:0.7rem;margin-left:8px;font-style:italic;">'
+            '· 16 Mar - 16 Haz 2026 · 1131 tavan · 589 hisse</span>'
+            '</div>'
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.78rem;">'
+            '<div style="background:rgba(239,68,68,0.08);border-left:3px solid #ef4444;border-radius:4px;padding:6px 10px;">'
+            '<div style="font-weight:700;color:#ef4444;">🚨 ALARM — Skor ≥150</div>'
+            '<div style="color:#cbd5e1;margin-top:3px;">Hit: <b>%11.24</b> · Random: <b>×3.44</b></div>'
+            '<div style="color:#94a3b8;font-size:0.7rem;">Günlük ort: 12 hisse · 1.3 tavan/gün</div>'
+            '</div>'
+            '<div style="background:rgba(59,130,246,0.06);border-left:3px solid #3b82f6;border-radius:4px;padding:6px 10px;">'
+            '<div style="font-weight:700;color:#3b82f6;">📋 İZLEME — TOP 30</div>'
+            '<div style="color:#cbd5e1;margin-top:3px;">Hit: <b>%14.8</b> · Random: <b>×3.04</b></div>'
+            '<div style="color:#94a3b8;font-size:0.7rem;">Günlük ort: 30 hisse · 3 tavan/gün</div>'
+            '</div>'
+            '</div>'
+            '<div style="margin-top:8px;font-size:0.7rem;color:#94a3b8;line-height:1.4;">'
+            '<b style="color:#cbd5e1;">Kalıp performansı:</b> '
+            '📈 A Momentum <b style="color:#10b981;">%9.9</b> · '
+            '🎯 E Direnç <b style="color:#10b981;">%5.5</b> · '
+            '🤐 C Sıkışma %2.0 · 🔄 D Dip %2.7 — A en güvenilir, C beklenenden zayıf. '
+            '<b style="color:#cbd5e1;">Rejim:</b> HIZLI_RALLI ve YATAY\'da en güçlü (3.5×), DUSUS\'ta zayıf (1.6×).'
+            '</div>'
+            '<div style="margin-top:6px;font-size:0.68rem;color:#64748b;font-style:italic;">'
+            '⚠ Standalone backtest — scan_signals tablosuna entegre değil. 3-4 hafta gözlem sonrası DB\'ye yazılacak.'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        _bt_col1, _bt_col2 = st.columns([3, 1])
+        with _bt_col2:
+            if st.button("🔄 Şimdi Çalıştır", key="bt_run_btn", width='stretch',
+                         help="backtest_runner.py'yi arka planda çalıştırır. ~1-30 saniye sürer."):
+                import subprocess as _bt_sub
+                import sys as _bt_sys
+                with st.spinner("Backtest çalışıyor..."):
+                    try:
+                        _bt_result = _bt_sub.run(
+                            [_bt_sys.executable, str(_bt_Path(__file__).parent / "backtest_runner.py")],
+                            cwd=str(_bt_Path(__file__).parent),
+                            capture_output=True, text=True, timeout=300
+                        )
+                        if _bt_result.returncode == 0:
+                            st.success("✅ Backtest tamamlandı, sayfayı yenile.")
+                        else:
+                            st.error(f"❌ Backtest hata: {_bt_result.stderr[-500:]}")
+                    except _bt_sub.TimeoutExpired:
+                        st.error("⏱ Timeout (5dk). Çok sinyal var olabilir.")
+                    except Exception as _e:
+                        st.error(f"❌ Çalıştırma hatası: {_e}")
+
+        if not _bt_path.exists():
+            with _bt_col1:
+                st.info("Henüz backtest çalıştırılmadı. **🔄 Şimdi Çalıştır** butonuna bas.")
+        else:
+            try:
+                _bt = _bt_json.loads(_bt_path.read_text(encoding='utf-8'))
+                _bt_gen = _bt.get('generated_at', '—')
+
+                _bt_fresh_color = "#10b981"
+                _bt_fresh_label = "✓ güncel"
+                try:
+                    _bt_dt = datetime.strptime(_bt_gen, "%Y-%m-%d %H:%M:%S")
+                    _bt_age_h = (datetime.now() - _bt_dt).total_seconds() / 3600
+                    if _bt_age_h > 168:
+                        _bt_fresh_color = "#ef4444"; _bt_fresh_label = "⚠️ 7+ gün eski"
+                    elif _bt_age_h > 24:
+                        _bt_fresh_color = "#f59e0b"; _bt_fresh_label = f"{int(_bt_age_h/24)} gün önce"
+                    elif _bt_age_h > 1:
+                        _bt_fresh_label = f"{int(_bt_age_h)} saat önce"
+                    else:
+                        _bt_fresh_label = f"{int(_bt_age_h*60)} dakika önce"
+                except Exception:
+                    pass
+
+                with _bt_col1:
+                    st.markdown(
+                        f"<div style='display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#94a3b8;"
+                        f"background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.2);"
+                        f"border-radius:6px;padding:6px 10px;'>"
+                        f"<span>📅 Son hesap: <b style='color:{_bt_fresh_color};'>{_bt_gen}</b> "
+                        f"<span style='color:{_bt_fresh_color};'>({_bt_fresh_label})</span></span>"
+                        f"<span>⏱ Süre: <b>{_bt.get('duration_sec','—')}s</b></span>"
+                        f"</div>", unsafe_allow_html=True
+                    )
+
+                _bt_stats = _bt.get('db_stats', {})
+                _bt_eval  = _bt.get('eval_meta', {})
+                st.markdown(
+                    f"<div style='display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#94a3b8;"
+                    f"background:rgba(125,211,252,0.04);border:1px solid rgba(125,211,252,0.18);"
+                    f"border-radius:6px;padding:6px 10px;margin-top:6px;margin-bottom:10px;'>"
+                    f"<span>📊 <b style='color:#7dd3fc;'>{_bt_stats.get('total_signals',0):,}</b> sinyal</span>"
+                    f"<span>✓ <b style='color:#10b981;'>{_bt_eval.get('evaluated',0)}</b> değerlendirildi</span>"
+                    f"<span>⏳ <b style='color:#f59e0b;'>{_bt_eval.get('pending',0)}</b> bekleyen</span>"
+                    f"<span>🔖 <b style='color:#cbd5e1;'>{_bt_stats.get('unique_scan_types',0)}</b> tarama tipi</span>"
+                    f"</div>", unsafe_allow_html=True
+                )
+
+                _bt_summary = _bt.get('summary', [])
+                if _bt_summary:
+                    _bt_df = pd.DataFrame(_bt_summary)
+
+                    def _render_bt_html_table(df_src, title):
+                        """Backtest tablosu — Expectancy odaklı v2 + Alpha."""
+                        _th = lambda txt, align='center': (
+                            f"<th style='padding:4px 6px;text-align:{align};"
+                            f"color:#64748b;font-size:0.72rem;font-weight:600;"
+                            f"border-bottom:1px solid rgba(148,163,184,0.2);"
+                            f"word-break:break-word;line-height:1.3;'>{txt}</th>"
+                        )
+                        hdr = (_th('Tarama', 'left') +
+                               _th('5G İsabet') +
+                               _th('10G İsabet') +
+                               _th('20G İsabet') +
+                               _th('10G Beklenti') +
+                               _th('Profit Factor') +
+                               _th('Ort. Kazanç') +
+                               _th('Ort. Kayıp') +
+                               _th('Piyasa Farkı'))
+
+                        rows_html = ""
+                        for _, row in df_src.iterrows():
+                            label    = row.get('label', '')
+                            n        = row.get('total_signals', 0)
+                            hit10    = row.get('hit_10g_pct')
+                            exp10    = row.get('expectancy_10g')
+                            pf10     = row.get('profit_factor_10g')
+                            avg_win  = row.get('avg_win_10g')
+                            avg_loss = row.get('avg_loss_10g')
+                            hit5     = row.get('hit_5g_pct')
+                            hit20    = row.get('hit_20g_pct')
+                            n5       = row.get('eval_5g', 0)
+                            n10      = row.get('eval_10g', 0)
+                            n20      = row.get('eval_20g', 0)
+                            alpha10  = row.get('alpha_10g')
+                            xu100_10 = row.get('xu100_avg_10g')
+
+                            if exp10 is None:
+                                exp_col = '#64748b'; exp_str = '—'
+                            elif exp10 > 1:
+                                exp_col = '#4ade80'; exp_str = f'%{exp10:+.2f}'
+                            elif exp10 > 0:
+                                exp_col = '#86efac'; exp_str = f'%{exp10:+.2f}'
+                            elif exp10 > -2:
+                                exp_col = '#f59e0b'; exp_str = f'%{exp10:+.2f}'
+                            else:
+                                exp_col = '#f87171'; exp_str = f'%{exp10:+.2f}'
+
+                            if pf10 is None:
+                                pf_col = '#64748b'; pf_str = '—'
+                            elif pf10 >= 2.0:
+                                pf_col = '#4ade80'; pf_str = f'{pf10:.2f}'
+                            elif pf10 >= 1.5:
+                                pf_col = '#86efac'; pf_str = f'{pf10:.2f}'
+                            elif pf10 >= 1.0:
+                                pf_col = '#f59e0b'; pf_str = f'{pf10:.2f}'
+                            else:
+                                pf_col = '#f87171'; pf_str = f'{pf10:.2f}'
+
+                            def _hit_col(v):
+                                if v is None: return '#64748b'
+                                return '#4ade80' if v >= 60 else '#f59e0b' if v >= 40 else '#f87171'
+
+                            if alpha10 is None:
+                                alpha_col = '#64748b'; alpha_str = '—'
+                            elif alpha10 > 2:
+                                alpha_col = '#4ade80'; alpha_str = f'%{alpha10:+.1f}'
+                            elif alpha10 > 0:
+                                alpha_col = '#86efac'; alpha_str = f'%{alpha10:+.1f}'
+                            elif alpha10 > -2:
+                                alpha_col = '#f59e0b'; alpha_str = f'%{alpha10:+.1f}'
+                            else:
+                                alpha_col = '#f87171'; alpha_str = f'%{alpha10:+.1f}'
+                            alpha_title = f"XU100 ort: %{xu100_10:+.1f}" if xu100_10 is not None else "XU100 verisi yok"
+
+                            def _td(txt, col='#cbd5e1', bold=False, italic=False):
+                                fw = 'font-weight:700;' if bold else ''
+                                fi = 'font-style:italic;' if italic else ''
+                                return (f"<td style='padding:4px 6px;text-align:center;color:{col};"
+                                        f"font-size:0.77rem;{fw}{fi}'>{txt}</td>")
+
+                            # ── İDEAL VADE alanları (backtest_runner.compute_ideal_vade'den) ──
+                            # Piyasa farkının (α) zirve yaptığı vade. Son 3 sütun bunu kullanır.
+                            # ⚠ df_src bir DataFrame → eksik alanlar NaN olur (None DEĞİL) → pd.notna ile koru.
+                            _iv_day  = row.get('ideal_day')
+                            _iv_win  = row.get('ideal_win')
+                            _iv_loss = row.get('ideal_loss')
+                            _iv_a    = row.get('ideal_alpha')
+                            _iv_eraw = row.get('has_edge')
+                            _iv_edge = bool(_iv_eraw) if pd.notna(_iv_eraw) else None
+                            # Tarama adının altına TEK satır sade hüküm (sayılar sütunlarda)
+                            _verdict = ""
+                            if _iv_edge is True:
+                                _verdict = ("<br><span style='font-size:0.64rem;color:#4ade80;"
+                                            "font-weight:600;'>✅ piyasayı geçiyor</span>")
+                            elif _iv_edge is False:
+                                _verdict = ("<br><span style='font-size:0.64rem;color:#fbbf24;"
+                                            "font-weight:600;'>⚠️ piyasayı geçemiyor</span>")
+                            r  = (f"<td style='padding:4px 6px;text-align:left;font-size:0.75rem;"
+                                  f"color:#e2e8f0;vertical-align:top;'>{label}{_verdict}</td>")
+                            # Her hit% hücresinin altına "Gerçek sinyal: X" 2. satır enjekte
+                            _gs = lambda nval: f"<br><span style='font-size:0.62rem;color:#64748b;font-style:italic;font-weight:400;'>Gerçek sinyal: {nval}</span>"
+                            _h5_txt  = (f"%{hit5}{_gs(n5)}")   if hit5  is not None else '—'
+                            _h10_txt = (f"%{hit10}{_gs(n10)}") if hit10 is not None else '—'
+                            _h20_txt = (f"%{hit20}{_gs(n20)}") if hit20 is not None else '—'
+                            r += _td(_h5_txt,  _hit_col(hit5))
+                            r += _td(_h10_txt, _hit_col(hit10), bold=True)
+                            r += _td(_h20_txt, _hit_col(hit20))
+                            r += _td(exp_str, exp_col, bold=True)
+                            r += _td(pf_str, pf_col, bold=True)
+                            # ── SON 3 SÜTUN: piyasa farkının (α) en yüksek olduğu VADEDE ──
+                            # Kazanç · Kayıp · Piyasa Farkı hep aynı (zirve) vadede; altında "X. gün".
+                            # ideal_day yoksa (az örnek) sabit 10g'ye düş.
+                            if pd.notna(_iv_day):
+                                _d_int  = int(_iv_day)
+                                _win_v  = _iv_win  if pd.notna(_iv_win)  else None
+                                _loss_v = _iv_loss if pd.notna(_iv_loss) else None
+                                _alf_v  = _iv_a    if pd.notna(_iv_a)    else None
+                            else:
+                                _d_int  = 10
+                                _win_v  = avg_win
+                                _loss_v = avg_loss
+                                _alf_v  = alpha10
+                            # Hem zirve hem 10G fallback NaN olabilir (az örnek) → None'a indir → "—" göster
+                            _win_v  = _win_v  if pd.notna(_win_v)  else None
+                            _loss_v = _loss_v if pd.notna(_loss_v) else None
+                            _alf_v  = _alf_v  if pd.notna(_alf_v)  else None
+                            _day_sub = (f"<br><span style='font-size:0.62rem;color:#64748b;"
+                                        f"font-style:italic;font-weight:400;'>{_d_int}. gün</span>")
+                            # Ort. Kazanç (zirve vadede)
+                            r += _td((f"%{_win_v:+.1f}{_day_sub}") if _win_v is not None else '—',
+                                     '#4ade80', italic=True)
+                            # Ort. Kayıp (aynı vadede)
+                            r += _td((f"%{_loss_v:+.1f}{_day_sub}") if _loss_v is not None else '—',
+                                     '#f87171', italic=True)
+                            # Piyasa Farkı (o vadede) — renk α değerine göre
+                            if _alf_v is None:
+                                _af_col = '#64748b'; _af_str = '—'
+                            elif _alf_v > 2:
+                                _af_col = '#4ade80'; _af_str = f'%{_alf_v:+.1f}'
+                            elif _alf_v > 0:
+                                _af_col = '#86efac'; _af_str = f'%{_alf_v:+.1f}'
+                            elif _alf_v > -2:
+                                _af_col = '#f59e0b'; _af_str = f'%{_alf_v:+.1f}'
+                            else:
+                                _af_col = '#f87171'; _af_str = f'%{_alf_v:+.1f}'
+                            _af_txt = (f"{_af_str}{_day_sub}") if _alf_v is not None else '—'
+                            r += (f"<td style='padding:4px 6px;text-align:center;color:{_af_col};"
+                                  f"font-size:0.77rem;font-weight:700;'>{_af_txt}</td>")
+                            rows_html += f"<tr style='border-bottom:1px solid rgba(148,163,184,0.06);'>{r}</tr>"
+
+                        st.markdown(f"**{title}**")
+                        st.markdown(
+                            f"<div style='font-size:0.8rem;'>"
+                            f"<table style='width:100%;border-collapse:collapse;font-family:inherit;table-layout:fixed;'>"
+                            f"<thead><tr>{hdr}</tr></thead>"
+                            f"<tbody>{rows_html}</tbody></table></div>",
+                            unsafe_allow_html=True
+                        )
+                        st.caption(
+                            "ℹ️ Son 3 sütun (Ort. Kazanç · Ort. Kayıp · Piyasa Farkı) sabit 10 günde değil, "
+                            "**piyasa farkının en yüksek olduğu vadede** hesaplanır — hücre altındaki "
+                            "*“X. gün”* o vadeyi gösterir (üçü de aynı gün)."
+                        )
+
+                    _is_er        = _bt_df['category'].isin(['A', 'B', 'C', 'D'])
+                    _er_data      = _bt_df[_is_er.values]
+                    _classic_data = _bt_df[~_is_er.values]
+
+                    if not _classic_data.empty:
+                        _render_bt_html_table(_classic_data, "📊 Klasik Taramalar")
+                        # 10 Haz 2026 Oturum 20: ICT Sniper "sessiz" durumu —
+                        # piyasa SMA50 altındaysa kullanıcıya bilgi rozeti göster.
+                        # Sebebi: ICT Sniper sadece YUKARI yönlü setup arar (fiyat>SMA50 + mom+).
+                        # Düşüş trendinde sıfır sinyal "bug" değil, sistem doğru çalışıyor demek.
+                        # UI bilgi mesajı — AI prompt'a/sektör/rejim asla eklenmez.
+                        try:
+                            _xu_df_rej = get_safe_historical_data("XU100.IS")
+                            if _xu_df_rej is not None and len(_xu_df_rej) >= 50:
+                                _xu_last = float(_xu_df_rej['Close'].iloc[-1])
+                                _xu_sma50 = float(_xu_df_rej['Close'].rolling(50).mean().iloc[-1])
+                                _xu_5g = float(_xu_df_rej['Close'].iloc[-6]) if len(_xu_df_rej) >= 6 else _xu_last
+                                _xu_below_sma = _xu_last < _xu_sma50
+                                _xu_5g_neg = _xu_last < _xu_5g
+                                # ICT Sniper satırında 5g sinyal sayısı kontrolü
+                                _ict_row = _classic_data[_classic_data['label'].str.contains('ICT Sniper', na=False)]
+                                _ict_5g_sample = 0
+                                if not _ict_row.empty:
+                                    _ict_5g_sample = int(_ict_row.iloc[0].get('eval_5g', 0) or 0)
+                                # Sample son 30g'de büyük değil ya da pyasa düşüş trendinde
+                                if (_xu_below_sma and _xu_5g_neg) and _ict_5g_sample < 100:
+                                    _xu_diff_pct = ((_xu_last - _xu_sma50) / _xu_sma50) * 100
+                                    st.markdown(
+                                        f"<div style='margin-top:6px;padding:8px 12px;"
+                                        f"background:rgba(251,191,36,0.08);"
+                                        f"border-left:3px solid #fbbf24;"
+                                        f"border-radius:0 4px 4px 0;font-size:0.78rem;"
+                                        f"color:#fde68a;line-height:1.45;'>"
+                                        f"💡 <b>ICT Sniper neden sessiz?</b><br>"
+                                        f"XU100 şu an SMA50 altında "
+                                        f"(<code style='color:#fbbf24;'>{_xu_last:.0f}</code> vs "
+                                        f"<code style='color:#fbbf24;'>{_xu_sma50:.0f}</code>, "
+                                        f"%{_xu_diff_pct:+.1f}). ICT Sniper yalnız <b>yukarı yönlü</b> "
+                                        f"setup arar (fiyat &gt; SMA50 + 5g momentum pozitif). "
+                                        f"Düşüş rejiminde sinyal beklenmez — piyasa dönüşü başlayınca "
+                                        f"ilk tetiklenecek tarama bu olur."
+                                        f"</div>",
+                                        unsafe_allow_html=True
+                                    )
+                        except Exception:
+                            pass
+
+                    _top5 = _bt.get('top5_by_expectancy', [])
+                    if _top5:
+                        st.markdown("**🥇 En Yüksek Expectancy (10G)**")
+                        for _t in _top5:
+                            _exp = _t.get('expectancy_10g')
+                            _win = _t.get('avg_win_10g')
+                            _los = _t.get('avg_loss_10g')
+                            st.markdown(
+                                f"- **{_t['label']}** — "
+                                f"Exp: `%{_exp:+.2f}` · "
+                                f"Hit: `%{_t.get('hit_10g_pct','—')}` · "
+                                f"Kazanç: `%{_win:+.1f}` / Kayıp: `%{_los:+.1f}` · "
+                                f"`{_t.get('eval_10g',0)}/{_t['total_signals']}` sinyal"
+                            )
+
+                    _best_cat = _bt.get('best_per_category', {})
+                    if _best_cat:
+                        st.markdown("**🏆 Kategori Şampiyonları (Expectancy)**")
+                        _cat_full = {'A': 'GERİ DÖNÜŞ', 'B': 'SIKIŞMA', 'C': 'TREND DEVAMI'}
+                        for _ck, _cv in _best_cat.items():
+                            st.markdown(
+                                f"- **{_cat_full.get(_ck, _ck)}:** {_cv['label']} "
+                                f"(hit %{_cv.get('hit_10g','—')} · exp %{_cv.get('expectancy',0):+.2f})"
+                            )
+
+                    _worst = _bt.get('worst_5', [])
+                    if _worst:
+                        with st.expander("⚠️ Negatif Expectancy (Eleme Adayları)", expanded=False):
+                            for _w in _worst:
+                                st.markdown(
+                                    f"- **{_w['label']}** — "
+                                    f"Exp: `%{_w.get('expectancy_10g',0):+.2f}` · "
+                                    f"Hit: `%{_w.get('hit_10g_pct','—')}` · "
+                                    f"`{_w.get('eval_10g',0)}/{_w['total_signals']}` sinyal"
+                                )
+
+                    if not _er_data.empty:
+                        _render_bt_html_table(_er_data, "🎯 Erken Radar Senaryoları")
+                else:
+                    st.info("Henüz değerlendirilebilir sinyal yok (min 5g geçmesi gerekir).")
+            except Exception as _bt_e:
+                st.warning(f"backtest_results.json okunamadı: {_bt_e}")
+
+
+@st.fragment
+def render_kriter_performans_panel():
+    # ── KRİTER PERFORMANSI — feature → ileri getiri (29 Haz 2026) ────────────
+    with st.expander("🔬 KRİTER PERFORMANSI — Tek kriter ne kadar kazandırdı?", expanded=False):
+        st.caption(
+            "Tarayıcı tipine değil **tek kriterin durumuna** göre geçmiş ileri getiri. "
+            "🏛 işaretliler kurumsal-tarz faktör (kesitsel sıralama). "
+            "Veri biriktikçe dolar; **n** düşükse istatistik değil — `n≥30` güçlü, `12-29` zayıf, `<12` yetersiz."
+        )
+        _fp_c1, _fp_c2 = st.columns([3, 1])
+        with _fp_c1:
+            _fp_keys = list(_FEATURE_PERF_CATALOG.keys())
+            _fp_sel = st.selectbox(
+                "Kriter", _fp_keys,
+                format_func=lambda k: _FEATURE_PERF_CATALOG[k]['label'],
+                key="fp_feature_sel",
+            )
+        with _fp_c2:
+            _fp_win = st.radio("Vade", [5, 10, 20], index=1, horizontal=True,
+                               format_func=lambda d: f"{d}g", key="fp_window_sel")
+        try:
+            _fp_df = get_feature_performance(_fp_sel, day_offset=int(_fp_win), lookback_days=180)
+        except Exception as _fp_e:
+            _fp_df = pd.DataFrame()
+            st.warning(f"Kriter performansı hesaplanamadı: {_fp_e}")
+        if _fp_df is None or _fp_df.empty:
+            st.info("Bu kriter için henüz yeterli değerlendirilebilir sinyal yok "
+                    "(min 5g geçmiş + feature dolu olmalı). Veri biriktikçe görünecek.")
+        else:
+            _fp_tag_color = {'güçlü': '#10b981', 'zayıf': '#f59e0b', 'yetersiz': '#64748b'}
+            _fp_rows_html = ""
+            # kolon sırası: 0=Kriter Durumu 1=n 2=Hit % 3=Ort Getiri % 4=_guven
+            for _r in _fp_df.itertuples(index=False, name=None):
+                _durum, _n, _hit, _ret, _tag = _r[0], _r[1], _r[2], _r[3], _r[4]
+                _ret_c = '#10b981' if _ret > 0 else '#ef4444'
+                _fp_rows_html += (
+                    "<tr>"
+                    f"<td style='padding:4px 8px;color:#cbd5e1;'>{_durum}</td>"
+                    f"<td style='padding:4px 8px;text-align:center;color:#94a3b8;'>{_n}</td>"
+                    f"<td style='padding:4px 8px;text-align:center;color:#cbd5e1;font-weight:700;'>%{_hit}</td>"
+                    f"<td style='padding:4px 8px;text-align:center;color:{_ret_c};font-weight:700;'>%{_ret:+.2f}</td>"
+                    f"<td style='padding:4px 8px;text-align:center;color:{_fp_tag_color.get(_tag,'#64748b')};"
+                    f"font-size:0.72rem;'>{_tag}</td>"
+                    "</tr>"
+                )
+            st.markdown(
+                "<table style='width:100%;border-collapse:collapse;font-size:0.8rem;'>"
+                "<thead><tr style='border-bottom:1px solid rgba(148,163,184,0.25);'>"
+                "<th style='padding:4px 8px;text-align:left;color:#64748b;font-size:0.72rem;'>Kriter Durumu</th>"
+                "<th style='padding:4px 8px;text-align:center;color:#64748b;font-size:0.72rem;'>n</th>"
+                "<th style='padding:4px 8px;text-align:center;color:#64748b;font-size:0.72rem;'>Hit %</th>"
+                "<th style='padding:4px 8px;text-align:center;color:#64748b;font-size:0.72rem;'>Ort Getiri</th>"
+                "<th style='padding:4px 8px;text-align:center;color:#64748b;font-size:0.72rem;'>Güven</th>"
+                "</tr></thead><tbody>" + _fp_rows_html + "</tbody></table>",
+                unsafe_allow_html=True,
+            )
+            st.caption("⚠️ Bu tek-kriter istatistiğidir. Birden çok kriteri birleştirince örnek sayısı "
+                       "hızla düşer — kombinasyon isabeti bu tablodan **çıkarılamaz**.")
+
 def backfill_signal_returns():
     """
     scan_signals tablosundaki sinyallerin 1-20 günlük getirilerini hesaplar ve
@@ -3160,7 +3369,7 @@ def backfill_signal_returns():
     MAX_SYMBOLS = 60
 
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, timeout=30)
         # signal_returns'te hiç satırı olmayan scan_signals satırlarını bul
         pending = pd.read_sql('''
             SELECT ss.id, ss.symbol, ss.scan_type, ss.scan_date,
@@ -3205,7 +3414,7 @@ def backfill_signal_returns():
     skipped = 0
 
     # Tek SQLite connection (eskiden döngüde açılıp kapatılıyordu).
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, timeout=30)
     c = conn.cursor()
     try:
         for _, sig in pending.iterrows():
@@ -3262,78 +3471,7 @@ def backfill_signal_returns():
     return (filled, skipped)
 
 
-def get_scanner_optimal_windows():
-    """
-    signal_returns tablosunu analiz eder. Her scan_type için:
-    - Gün bazlı ortalama getiri ve hit rate (return > 0)
-    - Peak gün: avg_return × hit_rate kompozit skorun en yüksek olduğu gün
-    - Minimum 5 sinyal şartı (az örnekle yanıltıcı sonuç olmasın)
-
-    Returns: {
-      scan_type: {
-        "peak_day":    N,        # optimal tutma süresi (işlem günü)
-        "peak_return": X.XX,     # o günde ort. getiri %
-        "hit_rate":    YY.Y,     # o günde hit rate %
-        "n_signals":   Z,        # toplam değerlendirilen sinyal sayısı
-        "daily": {               # tüm günlerin özeti
-          1: {"avg_return": x, "hit_rate": y, "n": z},
-          ...20
-        }
-      }
-    }
-    """
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        df = pd.read_sql('''
-            SELECT scan_type, day_offset, return_pct
-            FROM signal_returns
-            WHERE return_pct IS NOT NULL
-        ''', conn)
-        conn.close()
-    except Exception:
-        return {}
-
-    if df.empty:
-        return {}
-
-    results = {}
-    for scan_type, grp in df.groupby('scan_type'):
-        # Kaç benzersiz sinyal var? (day_offset=1 satır sayısını say)
-        n_signals = int((grp['day_offset'] == 1).sum())
-        if n_signals < 5:
-            continue  # Yetersiz veri
-
-        best_score  = -999.0
-        best_day    = None
-        daily_stats = {}
-
-        for day_offset, day_grp in grp.groupby('day_offset'):
-            rets = day_grp['return_pct'].dropna()
-            if len(rets) < 3:
-                continue
-            avg_ret  = float(rets.mean())
-            hit_rate = float((rets > 0).mean())
-            # Kompozit skor: pozitif getiri × tutarlılık
-            composite = avg_ret * hit_rate
-            daily_stats[int(day_offset)] = {
-                "avg_return": round(avg_ret, 2),
-                "hit_rate":   round(hit_rate * 100, 1),
-                "n":          int(len(rets))
-            }
-            if composite > best_score:
-                best_score = composite
-                best_day   = int(day_offset)
-
-        if best_day is not None:
-            results[scan_type] = {
-                "peak_day":    best_day,
-                "peak_return": daily_stats[best_day]["avg_return"],
-                "hit_rate":    daily_stats[best_day]["hit_rate"],
-                "n_signals":   n_signals,
-                "daily":       daily_stats
-            }
-
-    return results
+# -> db_layer.py (Adim 5, 4 Tem 2026): get_scanner_optimal_windows
 
 
 init_db()
@@ -3352,7 +3490,7 @@ raw_sp500_rest = [
     "AKAM", "ALB", "ALGN", "ALL", "ALLE", "AMAT", "AMCR", "AMD", "AME", "AMGN", "AMP", "AMT", "AMTM", "AMZN", "ANET", "ANSS", "AON", "AOS", "APA", 
     "APD", "APH", "APTV", "ARE", "ATO", "AVB", "AVGO", "AVY", "AWK", "AXON", "AXP", "AZO", "BA", "BAC", "BALL", "BAX", "BBWI", "BBY", "BDX", "BEN", 
     "BF-B", "BG", "BIIB", "BK", "BKNG", "BKR", "BLDR", "BLK", "BMY", "BR", "BRK-B", "BRO", "BSX", "BWA", "BX", "BXP", "C", "CAG", "CAH", "CARR", 
-    "CAT", "CB", "CBOE", "CBRE", "CCI", "CCL", "CDNS", "CDW", "CE", "CEG", "CF", "CFG", "CHD", "CHRW", "CHTR", "CI", "CINF", "CL", "CLX", "CMCSA", 
+    "CAT", "CB", "CBOE", "CBRE", "CCI", "CCL", "CDNS", "CDW", "CE", "CEG", "CF", "CFG", "CHD", "CHRW", "CHTR", "CI", "CINF", "CL", "CLX", "CMCSA", "CCJ",
     "CME", "CMG", "CMI", "CMS", "CNC", "CNP", "COF", "COO", "COP", "COR", "COST", "CPAY", "CPB", "CPRT", "CPT", "CRL", "CRM", "CRWD", "CSCO", 
     "CSGP", "CSX", "CTAS", "CTRA", "CTSH", "CTVA", "CVS", "CVX", "CZR", "D", "DAL", "DAY", "DD", "DE", "DECK", "DFS", "DG", "DGX", "DHI", "DHR", 
     "DIS", "DLR", "DLTR", "DOC", "DOV", "DOW", "DPZ", "DRI", "DTE", "DUK", "DVA", "DVN", "DXCM", "EA", "EBAY", "ECL", "ED", "EFX", "EG", "EIX", 
@@ -3787,6 +3925,9 @@ def apply_volume_projection(df, ticker=""):
 
     df_proj = df.copy()
     projected_volume = current_volume / progress
+    # 24 Haz 2026 — int64 Volume'a float atama FutureWarning üretiyordu; önce float64'e çevir.
+    if 'Volume' in df_proj.columns and df_proj['Volume'].dtype != 'float64':
+        df_proj['Volume'] = df_proj['Volume'].astype('float64')
     df_proj.loc[df_proj.index[-1], 'Volume'] = projected_volume
 
     return df_proj
@@ -3802,9 +3943,10 @@ def get_benchmark_data(category):
         ticker = "XU100.IS" if "BIST" in category else "^GSPC"
         
         # Hisse verileriyle uyumlu olması için 1 yıllık çekiyoruz
-        df = yf.download(ticker, period="1y", progress=False, auto_adjust=True, prepost=False)
-        
+        df = yf.download(ticker, period="1y", progress=False, auto_adjust=AUTO_ADJUST, prepost=False)
+
         if df.empty: return None
+        df = drop_adj_close(df)
         return df['Close']
     except:
         return None
@@ -3817,7 +3959,10 @@ def get_batch_data_cached(asset_list, period="1y"):
     """
     if not asset_list:
         return pd.DataFrame()
-        
+    # 24 Haz 2026 — çıplak BIST sembol (EREGL) → EREGL.IS. get_safe_historical_data zaten
+    # normalize ediyordu; burada YOKTU → çıplak semboller Yahoo'ya gidip 404 seli + DONMA yapıyordu.
+    asset_list = [_normalize_bist_ticker(t) for t in asset_list]
+
     missing_assets = []
     combined_dict = {}
     
@@ -3849,6 +3994,9 @@ def get_batch_data_cached(asset_list, period="1y"):
                             needs_download = False
                             _CACHE_STATS['hit'] += 1
             except: pass
+        if needs_download and clean_sym.replace(".IS", "") in _DEAD_SYMBOLS:
+            # ölü/delisted → ağ denemesi YOK (cache varsa yukarıda zaten sunuldu)
+            needs_download = False
         if needs_download:
             missing_assets.append(sym)
             _CACHE_STATS['miss'] += 1
@@ -4010,9 +4158,9 @@ def _yf_download_with_retry(ticker, max_tries=3, base_delay=1.5, **kwargs):
     last_exc = None
     for attempt in range(max_tries):
         try:
-            df = yf.download(ticker, progress=False, auto_adjust=True, **kwargs)
+            df = yf.download(ticker, progress=False, auto_adjust=AUTO_ADJUST, **kwargs)
             if not df.empty:
-                return df
+                return drop_adj_close(df)  # ham modda 'Adj Close' fazlalığını at (şema=OHLCV)
         except Exception as e:
             last_exc = e
         if attempt < max_tries - 1:
@@ -4137,6 +4285,15 @@ def _data_sanity_report(symbols, sample_size=80, recent_bars=30):
 # ─────────────────────────────────────────────────────────────────────
 
 # --- CANLI FİYAT YARDIMCI FONKSİYONLARI ---
+# ═══════════════════════════════════════════════════════════════════════════
+# 1 Tem 2026 — TEK KAYNAK KURALI: fiyat SADECE veriler/ günlük kapanışından okunur.
+# ESKİ SORUN: fetch_stock_info + _patch_live_price Yahoo'dan CANLI intraday çekiyordu →
+# sağ kart canlı (3.05), infografik veriler (3.10) → paneller ÇELİŞİYORDU (seans içi + sert
+# hareket koşulunda görünür). İnfografik + AI analizi zaten veriler'den okuyor.
+# FIX: bu bayrak False iken fiyatın Yahoo'ya kaçan İKİ yolu da kapanır → herkes veriler okur.
+# True yaparsan eski canlı-intraday davranışı geri gelir (çelişki de geri gelir).
+LIVE_PRICE_PATCH_ENABLED = False
+# ═══════════════════════════════════════════════════════════════════════════
 @st.cache_data(ttl=60)
 def get_live_price(ticker: str) -> float:
     """fast_info üzerinden canlı fiyat çeker. 60 sn cache'li.
@@ -4213,6 +4370,10 @@ def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd
     yfinance live API çağrılarını ATLA — 500 ticker × 1 API call = ban riski.
     """
     if interval != "1d" or df is None or df.empty:
+        return df
+    # 1 Tem 2026 — TEK KAYNAK: bayrak kapalıysa canlı patch YOK, ham veriler/ kapanışı döner
+    # (infografik + AI ile birebir tutarlı; seans-içi Yahoo çelişkisi ortadan kalkar).
+    if not LIVE_PRICE_PATCH_ENABLED:
         return df
     # Master Scan içinde live patch atla (parquet'teki kapanış zaten yeterli)
     try:
@@ -4401,7 +4562,9 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 # BIST endeks/hisse için borsapy'den son 30g'i kontrol et,
                 # eksik tarihler varsa SATIRLARI EKLE (mevcut barlara dokunma).
                 _is_bist_any = (".IS" in ticker or "BIST" in ticker or ticker.startswith(("XU", "XB", "XT")))
-                if _is_bist_any and interval == "1d":
+                # 2 Tem 2026 — SADECE gerçekten eksik işlem günü varsa borsapy'a git
+                # (önceden her sembolde → yüzlerce çağrı → TradingView throttle/'No data received').
+                if _is_bist_any and interval == "1d" and _has_recent_gap(df_new):
                     try:
                         import borsapy as _bp_gf
                         _sym_gf = ticker.replace(".IS", "").upper()
@@ -4409,7 +4572,7 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                             _obj_gf = _bp_gf.Index(_sym_gf.replace(".IS", ""))
                         else:
                             _obj_gf = _bp_gf.Ticker(_sym_gf)
-                        _df_gf = _obj_gf.history(period="3mo", interval="1d")
+                        _df_gf = _obj_gf.history(period="3mo", interval="1d", auto_adjust=AUTO_ADJUST)
                         if _df_gf is not None and len(_df_gf) > 5:
                             if _df_gf.index.tz is not None:
                                 _df_gf.index = _df_gf.index.tz_localize(None)
@@ -4501,7 +4664,8 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 # ── BORSAPY GAP-FILL (10 Haz 2026) — fresh download path ──
                 # Aynı bar atlama tespiti, parquet ilk oluşturulduğunda da uygula
                 _is_bist_any2 = (".IS" in ticker or "BIST" in ticker or ticker.startswith(("XU", "XB", "XT")))
-                if _is_bist_any2 and interval == "1d":
+                # 2 Tem 2026 — SADECE gerçek boşlukta borsapy (throttle önleme, yukarıdaki gibi)
+                if _is_bist_any2 and interval == "1d" and _has_recent_gap(df_full):
                     try:
                         import borsapy as _bp_gf2
                         _sym_gf2 = ticker.replace(".IS", "").upper()
@@ -4509,7 +4673,7 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                             _obj_gf2 = _bp_gf2.Index(_sym_gf2.replace(".IS", ""))
                         else:
                             _obj_gf2 = _bp_gf2.Ticker(_sym_gf2)
-                        _df_gf2 = _obj_gf2.history(period="3mo", interval="1d")
+                        _df_gf2 = _obj_gf2.history(period="3mo", interval="1d", auto_adjust=AUTO_ADJUST)
                         if _df_gf2 is not None and len(_df_gf2) > 5:
                             if _df_gf2.index.tz is not None:
                                 _df_gf2.index = _df_gf2.index.tz_localize(None)
@@ -4747,6 +4911,17 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
     # 16 Haz 2026 — bare BIST ticker (örn. "BERA") gelirse `.IS` ekle.
     # Yoksa cache yanlış isimle yazılır (BERA_1d.parquet) + İsyatirim/borsapy bypass olur.
     ticker = _normalize_bist_ticker(ticker)
+    # 2 Tem 2026 — ÖLÜ/DELISTED sembol → ağ denemesi YOK, diskteki son bilinen veriyi döndür.
+    if ticker.replace(".IS", "") in _DEAD_SYMBOLS:
+        try:
+            _dc = ticker if ticker.endswith(".IS") else (
+                f"{ticker}.IS" if (".IS" in ticker or ticker.startswith("XU")) else ticker)
+            _dp = os.path.join(CACHE_DIR, f"{_dc}_1d.parquet")
+            if os.path.exists(_dp):
+                return pd.read_parquet(_dp)
+        except Exception:
+            pass
+        return pd.DataFrame()
     _ensure_parquet_on_disk(ticker, interval)
 
     # ── BÖLÜNME / TEMETTÜ TESPİTİ ────────────────────────────────────────────
@@ -4786,105 +4961,9 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
         df = _df_gf
     return _patch_live_price(df, ticker, interval)
 
-def calculate_harsi(df, period=14):
-    """
-    Heikin Ashi RSI (HARSI) Hesaplayıcı - NaN HATASI GİDERİLMİŞ VERSİYON
-    """
-    try:
-        # 1. Standart RSI Hesapla
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
-        
-        # 🚨 KORUMA 1: Sıfıra bölünme (ZeroDivision) hatasını önlemek için
-        loss = loss.replace(0, 0.00001) 
-        
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        
-        # 🚨 KORUMA 2: İlk 14 günün NaN değerlerini döngüye sokmadan önce ÇÖPE AT
-        # Böylece zehirli veri Heikin Ashi döngüsünü bozamaz.
-        rsi = rsi.dropna()
-        
-        # Eğer NaN'lar atıldıktan sonra geriye hesap yapacak veri kalmadıysa çık
-        if len(rsi) < 2:
-            return None
-        
-        # 2. Heikin Ashi Dönüşümü (İteratif hesaplama)
-        ha_open_vals = np.zeros(len(rsi))
-        ha_close_vals = np.zeros(len(rsi))
-        
-        for i in range(len(rsi)):
-            if i == 0:
-                ha_open_vals[i] = rsi.iloc[i]
-                ha_close_vals[i] = rsi.iloc[i]
-            else:
-                ha_open_vals[i] = (ha_open_vals[i-1] + ha_close_vals[i-1]) / 2
-                ha_close_vals[i] = (rsi.iloc[i] + ha_open_vals[i] + 
-                                    max(rsi.iloc[i], ha_open_vals[i]) + 
-                                    min(rsi.iloc[i], ha_open_vals[i])) / 4
-        
-        last_ha_open = ha_open_vals[-1]
-        last_ha_close = ha_close_vals[-1]
-        prev_ha_close = ha_close_vals[-2]
-        
-        # Renk ve Durum Belirle
-        is_green = last_ha_close > last_ha_open
-        color = "#16a34a" if is_green else "#f87171"
-        trend_status = "BOĞA MOMENTUMU" if is_green else "AYI MOMENTUMU"
-        
-        return {
-            "ha_open": last_ha_open,
-            "ha_close": last_ha_close,
-            "is_green": is_green,
-            "color": color,
-            "status": trend_status,
-            "change": last_ha_close > prev_ha_close
-        }
-    except Exception as e:
-        return None
+# -> indicators.py (Adim 4, 4 Tem 2026): calculate_harsi
     
-def check_lazybear_squeeze_breakout(df):
-    """
-    Hem BUGÜNÜ hem DÜNÜ kontrol eder.
-    Dönüş: (is_squeeze_now, is_squeeze_yesterday)
-    """
-    try:
-        if df.empty or len(df) < 22: return False, False
-
-        close = df['Close']
-        high = df['High']
-        low = df['Low']
-
-        # 1. Bollinger Bantları (20, 2.0)
-        sma20 = close.rolling(20).mean()
-        std20 = close.rolling(20).std()
-        bb_upper = sma20 + (2.0 * std20)
-        bb_lower = sma20 - (2.0 * std20)
-
-        # 2. Keltner Kanalları (20, 1.5 ATR)
-        tr1 = high - low
-        tr2 = abs(high - close.shift())
-        tr3 = abs(low - close.shift())
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr20 = tr.rolling(20).mean()
-        
-        kc_upper = sma20 + (1.5 * atr20)
-        kc_lower = sma20 - (1.5 * atr20)
-
-        # 3. Kontrol (Son 2 gün)
-        def is_sq(idx):
-            return (bb_upper.iloc[idx] < kc_upper.iloc[idx]) and \
-                   (bb_lower.iloc[idx] > kc_lower.iloc[idx])
-
-        # -1: Bugün, -2: Dün
-        sq_now = is_sq(-1)
-        sq_prev = is_sq(-2)
-
-        return sq_now, sq_prev
-
-    except Exception:
-        return False, False
+# -> indicators.py (Adim 4, 4 Tem 2026): check_lazybear_squeeze_breakout
 
     
 # 10 Haz 2026: TTL 600→60 — borsapy prev_close fix'in lokal yansıması için.
@@ -4892,6 +4971,25 @@ def check_lazybear_squeeze_breakout(df):
 # bozmaz (data fetch'ler get_safe_historical_data'da, o ayrı cache'te).
 @st.cache_data(ttl=60)
 def fetch_stock_info(ticker):
+    # 1 Tem 2026 — TEK KAYNAK: bayrak kapalıyken fiyat SADECE veriler/ günlük kapanışından
+    # okunur (canlı Yahoo fast_info/intraday bypass edilir). _patch_live_price de kapalı olduğu
+    # için get_safe_historical_data ham kapanış döner → sağ kart = infografik = AI, HEPSİ AYNI.
+    if not LIVE_PRICE_PATCH_ENABLED:
+        try:
+            _vt  = _normalize_bist_ticker(ticker)
+            _vdf = get_safe_historical_data(_vt, period="3mo")
+            if _vdf is None or _vdf.empty or 'Close' not in _vdf.columns:
+                return None
+            _vc = _vdf['Close'].dropna()
+            if len(_vc) < 1:
+                return None
+            _vprice = float(_vc.iloc[-1])
+            _vprev  = float(_vc.iloc[-2]) if len(_vc) >= 2 else _vprice
+            _vchg   = ((_vprice - _vprev) / _vprev * 100) if _vprev > 0 else 0.0
+            _vvol   = float(_vdf['Volume'].dropna().iloc[-1]) if ('Volume' in _vdf.columns and _vdf['Volume'].dropna().size) else 0.0
+            return {"price": _vprice, "change_pct": _vchg, "volume": _vvol, "sector": "-", "target": "-"}
+        except Exception:
+            return None
     try:
         t = yf.Ticker(ticker)
         price = prev_close = volume = None
@@ -5043,48 +5141,7 @@ def get_tech_card_data(ticker):
     except: return None
 
 
-def check_lazybear_squeeze(df):
-    """
-    LazyBear Squeeze Momentum Logic:
-    Squeeze = Bollinger Bantları, Keltner Kanalının İÇİNDE mi?
-    """
-    try:
-        if df.empty or len(df) < 20: return False, 0.0
-
-        close = df['Close']
-        high = df['High']
-        low = df['Low']
-
-        # 1. Bollinger Bantları (20, 2.0)
-        sma20 = close.rolling(20).mean()
-        std20 = close.rolling(20).std()
-        bb_upper = sma20 + (2.0 * std20)
-        bb_lower = sma20 - (2.0 * std20)
-
-        # 2. Keltner Kanalları (20, 1.5 ATR)
-        # TR Hesaplama
-        tr1 = high - low
-        tr2 = abs(high - close.shift())
-        tr3 = abs(low - close.shift())
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr20 = tr.rolling(20).mean()
-        
-        kc_upper = sma20 + (1.5 * atr20)
-        kc_lower = sma20 - (1.5 * atr20)
-
-        # 3. Squeeze Kontrolü (Son Gün İçin)
-        # BB Üst, KC Üst'ten KÜÇÜK VE BB Alt, KC Alt'tan BÜYÜK olmalı (İçinde olmalı)
-        last_bb_u = float(bb_upper.iloc[-1])
-        last_bb_l = float(bb_lower.iloc[-1])
-        last_kc_u = float(kc_upper.iloc[-1])
-        last_kc_l = float(kc_lower.iloc[-1])
-
-        is_squeeze_on = (last_bb_u < last_kc_u) and (last_bb_l > last_kc_l)
-
-        return is_squeeze_on
-
-    except Exception:
-        return False
+# -> indicators.py (Adim 4, 4 Tem 2026): check_lazybear_squeeze
 
 @st.cache_data(ttl=600)
 def calculate_synthetic_sentiment(ticker):
@@ -5152,323 +5209,16 @@ def calculate_synthetic_sentiment(ticker):
         return plot_df
     except Exception: return None
 
-def compute_mfi(df, period=14):
-    """Money Flow Index — Wyckoff/VSA'nın hacim-ağırlıklı RSI versiyonu.
-
-    RSI sadece fiyat değişimi gücüne bakar; MFI bu gücün arkasında HACİM var mı
-    sorusunu cevaplar. Smart money divergence'larında RSI'den daha güvenilir.
-
-    Formül:
-      Typical Price = (H + L + C) / 3
-      Raw MF = TP × Volume
-      Pos MF = TP up day'lerinin TP×V toplamı
-      Neg MF = TP down day'lerinin TP×V toplamı
-      MFI = 100 - 100/(1 + Pos/Neg)
-
-    Eşikler: MFI ≥ 80 aşırı alım (hacim teyitli) · MFI ≤ 20 aşırı satım (hacim teyitli).
-    20-80 arası nötr — RSI'nin 30-70 standardından daha geniş çünkü hacim teyit
-    aradığı için daha az ama daha güçlü extreme verir.
-
-    Args:
-        df: 'High','Low','Close','Volume' içeren DataFrame.
-        period: 14 klasik, 5 erken-uyarı (dual window).
-    Returns:
-        pandas.Series of MFI values, period-1 NaN.
-    """
-    try:
-        _tp = (df['High'] + df['Low'] + df['Close']) / 3.0
-        _rmf = _tp * df['Volume']
-        _tp_diff = _tp.diff()
-        _pos_mf = _rmf.where(_tp_diff > 0, 0.0)
-        _neg_mf = _rmf.where(_tp_diff < 0, 0.0)
-        _pos_sum = _pos_mf.rolling(period, min_periods=max(2, period // 2)).sum()
-        _neg_sum = _neg_mf.rolling(period, min_periods=max(2, period // 2)).sum()
-        _mfr = _pos_sum / _neg_sum.replace(0, 1e-9)
-        return 100.0 - (100.0 / (1.0 + _mfr))
-    except Exception:
-        return pd.Series([], dtype=float)
+# -> indicators.py (Adim 4, 4 Tem 2026): compute_mfi
 
 
-def compute_relative_obv_state(df_stock, df_bench, lookback=20):
-    """Hisse OBV trendini endeks OBV trendiyle karşılaştırır.
-
-    Mansfield RS sadece fiyat karşılaştırması yapar; bu fonksiyon hacim akışı
-    karşılaştırması yapar — daha derin smart money izi.
-
-    Yöntem:
-      1. Her iki sembol için OBV serisi hesapla (np.sign(diff) * Volume).cumsum()
-      2. Son `lookback` bar için linear slope (polyfit)
-      3. Normalize slopes (her birinin son değerine göre %)
-      4. Hisse_slope - Endeks_slope = göreli ivme
-
-    5 state döner — CMF dual kalıbıyla aynı:
-      - outperform_strong  : hisse↑↑ endeks↓ — gerçek ayrışma (smart money seçti)
-      - outperform_mild    : hisse↑ endeks≈ — endeksten iyi
-      - inline             : ikisi de benzer yönde — sıradan
-      - underperform_mild  : hisse≈ endeks↑ — endeks sürüklüyor, hisse takip etmiyor
-      - underperform_strong: hisse↓↓ endeks↑ — yapısal çıkış
-
-    Args:
-        df_stock: 'Close','Volume' içeren DataFrame.
-        df_bench: aynı format (XU100.IS veya ^GSPC).
-        lookback: slope hesaplanacak gün penceresi (default 20).
-    Returns:
-        dict {state, stock_slope_pct, bench_slope_pct, diff_pct} veya None.
-    """
-    try:
-        import numpy as _np
-        if df_stock is None or df_bench is None: return None
-        if len(df_stock) < lookback or len(df_bench) < lookback: return None
-        # Ortak tarihler
-        _common = df_stock.index.intersection(df_bench.index)
-        if len(_common) < lookback: return None
-        _s = df_stock.loc[_common].tail(lookback)
-        _b = df_bench.loc[_common].tail(lookback)
-        if 'Volume' not in _s.columns or 'Volume' not in _b.columns: return None
-
-        # OBV serileri
-        _s_obv = (_np.sign(_s['Close'].diff()) * _s['Volume']).fillna(0).cumsum().values.astype(float)
-        _b_obv = (_np.sign(_b['Close'].diff()) * _b['Volume']).fillna(0).cumsum().values.astype(float)
-        if len(_s_obv) < lookback or len(_b_obv) < lookback: return None
-
-        # Linear slope (her birinin son değerine % normalize)
-        _x = _np.arange(lookback, dtype=float)
-        _s_slope_raw = _np.polyfit(_x, _s_obv[-lookback:], 1)[0]
-        _b_slope_raw = _np.polyfit(_x, _b_obv[-lookback:], 1)[0]
-        # Normalize: slope'u (OBV-birimi/gün) ortalama günlük HACME böl → kararlı ölçek.
-        # (12 Haz fix) Eski normalizör abs(OBV[-1]) idi; OBV cumsum sıfır etrafında
-        # salınınca payda ~0 olup yüzde patlıyordu. Benchmark (XU100) tüm hisselerde
-        # ortak olduğundan bu instabilite herkese yayılıp %57'sini 'outperform_strong'
-        # gösteriyordu. Ortalama hacim sabit/anlamlı bir ölçek (boyutsuz birikim hızı).
-        _s_vol_scale = float(_s['Volume'].tail(lookback).mean())
-        _b_vol_scale = float(_b['Volume'].tail(lookback).mean())
-        _s_vol_scale = _s_vol_scale if _s_vol_scale > 1e-6 else 1.0
-        _b_vol_scale = _b_vol_scale if _b_vol_scale > 1e-6 else 1.0
-        _s_slope_pct = (_s_slope_raw / _s_vol_scale) * 100
-        _b_slope_pct = (_b_slope_raw / _b_vol_scale) * 100
-        _diff = _s_slope_pct - _b_slope_pct
-
-        # State (eşikler 5g/20g CMF/MFI dual pattern ile uyumlu)
-        # 'strong' = ikisi zıt yönde + diff>1.5
-        # 'mild' = aynı yönde ama hisse fark açık
-        if _s_slope_pct > 0.3 and _b_slope_pct < -0.3 and _diff > 1.5:
-            _state = 'outperform_strong'
-        elif _s_slope_pct < -0.3 and _b_slope_pct > 0.3 and _diff < -1.5:
-            _state = 'underperform_strong'
-        elif _diff > 0.8:
-            _state = 'outperform_mild'
-        elif _diff < -0.8:
-            _state = 'underperform_mild'
-        else:
-            _state = 'inline'
-
-        return {
-            'state': _state,
-            'stock_slope_pct': round(_s_slope_pct, 2),
-            'bench_slope_pct': round(_b_slope_pct, 2),
-            'diff_pct': round(_diff, 2),
-        }
-    except Exception:
-        return None
+# -> indicators.py (Adim 4, 4 Tem 2026): compute_relative_obv_state
 
 
-def compute_force_index_dual(df, span_short=2, span_long=13):
-    """Alexander Elder's Force Index — dual-window state machine + divergence.
-
-    Klasik formül:  FI = (Close - Close[-1]) × Volume
-    Smoothed: EMA(span)
-
-    Iki pencere:
-      - span=2  (kısa) — anlık güç sinyali (Elder 'trigger' katmanı)
-      - span=13 (uzun) — sürekli güç (Elder 'trend' katmanı)
-
-    7 state (CMF/MFI dual pattern ile aynı kalıp):
-      strong_pos    : ikisi de güçlü pozitif (alıcı tam egemen)
-      strong_neg    : ikisi de güçlü negatif (satıcı tam egemen)
-      turning_up    : trend negatif ama anlık dönüş — erken dönüş sinyali
-      turning_down  : trend pozitif ama anlık zayıflık — momentum yorgunluğu
-      pos           : sadece trend pozitif
-      neg           : sadece trend negatif
-      neutral       : ikisi de denge bölgesinde
-
-    Divergence detection (Elder klasik):
-      - Bullish divergence: Fiyat LL + FI(13) HL → alıcı dönüşü sinyali
-      - Bearish divergence: Fiyat HH + FI(13) LH → satıcı dönüşü sinyali
-
-    Args:
-        df: 'Close','Volume' içeren DataFrame.
-        span_short / span_long: EMA pencereleri.
-    Returns:
-        {
-          'state': 7 state,
-          'fi_short': son kısa FI değeri,
-          'fi_long': son uzun FI değeri,
-          'fi_short_norm': stdev normalize edilmiş kısa FI (z-score)
-          'fi_long_norm': stdev normalize edilmiş uzun FI (z-score)
-          'divergence': None|'bullish'|'bearish'
-        }
-    """
-    try:
-        if df is None or len(df) < max(span_long * 3, 50): return None
-        if 'Close' not in df.columns or 'Volume' not in df.columns: return None
-
-        _close = df['Close']
-        _vol = df['Volume']
-        _delta = _close.diff()
-        _fi_raw = _delta * _vol
-
-        _fi_short = _fi_raw.ewm(span=span_short, adjust=False).mean()
-        _fi_long = _fi_raw.ewm(span=span_long, adjust=False).mean()
-
-        # Z-score normalize — uzun pencere std'si baz alınır
-        _fi_std = _fi_long.rolling(50, min_periods=20).std()
-        _fi_std_last = float(_fi_std.iloc[-1]) if not pd.isna(_fi_std.iloc[-1]) and _fi_std.iloc[-1] > 0 else 1.0
-
-        _fis = float(_fi_short.iloc[-1])
-        _fil = float(_fi_long.iloc[-1])
-        _fis_norm = _fis / _fi_std_last
-        _fil_norm = _fil / _fi_std_last
-
-        # State (z-score eşikleri: ±0.5 = orta, ±1.0 = güçlü)
-        if   _fis_norm > 1.0 and _fil_norm > 0.5:  _state = 'strong_pos'
-        elif _fis_norm < -1.0 and _fil_norm < -0.5: _state = 'strong_neg'
-        elif _fis_norm > 0.5 and _fil_norm < -0.3:  _state = 'turning_up'    # trend neg + anlık dönüş
-        elif _fis_norm < -0.5 and _fil_norm > 0.3:  _state = 'turning_down'  # trend poz + anlık zayıflık
-        elif _fil_norm > 0.5:                        _state = 'pos'
-        elif _fil_norm < -0.5:                       _state = 'neg'
-        else:                                        _state = 'neutral'
-
-        # Divergence — son 30 bar pivot bazlı (basit)
-        _divergence = None
-        try:
-            _lookback = 30
-            if len(df) >= _lookback + 5:
-                _seg_close = _close.tail(_lookback)
-                _seg_fi = _fi_long.tail(_lookback)
-                # En düşük 2 close + en yüksek 2 close ara
-                _close_low_idx = _seg_close.values.argmin()
-                _close_high_idx = _seg_close.values.argmax()
-                # Pivot tespiti basit: son 5 bar içinde extremde mi?
-                _last_close = float(_seg_close.iloc[-1])
-                _last_fi = float(_seg_fi.iloc[-1])
-                _seg_close_vals = _seg_close.values
-                _seg_fi_vals = _seg_fi.values
-                # Önceki düşük dip (ilk 20 barda)
-                _prev_low_idx = _seg_close_vals[:20].argmin()
-                _prev_low_close = _seg_close_vals[_prev_low_idx]
-                _prev_low_fi = _seg_fi_vals[_prev_low_idx]
-                # Önceki yüksek tepe (ilk 20 barda)
-                _prev_high_idx = _seg_close_vals[:20].argmax()
-                _prev_high_close = _seg_close_vals[_prev_high_idx]
-                _prev_high_fi = _seg_fi_vals[_prev_high_idx]
-                # Son 5 bar içinde yeni LL mı?
-                _recent_close_min = _seg_close.iloc[-5:].min()
-                _recent_close_max = _seg_close.iloc[-5:].max()
-                _recent_fi_min = _seg_fi.iloc[-5:].min()
-                _recent_fi_max = _seg_fi.iloc[-5:].max()
-                if (_recent_close_min < _prev_low_close * 0.99
-                    and _recent_fi_min > _prev_low_fi * 1.05):
-                    _divergence = 'bullish'   # Fiyat LL + FI HL
-                elif (_recent_close_max > _prev_high_close * 1.01
-                      and _recent_fi_max < _prev_high_fi * 0.95):
-                    _divergence = 'bearish'   # Fiyat HH + FI LH
-        except Exception:
-            pass
-
-        return {
-            'state': _state,
-            'fi_short': _fis,
-            'fi_long': _fil,
-            'fi_short_norm': round(_fis_norm, 2),
-            'fi_long_norm': round(_fil_norm, 2),
-            'divergence': _divergence,
-        }
-    except Exception:
-        return None
+# -> indicators.py (Adim 4, 4 Tem 2026): compute_force_index_dual
 
 
-def compute_updown_volume_ratio(df, period=20):
-    """Up/Down Volume Ratio — Wyckoff Effort-vs-Result'un en sade hali.
-
-    'Yükseliş günlerinin hacmi düşüş günlerinin hacminden ne kadar fazla?'
-    OBV cumulative pattern eski hareketler kirletebilir; CMF bar-içi kapanış
-    konumuna bakar. UDVR ham gerçek: son N gün net hacim yönü.
-
-    Klasik eşikler (sektör standardı):
-      ≥ 2.0  : strong_buyer   — alıcı net hakim
-      1.3-2.0: buyer          — alıcı egemen, sağlıklı yukarı baskı
-      0.77-1.3: balanced      — denge, yön kararsız
-      0.5-0.77: seller         — satıcı egemen
-      < 0.5  : strong_seller  — satıcı net hakim
-
-    Wyckoff Climax tespiti:
-      Fiyat yeni high yapıyor + UDVR < 0.8 → climax_top
-      Fiyat yeni low yapıyor + UDVR > 1.25 → climax_bottom
-      (Hacim Smart Money çekiliyor/giriyor)
-
-    Args:
-        df: 'Close','Volume' içeren DataFrame.
-        period: pencere (5g tactical, 20g orta, 50g uzun).
-    Returns:
-        {
-          'ratio': UDVR,
-          'state': 5 state,
-          'up_vol': toplam yükseliş hacmi,
-          'down_vol': toplam düşüş hacmi,
-          'climax': None|'climax_top'|'climax_bottom'
-        }
-    """
-    try:
-        if df is None or len(df) < period + 1: return None
-        if 'Close' not in df.columns or 'Volume' not in df.columns: return None
-
-        _seg = df.tail(period + 1)
-        _close = _seg['Close']
-        _vol = _seg['Volume']
-        _diff = _close.diff()
-
-        # period bar penceresi (ilk bar diff için kullanılır)
-        _up_mask = _diff > 0
-        _down_mask = _diff < 0
-        _up_vol = float(_vol.where(_up_mask, 0).iloc[1:].sum())
-        _down_vol = float(_vol.where(_down_mask, 0).iloc[1:].sum())
-
-        if _down_vol <= 1e-6:
-            _ratio = 99.0 if _up_vol > 0 else 1.0
-        else:
-            _ratio = _up_vol / _down_vol
-
-        # State sınıflandırma
-        if   _ratio >= 2.0:  _state = 'strong_buyer'
-        elif _ratio >= 1.3:  _state = 'buyer'
-        elif _ratio >= 0.77: _state = 'balanced'
-        elif _ratio >= 0.5:  _state = 'seller'
-        else:                _state = 'strong_seller'
-
-        # Climax detection — fiyat extremde ama hacim yönü tersi
-        _climax = None
-        try:
-            _high_full = df['High'].tail(period * 2) if 'High' in df.columns else df['Close'].tail(period * 2)
-            _low_full = df['Low'].tail(period * 2) if 'Low' in df.columns else df['Close'].tail(period * 2)
-            _cur_close = float(_close.iloc[-1])
-            _high_max = float(_high_full.max())
-            _low_min = float(_low_full.min())
-            # Fiyat son 2 pencerelik high'a ≥%98 yakın + UDVR zayıf → tepe climax
-            if _cur_close >= _high_max * 0.98 and _ratio < 0.8:
-                _climax = 'climax_top'
-            elif _cur_close <= _low_min * 1.02 and _ratio > 1.25:
-                _climax = 'climax_bottom'
-        except Exception: pass
-
-        return {
-            'ratio': round(_ratio, 2),
-            'state': _state,
-            'up_vol': _up_vol,
-            'down_vol': _down_vol,
-            'climax': _climax,
-        }
-    except Exception:
-        return None
+# -> indicators.py (Adim 4, 4 Tem 2026): compute_updown_volume_ratio
 
 
 def compute_smart_money_split_scores(feature_dict: dict) -> dict:
@@ -5476,7 +5226,7 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
 
     Sorun: 'Akıllı para birikiyor' demek iki farklı zaman ölçeği:
       - YAPISAL: haftalar/aylar boyunca kurumsal pozisyon kurma
-        (TEFAS, KAP, MKK yabancı, OBV 20g+, CMF 20g, POC multi-TF)
+        (MKK yabancı, OBV 20g+, CMF 20g, POC multi-TF) — TEFAS/KAP kaldırıldı (endpoint bloklu)
       - TACTICAL: saatler/günler içinde algo/scalp aktivitesi
         (cum_delta 5g, MFI 5g, RVOL spike, climax, pocket pivot)
 
@@ -5507,11 +5257,12 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
         # (12 Haz Oturum 21) TEFAS + KAP + f_kurumsal_anchor skor katkıları KALDIRILDI
         # (TEFAS makro-rejim yasağı, KAP endpoint bloklu). Yabancı + rel_obv korundu.
         # MKK Yabancı
-        if f.get('f_yabanci_anchor') == 1:
-            struct_score += 15; struct_pos.append('Yabancı kurumsal anchor (giriş + streak)')
-        elif f.get('f_yabanci_giris') == 1:
-            struct_score += 6; struct_pos.append('Yabancı top-3 net alış listesinde')
-        if f.get('f_yabanci_streak') == 1:
+        # (4 Tem 2026 karne) tek-gün f_yabanci_giris TERS çalışıyor (giris=1 → 10g ret
+        # -%9.05, n=102) → +6 katkısı KALDIRILDI. Puan sadece süreklilik (streak) veya
+        # giriş+streak kombinine verilir. Kolon scan_signals'a yazılmaya devam eder.
+        if f.get('f_yabanci_giris') == 1 and f.get('f_yabanci_streak') == 1:
+            struct_score += 10; struct_pos.append('Yabancı giriş + 3g+ süreklilik (kombin)')
+        elif f.get('f_yabanci_streak') == 1:
             struct_score += 4; struct_pos.append('Yabancı 3+ gün üst üste artış')
         if f.get('f_yabanci_cikis') == 1:
             struct_score -= 8; struct_neg.append('Yabancı top-3 net satış listesinde')
@@ -5675,24 +5426,7 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
         return None
 
 
-def compute_cmf(df, period=20, vol_series=None):
-    """Para Akışı (varsayılan 20g) — OBV teyit katmanı için tek kaynak.
-    df: 'High','Low','Close' içermeli. vol_series verilmezse df['Volume'] kullanılır.
-    Money Flow Multiplier × Volume → period toplamı / hacim toplamı.
-    Hata / sıfır hacimde 0.0 döner."""
-    try:
-        _vol = df['Volume'] if vol_series is None else vol_series
-        _hl_range = df['High'] - df['Low']
-        _mfm = np.where(
-            _hl_range > 0,
-            ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / _hl_range,
-            0.0
-        )
-        _mfv = pd.Series(_mfm, index=df.index) * _vol
-        _vol_sum = float(_vol.tail(period).sum())
-        return float(_mfv.tail(period).sum() / _vol_sum) if _vol_sum > 0 else 0.0
-    except Exception:
-        return 0.0
+# -> indicators.py (Adim 4, 4 Tem 2026): compute_cmf
 
 @st.cache_data(ttl=600)
 def get_obv_divergence_status(ticker):
@@ -5919,59 +5653,7 @@ def process_single_stock_stp(symbol, df):
         return result
     except Exception: return None
 
-def find_smart_sr_levels(df, window=5, cluster_tolerance=0.015, min_touches=3, recency_limit=120):
-    """
-    Fitilleri (iğneleri) büyük oranda görmezden gelerek, mum gövdelerinin (kapanış/açılış)
-    yığıldığı en güçlü ve taze destek/direnç bölgelerini bulur.
-    """
-    data = df.copy()
-    
-    # --- YENİ EKLENEN KISIM: İĞNELERİ KESİP GÖVDELERİ ALIYORUZ ---
-    # Her mumun gövdesinin üst sınırını (Body Top) ve alt sınırını (Body Bottom) hesapla
-    data['Body_Top'] = data[['Open', 'Close']].max(axis=1)
-    data['Body_Bottom'] = data[['Open', 'Close']].min(axis=1)
-    
-    # Zirveleri ve dipleri High/Low yerine bu GÖVDELER üzerinden bul!
-    data['Swing_High'] = data['Body_Top'][(data['Body_Top'] == data['Body_Top'].rolling(window=window*2+1, center=True).max())]
-    data['Swing_Low'] = data['Body_Bottom'][(data['Body_Bottom'] == data['Body_Bottom'].rolling(window=window*2+1, center=True).min())]
-    
-    # Bundan sonraki kısımlar aynı kalıyor...
-    highs = data['Swing_High'].dropna()
-    lows = data['Swing_Low'].dropna()
-    
-    pivots_series = pd.concat([highs, lows]).sort_values() 
-    pivots = list(zip(pivots_series.values, pivots_series.index))
-    
-    valid_levels = []
-    total_bars = len(data)
-    
-    while len(pivots) > 0:
-        base_price, base_idx = pivots.pop(0)
-        
-        cluster_prices = [base_price]
-        cluster_indices = [base_idx]
-        
-        i = 0
-        while i < len(pivots):
-            compare_price, compare_idx = pivots[i]
-            if abs(compare_price - base_price) / base_price <= cluster_tolerance:
-                cluster_prices.append(compare_price)
-                cluster_indices.append(compare_idx)
-                pivots.pop(i)
-            else:
-                i += 1
-                
-        # Güç ve Tazelik (Recency) Kontrolü
-        if len(cluster_prices) >= min_touches:
-            last_touch_idx = max(cluster_indices)
-            bars_since_last_touch = total_bars - data.index.get_loc(last_touch_idx)
-            
-            if bars_since_last_touch <= recency_limit:
-                # Çizgiyi bu gövde yığılmasının tam ortasından (ortalamasından) geçir
-                average_level = sum(cluster_prices) / len(cluster_prices)
-                valid_levels.append(round(average_level, 2))
-                
-    return list(set(valid_levels))
+# -> indicators.py (Adim 4, 4 Tem 2026): find_smart_sr_levels
 
 # ==============================================================================
 # BÖLÜM 8 — FORMASYON TARAMA SİSTEMİ (CHART PATTERNS)
@@ -6397,10 +6079,17 @@ def scan_chart_patterns(asset_list):
             # ---------------------------------------------------------------
             # ZIGZAG İSKELETİ — %4 eşikli (insan gözüne yakın)
             # ---------------------------------------------------------------
+            # Zigzag QML + 3 Drive tarafından kullanılır (Fincan/TOBO artık swing tabanlı).
             zz       = zigzag_pivots(close, threshold=0.04)
             zz_chron = sorted(zz, key=lambda x: x[0])   # Kronolojik sıra
-            zz_h     = [(i, p) for (i, p, t) in zz_chron if t == 'H']
             zz_l     = [(i, p) for (i, p, t) in zz_chron if t == 'L']
+
+            close_np = close.values.astype(float)
+            vol_np   = volume.values.astype(float)
+
+            # 11 — ADAY HAVUZU: her detektör bulduğunu buraya bırakır, sonda
+            # en yüksek puanlı seçilir (eskiden ilk bulunan kazanıyordu).
+            _cands = []
 
             # ---------------------------------------------------------------
             # WICK/BODY FİLTRESİ — Gürültülü bölgeleri eliyor
@@ -6452,6 +6141,9 @@ def scan_chart_patterns(asset_list):
                     pattern_name  = "🚩 BOĞA BAYRAĞI"
                     base_score    = 85
                     desc = f"Direk: %{pole*100:.1f} | Sıkışma: %{tight*100:.1f} | Geri Alım: %{retrace*100:.0f}"
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
 
             # ---------------------------------------------------------------
             # YARDIMCI: Swing High / Low tespiti (lookback bar sol-sağ)
@@ -6468,7 +6160,15 @@ def scan_chart_patterns(asset_list):
                         lows.append((i, arr[i]))
                 return highs, lows
 
-            sw_h, sw_l = find_swings(close, lookback=8)
+            # 7 — Pivotlar kapanış yerine fitil uçlarından: boyun/dip seviyeleri
+            # TradingView'de gözle görülen gerçek tepe/dip fitilleriyle örtüşür.
+            sw_h, _ = find_swings(high, lookback=8)
+            _, sw_l = find_swings(low, lookback=8)
+            # 10 — Uyarlanabilir anlamlılık eşiği: hissenin kendi volatilitesine
+            # göre küçük salınım pivotları budanır (sakin hissede eşik düşer,
+            # oynak hissede yükselir; sabit %4 herkese uymuyordu).
+            _adapt_thr = pattern_core.adaptive_threshold(close_np)
+            sw_h, sw_l = pattern_core.prune_pivots(sw_h, sw_l, _adapt_thr)
             sw_h_y = [(i, v) for i, v in sw_h if i >= bar_total - 252]  # son 12 ay
             sw_l_y = [(i, v) for i, v in sw_l if i >= bar_total - 252]
 
@@ -6486,6 +6186,9 @@ def scan_chart_patterns(asset_list):
                         sh1_i, sh1_v = sw_h_y[li]       # Sol rim
                         cup_dur = sh2_i - sh1_i
                         if not (40 <= cup_dur <= 252): continue
+                        # 6 — Ön-trend şartı: fincan DEVAM formasyonudur, kupa
+                        # öncesi belirgin yükseliş olmalı (yoksa yatay çöp salınım).
+                        if not pattern_core.cup_pretrend_ok(close_np, sh1_i): continue
                         # Cup içi en derin swing low
                         cup_lows = [(i, v) for i, v in sw_l_y if sh1_i < i < sh2_i]
                         if not cup_lows: continue
@@ -6529,18 +6232,29 @@ def scan_chart_patterns(asset_list):
                             hl_v = float(after.iloc[rel])
                         if not (hl_v > sl_v + (sh2_v - sl_v) * 0.35): continue  # Kulp üst %65'te
                         if not (hl_v > sh2_v * 0.82): continue                  # Fazla derin değil
+                        # 8 — Kulp süresi: kupaya oranla kısa olmalı (3 bar –
+                        # max(25, kupa/3)); uzun sürüklenme kulp değil yeni yapı.
+                        if not pattern_core.handle_dur_ok(sh2_i, bar_total, cup_dur): continue
                         # R/R filtresi
                         target = sh2_v + (sh2_v - sl_v)
                         risk   = max(curr_price - hl_v * 0.98, 0.01)
                         rr     = (target - curr_price) / risk
                         if rr < 1.0: continue
-                        # Durum tespiti
-                        breaking = curr_price >= sh2_v * 0.97 and curr_price <= sh2_v * 1.10
-                        forming  = curr_price >= hl_v * 0.98 and not breaking
-                        if not (breaking or forming): continue
-                        dur_months = max(1, round(cup_dur / 21))
+                        # Durum tespiti — 12: retest / sahte kırılım katmanı
+                        _pb = pattern_core.detect_post_breakout(close_np, vol_np, sh2_v)
+                        if _pb['failed']: continue   # sahte kırılım — formasyon bozuldu
                         dist = ((sh2_v - curr_price) / sh2_v * 100) if curr_price < sh2_v else 0
-                        if breaking:
+                        retesting = _pb['retest']
+                        breaking  = (not retesting) and sh2_v * 0.97 <= curr_price <= sh2_v * 1.10
+                        # 3 — OLUŞAN için boyuna max %12 uzaklık (Çift Dip kuralıyla aynı)
+                        forming   = (not retesting) and (not breaking) and curr_price >= hl_v * 0.98 \
+                                    and dist <= pattern_core.PC['form_max_dist']
+                        if not (retesting or breaking or forming): continue
+                        dur_months = max(1, round(cup_dur / 21))
+                        if retesting:
+                            p_name     = f"🎯 FİNCAN KULP RETEST ({dur_months} Ay) — Boyun Destek Testi"
+                            base_score = 94
+                        elif breaking:
                             p_name     = f"☕ FİNCAN KULP ({dur_months} Ay) — Kırılım Bölgesinde"
                             base_score = 92
                         else:
@@ -6558,9 +6272,24 @@ def scan_chart_patterns(asset_list):
                             "neck": float(sh2_v),
                             "type": "cup",
                         }
+                        # 4 — Kırılım durumu artık fincanda da ölçülüyor (TOBO/W'de vardı)
+                        _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(sh2_v))
+                        chart_d["breakout_state"]     = int(_bk_st)
+                        chart_d["breakout_gap_pct"]   = float(_bk_gap)
+                        chart_d["breakout_vol_ratio"] = float(_bk_vol)
+                        # 9 — Hacim imzası: sönümlenme + kulp dibinde tükenme + dönüş
+                        _vs = pattern_core.volume_signature(vol_np, sh1_i, sh2_i, min(hl_i, bar_total - 1))
+                        chart_d["vol_dip_ok"]    = _vs['dip_ok']
+                        chart_d["vol_bounce_ok"] = _vs['bounce_ok']
+                        chart_d["vol_fade_ok"]   = _vs['fade_ok']
+                        chart_d["retest"]        = bool(retesting)
+                        base_score += _vs['bonus'] + pattern_core.breakout_bonus(_bk_st, _bk_vol)
                         pattern_found = True
                         pattern_name  = p_name; desc = p_desc
                         break
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
 
             # ---------------------------------------------------------------
             # 3. TOBO — Swing tabanlı: 5 pivot L, H, L(derin), H, L
@@ -6580,6 +6309,9 @@ def scan_chart_patterns(asset_list):
                             if not (40 <= dur <= 252): continue
                             # Baş en derin olmalı
                             if not (sl2_v < sl1_v * 0.95 and sl2_v < sl3_v * 0.95): continue
+                            # 6 — Ön-trend şartı: TOBO dip dönüş formasyonudur,
+                            # öncesinde düşüş olmalı (baş önceki tepeden ≥%15 aşağıda).
+                            if not pattern_core.tobo_pretrend_ok(close_np, sl1_i, sl2_v): continue
                             # Boyun noktaları: her omuz ile baş arasındaki en yüksek swing high
                             sh1_cands = [(i, v) for i, v in sw_h_y if sl1_i < i < sl2_i]
                             sh2_cands = [(i, v) for i, v in sw_h_y if sl2_i < i < sl3_i]
@@ -6602,13 +6334,23 @@ def scan_chart_patterns(asset_list):
                             risk   = max(curr_price - sl3_v * 0.98, 0.01)
                             rr     = (target - curr_price) / risk
                             if rr < 1.0: continue
-                            # Durum tespiti
-                            breaking = curr_price >= neck * 0.97 and curr_price <= neck * 1.08
-                            forming  = curr_price > sl3_v * 1.01 and curr_price < neck * 0.96
-                            if not (breaking or forming): continue
-                            dur_months = max(1, round(dur / 21))
+                            # Durum tespiti — 12: retest / sahte kırılım katmanı
+                            _pb = pattern_core.detect_post_breakout(close_np, vol_np, neck)
+                            if _pb['failed']: continue   # sahte kırılım — formasyon bozuldu
                             dist = ((neck - curr_price) / neck * 100) if curr_price < neck else 0
-                            if breaking:
+                            retesting = _pb['retest']
+                            breaking  = (not retesting) and neck * 0.97 <= curr_price <= neck * 1.08
+                            # 3 — OLUŞAN için boyuna max %12 uzaklık (ARTMS tipi
+                            # -%22 stoplu uzak adaylar elenir; Çift Dip kuralıyla aynı)
+                            forming   = (not retesting) and (not breaking) and curr_price > sl3_v * 1.01 \
+                                        and curr_price < neck * 0.96 \
+                                        and dist <= pattern_core.PC['form_max_dist']
+                            if not (retesting or breaking or forming): continue
+                            dur_months = max(1, round(dur / 21))
+                            if retesting:
+                                p_name     = f"🎯 TOBO RETEST ({dur_months} Ay) — Boyun Destek Testi"
+                                base_score = 94
+                            elif breaking:
                                 p_name     = f"🧛 TOBO ({dur_months} Ay) — Kırılım Bölgesinde"
                                 base_score = 90
                             else:
@@ -6632,9 +6374,19 @@ def scan_chart_patterns(asset_list):
                             chart_d["breakout_state"]     = int(_bk_st)
                             chart_d["breakout_gap_pct"]   = float(_bk_gap)
                             chart_d["breakout_vol_ratio"] = float(_bk_vol)
+                            # 9 — Hacim imzası: omuz→baş→omuz sönümlenme + sağ omuzda tükenme
+                            _vs = pattern_core.volume_signature(vol_np, sl1_i, sl3_i, sl3_i)
+                            chart_d["vol_dip_ok"]    = _vs['dip_ok']
+                            chart_d["vol_bounce_ok"] = _vs['bounce_ok']
+                            chart_d["vol_fade_ok"]   = _vs['fade_ok']
+                            chart_d["retest"]        = bool(retesting)
+                            base_score += _vs['bonus'] + pattern_core.breakout_bonus(_bk_st, _bk_vol)
                             pattern_found = True
                             pattern_name  = p_name; desc = p_desc
                             break
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
 
             # ---------------------------------------------------------------
             # 3.5 ÇİFT DİP (W) — İki ~eşit dip + orta tepe (boyun) kırılımı
@@ -6645,9 +6397,20 @@ def scan_chart_patterns(asset_list):
                 # doğal gürültü içerir; tam-span filtresi gerçek W'leri eler.
                 _db_clean = bool(_db) and is_clean_zone(_db["d1_i"] - 6, _db["d1_i"] + 6) \
                                        and is_clean_zone(_db["d2_i"] - 6, _db["d2_i"] + 6)
+                # 12 — retest / sahte kırılım katmanı
+                _db_retest = False
+                if _db and _db_clean:
+                    _pb = pattern_core.detect_post_breakout(close_np, vol_np, _db['neck_v'])
+                    if _pb['failed']:
+                        _db = None               # sahte kırılım — formasyon bozuldu
+                    else:
+                        _db_retest = _pb['retest']
                 if _db and _db_clean:
                     dur_months = max(1, round(_db["dur"] / 21))
-                    if _db["state"] == "break":
+                    if _db_retest:
+                        pattern_name = f"🎯 ÇİFT DİP (W) RETEST ({dur_months} Ay) — Boyun Destek Testi"
+                        base_score   = 94
+                    elif _db["state"] == "break":
                         pattern_name = f"🔷 ÇİFT DİP (W) ({dur_months} Ay) — Kırılım Bölgesinde"
                         base_score   = 90
                     else:
@@ -6668,7 +6431,17 @@ def scan_chart_patterns(asset_list):
                     chart_d["breakout_state"]     = int(_bk_st)
                     chart_d["breakout_gap_pct"]   = float(_bk_gap)
                     chart_d["breakout_vol_ratio"] = float(_bk_vol)
+                    # 9 — Hacim imzası (ikinci dipte tükenme + dönüş hacmi)
+                    _vs = pattern_core.volume_signature(vol_np, _db['d1_i'], _db['d2_i'], _db['d2_i'])
+                    chart_d["vol_dip_ok"]    = _vs['dip_ok']
+                    chart_d["vol_bounce_ok"] = _vs['bounce_ok']
+                    chart_d["vol_fade_ok"]   = _vs['fade_ok']
+                    chart_d["retest"]        = bool(_db_retest)
+                    base_score += _vs['bonus'] + pattern_core.breakout_bonus(_bk_st, _bk_vol)
                     pattern_found = True
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
 
             # ---------------------------------------------------------------
             # 3.7 KAMA (Düşen=boğa / Yükselen=ayı) — yakınsayan trend çizgileri
@@ -6711,6 +6484,9 @@ def scan_chart_patterns(asset_list):
                         "break_line": float(_wline),
                     }
                     pattern_found = True
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
 
             # ---------------------------------------------------------------
             # 3.8 İKİLİ TEPE (M) — İki ~eşit tepe + orta vadi (boyun) aşağı kırılım (AYI)
@@ -6739,6 +6515,9 @@ def scan_chart_patterns(asset_list):
                         "type": "double_top",
                     }
                     pattern_found = True
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
 
             # ---------------------------------------------------------------
             # 4. YÜKSELEN ÜÇGEN — Düz direnç + yükselen destek (linregress)
@@ -6794,6 +6573,9 @@ def scan_chart_patterns(asset_list):
                                         pattern_found = True
                                         pattern_name  = p_name; desc = p_desc
                                         base_score    = 88 if breaking else 68
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
 
             # ---------------------------------------------------------------
             # 4.5 RANGE (YATAY BANT) — Ham fiyat bazlı
@@ -6827,6 +6609,9 @@ def scan_chart_patterns(asset_list):
                             pattern_name = p_name; desc = p_desc
                             base_score   = 88 if breaking_up else 85
                             break
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
 
             # ---------------------------------------------------------------
             # 4.6 ÇANAK (Saucer / Rounding Bottom)
@@ -6857,11 +6642,15 @@ def scan_chart_patterns(asset_list):
                         pattern_name  = "🥣 ÇANAK (Dipten Dönüş)"
                         base_score    = 88
                         desc = f"Sol Tepe: {left_high:.2f} | Dip: {cup_bottom:.2f} | Sağ Direnç: {right_high:.2f}"
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
 
             # ---------------------------------------------------------------
             # 5. QUASIMODO (QML) — Son 6 zigzag pivotu üzerinden
+            # (11: yapısal formasyon adayı varsa fallback'ler çalışmaz)
             # ---------------------------------------------------------------
-            if not pattern_found and len(zz_chron) >= 4:
+            if not _cands and not pattern_found and len(zz_chron) >= 4:
                 recent = zz_chron[-6:]
                 r_l = [(i, p) for (i, p, t) in recent if t == 'L']
                 r_h = [(i, p) for (i, p, t) in recent if t == 'H']
@@ -6896,7 +6685,7 @@ def scan_chart_patterns(asset_list):
             # ---------------------------------------------------------------
             # 6. 3 DRIVE (Üç Düşen Dip) — Son 3 zigzag dibi
             # ---------------------------------------------------------------
-            if not pattern_found and len(zz_l) >= 3:
+            if not _cands and not pattern_found and len(zz_l) >= 3:
                 (d1_i, d1), (d2_i, d2), (d3_i, d3) = zz_l[-3], zz_l[-2], zz_l[-1]
                 if d1 > d2 > d3:
                     drop1 = d1 - d2; drop2 = d2 - d3
@@ -6916,7 +6705,7 @@ def scan_chart_patterns(asset_list):
             # ---------------------------------------------------------------
             # 7. GÜÇLÜ DESTEK / DİRENÇ TESTİ
             # ---------------------------------------------------------------
-            if not pattern_found and len(df) >= 100:
+            if not _cands and not pattern_found and len(df) >= 100:
                 sr_levels = find_smart_sr_levels(df, window=5, cluster_tolerance=0.015, min_touches=3)
                 for level in sorted(sr_levels, key=lambda x: abs(x - curr_price)):
                     if abs(curr_price - level) / level <= 0.015:
@@ -6936,6 +6725,17 @@ def scan_chart_patterns(asset_list):
                             desc = f"Geçmişte ≥3 kez reddedilen direnç: {level:.2f}"
                             base_score = 88
                         break
+
+            # ---------------------------------------------------------------
+            # 11 — EN İYİ ADAY SEÇİMİ: tüm yapısal detektörler koştu; en
+            # yüksek taban puanlı formasyon kazanır (eşitlikte önce gelen blok).
+            # Eskiden ilk bulunan kazanıyordu — çok-formasyonlu hissede zayıf
+            # olan güçlüyü gölgeleyebiliyordu.
+            # ---------------------------------------------------------------
+            if _cands:
+                _cands.sort(key=lambda c: (-c[0], c[1]))
+                base_score, _c_ord, pattern_name, desc, chart_d = _cands[0]
+                pattern_found = True
 
             # ---------------------------------------------------------------
             # KALİTE PUANLAMASI
@@ -7132,33 +6932,8 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
             p_name = ""
             base_score = 0
 
-            # Zigzag iskelet — scan_chart_patterns ile aynı fonksiyon
-            def _zigzag_gp(c, threshold=0.04):
-                pivots = []
-                if len(c) < 10: return pivots
-                direction = None
-                last_i, last_p = 0, float(c.iloc[0])
-                for i in range(1, len(c)):
-                    p = float(c.iloc[i])
-                    if direction is None:
-                        if p >= last_p * (1 + threshold):   direction = 'up';   last_i, last_p = i, p
-                        elif p <= last_p * (1 - threshold): direction = 'down'; last_i, last_p = i, p
-                    elif direction == 'up':
-                        if p > last_p: last_i, last_p = i, p
-                        elif p <= last_p * (1 - threshold):
-                            pivots.append((last_i, last_p, 'H'))
-                            direction = 'down'; last_i, last_p = i, p
-                    else:
-                        if p < last_p: last_i, last_p = i, p
-                        elif p >= last_p * (1 + threshold):
-                            pivots.append((last_i, last_p, 'L'))
-                            direction = 'up'; last_i, last_p = i, p
-                if direction == 'up':   pivots.append((last_i, last_p, 'H'))
-                elif direction == 'down': pivots.append((last_i, last_p, 'L'))
-                return pivots
-
-            zz_gp      = _zigzag_gp(close, threshold=0.04)
-            zz_chron   = sorted(zz_gp, key=lambda x: x[0])
+            # (4 Tem 2026) Ölü zigzag silindi — VIP ajanında QML/3Drive yok,
+            # zz_chron hiçbir yerde kullanılmıyordu.
 
             # A) FİNCAN KULP — Swing tabanlı + polinom U-şekil doğrulaması
             def _find_swings_gp(series, lookback=8):
@@ -7172,9 +6947,19 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                 return highs, lows
 
             _bt    = len(close)
-            _swh, _swl = _find_swings_gp(close, lookback=8)
+            close_np = close.values.astype(float)
+            vol_np   = volume.values.astype(float)
+            # 7 — Pivotlar fitil uçlarından; 10 — uyarlanabilir eşikle budama
+            # (4 Tem 2026 — scan_chart_patterns ile senkron)
+            _swh, _ = _find_swings_gp(high, lookback=8)
+            _, _swl = _find_swings_gp(low, lookback=8)
+            _adapt_thr = pattern_core.adaptive_threshold(close_np)
+            _swh, _swl = pattern_core.prune_pivots(_swh, _swl, _adapt_thr)
             _swh_y = [(i, v) for i, v in _swh if i >= _bt - 252]
             _swl_y = [(i, v) for i, v in _swl if i >= _bt - 252]
+
+            # 11 — aday havuzu: tüm detektörler koşar, en yüksek puanlı kazanır
+            _gp_cands = []
 
             if not pattern_found and len(_swh_y) >= 2 and len(_swl_y) >= 1:
                 for ri in range(len(_swh_y) - 1, 0, -1):
@@ -7185,6 +6970,8 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         sh1_i, sh1_v = _swh_y[li]
                         cup_dur = sh2_i - sh1_i
                         if not (40 <= cup_dur <= 252): continue
+                        # 6 — Ön-trend: kupa öncesi yükseliş şartı
+                        if not pattern_core.cup_pretrend_ok(close_np, sh1_i): continue
                         cup_lows = [(i, v) for i, v in _swl_y if sh1_i < i < sh2_i]
                         if not cup_lows: continue
                         sl_i, sl_v = min(cup_lows, key=lambda x: x[1])
@@ -7225,22 +7012,40 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             hl_i, hl_v = sh2_i + rel, float(after.iloc[rel])
                         if not (hl_v > sl_v + (sh2_v - sl_v) * 0.35): continue
                         if not (hl_v > sh2_v * 0.82): continue
+                        # 8 — Kulp süresi: kupaya oranla kısa olmalı
+                        if not pattern_core.handle_dur_ok(sh2_i, _bt, cup_dur): continue
                         target = sh2_v + (sh2_v - sl_v)
                         risk   = max(curr_price - hl_v * 0.98, 0.01)
                         if (target - curr_price) / risk < 1.0: continue
-                        breaking = curr_price >= sh2_v * 0.97 and curr_price <= sh2_v * 1.10
-                        forming  = curr_price >= hl_v * 0.98 and not breaking
-                        if not (breaking or forming): continue
-                        dur_months = max(1, round(cup_dur / 21))
+                        # 12 — retest / sahte kırılım katmanı
+                        _pb = pattern_core.detect_post_breakout(close_np, vol_np, sh2_v)
+                        if _pb['failed']: continue
                         dist = ((sh2_v - curr_price) / sh2_v * 100) if curr_price < sh2_v else 0
-                        if breaking:
+                        retesting = _pb['retest']
+                        breaking  = (not retesting) and sh2_v * 0.97 <= curr_price <= sh2_v * 1.10
+                        # 3 — OLUŞAN için boyuna max %12 uzaklık
+                        forming   = (not retesting) and (not breaking) and curr_price >= hl_v * 0.98 \
+                                    and dist <= pattern_core.PC['form_max_dist']
+                        if not (retesting or breaking or forming): continue
+                        dur_months = max(1, round(cup_dur / 21))
+                        if retesting:
+                            p_name = f"🎯 FİNCAN KULP RETEST ({dur_months} Ay) — Boyun Destek Testi"
+                            base_score = 94
+                        elif breaking:
                             p_name = f"☕ FİNCAN KULP ({dur_months} Ay) — Kırılım Bölgesinde"
                             base_score = 92
                         else:
                             p_name = f"⏳ OLUŞAN FİNCAN KULP ({dur_months} Ay) — %{dist:.1f} kaldı"
                             base_score = 75
+                        # 9 — hacim imzası + kırılım hacmi bonusu
+                        _vs = pattern_core.volume_signature(vol_np, sh1_i, sh2_i, min(hl_i, _bt - 1))
+                        _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(sh2_v))
+                        base_score += _vs['bonus'] + pattern_core.breakout_bonus(_bk_st, _bk_vol)
                         pattern_found = True
                         break
+            if pattern_found:   # 11 — aday havuzuna
+                _gp_cands.append((base_score, len(_gp_cands), p_name))
+                pattern_found = False
 
             # B) TOBO — Swing tabanlı: 5 pivot L, H, L(derin), H, L
             if not pattern_found and len(_swh_y) >= 2 and len(_swl_y) >= 3:
@@ -7256,6 +7061,8 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             dur = sl3_i - sl1_i
                             if not (40 <= dur <= 252): continue
                             if not (sl2_v < sl1_v * 0.95 and sl2_v < sl3_v * 0.95): continue
+                            # 6 — Ön-trend: TOBO öncesi düşüş şartı
+                            if not pattern_core.tobo_pretrend_ok(close_np, sl1_i, sl2_v): continue
                             sh1_c = [(i, v) for i, v in _swh_y if sl1_i < i < sl2_i]
                             sh2_c = [(i, v) for i, v in _swh_y if sl2_i < i < sl3_i]
                             if not sh1_c or not sh2_c: continue
@@ -7279,19 +7086,36 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             target = neck + (neck - sl2_v)
                             risk   = max(curr_price - sl3_v * 0.98, 0.01)
                             if (target - curr_price) / risk < 1.0: continue
-                            breaking = curr_price >= neck * 0.97 and curr_price <= neck * 1.08
-                            forming  = curr_price > sl3_v * 1.01 and curr_price < neck * 0.96
-                            if not (breaking or forming): continue
-                            dur_months = max(1, round(dur / 21))
+                            # 12 — retest / sahte kırılım katmanı
+                            _pb = pattern_core.detect_post_breakout(close_np, vol_np, neck)
+                            if _pb['failed']: continue
                             dist = ((neck - curr_price) / neck * 100) if curr_price < neck else 0
-                            if breaking:
+                            retesting = _pb['retest']
+                            breaking  = (not retesting) and neck * 0.97 <= curr_price <= neck * 1.08
+                            # 3 — OLUŞAN için boyuna max %12 uzaklık
+                            forming   = (not retesting) and (not breaking) and curr_price > sl3_v * 1.01 \
+                                        and curr_price < neck * 0.96 \
+                                        and dist <= pattern_core.PC['form_max_dist']
+                            if not (retesting or breaking or forming): continue
+                            dur_months = max(1, round(dur / 21))
+                            if retesting:
+                                p_name = f"🎯 TOBO RETEST ({dur_months} Ay) — Boyun Destek Testi"
+                                base_score = 94
+                            elif breaking:
                                 p_name = f"🧛 TOBO ({dur_months} Ay) — Kırılım Bölgesinde"
                                 base_score = 90
                             else:
                                 p_name = f"⏳ OLUŞAN TOBO ({dur_months} Ay) — %{dist:.1f} kaldı"
                                 base_score = 72
+                            # 9 — hacim imzası + kırılım hacmi bonusu
+                            _vs = pattern_core.volume_signature(vol_np, sl1_i, sl3_i, sl3_i)
+                            _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(neck))
+                            base_score += _vs['bonus'] + pattern_core.breakout_bonus(_bk_st, _bk_vol)
                             pattern_found = True
                             break
+            if pattern_found:   # 11 — aday havuzuna
+                _gp_cands.append((base_score, len(_gp_cands), p_name))
+                pattern_found = False
 
             # B.5) ÇİFT DİP (W) — İki ~eşit dip + orta tepe (boyun) kırılımı
             if not pattern_found:
@@ -7309,14 +7133,27 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         _bd = np.abs(c_z - o_z); _wk = (h_z - l_z) - _bd
                         return not (np.median(_bd) > 1e-9 and np.median(_wk) > 2.0 * np.median(_bd))
                     if _zone_clean(_db["d1_i"]) and _zone_clean(_db["d2_i"]):
-                        dur_months = max(1, round(_db["dur"] / 21))
-                        if _db["state"] == "break":
-                            p_name = f"🔷 ÇİFT DİP (W) ({dur_months} Ay) — Kırılım Bölgesinde"
-                            base_score = 90
-                        else:
-                            p_name = f"⏳ OLUŞAN ÇİFT DİP (W) ({dur_months} Ay) — %{_db['dist']:.1f} kaldı"
-                            base_score = 72
-                        pattern_found = True
+                        # 12 — retest / sahte kırılım katmanı
+                        _pb = pattern_core.detect_post_breakout(close_np, vol_np, _db['neck_v'])
+                        if not _pb['failed']:
+                            dur_months = max(1, round(_db["dur"] / 21))
+                            if _pb['retest']:
+                                p_name = f"🎯 ÇİFT DİP (W) RETEST ({dur_months} Ay) — Boyun Destek Testi"
+                                base_score = 94
+                            elif _db["state"] == "break":
+                                p_name = f"🔷 ÇİFT DİP (W) ({dur_months} Ay) — Kırılım Bölgesinde"
+                                base_score = 90
+                            else:
+                                p_name = f"⏳ OLUŞAN ÇİFT DİP (W) ({dur_months} Ay) — %{_db['dist']:.1f} kaldı"
+                                base_score = 72
+                            # 9 — hacim imzası + kırılım hacmi bonusu
+                            _vs = pattern_core.volume_signature(vol_np, _db['d1_i'], _db['d2_i'], _db['d2_i'])
+                            _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(_db['neck_v']))
+                            base_score += _vs['bonus'] + pattern_core.breakout_bonus(_bk_st, _bk_vol)
+                            pattern_found = True
+            if pattern_found:   # 11 — aday havuzuna
+                _gp_cands.append((base_score, len(_gp_cands), p_name))
+                pattern_found = False
 
             # B.7) KAMA (Düşen=boğa / Yükselen=ayı) — yakınsayan trend çizgileri
             if not pattern_found:
@@ -7339,6 +7176,9 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             p_name = f"⏳ OLUŞAN YÜKSELEN KAMA ({dur_months} Ay) — Tepe Riski"
                             base_score = 45
                     pattern_found = True
+            if pattern_found:   # 11 — aday havuzuna
+                _gp_cands.append((base_score, len(_gp_cands), p_name))
+                pattern_found = False
 
             # B.8) İKİLİ TEPE (M) — iki ~eşit tepe + orta vadi aşağı kırılım (AYI)
             if not pattern_found:
@@ -7352,6 +7192,9 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         p_name = f"⏳ OLUŞAN İKİLİ TEPE (M) ({dur_months} Ay) — Tepe Riski"
                         base_score = 45
                     pattern_found = True
+            if pattern_found:   # 11 — aday havuzuna
+                _gp_cands.append((base_score, len(_gp_cands), p_name))
+                pattern_found = False
 
             # C) YÜKSELEN ÜÇGEN — Düz direnç + yükselen destek
             if not pattern_found and len(_swh_y) >= 2 and len(_swl_y) >= 2:
@@ -7384,7 +7227,9 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                                                   f"⏳ OLUŞAN ÜÇGEN ({dur_months_gp} Ay) — Dirence Yaklaşıyor")
                                         base_score    = 88 if breaking else 68
                                         pattern_found = True
-
+            if pattern_found:   # 11 — aday havuzuna
+                _gp_cands.append((base_score, len(_gp_cands), p_name))
+                pattern_found = False
 
             # D) RANGE (YATAY BANT) — direnç kırılımı veya tabandan destek
             if not pattern_found:
@@ -7404,9 +7249,13 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             base_score    = 88 if breaking_up else 85
                             pattern_found = True
                             break
+            if pattern_found:   # 11 — aday havuzuna
+                _gp_cands.append((base_score, len(_gp_cands), p_name))
+                pattern_found = False
 
             # E) GÜÇLÜ DESTEK / DİRENÇ TESTİ
-            if not pattern_found and len(df) >= 100:
+            # (11: yapısal formasyon adayı varsa fallback çalışmaz)
+            if not _gp_cands and not pattern_found and len(df) >= 100:
                 try:
                     sr_levels = find_smart_sr_levels(df, window=5, cluster_tolerance=0.015, min_touches=3)
                     for level in sorted(sr_levels, key=lambda x: abs(x - curr_price)):
@@ -7420,6 +7269,12 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             break
                 except Exception:
                     pass
+
+            # 11 — EN İYİ ADAY SEÇİMİ (eskiden ilk bulunan kazanıyordu)
+            if _gp_cands:
+                _gp_cands.sort(key=lambda c: (-c[0], c[1]))
+                base_score, _gp_ord, p_name = _gp_cands[0]
+                pattern_found = True
 
             # --- 3. LİSTEYE ALMA VE PUANLAMA ---
             if pattern_found:
@@ -7854,114 +7709,7 @@ def analyze_market_intelligence(asset_list, category="S&P 500"):
 
     return pd.DataFrame(signals).sort_values(by="Skor", ascending=False) if signals else pd.DataFrame()
 
-def detect_darvas_box(df):
-    """
-    Swing-point bazlı Darvas kutu tespiti.
-    2 sağ + 2 sol komşudan büyük pivot high → kutu tavanı.
-    Kalite skoru: genişlik(25) + yaş(25) + hacim kontraksiyon(25) + pozisyon(25).
-    Returns dict or None.
-    """
-    try:
-        if df is None or len(df) < 60:
-            return None
-        close = df['Close']
-        high  = df['High']
-        low   = df['Low']
-        vol   = df['Volume']
-        cp    = float(close.iloc[-1])
-
-        # Son 60 bar içinde pivot high bul (2 sol, 2 sağ komşudan büyük)
-        n     = min(60, len(df))
-        h_arr = high.iloc[-n:].values
-        pivot_highs = []
-        for _i in range(2, len(h_arr) - 2):
-            if (h_arr[_i] > h_arr[_i-1] and h_arr[_i] > h_arr[_i-2] and
-                    h_arr[_i] > h_arr[_i+1] and h_arr[_i] > h_arr[_i+2]):
-                pivot_highs.append((_i, h_arr[_i]))
-
-        if not pivot_highs:
-            return None
-
-        # Son pivot high → kutu tavanı
-        last_ph_idx, box_top_val = pivot_highs[-1]
-        bars_since = (len(h_arr) - 1) - last_ph_idx  # pivot'tan bu yana kaç bar
-
-        if bars_since < 5:   # Kutu henüz oluşmadı
-            return None
-
-        # Kutu içi slice
-        box_low_s = low.iloc[-bars_since:]
-        box_vol_s = vol.iloc[-bars_since:]
-
-        box_top    = float(box_top_val)
-        box_bottom = float(box_low_s.min())
-        box_age    = bars_since
-
-        # Kutu tabanı kırıldıysa geçersiz kutu
-        if cp < box_bottom * 0.97:
-            return None
-
-        # Durum
-        status = 'breakout' if cp > box_top * 1.01 else 'forming'
-
-        # ── Kalite Skoru (0–100) ──────────────────────────────
-        quality = 0
-
-        # 1. Kutu genişliği (dar = sıkışmış enerji = iyi)
-        bw = (box_top - box_bottom) / box_bottom if box_bottom > 0 else 1.0
-        if   bw < 0.05: quality += 25
-        elif bw < 0.08: quality += 20
-        elif bw < 0.12: quality += 10
-
-        # 2. Kutu yaşı (uzun konsolidasyon = büyük kırılım potansiyeli)
-        if   box_age >= 15: quality += 25
-        elif box_age >= 10: quality += 20
-        elif box_age >= 7:  quality += 12
-        elif box_age >= 5:  quality += 5
-
-        # 3. Hacim kontraksiyon (VCP imzası — gizli birikim)
-        vol_sma20   = float(vol.rolling(20).mean().iloc[-1])
-        avg_box_vol = float(box_vol_s.mean()) if len(box_vol_s) > 0 else vol_sma20
-        if vol_sma20 > 0:
-            vr = avg_box_vol / vol_sma20
-            if   vr < 0.70: quality += 25
-            elif vr < 0.85: quality += 18
-            elif vr < 0.95: quality += 10
-
-        # 4. Pozisyon kalitesi (SMA200 üstü + SMA50 eğimi + RSI sağlıklı)
-        sma50  = float(close.rolling(50).mean().iloc[-1])
-        sma200 = float(close.rolling(200).mean().iloc[-1])
-        _d     = close.diff()
-        _g     = _d.where(_d > 0, 0).rolling(14).mean()
-        _l     = (-_d.where(_d < 0, 0)).rolling(14).mean()
-        _lv    = float(_l.iloc[-1])
-        rsi_v  = float((100 - 100 / (1 + _g / _l)).iloc[-1]) if _lv != 0 else 50.0
-        if not np.isnan(sma200) and cp > sma200:    quality += 8
-        if not np.isnan(sma50)  and sma50 > sma200: quality += 8
-        if 40 <= rsi_v <= 65:                        quality += 9
-        quality = min(100, quality)
-
-        # ── Kırılım kalitesi (3 kapı) ─────────────────────────
-        breakout_class = None
-        if status == 'breakout':
-            gate1 = cp > box_top
-            gate2 = float(vol.iloc[-1]) > vol_sma20 * 1.5
-            gate3 = 45 <= rsi_v <= 73
-            gates = sum([gate1, gate2, gate3])
-            if   gates == 3: breakout_class = 'A'
-            elif gates >= 2: breakout_class = 'B'
-
-        return {
-            'box_top':        round(box_top, 2),
-            'box_bottom':     round(box_bottom, 2),
-            'box_age':        box_age,
-            'quality':        quality,
-            'status':         status,
-            'breakout_class': breakout_class,
-            'vol_ratio':      round(avg_box_vol / vol_sma20, 2) if vol_sma20 > 0 else 1.0,
-        }
-    except:
-        return None
+# -> indicators.py (Adim 4, 4 Tem 2026): detect_darvas_box
 
 
 def process_single_radar2(symbol, df, idx, min_price, max_price, min_avg_vol_m):
@@ -8094,21 +7842,7 @@ def process_single_radar2(symbol, df, idx, min_price, max_price, min_avg_vol_m):
 # Volume Delta, Volume Profile (POC), Naked POC tespiti.
 # Kurumsal alım/satım baskısını ölçen gelişmiş hacim fonksiyonları.
 # ==============================================================================
-def calculate_volume_delta(df):
-    """Mumun kapanışına göre tahmini Hacim Deltası hesaplar."""
-    df = df.copy()
-    df['Range'] = df['High'] - df['Low']
-    df['Range'] = df['Range'].replace(0, 0.0001) # Sıfıra bölünme hatasını önle
-    
-    df['Buying_Pressure'] = (df['Close'] - df['Low']) / df['Range']
-    df['Selling_Pressure'] = (df['High'] - df['Close']) / df['Range']
-    
-    df['Buying_Volume'] = df['Volume'] * df['Buying_Pressure']
-    df['Selling_Volume'] = df['Volume'] * df['Selling_Pressure']
-    
-    # Günlük net hacim farkı (Alıcılar - Satıcılar)
-    df['Volume_Delta'] = df['Buying_Volume'] - df['Selling_Volume']
-    return df
+# -> indicators.py (Adim 4, 4 Tem 2026): calculate_volume_delta
 
 
 # ============================================================================
@@ -8119,425 +7853,20 @@ def calculate_volume_delta(df):
 # Trend bağlamı: 10g SMA eğimi (+ üst, − alt, ≈ yatay).
 # Önemli: pattern + trend uyumu → reversal sinyali; trend yoksa → gürültü.
 # ============================================================================
-def detect_classic_candle_patterns(df):
-    """Son 3 mumda klasik formasyon tespiti.
-
-    Returns: list of dict {name, type, confidence(0-100), context}
-    Sadece TRENDLE UYUMLU veya net gövde/gölge oranlı patternler döner.
-    Hiçbiri tetiklenmezse [] döner.
-    """
-    out = []
-    if df is None or len(df) < 5:
-        return out
-    try:
-        o = df['Open'].astype(float).values
-        h = df['High'].astype(float).values
-        l = df['Low'].astype(float).values
-        c = df['Close'].astype(float).values
-
-        # Trend bağlamı: son 10g SMA eğimi
-        sma10 = pd.Series(c).rolling(10, min_periods=5).mean().values
-        if len(sma10) >= 11:
-            slope_pct = (sma10[-1] - sma10[-11]) / sma10[-11] * 100 if sma10[-11] > 0 else 0
-        else:
-            slope_pct = 0
-        trend = "up" if slope_pct > 1.5 else ("down" if slope_pct < -1.5 else "flat")
-
-        # 8 Haz 2026 Oturum 19 — STRÜKTÜREL LOKASYON BAĞLAMI
-        # Pattern + trend yetmez; "dipten gelen Morning Star" / "tepeden gelen Evening Star"
-        # gibi YERLEŞİM önemli. Konsolidasyon ortasındaki hammer = gürültü, dip yakınındaki
-        # hammer = anlamlı reversal. Burada 4 lokasyon kriteri hesaplanır:
-        #  (a) 52H pozisyon (dip %25 / tepe %25 → ekstrem)
-        #  (b) RSI(14) ekstrem (<35 oversold / >65 overbought)
-        #  (c) SMA200'den sapma (uzaklık |%|>8 → stretched)
-        #  (d) Ardışık aynı renk mum (3+ → tükeniş)
-        cur = float(c[-1])
-        # 52H pos
-        seg52 = df.tail(252) if len(df) >= 60 else df
-        h52 = float(seg52['High'].max()); l52 = float(seg52['Low'].min())
-        pos52 = (cur - l52) / (h52 - l52) if h52 > l52 else 0.5
-        at_bottom_25 = pos52 < 0.25
-        at_top_25    = pos52 > 0.75
-        # RSI(14)
-        try:
-            _di = pd.Series(c).diff()
-            _ri = 100 - 100 / (1 + (_di.where(_di > 0, 0).rolling(14).mean() / (-_di.where(_di < 0, 0)).rolling(14).mean()))
-            rsi14 = float(_ri.iloc[-1])
-        except Exception:
-            rsi14 = 50
-        oversold   = rsi14 < 35
-        overbought = rsi14 > 65
-        # SMA200 sapma
-        try:
-            sma200 = float(pd.Series(c).rolling(200, min_periods=50).mean().iloc[-1])
-            sma200_dev = (cur - sma200) / sma200 * 100 if sma200 > 0 else 0
-        except Exception:
-            sma200_dev = 0
-        stretched_down = sma200_dev < -8
-        stretched_up   = sma200_dev > 8
-        # Ardışık mum sayısı (son 5'te)
-        consec_red = 0; consec_green = 0
-        for k in range(-1, -min(6, len(c)+1), -1):
-            if c[k] < o[k]: consec_red  += 1
-            elif c[k] > o[k]: consec_green += 1
-            else: break
-            if (c[k] < o[k] and k != -1 and c[k+1] > o[k+1]) or (c[k] > o[k] and k != -1 and c[k+1] < o[k+1]):
-                break
-
-        # Bullish reversal pattern'i anlamlı yapan lokasyonlar
-        def _bull_location_score():
-            score = 0; reasons = []
-            if at_bottom_25:   score += 2; reasons.append(f"52H %{pos52*100:.0f} dipte")
-            if oversold:       score += 2; reasons.append(f"RSI {rsi14:.0f} aşırı satım")
-            if stretched_down: score += 1; reasons.append(f"SMA200 -%{abs(sma200_dev):.1f} stretched")
-            if consec_red >= 3: score += 1; reasons.append(f"{consec_red}g ardışık kırmızı (tükeniş)")
-            return score, reasons
-
-        # Bearish reversal pattern'i anlamlı yapan lokasyonlar
-        def _bear_location_score():
-            score = 0; reasons = []
-            if at_top_25:    score += 2; reasons.append(f"52H %{pos52*100:.0f} tepede")
-            if overbought:   score += 2; reasons.append(f"RSI {rsi14:.0f} aşırı alım")
-            if stretched_up: score += 1; reasons.append(f"SMA200 +%{sma200_dev:.1f} stretched")
-            if consec_green >= 3: score += 1; reasons.append(f"{consec_green}g ardışık yeşil (tükeniş)")
-            return score, reasons
-
-        # Lokasyon → confidence çarpan + "ANLAMLI / ORTA / GÜRÜLTÜ" etiketi
-        # score >=3 → ANLAMLI (×1.0) · score 1-2 → ORTA (×0.7) · score 0 → GÜRÜLTÜ (×0.4, eşik altı düşer)
-        def _location_tag(score):
-            if score >= 3: return "ANLAMLI", 1.0
-            elif score >= 1: return "ORTA", 0.7
-            else: return "GÜRÜLTÜ", 0.4
-
-        bull_score, bull_reasons = _bull_location_score()
-        bear_score, bear_reasons = _bear_location_score()
-        bull_tag, bull_mult = _location_tag(bull_score)
-        bear_tag, bear_mult = _location_tag(bear_score)
-        bull_loc_txt = (" | LOKASYON: " + " + ".join(bull_reasons)) if bull_reasons else ""
-        bear_loc_txt = (" | LOKASYON: " + " + ".join(bear_reasons)) if bear_reasons else ""
-
-        # Son 3 mum metrikleri
-        def _m(i):
-            rng = max(h[i] - l[i], 1e-9)
-            body = abs(c[i] - o[i])
-            upper_shadow = h[i] - max(c[i], o[i])
-            lower_shadow = min(c[i], o[i]) - l[i]
-            return {
-                'range': rng, 'body': body,
-                'upper': upper_shadow, 'lower': lower_shadow,
-                'green': c[i] > o[i], 'red': c[i] < o[i],
-                'body_pct': body / rng if rng > 0 else 0,
-                'mid': (o[i] + c[i]) / 2,
-            }
-        t0, t1, t2 = _m(-3), _m(-2), _m(-1)  # t2 = bugün
-
-        # NOT: Aşağıdaki her pattern için BASE_CONFIDENCE × LOCATION_MULT uygulanır.
-        # bullish_reversal → bull_mult (52H dip + RSI oversold + SMA200 stretched + 3g+ ardışık kırmızı)
-        # bearish_reversal → bear_mult (52H tepe + RSI overbought + SMA200 stretched + 3g+ ardışık yeşil)
-        # Lokasyon "GÜRÜLTÜ" ise (×0.4) çoğu pattern eşik altı düşer → otomatik filtre.
-        # Pattern context'ine "ANLAMLI/ORTA/GÜRÜLTÜ" + lokasyon nedenleri eklenir.
-
-        # 1) BULLISH ENGULFING
-        if t1['red'] and t2['green'] and o[-1] < c[-2] and c[-1] > o[-2] and t2['body'] > t1['body']:
-            base = 85 if trend == "down" else 60
-            out.append({'name': 'Bullish Engulfing', 'type': 'bullish_reversal',
-                        'confidence': int(base * bull_mult),
-                        'context': f"t-1 kırmızı + bugün yeşil + gövde kapsıyor | KONUM: {bull_tag}{bull_loc_txt}"})
-
-        # 2) BEARISH ENGULFING
-        if t1['green'] and t2['red'] and o[-1] > c[-2] and c[-1] < o[-2] and t2['body'] > t1['body']:
-            base = 85 if trend == "up" else 60
-            out.append({'name': 'Bearish Engulfing', 'type': 'bearish_reversal',
-                        'confidence': int(base * bear_mult),
-                        'context': f"t-1 yeşil + bugün kırmızı + gövde kapsıyor | KONUM: {bear_tag}{bear_loc_txt}"})
-
-        # 3) PIERCING LINE
-        if t1['red'] and t1['body_pct'] > 0.5 and t2['green']:
-            t1_mid = (o[-2] + c[-2]) / 2
-            if o[-1] <= c[-2] * 1.005 and c[-1] > t1_mid:
-                pen = (c[-1] - c[-2]) / (o[-2] - c[-2]) * 100 if (o[-2] - c[-2]) > 0 else 0
-                base = 80 if trend == "down" else 55
-                out.append({'name': 'Piercing Line', 'type': 'bullish_reversal',
-                            'confidence': int(base * bull_mult),
-                            'context': f"penetrasyon %{pen:.0f} | KONUM: {bull_tag}{bull_loc_txt}"})
-
-        # 4) DARK CLOUD COVER
-        if t1['green'] and t1['body_pct'] > 0.5 and t2['red']:
-            t1_mid = (o[-2] + c[-2]) / 2
-            if o[-1] >= c[-2] * 0.995 and c[-1] < t1_mid:
-                base = 80 if trend == "up" else 55
-                out.append({'name': 'Dark Cloud Cover', 'type': 'bearish_reversal',
-                            'confidence': int(base * bear_mult),
-                            'context': f"üst yarıyı kestiği için | KONUM: {bear_tag}{bear_loc_txt}"})
-
-        # 5) HAMMER
-        if t2['body'] > 0 and t2['lower'] >= 2 * t2['body'] and t2['upper'] < 0.25 * t2['body'] and t2['body_pct'] < 0.4:
-            base = 75 if trend == "down" else 35
-            out.append({'name': 'Hammer', 'type': 'bullish_reversal',
-                        'confidence': int(base * bull_mult),
-                        'context': f"uzun alt gölge ({t2['lower']/t2['body']:.1f}x gövde) | KONUM: {bull_tag}{bull_loc_txt}"})
-
-        # 6) SHOOTING STAR
-        if t2['body'] > 0 and t2['upper'] >= 2 * t2['body'] and t2['lower'] < 0.25 * t2['body'] and t2['body_pct'] < 0.4:
-            base = 75 if trend == "up" else 35
-            out.append({'name': 'Shooting Star', 'type': 'bearish_reversal',
-                        'confidence': int(base * bear_mult),
-                        'context': f"uzun üst gölge ({t2['upper']/t2['body']:.1f}x gövde) | KONUM: {bear_tag}{bear_loc_txt}"})
-
-        # 7) MORNING STAR (dipten gelen klasik 3-mum dönüş)
-        if t0['red'] and t0['body_pct'] > 0.5 and t1['body_pct'] < 0.4 and t2['green']:
-            t0_mid = (o[-3] + c[-3]) / 2
-            if c[-1] > t0_mid:
-                base = 85 if trend == "down" else 60
-                out.append({'name': 'Morning Star', 'type': 'bullish_reversal',
-                            'confidence': int(base * bull_mult),
-                            'context': f"3 mumlu dip dönüş | KONUM: {bull_tag}{bull_loc_txt}"})
-
-        # 8) EVENING STAR (tepeden gelen klasik 3-mum dönüş)
-        if t0['green'] and t0['body_pct'] > 0.5 and t1['body_pct'] < 0.4 and t2['red']:
-            t0_mid = (o[-3] + c[-3]) / 2
-            if c[-1] < t0_mid:
-                base = 85 if trend == "up" else 60
-                out.append({'name': 'Evening Star', 'type': 'bearish_reversal',
-                            'confidence': int(base * bear_mult),
-                            'context': f"3 mumlu tepe dönüş | KONUM: {bear_tag}{bear_loc_txt}"})
-
-        # 9) DOJI
-        if t2['body_pct'] < 0.05 and t2['range'] > 0:
-            doji_type = "Long-legged Doji" if (t2['upper'] > t2['range']*0.3 and t2['lower'] > t2['range']*0.3) else \
-                        "Gravestone Doji" if (t2['upper'] > t2['range']*0.5 and t2['lower'] < t2['range']*0.1) else \
-                        "Dragonfly Doji" if (t2['lower'] > t2['range']*0.5 and t2['upper'] < t2['range']*0.1) else \
-                        "Doji"
-            # Dragonfly = bullish reversal · Gravestone = bearish reversal · diğerleri = tereddüt
-            if "Dragonfly" in doji_type:
-                base = 65; mult = bull_mult; tag = bull_tag; loc_txt = bull_loc_txt; ptype = 'bullish_reversal'
-            elif "Gravestone" in doji_type:
-                base = 65; mult = bear_mult; tag = bear_tag; loc_txt = bear_loc_txt; ptype = 'bearish_reversal'
-            else:
-                # Tereddüt — sadece trend ekstreminde anlamlı
-                base = 50; mult = max(bull_mult, bear_mult); tag = "EKSTREM" if (bull_tag=="ANLAMLI" or bear_tag=="ANLAMLI") else "ORTA"; loc_txt = ""; ptype = 'indecision'
-            out.append({'name': doji_type, 'type': ptype,
-                        'confidence': int(base * mult),
-                        'context': f"alıcı-satıcı dengesi | KONUM: {tag}{loc_txt}"})
-
-        # 10) THREE WHITE SOLDIERS / THREE BLACK CROWS (continuation — lokasyon farklı)
-        # Continuation pattern: dipten kalkış (TWS) veya tepeden iniş (TBC) → bull/bear lokasyonu UYUMLU OLMALI
-        if all(_m(i)['green'] and _m(i)['body_pct'] > 0.6 for i in (-3, -2, -1)) and c[-1] > c[-2] > c[-3]:
-            # TWS: dipten kalkış için bullish location (dip + oversold + stretched_down)
-            out.append({'name': 'Three White Soldiers', 'type': 'bullish_continuation',
-                        'confidence': int(70 * bull_mult),
-                        'context': f"3 ardışık güçlü yeşil mum, kapanışlar yükselen | KONUM: {bull_tag}{bull_loc_txt}"})
-        elif all(_m(i)['red'] and _m(i)['body_pct'] > 0.6 for i in (-3, -2, -1)) and c[-1] < c[-2] < c[-3]:
-            out.append({'name': 'Three Black Crows', 'type': 'bearish_continuation',
-                        'confidence': int(70 * bear_mult),
-                        'context': f"3 ardışık güçlü kırmızı mum, kapanışlar düşen | KONUM: {bear_tag}{bear_loc_txt}"})
-
-        # Confidence eşiği: 40+ olanları döndür (lokasyon GÜRÜLTÜ olanlar otomatik düşer)
-        out = [p for p in out if p.get('confidence', 0) >= 40]
-        # En yüksek confidence'tan sırala
-        out.sort(key=lambda p: p.get('confidence', 0), reverse=True)
-    except Exception:
-        pass
-    return out
+# -> indicators.py (Adim 4, 4 Tem 2026): detect_classic_candle_patterns
 
 
-def calculate_volume_profile_poc(df, lookback=20, bins=20):
-    """Belirtilen periyotta en çok hacmin yığıldığı fiyatı (POC) orantısal olarak bulur."""
-    if len(df) < lookback:
-        lookback = len(df)
-        
-    recent_df = df.tail(lookback).copy()
-    min_price = float(recent_df['Low'].min())
-    max_price = float(recent_df['High'].max())
-    
-    if min_price == max_price: # Fiyat hiç değişmemişse
-        return min_price
-        
-    # Fiyat dilimlerini (bins) oluştur (Kenar noktaları için bins + 1 kullanıyoruz)
-    price_bins = np.linspace(min_price, max_price, bins + 1)
-    volume_profile = np.zeros(bins)
-    
-    # Her bir mumun hacmini, geçtiği dilimlere adil (orantısal) şekilde ekle
-    for _, row in recent_df.iterrows():
-        high = float(row['High'])
-        low = float(row['Low'])
-        vol = float(row['Volume'])
-        candle_range = high - low
-        
-        if candle_range <= 0:
-            # Doji mumu ise hacmi tek bir dilime at
-            idx = np.digitize((high + low) / 2, price_bins) - 1
-            idx = min(max(idx, 0), bins - 1)
-            volume_profile[idx] += vol
-            continue
-            
-        for i in range(bins):
-            bin_bottom = price_bins[i]
-            bin_top = price_bins[i+1]
-            
-            # Mum bu fiyat diliminden geçmiş mi?
-            if high >= bin_bottom and low <= bin_top:
-                overlap_top = min(high, bin_top)
-                overlap_bottom = max(low, bin_bottom)
-                overlap_range = overlap_top - overlap_bottom
-                
-                if overlap_range > 0:
-                    # Kesiştiği alanın yüksekliğine göre hacmi bölüştür
-                    volume_profile[i] += vol * (overlap_range / candle_range)
-                    
-    # En yüksek hacme sahip dilimi bul
-    poc_index = np.argmax(volume_profile)
-    
-    # POC fiyatını dilimin TAM ORTASI olarak belirle (eski koddaki gibi alt sınır değil)
-    poc_price = (price_bins[poc_index] + price_bins[poc_index + 1]) / 2.0
+# -> indicators.py (Adim 4, 4 Tem 2026): calculate_volume_profile_poc
 
-    return poc_price
+# -> indicators.py (Adim 4, 4 Tem 2026): calculate_full_volume_profile
 
-def calculate_full_volume_profile(df, lookback=20, bins=20):
-    """POC + VAH (Value Area High) + VAL (Value Area Low) döndürür.
-    Value Area = toplam hacmin %70'ini kapsayan POC etrafındaki fiyat bölgesi.
-    Kurumsal Volume Profile analizinin temel yapı taşı."""
-    if len(df) < lookback:
-        lookback = len(df)
-    recent_df = df.tail(lookback).copy()
-    min_price = float(recent_df['Low'].min())
-    max_price = float(recent_df['High'].max())
-    if min_price == max_price:
-        return {'poc': min_price, 'vah': min_price, 'val': min_price}
-    price_bins = np.linspace(min_price, max_price, bins + 1)
-    volume_profile = np.zeros(bins)
-    for _, row in recent_df.iterrows():
-        high = float(row['High']); low = float(row['Low']); vol = float(row['Volume'])
-        candle_range = high - low
-        if candle_range <= 0:
-            idx = min(max(np.digitize((high + low) / 2, price_bins) - 1, 0), bins - 1)
-            volume_profile[idx] += vol; continue
-        for i in range(bins):
-            bb, bt = price_bins[i], price_bins[i + 1]
-            if high >= bb and low <= bt:
-                overlap = min(high, bt) - max(low, bb)
-                if overlap > 0:
-                    volume_profile[i] += vol * (overlap / candle_range)
-    poc_index = int(np.argmax(volume_profile))
-    poc_price = (price_bins[poc_index] + price_bins[poc_index + 1]) / 2.0
-    # Value Area: POC'tan başla, her adımda daha yüksek hacimli komşuyu ekle
-    total_vol = volume_profile.sum()
-    target_vol = total_vol * 0.70
-    included = [poc_index]
-    cumulative = volume_profile[poc_index]
-    lower, upper = poc_index - 1, poc_index + 1
-    while cumulative < target_vol:
-        lv = volume_profile[lower] if lower >= 0 else 0.0
-        uv = volume_profile[upper] if upper < bins else 0.0
-        if lv == 0 and uv == 0: break
-        if uv >= lv:
-            included.append(upper); cumulative += uv; upper += 1
-        else:
-            included.append(lower); cumulative += lv; lower -= 1
-    hi_idx = max(included); lo_idx = min(included)
-    vah = (price_bins[hi_idx] + price_bins[min(hi_idx + 1, bins)]) / 2.0
-    val = (price_bins[lo_idx] + price_bins[min(lo_idx + 1, bins)]) / 2.0
-    return {'poc': poc_price, 'vah': vah, 'val': val}
-
-def calculate_multi_tf_pocs(df, current_price=None):
-    """Multi-Timeframe POC stack — kısa(20g) + orta(60g) + uzun(250g) POC'ları birlikte hesaplar.
-    Üçü birbirine yakınsa (max-min spread < %2) → POC Confluence Zone.
-    Yakınlaştıkça mıknatıs etkisi kuvvetlenir (kurumsal seviyelerin üst üste binmesi).
-
-    Returns:
-        {
-          'poc_20':  float,   'poc_60':  float,   'poc_250': float,
-          'spread_pct': float (max-min / mean * 100),
-          'confluence': bool,            # spread < %2
-          'confluence_mid': float|None,  # 3 POC ortalaması (confluence ise)
-          'dist_from_price_pct': dict    # her POC'a uzaklık % (current_price verildiyse)
-        }
-    """
-    out = {'poc_20': None, 'poc_60': None, 'poc_250': None,
-           'spread_pct': None, 'confluence': False, 'confluence_mid': None,
-           'dist_from_price_pct': {}}
-    try:
-        if df is None or len(df) < 20:
-            return out
-        # 3 pencere — veri yetmiyorsa o slot None kalır
-        if len(df) >= 20:
-            out['poc_20'] = calculate_volume_profile_poc(df, lookback=20, bins=20)
-        if len(df) >= 60:
-            out['poc_60'] = calculate_volume_profile_poc(df, lookback=60, bins=25)
-        if len(df) >= 250:
-            out['poc_250'] = calculate_volume_profile_poc(df, lookback=250, bins=30)
-        elif len(df) >= 120:
-            # 250g yoksa eldeki en uzun pencere (yıllık yaklaşımı)
-            out['poc_250'] = calculate_volume_profile_poc(df, lookback=len(df), bins=30)
-
-        vals = [v for v in (out['poc_20'], out['poc_60'], out['poc_250']) if v is not None and not np.isnan(v)]
-        if len(vals) >= 2:
-            _mn, _mx = min(vals), max(vals)
-            _mean = sum(vals) / len(vals)
-            if _mean > 0:
-                out['spread_pct'] = (_mx - _mn) / _mean * 100.0
-                if out['spread_pct'] < 2.0 and len(vals) == 3:
-                    out['confluence'] = True
-                    out['confluence_mid'] = _mean
-
-        if current_price is not None and current_price > 0:
-            for k in ('poc_20', 'poc_60', 'poc_250'):
-                v = out[k]
-                if v is not None and not np.isnan(v):
-                    out['dist_from_price_pct'][k] = (current_price - v) / v * 100.0
-    except Exception:
-        pass
-    return out
+# -> indicators.py (Adim 4, 4 Tem 2026): calculate_multi_tf_pocs
 
 
-def calculate_anchored_vwap(df, anchor_idx):
-    """Belirli bir bardan başlatılan Anchored VWAP serisi döndürür.
-    anchor_idx: df içinde anchor barın integer pozisyonu (df.iloc[anchor_idx]).
-    Anchor noktasından bugüne kadar (P × V) / V kümülatif ortalama.
-
-    Returns: pd.Series (index = df.index[anchor_idx:]) veya None
-    """
-    try:
-        if df is None or anchor_idx is None or anchor_idx < 0 or anchor_idx >= len(df):
-            return None
-        sub = df.iloc[anchor_idx:].copy()
-        # Tipik fiyat: (H+L+C)/3 — klasik VWAP formülü
-        if all(c in sub.columns for c in ('High', 'Low', 'Close', 'Volume')):
-            tp = (sub['High'].astype(float) + sub['Low'].astype(float) + sub['Close'].astype(float)) / 3.0
-        else:
-            tp = sub['Close'].astype(float)
-        vol = sub['Volume'].astype(float).fillna(0)
-        cum_pv = (tp * vol).cumsum()
-        cum_v  = vol.cumsum().replace(0, np.nan)
-        return cum_pv / cum_v
-    except Exception:
-        return None
+# -> indicators.py (Adim 4, 4 Tem 2026): calculate_anchored_vwap
 
 
-def detect_naked_poc(df, lookback=20, bins=20, n_windows=4):
-    """Geçmiş periyotlarda oluşmuş ama fiyatın test etmediği POC seviyelerini bulur.
-    Naked POC = kurumsal limit emir bölgesi, güçlü mıknatıs."""
-    naked = []
-    n = len(df)
-    curr_price = float(df['Close'].iloc[-1])
-    for w in range(1, n_windows + 1):
-        end = n - (w - 1) * lookback
-        start = end - lookback
-        if start < 0: break
-        window_df = df.iloc[start:end]
-        if len(window_df) < 5: break
-        try:
-            poc = calculate_volume_profile_poc(window_df, lookback=len(window_df), bins=bins)
-        except Exception: continue
-        # Bu POC'tan sonra fiyat bu seviyeye uğramış mı?
-        if end < n:
-            sub = df.iloc[end:]
-            tested = bool(((sub['Low'] <= poc) & (sub['High'] >= poc)).any())
-        else:
-            tested = False
-        if not tested and abs(poc - curr_price) / (curr_price + 1e-9) > 0.003:
-            naked.append(poc)
-    return naked
+# -> indicators.py (Adim 4, 4 Tem 2026): detect_naked_poc
 
     
 # ==============================================================================
@@ -8547,14 +7876,14 @@ def detect_naked_poc(df, lookback=20, bins=20, n_windows=4):
 def fetch_market_data_cached(tickers_tuple):
     import yfinance as yf
     tickers_str = " ".join(tickers_tuple)
-    return yf.download(tickers_str, period="1y", group_by='ticker', auto_adjust=True, progress=False, threads=True)
+    return drop_adj_close(yf.download(tickers_str, period="1y", group_by='ticker', auto_adjust=AUTO_ADJUST, progress=False, threads=True))
 
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_index_data_cached():
     import yfinance as yf
     import pandas as pd
     try:
-        index_df = yf.download("XU100.IS", period="1y", progress=False)
+        index_df = drop_adj_close(yf.download("XU100.IS", period="1y", progress=False, auto_adjust=AUTO_ADJUST))
         if not index_df.empty:
             if isinstance(index_df.columns, pd.MultiIndex):
                 return index_df['Close'].iloc[:, 0] if not index_df['Close'].empty else None
@@ -9402,104 +8731,7 @@ def calculate_master_score(ticker, return_breakdown=False):
 # Kurumsal işlem izlerinin bıraktığı fiyat bölgelerini tespit eder.
 # ICT metodolojisi temel alınmıştır.
 # ==============================================================================
-def detect_supply_demand_zones(df):
-    """
-    RBR, DBD, RBD ve DBR formasyonlarını ERC (Momentum Mumu) onayıyla tarar.
-    En taze (test edilmemiş veya yeni) bölgeyi döndürür.
-    """
-    try:
-        if df is None or df.empty or len(df) < 50: return None
-        
-        close = df['Close']
-        open_ = df['Open']
-        high = df['High']
-        low = df['Low']
-        
-        # 1. Mum Geometrisi ve ERC (Extended Range Candle) Tespiti
-        body = abs(close - open_)
-        rng = high - low
-        
-        # Son 20 mumun ortalama gövde boyutu (Kıyaslama için)
-        avg_body = body.rolling(20).mean()
-        
-        zones = []
-        
-        # Son 100 muma bakıyoruz (Taze bölgeler için yeterli bir derinlik)
-        start_idx = max(2, len(df) - 100)
-        
-        for i in range(start_idx, len(df)):
-            leg_in_idx = i - 2
-            base_idx = i - 1
-            leg_out_idx = i
-            
-            # --- ERC (Geniş Gövdeli Momentum Mumu) Şartları ---
-            # Giriş ve Çıkış mumlarının gövdesi hem ortalamadan büyük olmalı hem de kendi fitillerinden (mumun %50'sinden) büyük olmalı.
-            leg_in_erc = body.iloc[leg_in_idx] > avg_body.iloc[leg_in_idx] and body.iloc[leg_in_idx] > (rng.iloc[leg_in_idx] * 0.5)
-            leg_out_erc = body.iloc[leg_out_idx] > avg_body.iloc[leg_out_idx] and body.iloc[leg_out_idx] > (rng.iloc[leg_out_idx] * 0.5)
-            
-            # --- Base (Denge) Mumu Şartları ---
-            # Gövdesi küçük olmalı (kendi toplam boyunun %50'sinden küçük)
-            is_base = body.iloc[base_idx] < (rng.iloc[base_idx] * 0.5)
-            
-            if leg_in_erc and leg_out_erc and is_base:
-                # Yönleri Belirle
-                in_green = close.iloc[leg_in_idx] > open_.iloc[leg_in_idx]
-                in_red = close.iloc[leg_in_idx] < open_.iloc[leg_in_idx]
-                out_green = close.iloc[leg_out_idx] > open_.iloc[leg_out_idx]
-                out_red = close.iloc[leg_out_idx] < open_.iloc[leg_out_idx]
-                
-                z_type = ""
-                z_top = 0.0
-                z_bot = 0.0
-                
-                # Formasyon Eşleştirmeleri
-                if in_green and out_green:
-                    z_type = "RBR (Rally-Base-Rally) / Talep"
-                    z_top = max(open_.iloc[base_idx], close.iloc[base_idx]) # Base gövde üstü
-                    z_bot = low.iloc[base_idx] # Base fitil altı
-                elif in_red and out_red:
-                    z_type = "DBD (Drop-Base-Drop) / Arz"
-                    z_bot = min(open_.iloc[base_idx], close.iloc[base_idx]) # Base gövde altı
-                    z_top = high.iloc[base_idx] # Base fitil üstü
-                elif in_green and out_red:
-                    z_type = "RBD (Rally-Base-Drop) / Arz"
-                    z_bot = min(open_.iloc[base_idx], close.iloc[base_idx])
-                    z_top = high.iloc[base_idx]
-                elif in_red and out_green:
-                    z_type = "DBR (Drop-Base-Rally) / Talep"
-                    z_top = max(open_.iloc[base_idx], close.iloc[base_idx])
-                    z_bot = low.iloc[base_idx]
-                    
-                if z_type != "":
-                    # Fiyat aralığı çok darsa (Hatalı veri engellemesi) alma
-                    if z_top > z_bot:
-                        zones.append({
-                            'Type': z_type,
-                            'Top': float(z_top),
-                            'Bottom': float(z_bot),
-                            'Age': len(df) - i # Kaç mum önce oluştu?
-                        })
-        
-        if not zones: return None
-        
-        # En taze (en son oluşan) bölgeyi al
-        latest_zone = zones[-1]
-        curr_price = float(close.iloc[-1])
-        
-        # Bölge şu an ihlal edildi mi? (Test Durumu)
-        status = "Taze / Beklemede"
-        if "Talep" in latest_zone['Type'] and curr_price < latest_zone['Bottom']:
-            status = "İhlal Edildi (Kırıldı)"
-        elif "Arz" in latest_zone['Type'] and curr_price > latest_zone['Top']:
-            status = "İhlal Edildi (Kırıldı)"
-        elif latest_zone['Bottom'] <= curr_price <= latest_zone['Top']:
-            status = "Bölge İçinde (Test Ediliyor)"
-            
-        latest_zone['Status'] = status
-        return latest_zone
-        
-    except Exception:
-        return None
+# -> indicators.py (Adim 4, 4 Tem 2026): detect_supply_demand_zones
     
 # ==============================================================================
 # BÖLÜM 18 — ICT SETUP TARAMASI
@@ -9646,6 +8878,17 @@ def scan_ict_batch(asset_list):
     """
     ICT Toplu Tarama Ajanı (Paralel Çalışır)
     """
+    # 13 — REJİM KAPISI (4 Tem 2026): 6 aylık backtest 534 sinyal · hit %39 ·
+    # PF 0.88 → kanıtlı zayıf. SON ŞANS: sadece endeks SMA50 ÜSTÜNDEYKEN tarar.
+    # Eylül 2026 karnesinde hâlâ zayıfsa Sniper emekli edilecek.
+    try:
+        _bench = get_benchmark_data(st.session_state.get('category', 'BIST'))
+        if _bench is not None and len(_bench) >= 50:
+            _b_ser = pd.Series(_bench).astype(float)
+            if float(_b_ser.iloc[-1]) < float(_b_ser.rolling(50).mean().iloc[-1]):
+                return pd.DataFrame()   # ayı rejimi — Sniper sinyal üretmez (rozet açıklar)
+    except Exception:
+        pass
     # 1. Veri Çek (Cache'den)
     data = get_batch_data_cached(asset_list, period="1y")
     if data.empty: return pd.DataFrame()
@@ -10924,14 +10167,10 @@ def calculate_ict_deep_analysis(ticker):
         atr = tr.rolling(14).mean().iloc[-1]
         avg_body_size = abs(open_ - close).rolling(20).mean()
 
-        sw_highs = []; sw_lows = []
-        for i in range(2, len(df)-2):
-            try:
-                if high.iloc[i] >= max(high.iloc[i-2:i]) and high.iloc[i] >= max(high.iloc[i+1:i+3]):
-                    sw_highs.append((df.index[i], high.iloc[i], i))
-                if low.iloc[i] <= min(low.iloc[i-2:i]) and low.iloc[i] <= min(low.iloc[i+1:i+3]):
-                    sw_lows.append((df.index[i], low.iloc[i], i))
-            except: continue
+        # 5 — Swing tespiti ict_core'a taşındı: 2-bar mini fraktal yerine
+        # 5-bar fraktal + volatiliteye uyarlanan pivot budama. Bias artık tek
+        # gürültülü pivota göre dönmez (panel + FIYAT kartı + AI prompt stabil).
+        sw_highs, sw_lows = ict_core.ict_swings(df)
 
         if not sw_highs or not sw_lows: return error_ret
 
@@ -10989,6 +10228,9 @@ def calculate_ict_deep_analysis(ticker):
                 structure = f"⚠️ Zayıf Kırılım — Onay Bekleniyor 🐂 | {dow_desc}"
             else:
                 structure = f"BOS (Yükseliş Kırılımı) 🐂 | {dow_desc}"
+            # 7 — Kırılım onay katmanı: kaç gündür seviyenin üstünde kapanıyor?
+            _bc = ict_core.break_confirm(close.values, float(last_sh), bullish=True)
+            structure += f" [{_bc['label']}]"
             bias = "bullish"
         elif curr_price < last_sl:
             if is_prev_bullish:
@@ -10997,6 +10239,8 @@ def calculate_ict_deep_analysis(ticker):
                 structure = f"⚠️ Zayıf Kırılım — Onay Bekleniyor 🐻 | {dow_desc}"
             else:
                 structure = f"BOS (Düşüş Kırılımı) 🐻 | {dow_desc}"
+            _bc = ict_core.break_confirm(close.values, float(last_sl), bullish=False)
+            structure += f" [{_bc['label']}]"
             bias = "bearish"
         else:
             if len(sw_highs) >= 2 and len(sw_lows) >= 2:
@@ -11010,27 +10254,29 @@ def calculate_ict_deep_analysis(ticker):
                     structure = f"Internal Range | Dow: {dow_pattern}"
             else:
                 structure = f"Internal Range | Dow: {dow_pattern}"
-            if close.iloc[-1] > open_.iloc[-1]: bias = "bullish_retrace"
-            else: bias = "bearish_retrace"
+            # 7 — Sahte kırılım etiketi: son 10 barda kırıp geri dönme (tuzak)
+            if ict_core.fake_break(close.values, float(last_sh), bullish=True):
+                structure = f"🪤 Sahte Yukarı Kırılım (tuzak olabilir) | {structure}"
+            elif ict_core.fake_break(close.values, float(last_sl), bullish=False):
+                structure = f"🪤 Sahte Aşağı Kırılım (silkeleme) | {structure}"
+            # 6 — Nötr bölgede yön: tek mum rengi yerine Dow zinciri + 5 bar eğim
+            bias = ict_core.retrace_bias(close.values, dow_desc)
 
         # --- YAPISAL HEDEF (swing tabanlı, orta vade) ---
         next_bsl = min([h[1] for h in sw_highs if h[1] > curr_price], default=float(high.max()))
         next_ssl = max([l[1] for l in sw_lows  if l[1] < curr_price], default=float(low.min()))
         structural_target = next_bsl if "bullish" in bias else next_ssl
 
-        # --- 👇 YENİ: MIKNATIS (DOL) HESAPLAMA MANTIĞI 👇 ---
-        # Fiyatın gitmek isteyeceği en yakın Likidite havuzlarını buluyoruz
-        next_bsl = min([h[1] for h in sw_highs if h[1] > curr_price], default=high.max())
-        next_ssl = max([l[1] for l in sw_lows if l[1] < curr_price], default=low.min())
-        # Eğer bir setup yoksa, sistemin "Nereye bakacağını" belirleyen DOL (Draw on Liquidity)
+        # --- MIKNATIS (DOL): en yakın likidite havuzları — 3: çift hesap silindi,
+        # yukarıdaki next_bsl/next_ssl aynen kullanılıyor.
         # Ayı piyasasında mıknatıs aşağıdaki DİP, Boğa piyasasında yukarıdaki TEPE'dir.
         magnet_target = next_bsl if "bullish" in bias else next_ssl
-        # --- 👆 ---------------------------------------- 👆 ---
-        # --- 👇 YENİ: LİKİDİTE HAVUZLARI (EQH / EQL) VE LİKİDİTE AVI (SWEEP) 👇 ---
+        # --- LİKİDİTE HAVUZLARI (EQH / EQL) VE LİKİDİTE AVI (SWEEP) ---
         eqh_eql_txt = "Yok"
         sweep_txt = "Yok"
-        
-        tol = curr_price * 0.003 # Eşitlik için %0.3 tolerans payı
+
+        # 8 — Eşitlik toleransı volatiliteye uyarlanır (eski sabit %0.3)
+        tol = curr_price * ict_core.eq_tolerance(close.values)
         
         # EQL / EQH (Eşit Tepe ve Dipler) Tespiti
         if len(sw_lows) >= 2:
@@ -11044,9 +10290,10 @@ def calculate_ict_deep_analysis(ticker):
                 else: eqh_eql_txt += f" | EQH: {h1:.2f}"
 
         # LİKİDİTE AVI (SWEEP / TURTLE SOUP) Tespiti
-        # Fiyat son 3 mumda son tepenin/dibin dışına çıkıp (iğne atıp), ters yönde kapattıysa
-        recent_lows = low.iloc[-3:]
-        recent_highs = high.iloc[-3:]
+        # 8 — Pencere volatiliteye uyarlanır: oynak hissede 3, sakin hissede 5 bar
+        _sw_win = ict_core.sweep_window(close.values)
+        recent_lows = low.iloc[-_sw_win:]
+        recent_highs = high.iloc[-_sw_win:]
         
         # BSL Sweep (Tepe Likidite Avı - Ayı Sinyali)
         if (recent_highs.max() > last_sh) and (close.iloc[-1] < last_sh):
@@ -11070,6 +10317,11 @@ def calculate_ict_deep_analysis(ticker):
                 gap_size = low.iloc[i-2] - high.iloc[i]
                 if gap_size > atr * 0.05:
                     bearish_fvgs.append({'top': low.iloc[i-2], 'bot': high.iloc[i], 'idx': i})
+
+        # 10 — Mitigasyon filtresi: sonradan TAMAMEN doldurulan FVG "açık" değildir
+        # (SMC grafiğin state mantığıyla tutarlılık); test edilenler etiketlenir.
+        bullish_fvgs = ict_core.filter_open_fvgs(bullish_fvgs, low.values, high.values, bullish=True)
+        bearish_fvgs = ict_core.filter_open_fvgs(bearish_fvgs, low.values, high.values, bullish=False)
 
         active_ob_txt = "Yok"
         mean_threshold = 0.0
@@ -11144,7 +10396,8 @@ def calculate_ict_deep_analysis(ticker):
         if bias == "bullish" or bias == "bullish_retrace":
             if bullish_fvgs:
                 f = bullish_fvgs[-1]
-                active_fvg_txt = f"Açık FVG var (Destek): {f['bot']:.2f} - {f['top']:.2f}"
+                _fvg_state = " · test edildi" if f.get('state') == 'tested' else ""
+                active_fvg_txt = f"Açık FVG var (Destek): {f['bot']:.2f} - {f['top']:.2f}{_fvg_state}"
                 fvg_bar_idx = f['idx']
                 _fvg_l = f['bot']; _fvg_h = f['top']
             lowest_idx = df['Low'].iloc[start_idx:].idxmin()
@@ -11167,7 +10420,8 @@ def calculate_ict_deep_analysis(ticker):
         elif bias == "bearish" or bias == "bearish_retrace":
             if bearish_fvgs:
                 f = bearish_fvgs[-1]
-                active_fvg_txt = f"Açık FVG var (Direnç): {f['bot']:.2f} - {f['top']:.2f}"
+                _fvg_state = " · test edildi" if f.get('state') == 'tested' else ""
+                active_fvg_txt = f"Açık FVG var (Direnç): {f['bot']:.2f} - {f['top']:.2f}{_fvg_state}"
                 fvg_bar_idx = f['idx']
                 _fvg_l = f['bot']; _fvg_h = f['top']
             highest_idx = df['High'].iloc[start_idx:].idxmax()
@@ -11189,8 +10443,9 @@ def calculate_ict_deep_analysis(ticker):
                     break
 
         range_high = max(high.tail(60)); range_low = min(low.tail(60))
-        range_loc = (curr_price - range_low) / (range_high - range_low)
-        zone = "PREMIUM (Pahalı)" if range_loc > 0.5 else "DISCOUNT (Ucuz)"
+        range_loc = (curr_price - range_low) / (range_high - range_low) if range_high > range_low else 0.5
+        # 9 — Üçlü bölge: %45-55 arası DENGE (tek %50 çizgisi titremesi biter)
+        zone = ict_core.zone_of(range_loc)
 
         # Fallback: OB bulunamadıysa 60-bar range midpoint (denge noktası) kullan
         if mean_threshold == 0.0:
@@ -11231,6 +10486,9 @@ def calculate_ict_deep_analysis(ticker):
                     stop_loss = last_sl if last_sl < entry_price else best_fvg['bot'] - atr * 0.5
                     final_target = take_profit # Setup varsa hedef kâr al seviyesidir
                     setup_type = "LONG"; setup_desc = "Fiyat ucuzluk bölgesinde. FVG desteğinden likidite (BSL) hedefleniyor."
+                    # 2 — rr artık gerçekten hesaplanıyor (eskiden hep 0 dönüyordu)
+                    _rr_risk = entry_price - stop_loss
+                    rr_ratio = round((take_profit - entry_price) / _rr_risk, 2) if _rr_risk > 0 else 0.0
 
         elif bias in ["bearish", "bearish_retrace"] and zone == "PREMIUM (Pahalı)":
             valid_fvgs = [f for f in bearish_fvgs if f['bot'] > curr_price]
@@ -11241,6 +10499,9 @@ def calculate_ict_deep_analysis(ticker):
                     stop_loss = last_sh if last_sh > entry_price else best_fvg['top'] + atr * 0.5
                     final_target = take_profit # Setup varsa hedef kâr al seviyesidir
                     setup_type = "SHORT"; setup_desc = "Fiyat pahalılık bölgesinde. Direnç bloğundan likidite (SSL) hedefleniyor."
+                    # 2 — rr artık gerçekten hesaplanıyor (eskiden hep 0 dönüyordu)
+                    _rr_risk = stop_loss - entry_price
+                    rr_ratio = round((entry_price - take_profit) / _rr_risk, 2) if _rr_risk > 0 else 0.0
 
         # --- 👇 YENİ: AKSİYON ÖZETİ (THE BOTTOM LINE) ANALİZÖRÜ 👇 ---
         struct_summary = "Yapı zayıf (Order Flow Negatif)" if "bearish" in bias else "Yapı güçlü (Order Flow Pozitif)"
@@ -11299,7 +10560,10 @@ def calculate_ict_deep_analysis(ticker):
 
         if "bearish" in bias:
             # Yakın hedef: son 20 mumun en yakın SSL'i (min %0.8 aşağıda)
-            final_target = float(nearest_ssl.iloc[0]) if len(nearest_ssl) > 0 else curr_price * (1 - MIN_NEAR * 2)
+            # 1 — FIX: SHORT setup varsa onun kâr-al hedefi EZİLMEZ (eskiden
+            # bu satır setup hedefini koşulsuz eziyordu — setup TP çöpe gidiyordu)
+            _near_tgt = float(nearest_ssl.iloc[0]) if len(nearest_ssl) > 0 else curr_price * (1 - MIN_NEAR * 2)
+            final_target = take_profit if (setup_type == "SHORT" and take_profit > 0) else _near_tgt
             # Asıl hedef: yapısal SSL — yakın hedeften en az %1.5 daha aşağıda
             _far_ssl = [v for v in struct_ssl_list if v < final_target * (1 - MIN_FAR)]
             derin_hedef = _far_ssl[0] if _far_ssl else final_target * (1 - MIN_FAR)
@@ -11307,7 +10571,9 @@ def calculate_ict_deep_analysis(ticker):
             safety_lvl  = float(nearest_bsl.iloc[0]) if len(nearest_bsl) > 0 else curr_price * (1 + MIN_NEAR)
         else:
             # Yakın hedef: son 20 mumun en yakın BSL'i (min %0.8 yukarıda)
-            final_target = float(nearest_bsl.iloc[0]) if len(nearest_bsl) > 0 else curr_price * (1 + MIN_NEAR * 2)
+            # 1 — FIX: LONG setup varsa onun kâr-al hedefi EZİLMEZ
+            _near_tgt = float(nearest_bsl.iloc[0]) if len(nearest_bsl) > 0 else curr_price * (1 + MIN_NEAR * 2)
+            final_target = take_profit if (setup_type == "LONG" and take_profit > 0) else _near_tgt
             # Asıl hedef: yapısal BSL — yakın hedeften en az %1.5 daha yukarıda
             _far_bsl = [v for v in struct_bsl_list if v > final_target * (1 + MIN_FAR)]
             ileri_hedef = _far_bsl[0] if _far_bsl else final_target * (1 + MIN_FAR)
@@ -11362,7 +10628,19 @@ def calculate_ict_deep_analysis(ticker):
         bull_range = f"{ft}–{ih}" if second_gap >= 0.5 else ft
         bear_range = f"{ft}–{dh}" if deep_gap   >= 0.5 else ft
 
-        if is_bullish and not is_premium:
+        if "DENGE" in zone:
+            # 9 — DENGE bölgesi: ne ucuz ne pahalı; metin tarafsız konuşur
+            if is_bullish:
+                lines = [
+                    f"Trend yukarı ancak fiyat 60 günlük aralığın ortasında (denge bölgesi) — ne ucuz ne pahalı. İlk izlenecek seviye {hedef_1_txt}; iptal noktası {safety_txt}.",
+                    f"Yapı pozitif fakat fiyat denge bölgesinde: kurumsallar için ne cazip alım ne kâr-al noktası. {ft} üzeri kalıcılık yükselişi ivmelendirir; {safety_txt} altı yapıyı bozar.",
+                ]
+            else:
+                lines = [
+                    f"Trend aşağı ve fiyat denge bölgesinde — satıcılar baskın ama fiyat ne pahalı ne ucuz. {ft} altına sarkma düşüşü derinleştirir; dönüş için {safety_txt} üzeri kapanış gerekir.",
+                    f"Yapı negatif fakat fiyat aralığın ortasında. Kısa vadede {bear_range} bölgesi izlenmeli; {safety_txt} üzerinde kalıcılık dengeyi alıcılara çevirir.",
+                ]
+        elif is_bullish and not is_premium:
             # 1. ÇEYREK: Boğa + Ucuzluk (İdeal Long Bölgesi)
             if second_gap >= 1.5:
                 lines = [
@@ -11411,7 +10689,9 @@ def calculate_ict_deep_analysis(ticker):
                     f"Aşırı satım bölgesi! Hedefler birbirine yakın ({bear_range}); büyük fonlar bu dar bantta stop avı yapabilir. Trend dönüşü için {safety_txt} üzerinde kalıcılık gerekli.",
                 ]
 
-        bottom_line = random.choice(lines)
+        # 4 — Deterministik seçim: aynı hisse aynı gün hep AYNI cümleyi görür
+        # (eski random.choice cache dolunca farklı cümle gösteriyordu)
+        bottom_line = random.Random(f"{ticker}|{df.index[-1]}").choice(lines)
         
         # --- 🚨 YENİ: BOTTOM LINE (SONUÇ) İÇİN DİNAMİK MÜDAHALE (OVERRIDE PROTOKOLÜ) 🚨 ---
         try:
@@ -11623,7 +10903,7 @@ def calculate_price_action_dna(ticker):
             # Kaynak 2: yf.Ticker().history period="3mo"
             try:
                 with _Timer("    PA-DNA: _avg_stale Kaynak2 yf.Ticker.history(3mo) NETWORK"):
-                    _src2_raw = yf.Ticker(ticker).history(period="3mo", auto_adjust=True)
+                    _src2_raw = yf.Ticker(ticker).history(period="3mo", auto_adjust=AUTO_ADJUST)
                 _src2 = _normalize_vol_df(_src2_raw)
                 if _src2 is not None:
                     _s2_vol = _src2['Volume'].iloc[:-1]
@@ -13036,19 +12316,7 @@ def render_harmonic_confluence_banner(ticker):
 # HARMONIK_HIDE_WEAK=True → zayıf (52H<%40) sinyaller tamamen gizlenir (geri al: False).
 HARMONIK_HIDE_WEAK = False
 
-def _harmonik_52h_strength(df):
-    """52H konuma göre (etiket, sıra_rank, konum%) döndürür. Düşük rank = güçlü."""
-    try:
-        seg = df.tail(252)
-        h52, l52, cv = float(seg['High'].max()), float(seg['Low'].min()), float(df['Close'].iloc[-1])
-        if h52 <= l52:
-            return '', 1, None
-        p52 = (cv - l52) / (h52 - l52) * 100
-        if p52 >= 60:   return '🟢 GÜÇLÜ', 0, round(p52, 1)
-        elif p52 >= 40: return '🟡 ORTA',  1, round(p52, 1)
-        else:           return '🔴 ZAYIF', 2, round(p52, 1)
-    except Exception:
-        return '', 1, None
+# -> indicators.py (Adim 4, 4 Tem 2026): _harmonik_52h_strength
 
 
 @st.cache_data(ttl=900)
@@ -13120,399 +12388,21 @@ def scan_harmonic_confluence_batch(asset_list):
 # BÖLÜM 26 — SUPERTREND, FİBONACCİ VE Z-SCORE MOTORLARİ
 # Supertrend hesabı, dinamik makro döngü Fibonacci seviyeleri ve Z-Score canlı hesaplama fonksiyonları.
 # ==============================================================================
-def calculate_supertrend(df, period=10, multiplier=3.0):
-    """
-    SuperTrend indikatörünü hesaplar.
-    Dönüş: (SuperTrend Değeri, Trend Yönü [1: Boğa, -1: Ayı])
-    """
-    try:
-        high = df['High']
-        low = df['Low']
-        close = df['Close']
-        
-        # ATR Hesaplama
-        tr1 = pd.DataFrame(high - low)
-        tr2 = pd.DataFrame(abs(high - close.shift(1)))
-        tr3 = pd.DataFrame(abs(low - close.shift(1)))
-        frames = [tr1, tr2, tr3]
-        tr = pd.concat(frames, axis=1, join='inner').max(axis=1)
-        atr = tr.ewm(alpha=1/period, adjust=False).mean()
-
-        # Temel Bantlar
-        hl2 = (high + low) / 2
-        final_upperband = hl2 + (multiplier * atr)
-        final_lowerband = hl2 - (multiplier * atr)
-        
-        supertrend = [True] * len(df) # Başlangıç (True = Boğa varsayımı)
-        st_value = [0.0] * len(df)
-        
-        # Döngüsel Hesaplama (SuperTrend doğası gereği önceki değere bakar)
-        for i in range(1, len(df.index)):
-            curr, prev = i, i-1
-            
-            # Üst Bant Mantığı
-            if close.iloc[curr] > final_upperband.iloc[prev]:
-                supertrend[curr] = True
-            elif close.iloc[curr] < final_lowerband.iloc[prev]:
-                supertrend[curr] = False
-            else:
-                supertrend[curr] = supertrend[prev]
-                
-                # Bantları Daraltma (Trailing Stop Mantığı)
-                if supertrend[curr] == True and final_lowerband.iloc[curr] < final_lowerband.iloc[prev]:
-                    final_lowerband.iloc[curr] = final_lowerband.iloc[prev]
-                
-                if supertrend[curr] == False and final_upperband.iloc[curr] > final_upperband.iloc[prev]:
-                    final_upperband.iloc[curr] = final_upperband.iloc[prev]
-
-            if supertrend[curr] == True:
-                st_value[curr] = final_lowerband.iloc[curr]
-            else:
-                st_value[curr] = final_upperband.iloc[curr]
-                
-        return st_value[-1], (1 if supertrend[-1] else -1)
-        
-    except Exception:
-        return 0, 0
+# -> indicators.py (Adim 4, 4 Tem 2026): calculate_supertrend
 
 # --- YENİ KOD: Dinamik Makro Döngü Fibonacci Motoru ---
-def calculate_fib_levels(df, st_dir=1, period=144):
-    """
-    Dinamik Makro Döngü (Macro Cycle) Fibonacci Hesaplama
-    Trend yönüne göre anlık sekmeleri değil, GEÇMİŞ MAKRO DALGAYI referans alır.
-    """
-    try:
-        if len(df) < period: period = len(df)
-        recent_data = df.tail(period)
-        
-        high_s = recent_data['High'].iloc[:, 0] if isinstance(recent_data['High'], pd.DataFrame) else recent_data['High']
-        low_s = recent_data['Low'].iloc[:, 0] if isinstance(recent_data['Low'], pd.DataFrame) else recent_data['Low']
-        
-        max_h = float(high_s.max())
-        min_l = float(low_s.min())
-        diff = max_h - min_l
+# -> indicators.py (Adim 4, 4 Tem 2026): calculate_fib_levels
     
-        # Trend yönü doğrudan SuperTrend'den alınır.
-        is_uptrend = (st_dir == 1)
-        
-        levels = {}
-        
-        if is_uptrend:
-            # YÜKSELİŞ SENARYOSU: Geçmiş makro düşüşü ölçüyoruz.
-            # (Tepeden Dibe Çekilen Fibonacci) 
-            # 0 noktası Dipte. Fiyat dipten yukarı çıkarken Premium dirençleri test eder.
-            levels = {
-                "-0.618 (Hedef)": max_h + (diff * 0.618),
-                "-0.236 (Kırılım Hedefi)": max_h + (diff * 0.236),
-                "1 (Tepe)": max_h,
-                "0.618 (Golden - Satış)": min_l + (diff * 0.618), # OTE Direnci (Akıllı Para Short)
-                "0.5 (Orta)": min_l + (diff * 0.5),
-                "0.382": min_l + (diff * 0.382),
-                "0.236": min_l + (diff * 0.236),
-                "0 (Dip)": min_l
-            }
-        else:
-            # DÜŞÜŞ SENARYOSU: Geçmiş makro yükselişi ölçüyoruz.
-            # (Dipten Tepeye Çekilen Fibonacci)
-            # 0 noktası Tepede. Fiyat zirveden aşağı düşerken Discount destekleri test eder.
-            levels = {
-                "0 (Tepe)": max_h,
-                "0.236": max_h - (diff * 0.236),
-                "0.382": max_h - (diff * 0.382),
-                "0.5 (Orta)": max_h - (diff * 0.5),
-                "0.618 (Golden - Alım)": max_h - (diff * 0.618), # Makro Destek (11764 - Akıllı Para Long)
-                "1 (Dip)": min_l,
-                "1.236 (Kırılım Hedefi)": min_l - (diff * 0.236),
-                "1.618 (Hedef)": min_l - (diff * 0.618)
-            }
-            
-        return levels
-    except:
-        return {}
-    
-def calculate_z_score_live(df, period=20):
-    """
-    Professional Multi-Window Detrended Z-Score
-    ─────────────────────────────────────────────
-    Katman 1 — Detrending   : Her pencereden lineer trend çıkarılır.
-                              Yükselen trendde hep "pahalı" görünen Bollinger
-                              hatasını ortadan kaldırır.
-    Katman 2 — Multi-Window : 20G (%50) + 60G (%30) + 252G (%20) ağırlıklı
-                              composite score. Tek pencere gürültüsünü azaltır.
-    Katman 3 — Trend Regime : Güçlü trendde (>%0.3/gün) trende karşı sinyaller
-                              yarıya indirilir. Trend yönündeki sinyaller tam güçte.
-    Katman 4 — ATR Context  : Composite Z ile birlikte ATR katı da hesaplanır,
-                              details dict'e eklenir (sinyal paneli tarafından kullanılır).
-    Dönüş: composite Z-score (float) — geriye uyumlu
-    """
-    try:
-        close = df['Close']
-        n = len(close)
-        if n < 20:
-            return 0
-
-        # ── Katman 1 + 2: Detrended Multi-Window Z ───────────────────────
-        windows_weights = [(20, 0.50), (60, 0.30), (252, 0.20)]
-        z_parts      = []
-        total_weight = 0.0
-
-        for win, w in windows_weights:
-            if n < win:
-                continue
-            y = close.iloc[-win:].values.astype(float)
-            x = np.arange(win, dtype=float)
-            # Lineer trend çıkar
-            coeffs    = np.polyfit(x, y, 1)
-            detrended = y - np.polyval(coeffs, x)
-            std_d     = float(np.std(detrended, ddof=1))
-            if std_d < 1e-9:
-                continue
-            z_w = detrended[-1] / std_d      # son bar arındırılmış dağılımda nerede?
-            z_parts.append(z_w * w)
-            total_weight += w
-
-        if total_weight < 0.1:
-            return 0
-
-        composite_z = sum(z_parts) / total_weight
-
-        # ── Katman 3: Trend Regime Filtresi ──────────────────────────────
-        y20   = close.iloc[-20:].values.astype(float)
-        slope = float(np.polyfit(np.arange(20, dtype=float), y20, 1)[0])
-        p_ref = float(close.iloc[-20]) if float(close.iloc[-20]) > 0 else 1.0
-        trend_pct = slope / p_ref          # günlük normalize eğim
-
-        THRESHOLD = 0.003                  # %0.3/gün
-        if trend_pct > THRESHOLD and composite_z > 0:
-            composite_z *= 0.5             # güçlü yükseliş → "pahalı" sinyali bastır
-        elif trend_pct < -THRESHOLD and composite_z < 0:
-            composite_z *= 0.5             # güçlü düşüş → "ucuz" sinyali bastır
-
-        return round(composite_z, 3)
-
-    except:
-        return 0
+# -> indicators.py (Adim 4, 4 Tem 2026): calculate_z_score_live
 
 
-def _z_score_details(df):
-    """
-    Sinyal paneli için Z-score detaylarını döndürür.
-    Hem composite Z hem de bağlam bilgisi (trend rejimi, ATR katı, pencere Z'leri).
-    """
-    try:
-        close = df['Close']
-        n     = len(close)
-        if n < 20:
-            return None
-
-        windows_weights = [(20, 0.50), (60, 0.30), (252, 0.20)]
-        z_by_win     = {}
-        z_parts      = []
-        total_weight = 0.0
-
-        for win, w in windows_weights:
-            if n < win:
-                continue
-            y         = close.iloc[-win:].values.astype(float)
-            x         = np.arange(win, dtype=float)
-            coeffs    = np.polyfit(x, y, 1)
-            detrended = y - np.polyval(coeffs, x)
-            std_d     = float(np.std(detrended, ddof=1))
-            if std_d < 1e-9:
-                continue
-            z_w             = detrended[-1] / std_d
-            z_by_win[win]   = round(z_w, 2)
-            z_parts.append(z_w * w)
-            total_weight   += w
-
-        if total_weight < 0.1:
-            return None
-
-        composite_raw = sum(z_parts) / total_weight
-
-        # Trend regime
-        y20      = close.iloc[-20:].values.astype(float)
-        slope    = float(np.polyfit(np.arange(20, dtype=float), y20, 1)[0])
-        p_ref    = float(close.iloc[-20]) if float(close.iloc[-20]) > 0 else 1.0
-        trend_pct = slope / p_ref
-        THRESHOLD = 0.003
-        filtered  = False
-        composite = composite_raw
-        if trend_pct > THRESHOLD and composite_raw > 0:
-            composite *= 0.5; filtered = True
-        elif trend_pct < -THRESHOLD and composite_raw < 0:
-            composite *= 0.5; filtered = True
-
-        # ATR katı (volatilite bağlamı)
-        atr_multiple = 0.0
-        try:
-            if n >= 14 and 'High' in df.columns and 'Low' in df.columns:
-                tr = pd.concat([
-                    df['High'] - df['Low'],
-                    (df['High'] - close.shift(1)).abs(),
-                    (df['Low']  - close.shift(1)).abs(),
-                ], axis=1).max(axis=1)
-                atr14 = float(tr.rolling(14).mean().iloc[-1])
-                mean20 = float(close.iloc[-20:].mean())
-                if atr14 > 0:
-                    atr_multiple = round(abs(float(close.iloc[-1]) - mean20) / atr14, 2)
-        except:
-            pass
-
-        trend_dir = "↑ Yükseliş" if trend_pct > THRESHOLD else ("↓ Düşüş" if trend_pct < -THRESHOLD else "→ Nötr")
-
-        return {
-            "composite":     round(composite, 3),
-            "composite_raw": round(composite_raw, 3),
-            "z20":           z_by_win.get(20, 0),
-            "z60":           z_by_win.get(60, 0),
-            "z252":          z_by_win.get(252, 0),
-            "trend_pct":     round(trend_pct * 100, 3),
-            "trend_dir":     trend_dir,
-            "filtered":      filtered,
-            "atr_multiple":  atr_multiple,
-        }
-    except:
-        return None
+# -> indicators.py (Adim 4, 4 Tem 2026): _z_score_details
 
 # ==============================================================================
 # BÖLÜM 27 — PİYASA REJİMİ VE KONVİKSİYON SKORU
 # Trend/yatay/düzeltme rejim tespiti. Tüm sinyalleri harmanlayarak 0-100 arası nihai konviksiyon skoru üretir.
 # ==============================================================================
-def detect_market_regime(df, pa=None):
-    """
-    Piyasa fazını tespit eder: 1-Birikim, 2-Yükseliş, 3-Dağıtım, 4-Düşüş.
-    Dönen dict:
-        phase       : int (1-4)
-        label       : str  ("Yükseliş" vb.)
-        icon        : str
-        confidence  : float 0-1
-        color       : str  hex
-        desc        : str  (kısa açıklama)
-        bull_bias   : bool
-    """
-    try:
-        close = df['Close']
-        n = len(close)
-        if n < 50:
-            return {"phase": 0, "label": "Yetersiz Veri", "icon": "❓",
-                    "confidence": 0.0, "color": "#64748b", "desc": "", "bull_bias": False}
-
-        cp = float(close.iloc[-1])
-
-        # SMA50 & SMA200
-        sma50  = float(close.rolling(50).mean().iloc[-1])
-        sma200 = float(close.rolling(200).mean().iloc[-1]) if n >= 200 else None
-
-        # 20-günlük eğim (% / gün)
-        y20   = close.iloc[-20:].values.astype(float)
-        slope = float(np.polyfit(np.arange(20, dtype=float), y20, 1)[0])
-        p_ref = float(close.iloc[-20]) if float(close.iloc[-20]) > 0 else 1.0
-        slope_pct = slope / p_ref  # günlük % eğim
-
-        # OBV trendi (20 günlük)
-        obv_rising = False
-        try:
-            if 'Volume' in df.columns:
-                direction = np.sign(close.diff().fillna(0))
-                obv = (direction * df['Volume']).cumsum()
-                obv_slope = float(np.polyfit(np.arange(20, dtype=float),
-                                             obv.iloc[-20:].values.astype(float), 1)[0])
-                obv_rising = obv_slope > 0
-        except:
-            pass
-
-        # Z-score (tepe/dip bağlamı)
-        zd = _z_score_details(df)
-        z  = zd["composite"] if zd else 0.0
-
-        # BOS / yapı yönü (ICT'den opsiyonel)
-        bos_bull = False
-        try:
-            if pa:
-                struct = str(pa.get('structure', ''))
-                bos_bull = "YÜKSELİŞ" in struct.upper() or "MSS" in struct.upper()
-        except:
-            pass
-
-        # ── Skor hesabı ──
-        bull_pts = 0; bear_pts = 0; total_pts = 0
-
-        # SMA50
-        total_pts += 2
-        if cp > sma50:     bull_pts += 2
-        else:              bear_pts += 2
-
-        # SMA200
-        if sma200:
-            total_pts += 2
-            if cp > sma200:    bull_pts += 2
-            else:              bear_pts += 2
-            # Golden/Death Cross
-            if sma50 > sma200: bull_pts += 1; total_pts += 1
-            else:              bear_pts += 1; total_pts += 1
-
-        # Eğim
-        total_pts += 2
-        if slope_pct > 0.001:    bull_pts += 2
-        elif slope_pct < -0.001: bear_pts += 2
-
-        # OBV
-        total_pts += 2
-        if obv_rising: bull_pts += 2
-        else:          bear_pts += 2
-
-        # Z-score (tepe → dağıtım / dip → birikim)
-        total_pts += 1
-        if z <= -1.5:   bull_pts += 1
-        elif z >= 1.5:  bear_pts += 1
-
-        confidence = bull_pts / total_pts if total_pts > 0 else 0.5
-        bull_bias  = confidence >= 0.5
-
-        # ── Faz tespiti ──
-        if confidence >= 0.70:
-            # Phase 2 – Yükseliş (güçlü boğa)
-            phase = 2; label = "Yükseliş Fazı"; icon = "🚀"
-            color = "#10b981"; desc = "Fiyat yapısal olarak yükseliş fazında: SMA üzeri, OBV artıyor, eğim pozitif."
-        elif confidence >= 0.55:
-            if obv_rising and cp < sma50:
-                # Phase 1 – Birikim (OBV artıyor ama fiyat henüz kırılmadı)
-                phase = 1; label = "Birikim Fazı"; icon = "🧲"
-                color = "#38bdf8"; desc = "Fiyat yatay / baskılı ama OBV birikimi devam ediyor. Kırılım hazırlığı."
-            else:
-                phase = 2; label = "Yükseliş Fazı"; icon = "📈"
-                color = "#4ade80"; desc = "Genel boğa yapısı baskın, bazı karışık sinyaller var."
-        elif confidence <= 0.30:
-            # Phase 4 – Düşüş (güçlü ayı)
-            phase = 4; label = "Düşüş Fazı"; icon = "🔻"
-            color = "#f87171"; desc = "Fiyat yapısal olarak düşüş fazında: SMA altı, OBV geriliyor, eğim negatif."
-        elif confidence <= 0.45:
-            if not obv_rising and cp > sma50:
-                # Phase 3 – Dağıtım (fiyat yüksek ama OBV bozuluyor)
-                phase = 3; label = "Dağıtım Fazı"; icon = "⚠️"
-                color = "#f97316"; desc = "Fiyat zirvelerde ama OBV aşınıyor, kurumsal çıkış belirtileri var."
-            else:
-                phase = 4; label = "Düşüş Fazı"; icon = "📉"
-                color = "#f87171"; desc = "Genel ayı yapısı baskın, bazı karışık sinyaller var."
-        else:
-            # Nötr geçiş bölgesi
-            phase = 0; label = "Geçiş / Belirsiz"; icon = "↔️"
-            color = "#94a3b8"; desc = "Boğa ve ayı güçleri dengede. Net trend oluşmamış."
-            bull_bias = False
-
-        return {
-            "phase":      phase,
-            "label":      label,
-            "icon":       icon,
-            "confidence": round(confidence, 2),
-            "color":      color,
-            "desc":       desc,
-            "bull_bias":  bull_bias,
-        }
-    except:
-        return {"phase": 0, "label": "Hata", "icon": "❓",
-                "confidence": 0.0, "color": "#64748b", "desc": "", "bull_bias": False}
+# -> indicators.py (Adim 4, 4 Tem 2026): detect_market_regime
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -15215,7 +14105,7 @@ def render_synthetic_sentiment_panel(data):
                     _layers += [_ring_outer, _ring_inner, _ring_text]
         except Exception:
             pass
-        st.altair_chart(alt.layer(*_layers).resolve_scale(y='independent').properties(height=280, title=alt.TitleParams("Momentum", fontSize=14, color="#38bdf8")), use_container_width=True)
+        st.altair_chart(alt.layer(*_layers).resolve_scale(y='independent').properties(height=280, title=alt.TitleParams("Momentum", fontSize=14, color="#38bdf8")), width='stretch')
     with c2:
         _ymin2 = min(data['STP'].min(), data['Price'].min()) * 0.999
         _ymax2 = max(data['STP'].max(), data['Price'].max()) * 1.001
@@ -15237,7 +14127,49 @@ def render_synthetic_sentiment_panel(data):
         _overlay2  = base2.mark_point(opacity=0, size=200).encode(
                         y=alt.Y('Price:Q', scale=_ys2), tooltip=_tt2).add_params(_hover2)
         st.altair_chart(alt.layer(area, line_stp, line_price, _vrule2, _dot_p2, _dot_s2, _overlay2).properties(
-            height=280, title=alt.TitleParams("Sentiment: Fiyat (mavi) ↔ Eğilim (sarı) — yukarı keserse AL, aşağı keserse SAT", fontSize=14, color="#38bdf8")), use_container_width=True)
+            height=280, title=alt.TitleParams("Sentiment: Fiyat (mavi) ↔ Eğilim (sarı) — yukarı keserse AL, aşağı keserse SAT", fontSize=14, color="#38bdf8")), width='stretch')
+
+
+# ── GÖRSEL ANALİZ İNFOGRAFİĞİ (22 Haz 2026) — birebir PNG görünümü, st.html ile ──
+# build_widget_html: Plotly temiz grafik + İvme/Denge (SVG) + PARA AKIŞI pusulası +
+# Görev 4 kartları, hepsi tek görselde. kaleido ister (chromium/playwright GEREKMEZ).
+def _infografik_src_version():
+    """İnfografik kaynak dosyalarının son değişiklik zamanı (mtime) → cache-buster.
+    Bu dosyalardan biri DÜZENLENİNCE widget önbelleği OTOMATİK yenilenir — artık
+    'Clear cache'/restart derdi yok. Prod'da dosya değişmez → önbellek normal çalışır."""
+    import os
+    _v = 0.0
+    _here = os.path.dirname(__file__)
+    for _f in ('infografik_build.py', 'clean_chart_plotly.py', 'compass_panel.py', 'infographic.py'):
+        try:
+            _v = max(_v, os.path.getmtime(os.path.join(_here, _f)))
+        except Exception:
+            pass
+    return round(_v, 1)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _infografik_widget_html(ticker, _datekey, _srcver):
+    # _srcver = kaynak dosyaların mtime'ı; düzenleme olunca değişir → önbellek otomatik tazelenir.
+    try:
+        import infografik_build as _ib
+        return _ib.build_widget_html(ticker)
+    except Exception as _e:
+        return f"__ERR__{_e}"
+
+
+def _render_infografik_inapp(ticker):
+    """Görsel analiz infografiği — 'Para Akış İvmesi' barının yerinde, expander içinde."""
+    import streamlit.components.v1 as _comp
+    _disp = get_display_name(ticker)
+    with st.expander(f"📊 Görsel Analiz · {_disp} — TIKLA (tüm analiz tek görselde)", expanded=False):
+        _html = _infografik_widget_html(ticker, pd.Timestamp.today().strftime('%Y-%m-%d'), _infografik_src_version())
+        if _html and not _html.startswith("__ERR__"):
+            _comp.html(f"<div style='background:#0a1019;border-radius:12px;'>{_html}</div>",
+                       height=1250, scrolling=True)
+        else:
+            st.caption(f"İnfografik şu an üretilemedi. {(_html or '')[7:][:200]}")
+
 
 def render_smart_volume_panel(ticker):
     """SMART MONEY HACİM ANALİZİ — 4 tile kompakt panel. ICT altında gösterilir."""
@@ -17508,7 +16440,7 @@ def log_erken_radar_signals(df_batch, category=""):
     except Exception:
         pass
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, timeout=30)
         c = conn.cursor()
         for _, row in df_batch.iterrows():
             sym = row.get('Sembol', '')
@@ -17544,57 +16476,7 @@ def log_erken_radar_signals(df_batch, category=""):
         logging.warning(f"[log_erken_radar_signals] HATA: {e}")
 
 
-def get_scenario_ages_batch(pairs, max_lookback=30):
-    """
-    Toplu senaryo aging hesabı.
-    pairs: [(symbol, scenario_id), ...]
-    Döner: {(symbol, scenario_id): consecutive_days_int}
-    scan_signals tablosunda er_<id> scan_type altında ardışık günleri sayar.
-    """
-    if not pairs:
-        return {}
-    from datetime import timedelta as _td
-    result = {}
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        today = datetime.now(_TZ_ISTANBUL).date()
-        for sym, sid in pairs:
-            try:
-                sym_clean = (sym or '').replace('.IS', '')
-                if not sym_clean or not sid:
-                    result[(sym, sid)] = 0
-                    continue
-                scan_type = f"er_{sid}"
-                rows = c.execute(
-                    "SELECT DISTINCT scan_date FROM scan_signals "
-                    "WHERE symbol=? AND scan_type=? "
-                    "AND scan_date >= date('now', ?) "
-                    "ORDER BY scan_date DESC",
-                    (sym_clean, scan_type, f'-{max_lookback} days')
-                ).fetchall()
-                if not rows:
-                    result[(sym, sid)] = 0
-                    continue
-                days = 0
-                expected = today
-                for r in rows:
-                    try:
-                        d = datetime.strptime(r[0], '%Y-%m-%d').date()
-                    except Exception:
-                        continue
-                    if d == expected:
-                        days += 1
-                        expected = expected - _td(days=1)
-                    elif d < expected:
-                        break  # Ardışıklık bozuldu
-                result[(sym, sid)] = days
-            except Exception:
-                result[(sym, sid)] = 0
-        conn.close()
-    except Exception:
-        pass
-    return result
+# -> db_layer.py (Adim 5, 4 Tem 2026): get_scenario_ages_batch
 
 
 # ==============================================================================
@@ -18529,8 +17411,10 @@ def render_ict_deep_panel(ticker):
                     "her iki sinyal aynı tarafta olmadığı için pozisyon daha riskli. Onay beklemek daha sağlıklı.</span></div>")
 
     zone_desc = "Fiyat 'Ucuzluk' (Discount) bölgesinde. Kurumsal yatırımcılar bu seviyelerden alım yapmayı tercih eder."
-    if "PREMIUM" in data['zone']: 
+    if "PREMIUM" in data['zone']:
         zone_desc = "Fiyat 'Pahalılık' (Premium) bölgesinde. Kurumsal yatırımcılar bu bölgede satış yapmayı veya kar almayı sever."
+    elif "DENGE" in data['zone']:
+        zone_desc = "Fiyat 60 günlük aralığın ortasında — ne ucuz ne pahalı (Denge). Kurumsal oyuncular bu bölgede genellikle yön netleşene kadar bekler; yeni pozisyon için avantajlı bölge değil."
 
     fvg_desc = "Yakınlarda önemli bir dengesizlik boşluğu tespit edilemedi."
     if "Destek" in data['fvg_txt']: fvg_desc = "Fiyatın bu boşluğu doldurup destek alması beklenebilir."
@@ -18608,7 +17492,8 @@ def render_ict_deep_panel(ticker):
     fvg_age  = data.get('fvg_age', 0)
     struct_age = data.get('struct_age', 0)
     _blocks = "■" * model_score + "□" * (5 - model_score)
-    if model_score >= 4: _sc = "#10b981"
+    # 12 — "güçlü" eşiği ict_core.MODEL_SCORE_STRONG'da (Eylül karnesiyle kalibre)
+    if model_score >= ict_core.MODEL_SCORE_STRONG: _sc = "#10b981"
     elif model_score == 3: _sc = "#f59e0b"
     else: _sc = "#f87171"
     _slabel = ["SETUP YOK", "ÇOK ZAYIF", "ZAYIF", "ORTA", "GÜÇLÜ", "TAM MODEL"][model_score]
@@ -18715,7 +17600,9 @@ def render_ict_deep_panel(ticker):
     # --- BASİT AÇIKLAMALAR (yeni başlayanlar için, sol sütun) ---
     zone_simple = ("Fiyat şu an 'pahalı bölge'de. Büyük oyuncular bu seviyelerde satış yapmayı veya kâr almayı tercih eder."
                    if "PREMIUM" in data['zone'] else
-                   "Fiyat şu an 'ucuz bölge'de. Büyük oyuncular bu seviyelerden alım yapmayı sever.")
+                   ("Fiyat aralığın ortasında — ne ucuz ne pahalı. Büyük oyuncular genellikle yön netleşene kadar bekler."
+                    if "DENGE" in data['zone'] else
+                    "Fiyat şu an 'ucuz bölge'de. Büyük oyuncular bu seviyelerden alım yapmayı sever."))
     if _ob_none:
         ob_simple = "Yakınlarda net bir kurum bloğu tespit edilemedi — fiyat belirsiz bir alanda."
     elif _ob_worn:
@@ -18745,17 +17632,21 @@ def render_ict_deep_panel(ticker):
         <div style="height:4px;background:rgba(30,58,95,0.5);"><div style="height:100%;width:{model_score * 20}%;background:{_sc};border-radius:0 2px 2px 0;"></div></div>
     </div>""", unsafe_allow_html=True)
 
-    c1, c2 = st.columns([1.4, 1])
-    with c1:
-        sc1, sc2 = st.columns(2)
-        with sc1: st.markdown(f"""<div style="border:2px solid {mc}; background:rgba(9,18,35,0.65); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:8px; padding:12px; height: 100%; box-shadow:0 4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);"><div style="font-weight:800; color:{mc}; font-size:0.85rem; text-transform: uppercase; margin-bottom:6px;">{struct_title}</div><div style="font-size:0.8rem; color:#cbd5e1; line-height:1.4;">{struct_desc}</div></div>""", unsafe_allow_html=True)
-        with sc2: st.markdown(f"""<div style="border:2px solid #94a3b8; background:rgba(9,18,35,0.65); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:8px; padding:12px; height: 100%; box-shadow:0 4px 20px rgba(0,0,0,0.4);"><div style="font-weight:800; color:#7c3aed; font-size:0.85rem; text-transform: uppercase; margin-bottom:6px;">{energy_title}</div><div style="font-size:0.8rem; color:#cbd5e1; line-height:1.4;">{energy_desc}</div></div>""", unsafe_allow_html=True)
-        hc1, hc2 = st.columns(2)
-        with hc1: st.markdown(f"""<div style="background:rgba(245,158,11,0.07); border:2px solid #ea580c; border-left:6px solid #ea580c; padding:12px; margin-top:12px; margin-bottom:12px; border-radius:8px; height: 100%;"><div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;"><div style="font-weight:800; color:#fb923c; font-size:0.9rem;">🛡️ {mt_title}</div><div style="font-family:'JetBrains Mono'; font-weight:800; font-size:1.1rem; color:#fb923c; background:#0d1829; padding: 4px 8px; border-radius: 4px; margin-left: 8px; white-space:nowrap;">{data['mean_threshold']:.2f}</div></div><div style="font-size:0.75rem; color:#cbd5e1; line-height:1.5;">{mt_desc}</div></div>""", unsafe_allow_html=True)
-        with hc2: st.markdown(f"""<div style="border:2px solid #f87171; background:rgba(248,113,113,0.06); padding:12px; border-radius:8px; margin-top:12px; margin-bottom:12px; height: 100%;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;"><div style="font-weight:800; color:#f87171; font-size:0.9rem; text-transform: uppercase;">🎯 Yakın Hedef</div><div style="font-weight:800; font-family:'JetBrains Mono'; font-size:1.2rem; color:#f87171; background:#0d1829; padding: 2px 8px; border-radius: 6px;">{data['target']:.2f}</div></div><div style="font-size:0.75rem; color:#cbd5e1; line-height:1.4; margin-bottom:10px;">{liq_desc}</div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; border-top:2px solid rgba(248,113,113,0.4); padding-top:6px;"><div style="font-weight:800; color:#fb923c; font-size:0.9rem;">{struct_target_label}</div><div style="font-weight:800; font-family:'JetBrains Mono'; font-size:1.1rem; color:#fb923c; background:#0d1829; padding: 2px 8px; border-radius: 6px;">{structural_target_val:.2f}</div></div><div style="font-size:0.75rem; color:#cbd5e1; line-height:1.4;">{struct_target_desc}</div></div>""", unsafe_allow_html=True)
-    with c2:
-        st.markdown(f"""
-        <div style="border:2px solid #cbd5e1; background:#0d1829; border-radius:8px; padding:12px; height:100%;">
+    # ── 4 Tem 2026: TEK CSS grid — boşluksuz dolu dikdörtgen (kullanıcı mockup'ı).
+    # Sol: Fiyat Haritası 3 satırı kaplar. Orta+sağ: üst kartlar içerik kadar
+    # (satır 1-2 auto), kalan tüm boşluğu 3. satırdaki ICT Bottom Line emer (1fr).
+    _bl_text = data.get('bottom_line', '')
+    _bl_card = ""
+    if _bl_text and _bl_text != '-':
+        _bl_card = (
+            '<div style="grid-column:2 / span 2; grid-row:3; border:2px solid #0d9488; background:rgba(13,148,136,0.06); border-radius:8px; padding:12px;">'
+            '<div style="font-weight:800;color:#2dd4bf;font-size:0.9rem;text-transform:uppercase;border-bottom:2px solid rgba(13,148,136,0.4);padding-bottom:6px;margin-bottom:10px;">🖥️ ICT BOTTOM LINE / SONUÇ</div>'
+            f'<div style="font-size:0.82rem;color:#cbd5e1;font-style:italic;line-height:1.55;">"{_bl_text}"</div></div>')
+    st.markdown(f"""
+    <div style="display:grid; grid-template-columns:0.95fr 1fr 1fr; grid-template-rows:auto auto 1fr; gap:12px; align-items:stretch; margin-bottom:10px;">
+        <div style="grid-column:2; grid-row:1; border:2px solid {mc}; background:rgba(9,18,35,0.65); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:8px; padding:12px; box-shadow:0 4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);"><div style="font-weight:800; color:{mc}; font-size:0.85rem; text-transform: uppercase; margin-bottom:6px;">{struct_title}</div><div style="font-size:0.8rem; color:#cbd5e1; line-height:1.4;">{struct_desc}</div></div>
+        <div style="grid-column:3; grid-row:1; border:2px solid #94a3b8; background:rgba(9,18,35,0.65); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:8px; padding:12px; box-shadow:0 4px 20px rgba(0,0,0,0.4);"><div style="font-weight:800; color:#7c3aed; font-size:0.85rem; text-transform: uppercase; margin-bottom:6px;">{energy_title}</div><div style="font-size:0.8rem; color:#cbd5e1; line-height:1.4;">{energy_desc}</div></div>
+        <div style="grid-column:1; grid-row:1 / span 3; border:2px solid #cbd5e1; background:#0d1829; border-radius:8px; padding:12px;">
             <div style="font-weight:800; color:#f87171; font-size:0.9rem; text-transform:uppercase; border-bottom:2px solid #e2e8f0; padding-bottom:6px; margin-bottom:10px;">📍 FİYAT HARİTASI</div>
             <div style="display:grid; grid-template-columns:54% 44%; gap:10px; align-items:start;">
                 <div>
@@ -18784,7 +17675,21 @@ def render_ict_deep_panel(ticker):
                     </div>
                 </div>
             </div>
-        </div>""", unsafe_allow_html=True)
+        </div>
+        <div style="grid-column:2; grid-row:2; background:rgba(245,158,11,0.07); border:2px solid #ea580c; border-left:6px solid #ea580c; padding:12px; border-radius:8px;"><div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;"><div style="font-weight:800; color:#fb923c; font-size:0.9rem;">🛡️ {mt_title}</div><div style="font-family:'JetBrains Mono'; font-weight:800; font-size:1.1rem; color:#fb923c; background:#0d1829; padding: 4px 8px; border-radius: 4px; margin-left: 8px; white-space:nowrap;">{data['mean_threshold']:.2f}</div></div><div style="font-size:0.75rem; color:#cbd5e1; line-height:1.5;">{mt_desc}</div></div>
+        <div style="grid-column:3; grid-row:2; border:2px solid #f87171; background:rgba(248,113,113,0.06); padding:12px; border-radius:8px;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;"><div style="font-weight:800; color:#f87171; font-size:0.9rem; text-transform: uppercase;">🎯 Yakın Hedef</div><div style="font-weight:800; font-family:'JetBrains Mono'; font-size:1.2rem; color:#f87171; background:#0d1829; padding: 2px 8px; border-radius: 6px;">{data['target']:.2f}</div></div><div style="font-size:0.75rem; color:#cbd5e1; line-height:1.4; margin-bottom:10px;">{liq_desc}</div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; border-top:2px solid rgba(248,113,113,0.4); padding-top:6px;"><div style="font-weight:800; color:#fb923c; font-size:0.9rem;">{struct_target_label}</div><div style="font-weight:800; font-family:'JetBrains Mono'; font-size:1.1rem; color:#fb923c; background:#0d1829; padding: 2px 8px; border-radius: 6px;">{structural_target_val:.2f}</div></div><div style="font-size:0.75rem; color:#cbd5e1; line-height:1.4;">{struct_target_desc}</div></div>
+        {_bl_card}
+    </div>""", unsafe_allow_html=True)
+
+    # ── ICT BOTTOM LINE artık yukarıdaki grid'in 3. satırında (4 Tem 2026 —
+    # kullanıcı mockup'ı: sağ-alt boşluğu doldurur, panel dolu dikdörtgen olur).
+
+    # 14 — Dürüstlük şeridi: panel ikna gücü > kanıt gücü riskine kalıcı panzehir
+    st.markdown(
+        "<div style='margin-top:6px;font-size:0.68rem;color:#64748b;font-style:italic;'>"
+        "📏 Bu panel bir eğitim/analiz modelidir — al-sat sinyali değildir. "
+        "Canlı isabet ölçümü (model skoru karnesi) Eylül 2026'da yayınlanacak.</div>",
+        unsafe_allow_html=True)
 
 def render_levels_card(ticker):
     data = get_advanced_levels_data(ticker)
@@ -18983,8 +17888,22 @@ def _mini_pattern_chart_b64(symbol, chart_data, dark_mode):
                 tgt = _date.fromisoformat(d_str)
                 return min(range(bar_total), key=lambda i: abs((df.index[i].date() - tgt).days))
 
-        # --- Her zaman son 60 bar ---
+        # --- Pencere: formasyonun İLK pivotundan bugüne (min son 60 bar) ---
+        # Eski kod her zaman son 60 barı çiziyordu → 7 aylık TOBO'nun sol
+        # omzu/başı ekran dışında kalıyordu (ARTMS bug'ı, 4 Tem 2026).
         bar_start = max(0, bar_total - 60)
+        try:
+            _anchor = None
+            _pdl = chart_data.get('pivot_dates') or []
+            if _pdl:
+                _anchor = str(_pdl[0])
+            elif chart_data.get('date_start'):
+                _anchor = str(chart_data['date_start'])
+            if _anchor:
+                _ab = date_to_bar(_anchor)
+                bar_start = min(bar_start, max(0, _ab - 5))
+        except Exception:
+            pass
         bar_end   = bar_total - 1
         n         = bar_end - bar_start + 1
 
@@ -19847,21 +18766,32 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
                       f"<b>{fp(invalid)}</b> {'altına' if is_sup else 'üstüne'} kapanış bölgenin kırıldığını gösterir. "
                       f"Ne kadar çok test edilmişse o kadar güçlüdür — ama çok kez test sonunda kırılma riski de artar.")
 
-    # Hacim teyidi
-    vol_dip_ok = None; vol_bounce_ok = None
-    try:
-        df_vol = get_safe_historical_data(ticker)
-        if df_vol is not None and len(df_vol) >= 22:
-            volume = df_vol['Volume'].squeeze(); vol20 = volume.rolling(20).mean()
-            pivot_dates = chart_data.get('pivot_dates', [])
-            if len(pivot_dates) >= 2:
-                dip_date = pd.Timestamp(pivot_dates[-2]); bounce_date = pd.Timestamp(pivot_dates[-1])
-                di = df_vol.index.get_indexer([dip_date], method='nearest')[0]
-                bi = df_vol.index.get_indexer([bounce_date], method='nearest')[0]
-                dr = float(volume.iloc[di] / vol20.iloc[di]) if vol20.iloc[di] > 0 else 1.0
-                br = float(volume.iloc[bi] / vol20.iloc[bi]) if vol20.iloc[bi] > 0 else 1.0
-                vol_dip_ok = dr < 0.85; vol_bounce_ok = br > 1.15
-    except: pass
+    # 12 — Kırılım sonrası aşama (cup/tobo/W): retest / kırıldı → Aşama 4
+    if pat_type in ("cup", "tobo", "double_bottom"):
+        try:
+            if chart_data.get('retest'):
+                stage = 4; stage_label = "Retest — Boyun Destek Testi"
+                conclusion = ("Fiyat boynu kırdıktan sonra geri çekilip boyun çizgisini <b>destek</b> "
+                              "olarak test ediyor — klasik giriş bölgesi. Stop boynun ~%3 altına "
+                              "konulabilir (dar risk, aynı hedef). ") + conclusion
+            elif int(chart_data.get('breakout_state', 0) or 0) >= 2:
+                stage = 4; stage_label = "Kırılım Gerçekleşti"
+        except Exception: pass
+
+    # Hacim teyidi — 1 (FIX): eski kod "dip hacmi"ni TEPE pivotunda ölçüyordu
+    # (TOBO'da 2. boyun tepesi, fincanda sağ rim) → "baskı hâlâ var" uyarıları
+    # sahteydi. Doğrusu: son DİP pivotunda tükenme + dipten sonraki barlarda
+    # dönüş hacmi. Tarama anında hesaplandıysa (chart_data) onu kullan.
+    vol_dip_ok = chart_data.get('vol_dip_ok', None)
+    vol_bounce_ok = chart_data.get('vol_bounce_ok', None)
+    if vol_dip_ok is None and vol_bounce_ok is None:
+        try:
+            _dip_date = pattern_core.last_low_pivot_date(chart_data)
+            if _dip_date:
+                df_vol = get_safe_historical_data(ticker)
+                if df_vol is not None and len(df_vol) >= 22:
+                    vol_dip_ok, vol_bounce_ok = pattern_core.dip_bounce_volume(df_vol, _dip_date)
+        except: pass
 
     # Formasyon yaşı
     pat_age_days = 0; pat_start_str = "—"
@@ -24495,6 +23425,331 @@ with st.sidebar:
     # MINERVINI PANELİ (Hatasız Versiyon)
     render_minervini_panel_v2(st.session_state.ticker)
    
+# ═══════════════════════════════════════════════════════════════════════════
+# TAVAN MOTORU + PARA AKIŞI LİDERLERİ — tanımlar (30 Haz 2026 taşındı)
+# Master Scan (~25786) bunları çağırıyor; Streamlit yukarıdan-aşağı çalıştığı için
+# tanımlar çağrıdan ÖNCE olmalı. Eskiden ~32089'daydı → her tarama NameError veriyordu
+# (errors.log kanıtı), tavan/para_akisi HİÇ scan_signals'a yazılamıyordu. Buraya alındı.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _tav_rsi(s, n=14):
+    d = s.diff()
+    up = d.clip(lower=0).rolling(n).mean()
+    dn = (-d.clip(upper=0)).rolling(n).mean()
+    import numpy as np
+    return 100 - 100/(1 + up/dn.replace(0, np.nan))
+
+def _tav_is_manipulated(df, i):
+    """BRMEN tipi manipülasyon şüphesi: fitilsiz mum çok, tavan/taban açılış çok,
+    range çöküşü çok. En az 2 ölçüt kırmızıysa True döner — hisse motordan elenir.
+    60g backtest'te listeden ~30-50 düşük kalite hisse çıkarır (likit + sağlıklı kalsın)."""
+    import numpy as np
+    # 21 Haz 2026 — YAKIN-DÖNEM DİKEY TAVAN (BRMEN tipi: bugün tavanda ya da son 5g'de 2+
+    # tavan) → manipülasyona açık, DİREKT ELE (kronik filtre bunu seyreltip kaçırıyordu).
+    _rc = df['Close'].pct_change() * 100
+    try:
+        if _rc.iloc[i] >= 9.0 or int((_rc.iloc[max(0, i - 4):i + 1] >= 9.0).sum()) >= 2:
+            return True
+    except Exception:
+        pass
+    if i < 60: return False
+    last30 = df.iloc[i-30:i]
+    rng = last30['High'] - last30['Low']
+    body = (last30['Close'] - last30['Open']).abs()
+    body_ratio = (body / rng.replace(0, np.nan)).fillna(1.0)
+    fitilsiz_oran = (body_ratio > 0.85).mean()
+    last60 = df.iloc[max(0, i-60):i]
+    pct_chg = last60['Close'].pct_change().abs() * 100
+    tavan_taban_oran = (pct_chg > 9.5).mean()
+    last20 = df.iloc[i-20:i]
+    rel_range = ((last20['High'] - last20['Low']) / last20['Close']) * 100
+    range_collapse = (rel_range < 1.0).mean()
+    kirmizi = 0
+    if fitilsiz_oran > 0.45: kirmizi += 1
+    if tavan_taban_oran > 0.12: kirmizi += 1
+    if range_collapse > 0.30: kirmizi += 1
+    return kirmizi >= 2
+
+def _tav_features(df, i):
+    """T (i) günü için 5g dizilim dahil features."""
+    import numpy as np
+    if i < 60: return None
+    if _tav_is_manipulated(df, i): return None   # Manipülasyon şüpheli — ele
+    t = df.iloc[i]; t1 = df.iloc[i-1]
+    hist = df.iloc[:i+1]
+    close = hist['Close']; high = hist['High']; low = hist['Low']; vol = hist['Volume']
+    rsi14 = _tav_rsi(close).iloc[-1]
+    look = min(252, len(hist))
+    hh = high.tail(look).max(); ll = low.tail(look).min()
+    pos_52h = (t['Close']-ll)/(hh-ll)*100 if hh > ll else np.nan
+    bb_w = (close.tail(20).std()/close.tail(20).mean())*100
+    bb_60 = close.rolling(20).std()/close.rolling(20).mean()*100
+    bb_pct_rank = (bb_60.tail(60) <= bb_w).mean()*100
+    vol20 = vol.tail(20).mean()
+    vr_t = t['Volume']/vol20 if vol20 > 0 else np.nan
+    ret_10g = (t['Close']/df.iloc[i-10]['Close']-1)*100 if i >= 10 else np.nan
+    ret_5g = (t['Close']/df.iloc[i-5]['Close']-1)*100 if i >= 5 else np.nan
+    near_h20 = (t['Close']/close.tail(20).max())*100
+
+    # 5g dizilim
+    pct_seq = []; vol_seq = []
+    for k in range(5):
+        idx = i - (4 - k)
+        if idx < 1:
+            pct_seq.append(np.nan); vol_seq.append(np.nan); continue
+        prev = df.iloc[idx-1]['Close']; cur = df.iloc[idx]['Close']
+        pct_seq.append((cur/prev-1)*100 if prev > 0 else np.nan)
+        v20 = df.iloc[max(0, idx-20):idx]['Volume'].mean()
+        vol_seq.append(df.iloc[idx]['Volume']/v20 if v20 > 0 else np.nan)
+    vs = [v for v in vol_seq if not (v is None or (isinstance(v, float) and np.isnan(v)))]
+    vol_5g_slope = (vs[-1]-vs[0]) if len(vs) >= 2 else 0
+    pct_T = pct_seq[-1] if pct_seq else np.nan
+    vol_T = vol_seq[-1] if vol_seq else np.nan
+    # Mum tipi
+    rng = t['High']-t['Low']; body = abs(t['Close']-t['Open'])
+    body_pct = body/rng*100 if rng > 0 else 0
+    is_doji = body_pct < 10
+    is_green = t['Close'] > t['Open']
+    lower_wick = min(t['Close'], t['Open']) - t['Low']
+    lw_pct = lower_wick/rng*100 if rng > 0 else 0
+    is_hammer = (lw_pct > 40) and (body_pct > 10)
+    return dict(close=t['Close'], rsi=rsi14, pos_52h=pos_52h, bb_rank=bb_pct_rank,
+                vr_t=vr_t, near_h20=near_h20, ret_5g=ret_5g, ret_10g=ret_10g,
+                vol_tl=t['Close']*t['Volume'], pct_T=pct_T, vol_T=vol_T,
+                vol_5g_slope=vol_5g_slope, is_doji=is_doji, is_green=is_green,
+                is_hammer=is_hammer, body_pct=body_pct)
+
+def _tav_score_A(f):
+    s = 0
+    if f['ret_10g'] >= 20: s += 35
+    elif f['ret_10g'] >= 15: s += 25
+    elif f['ret_10g'] >= 10: s += 15
+    elif f['ret_10g'] >= 5: s += 5
+    if f['pos_52h'] >= 90: s += 25
+    elif f['pos_52h'] >= 75: s += 15
+    elif f['pos_52h'] >= 60: s += 6
+    if f['near_h20'] >= 99: s += 20
+    elif f['near_h20'] >= 95: s += 8
+    if 70 <= f['rsi'] <= 85: s += 12
+    elif 60 <= f['rsi'] <= 90: s += 5
+    if 1.0 <= f['vr_t'] <= 2.5: s += 8
+    elif 0.7 <= f['vr_t'] <= 3.5: s += 3
+    return s
+
+def _tav_score_C(f):
+    s = 0
+    if f['bb_rank'] <= 10: s += 40
+    elif f['bb_rank'] <= 20: s += 28
+    elif f['bb_rank'] <= 30: s += 15
+    elif f['bb_rank'] <= 40: s += 5
+    if f['near_h20'] >= 97: s += 25
+    elif f['near_h20'] >= 93: s += 15
+    elif f['near_h20'] >= 88: s += 5
+    if 45 <= f['rsi'] <= 60: s += 15
+    elif 35 <= f['rsi'] <= 68: s += 7
+    if 35 <= f['pos_52h'] <= 65: s += 12
+    elif 25 <= f['pos_52h'] <= 75: s += 5
+    if 0.8 <= f['vr_t'] <= 1.3: s += 8
+    return s
+
+def _tav_score_E(f):
+    s = 0
+    if f['near_h20'] >= 99.5: s += 35
+    elif f['near_h20'] >= 97: s += 22
+    elif f['near_h20'] >= 94: s += 8
+    if 65 <= f['pos_52h'] <= 85: s += 22
+    elif 55 <= f['pos_52h'] <= 90: s += 10
+    if 60 <= f['rsi'] <= 75: s += 15
+    elif 50 <= f['rsi'] <= 80: s += 6
+    if f['vr_t'] >= 1.2: s += 15
+    elif f['vr_t'] >= 0.9: s += 6
+    if 3 <= f['ret_10g'] <= 14: s += 10
+    elif 0 <= f['ret_10g'] <= 20: s += 4
+    return s
+
+def _tav_score_D(f):
+    s = 0
+    if f['pos_52h'] <= 10: s += 35
+    elif f['pos_52h'] <= 18: s += 22
+    elif f['pos_52h'] <= 28: s += 8
+    if f['rsi'] <= 28: s += 25
+    elif f['rsi'] <= 38: s += 15
+    elif f['rsi'] <= 45: s += 5
+    if f['vr_t'] <= 0.65: s += 20
+    elif f['vr_t'] <= 0.9: s += 8
+    if f['ret_10g'] <= -10: s += 15
+    elif f['ret_10g'] <= -4: s += 8
+    return s
+
+_TAV_REJIM_AGIRLIK = {
+    # KALİBRE — 18 Haz 2026, 60g/1131 tavan backtest tur 2
+    # Tur 2 sonuç: TOP 30 3.04x, Skor ≥150 %11.24 (random×3.44)
+    'HIZLI_RALLI':   {'A':1.1, 'C':0.8, 'E':1.0, 'D':0.7},
+    'ILIMLI_YUKARI': {'A':1.1, 'C':0.9, 'E':1.0, 'D':0.9},
+    'YATAY':         {'A':1.2, 'C':0.9, 'E':1.1, 'D':0.9},
+    'ZAYIF':         {'A':1.1, 'C':0.8, 'E':1.0, 'D':1.0},
+    'DUSUS':         {'A':0.9, 'C':0.7, 'E':0.8, 'D':1.0},
+    'BILINMEZ':      {'A':1.0, 'C':1.0, 'E':1.0, 'D':1.0},
+}
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _tav_compute_panel(_cache_key="default"):
+    """Tüm parquet'leri tarayıp tavan skor DataFrame'i döner. 10dk cache."""
+    import glob, os
+    import pandas as pd
+    import numpy as np
+    rows = []
+    files = glob.glob('veriler/*.IS_1d.parquet')
+    if not files:
+        return pd.DataFrame(), 'BILINMEZ', 0.0, None
+
+    # Rejim tespiti — XU100
+    rejim, chg, target_date = 'BILINMEZ', 0.0, None
+    xu_path = 'veriler/XU100.IS_1d.parquet'
+    if os.path.exists(xu_path):
+        try:
+            xu = pd.read_parquet(xu_path)
+            if len(xu) >= 11:
+                start = xu.iloc[-11]['Close']; end = xu.iloc[-1]['Close']
+                chg = (end/start-1)*100
+                if chg >= 5: rejim = 'HIZLI_RALLI'
+                elif chg >= 2: rejim = 'ILIMLI_YUKARI'
+                elif chg >= -2: rejim = 'YATAY'
+                elif chg >= -5: rejim = 'ZAYIF'
+                else: rejim = 'DUSUS'
+                target_date = xu.index[-1]
+        except: pass
+
+    agirlik = _TAV_REJIM_AGIRLIK[rejim]
+    MIN_VOL_TL = 2_000_000
+
+    for f in files:
+        tk = os.path.basename(f).replace('.IS_1d.parquet', '')
+        if tk in ('XU100', 'XU030', 'XU050', 'XBANK', 'XUSIN', 'XUMAL'):
+            continue   # endeksleri çıkar
+        try:
+            df = pd.read_parquet(f)
+            if len(df) < 80: continue
+            i = len(df) - 1
+            feat = _tav_features(df, i)
+            if feat is None: continue
+            if feat['vol_tl'] < MIN_VOL_TL: continue
+            # 21 Haz 2026 — Likidite+manip kalkanı: ince tahta + dik koşu + hacim sıçraması =
+            # pompa (BRMEN tipi), motordan ele. _tav_is_manipulated bunu kaçırıyordu.
+            try:
+                if _liquidity_manip(df).get('manip') == 'yüksek':
+                    continue
+            except Exception:
+                pass
+            sA = _tav_score_A(feat) * agirlik['A']
+            sC = _tav_score_C(feat) * agirlik['C']
+            sE = _tav_score_E(feat) * agirlik['E']
+            sD = _tav_score_D(feat) * agirlik['D']
+            # Booster
+            bA = bC = bE = bD = 0
+            if pd.notna(feat['pct_T']) and pd.notna(feat['vol_T']):
+                if feat['pct_T'] > 2 and feat['vol_T'] > 1.2:
+                    bA += 12; bE += 18; bC += 6
+                elif feat['pct_T'] > 1:
+                    bA += 6; bE += 9; bC += 3
+                elif feat['pct_T'] < -3 and feat['vol_T'] < 0.7:
+                    bD += 15
+            if pd.notna(feat['vol_5g_slope']):
+                if feat['vol_5g_slope'] > 0.5:
+                    bA += 8; bE += 10; bC += 8
+                elif feat['vol_5g_slope'] > 0.2:
+                    bA += 4; bE += 5; bC += 4
+            if feat['is_doji']: bC += 12
+            if feat['is_green'] and feat['body_pct'] > 60:
+                bA += 8; bE += 10
+            if feat['is_hammer']: bD += 10
+            if pd.notna(feat['ret_5g']):
+                if feat['ret_5g'] > 10: bA += 8
+                elif feat['ret_5g'] < -8: bD += 8
+            sA += bA; sC += bC; sE += bE; sD += bD
+            scores = {'A': sA, 'C': sC, 'E': sE, 'D': sD}
+            best_kat = max(scores, key=scores.get)
+            best_score = scores[best_kat]
+            srt = sorted(scores.values(), reverse=True)
+            conf = max(0, (srt[1]-30))*0.6
+            if len(srt) >= 3 and srt[2] > 30:
+                conf += (srt[2]-30)*0.3
+            total = best_score + conf
+            rows.append({
+                'tk': tk, 'fiyat': round(feat['close'], 2),
+                'skor': round(total, 1), 'kat': best_kat,
+                'A': round(sA, 0), 'C': round(sC, 0), 'E': round(sE, 0), 'D': round(sD, 0),
+                'RSI': int(round(feat['rsi'])) if pd.notna(feat['rsi']) else None,
+                'pos_52h': int(round(feat['pos_52h'])) if pd.notna(feat['pos_52h']) else None,
+                'bb_rank': int(round(feat['bb_rank'])) if pd.notna(feat['bb_rank']) else None,
+                'vr_t': round(feat['vr_t'], 2) if pd.notna(feat['vr_t']) else None,
+                'near_h20': int(round(feat['near_h20'])) if pd.notna(feat['near_h20']) else None,
+                'ret_10g': round(feat['ret_10g'], 1) if pd.notna(feat['ret_10g']) else None,
+                'vol_mTL': round(feat['vol_tl']/1e6, 1),
+                'confluence_n': sum(1 for v in srt if v > 30),
+            })
+        except Exception:
+            continue
+    df = pd.DataFrame(rows).sort_values('skor', ascending=False).reset_index(drop=True)
+    return df, rejim, round(chg, 2), target_date
+
+_TAV_KAT_INFO = {
+    'A': ('📈', 'Momentum', '#3b82f6'),
+    'C': ('🤐', 'Sıkışma',  '#f59e0b'),
+    'E': ('🎯', 'Direnç',    '#10b981'),
+    'D': ('🔄', 'Dip Dönüş', '#a855f7'),
+}
+
+def _tav_hikaye(r):
+    """Hisseye özel kısa hikâye — kalıba göre."""
+    k = r['kat']
+    if k == 'A':
+        return f"10g %{r['ret_10g']:+.0f} · RSI {r['RSI']} · 52H zirvede"
+    if k == 'C':
+        return f"Bant darlığı {r['bb_rank']} · 20g direncin %{r['near_h20']}'inde"
+    if k == 'E':
+        return f"20g zirvenin %{r['near_h20']}'inde · hacim {r['vr_t']:.1f}x"
+    if k == 'D':
+        return f"52H'nin %{r['pos_52h']}'inde · RSI {r['RSI']} · sessiz"
+    return ""
+
+def scan_para_akisi_liderleri(ticker_list, category=""):
+    """Para Akışı Liderleri scan — CMF (para akışı) en güçlü + momentum>0 trendde + büyük-cap
+    (250M TL) + manipülasyon/tavan filtreli ilk 10. Master Scan'de hesaplanıp scan_signals'a
+    'para_akisi_lider' yazılır → Tarama Performansı panelinde backtest'lenir. App'in
+    split-düzeltilmiş verisini kullanır (standalone flow_leaders ile aynı mantık)."""
+    cands = []
+    for tk in ticker_list:
+        try:
+            _ct = str(tk) if str(tk).endswith('.IS') else f"{tk}.IS"
+            _fp = os.path.join(CACHE_DIR, f"{_ct}_1d.parquet")
+            if not os.path.exists(_fp):
+                continue
+            df = _apply_split_adjustments(pd.read_parquet(_fp))   # network yok + split-temiz
+            if df is None or len(df) < 235 or 'Close' not in df.columns:
+                continue
+            c = df['Close']; v = df['Volume']
+            if float((c * v).tail(20).mean()) < 250e6:            # büyük-cap tabanı
+                continue
+            if _liquidity_manip(df).get('manip') == 'yüksek':     # ince-tahta pompa
+                continue
+            if _tav_is_manipulated(df, len(df) - 1):              # manip + yakın-dönem tavan
+                continue
+            mom = (float(c.iloc[-21]) / float(c.iloc[-231]) - 1) * 100   # ~11 ay momentum
+            if not (0 < mom <= 150):                              # yükselen ama parabolik değil
+                continue
+            rng = (df['High'] - df['Low']).replace(0, np.nan)
+            mfv = (((c - df['Low']) - (df['High'] - c)) / rng * v).fillna(0)
+            vol20 = float(v.rolling(20).sum().iloc[-1])
+            cmf20 = float(mfv.rolling(20).sum().iloc[-1] / vol20) if vol20 else 0.0
+            cands.append({'Sembol': tk, 'Fiyat': round(float(c.iloc[-1]), 2),
+                          'Skor': round(cmf20 * 100, 1), '_cmf': cmf20})
+        except Exception:
+            continue
+    if not cands:
+        return pd.DataFrame()
+    out = pd.DataFrame(cands).sort_values('_cmf', ascending=False).head(10).reset_index(drop=True)
+    return out.drop(columns=['_cmf'])
 # ==============================================================================
 # BÖLÜM 33 — ELİT TARAMA SİSTEMİ (🏆 ALTIN FIRSAT & 💎 PLATİN FIRSAT (SÜPER TARAMA MOTORU)
 # get_golden_trio_batch_scan: Güç + Konum + Enerji üçlüsü.
@@ -24896,7 +24151,7 @@ if _MM_MEMBER_VIEW and st.session_state.get("_mm_quota_block"):
 
 # 5. MASTER SCAN BUTONU (üye modunda gizli — admin'e özel ağır tarama)
 with col_btn:
-    if (not _MM_MEMBER_VIEW) and st.button("💎 TÜM PİYASAYI TARA (MASTER SCAN)", type="secondary", use_container_width=True):
+    if (not _MM_MEMBER_VIEW) and st.button("💎 TÜM PİYASAYI TARA (MASTER SCAN)", type="secondary", width='stretch'):
 
         _cat      = st.session_state.get('category', 'S&P 500')
         scan_list = ASSET_GROUPS.get(_cat, [])
@@ -24991,22 +24246,11 @@ with col_btn:
             # (en zayıf önde). Sıralama tier'a göre. Tüm scanner'lar yine çalışır (veri toplanır).
             # ═══════════════════════════════════════════════════════════════════
 
-            # ── KATMAN 1: TIER_1 ELİT (Pre-Launch BOS + Erken Radar) ──
-            my_bar.progress(20, text="🚀 ELİT (TIER_1) — Pre-Launch BOS taranıyor...%20")
-            st.session_state.prelaunch_bos_data = scan_prelaunch_bos(scan_list)
-
-            my_bar.progress(35, text="⭐ ELİT (TIER_1) — Erken Radar Senaryoları işleniyor...%35")
-            _er_batch_df = scan_erken_radar_batch(scan_list)
-            log_erken_radar_signals(_er_batch_df, category=_cat)
-            st.session_state.erken_radar_data = _er_batch_df
-            save_scan_result("erken_radar_data", _er_batch_df, _cat)
-            # Debug toast — kaç hisse/senaryo bulundu
-            if _er_batch_df is not None and not _er_batch_df.empty:
-                _er_primary_n = int((_er_batch_df['Role'] == 'primary').sum())
-                _er_total_n   = len(_er_batch_df)
-                st.toast(f"🚀 Erken Radar: {_er_primary_n} hisse, {_er_total_n} senaryo", icon="✅")
-
             # ── KATMAN 2: TIER_2 GÜVENİLİR ──
+            # NOT (24 Haz 2026): ELİT TIER_1 (Pre-Launch BOS + Erken Radar) GEÇİCİ olarak
+            # EN SONA alındı — Erken Radar en ağır adım, "%35'te takılı" görüntüsü veriyordu.
+            # Diğer taramalar önce bitsin, kullanıcı ilerlemeyi görsün; ELİT en sonda çalışır.
+            # (Gold Mine + frontend JSON bunları kullandığı için onlardan ÖNCE konumlandı.)
             my_bar.progress(45, text="🤫 GÜVENİLİR (TIER_2) — Gizli Toplama (Smart Money)...%45")
             st.session_state.accum_data = scan_hidden_accumulation(scan_list)
             log_scan_signal("gizli_birikim", st.session_state.accum_data, category=_cat)
@@ -25132,6 +24376,18 @@ with col_btn:
             except Exception as _pal_e:
                 log_error("master_scan_para_akisi", _pal_e, _cat)
 
+            # ── ELİT TIER_1 (Pre-Launch BOS + Erken Radar) — EN SON (24 Haz 2026) ──
+            # En ağır adımlar burada; tüm diğer taramalar bittikten sonra çalışır.
+            # Gold Mine + frontend JSON bunları kullandığı için onlardan ÖNCE.
+            my_bar.progress(99, text="🚀 ELİT (TIER_1) — Pre-Launch BOS taranıyor...%99")
+            st.session_state.prelaunch_bos_data = scan_prelaunch_bos(scan_list)
+
+            my_bar.progress(99, text="⭐ ELİT (TIER_1) — Erken Radar Senaryoları (son adım)...%99")
+            _er_batch_df = scan_erken_radar_batch(scan_list)
+            log_erken_radar_signals(_er_batch_df, category=_cat)
+            st.session_state.erken_radar_data = _er_batch_df
+            save_scan_result("erken_radar_data", _er_batch_df, _cat)
+
             # 🏆 GOLD MINE META-BACKTEST LOG (19 Haz 2026 — Build 1) — tüm taramalar dolu,
             # vitrinin o günkü top seçimlerini kaydet. Sonra signal_results JOIN ile vitrin
             # sıralamasının gerçek getirisi ölçülecek (rank1 > rank10 mu?). Veri bugünden birikir.
@@ -25140,19 +24396,27 @@ with col_btn:
             except Exception as _gm_e:
                 log_error("master_scan_goldmine_log", _gm_e, _cat)
 
-            # 🔄 patron.db → VPS SYNC (19 Haz 2026) — bot DB köprüsü (smr_core kanıt katmanı) taze
-            # kalsın. SADECE lokal Windows admin makinesinden (os.name=='nt'); VPS (Linux) kendine
-            # sync etmez. Fire-and-forget (Popen) — Master Scan'i bloklamaz, hata UI'ı bozmaz.
+            # 🔄 patron.db → VPS SYNC (19 Haz 2026 · 1 Tem 2026 GÜVENLİ-SNAPSHOT fix) — bot DB
+            # köprüsü (smr_core kanıt katmanı) taze kalsın. SADECE lokal Windows admin (os.name=='nt').
+            # ⚠️ ESKİ: ham `scp patron.db` CANLI dosyayı kopyalıyordu → SQLite yarım-tutarsız imaj
+            #    kopyalanınca VPS db "malformed" oluyordu (1 Tem'de oldu, bot kanıt katmanı öldü).
+            # ✅ FIX: (1) sqlite .backup ile TUTARLI snapshot → (2) geçici ada gönder → (3) VPS'te
+            #    atomik mv. scp başarısızsa `&&` sayesinde mv çalışmaz, eski sağlam db korunur.
             try:
                 import os as _os_sync
                 if _os_sync.name == 'nt':
-                    import subprocess as _sp_sync
-                    _sp_sync.Popen(
-                        ['scp', '-o', 'StrictHostKeyChecking=no', 'patron.db',
-                         'wm11tr@34.153.19.220:~/smr/patron.db'],
-                        stdout=_sp_sync.DEVNULL, stderr=_sp_sync.DEVNULL
+                    import subprocess as _sp_sync, sqlite3 as _sq_sync
+                    _src = _sq_sync.connect('patron.db'); _dst = _sq_sync.connect('patron_sync.db')
+                    _src.backup(_dst); _dst.close(); _src.close()   # canlı yazımdan etkilenmez
+                    _sync_cmd = (
+                        'scp -o StrictHostKeyChecking=no patron_sync.db '
+                        'wm11tr@34.153.19.220:~/smr/patron.db.new && '
+                        'ssh -o StrictHostKeyChecking=no wm11tr@34.153.19.220 '
+                        '"mv ~/smr/patron.db.new ~/smr/patron.db"'
                     )
-                    st.toast("🔄 patron.db VPS'e gönderiliyor (bot kanıt katmanı tazeleniyor)", icon="🔄")
+                    _sp_sync.Popen(_sync_cmd, shell=True,
+                                   stdout=_sp_sync.DEVNULL, stderr=_sp_sync.DEVNULL)
+                    st.toast("🔄 patron.db VPS'e gönderiliyor (tutarlı snapshot + atomik)", icon="🔄")
             except Exception as _sync_e:
                 log_error("master_scan_patrondb_sync", _sync_e, _cat)
 
@@ -27058,7 +26322,7 @@ if st.session_state.generate_prompt:
                 "Citadel/Renaissance tarzı mean-reversion algoları otomatik alım eşiği; "
                 "DESTEKLEYİCİ confluence, tek başına yön değildir — BIST backtest beklemede)"
             )
-        if _smc_extra.get('f_at_y_open') == 1:
+        if SMC_YOPEN_AI_ENABLED and _smc_extra.get('f_at_y_open') == 1:
             _poc_avwap_lines.append(
                 "  near_y_open: True (fiyat yıl başı açılışına ±%2 yakın — "
                 "kurumsal kalibrasyon noktası, yıllık performans referansı; "
@@ -27082,29 +26346,38 @@ if st.session_state.generate_prompt:
         # TEFAS hisse-bazlı veri vermiyor (makro-rejim yasağı kapsamında), KAP endpoint
         # bloklu (666). Yabancı net alış (MKK, hisse-bazlı) korundu — aşağıda.
         # MKK YABANCI NET ALIŞ (İş Yatırım RSS feed) — GERÇEK yabancı kurumsal akış izi
-        if _smc_extra.get('f_yabanci_anchor') == 1:
+        # ⚠️ KANIT (30 Haz karne): tek-gün GİRİŞ ileri getirisi TERS (-%10, n=78, isabet %20)
+        # → bullish sayılmaz, sadece streak ile birlikteyse pozitif vurgulanır.
+        # ⚠️ GÜNCELLEME (3 Tem karne): streak'in kendi ayrımı da zayıfladı (+0.27) — bu yüzden
+        # tüm yabancı satırları DESTEKLEYİCİ seviyede, "backtest pozitif" iddiası kaldırıldı.
+        # Ölü f_yabanci_anchor kolonuna güvenmek yerine kombini canlı hesaplıyoruz.
+        _yab_giris  = _smc_extra.get('f_yabanci_giris') == 1
+        _yab_streak = _smc_extra.get('f_yabanci_streak') == 1
+        _yab_cikis  = _smc_extra.get('f_yabanci_cikis') == 1
+        if _yab_giris and _yab_streak:
             _poc_avwap_lines.append(
-                "  🏛 YABANCI KURUMSAL ANCHOR: True (MKK — son 5g'de hisse hem TOP-3 yabancı "
-                "GİRİŞ listesinde hem de 3+ gün üst üste yabancı oran artış streak'inde; "
-                "süreklilik + güncellik birlikte. Yabancı kurumsal pozisyon kuruyor demektir — "
-                "G1'de mutlaka 'yabancı akıllı para destekliyor' diye vurgula)"
+                "  🏛 YABANCI KURUMSAL BİRİKİM: True (MKK — hisse hem son 5g TOP-3 yabancı GİRİŞ "
+                "listesinde hem 3+ gün ÜST ÜSTE oran artışında; süreklilik + güncellik birlikte. "
+                "DESTEKLEYİCİ sinyal — ana teze güç katar ama tek başına hikaye kurma)"
             )
-        elif _smc_extra.get('f_yabanci_giris') == 1:
+        elif _yab_streak:
             _poc_avwap_lines.append(
-                "  yabanci_giris: True (MKK — son 5g'de hisse TOP-3 yabancı NET ALIŞ "
-                "listesinde göründü, bps tabanlı sıralama; yabancı kurumsal akış pozitif; "
-                "DESTEKLEYİCİ confluence)"
+                "  yabanci_streak: True (MKK — yabancı oran 3+ gün ÜST ÜSTE artıyor; süreklilik = "
+                "yapısal birikim izi, tek günlük spike değil; DESTEKLEYİCİ confluence — "
+                "tek başına kanıt sayma)"
             )
-        if _smc_extra.get('f_yabanci_streak') == 1:
+        elif _yab_giris:
             _poc_avwap_lines.append(
-                "  yabanci_streak: True (MKK — yabancı oran 3+ gün ÜST ÜSTE artış gösteriyor; "
-                "süreklilik = yapısal birikim, tek günlük spike değil; DESTEKLEYİCİ confluence)"
+                "  yabanci_giris_tek_gun: True ama TEMKİNLİ (MKK — son 5g'de TOP-3 yabancı net alış "
+                "listesinde göründü AMA süreklilik YOK. Backtest: tek günlük takas sıçraması genelde "
+                "haberli/oynak günde olur ve ileride geri çekilir — bunu bullish kanıt SAYMA, "
+                "yorumun merkezine alma)"
             )
-        if _smc_extra.get('f_yabanci_cikis') == 1:
+        if _yab_cikis:
             _poc_avwap_lines.append(
-                "  yabanci_cikis: True (MKK — son 5g'de hisse TOP-3 yabancı NET SATIŞ "
-                "listesinde göründü, negatif bps; yabancı kurumsal çıkış izi; "
-                "DESTEKLEYİCİ uyarı — olumlu teze karşı riski vurgula)"
+                "  yabanci_cikis: True (MKK — son 5g'de hisse TOP-3 yabancı NET SATIŞ listesinde "
+                "göründü, negatif bps; yabancı kurumsal çıkış izi; backtest negatif getiriyle "
+                "uyumlu; olumlu teze karşı riski vurgula)"
             )
     except Exception: pass
 
@@ -28395,7 +27668,7 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
     # Destekleyici seviye (tek dönem backtest) — ana hikaye değil. ──
     _ai_flow_note = ""
     try:
-        _frc = sqlite3.connect(DB_FILE)
+        _frc = sqlite3.connect(DB_FILE, timeout=30)
         _fr = _frc.execute("SELECT cmf_pct FROM factor_rank WHERE symbol=? ORDER BY rank_date DESC LIMIT 1",
                            (t,)).fetchone()
         _frc.close()
@@ -28453,7 +27726,7 @@ G1 açılışı sırası: 🏛 ELIT_ANCHOR varsa → o · yoksa hâkim DESTEKLEY
 
 **Relative OBV (rel_obv_state) okuma:** Hisse hacim akışı endeks hacim akışından ayrışıyor mu? Mansfield RS'in HACİM versiyonu. `outperform_strong` (hisse OBV↑ endeks OBV↓) = AKILLI PARA spesifik olarak bu hisseyi seçti, yapısal birikim — G1'de merkeze al. `underperform_strong` (hisse OBV↓ endeks OBV↑) = endeks akışı pozitif ama bu hisseden çıkış var, yapısal zayıflık — olumlu teze karşı dikkat uyarısı. Mild durumlar = destekleyici. Sadece OBV slope'una bakma yetmez, ENDEKSE GÖRE ayrışmasını da oku.
 
-**YAPISAL vs TACTICAL Smart Money okuma (smart_money_split):** Akıllı para sinyalleri iki ölçeğe ayrılır: YAPISAL (haftalar-aylar, kurumsal pozisyon kurma — TEFAS, KAP, MKK, OBV 20g+) ve TACTICAL (saatler-günler, algo/scalp — cum_delta_5g, MFI_5g, breakout, climax). Her ikisi 0-100 skor. "Akıllı para birikiyor" derken HANGİ ölçek kasdettiğini netleştir: (a) YAPISAL ≥65 + TACTICAL ≥65 → "her iki ölçek aynı yönde, güçlü ana hikaye" (b) YAPISAL ≥65 + TACTICAL ≤35 → "kurumsal birikim sürüyor ama bugün ek hareket yok, SABIRLI BEKLE" (c) YAPISAL ≤35 + TACTICAL ≥65 → "kısa vade hareket var ama yapısal değil, KISA VADE FIRSAT olabilir, uzun vade temkinli" (d) İkisi de zayıf → "net akıllı para izi yok, beklemede". G2 AKILLI PARA satırını bu çerçevede yaz.
+**YAPISAL vs TACTICAL Smart Money okuma (smart_money_split):** Akıllı para sinyalleri iki ölçeğe ayrılır: YAPISAL (haftalar-aylar, kurumsal pozisyon kurma — MKK yabancı, OBV 20g+, CMF 20g) ve TACTICAL (saatler-günler, algo/scalp — cum_delta_5g, MFI_5g, breakout, climax). Her ikisi 0-100 skor. "Akıllı para birikiyor" derken HANGİ ölçek kasdettiğini netleştir: (a) YAPISAL ≥65 + TACTICAL ≥65 → "her iki ölçek aynı yönde, güçlü ana hikaye" (b) YAPISAL ≥65 + TACTICAL ≤35 → "kurumsal birikim sürüyor ama bugün ek hareket yok, SABIRLI BEKLE" (c) YAPISAL ≤35 + TACTICAL ≥65 → "kısa vade hareket var ama yapısal değil, KISA VADE FIRSAT olabilir, uzun vade temkinli" (d) İkisi de zayıf → "net akıllı para izi yok, beklemede". G2 AKILLI PARA satırını bu çerçevede yaz.
 4) **TETİKLEYİCİ** (yaml.ict_pa.ob + fvg + sweep_silkeleme + yaml.targets): Hangi seviye kırılırsa ne olur? — Bu gözlenecek noktayı söyler.
 5) **YANLIŞLANMA** (yaml.targets + son swing low/high + yaml.asset.yillik_konum_52h): Tez hangi seviye altında çöker? — Bu risk noktası.
 
@@ -28595,7 +27868,7 @@ yaml.smart_money.stopping_volume_at_reversal alanı varsa → bu klasik VSA siny
 
 *** REVERSAL CONFLUENCE ANCHOR (8 Haz 2026 Oturum 19) ***
 🚨 Aşağıdaki 4 sinyalden 3+'ü aynı anda varsa → G1 + G4 ana hikaye "DİPTEN/TEPEDEN DÖNÜŞ ÇABASI" çerçevesinde kurulur. CMF/OBV negatif olsa bile bu sinyaller YAPISAL değil TETİKLEYİCİ — confluence ana hikayeyi belirler; karşı sinyaller "kalıcı yön için CMF/OBV dönüşü beklenir" şeklinde DİPNOT olur.
-  1. TIER_1_ELIT scanner flag (er_A8 / prelaunch_bos / er_B1) — backtest hit %75+
+  1. TIER_1_ELIT scanner flag (er_D1 / er_A2 / er_A8 / er_B8) — 20g hit %64-76
   2. Klasik mum reversal pattern + KONUM=ANLAMLI (Piercing / Engulfing / Morning Star / Hammer + dipte, ya da bearish karşılığı + tepede)
   3. RSI Pozitif Uyumsuzluk (bullish için) veya RSI Negatif Uyumsuzluk (bearish için)
   4. stopping_volume_at_reversal veya climax_volume_at_reversal alanı dolu
@@ -28606,7 +27879,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
-• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` / `near_y_open` / `near_inverse_fvg` / `breaker_block_active` (4 yeni SMC kurumsal flag, 9 Haz 2026 — DESTEKLEYİCİ seviyede, BIST backtest beklemede, ANA HİKAYE YAPMA; sadece zaten kurulu tezi konfirme amacıyla 1 cümle), `🏛 YABANCI KURUMSAL ANCHOR` (MKK — yabancı net giriş + streak çakışması, gerçek yabancı kurumsal pozisyon kuruyor → G1'de mutlaka 'yabancı destekliyor' vurgusu), `yabanci_giris`/`yabanci_streak`/`yabanci_cikis` (MKK — yabancı oran top-3 + süreklilik bilgisi, DESTEKLEYİCİ).
+• institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` (SMC kurumsal — -2σ VWAP mean-reversion bölgesi; karne: gerçek edge, DESTEKLEYİCİ confluence, ANA HİKAYE YAPMA), `🏛 YABANCI KURUMSAL BİRİKİM` (MKK — yabancı net giriş VE 3+ gün süreklilik BİRLİKTE; karne bu birleşimi güçlü buldu → G1'de 'yabancı akıllı para destekliyor' vurgula), `yabanci_streak` (MKK — 3+ gün üst üste oran artışı = yapısal birikim; karne pozitif; DESTEKLEYİCİ), `yabanci_giris_tek_gun` (MKK — tek günlük top-3 giriş AMA süreklilik YOK; karne TERS [-%10, isabet %20] → bullish SAYMA, yorumun merkezine alma), `yabanci_cikis` (MKK — yabancı çıkış izi; karne negatif getiriyle uyumlu; riski vurgula).
 • smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al), `rel_obv_state` (Relative OBV — hisse hacim akışı endeksten ayrışıyor mu; outperform_strong/underperform_strong = ELIT smart money izi, mild = destekleyici), `udvr_state`/`udvr_wyckoff` (Up/Down Volume Ratio — klasik Wyckoff Effort-vs-Result, climax_top/bottom durumları = TIER_1 ELIT smart money tepe/dip teyidi; strong_buyer/strong_seller = destekleyici), `force_index_dual`/`force_index_divergence` (Alexander Elder Force Index dual — anlık FI(2) ve trend FI(13); bullish/bearish divergence = TIER_1 ELIT klasik Elder sinyali, strong/turning durumlar = destekleyici).
 • trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
 
@@ -28618,11 +27891,11 @@ POC RETEST (84.832 event, BIST 593 hisse, 1y; retest = POC'a %1 yakına ≤10g):
   naked_poc_yakin: test edilmemiş eski POC = kurumsal limit emir bekleyen seviye; yön OBV/Delta'dan gelir.
 
 SCANNER TIER (11.797 sinyal backtest, 29 Nis-31 May 2026, 31 scan_type tier'lı) — `scanner_tiers_aktif` varsa:
-  🚨 **TIER_1_ELIT VARSA = ANA HİKAYE (sert kural, 8 Haz 2026 Oturum 19):** prelaunch_bos/er_A8/er_B1 flag'i bu ticker'da varsa → G1 açılış paragrafı + G4 GENEL YORUM açılışı o TIER_1 senaryosundan başlar. Backtest hit %75+ kanıt-tabanı en güçlü olandır → `scenario.algoritmik_baslik`'ten, `asset.master_score`'dan ve diğer scanner'lardan ÖNCE gelir. Birden fazla TIER_1 flag varsa en yüksek hit'i öne çıkar (er_A8 %100 > prelaunch_bos %78 > er_B1 %75). Atlanırsa = ihlal — G1/G4'te TIER_1 adı en az 1 kez ZORUNLU geçer + "backtest kanıtı: hit %X, ret %+Y" notu eklenir.
-  **TIER_1_ELIT** (prelaunch_bos, er_A8, er_B1): hit %75+, ret %+4 ila %+13 → yukarıdaki sert kural geçerli
-  **TIER_2_GUVENILIR** (er_C3/D3/C9/D1/A9/C2/A3/A7/C11/D2): hit %53-68, ret %+1.7-5.9 → destekleyici teyit, ana hikaye olabilir. er_D2 (19 Haz 2026 geri alındı): iki-rejimde dayanıklı, ayıda bile pozitif.
-  **TIER_3_ORTA** (er_C7/A4/D4/D5/C5/B11/B5/A5/A1/C8/A2/B8/A6/C6): hit %42-75 ama ret %+1.2-3.3 → zayıf, ana hikaye kurma; **diğer teyitler aranır** (POC, OBV, mum). er_C6: 5g güçlü ama uzun vade ayıda zayıf.
-  **TIER_3_ZAYIF** (er_C1, guclu_donus): ret negatif/sıfır → adı çekici ama gerçek kazandırma yok; "diğer teyitler güçlüyse" notuyla geç. guclu_donus özel: 20g'de %+4.2 → "geç giriş riski" notu uygun.
+  🚨 **TIER_1_ELIT VARSA = ANA HİKAYE (sert kural; 24 Haz 2026 = 9.529 olgun 20g sonucuyla kalibre):** er_D1/er_A2/er_A8/er_B8 flag'i bu ticker'da varsa → G1 açılış paragrafı + G4 GENEL YORUM açılışı o TIER_1 senaryosundan başlar. 20g kanıt-tabanı en güçlü olandır (hit %64-76, ret %+4.9-7.0) → `scenario.algoritmik_baslik`'ten, `asset.master_score`'dan ve diğer scanner'lardan ÖNCE gelir. Birden fazla TIER_1 flag varsa en yüksek 20g hit'i öne çıkar (er_D1 %76 > er_B8 %71 > er_A2 %70 > er_A8 %64). Atlanırsa = ihlal — G1/G4'te TIER_1 adı en az 1 kez ZORUNLU geçer + "20g backtest: hit %X, ret %+Y" notu eklenir.
+  **TIER_1_ELIT** (er_D1, er_A2, er_A8, er_B8): 20g hit %64-76, ret %+4.9-7.0 → yukarıdaki sert kural geçerli
+  **TIER_2_GUVENILIR** (er_B11/A5/C3/C2/D2/A7/prelaunch_bos/A3/A4): 20g hit %50-58, ret %+2.8-6.3 → destekleyici teyit, ana hikaye olabilir. prelaunch_bos (24 Haz: TIER_1→2, tazede hit %50). er_D2 iki-rejimde dayanıklı.
+  **TIER_3_ORTA** (er_C8/C5/C9/B5/C11/D3/C7/A9/C6/A6/D4/A1): 20g hit %41-60 ama ret %+0.1-3.9 → zayıf, ana hikaye kurma; **diğer teyitler aranır** (POC, OBV, mum). er_C8/C5 ret iyi ama hit zayıf; er_A1 (4 Tem: 20g ret -%1.7 N=91 — 10g'de var olan avantaj 20g'de eriyor, kısa vadeli düşün).
+  **TIER_ZAYIF / KALDIRILDI** (er_B1, er_D5, er_C1, guclu_donus, nadir_firsat, ict_sniper, radar1): 20g ret negatif/sıfır → AI context'inde YOK. er_B1 (24 Haz: TIER_1→kaldırıldı, iki vadede negatif). guclu_donus 20g %+4.2 ama "geç giriş riski" — listede yoksa anma.
   **TIER_VADE_UZUN** (nadir_firsat): 10g düşük (%29/%0.2) ama 20g hit %81 + ret %+17 → "20g vade, SABIR" notunu açıkça yaz, 5-10g beklenti kurma.
   Hisse listede yoksa sus, ekstrapolasyon yapma.
 
@@ -28868,7 +28141,7 @@ Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlı
 
 ═══════════════════════════════════════════════════════════════════════
 
-*** DÖRT GÖREVİN VAR — TWITTER HOOK'LARI GÖREV 4'ÜN PARÇASIDIR, AYRI BİR HOOK YAZMA ***
+*** DÖRT GÖREVİN VAR — TWITTER HOOK'LARI GÖREV 4'ÜN PARÇASIDIR, AYRI BİR HOOK YAZMA *** AMA, BUGÜN SADECE GÖREV 2 VE GÖREV 4'Ü YAZ. DİĞERLERİNİ BUGÜNLÜK BOŞVER.
 
 ** BİRİNCİ GÖREV — Detaylı Analiz (Linda Raschke + Lance Beggs üslubu) **
 Üst başlık: "{hook_baslik}". Sonra direkt cümleyle başla (etiket yok). 4-5 cümlelik akıcı giriş paragrafı — o günün en baskın bulgusu ilk satırda olsun. Küçük yatırımcı psikolojisi vs kurumsal niyet farkına odaklan. Tek yönlü tablo yasak — madalyonun öte yüzü hep var.
@@ -28886,7 +28159,7 @@ Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlı
 - Puan: Kırılım/Smart Money/Trend Dönüşü/BOS = 8-10/10; yan sinyaller (MA üstü, RSI 50+) = 1-7/10. Zayıfa 8+ puan verme.
 - ALTIN SET-UP EVET → RS + ICT discount + ivme 3/3 onay, tarihsel düşük frekans vurgu.
 - ROYAL FLUSH EVET → 4/4 kesişim, analiz başında ana hikaye.
-- 🚨 **TIER_1_ELIT FLAG VARSA → açılış paragrafında ana hikaye merkez** (prelaunch_bos/er_A8/er_B1). master_score'dan ve scenario.algoritmik_baslik'ten önce gelir. "Backtest kanıtı: hit %X, ret %+Y" notu eklenir. Bkz. KALİBRASYON TABLOLARI sert kural.
+- 🚨 **TIER_1_ELIT FLAG VARSA → açılış paragrafında ana hikaye merkez** (er_D1/er_A2/er_A8/er_B8). master_score'dan ve scenario.algoritmik_baslik'ten önce gelir. "Backtest kanıtı: hit %X, ret %+Y" notu eklenir. Bkz. KALİBRASYON TABLOLARI sert kural.
 - ⚖️ **GÜÇ TEYİDİ — temkinli kullan (19 Haz audit):** `kurulum_gucu_teyidi`'nde 🔴 (zayıf/dipte) ise → o sinyali, TIER_1 bile olsa, tek başına açılış merkezine taşıma; "kurulum henüz zayıf, teyit bekleniyor" diliyle ver. 🟢 (zirveye yakın) güç GARANTİ değil — audit'te aşırı uzamış güçlü hisseler kısa vadede geri çekildi (orta-konum aslında en iyi dilim). 🟢'yı "kesin güçlü" diye merkeze alma; kurulumun KENDİ kanıt skoruyla birlikte değerlendir.
 
 **SONUÇ:** 3-4 cümle vurucu özet.
@@ -28898,24 +28171,31 @@ Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." + " #{clean_ticker}
 ** İKİNCİ GÖREV — Özet **
 Birinci görevin sıkıştırılmış özü. Jenerik yasak — her satırda somut seviye / yüzde / metrik adı.
 
+🚨 **TEK LEAN KURALI (26 Haz 2026 — kalıcı, kritik):** ÖZET YORUM / TEKNİK TABLO / AKILLI PARA / SONUÇ ZIT yön iddiası taşıyamaz. Önce kendine sor: "Ağırlıklı olarak yukarı mı, aşağı mı, yoksa gerçekten kararsız mı?" — cevabı ÖZET YORUM'un 1. cümlesinde söyle, TEKNİK TABLO + AKILLI PARA o lean'i DESTEKLER (gerçek karşı-kanıt varsa tek cümlede koşullu çelinir, ayrı ayrı çelişen maddeler halinde dökülmez).
+  ❌ YASAK: "Para akışı zayıflıyor 🔹... Smart money dengeli 🔹... Hacim pozitif ayrışıyor 🔹" (3 madde 3 ayrı yön, okuyucu hangisine güvensin bilmiyor)
+  ✅ DOĞRU: Tüm maddeler aynı hikâyeye bağlanır; gerçekten yarı yarıya çatışan nadir bir durum varsa bunu AÇIKÇA söyle ("resim gerçekten karışık") — ama varsayılan değil, istisna.
+  AKILLI PARA bölümünde ham sayı yığını (σ, çıplak ondalık skor) tek başına YASAK — sayı + sonucu aynı cümlede ("akış -7.3 ile zayıf — kurumlar seans içi pasif kalmış" gibi).
+  SONUÇ KOŞULLU TEZ formatında yazılır: "[seviye] tutarsa/kırılırsa [lean devam eder], [ters seviye] geçilirse [lean geçersiz kalır]" — tek taraflı risk cümlesi yetmez, ters senaryo da 1 cümleyle verilir.
+
 #{clean_ticker} {fiyat_str} ({degisim_str}) | {ai_scenario_title} 👇📸
 
 ⚡ ÖZET YORUM:
-[G1 açılışın 2 cümlelik özü — büyük resim + ton]
+[G1 açılışın 2 cümlelik özü — TEK LEAN'i açıkça söyle: "Ağırlıklı görüşüm X, çünkü Y"]
 
 📊 TEKNİK TABLO:
-🔹[En güçlü sinyal — somut seviye/formasyon]
-🔹[Yapı + trend durumu — kritik seviye]
+🔹[En güçlü sinyal — somut seviye/formasyon — lean'i destekler]
+🔹[Yapı + trend durumu — kritik seviye — lean'i destekler]
 🔹[Gerçek risk varsa — Z-Score tek başına yüksekse koyma]
 
 🏦 AKILLI PARA:
-🔹[delta + VA konumu + kurumsal iz — 1 cümle, somut]
-🔹[RVOL/VSA/OBV/cum_delta anomalisi — 1 cümle]
+🔹[delta + VA konumu + kurumsal iz — 1 cümle, somut, sayı+sonuç birlikte]
+🔹[RVOL/VSA/OBV/cum_delta anomalisi — 1 cümle, lean'e bağlanır]
 
 ⚠️ SONUÇ ve UYARI:
-[G1 sonucu + en kritik uyarı — 1 cümle, küçük harf]
+[Koşullu tez: "X tutarsa/kırılırsa Y, ters Z görülürse görüş tersine döner" — 1-2 cümle, küçük harf]
 Eğitim amaçlıdır. Yatırım tavsiyesi değildir.
-#BIST100  #{clean_ticker}
+DİKKAT: GÖRSEL, BİR YAPAY ZEKA ÇIKTISI DEĞİLDİR. 33000 SATIRLIK ALGORİTMAMIN HESAPLAMALARIDIR. LÜTFEN GÖRSELİ İNCELEYİNİZ.
+#sasa #kontr #astor #eupwr #BIST100  #{clean_ticker}
 
 ** ÜÇÜNCÜ GÖREV — SMR Algoritmik Hisse Raporu (G3) **
 8 Maddelik Laboratuvar verisini ve grafiği kullanarak şablonu doldur. Başlık: "{hook_baslik}". Veri yoksa madde atlanabilir, boş doldurma.
@@ -29048,7 +28328,7 @@ Başlık: "{hook_baslik}" (tarih/saat yazma).
 🚨 AÇILIŞ ANCHOR ÖNCELİĞİ (8 Haz 2026 Oturum 19 — şablon kayma fixi):
 **ÖNCE BUGÜN-SPESİFİK TETİKLEYİCİLER:**
   1. Klasik mum reversal + KONUM=ANLAMLI (Piercing Line / Engulfing / Morning Star vs.)
-  2. TIER_1_ELIT scanner flag (er_A8 / prelaunch_bos / er_B1)
+  2. TIER_1_ELIT scanner flag (er_D1 / er_A2 / er_A8 / er_B8)
   3. stopping_volume_at_reversal veya climax_volume_at_reversal
   4. Bugünkü scenario.algoritmik_baslik aktif tetikleyicisi
   5. RSI ekstrem (<25 veya >75) + RSI Pozitif/Negatif Uyumsuzluk çelişkisi
@@ -29063,19 +28343,26 @@ Başlık: "{hook_baslik}" (tarih/saat yazma).
   12. ❌ "SMA50 altında X gündür" — açılış değil, ikinci paragraf
 KURAL: 1-8'den biri varsa onunla aç. 9'daki strüktürel veriler ikinci paragraf veya alt cümle. 10-12 statik konum bilgileri sadece "destek/direnç noktası" olarak yazılır — açılış cümlesi olarak ASLA. "Fiyat yıllık zirvenin %X konumunda..." şablonu son 3 analizde başlangıçtı; bunu yazma. 52H konumunu vermek istersen 3. veya 4. cümlede "fiyat aynı zamanda 52H'nin %X'inde" şeklinde DESTEK BİLGİSİ olarak geçir, hikaye ekseni yapma.
 
-**GENEL YORUM:** Bugünkü en baskın bulgudan başla. En güçlü sinyali (9-10/10) ilk cümlede. Yükseliyorsa rallinin hikayesi, düşüyorsa neden. 4-5 cümle, her cümle hisseye özel. Referans ton: "BTC 97K'da dirençle karşılaştı, çekilme henüz başlamadı — kurumlar hâlâ tutunuyor gibi" ✓.
+🚨 **TEK LEAN KURALI (26 Haz 2026 — kalıcı, kritik):** Görev 2'nin 4 bölümü (GENEL YORUM / Teknik Görünüm / Smart Money İzi / SONUÇ) BİRBİRİNE ZIT yön iddiası TAŞIYAMAZ. Önce kendine sor: "Ağırlıklı olarak yukarı mı, aşağı mı, yoksa gerçekten kararsız mı?" — cevabı GENEL YORUM'un 1. cümlesinde söyle, kalan 3 bölüm o lean'i DESTEKLER veya KOŞULLA çelmeye çalışır (asla eşit ağırlıkta çelişmez).
+  ❌ YASAK YAPI: "Para akışı zayıflıyor... AMA smart money dengeli... AMA hacim pozitif ayrışıyor" (3 ayrı sinyal, okuyucu hangisine güvensin bilmiyor)
+  ✅ DOĞRU YAPI: "Ağırlıklı görüşüm [yön], çünkü [tek en güçlü neden]. [Karşı kanıt varsa] bu görüşü tamamen geçersiz kılmıyor, çünkü [neden]."
+  Gerçekten sinyaller yarı yarıya çatışıyorsa (nadir) BUNU AÇIKÇA SÖYLE: "Resim gerçekten karışık — ne net alıcı ne net satıcı baskın" — ama bunu HER hissede tekrar etme, gerçek durumsa kullan.
+
+**GENEL YORUM:** Bugünkü en baskın bulgudan başla — bu cümle aynı zamanda TEK LEAN'ini açıklar ("Ağırlıklı görüşüm X yönünde, çünkü Y"). Yükseliyorsa rallinin hikayesi, düşüyorsa neden. 4-5 cümle, her cümle hisseye özel. Referans ton: "BTC 97K'da dirençle karşılaştı, çekilme henüz başlamadı — kurumlar hâlâ tutunuyor gibi" ✓.
 🚨 **TIER_1_ELIT FLAG VARSA → o senaryo açılışın merkezi.** scenario.algoritmik_baslik veya master_score'a göre değil, scanner_tiers_aktif TIER_1 etiketine göre çatıyı kur ("Pre-Launch BOS tetiklendi — backtest hit %78"). Bkz. KALİBRASYON TABLOLARI sert kural.
 
-**Teknik Görünüm:** Fiyat nerede, hangi seviyeyle boğuşuyor, momentum ne diyor — 2-3 cümle, somut seviye. Rallide iyi görünüyorsa öyle yaz, zorla "ama" ekleme.
+**Teknik Görünüm:** Fiyat nerede, hangi seviyeyle boğuşuyor, momentum ne diyor — 2-3 cümle, somut seviye. Rallide iyi görünüyorsa öyle yaz, zorla "ama" ekleme. GENEL YORUM'daki lean'i çelmiyor, onu somut seviyeyle pekiştiriyor.
 
-**Smart Money İzi:** Delta + OBV + hacim — 2 cümle. Sadece gerçek anomali vurgu. Hacim normalse "normal seyrediyor". Net baskınlık ile OBV trendi ters yönde gidiyorsa analiz et.
-🚨 BU BÖLÜM EN ÇOK JARGON SIZAN YER. Yukarıdaki "ALGORİTMA İÇ JARGONU" 4 kuralını burada özellikle uygula: YAML alan adı yazma (cum_delta_5g ❌) · BÜYÜK HARFLİ algoritma etiketi kopyalama (KAFA ÇEVİRİYOR / Dağıtım ❌) · "Değer alanı" yerine "yoğun işlem bölgesi" · "Hacim profili şekli" yerine "kurumların işlem yoğunluk haritası" veya direkt yorumla. Okuyucu algoritmamızın iç adlandırmasını GÖRMEMELİ — sadece NE OLDUĞUNU sade Türkçe sezsin.
+**Smart Money İzi:** Delta + OBV + hacim — 2 cümle, TEK bir sonuca varır (örn. "büyük oyuncular satmıyor, sadece duraklamış" — destek/çelişki ayrı ayrı sıralanmaz, tek cümlede sentezlenir). Sadece gerçek anomali vurgu. Hacim normalse "normal seyrediyor". Net baskınlık ile OBV trendi ters yönde gidiyorsa bunu GENEL YORUM'daki lean'e göre yorumla ("arka planda destek var ama ön planda baskı var" gibi — iki veri tek hikayeye bağlanır, yan yana dökülmez).
+🚨 BU BÖLÜM EN ÇOK JARGON SIZAN YER. Yukarıdaki "ALGORİTMA İÇ JARGONU" 4 kuralını burada özellikle uygula: YAML alan adı yazma (cum_delta_5g ❌) · BÜYÜK HARFLİ algoritma etiketi kopyalama (KAFA ÇEVİRİYOR / Dağıtım ❌) · "Değer alanı" yerine "yoğun işlem bölgesi" · "Hacim profili şekli" yerine "kurumların işlem yoğunluk haritası" veya direkt yorumla. Okuyucu algoritmamızın iç adlandırmasını GÖRMEMELİ — sadece NE OLDUĞUNU sade Türkçe sezsin. Ham sayı yığını (σ, %, OMI) YASAK — görsel zaten bunları gösteriyor, metin SONUCU söyler.
 
-**SONUÇ:** 2-3 cümle. En önemli seviye + anlamı. "Uzun lafın kısası" tonu.
+**SONUÇ:** 2-3 cümle, KOŞULLU TEZ formatında: "[seviye] tutarsa/kırılırsa [lean devam eder], [ters seviye] görülürse [lean geçersiz kalır]." Bu belirsizlik değil — kararlı ama şartlı konuşma. "Uzun lafın kısası" tonu, ham sayı dökmeden.
 
 **UYARI:** Sadece gerçek risk varsa (RSI uyumsuzluk / stopping volume / gizli satış). Yoksa "Belirgin bir uyarı sinyali yok, ana seviyeleri izlemek yeterli." Küçük harf.
 
-Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir." + "#BIST100"
+Alta: "Eğitim amaçlıdır. Yatırım tavsiyesi değildir. 
+DİKKAT: GÖRSEL, YAPAY ZEKA ÇIKTISI DEĞİLDİR. ALGORİTMAMIN HESAPLAMALARIDIR.
+#sasa #kontr #astor #eupwr" #BIST100  #{clean_ticker}
 
 ═══════════════════════════════════════════════════════════════════════
 🚨 ÇIKIŞ ÖZ-DENETLEME (gönderim öncesi 4 katman — kısa)
@@ -29197,6 +28484,49 @@ GÖREVLER ÇIKIŞ SIRASI: 4 (5 HOOK + abone özeti) → 2 → 3 → 1.
         prompt = prompt.replace(
             "*** ANALİZ İSKELETİ (HER GÖREVDE BU SIRAYLA DÜŞÜN) ***",
             _analyst_core + "*** ANALİZ İSKELETİ (HER GÖREVDE BU SIRAYLA DÜŞÜN) ***", 1)
+
+    # ── (25 Haz 2026) ANLATIM KATMANI — "ÇEVİRMEN" ───────────────────────────
+    # Analiz çok iyi ama takipçiye "Çince" geliyor (jargon yoğun) — takipçi ASLI
+    # bizim tweet'i Grok'a sorup çevirtti. Çözüm: ANALİZE DOKUNMA, sadece çıkışa
+    # bir sadeleştirme bloğu ekle. Gemini önce zengin analizi üretir, EN SONA aynı
+    # tweet'in sade halini yazar. Kullanıcı alttaki sade bloğu tweet'ler. İçeriği
+    # (sayı/yön/sonuç) değiştirmek YASAK — sadece DİL çevrilir.
+    # Geri al: SADELESTIR_ENABLED = False. (smr_core'a sonra eklenecek.)
+    SADELESTIR_ENABLED = True
+    if SADELESTIR_ENABLED:
+        prompt += """
+
+═══════════════════════════════════════════════════════════════════════
+📝 SON ADIM — SADE VERSİYON (TÜM GÖREVLERDEN SONRA, EN ALTA YAZ)
+═══════════════════════════════════════════════════════════════════════
+Yukarıdaki analizi bitirdikten sonra, çıktının EN ALTINA
+"📝 SADE VERSİYON (TAKİPÇİ İÇİN)" başlığını koy ve Görev 4 tweet metnini
+borsadan HİÇ anlamayan birine anlatır gibi yeniden yaz.
+Bu bir ÇEVİRİDİR — YENİ analiz değil, üsttekinin sade dile aktarımı.
+
+KESİN KURALLAR:
+• Hiçbir sayıyı, yönü, hedefi, sonucu, senaryoyu DEĞİŞTİRME. Sadece DİLİ sadeleştir.
+  Üstte ne dediysen aynısını söyle, ama jargonsuz.
+• Her teknik terimi günlük Türkçeye çevir:
+   OBV / hacim akış pusulası → "paranın giriş-çıkış dengesi"
+   CMF / para akışı          → "alıcı-satıcı baskısı"
+   RSI                       → "aşırı alım/satım göstergesi"
+   Z-Score                   → "normalden ne kadar sapmış"
+   divergence / uyumsuzluk   → "fiyatla göstergenin ters yöne gitmesi"
+   displacement              → "sert/ani hamle"
+   OMI / kurumsal momentum   → "büyük oyuncuların alım-satım yoğunluğu"
+   "5 günlük pencere / 14 günlük pencere" → "kısa vade / orta vade"
+• Cümleleri kısalt. Her cümle TEK fikir taşısın. Üst üste virgülle 4-5 fikri bağlama.
+• ŞU KELİMELER YASAK — geçerse o cümleyi baştan yaz:
+   "pusula", "eksen", "profil ekseni", "yanıtıcı", "yanıltıcı okuma",
+   "çift pencere", "emare", "konsolide", "nötr metrik", "okuması".
+• ASLI TESTİ: Bu metni okuyan borsa bilmeyen bir takipçi "bu ne demek ya?" diye
+  sormak ZORUNDA kalırsa, o cümle BAŞARISIZ — yeniden yaz. Hiç soru sordurma.
+• Uzunluk: tweet'e sığacak kadar kısa, 3-5 kısa cümle yeter. Önce ne olmuş, sonra
+  ne beklenir, sonra nerede yanılırız — sade ve net.
+═══════════════════════════════════════════════════════════════════════
+"""
+
     with st.sidebar:
         st.code(prompt, language="text")
         st.success("Prompt Güncellendi")
@@ -29323,7 +28653,7 @@ def _show_fullscreen_chart():
             _fig.update_layout(height=640)
             st.plotly_chart(
                 _fig,
-                use_container_width=True,
+                width='stretch',
                 config={
                     'scrollZoom'             : True,
                     'displayModeBar'         : True,
@@ -29609,6 +28939,36 @@ def _render_left_col():
                                 get_batch_data_cached.clear()
                             except Exception:
                                 pass
+                        else:
+                            # ── İLK AÇILIŞ TAZELİK KAPISI (30 Haz 2026) ──────────
+                            # st_autorefresh ilk render'da 0 döner → periyodik temizlik
+                            # ancak sekme açıldıktan 10 dk SONRA başlar. O pencerede
+                            # kullanıcı seans içinde sayfayı açsa/hisse değiştirse bile
+                            # bellekteki DÜNKÜ fotoğrafı görür ("hâlâ dünün verisi").
+                            # Çözüm: açılışta cache'in son barı bugünden eskiyse bir
+                            # kerelik temizle → is_yahoo_update_needed seans saatinde
+                            # zaten True döndüğünden taze indirilir. Aynı render içinde
+                            # downstream fetch cache-miss olur, ekstra rerun gerekmez.
+                            # Günde+ticker'da tek sefer (flag) → gereksiz tekrar indirme yok.
+                            _fresh_flag = f"_open_fresh_{_cur_ticker}_{_now_tr.strftime('%Y%m%d')}"
+                            if not st.session_state.get(_fresh_flag, False):
+                                try:
+                                    _clean = _cur_ticker.replace(".IS", "")
+                                    if ("BIST" in _cur_ticker or ".IS" in _cur_ticker
+                                            or _cur_ticker.startswith("XU")):
+                                        _clean = (_cur_ticker if _cur_ticker.endswith(".IS")
+                                                  else f"{_cur_ticker}.IS")
+                                    _pq = os.path.join(CACHE_DIR, f"{_clean}_1d.parquet")
+                                    _stale_open = True  # parquet yoksa zaten indirilsin
+                                    if os.path.exists(_pq):
+                                        _dfo = pd.read_parquet(_pq)
+                                        if not _dfo.empty:
+                                            _stale_open = _dfo.index[-1].date() < _now_tr.date()
+                                    if _stale_open:
+                                        get_batch_data_cached.clear()
+                                except Exception:
+                                    pass
+                                st.session_state[_fresh_flag] = True
                     elif (18, 15) <= _now_t <= (18, 35):
                         # ── KAPANIŞ SONRASI YOĞUN TAZELEME (18 Haz 2026) ──
                         # Yahoo 18:00 kapanışı 18:20-18:35 arası publish eder.
@@ -29899,19 +29259,28 @@ def _render_left_col():
     # boş element-container'lar bırakıyor → sağ kolon sıfır boşlukla başlarken
     # sol kolon yukarıdan ~80px düşüyordu. CSS ile sıfırlandı (5 Haz 2026).
     st.markdown("""<style>
-    /* streamlit-autorefresh iframe wrapper'ını gizle */
+    /* streamlit-autorefresh iframe — GÖRÜNMEZ AMA DOM'DA KALIR.
+       ⚠️ display:none KULLANMA: gizli iframe'de tarayıcı zamanlayıcıyı durdurur →
+       10 dk yenileme sinyali hiç gelmez (5 Haz–30 Haz 2026 sessiz bug buydu).
+       Çözüm: boyut 0 + akıştan çıkar → göze görünmez, yer kaplamaz, ama çizilir
+       olduğundan setInterval çalışmaya devam eder, sayfa yenilenir. */
     iframe[title*="streamlit_autorefresh"],
     iframe[title*="autorefresh"] {
-        display: none !important;
         height: 0 !important;
+        width: 0 !important;
+        border: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
     }
-    /* Boş iframe'i barındıran element-container yer kaplamasın */
+    /* Container yer kaplamasın — ama display:none OLMASIN (iframe'i öldürür) */
     div.element-container:has(iframe[title*="streamlit_autorefresh"]),
     div.element-container:has(iframe[title*="autorefresh"]) {
-        display: none !important;
         height: 0 !important;
+        min-height: 0 !important;
         margin: 0 !important;
         padding: 0 !important;
+        overflow: hidden !important;
+        line-height: 0 !important;
     }
     /* İçi boş markdown wrapper'larını da sıfırla (KATMAN 1 try/except artıkları) */
     div.element-container:has(> div[data-testid="stMarkdownContainer"]:empty) {
@@ -29947,42 +29316,10 @@ def _render_left_col():
     }
     </style>""", unsafe_allow_html=True)
 
-    with st.expander(f"📈 Smart Money Concept Analiz: SMC Derin Yapı Grafiğini İncelemek için TIKLA  ·  {_disp_name}", expanded=False):
-        _tb_zoom, _tb_full, _ = st.columns([1, 1, 8])
-        with _tb_zoom:
-            _scroll_zoom = st.toggle("🔍", key="chart_scroll_zoom",
-                                     value=False,
-                                     help="Açık: scroll ile zoom | Kapalı: scroll sayfa kaydırır")
-        with _tb_full:
-            if st.button("⛶", key="btn_fullscreen_chart",
-                         help="Derin analiz — SMC + Hacim + Para Akışı + Formasyon"):
-                _show_fullscreen_chart()
-        try:
-            with _Timer("ANA GRAFIK: _main_price_chart_plotly"):
-                _inline_fig, _ = _main_price_chart_plotly(st.session_state.ticker, True)
-            if _inline_fig is not None:
-                _inline_fig.update_layout(height=440, margin=dict(t=20, b=10, l=0, r=0))
-                st.plotly_chart(
-                    _inline_fig,
-                    use_container_width=True,
-                    config={
-                        'scrollZoom'            : bool(st.session_state.get('chart_scroll_zoom', False)),
-                        'displayModeBar'        : True,
-                        'modeBarButtonsToRemove': ['select2d', 'lasso2d'],
-                        'displaylogo'           : False,
-                    },
-                    key="inline_price_chart",
-                )
-        except Exception:
-            if st.button(
-                f"🧠  {_disp_name}  ·  SMC Derin Yapı Grafiğini İncelemek için TIKLA",
-                key="btn_fullscreen_chart_fb",
-                use_container_width=True,
-                type="primary",
-            ):
-                _show_fullscreen_chart()
-    
-    
+    # 📈 SMC Concept Analiz (SMC Derin Yapı) — 22 Haz 2026: "Trend & Seviyeler"
+    #    panelinin altına taşındı (aşağıda, render_levels_card sonrası). İnfografik tepeye geldi.
+
+
     # ── Stale data uyarısı (veri güncellenemediğinde) ─────────────────
     _stale = st.session_state.pop('_data_stale', None)
     if _stale and _stale.get('ticker') == st.session_state.ticker:
@@ -29999,7 +29336,12 @@ def _render_left_col():
         )
     # ─────────────────────────────────────────────────────────────────────────
     
-    # 1. PARA AKIŞ İVMESİ & FİYAT DENGESİ (EN TEPE)
+    # 1. GÖRSEL ANALİZ İNFOGRAFİĞİ (EN TEPE) — 22 Haz 2026
+    with _Timer("INFOGRAFIK: _render_infografik_inapp"):
+        _render_infografik_inapp(st.session_state.ticker)
+
+    # 2. PARA AKIŞ İVMESİ & FİYAT DENGESİ — orijinal yerinde (infografiğin hemen altında),
+    #    interaktif Altair panel TÜM özellikleriyle (hover/RVOL halkaları). 22 Haz 2026.
     with _Timer("SENTIMENT: calculate_synthetic_sentiment"):
         synth_data = calculate_synthetic_sentiment(st.session_state.ticker)
         if synth_data is None:
@@ -30215,6 +29557,42 @@ def _render_left_col():
     # 4. Kritik Seviyeler
     with _Timer("PANEL: render_levels_card"):
         render_levels_card(st.session_state.ticker)
+    # 📈 SMART MONEY CONCEPT ANALİZ (SMC Derin Yapı) — 22 Haz 2026: infografik tepeye
+    #    geçince buraya (Trend & Seviyeler altına) taşındı.
+    with st.expander(f"📈 Smart Money Concept Analiz: SMC Derin Yapı Grafiğini İncelemek için TIKLA  ·  {_disp_name}", expanded=False):
+        _tb_zoom, _tb_full, _ = st.columns([1, 1, 8])
+        with _tb_zoom:
+            _scroll_zoom = st.toggle("🔍", key="chart_scroll_zoom",
+                                     value=False,
+                                     help="Açık: scroll ile zoom | Kapalı: scroll sayfa kaydırır")
+        with _tb_full:
+            if st.button("⛶", key="btn_fullscreen_chart",
+                         help="Derin analiz — SMC + Hacim + Para Akışı + Formasyon"):
+                _show_fullscreen_chart()
+        try:
+            with _Timer("ANA GRAFIK: _main_price_chart_plotly"):
+                _inline_fig, _ = _main_price_chart_plotly(st.session_state.ticker, True)
+            if _inline_fig is not None:
+                _inline_fig.update_layout(height=440, margin=dict(t=20, b=10, l=0, r=0))
+                st.plotly_chart(
+                    _inline_fig,
+                    width='stretch',
+                    config={
+                        'scrollZoom'            : bool(st.session_state.get('chart_scroll_zoom', False)),
+                        'displayModeBar'        : True,
+                        'modeBarButtonsToRemove': ['select2d', 'lasso2d'],
+                        'displaylogo'           : False,
+                    },
+                    key="inline_price_chart",
+                )
+        except Exception:
+            if st.button(
+                f"🧠  {_disp_name}  ·  SMC Derin Yapı Grafiğini İncelemek için TIKLA",
+                key="btn_fullscreen_chart_fb",
+                width='stretch',
+                type="primary",
+            ):
+                _show_fullscreen_chart()
     if _PROFILE_ENABLED and _PROFILE_LEFT_T0 is not None:
         _tlog("└── _render_left_col BİTTİ", (_ptime2.perf_counter() - _PROFILE_LEFT_T0) * 1000, extra=f"ticker={_cur_ticker}")
     
@@ -30315,7 +29693,7 @@ def _render_left_col():
                             _scanners_str = " + ".join(_hg_item.get('scanners', []))
                             _conf_desc_parts.append(f"{_hg_item['label']}: {_scanners_str}")
                         _conf_desc = " | ".join(_conf_desc_parts)
-                        if st.button(f"{_icon} {_cs} ({_cp_s}) · {_ws}pt", key=f"conf_top_{_cs}_{_ci}", use_container_width=True):
+                        if st.button(f"{_icon} {_cs} ({_cp_s}) · {_ws}pt", key=f"conf_top_{_cs}_{_ci}", width='stretch'):
                             st.session_state.ticker = _ch['Sembol']
                             on_scan_result_click(_ch['Sembol']); st.rerun()
                         if _conf_desc:
@@ -30347,7 +29725,7 @@ def _render_left_col():
                         _hc_badge_suffix = f" | {_hc_badges}" if _hc_badges else ""
                         _hc_tooltip = _hcr.get('Aciklama', 'Harmonik PRZ teyitli')
                         _hc_durum = str(_hcr.get('Durum', ''))
-                        if st.button(f"⚡{_cyon_lbl} {_hcs} ({_hcp_s}) | {_hcr.get('Pattern','')}{_hc_badge_suffix}", key=f"hctop_{_hcs}_{_hci}", use_container_width=True):
+                        if st.button(f"⚡{_cyon_lbl} {_hcs} ({_hcp_s}) | {_hcr.get('Pattern','')}{_hc_badge_suffix}", key=f"hctop_{_hcs}_{_hci}", width='stretch'):
                             st.session_state.ticker = _hcr.get('Sembol', _hcs)
                             on_scan_result_click(_hcr.get('Sembol', _hcs)); st.rerun()
                         _hc_inline = f"{_hc_tooltip}" + (f" · {_hc_durum}" if _hc_durum else "")
@@ -30402,7 +29780,7 @@ def _render_left_col():
             "#1d4ed8",
             desc="Güçlü trendde, henüz fırlamamış, 3 kapıdan 2'si açık hisseler"
         ), unsafe_allow_html=True)
-        if st.button("💎 ELİT TARAMA (Platin + Altın)", use_container_width=True, key="btn_elit_tara_main",
+        if st.button("💎 ELİT TARAMA (Platin + Altın)", width='stretch', key="btn_elit_tara_main",
                      help="Piyasanın en kaliteli hisselerini iki kategoride listeler.\n\n💎 Platin Fırsat: Fiyat hem 200 hem 50 günlük ortalamanın üstünde, RS endeksten güçlü, Discount bölgede ve hacim artıyor — tüm kriterler aynı anda sağlanmalı.\n\n🦁 Altın Set-up: Son 10 günde endeksi geçmiş, son 60 güne göre hâlâ ucuz, enerji/hacim yükseliyor. Büyük oyunculara yakın ama henüz fazla yükselmemiş hisseler."):
             with st.spinner("Elit hisseler aranıyor..."):
                 _scan_list = ASSET_GROUPS.get(st.session_state.category, [])
@@ -30489,7 +29867,7 @@ def _render_left_col():
                                       + _darvas_tip
                                       + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _tdbl else "")
                                       + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_ter5_meta.get('id','5★')} ({_ter5_meta.get('name','')})" if _ter5 else ""))
-                            if st.button(_tlbl, key=f"elit_tekli_{_ti}", use_container_width=True, help=_ttip):
+                            if st.button(_tlbl, key=f"elit_tekli_{_ti}", width='stretch', help=_ttip):
                                 on_scan_result_click(_tsym); st.rerun()
                     else:
                         st.markdown(
@@ -30527,7 +29905,7 @@ def _render_left_col():
                             _gtip = (f"Altın Set-up · Discount %{_gdisc} · RSI {_grsi}"
                                      + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _gdbl else "")
                                      + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_ger5_meta.get('id','5★')} ({_ger5_meta.get('name','')})" if _ger5 else ""))
-                            if st.button(_glbl, key=f"elit_golden_{_gi}", use_container_width=True, help=_gtip):
+                            if st.button(_glbl, key=f"elit_golden_{_gi}", width='stretch', help=_gtip):
                                 on_scan_result_click(_gsym); st.rerun()
                     else:
                         st.markdown(
@@ -30564,7 +29942,7 @@ def _render_left_col():
                                      + (" | 💎💎 SMA50 yükseliyor — ekstra güç!" if _ps50r else "")
                                      + (" | ÇİFT TEYİT — Pre-Launch BOS'ta da var!" if _pdbl else "")
                                      + (f" | ÇİFT ALTIN ETİKET — Erken Radar {_per5_meta.get('id','5★')} ({_per5_meta.get('name','')})" if _per5 else ""))
-                            if st.button(_plbl, key=f"elit_plt2_{_pi}", use_container_width=True, help=_ptip):
+                            if st.button(_plbl, key=f"elit_plt2_{_pi}", width='stretch', help=_ptip):
                                 on_scan_result_click(_psym); st.rerun()
                     else:
                         st.markdown(
@@ -30744,7 +30122,7 @@ def _render_left_col():
                                         f"⭐ {_cd['name']}{_age_badge}{_multi_badge}{_conf_badge}\n"
                                         f"{_desc_txt}")
                                 _key = f"er_card_{_cd['sym']}_{_cd['eri']}"
-                                if st.button(_lbl, key=_key, use_container_width=True):
+                                if st.button(_lbl, key=_key, width='stretch'):
                                     on_scan_result_click(_cd['sembol']); st.rerun()
             else:
                 st.markdown(f"<div style='border:1px dashed #3b82f650;border-radius:7px;"
@@ -30785,7 +30163,7 @@ def _render_left_col():
                         _pb_double = sym in _double_hit_syms
                         lbl = (f"{day_icon}{'💎' if _pb_double else ''} {sym.replace('.IS','')} | "
                                f"Skor:{skor_v} | RSI:{rsi_v:.0f}")
-                        if st.button(lbl, key=f"pb_btn_{sym}_{i}", use_container_width=True):
+                        if st.button(lbl, key=f"pb_btn_{sym}_{i}", width='stretch'):
                             on_scan_result_click(sym); st.rerun()
                         if _pb_double:
                             st.markdown("<div style='font-size:0.68rem;color:#818cf8;font-weight:700;"
@@ -30810,7 +30188,7 @@ def _render_left_col():
             "VCP + SMA hizalama + RS güç", "#3b82f6",
             desc="Dünya şampiyonunun metodolojisi: dar bant, güçlü trend, doğru an"
         ), unsafe_allow_html=True)
-        if st.button(f"🦁 SEPA TARAMASI ({st.session_state.category})", type="secondary", use_container_width=True, key="btn_scan_sepa",
+        if st.button(f"🦁 SEPA TARAMASI ({st.session_state.category})", type="secondary", width='stretch', key="btn_scan_sepa",
                      help="Mark Minervini'nin onlarca yıllık şampiyon hisse araştırmasına dayanan tarama yöntemi.\n\nKriterler: Fiyat 50, 150 ve 200 günlük ortalamalarının hepsinin üstünde ve bu ortalamalar doğru sırada hizalanmış olmalı. Hisse piyasadan güçlü (RS > 70) ve son 52 haftanın dibinden en az %25 yukarıda olmalı.\n\nEk bonus: VCP (Volatility Contraction Pattern) — hisse giderek daralan bir sıkışma içindeyse ve hacimli kırılım yaşandıysa 'Süper' etiketiyle çıkar."):
             with st.spinner("Aslan avda... Trend şablonu, VCP ve RS taranıyor..."):
                 current_assets = ASSET_GROUPS.get(st.session_state.category, [])
@@ -30821,7 +30199,7 @@ def _render_left_col():
                     for i, row in st.session_state.minervini_data.iterrows():
                         sym = row['Sembol']
                         icon = "💎💎" if "SÜPER" in row['Durum'] else "🔥"
-                        if st.button(f"{icon} {sym} ({row['Fiyat']}) | {row['Durum']}", key=f"sepa_{sym}_{i}", use_container_width=True):
+                        if st.button(f"{icon} {sym} ({row['Fiyat']}) | {row['Durum']}", key=f"sepa_{sym}_{i}", width='stretch'):
                             on_scan_result_click(sym); st.rerun()
                         _sepa_detay = row.get('Detay', '')
                         if _sepa_detay:
@@ -30835,7 +30213,7 @@ def _render_left_col():
             "RS güçlü + Discount + Hacim + Formasyon", "#16a34a",
             desc="Güçlü ama henüz pahalılaşmamış — büyük oyuncuya yakın erken konum"
         ), unsafe_allow_html=True)
-        if st.button(f"💎 ALTIN SET-UP & VIP FORMASYON TARA ({st.session_state.category})", type="secondary", use_container_width=True, key="btn_scan_golden_vip",
+        if st.button(f"💎 ALTIN SET-UP & VIP FORMASYON TARA ({st.session_state.category})", type="secondary", width='stretch', key="btn_scan_golden_vip",
                      help="İki aşamalı eleme: önce Altın Set-up kriterleri (RS güçlü + Discount + Hacim), sonra formasyon (Fincan-Kulp, TOBO, Üçgen, Range). Formasyon bulunamazsa Hazırlık listesine girer."):
             with st.spinner("Fincan-Kulp, TOBO ve Üçgenlerde Altın Set-up aranıyor..."):
                 current_assets = ASSET_GROUPS.get(st.session_state.category, [])
@@ -30853,7 +30231,7 @@ def _render_left_col():
                         _prefix = "♠️" if _gpr.get('is_nadir', False) else "🚀"
                         _mf_v = _gpr.get('Mansfield', '-')
                         _mf_icon = "📈" if (isinstance(_mf_v, float) and _mf_v > 0) else "📉"
-                        if st.button(f"{_prefix} {_gps.replace('.IS','')} | Skor:{_gpr['Puan']} | RS:{_mf_icon}{_mf_v}", key=f"gvip_btn_{_gps}_{_gpi}", use_container_width=True):
+                        if st.button(f"{_prefix} {_gps.replace('.IS','')} | Skor:{_gpr['Puan']} | RS:{_mf_icon}{_mf_v}", key=f"gvip_btn_{_gps}_{_gpi}", width='stretch'):
                             on_scan_result_click(_gps); st.rerun()
                         _gp_detay = _gpr.get('Detay', '')
                         if _gp_detay:
@@ -30863,12 +30241,62 @@ def _render_left_col():
                 with st.container(height=120, border=True):
                     for _hzi, _hzr in _hazirlik.head(10).iterrows():
                         _hzs = _hzr['Sembol']
-                        if st.button(f"⏳ {_hzs.replace('.IS','')} — {_hzr['Durum']}", key=f"gvip_hz_{_hzs}_{_hzi}", use_container_width=True):
+                        if st.button(f"⏳ {_hzs.replace('.IS','')} — {_hzr['Durum']}", key=f"gvip_hz_{_hzs}_{_hzi}", width='stretch'):
                             on_scan_result_click(_hzs); st.rerun()
             else:
                 st.caption("Altın Set-up & VIP Formasyon bulunamadı.")
     
     
+    st.markdown("<hr style='margin:12px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════
+    # 🎯 FIRSAT RADARI — Formasyon Avcısı (3 sütun) — 24 Haz 2026
+    # radar_core.scan_universe → firsat_radari botu ile AYNI motor (tek kaynak, drift yok).
+    # ══════════════════════════════════════════════════════════
+    st.markdown(_scan_card_header("🎯", "FIRSAT RADARI — Formasyon Avcısı", 90,
+        "Fincan-Kulp + TOBO + Çift Dip · boyun çizgisi kırılımı", "#a855f7",
+        desc="Büyük çıkışları başlamadan yakalar: hazırlanıyor → sıkıştı → kırdı (likit ≥500M TL)"), unsafe_allow_html=True)
+    if st.button("🎯 FIRSAT RADARI TARA (likit BIST formasyonları)", type="secondary", width='stretch', key="btn_firsat_radar",
+                 help="Formasyon-önce: fincan-kulp/TOBO/çift-dip + 5 kalite işareti. Bot ile aynı motor."):
+        with st.spinner("Formasyonlar ve boyun kırılımları taranıyor..."):
+            st.session_state.firsat_radar_data = _firsat_radar_scan()
+            st.rerun()
+    _fr = st.session_state.get('firsat_radar_data')
+    if _fr is not None:
+        _frh, _frs, _frk, _frd = _fr
+        _TT = {'CUP': 'Fincan-Kulp', 'TOBO': 'TOBO', 'W': 'Çift Dip'}
+        _taze   = [r for r in _frk if r.get('durum') == 'taze' and r.get('Q', 0) >= 3 and r['fiyat'] >= r['neck'] and r.get('ext', 1) <= 1.20]
+        _retest = [r for r in _frk if r.get('durum') == 'retest' and r.get('a200') == 1]
+        _kirdi_show = _taze + _retest
+        _frc1, _frc2, _frc3 = st.columns(3)
+        with _frc1:
+            st.markdown("<div style='text-align:center;font-weight:800;color:#22c55e;padding:4px;'>🌱 HAZIRLANIYOR</div>"
+                        "<div style='text-align:center;font-size:0.7rem;color:#94a3b8;margin-bottom:4px;'>Taban kuruyor, daha kırmadı</div>", unsafe_allow_html=True)
+            with st.container(height=240, border=True):
+                if not _frh: st.caption("yok")
+                for _r in _frh[:15]:
+                    if st.button(f"{_r['tk']} · {_TT.get(_r['type'], _r['type'])} — boyna %{_r['dist']}", key=f"frh_{_r['tk']}", width='stretch'):
+                        on_scan_result_click(_r['tk'] + '.IS'); st.rerun()
+        with _frc2:
+            st.markdown("<div style='text-align:center;font-weight:800;color:#eab308;padding:4px;'>🤏 SIKIŞTI</div>"
+                        "<div style='text-align:center;font-size:0.7rem;color:#94a3b8;margin-bottom:4px;'>Yay gerildi, kırılma yakın</div>", unsafe_allow_html=True)
+            with st.container(height=240, border=True):
+                if not _frs: st.caption("yok")
+                for _r in _frs[:15]:
+                    if st.button(f"{_r['tk']} · {_TT.get(_r['type'], _r['type'])} — boyna %{_r['dist']} · sıkıştı", key=f"frs_{_r['tk']}", width='stretch'):
+                        on_scan_result_click(_r['tk'] + '.IS'); st.rerun()
+        with _frc3:
+            st.markdown("<div style='text-align:center;font-weight:800;color:#a855f7;padding:4px;'>🚀 KIRDI</div>"
+                        "<div style='text-align:center;font-size:0.7rem;color:#94a3b8;margin-bottom:4px;'>Boyun kırıldı / geri test</div>", unsafe_allow_html=True)
+            with st.container(height=240, border=True):
+                if not _kirdi_show: st.caption("yok")
+                for _r in _kirdi_show[:15]:
+                    _tag = "🔄 geri test" if _r.get('durum') == 'retest' else f"{_r.get('Q', 0)}/5 işaret"
+                    if st.button(f"{_r['tk']} · {_TT.get(_r['type'], _r['type'])} — {_tag}", key=f"frk_{_r['tk']}", width='stretch'):
+                        on_scan_result_click(_r['tk'] + '.IS'); st.rerun()
+        if _frd is not None:
+            st.caption(f"📅 {_frd.date()} · formasyon-önce + 5 kalite işareti · Telegram radar botuyla aynı motor")
+
     st.markdown("<hr style='margin:12px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
@@ -30933,7 +30361,7 @@ def _render_left_col():
                 with st.container(height=140, border=False):
                     for _i, _s in enumerate(_ict_syms):
                         _orig = _ict_df.iloc[_i]['Sembol']
-                        if st.button(_s, key=f"ict_min_{_orig}_{_i}", use_container_width=True):
+                        if st.button(_s, key=f"ict_min_{_orig}_{_i}", width='stretch'):
                             on_scan_result_click(_orig); st.rerun()
 
         with _rf_sub:
@@ -30960,7 +30388,7 @@ def _render_left_col():
                 with st.container(height=140, border=False):
                     for _i, _s in enumerate(_rf_syms):
                         _orig = _rf_df.iloc[_i]['Sembol']
-                        if st.button(_s, key=f"rf_min_{_orig}_{_i}", use_container_width=True):
+                        if st.button(_s, key=f"rf_min_{_orig}_{_i}", width='stretch'):
                             on_scan_result_click(_orig); st.rerun()
         # 15 Haz 2026 — Güçlü Dönüş+ minimal isim listesi
         st.markdown("<hr style='margin:8px 0;border-color:rgba(150,150,150,0.15);'>", unsafe_allow_html=True)
@@ -30983,7 +30411,7 @@ def _render_left_col():
                 for _i, _s in enumerate(_gd_syms):
                     with _gd_cols[_i % 3]:
                         _orig = _gd_df.iloc[_i]['Sembol']
-                        if st.button(_s, key=f"gd_min_{_orig}_{_i}", use_container_width=True):
+                        if st.button(_s, key=f"gd_min_{_orig}_{_i}", width='stretch'):
                             on_scan_result_click(_orig); st.rerun()
 
     # 5. GELİŞMİŞ SMR ALGORİTMİK HİSSE RAPORU
@@ -30997,7 +30425,7 @@ def _render_left_col():
     col_reset, col_refresh, _ = st.columns([1, 1, 2])
     with col_reset:
         with st.expander("⚙️ Veriyi Onar (Temettü/Bölünme)"):
-            if st.button("🔄 Sıfırla ve İndir", use_container_width=True, key="reset_data_btn"):
+            if st.button("🔄 Sıfırla ve İndir", width='stretch', key="reset_data_btn"):
                 t_clean = st.session_state.ticker.replace(".IS", "")
                 if "BIST" in st.session_state.category or ".IS" in st.session_state.ticker:
                     t_clean = st.session_state.ticker if st.session_state.ticker.endswith(".IS") else f"{st.session_state.ticker}.IS"
@@ -31021,7 +30449,7 @@ def _render_left_col():
     with col_refresh:
         with st.expander("🔄 Veriyi Tazele (Kategorideki Tüm hisseler)"):
             st.caption("Seçili kategorideki tüm eski parquet verilerini yeniden indirir.")
-            if st.button("▶ Güncellemeyi Başlat", use_container_width=True, key="refresh_all_btn"):
+            if st.button("▶ Güncellemeyi Başlat", width='stretch', key="refresh_all_btn"):
                 _ref_cat   = st.session_state.get('category', 'BIST 500 ')
                 _ref_list  = ASSET_GROUPS.get(_ref_cat, [])
                 _ref_total = len(_ref_list)
@@ -31046,319 +30474,10 @@ def _render_left_col():
                 st.toast(f"✅ {_ref_ok} güncellendi, {_ref_fail} başarısız.", icon="🔄")
                 st.rerun()
 
-    # ── TARAMA PERFORMANSI — Backtest (sol sütun EN ALT) ─────────────────────
-    with st.expander("🏆 TARAMA PERFORMANSI — Backtest (Son 90 Gün)", expanded=False):
-        import json as _bt_json
-        from pathlib import Path as _bt_Path
-        _bt_path = _bt_Path(__file__).parent / "backtest_results.json"
+    # ── TARAMA + KRİTER PERFORMANSI — @st.fragment'e taşındı (tek kontrol değişince tüm sayfa rerun olmasın) ──
+    render_tarama_performans_panel()
+    render_kriter_performans_panel()
 
-        # 🚀 TAVAN ADAYLARI — 60g standalone backtest sonucu (18 Haz 2026)
-        # signal_returns × scan_signals JOIN'ine entegre değil — standalone hesaplama
-        # 3-4 hafta gözlem sonrası DB entegrasyonu yapılacak (B versiyonu)
-        st.markdown(
-            '<div style="background:linear-gradient(135deg,rgba(168,85,247,0.10) 0%,rgba(239,68,68,0.04) 100%);'
-            'border:1px solid rgba(168,85,247,0.30);border-radius:8px;padding:10px 14px;margin-bottom:12px;">'
-            '<div style="font-weight:800;color:#a855f7;font-size:0.9rem;margin-bottom:6px;">'
-            '🚀 Tavan Adayları (Yeni) — 60g Standalone Backtest'
-            '<span style="font-weight:400;color:#94a3b8;font-size:0.7rem;margin-left:8px;font-style:italic;">'
-            '· 16 Mar - 16 Haz 2026 · 1131 tavan · 589 hisse</span>'
-            '</div>'
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.78rem;">'
-            '<div style="background:rgba(239,68,68,0.08);border-left:3px solid #ef4444;border-radius:4px;padding:6px 10px;">'
-            '<div style="font-weight:700;color:#ef4444;">🚨 ALARM — Skor ≥150</div>'
-            '<div style="color:#cbd5e1;margin-top:3px;">Hit: <b>%11.24</b> · Random: <b>×3.44</b></div>'
-            '<div style="color:#94a3b8;font-size:0.7rem;">Günlük ort: 12 hisse · 1.3 tavan/gün</div>'
-            '</div>'
-            '<div style="background:rgba(59,130,246,0.06);border-left:3px solid #3b82f6;border-radius:4px;padding:6px 10px;">'
-            '<div style="font-weight:700;color:#3b82f6;">📋 İZLEME — TOP 30</div>'
-            '<div style="color:#cbd5e1;margin-top:3px;">Hit: <b>%14.8</b> · Random: <b>×3.04</b></div>'
-            '<div style="color:#94a3b8;font-size:0.7rem;">Günlük ort: 30 hisse · 3 tavan/gün</div>'
-            '</div>'
-            '</div>'
-            '<div style="margin-top:8px;font-size:0.7rem;color:#94a3b8;line-height:1.4;">'
-            '<b style="color:#cbd5e1;">Kalıp performansı:</b> '
-            '📈 A Momentum <b style="color:#10b981;">%9.9</b> · '
-            '🎯 E Direnç <b style="color:#10b981;">%5.5</b> · '
-            '🤐 C Sıkışma %2.0 · 🔄 D Dip %2.7 — A en güvenilir, C beklenenden zayıf. '
-            '<b style="color:#cbd5e1;">Rejim:</b> HIZLI_RALLI ve YATAY\'da en güçlü (3.5×), DUSUS\'ta zayıf (1.6×).'
-            '</div>'
-            '<div style="margin-top:6px;font-size:0.68rem;color:#64748b;font-style:italic;">'
-            '⚠ Standalone backtest — scan_signals tablosuna entegre değil. 3-4 hafta gözlem sonrası DB\'ye yazılacak.'
-            '</div>'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-        _bt_col1, _bt_col2 = st.columns([3, 1])
-        with _bt_col2:
-            if st.button("🔄 Şimdi Çalıştır", key="bt_run_btn", use_container_width=True,
-                         help="backtest_runner.py'yi arka planda çalıştırır. ~1-30 saniye sürer."):
-                import subprocess as _bt_sub
-                import sys as _bt_sys
-                with st.spinner("Backtest çalışıyor..."):
-                    try:
-                        _bt_result = _bt_sub.run(
-                            [_bt_sys.executable, str(_bt_Path(__file__).parent / "backtest_runner.py")],
-                            cwd=str(_bt_Path(__file__).parent),
-                            capture_output=True, text=True, timeout=300
-                        )
-                        if _bt_result.returncode == 0:
-                            st.success("✅ Backtest tamamlandı, sayfayı yenile.")
-                        else:
-                            st.error(f"❌ Backtest hata: {_bt_result.stderr[-500:]}")
-                    except _bt_sub.TimeoutExpired:
-                        st.error("⏱ Timeout (5dk). Çok sinyal var olabilir.")
-                    except Exception as _e:
-                        st.error(f"❌ Çalıştırma hatası: {_e}")
-
-        if not _bt_path.exists():
-            with _bt_col1:
-                st.info("Henüz backtest çalıştırılmadı. **🔄 Şimdi Çalıştır** butonuna bas.")
-        else:
-            try:
-                _bt = _bt_json.loads(_bt_path.read_text(encoding='utf-8'))
-                _bt_gen = _bt.get('generated_at', '—')
-
-                _bt_fresh_color = "#10b981"
-                _bt_fresh_label = "✓ güncel"
-                try:
-                    _bt_dt = datetime.strptime(_bt_gen, "%Y-%m-%d %H:%M:%S")
-                    _bt_age_h = (datetime.now() - _bt_dt).total_seconds() / 3600
-                    if _bt_age_h > 168:
-                        _bt_fresh_color = "#ef4444"; _bt_fresh_label = "⚠️ 7+ gün eski"
-                    elif _bt_age_h > 24:
-                        _bt_fresh_color = "#f59e0b"; _bt_fresh_label = f"{int(_bt_age_h/24)} gün önce"
-                    elif _bt_age_h > 1:
-                        _bt_fresh_label = f"{int(_bt_age_h)} saat önce"
-                    else:
-                        _bt_fresh_label = f"{int(_bt_age_h*60)} dakika önce"
-                except Exception:
-                    pass
-
-                with _bt_col1:
-                    st.markdown(
-                        f"<div style='display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#94a3b8;"
-                        f"background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.2);"
-                        f"border-radius:6px;padding:6px 10px;'>"
-                        f"<span>📅 Son hesap: <b style='color:{_bt_fresh_color};'>{_bt_gen}</b> "
-                        f"<span style='color:{_bt_fresh_color};'>({_bt_fresh_label})</span></span>"
-                        f"<span>⏱ Süre: <b>{_bt.get('duration_sec','—')}s</b></span>"
-                        f"</div>", unsafe_allow_html=True
-                    )
-
-                _bt_stats = _bt.get('db_stats', {})
-                _bt_eval  = _bt.get('eval_meta', {})
-                st.markdown(
-                    f"<div style='display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#94a3b8;"
-                    f"background:rgba(125,211,252,0.04);border:1px solid rgba(125,211,252,0.18);"
-                    f"border-radius:6px;padding:6px 10px;margin-top:6px;margin-bottom:10px;'>"
-                    f"<span>📊 <b style='color:#7dd3fc;'>{_bt_stats.get('total_signals',0):,}</b> sinyal</span>"
-                    f"<span>✓ <b style='color:#10b981;'>{_bt_eval.get('evaluated',0)}</b> değerlendirildi</span>"
-                    f"<span>⏳ <b style='color:#f59e0b;'>{_bt_eval.get('pending',0)}</b> bekleyen</span>"
-                    f"<span>🔖 <b style='color:#cbd5e1;'>{_bt_stats.get('unique_scan_types',0)}</b> tarama tipi</span>"
-                    f"</div>", unsafe_allow_html=True
-                )
-
-                _bt_summary = _bt.get('summary', [])
-                if _bt_summary:
-                    _bt_df = pd.DataFrame(_bt_summary)
-
-                    def _render_bt_html_table(df_src, title):
-                        """Backtest tablosu — Expectancy odaklı v2 + Alpha."""
-                        _th = lambda txt, align='center': (
-                            f"<th style='padding:4px 6px;text-align:{align};"
-                            f"color:#64748b;font-size:0.72rem;font-weight:600;"
-                            f"border-bottom:1px solid rgba(148,163,184,0.2);"
-                            f"word-break:break-word;line-height:1.3;'>{txt}</th>"
-                        )
-                        hdr = (_th('Tarama', 'left') +
-                               _th('5G İsabet') +
-                               _th('10G İsabet') +
-                               _th('20G İsabet') +
-                               _th('10G Beklenti') +
-                               _th('Profit Factor') +
-                               _th('Ort. Kazanç 10G') +
-                               _th('Ort. Kayıp 10G') +
-                               _th('Piyasa Farkı'))
-
-                        rows_html = ""
-                        for _, row in df_src.iterrows():
-                            label    = row.get('label', '')
-                            n        = row.get('total_signals', 0)
-                            hit10    = row.get('hit_10g_pct')
-                            exp10    = row.get('expectancy_10g')
-                            pf10     = row.get('profit_factor_10g')
-                            avg_win  = row.get('avg_win_10g')
-                            avg_loss = row.get('avg_loss_10g')
-                            hit5     = row.get('hit_5g_pct')
-                            hit20    = row.get('hit_20g_pct')
-                            n5       = row.get('eval_5g', 0)
-                            n10      = row.get('eval_10g', 0)
-                            n20      = row.get('eval_20g', 0)
-                            alpha10  = row.get('alpha_10g')
-                            xu100_10 = row.get('xu100_avg_10g')
-
-                            if exp10 is None:
-                                exp_col = '#64748b'; exp_str = '—'
-                            elif exp10 > 1:
-                                exp_col = '#4ade80'; exp_str = f'%{exp10:+.2f}'
-                            elif exp10 > 0:
-                                exp_col = '#86efac'; exp_str = f'%{exp10:+.2f}'
-                            elif exp10 > -2:
-                                exp_col = '#f59e0b'; exp_str = f'%{exp10:+.2f}'
-                            else:
-                                exp_col = '#f87171'; exp_str = f'%{exp10:+.2f}'
-
-                            if pf10 is None:
-                                pf_col = '#64748b'; pf_str = '—'
-                            elif pf10 >= 2.0:
-                                pf_col = '#4ade80'; pf_str = f'{pf10:.2f}'
-                            elif pf10 >= 1.5:
-                                pf_col = '#86efac'; pf_str = f'{pf10:.2f}'
-                            elif pf10 >= 1.0:
-                                pf_col = '#f59e0b'; pf_str = f'{pf10:.2f}'
-                            else:
-                                pf_col = '#f87171'; pf_str = f'{pf10:.2f}'
-
-                            def _hit_col(v):
-                                if v is None: return '#64748b'
-                                return '#4ade80' if v >= 60 else '#f59e0b' if v >= 40 else '#f87171'
-
-                            if alpha10 is None:
-                                alpha_col = '#64748b'; alpha_str = '—'
-                            elif alpha10 > 2:
-                                alpha_col = '#4ade80'; alpha_str = f'%{alpha10:+.1f}'
-                            elif alpha10 > 0:
-                                alpha_col = '#86efac'; alpha_str = f'%{alpha10:+.1f}'
-                            elif alpha10 > -2:
-                                alpha_col = '#f59e0b'; alpha_str = f'%{alpha10:+.1f}'
-                            else:
-                                alpha_col = '#f87171'; alpha_str = f'%{alpha10:+.1f}'
-                            alpha_title = f"XU100 ort: %{xu100_10:+.1f}" if xu100_10 is not None else "XU100 verisi yok"
-
-                            def _td(txt, col='#cbd5e1', bold=False, italic=False):
-                                fw = 'font-weight:700;' if bold else ''
-                                fi = 'font-style:italic;' if italic else ''
-                                return (f"<td style='padding:4px 6px;text-align:center;color:{col};"
-                                        f"font-size:0.77rem;{fw}{fi}'>{txt}</td>")
-
-                            r  = f"<td style='padding:4px 6px;text-align:left;font-size:0.75rem;color:#e2e8f0;'>{label}</td>"
-                            # Her hit% hücresinin altına "Gerçek sinyal: X" 2. satır enjekte
-                            _gs = lambda nval: f"<br><span style='font-size:0.62rem;color:#64748b;font-style:italic;font-weight:400;'>Gerçek sinyal: {nval}</span>"
-                            _h5_txt  = (f"%{hit5}{_gs(n5)}")   if hit5  is not None else '—'
-                            _h10_txt = (f"%{hit10}{_gs(n10)}") if hit10 is not None else '—'
-                            _h20_txt = (f"%{hit20}{_gs(n20)}") if hit20 is not None else '—'
-                            r += _td(_h5_txt,  _hit_col(hit5))
-                            r += _td(_h10_txt, _hit_col(hit10), bold=True)
-                            r += _td(_h20_txt, _hit_col(hit20))
-                            r += _td(exp_str, exp_col, bold=True)
-                            r += _td(pf_str, pf_col, bold=True)
-                            r += _td(f"%{avg_win:+.1f}"  if avg_win  is not None else '—', '#4ade80', italic=True)
-                            r += _td(f"%{avg_loss:+.1f}" if avg_loss is not None else '—', '#f87171', italic=True)
-                            _alpha_td = (f"<td style='padding:4px 6px;text-align:center;color:{alpha_col};"
-                                         f"font-size:0.77rem;font-weight:700;"
-                                         f"cursor:help;' title='{alpha_title}'>{alpha_str}</td>")
-                            r += _alpha_td
-                            rows_html += f"<tr style='border-bottom:1px solid rgba(148,163,184,0.06);'>{r}</tr>"
-
-                        st.markdown(f"**{title}**")
-                        st.markdown(
-                            f"<div style='font-size:0.8rem;'>"
-                            f"<table style='width:100%;border-collapse:collapse;font-family:inherit;table-layout:fixed;'>"
-                            f"<thead><tr>{hdr}</tr></thead>"
-                            f"<tbody>{rows_html}</tbody></table></div>",
-                            unsafe_allow_html=True
-                        )
-
-                    _is_er        = _bt_df['category'].isin(['A', 'B', 'C', 'D'])
-                    _er_data      = _bt_df[_is_er.values]
-                    _classic_data = _bt_df[~_is_er.values]
-
-                    if not _classic_data.empty:
-                        _render_bt_html_table(_classic_data, "📊 Klasik Taramalar")
-                        # 10 Haz 2026 Oturum 20: ICT Sniper "sessiz" durumu —
-                        # piyasa SMA50 altındaysa kullanıcıya bilgi rozeti göster.
-                        # Sebebi: ICT Sniper sadece YUKARI yönlü setup arar (fiyat>SMA50 + mom+).
-                        # Düşüş trendinde sıfır sinyal "bug" değil, sistem doğru çalışıyor demek.
-                        # UI bilgi mesajı — AI prompt'a/sektör/rejim asla eklenmez.
-                        try:
-                            _xu_df_rej = get_safe_historical_data("XU100.IS")
-                            if _xu_df_rej is not None and len(_xu_df_rej) >= 50:
-                                _xu_last = float(_xu_df_rej['Close'].iloc[-1])
-                                _xu_sma50 = float(_xu_df_rej['Close'].rolling(50).mean().iloc[-1])
-                                _xu_5g = float(_xu_df_rej['Close'].iloc[-6]) if len(_xu_df_rej) >= 6 else _xu_last
-                                _xu_below_sma = _xu_last < _xu_sma50
-                                _xu_5g_neg = _xu_last < _xu_5g
-                                # ICT Sniper satırında 5g sinyal sayısı kontrolü
-                                _ict_row = _classic_data[_classic_data['label'].str.contains('ICT Sniper', na=False)]
-                                _ict_5g_sample = 0
-                                if not _ict_row.empty:
-                                    _ict_5g_sample = int(_ict_row.iloc[0].get('eval_5g', 0) or 0)
-                                # Sample son 30g'de büyük değil ya da pyasa düşüş trendinde
-                                if (_xu_below_sma and _xu_5g_neg) and _ict_5g_sample < 100:
-                                    _xu_diff_pct = ((_xu_last - _xu_sma50) / _xu_sma50) * 100
-                                    st.markdown(
-                                        f"<div style='margin-top:6px;padding:8px 12px;"
-                                        f"background:rgba(251,191,36,0.08);"
-                                        f"border-left:3px solid #fbbf24;"
-                                        f"border-radius:0 4px 4px 0;font-size:0.78rem;"
-                                        f"color:#fde68a;line-height:1.45;'>"
-                                        f"💡 <b>ICT Sniper neden sessiz?</b><br>"
-                                        f"XU100 şu an SMA50 altında "
-                                        f"(<code style='color:#fbbf24;'>{_xu_last:.0f}</code> vs "
-                                        f"<code style='color:#fbbf24;'>{_xu_sma50:.0f}</code>, "
-                                        f"%{_xu_diff_pct:+.1f}). ICT Sniper yalnız <b>yukarı yönlü</b> "
-                                        f"setup arar (fiyat &gt; SMA50 + 5g momentum pozitif). "
-                                        f"Düşüş rejiminde sinyal beklenmez — piyasa dönüşü başlayınca "
-                                        f"ilk tetiklenecek tarama bu olur."
-                                        f"</div>",
-                                        unsafe_allow_html=True
-                                    )
-                        except Exception:
-                            pass
-
-                    _top5 = _bt.get('top5_by_expectancy', [])
-                    if _top5:
-                        st.markdown("**🥇 En Yüksek Expectancy (10G)**")
-                        for _t in _top5:
-                            _exp = _t.get('expectancy_10g')
-                            _win = _t.get('avg_win_10g')
-                            _los = _t.get('avg_loss_10g')
-                            st.markdown(
-                                f"- **{_t['label']}** — "
-                                f"Exp: `%{_exp:+.2f}` · "
-                                f"Hit: `%{_t.get('hit_10g_pct','—')}` · "
-                                f"Kazanç: `%{_win:+.1f}` / Kayıp: `%{_los:+.1f}` · "
-                                f"`{_t.get('eval_10g',0)}/{_t['total_signals']}` sinyal"
-                            )
-
-                    _best_cat = _bt.get('best_per_category', {})
-                    if _best_cat:
-                        st.markdown("**🏆 Kategori Şampiyonları (Expectancy)**")
-                        _cat_full = {'A': 'GERİ DÖNÜŞ', 'B': 'SIKIŞMA', 'C': 'TREND DEVAMI'}
-                        for _ck, _cv in _best_cat.items():
-                            st.markdown(
-                                f"- **{_cat_full.get(_ck, _ck)}:** {_cv['label']} "
-                                f"(hit %{_cv.get('hit_10g','—')} · exp %{_cv.get('expectancy',0):+.2f})"
-                            )
-
-                    _worst = _bt.get('worst_5', [])
-                    if _worst:
-                        with st.expander("⚠️ Negatif Expectancy (Eleme Adayları)", expanded=False):
-                            for _w in _worst:
-                                st.markdown(
-                                    f"- **{_w['label']}** — "
-                                    f"Exp: `%{_w.get('expectancy_10g',0):+.2f}` · "
-                                    f"Hit: `%{_w.get('hit_10g_pct','—')}` · "
-                                    f"`{_w.get('eval_10g',0)}/{_w['total_signals']}` sinyal"
-                                )
-
-                    if not _er_data.empty:
-                        _render_bt_html_table(_er_data, "🎯 Erken Radar Senaryoları")
-                else:
-                    st.info("Henüz değerlendirilebilir sinyal yok (min 5g geçmesi gerekir).")
-            except Exception as _bt_e:
-                st.warning(f"backtest_results.json okunamadı: {_bt_e}")
 
     # ── HAFTALIK GENEL ÇERÇEVE — sol sütun EN ALT (sadece Cmt/Paz) ───────────
     try:
@@ -31376,324 +30495,9 @@ def _render_left_col():
 # tavan yakalama beklenir (random'un 1.93x'i). Sağ sütun en altta render.
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _tav_rsi(s, n=14):
-    d = s.diff()
-    up = d.clip(lower=0).rolling(n).mean()
-    dn = (-d.clip(upper=0)).rolling(n).mean()
-    import numpy as np
-    return 100 - 100/(1 + up/dn.replace(0, np.nan))
+# (30 Haz 2026) Tavan motoru + scan_para_akisi_liderleri tanımları BÖLÜM 33 öncesine
+# taşındı (Master Scan NameError fix). Eskiden burada tanımlıydılar.
 
-def _tav_is_manipulated(df, i):
-    """BRMEN tipi manipülasyon şüphesi: fitilsiz mum çok, tavan/taban açılış çok,
-    range çöküşü çok. En az 2 ölçüt kırmızıysa True döner — hisse motordan elenir.
-    60g backtest'te listeden ~30-50 düşük kalite hisse çıkarır (likit + sağlıklı kalsın)."""
-    import numpy as np
-    # 21 Haz 2026 — YAKIN-DÖNEM DİKEY TAVAN (BRMEN tipi: bugün tavanda ya da son 5g'de 2+
-    # tavan) → manipülasyona açık, DİREKT ELE (kronik filtre bunu seyreltip kaçırıyordu).
-    _rc = df['Close'].pct_change() * 100
-    try:
-        if _rc.iloc[i] >= 9.0 or int((_rc.iloc[max(0, i - 4):i + 1] >= 9.0).sum()) >= 2:
-            return True
-    except Exception:
-        pass
-    if i < 60: return False
-    last30 = df.iloc[i-30:i]
-    rng = last30['High'] - last30['Low']
-    body = (last30['Close'] - last30['Open']).abs()
-    body_ratio = (body / rng.replace(0, np.nan)).fillna(1.0)
-    fitilsiz_oran = (body_ratio > 0.85).mean()
-    last60 = df.iloc[max(0, i-60):i]
-    pct_chg = last60['Close'].pct_change().abs() * 100
-    tavan_taban_oran = (pct_chg > 9.5).mean()
-    last20 = df.iloc[i-20:i]
-    rel_range = ((last20['High'] - last20['Low']) / last20['Close']) * 100
-    range_collapse = (rel_range < 1.0).mean()
-    kirmizi = 0
-    if fitilsiz_oran > 0.45: kirmizi += 1
-    if tavan_taban_oran > 0.12: kirmizi += 1
-    if range_collapse > 0.30: kirmizi += 1
-    return kirmizi >= 2
-
-def _tav_features(df, i):
-    """T (i) günü için 5g dizilim dahil features."""
-    import numpy as np
-    if i < 60: return None
-    if _tav_is_manipulated(df, i): return None   # Manipülasyon şüpheli — ele
-    t = df.iloc[i]; t1 = df.iloc[i-1]
-    hist = df.iloc[:i+1]
-    close = hist['Close']; high = hist['High']; low = hist['Low']; vol = hist['Volume']
-    rsi14 = _tav_rsi(close).iloc[-1]
-    look = min(252, len(hist))
-    hh = high.tail(look).max(); ll = low.tail(look).min()
-    pos_52h = (t['Close']-ll)/(hh-ll)*100 if hh > ll else np.nan
-    bb_w = (close.tail(20).std()/close.tail(20).mean())*100
-    bb_60 = close.rolling(20).std()/close.rolling(20).mean()*100
-    bb_pct_rank = (bb_60.tail(60) <= bb_w).mean()*100
-    vol20 = vol.tail(20).mean()
-    vr_t = t['Volume']/vol20 if vol20 > 0 else np.nan
-    ret_10g = (t['Close']/df.iloc[i-10]['Close']-1)*100 if i >= 10 else np.nan
-    ret_5g = (t['Close']/df.iloc[i-5]['Close']-1)*100 if i >= 5 else np.nan
-    near_h20 = (t['Close']/close.tail(20).max())*100
-
-    # 5g dizilim
-    pct_seq = []; vol_seq = []
-    for k in range(5):
-        idx = i - (4 - k)
-        if idx < 1:
-            pct_seq.append(np.nan); vol_seq.append(np.nan); continue
-        prev = df.iloc[idx-1]['Close']; cur = df.iloc[idx]['Close']
-        pct_seq.append((cur/prev-1)*100 if prev > 0 else np.nan)
-        v20 = df.iloc[max(0, idx-20):idx]['Volume'].mean()
-        vol_seq.append(df.iloc[idx]['Volume']/v20 if v20 > 0 else np.nan)
-    vs = [v for v in vol_seq if not (v is None or (isinstance(v, float) and np.isnan(v)))]
-    vol_5g_slope = (vs[-1]-vs[0]) if len(vs) >= 2 else 0
-    pct_T = pct_seq[-1] if pct_seq else np.nan
-    vol_T = vol_seq[-1] if vol_seq else np.nan
-    # Mum tipi
-    rng = t['High']-t['Low']; body = abs(t['Close']-t['Open'])
-    body_pct = body/rng*100 if rng > 0 else 0
-    is_doji = body_pct < 10
-    is_green = t['Close'] > t['Open']
-    lower_wick = min(t['Close'], t['Open']) - t['Low']
-    lw_pct = lower_wick/rng*100 if rng > 0 else 0
-    is_hammer = (lw_pct > 40) and (body_pct > 10)
-    return dict(close=t['Close'], rsi=rsi14, pos_52h=pos_52h, bb_rank=bb_pct_rank,
-                vr_t=vr_t, near_h20=near_h20, ret_5g=ret_5g, ret_10g=ret_10g,
-                vol_tl=t['Close']*t['Volume'], pct_T=pct_T, vol_T=vol_T,
-                vol_5g_slope=vol_5g_slope, is_doji=is_doji, is_green=is_green,
-                is_hammer=is_hammer, body_pct=body_pct)
-
-def _tav_score_A(f):
-    s = 0
-    if f['ret_10g'] >= 20: s += 35
-    elif f['ret_10g'] >= 15: s += 25
-    elif f['ret_10g'] >= 10: s += 15
-    elif f['ret_10g'] >= 5: s += 5
-    if f['pos_52h'] >= 90: s += 25
-    elif f['pos_52h'] >= 75: s += 15
-    elif f['pos_52h'] >= 60: s += 6
-    if f['near_h20'] >= 99: s += 20
-    elif f['near_h20'] >= 95: s += 8
-    if 70 <= f['rsi'] <= 85: s += 12
-    elif 60 <= f['rsi'] <= 90: s += 5
-    if 1.0 <= f['vr_t'] <= 2.5: s += 8
-    elif 0.7 <= f['vr_t'] <= 3.5: s += 3
-    return s
-
-def _tav_score_C(f):
-    s = 0
-    if f['bb_rank'] <= 10: s += 40
-    elif f['bb_rank'] <= 20: s += 28
-    elif f['bb_rank'] <= 30: s += 15
-    elif f['bb_rank'] <= 40: s += 5
-    if f['near_h20'] >= 97: s += 25
-    elif f['near_h20'] >= 93: s += 15
-    elif f['near_h20'] >= 88: s += 5
-    if 45 <= f['rsi'] <= 60: s += 15
-    elif 35 <= f['rsi'] <= 68: s += 7
-    if 35 <= f['pos_52h'] <= 65: s += 12
-    elif 25 <= f['pos_52h'] <= 75: s += 5
-    if 0.8 <= f['vr_t'] <= 1.3: s += 8
-    return s
-
-def _tav_score_E(f):
-    s = 0
-    if f['near_h20'] >= 99.5: s += 35
-    elif f['near_h20'] >= 97: s += 22
-    elif f['near_h20'] >= 94: s += 8
-    if 65 <= f['pos_52h'] <= 85: s += 22
-    elif 55 <= f['pos_52h'] <= 90: s += 10
-    if 60 <= f['rsi'] <= 75: s += 15
-    elif 50 <= f['rsi'] <= 80: s += 6
-    if f['vr_t'] >= 1.2: s += 15
-    elif f['vr_t'] >= 0.9: s += 6
-    if 3 <= f['ret_10g'] <= 14: s += 10
-    elif 0 <= f['ret_10g'] <= 20: s += 4
-    return s
-
-def _tav_score_D(f):
-    s = 0
-    if f['pos_52h'] <= 10: s += 35
-    elif f['pos_52h'] <= 18: s += 22
-    elif f['pos_52h'] <= 28: s += 8
-    if f['rsi'] <= 28: s += 25
-    elif f['rsi'] <= 38: s += 15
-    elif f['rsi'] <= 45: s += 5
-    if f['vr_t'] <= 0.65: s += 20
-    elif f['vr_t'] <= 0.9: s += 8
-    if f['ret_10g'] <= -10: s += 15
-    elif f['ret_10g'] <= -4: s += 8
-    return s
-
-_TAV_REJIM_AGIRLIK = {
-    # KALİBRE — 18 Haz 2026, 60g/1131 tavan backtest tur 2
-    # Tur 2 sonuç: TOP 30 3.04x, Skor ≥150 %11.24 (random×3.44)
-    'HIZLI_RALLI':   {'A':1.1, 'C':0.8, 'E':1.0, 'D':0.7},
-    'ILIMLI_YUKARI': {'A':1.1, 'C':0.9, 'E':1.0, 'D':0.9},
-    'YATAY':         {'A':1.2, 'C':0.9, 'E':1.1, 'D':0.9},
-    'ZAYIF':         {'A':1.1, 'C':0.8, 'E':1.0, 'D':1.0},
-    'DUSUS':         {'A':0.9, 'C':0.7, 'E':0.8, 'D':1.0},
-    'BILINMEZ':      {'A':1.0, 'C':1.0, 'E':1.0, 'D':1.0},
-}
-
-@st.cache_data(ttl=600, show_spinner=False)
-def _tav_compute_panel(_cache_key="default"):
-    """Tüm parquet'leri tarayıp tavan skor DataFrame'i döner. 10dk cache."""
-    import glob, os
-    import pandas as pd
-    import numpy as np
-    rows = []
-    files = glob.glob('veriler/*.IS_1d.parquet')
-    if not files:
-        return pd.DataFrame(), 'BILINMEZ', 0.0, None
-
-    # Rejim tespiti — XU100
-    rejim, chg, target_date = 'BILINMEZ', 0.0, None
-    xu_path = 'veriler/XU100.IS_1d.parquet'
-    if os.path.exists(xu_path):
-        try:
-            xu = pd.read_parquet(xu_path)
-            if len(xu) >= 11:
-                start = xu.iloc[-11]['Close']; end = xu.iloc[-1]['Close']
-                chg = (end/start-1)*100
-                if chg >= 5: rejim = 'HIZLI_RALLI'
-                elif chg >= 2: rejim = 'ILIMLI_YUKARI'
-                elif chg >= -2: rejim = 'YATAY'
-                elif chg >= -5: rejim = 'ZAYIF'
-                else: rejim = 'DUSUS'
-                target_date = xu.index[-1]
-        except: pass
-
-    agirlik = _TAV_REJIM_AGIRLIK[rejim]
-    MIN_VOL_TL = 2_000_000
-
-    for f in files:
-        tk = os.path.basename(f).replace('.IS_1d.parquet', '')
-        if tk in ('XU100', 'XU030', 'XU050', 'XBANK', 'XUSIN', 'XUMAL'):
-            continue   # endeksleri çıkar
-        try:
-            df = pd.read_parquet(f)
-            if len(df) < 80: continue
-            i = len(df) - 1
-            feat = _tav_features(df, i)
-            if feat is None: continue
-            if feat['vol_tl'] < MIN_VOL_TL: continue
-            # 21 Haz 2026 — Likidite+manip kalkanı: ince tahta + dik koşu + hacim sıçraması =
-            # pompa (BRMEN tipi), motordan ele. _tav_is_manipulated bunu kaçırıyordu.
-            try:
-                if _liquidity_manip(df).get('manip') == 'yüksek':
-                    continue
-            except Exception:
-                pass
-            sA = _tav_score_A(feat) * agirlik['A']
-            sC = _tav_score_C(feat) * agirlik['C']
-            sE = _tav_score_E(feat) * agirlik['E']
-            sD = _tav_score_D(feat) * agirlik['D']
-            # Booster
-            bA = bC = bE = bD = 0
-            if pd.notna(feat['pct_T']) and pd.notna(feat['vol_T']):
-                if feat['pct_T'] > 2 and feat['vol_T'] > 1.2:
-                    bA += 12; bE += 18; bC += 6
-                elif feat['pct_T'] > 1:
-                    bA += 6; bE += 9; bC += 3
-                elif feat['pct_T'] < -3 and feat['vol_T'] < 0.7:
-                    bD += 15
-            if pd.notna(feat['vol_5g_slope']):
-                if feat['vol_5g_slope'] > 0.5:
-                    bA += 8; bE += 10; bC += 8
-                elif feat['vol_5g_slope'] > 0.2:
-                    bA += 4; bE += 5; bC += 4
-            if feat['is_doji']: bC += 12
-            if feat['is_green'] and feat['body_pct'] > 60:
-                bA += 8; bE += 10
-            if feat['is_hammer']: bD += 10
-            if pd.notna(feat['ret_5g']):
-                if feat['ret_5g'] > 10: bA += 8
-                elif feat['ret_5g'] < -8: bD += 8
-            sA += bA; sC += bC; sE += bE; sD += bD
-            scores = {'A': sA, 'C': sC, 'E': sE, 'D': sD}
-            best_kat = max(scores, key=scores.get)
-            best_score = scores[best_kat]
-            srt = sorted(scores.values(), reverse=True)
-            conf = max(0, (srt[1]-30))*0.6
-            if len(srt) >= 3 and srt[2] > 30:
-                conf += (srt[2]-30)*0.3
-            total = best_score + conf
-            rows.append({
-                'tk': tk, 'fiyat': round(feat['close'], 2),
-                'skor': round(total, 1), 'kat': best_kat,
-                'A': round(sA, 0), 'C': round(sC, 0), 'E': round(sE, 0), 'D': round(sD, 0),
-                'RSI': int(round(feat['rsi'])) if pd.notna(feat['rsi']) else None,
-                'pos_52h': int(round(feat['pos_52h'])) if pd.notna(feat['pos_52h']) else None,
-                'bb_rank': int(round(feat['bb_rank'])) if pd.notna(feat['bb_rank']) else None,
-                'vr_t': round(feat['vr_t'], 2) if pd.notna(feat['vr_t']) else None,
-                'near_h20': int(round(feat['near_h20'])) if pd.notna(feat['near_h20']) else None,
-                'ret_10g': round(feat['ret_10g'], 1) if pd.notna(feat['ret_10g']) else None,
-                'vol_mTL': round(feat['vol_tl']/1e6, 1),
-                'confluence_n': sum(1 for v in srt if v > 30),
-            })
-        except Exception:
-            continue
-    df = pd.DataFrame(rows).sort_values('skor', ascending=False).reset_index(drop=True)
-    return df, rejim, round(chg, 2), target_date
-
-_TAV_KAT_INFO = {
-    'A': ('📈', 'Momentum', '#3b82f6'),
-    'C': ('🤐', 'Sıkışma',  '#f59e0b'),
-    'E': ('🎯', 'Direnç',    '#10b981'),
-    'D': ('🔄', 'Dip Dönüş', '#a855f7'),
-}
-
-def _tav_hikaye(r):
-    """Hisseye özel kısa hikâye — kalıba göre."""
-    k = r['kat']
-    if k == 'A':
-        return f"10g %{r['ret_10g']:+.0f} · RSI {r['RSI']} · 52H zirvede"
-    if k == 'C':
-        return f"Bant darlığı {r['bb_rank']} · 20g direncin %{r['near_h20']}'inde"
-    if k == 'E':
-        return f"20g zirvenin %{r['near_h20']}'inde · hacim {r['vr_t']:.1f}x"
-    if k == 'D':
-        return f"52H'nin %{r['pos_52h']}'inde · RSI {r['RSI']} · sessiz"
-    return ""
-
-def scan_para_akisi_liderleri(ticker_list, category=""):
-    """Para Akışı Liderleri scan — CMF (para akışı) en güçlü + momentum>0 trendde + büyük-cap
-    (250M TL) + manipülasyon/tavan filtreli ilk 10. Master Scan'de hesaplanıp scan_signals'a
-    'para_akisi_lider' yazılır → Tarama Performansı panelinde backtest'lenir. App'in
-    split-düzeltilmiş verisini kullanır (standalone flow_leaders ile aynı mantık)."""
-    cands = []
-    for tk in ticker_list:
-        try:
-            _ct = str(tk) if str(tk).endswith('.IS') else f"{tk}.IS"
-            _fp = os.path.join(CACHE_DIR, f"{_ct}_1d.parquet")
-            if not os.path.exists(_fp):
-                continue
-            df = _apply_split_adjustments(pd.read_parquet(_fp))   # network yok + split-temiz
-            if df is None or len(df) < 235 or 'Close' not in df.columns:
-                continue
-            c = df['Close']; v = df['Volume']
-            if float((c * v).tail(20).mean()) < 250e6:            # büyük-cap tabanı
-                continue
-            if _liquidity_manip(df).get('manip') == 'yüksek':     # ince-tahta pompa
-                continue
-            if _tav_is_manipulated(df, len(df) - 1):              # manip + yakın-dönem tavan
-                continue
-            mom = (float(c.iloc[-21]) / float(c.iloc[-231]) - 1) * 100   # ~11 ay momentum
-            if not (0 < mom <= 150):                              # yükselen ama parabolik değil
-                continue
-            rng = (df['High'] - df['Low']).replace(0, np.nan)
-            mfv = (((c - df['Low']) - (df['High'] - c)) / rng * v).fillna(0)
-            vol20 = float(v.rolling(20).sum().iloc[-1])
-            cmf20 = float(mfv.rolling(20).sum().iloc[-1] / vol20) if vol20 else 0.0
-            cands.append({'Sembol': tk, 'Fiyat': round(float(c.iloc[-1]), 2),
-                          'Skor': round(cmf20 * 100, 1), '_cmf': cmf20})
-        except Exception:
-            continue
-    if not cands:
-        return pd.DataFrame()
-    out = pd.DataFrame(cands).sort_values('_cmf', ascending=False).head(10).reset_index(drop=True)
-    return out.drop(columns=['_cmf'])
 
 
 def _render_flow_leaders_panel():
@@ -31701,7 +30505,7 @@ def _render_flow_leaders_panel():
     tavan filtreli. 14 ay backtest + rejim testinde tutan combo. flow_leaders tablosundan
     okur (universe_snapshot --publish + weekly_list --leaders nightly üretir)."""
     try:
-        _flc = sqlite3.connect(DB_FILE)
+        _flc = sqlite3.connect(DB_FILE, timeout=30)
         _rows = _flc.execute("SELECT rank,symbol,cmf_pct,mom_pct FROM flow_leaders "
                              "WHERE snap_date=(SELECT MAX(snap_date) FROM flow_leaders) ORDER BY rank").fetchall()
         _sdr = _flc.execute("SELECT MAX(snap_date) FROM flow_leaders").fetchone()
@@ -31879,14 +30683,18 @@ with col_left:
         _render_left_col()
 
 
-def _compute_kanit_ozeti(ticker):
+def _compute_kanit_ozeti(ticker, frs=None):
     """Tek hisse KANIT SKORU (0-100) + GÜVEN/ÇELİŞKİ ölçer (19 Haz 2026, Build 2).
-    - Kanıt Skoru = hissenin yakalandığı EN GÜÇLÜ kanıtlı taramanın backtest puanı + confluence
-      bonusu (her ek kanıtlı tarama +6, max +18). Master 'görünüm', bu 'kanıt'.
+    - Kanıt Skoru = hissenin yakalandığı EN GÜÇLÜ kanıtlı taramanın veri-temelli puanı.
+      (29 Haz 2026: çakışma bonusu KALDIRILDI — ölçüm çakışmanın kazandırmadığını gösterdi.)
     - Güven = boğa-diyen vs ayı-diyen sinyal dengesi; ikisi de varsa 'çelişki'.
+    4 Tem 2026 revizyon: (1) tek oydan %100 üretilmez → 'tek_sinyal' bayrağı,
+    (2) ayı tarafına simetrik kaynaklar (Fırsat Radarı fail + ayı formasyonu),
+    (3) ICT bias YARIM oy (ölçülmemiş sinyal — Eylül karnesine kadar).
+    frs: panel zaten hesapladıysa _firsat_radar_single sonucu (çift hesap olmasın).
     Vitrin hesabını (_compute_goldmine_entries) yeniden kullanır — verimli."""
     out = {'skor': None, 'label': 'kanıt yok', 'n_scanner': 0, 'best': '',
-           'guven': None, 'celiski': False, 'boga': 0, 'ayi': 0}
+           'guven': None, 'celiski': False, 'boga': 0, 'ayi': 0, 'tek_sinyal': False}
     try:
         _tc = str(ticker).upper().replace('.IS', '')
         ent = next((e for e in _compute_goldmine_entries() if e['sym'].upper() == _tc), None)
@@ -31896,34 +30704,55 @@ def _compute_kanit_ozeti(ticker):
             if ent.get('unmeasured'):
                 out['label'] = 'kanıt bekliyor'
             else:
-                _bonus = min((out['n_scanner'] - 1) * 6, 18)
-                out['skor'] = min(int(ent.get('score', 0)) + _bonus, 100)
+                # Çakışma bonusu KALDIRILDI (29 Haz 2026): 12.779 örnekli ölçüm → çakışma
+                # getiriyi artırmıyor, hafif düşürüyor. Tek en güçlü kanıtın puanı kalır.
+                out['skor'] = min(int(ent.get('score', 0)), 100)
                 out['label'] = 'kanıtlı'
-        # Yön sayımı (boğa vs ayı)
-        boga = out['n_scanner'] if out['skor'] else 0      # kanıtlı kurulumlar boğa lehine
-        ayi = 0
+        # Yön sayımı (boğa vs ayı) — 4 Tem 2026: ağırlıklı + oy sayaçlı
+        boga = 0.0; ayi = 0.0; n_votes = 0
+        if out['skor'] and out['n_scanner'] > 0:           # kanıtlı kurulumlar boğa lehine
+            boga += float(out['n_scanner']); n_votes += int(out['n_scanner'])
         _er = st.session_state.get('erken_radar_data')
         if _er is not None and hasattr(_er, 'empty') and not _er.empty and {'Sembol', 'Role'} <= set(_er.columns):
             _ser = _er['Sembol'].astype(str).str.upper()
-            ayi += len(_er[((_ser == str(ticker).upper()) | (_ser == _tc)) & (_er['Role'] == 'red_flag')])
+            _rf = len(_er[((_ser == str(ticker).upper()) | (_ser == _tc)) & (_er['Role'] == 'red_flag')])
+            if _rf: ayi += _rf; n_votes += _rf
         _hc = st.session_state.get('harmonic_confluence_data')
         if _hc is not None and hasattr(_hc, 'empty') and not _hc.empty and 'Sembol' in _hc.columns:
             _ser = _hc['Sembol'].astype(str).str.upper()
             for _, r in _hc[(_ser == str(ticker).upper()) | (_ser == _tc)].iterrows():
                 if 'Bearish' in str(r.get('Yön', '')):
-                    ayi += 1
+                    ayi += 1; n_votes += 1
+        # 2 — Ayı tarafına simetrik kaynaklar (terazi boğaya eğikti):
+        # (a) Fırsat Radarı başarısız kırılım = ayı oyu (panel frs geçirir)
+        if isinstance(frs, dict) and frs.get('kutu') == 'kirdi' and frs.get('durum') == 'fail':
+            ayi += 1; n_votes += 1
+        # (b) Oturumda tespit edilmiş AYI formasyonu (İkili Tepe M / Yükselen Kama)
+        try:
+            _fp = st.session_state.get('_formasyon_chart_data')
+            _fptk = str(st.session_state.get('_formasyon_ticker', '')).upper().replace('.IS', '')
+            if _fp and _fptk == _tc:
+                if _fp.get('type') == 'double_top' or (_fp.get('type') == 'wedge' and _fp.get('kind') == 'rising'):
+                    ayi += 1; n_votes += 1
+        except Exception:
+            pass
+        # 3 — ICT bias YARIM oy: ölçülmemiş sinyal, kanıtlı taramayla eşit sayılmaz.
+        # Eylül 2026 f_ict_model karnesi çıkınca ağırlık kanıta bağlanacak.
         try:
             _bias = str((calculate_ict_deep_analysis(ticker) or {}).get('bias', '')).lower()
             if any(k in _bias for k in ('bear', 'düşüş', 'ayı', 'short')):
-                ayi += 1
+                ayi += 0.5; n_votes += 1
             elif any(k in _bias for k in ('bull', 'yükseliş', 'boğa', 'long')):
-                boga += 1
+                boga += 0.5; n_votes += 1
         except Exception:
             pass
-        out['boga'], out['ayi'] = boga, ayi
-        if boga + ayi > 0:
+        out['boga'], out['ayi'] = round(boga, 1), round(ayi, 1)
+        # 1 — Tek oydan yüzde üretilmez ("Kanıt yok · güven %100" saçmalığı biter)
+        if n_votes >= 2 and (boga + ayi) > 0:
             out['guven'] = int(boga / (boga + ayi) * 100)
             out['celiski'] = (boga > 0 and ayi > 0)
+        elif n_votes == 1:
+            out['tek_sinyal'] = True
     except Exception:
         pass
     return out
@@ -31934,6 +30763,12 @@ def render_risk_profile_card(ticker):
     try:
         rp = _risk_profile(ticker)
         if not rp['rows']:
+            return
+        # 1 Tem 2026: panel SADECE 1(Oynaklık)/2(Volatilite trendi)/5(Likidite)/6(Manipülasyon)'dan
+        # EN AZ BİRİ 🔴 riskli (high) ise görünür. 3(Zirveden uzaklık)/4(Sürpriz yönü) TETİKLEMEZ.
+        # Panel açılınca yine TÜM satırları gösterir — sadece görünme koşulu bu 4'lüye bağlı.
+        _RP_TRIGGERS = {"Oynaklık", "Volatilite trendi", "Likidite", "Manipülasyon"}
+        if not any(_y == 'high' and _l in _RP_TRIGGERS for _l, _d, _y in rp['rows']):
             return
         _lvl = rp['level'] or 'orta'
         _lcol = {'yüksek': '#ef4444', 'orta': '#f59e0b', 'düşük': '#22c55e'}.get(_lvl, '#94a3b8')
@@ -31952,6 +30787,88 @@ def render_risk_profile_card(ticker):
                     f"background:#0b1220;'>{_hdr}{_body}</div>", unsafe_allow_html=True)
     except Exception:
         pass
+
+
+def _firsat_radar_single(ticker):
+    """Tek hisse Fırsat Radarı durumu (radar_core ile AYNI motor). Doner dict veya None."""
+    try:
+        df = get_safe_historical_data(ticker, period="1y")
+        if df is None or len(df) < 200:
+            return None
+        df = df[~df.index.duplicated()].sort_index()
+        close = df['Close'].values; high = df['High'].values; low = df['Low'].values; open_ = df['Open'].values
+        i = len(df) - 1
+        # 4 Tem 2026 senkron: fitil pivotlari + adaptif budama (radar_core = ana motor)
+        sw_h, sw_l = radar_core.find_swings_hl(high, low, close, 8)
+        r = radar_core.detect_formation(close, high, low, open_, i, sw_h, sw_l)
+        if r is None:
+            return None
+        _xu = get_safe_historical_data('XU100.IS', period="1y")
+        _xuc = _xu['Close'] if _xu is not None else None
+        q = radar_core.quality_signals(df, i, _xuc) if _xuc is not None else {'sqd': 0, 'a200': 0, 'Q': 0}
+        kutu, durum = radar_core.classify_state(r, q, close, high, i)
+        return dict(kutu=kutu, durum=durum, type=r['type'], neck=round(r['neck'], 2),
+                    dist=round(r['dist'], 1), Q=q.get('Q', 0))
+    except Exception:
+        return None
+
+
+def _live_scanner_hits(ticker, category):
+    """Tek hisse için batch taramaları CANLI çalıştırır (Master Scan gerekmez).
+    log_scan_signal bastırılır → DB/backtest kirlenmez. Sonuç ticker başı session_state'te cache'lenir.
+    Döner: list of (icon, label, desc)."""
+    _ck = f"_lsh::{ticker}::{category}"
+    if _ck in st.session_state:
+        return st.session_state[_ck]
+    _tu = str(ticker).upper(); _tc = _tu.replace('.IS', '')
+    lst = [ticker]
+
+    def _has(df):
+        if df is None or not hasattr(df, 'columns'):
+            return False
+        for col in ('Sembol', 'Hisse', 'Ticker', 'Symbol'):
+            if col in df.columns:
+                s = df[col].astype(str).str.upper()
+                if ((s == _tu) | (s == _tc)).any():
+                    return True
+        return False
+
+    PD = SCANNER_PLAIN_DESC
+    hits = []
+    # 5c (4 Tem 2026): global kapatma yerine ticker-bazlı atlama — eşzamanlı
+    # Master Scan'in DİĞER hisselerinin logları artık etkilenmez.
+    _SCAN_LOG_SKIP.add(_tc)
+    try:
+        # her tarama [ticker] ile → tek hisse; biri patlarsa diğerleri devam
+        try:
+            _g = scan_golden_pattern_agent(lst, category)
+            if isinstance(_g, dict) and _has(_g.get('formations')):
+                hits.append(("📐", "Altın Set-up & VIP Formasyon", PD.get('vip', '')))
+        except Exception: pass
+        try:
+            # 5a (4 Tem 2026): Formasyon Motoru da isteğe bağlı taramada —
+            # önceden sadece popup açılmışsa görünüyordu (oturuma bağlı tutarsızlık)
+            if _has(scan_chart_patterns(lst)): hits.append(("🔺", "Formasyon Motoru", "Grafik formasyonu tespit edildi (fincan/TOBO/W/kama vb.)"))
+        except Exception: pass
+        try:
+            if _has(scan_minervini_batch(lst)): hits.append(("🏆", "Minervini SEPA", PD.get('minervini', '')))
+        except Exception: pass
+        try:
+            if _has(scan_prelaunch_bos(lst)): hits.append(("🚀", "Pre-Launch BOS", PD.get('prelaunch', '')))
+        except Exception: pass
+        try:
+            if _has(scan_hidden_accumulation(lst)): hits.append(("🔍", "Gizli Birikim", PD.get('gizli', '')))
+        except Exception: pass
+        try:
+            if _has(scan_guclu_donus_batch(lst)): hits.append(("🔄", "Güçlü Dönüş", "Düşüşten güçlü dönüş sinyali"))
+        except Exception: pass
+        try:
+            if _has(scan_harmonic_confluence_batch(lst)): hits.append(("⚡", "Harmonik Confluence", PD.get('harmonik', '')))
+        except Exception: pass
+    finally:
+        _SCAN_LOG_SKIP.discard(_tc)
+    st.session_state[_ck] = hits
+    return hits
 
 
 def render_scanner_membership_panel(ticker):
@@ -31992,8 +30909,66 @@ def render_scanner_membership_panel(ticker):
         if _in('minervini_data'):              rows.append(("🏆", "Minervini SEPA", PD['minervini'], None))
         if _in('rs_leaders_data'):             rows.append(("📊", "RS Momentum Lideri", PD['rs'], None))
 
+        # 🎯 FIRSAT RADARI — canlı tek-hisse formasyon durumu (Master Scan gerekmez, 24 Haz 2026)
+        _frs = _firsat_radar_single(ticker)
+        if _frs is not None:
+            _TTm = {'CUP': 'Fincan-Kulp', 'TOBO': 'TOBO', 'W': 'Çift Dip'}
+            _ftm = _TTm.get(_frs['type'], _frs['type'])
+            if _frs['kutu'] == 'kirdi':
+                _dr = _frs['durum']
+                if _dr == 'taze':
+                    rows.append(("🚀", f"Fırsat Radarı: BOYUN KIRDI ({_ftm})", f"{_frs['Q']}/5 işaret · taze kırılım, boyun {_frs['neck']}", None))
+                elif _dr == 'retest':
+                    rows.append(("🔄", f"Fırsat Radarı: GERİ TEST ({_ftm})", f"Boyna döndü, üstünde tutuyor — kurumsal giriş bölgesi (destek {_frs['neck']})", None))
+                elif _dr == 'extended':
+                    rows.append(("🏃", f"Fırsat Radarı: kırdı ama uçmuş ({_ftm})", "Hareket başlamış, geç kalınmış olabilir", None))
+                elif _dr == 'fail':
+                    rows.append(("⬇️", f"Fırsat Radarı: kırılım başarısız ({_ftm})", "Boyun çizgisinin altına döndü", None))
+                else:
+                    rows.append(("⏸️", f"Fırsat Radarı: boyun bölgesinde ({_ftm})", "Henüz net kırılım yok", None))
+            elif _frs['kutu'] == 'sikis':
+                rows.append(("🤏", f"Fırsat Radarı: SIKIŞTI ({_ftm})", f"Boyna %{_frs['dist']} kaldı + sıkışmış — kırılma yakın, takibe al", None))
+            else:
+                rows.append(("🌱", f"Fırsat Radarı: HAZIRLANIYOR ({_ftm})", f"Formasyon oluşuyor, boyna %{_frs['dist']} — daha kırmadı", None))
+
+        # 🔺 FORMASYON (canlı tek-hisse) — üçgen/kama/çanak vb. dahil, Master Scan gerekmez (24 Haz 2026)
+        _fpat = st.session_state.get('_formasyon_chart_data')
+        _fpat_tk = str(st.session_state.get('_formasyon_ticker', '')).upper().replace('.IS', '')
+        if _fpat and _fpat_tk == _tc and _fpat.get('type', '') not in ('cup', 'tobo', 'double_bottom'):
+            # cup/tobo/W zaten Fırsat Radarı satırında var → tekrar etme
+            _flabel = st.session_state.get('_formasyon_pat_label', 'Formasyon')
+            rows.append(("🔺", f"Formasyon: {_flabel}", "Grafik formasyonu tespit edildi (canlı, tek hisse)", None))
+
+        # 🎯 ERKEN RADAR (canlı tek-hisse) — _scanner_setup_strength batch'te yoksa _er_single_cache'ten
+        if 'erken_radar' not in _strength:
+            _erc_map = st.session_state.get('_er_single_cache', {})
+            _erc = _erc_map.get(_tu) or _erc_map.get(_tc) or _erc_map.get(ticker)
+            _erp = _erc.get('primary') if isinstance(_erc, dict) else None
+            if isinstance(_erp, dict):
+                _erlbl = f"Erken Radar {_erp.get('id', '')} ({_erp.get('name', '')})".replace("( )", "").strip()
+                rows.append(("🎯", _erlbl, PD.get('erken', 'Erken hareket sinyali (canlı)'), None))
+
+        # 🔬 DİĞER TÜM TARAMALAR (canlı) — OTOMATİK DEĞİL: bellek/Master Scan yükü olmasın diye
+        # sadece kullanıcı bu hisse için "kontrol et" deyince çalışır (_lsh_for == _tc).
+        if st.session_state.get('_lsh_for') == _tc:
+            try:
+                _existing_lbls = {_l for _, _l, _, _ in rows}
+                for _lh_ic, _lh_lbl, _lh_desc in _live_scanner_hits(ticker, st.session_state.get('category', '')):
+                    if _lh_lbl not in _existing_lbls:
+                        rows.append((_lh_ic, _lh_lbl, _lh_desc, None))
+            except Exception:
+                pass
+
+        # 5b — Satırlar kanıt gücüne göre sıralanır: 🟢 GÜÇLÜ üstte, 🔴 ZAYIF altta
+        # (rozetsizler ortada, kendi aralarında mevcut sıra korunur — stable sort)
+        def _row_rank(row):
+            _g = row[3] or ''
+            return 0 if '🟢' in _g else (2 if '🔴' in _g else 1)
+        rows.sort(key=_row_rank)
+
         # KANIT SKORU + GÜVEN/ÇELİŞKİ (Build 2, 19 Haz 2026) — başlıkta özetle
-        _kz = _compute_kanit_ozeti(ticker)
+        # 4 Tem: _frs geçirilir → Fırsat Radarı 'fail' durumu ayı oyu sayılır (çift hesap yok)
+        _kz = _compute_kanit_ozeti(ticker, frs=_frs)
         if _kz['skor'] is not None:
             _ks_col = "#22c55e" if _kz['skor'] >= 60 else ("#f59e0b" if _kz['skor'] >= 35 else "#94a3b8")
             _ks_chip = f"<span style='color:{_ks_col};font-weight:800;'>Kanıt {_kz['skor']}/100</span>"
@@ -32005,6 +30980,9 @@ def render_scanner_membership_panel(ticker):
             _gv_chip = f" · <span style='color:#f87171;font-weight:800;'>⚠ çelişkili (güven %{_kz['guven']})</span>"
         elif _kz['guven'] is not None:
             _gv_chip = f" · <span style='color:#22c55e;font-weight:700;'>güven %{_kz['guven']}</span>"
+        elif _kz.get('tek_sinyal'):
+            # 1 — tek oydan %100/%0 üretmek yerine dürüst etiket
+            _gv_chip = " · <span style='color:#64748b;font-weight:700;'>tek sinyal — güven için yetersiz</span>"
         else:
             _gv_chip = ""
         # Başlık + gövde — yeşil/kırmızı nokta yerine HERKESİN ANLAYACAĞI sade açıklama (19 Haz 2026)
@@ -32055,6 +31033,11 @@ def render_scanner_membership_panel(ticker):
             f"<div style='margin:8px 0;border:1px solid #334155;border-radius:8px;overflow:hidden;"
             f"background:#0b1220;'>{_hdr}{_body}</div>", unsafe_allow_html=True
         )
+        # on-demand: diğer tüm taramaları CANLI kontrol et (otomatik DEĞİL — Master Scan/belleği yormaz)
+        if st.session_state.get('_lsh_for') != _tc:
+            if st.button("🔍 Diğer tüm taramaları kontrol et (canlı)", key=f"_lshbtn_{_tc}", width='stretch'):
+                st.session_state['_lsh_for'] = _tc
+                st.rerun()
     except Exception:
         pass
 
@@ -32186,32 +31169,30 @@ def _render_right_col():
 
         # Satır rendere: icon + tam label + bar + skor (full width, kırpılma yok)
         def _so_row(icon, label, score_val, score_max, score_color, score_text, anchor_hint=None, border=True):
+            # YOL HARİTASI SKORU stili (1 Tem 2026): üstte icon+label solda / skor sağda (renkli),
+            # altında ince çubuk (skora göre renkli). Hesaplama AYNI — sadece gösterim değişti.
             brd = f"border-bottom:1px solid {_CLR_DIVIDER};" if border else ""
             _ttl = f"title='{anchor_hint}'" if anchor_hint else ""
-            # Bar yüzdesi
             if score_val is None or score_max == 0:
                 _pct = 0
-                _bar_fill = "rgba(148,163,184,0.3)"
+                _col = _SO_NEUTRAL
             else:
                 _pct = max(0, min(100, (score_val / score_max) * 100))
-                _bar_fill = score_color
-            # Hex → rgb (glow için)
-            _rgb_for_glow = _bar_fill if _bar_fill.startswith("rgba") else _bar_fill
+                _col = score_color
             return (
-                f"<div {_ttl} style='display:flex;align-items:center;gap:8px;padding:3.5px 11px;{brd}'>"
-                f"<span style='font-size:0.95rem;line-height:1;flex-shrink:0;width:18px;text-align:center;'>{icon}</span>"
-                f"<span style='font-size:0.81rem;color:rgba(255,255,255,0.88);font-weight:700;"
-                f"flex-shrink:0;width:114px;white-space:nowrap;'>{label}</span>"
-                # Bar (track + fill + skor sayısı bar üstünde overlay)
-                f"<div style='flex:1;height:13px;background:rgba(0,0,0,0.28);border-radius:8px;"
-                f"position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.08);'>"
-                f"<div style='height:100%;width:{_pct:.0f}%;background:{_bar_fill};"
-                f"border-radius:8px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div>"
-                # Skor sayısı bar üstünde overlay — beyaz + shadow (her bg'de okunur)
-                f"<span style='position:absolute;right:7px;top:50%;transform:translateY(-50%);"
-                f"font-size:0.73rem;font-weight:900;color:#fff;"
-                f"text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);"
-                f"font-family:\"JetBrains Mono\",monospace;line-height:1;'>{score_text}</span>"
+                f"<div {_ttl} style='padding:5px 11px;{brd}'>"
+                # Üst satır: icon + label solda, skor sağda (renkli) — yol haritası gibi
+                f"<div style='display:flex;justify-content:space-between;align-items:center;"
+                f"font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.80);"
+                f"line-height:1.1;margin-bottom:3.5px;'>"
+                f"<span style='display:flex;align-items:center;gap:6px;'>"
+                f"<span style='font-size:0.92rem;line-height:1;'>{icon}</span>{label}</span>"
+                f"<span style='color:{_col};font-weight:900;"
+                f"font-family:\"JetBrains Mono\",monospace;'>{score_text}</span>"
+                f"</div>"
+                # İnce çubuk (track + fill) — yol haritası bar stili
+                f"<div style='height:4px;background:rgba(100,116,139,0.20);border-radius:2px;overflow:hidden;'>"
+                f"<div style='height:100%;width:{_pct:.0f}%;background:{_col};border-radius:2px;'></div>"
                 f"</div>"
                 f"</div>"
             )
@@ -32221,19 +31202,19 @@ def _render_right_col():
         _SO_BAR_GRAY = "#94a3b8"   # slate-400 (nötr orta-açık gri)
 
         _sinyal_rows = (
-              _so_row("🎯", "Genel Sağlık",     _so_master, 100, _SO_BAR_GRAY,
+              _so_row("🎯", "Genel Sağlık",     _so_master, 100, _so_color_100(_so_master),
                      f"{int(_so_master)}/100" if _so_master is not None else "—",
                      "Teknik Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)")
-            + _so_row("🧭", "Pozisyon Eğilimi", _so_pos,    100, _SO_BAR_GRAY,
+            + _so_row("🧭", "Pozisyon Eğilimi", _so_pos,    100, _so_color_100(_so_pos),
                      f"{int(_so_pos)}/100" if _so_pos is not None else "—",
                      "Conviction — SMA50/200 + OBV + Z-Score (5-15g LONG/SHORT bias)")
-            + _so_row("🗺",  "Tek. Yol Haritası",    _so_road,   100, _SO_BAR_GRAY,
+            + _so_row("🗺",  "Tek. Yol Haritası",    _so_road,   100, _so_color_100(_so_road),
                      f"{int(_so_road)}/100" if _so_road is not None else "—",
                      "Roadmap — Trend/Mom/Hacim/Yapı/Senaryo eşit ağırlıkla sentez")
-            + _so_row("🌟", "Erken Radar",      _so_er,     100, _SO_BAR_GRAY,
+            + _so_row("🌟", "Erken Radar",      _so_er,     100, _so_color_100(_so_er),
                      f"{int(_so_er)}/100" if _so_er is not None else "—",
                      "27 senaryo paterni — kalite skoru (5g-20g)")
-            + _so_row("🏛",  "Smart Money",     _so_ict,    5,   _SO_BAR_GRAY,
+            + _so_row("🏛",  "Smart Money",     _so_ict,    5,   _so_color_5_directional(_so_ict, _so_ict_bias),
                      (f"{int(_so_ict)}/5 "
                       + ("↑" if "bull" in _so_ict_bias and "retrace" not in _so_ict_bias
                          else ("↓" if "bear" in _so_ict_bias and "retrace" not in _so_ict_bias
@@ -32357,11 +31338,12 @@ def _render_right_col():
   <div style="display:flex;">
     {_bottom_html}
   </div>
-</div>
-{_sinyal_block_standalone}""", unsafe_allow_html=True)
+</div>""", unsafe_allow_html=True)
+        st.session_state['_so_ozet_html'] = _sinyal_block_standalone  # 📊 SİNYAL ÖZETİ → CANLI SİNYALLER altına taşındı (24 Haz)
 
     else:
         st.warning("Fiyat verisi alınamadı.")
+        st.session_state['_so_ozet_html'] = ''
 
     # --- FORMASYON BUTONU — fiyat paneli hemen altında ---
     _fcd = st.session_state.get('_formasyon_chart_data')
@@ -32388,7 +31370,7 @@ def _render_right_col():
                 border-color:{_fbtn_brd} !important;
             }}
         </style>""", unsafe_allow_html=True)
-        if st.button(f"📊 {_fdsp}-{_fpl}", use_container_width=True, key="btn_formasyon_dialog"):
+        if st.button(f"📊 {_fdsp}-{_fpl}", width='stretch', key="btn_formasyon_dialog"):
             _formasyon_dialog(_ftk, _fcd, _fpr, _fdsp, _fpl, _fdrk)
     
     # --- HARMONİK FORMASYON BUTONU — formasyon butonunun hemen altında ---
@@ -32418,11 +31400,11 @@ def _render_right_col():
                 border-color:{_hbtn_brd} !important;
             }}
         </style>""", unsafe_allow_html=True)
-        if st.button(f"🔮 {_hdsp}-{_hpat}", use_container_width=True, key="btn_harmonik_dialog"):
+        if st.button(f"🔮 {_hdsp}-{_hpat}", width='stretch', key="btn_harmonik_dialog"):
             _harmonik_dialog(st.session_state.ticker, _hres, _hprice, _hdsp, _hdrk)
     
     # --- 🏆 ELİT TARAMA MİNİ PANELİ (16 Haz 2026) ---
-    # TIER_1_ELIT scanner flag varsa (er_A8 / er_A1 / er_B1 / prelaunch_bos)
+    # TIER_1_ELIT scanner flag varsa (er_D1 / er_A2 / er_A8 / er_B8 — 24 Haz kalibrasyon)
     # sağ sütunda backtest istatistiğini gösteren kompakt kart — sol rozetin
     # detaylı kardeşi. TIER yoksa kart hiç çıkmaz (sessizce).
     try:
@@ -32485,12 +31467,19 @@ def _render_right_col():
     except Exception:
         pass
 
+    # --- 📡 BU HİSSE HANGİ TARAMALARDA? — CANLI SİNYALLER'in ÜSTÜNE taşındı (24 Haz 2026) ---
+    # Formasyon/Fırsat Radarı bilgisi en üstte, canlı sinyallerin ÜZERİNDE dursun.
+    render_scanner_membership_panel(st.session_state.ticker)
+
     # --- BİRLEŞİK SİNYAL PANELİ (Canlı Sinyaller + Tarama Sonuçları) ---
     render_unified_signals_panel(st.session_state.ticker)
 
-    # --- 📡 BU HİSSE HANGİ TARAMALARDA? — birleşik üyelik + güç rozeti (19 Haz 2026) ---
-    render_risk_profile_card(st.session_state.ticker)   # Faz 2 — risk ÖNCE (üyelik panelinin üstünde)
-    render_scanner_membership_panel(st.session_state.ticker)
+    # 📊 SİNYAL ÖZETİ — fiyat kartından buraya, CANLI SİNYALLER'in ALTINA taşındı (24 Haz 2026)
+    _so_html_mv = st.session_state.get('_so_ozet_html', '')
+    if _so_html_mv:
+        st.markdown(_so_html_mv, unsafe_allow_html=True)
+
+    render_risk_profile_card(st.session_state.ticker)   # risk profili (en altta)
     try:
         log_analysis_snapshot(st.session_state.ticker)  # Faz 3 — ürün isabeti için verdict snapshot (idempotent)
     except Exception:
@@ -32498,46 +31487,8 @@ def _render_right_col():
 
     # (GENEL SAĞLIK (Teknik Skor) → sidebar'a, ENDEKS RADARI altına taşındı)
 
-    # --- ICT BOTTOM LINE (SONUÇ) — sidebar'dan taşındı ---
-    try:
-        if _MM_ELITE_OK and st.session_state.get('ticker'):
-            _bl_data = calculate_ict_deep_analysis(st.session_state.ticker)
-            _bl_text = _bl_data.get('bottom_line', '') if _bl_data else ''
-            if _bl_text:
-                _bl_ticker = get_display_name(st.session_state.ticker)
-                _bl_info = fetch_stock_info(st.session_state.ticker)
-                _bl_price = _bl_info.get('price', 0) if _bl_info else 0
-                _bl_price_str = f"{int(_bl_price):,}" if _bl_price >= 1000 else f"{_bl_price:.2f}"
-                st.markdown(f"""
-<style>
-@keyframes ict-bl-pulse {{
-    0%,100% {{ box-shadow:0 0 0 0 rgba(13,148,136,0.7),0 4px 12px rgba(0,0,0,0.4); }}
-    50%     {{ box-shadow:0 0 0 7px rgba(13,148,136,0),0 4px 12px rgba(0,0,0,0.4); }}
-}}
-.ict-bl-wrap {{
-    margin-bottom:8px;
-    border-radius:10px;
-    overflow:hidden;
-    border:3px solid #0d9488;
-    animation:ict-bl-pulse 3s ease-in-out 5;
-}}
-</style>
-<div class="ict-bl-wrap">
-  <div style="padding:8px 13px;
-              background:linear-gradient(90deg,#071e20 0%,#0d2020 100%);
-              display:flex;align-items:center;gap:8px;
-              font-size:1rem;font-weight:800;color:#2dd4bf;
-              letter-spacing:0.05em;
-              border-bottom:1px solid #0d9488;">
-    <span style="font-size:1.1rem;line-height:1;">🖥️</span>
-    ICT BOTTOM LINE / SONUÇ
-  </div>
-  <div style="background:linear-gradient(135deg,#071e20,#0a1215);padding:10px 12px;text-align:center;">
-    <div style="display:inline-block;background:rgba(45,212,191,0.1);border:1px solid rgba(45,212,191,0.25);border-radius:5px;padding:3px 14px;margin-bottom:7px;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:0.95rem;color:#2dd4bf;letter-spacing:0.03em;">{_bl_ticker}&nbsp;&nbsp;—&nbsp;&nbsp;{_bl_price_str}</div>
-    <div style="font-size:0.78rem;color:#cbd5e1;font-style:italic;line-height:1.55;">"{_bl_text}"</div>
-  </div>
-</div>""", unsafe_allow_html=True)
-    except: pass
+    # --- ICT BOTTOM LINE (SONUÇ) → 1 Tem 2026: ICT Smart Money Analizi panelinin İÇİNE
+    # (en altına, tam genişlik) geri taşındı — render_ict_deep_panel sonunda. Sağ sütundan çıkarıldı.
 
     # 2. Price Action Paneli (ELITE)
     if _MM_ELITE_OK:
@@ -32694,7 +31645,7 @@ def _render_right_col():
     # SEKME: 📡 RADARLAR VE KESİŞİMLER (R1 + R2)
     # ---------------------------------------------------------
     with tab_radar:
-        if st.button("🔄 Radar 1 & 2'yi Tara", use_container_width=True, key="btn_r1_r2_scan"):
+        if st.button("🔄 Radar 1 & 2'yi Tara", width='stretch', key="btn_r1_r2_scan"):
             with st.spinner("Momentum ve Trend verileri taranıyor..."):
                 curr_assets = ASSET_GROUPS.get(st.session_state.category, [])
                 st.session_state.scan_data = analyze_market_intelligence(curr_assets, st.session_state.get('category', 'S&P 500'))
@@ -32719,7 +31670,7 @@ def _render_right_col():
                 cols_c = st.columns(2) 
                 for i, item in enumerate(sorted_commons):
                     temiz_sembol_ortak = item['sym'].replace('.IS', '').replace('-USD', '')
-                    if cols_c[i % 2].button(f"🎯 {temiz_sembol_ortak}\nSkor: {int(item['tot'])}", key=f"com_tab_{item['sym']}", use_container_width=True, help=f"R1: {int(item['r1'])} | R2: {int(item['r2'])}"):
+                    if cols_c[i % 2].button(f"🎯 {temiz_sembol_ortak}\nSkor: {int(item['tot'])}", key=f"com_tab_{item['sym']}", width='stretch', help=f"R1: {int(item['r1'])} | R2: {int(item['r2'])}"):
                         on_scan_result_click(item['sym']); st.rerun()
             else:
                 st.caption("Kesişim bulunamadı.")
@@ -32735,7 +31686,7 @@ def _render_right_col():
                 cols_r1 = st.columns(3)
                 for i, row in df1.head(15).iterrows():
                     sym = row["Sembol"]
-                    if cols_r1[i % 3].button(f"🔥 {int(row['Skor'])}/7\n{sym.replace('.IS','')}", key=f"r1_tab_{sym}_{i}", use_container_width=True):
+                    if cols_r1[i % 3].button(f"🔥 {int(row['Skor'])}/7\n{sym.replace('.IS','')}", key=f"r1_tab_{sym}_{i}", width='stretch'):
                         on_scan_result_click(sym); st.rerun()
             else: st.caption("Veri yok.")
     
@@ -32767,7 +31718,7 @@ def _render_right_col():
                             _dbadge = " 🟦"
                             _dtip   = f" · 🟦 Darvas Kutu Oluşuyor: {_da}g (Kalite:{_dq}/100)"
                     _help = f"Setup: {setup}{_dtip}"
-                    if cols_r2[i % 3].button(f"🚀 {int(row['Skor'])}/7\n{sym.replace('.IS','')}{_dbadge}", key=f"r2_tab_{sym}_{i}", use_container_width=True, help=_help):
+                    if cols_r2[i % 3].button(f"🚀 {int(row['Skor'])}/7\n{sym.replace('.IS','')}{_dbadge}", key=f"r2_tab_{sym}_{i}", width='stretch', help=_help):
                         on_scan_result_click(sym); st.rerun()
             else: st.caption("Veri yok.")
     
@@ -32835,7 +31786,7 @@ def _render_right_col():
                     # Tıklanabilir buton
                     btn_label = f"{rank_icon} {sym}  ·  {score}pt  ·  {onay_str}  ·  {price_str}"
                     if st.button(btn_label, key=f"top20b_btn_{sym}_{i}",
-                                 use_container_width=True, help=_tooltip):
+                                 width='stretch', help=_tooltip):
                         on_scan_result_click(item['Sembol']); st.rerun()
 
                     # Senaryo özeti butonun altında
@@ -32879,7 +31830,7 @@ def _render_right_col():
             # Özet tablo
             st.dataframe(
                 df_summary,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     "Tarama":     st.column_config.TextColumn("Tarama Türü", width="medium"),
@@ -32900,17 +31851,30 @@ def _render_right_col():
                     show_cols = ['Sembol', 'Tarama', 'Sinyal Tarihi', 'Giriş',
                                  'Getiri_5G', 'Getiri_10G', 'Getiri_20G', 'Geçen Gün']
                     show_cols = [c for c in show_cols if c in df_raw.columns]
-    
+
+                    # Pandas Styler'ın 262.144 hücre sınırı var; sinyal sayısı büyüdükçe
+                    # (backfill + birikim → ~48K satır) hücre×renklendirme sınırı aşıyordu.
+                    # En güncel N sinyali göster (bu kapalı bir detay dökümü). 30 Haz 2026.
+                    _MAX_STYLED_ROWS = 3000
+                    _total_raw = len(df_raw)
+                    _df_det = df_raw
+                    if 'Sinyal Tarihi' in _df_det.columns:
+                        _df_det = _df_det.sort_values('Sinyal Tarihi', ascending=False)
+                    _df_det = _df_det[show_cols].head(_MAX_STYLED_ROWS)
+
                     def _color_ret(val):
                         if val is None or (isinstance(val, float) and pd.isna(val)):
                             return ''
                         return 'color: #16a34a; font-weight:bold' if float(val) > 0 else 'color:#f87171; font-weight:bold'
-    
-                    styled = df_raw[show_cols].style.applymap(
+
+                    styled = _df_det.style.applymap(
                         _color_ret,
                         subset=[c for c in ['Getiri_5G', 'Getiri_10G', 'Getiri_20G'] if c in show_cols]
                     )
-                    st.dataframe(styled, use_container_width=True, hide_index=True)
+                    if _total_raw > _MAX_STYLED_ROWS:
+                        st.caption(f"⚠️ {_total_raw:,} sinyalden en güncel {_MAX_STYLED_ROWS:,} gösteriliyor "
+                                   f"(tablo çizim sınırı). Tam özet üstteki performans tablosunda.")
+                    st.dataframe(styled, width='stretch', hide_index=True)
                 else:
                     st.caption("Değerlendirilebilir sinyal bulunamadı.")
 
