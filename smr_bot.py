@@ -1803,6 +1803,11 @@ async def kick_expired_users(context: ContextTypes.DEFAULT_TYPE):
         user_id = sub.get('user_id', 0)
         if not isinstance(user_id, int) or user_id <= 0:
             continue
+        # 5 Tem 2026 FIX: daha önce çıkarılan üye BİR DAHA işlenmez/raporlanmaz.
+        # (Telegram ban'ı kanalda olmayan kişide de "başarılı" döner → aynı
+        # kişiler her gece yeniden "Çıkarıldı" diye admin'e gidiyordu.)
+        if sub.get('kicked'):
+            continue
         tier = (sub.get('tier') or '').lower()
         channel_id = tier_channels.get(tier)
         if not channel_id:
@@ -1814,10 +1819,14 @@ async def kick_expired_users(context: ContextTypes.DEFAULT_TYPE):
             await context.bot.unban_chat_member(chat_id=channel_id, user_id=user_id)
             kicked.append(f"@{uname} ({tier.upper()}) — bitti: {exp_date}")
             log.info(f"[kick] Kanaldan çıkarıldı: @{uname} ({tier.upper()}) uid={user_id}")
+            try: smr_core.sub_mark_kicked(user_id)   # damga: bir daha işlenmez
+            except Exception: pass
         except Exception as e:
             err_str = str(e)
             if "not found" in err_str.lower() or "USER_NOT_PARTICIPANT" in err_str:
-                pass  # zaten kanalda değil, normal
+                # zaten kanalda değil → işlenmiş say, damgala
+                try: smr_core.sub_mark_kicked(user_id)
+                except Exception: pass
             else:
                 errors.append(f"@{uname}: {err_str[:60]}")
                 log.warning(f"[kick] Çıkarma hatası @{uname} uid={user_id}: {e}")

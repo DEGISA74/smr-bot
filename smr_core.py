@@ -88,6 +88,12 @@ def _init_db():
             note        TEXT
         )
     """)
+    # 5 Tem 2026 — kicked kolonu: kanaldan çıkarma BİR KEZ yapılır/raporlanır
+    # (eski hali süresi dolan herkesi her gece yeniden çıkarıp raporluyordu)
+    try:
+        con.execute("ALTER TABLE subscribers ADD COLUMN kicked INTEGER DEFAULT 0")
+    except Exception:
+        pass   # kolon zaten var
     con.execute("""
         CREATE TABLE IF NOT EXISTS shopier_processed_orders (
             order_id     INTEGER PRIMARY KEY,
@@ -119,7 +125,7 @@ def sub_add(user_id: int, username: str, tier: str, days: int, note: str = "") -
         ON CONFLICT(user_id) DO UPDATE SET
             username=excluded.username, tier=excluded.tier,
             expiry_date=excluded.expiry_date, added_date=excluded.added_date,
-            note=excluded.note
+            note=excluded.note, kicked=0
     """, (user_id, username, tier, expiry, today, note))
     con.commit(); con.close()
     return expiry
@@ -191,16 +197,24 @@ def sub_list_active() -> list[dict]:
     return [{"user_id": r[0], "username": r[1], "tier": r[2], "expiry_date": r[3]} for r in rows]
 
 def sub_list_expired() -> list[dict]:
-    """Süresi dolmuş abonelerin listesini döndürür."""
+    """Süresi dolmuş abonelerin listesini döndürür (kicked alanı dahil)."""
     from datetime import date
     today = date.today().isoformat()
     con = sqlite3.connect(_SIGNALS_DB)
     rows = con.execute(
-        "SELECT user_id, username, tier, expiry_date FROM subscribers WHERE expiry_date < ? ORDER BY expiry_date DESC",
+        "SELECT user_id, username, tier, expiry_date, COALESCE(kicked, 0) FROM subscribers WHERE expiry_date < ? ORDER BY expiry_date DESC",
         (today,)
     ).fetchall()
     con.close()
-    return [{"user_id": r[0], "username": r[1], "tier": r[2], "expiry_date": r[3]} for r in rows]
+    return [{"user_id": r[0], "username": r[1], "tier": r[2], "expiry_date": r[3], "kicked": int(r[4])} for r in rows]
+
+
+def sub_mark_kicked(user_id: int):
+    """Kanaldan çıkarma işlendi damgası — aynı üye bir daha kick/rapor edilmez.
+    Üye yenilenirse (sub_add) damga otomatik sıfırlanır (kicked=0)."""
+    con = sqlite3.connect(_SIGNALS_DB)
+    con.execute("UPDATE subscribers SET kicked = 1 WHERE user_id = ?", (user_id,))
+    con.commit(); con.close()
 
 def shopier_order_seen(order_id: int) -> bool:
     """Bu sipariş daha önce işlendi mi? Döndürür: True=işlendi, False=yeni."""
