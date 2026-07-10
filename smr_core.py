@@ -1387,6 +1387,10 @@ def generate_chart(ticker: str, df: pd.DataFrame, ict: dict | None = None) -> by
             bar_colors = [BLUE if v >= 0 else RED for v in mf]
             ax1.bar(x, mf, color=bar_colors, width=0.75, alpha=0.9, zorder=3)
             ax1.axhline(0, color=BORDER, linewidth=0.8, linestyle="--")
+            # 10 Tem 2026 — SABİT EKSEN: ±30 = ±3σ (app paneliyle aynı kural);
+            # aşan bar olursa eksen genişler, kırpma yok.
+            _lim = max(30.0, float(np.nanmax(np.abs(mf))) * 1.05) if len(mf) else 30.0
+            ax1.set_ylim(-_lim * 1.1, _lim * 1.1)
             ax1.set_ylabel("Para Akışı (Güç)", color=LABEL, fontsize=9)
             ax1.tick_params(axis="y", colors=LABEL, labelsize=8)
             ax1.tick_params(axis="x", which="both", bottom=False, labelbottom=False)

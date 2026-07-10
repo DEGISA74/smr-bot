@@ -4,6 +4,29 @@
  */
 
 const JSON_URL        = "./latest.json";
+let   _currentTicker  = "XU100";   // light app — seçili sembol
+function tickerUrl(t){ return (!t || t === "XU100") ? JSON_URL : ("./data/" + t + ".json"); }
+
+// Anonim tadımlık kapısı — lokalde :8090, canlıda "" (aynı origin, nginx /api/)
+const FREE_API_URL = (location.hostname === "localhost" || location.hostname === "127.0.0.1") ? "http://localhost:8090" : "";
+// SERBEST TANITIM DÖNEMİ: kapı KAPALI (herkes sınırsız gezsin). Ödeme açılınca → true yap.
+const FREE_GATE_ON = false;
+function _isIndex(t){ t=(t||"").toUpperCase(); return t.indexOf("XU")===0 || t.indexOf("XB")===0; }
+function _showFreeLock(){
+  var s = document.getElementById('sel-status');
+  if(s) s.innerHTML = '<span style="color:#f59e0b;font-weight:600;">Günlük ücretsiz analiz hakkın doldu</span> — üye ol veya 24 saat sonra dene.';
+  if(typeof window.smrOpenPlans === 'function') window.smrOpenPlans();
+}
+// true = izin, false = kilit. Gate erişilemezse fail-open (engelleme).
+async function _freeGateAllows(ticker){
+  if(!FREE_GATE_ON) return true;       // serbest tanıtım dönemi — kapı kapalı
+  if(_isIndex(ticker)) return true;
+  try{
+    var r = await fetch(FREE_API_URL + "/api/free-check?ticker=" + encodeURIComponent((ticker||"").toUpperCase()), {credentials:"include"});
+    var j = await r.json();
+    return !!j.allowed;
+  }catch(e){ return true; }
+}
 const TG_PRO_URL      = "#planlar";
 const TG_ELITE_URL    = "#planlar";
 const TWITTER_URL     = "https://x.com/SMRadar_2026";
@@ -20,8 +43,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-async function loadData() {
-  const res = await fetch(JSON_URL + "?t=" + Date.now());
+async function loadData(ticker) {
+  _currentTicker = ticker || "XU100";
+  const res = await fetch(tickerUrl(_currentTicker) + "?t=" + Date.now());
   if (!res.ok) throw new Error("JSON fetch failed: " + res.status);
   const data = await res.json();
 
@@ -31,6 +55,14 @@ async function loadData() {
   startAutoRefresh();   // renderAll'dan ÖNCE — render hatası olsa bile interval başlar
   renderAll(data);
 }
+
+// Light app — seçiciden çağrılır: sembole göre JSON yükle, panelleri yeniden çiz
+window.loadTicker = async function(ticker){
+  // Anonim tadımlık kapısı (endeks hariç) — hak dolduysa kilit göster, yükleme
+  if(!(await _freeGateAllows(ticker))){ _showFreeLock(); return false; }
+  try { await loadData(ticker); return true; }
+  catch(e){ console.error("loadTicker", ticker, e); return false; }
+};
 
 function renderAll(data) {
   renderUpdateTime(data.meta);
@@ -58,7 +90,7 @@ function renderAll(data) {
 function startAutoRefresh() {
   setInterval(async () => {
     try {
-      const res = await fetch(JSON_URL + "?t=" + Date.now());
+      const res = await fetch(tickerUrl(_currentTicker) + "?t=" + Date.now());
       if (!res.ok) return;
       const data = await res.json();
       const stamp = (data.meta?.canli_guncelleme || '') + '|' + (data.meta?.tarih || '') + '|' + (data.meta?.guncelleme || '');
@@ -329,6 +361,9 @@ function renderXU100Panel(d, ozet, grafik) {
     htag.classList.toggle('price-neg', !pos);
   }
 
+  const ptitle = document.querySelector('#xu100-panel .panel-title');
+  if (ptitle) ptitle.textContent = `📈 Para Akış İvmesi & Fiyat Dengesi: ${d.ticker || 'XU100'}`;
+
   // Grafik HTML — gerçek veri varsa kullan, yoksa boş mesaj
   const chartHtml = grafik && grafik.length >= 5
     ? `<div class="chart-grid">
@@ -401,7 +436,7 @@ function renderTeknikSeviyeler(d) {
   }
 
   const tag = document.getElementById("levels-xu-tag");
-  if (tag) tag.textContent = `XU100 — ${fmt(d.kapanis)}`;
+  if (tag) tag.textContent = `${d.ticker || 'XU100'} — ${fmt(d.kapanis)}`;
 
   const k = d.kapanis;
 
@@ -428,7 +463,7 @@ function renderTeknikSeviyeler(d) {
           <th>EMA 5</th>
           <th>EMA 8</th>
           <th>EMA 13</th>
-          <th class="lv-current-th">XU100</th>
+          <th class="lv-current-th">${d.ticker || 'XU100'}</th>
           <th>SMA 50</th>
           <th>SMA 100</th>
           <th>SMA 200</th>
@@ -754,7 +789,7 @@ function renderSidebarRight(d, ozet) {
   const pos = d.degisim_pct >= 0;
 
   document.getElementById("price-card-big").innerHTML = `
-    <div class="price-card-label">FİYAT: XU100</div>
+    <div class="price-card-label">FİYAT: ${d.ticker || 'XU100'}</div>
     <div class="price-card-num" style="color:#ffffff">${fmt(d.kapanis)}</div>
     <div class="price-card-chg ${pos?'pos':'neg'}">${pos?'▲':'▼'} %${Math.abs(d.degisim_pct).toFixed(2)}</div>
   `;
@@ -775,7 +810,7 @@ function renderSidebarRight(d, ozet) {
     const paSinyal = d.degisim_pct >= 0 ? "BULLISH ENGULF" : "BEARISH BREAK";
     const paColor  = d.degisim_pct >= 0 ? "var(--green)" : "var(--red)";
     paEl.innerHTML = `
-      <div class="rsection-title cyan">📍 Price Action Analizi: XU100</div>
+      <div class="rsection-title cyan">📍 Price Action Analizi: ${d.ticker || 'XU100'}</div>
       <!-- Görünen: En güçlü PA sinyali -->
       <div class="signal-row" style="margin-bottom:6px">
         <div class="signal-dot g"></div>
@@ -1061,7 +1096,7 @@ function renderKurumsalPanel(xu100) {
 
   el.innerHTML = `
     <div class="panel-header orange">
-      <div class="panel-title">💼 Kurumsal İlgi Analizi: XU100</div>
+      <div class="panel-title">💼 Kurumsal İlgi Analizi: ${(xu100 && xu100.ticker) || 'XU100'}</div>
       <div class="panel-tag" style="color:var(--orange)">Skor: ${skor}/100</div>
     </div>
     <div class="panel-body">

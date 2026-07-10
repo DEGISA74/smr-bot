@@ -123,6 +123,9 @@ def build_ivme_fig(ticker, nbar=30):
     fig.update_yaxes(gridcolor='#162234', zeroline=True, zerolinecolor='#1e2c40')
     fig.update_yaxes(showticklabels=False, row=1, col=1, secondary_y=False)
     fig.update_yaxes(showticklabels=False, row=1, col=1, secondary_y=True)
+    # 10 Tem 2026 — SABİT EKSEN: ±30 = ±3σ (app paneliyle aynı kural); aşan bar olursa genişler.
+    _lim = max(30.0, float(d['MF'].abs().max()) * 1.05)
+    fig.update_yaxes(range=[-_lim * 1.1, _lim * 1.1], row=1, col=1, secondary_y=False)
     fig.update_yaxes(side='right', tickformat='.0f', row=1, col=2)
     for ann in fig['layout']['annotations']:
         ann['font'] = dict(color='#38bdf8', size=12)
