@@ -25,6 +25,10 @@ import os
 import radar_core  # Fırsat Radarı formasyon motoru (firsat_radari botu ile paylaşımlı tek kaynak)
 import pattern_core  # 4 Tem 2026 — formasyon geliştirme paketi (ön-trend, hacim imzası, retest, adaptif eşik)
 import ict_core  # 4 Tem 2026 — ICT paneli geliştirme paketi (swing kalitesi, kırılım onayı, denge bölgesi)
+from ict_core import (calculate_ict_deep_analysis, calculate_price_action_dna,
+                      calculate_minervini_sepa, calculate_harmonic_confluence,
+                      calculate_harmonic_patterns, detect_price_action_with_context,
+                      _check_harmonic_ratio, _harmonic_zigzag)  # Adım 7 motor göçü
 from data_policy import AUTO_ADJUST, drop_adj_close  # 3 Tem 2026 — veri politikası TEK KAYNAK (fetcher ile aynı)
 # 4 Tem 2026 — BÖLME ADIM 4: saf hesap fonksiyonları indicators.py içinde
 from indicators import (
@@ -33,11 +37,34 @@ from indicators import (
     compute_cmf, find_smart_sr_levels, detect_darvas_box, calculate_volume_delta, detect_classic_candle_patterns,
     calculate_volume_profile_poc, calculate_full_volume_profile, calculate_multi_tf_pocs, calculate_anchored_vwap,
     detect_naked_poc, detect_supply_demand_zones, _harmonik_52h_strength, calculate_supertrend,
-    calculate_fib_levels, calculate_z_score_live, _z_score_details, detect_market_regime)
+    calculate_fib_levels, calculate_z_score_live, _z_score_details, detect_market_regime,
+    compute_flow_momentum,  # 9 Tem 2026 — Para Akış İvmesi karışım formülü (TEK KAYNAK)
+    compute_flow_persistence, detect_absorption_days,  # 10 Tem 2026 — Smart Money panel: süreklilik + absorpsiyon
+    compute_obv_series, compute_obv_divergence_duration,  # 10 Tem 2026 — OBV sparkline + uyumsuzluk rozeti
+    compute_panel_consensus_history, find_volume_gap_levels)  # 10 Tem 2026 — skor geçmişi + LVN boşlukları
 # 4 Tem 2026 — BÖLME ADIM 5: DB çekirdeği db_layer.py içinde
 from db_layer import (DB_FILE, log_error, init_db, _fetch_mkk_yabanci_rss,
                       _compute_mkk_yabanci_signals, load_watchlist_db, add_watchlist_db,
                       remove_watchlist_db, get_scanner_optimal_windows, get_scenario_ages_batch)
+# 6 Tem 2026 — BÖLME ADIM 6a: tek-hisse tarayıcı çekirdekleri scanners.py içinde
+from scanners import (_validate_cup_shape, _validate_tobo_shape, _detect_double_bottom, _detect_double_top, _detect_wedge, process_single_accumulation,
+                      process_single_radar1, process_single_radar2, calculate_guclu_donus_adaylari, calculate_prelaunch_bos, process_single_ict_setup, _nadir_firsat_single_fast)
+# 7 Tem 2026 — BÖLME ADIM 6b: Erken Radar ailesi scanners.py içinde
+from scanners import (ERKEN_RADAR_SCENARIOS, evaluate_erken_radar, _er_build_context, _er_kisa_aciklama,
+                      _er_rsi, _er_swing_lows, _er_swing_highs, _er_strong_bullish_div, _er_medium_bullish_div,
+                      _er_weak_bullish_div, _er_bearish_div, _er_volume_dried, _er_volume_rising_slow,
+                      _er_pocket_pivot, _er_distribution_day, _er_distribution_count, _er_updown_vol_ratio,
+                      _er_bb_width, _er_bb_squeeze, _er_bb_squeeze_days, _er_atr_contracting, _er_position_60,
+                      _er_recent_fall, _er_fall_stopped, _er_lateral_range, _er_above_sma, _er_sma50_rising,
+                      _er_pullback, _er_pullback_to_sma, _er_double_bottom, _er_flag_pattern, _er_triangle_contraction,
+                      _er_rs_pct, _er_rs_new_high, _er_index_falling, _er_rs_pct_fast, _er_rs_turning_fast,
+                      _er_rs_crossover_fast, _er_rs_persistent_positive_fast, _er_rs_accelerating_fast,
+                      _er_rs_new_high_fast, _er_rs_healthy_pullback_fast, _er_rs_negative_60_fast)
+# 9 Tem 2026 — BÖLME ADIM 6c: veri katmanı data_layer.py içinde
+from data_layer import (
+    CACHE_DIR, _apply_split_adjustments, _data_integrity_check, _normalize_bist_ticker, _yf_download_with_retry,
+    fetch_index_data_cached, fetch_stock_info, final_bist100_list, get_batch_data_cached, get_benchmark_data,
+    get_safe_historical_data)
 import concurrent.futures
 import re
 import altair as alt
@@ -89,13 +116,7 @@ except ImportError:
     _AREFE_RATIO = 0.3125
     _BIST_CAL_OK = False
 
-# CACHE_DIR — environment variable ile override edilebilir (VPS deploy için portable)
-# Varsayılan: app.py'nin yanındaki "veriler" klasörü
-_DEFAULT_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "veriler")
-CACHE_DIR = os.environ.get("SMR_CACHE_DIR", _DEFAULT_CACHE)
-if not os.path.exists(CACHE_DIR):
-    os.makedirs(CACHE_DIR)
-
+# -> data_layer.py (Adim 6c, 9 Tem 2026): CACHE_DIR_BLOGU
 
 @st.cache_data(ttl=900, show_spinner=False)
 def _firsat_radar_scan():
@@ -107,7 +128,7 @@ def _firsat_radar_scan():
         return ([], [], [], None)
 
 # Cache telemetri — bir oturum boyunca hit/miss sayacı (debug için)
-_CACHE_STATS = {'hit': 0, 'miss': 0, 'split_detected': 0}
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _CACHE_STATS
 
 # ─── PROFIL ALTYAPISI (15 Haz 2026) ──────────────────────────────────────────
 # Sayfa açılış darboğazlarını ölçmek için. SMR_PROFILE=1 ile aktif.
@@ -140,6 +161,35 @@ else:
         def __enter__(self): return self
         def __exit__(self, *a): pass
     def _tlog(name, elapsed_ms, extra=""): pass
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── HAYALET-VERİ BEKÇİSİ (10 Tem 2026) ──────────────────────────────────────────
+# Streamlit ana dosyayı hot-reload eder ama import edilen modülleri (data_layer,
+# indicators, ...) ETMEZ. Süreç başladıktan SONRA bir modül dosyası değişmişse,
+# hesaplar ESKİ kodla koşup panelde hayalet veri üretir (EREGL 90-102 / AKBNK
+# vakaları). Bu bekçi render başında modül mtime'larını süreç boot anıyla kıyaslar,
+# değişen varsa sarı uyarı basar → "TAM restart et". Maliyet: birkaç os.stat.
+import time as _boot_time
+_WATCHED_MODULES = ['data_layer', 'indicators', 'db_layer', 'evidence',
+                    'scanners', 'ict_core', 'pattern_core']
+
+@st.cache_resource
+def _app_boot_ts():
+    # cache_resource süreç-global + rerun'lar arası kalıcı → gerçek boot anı.
+    # Yalnız TAM restart sıfırlar; app.py hot-reload'u (rerun) DEĞİL.
+    return _boot_time.time()
+
+def _stale_modules_since_boot():
+    _boot = _app_boot_ts()
+    _base = os.path.dirname(os.path.abspath(__file__))
+    _stale = []
+    for _m in _WATCHED_MODULES:
+        try:
+            if os.path.getmtime(os.path.join(_base, _m + '.py')) > _boot:
+                _stale.append(_m)
+        except OSError:
+            pass
+    return _stale
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── HATA GÜNLÜĞÜ (W9) ─────────────────────────────────────────────────────────
@@ -217,124 +267,13 @@ def load_scan_result(key, category=""):
         pass
     return None
 
-def _volume_is_stale(df, ticker):
-    """
-    Son işlem verisinde hacim bozukluğu var mı kontrol eder.
-    Endeks/kripto hariç: son non-zero Volume tarihi 5+ takvim günü eskiyse
-    (bugün hariç) → parquet bozuk/eksik demektir.
-    """
-    if df is None or df.empty:
-        return False
-    if ticker.startswith(("XU", "^")) or "-USD" in ticker:
-        return False
-    try:
-        v = df['Volume']
-        v_hist = v.iloc[:-1]           # bugünü hariç tut
-        nonzero = v_hist[v_hist > 0]
-        if len(nonzero) == 0:
-            return True
-        last_nz = nonzero.index[-1]
-        if hasattr(last_nz, 'date'):
-            last_nz = last_nz.date()
-        import datetime as _dt_sv
-        days_gap = (_dt_sv.date.today() - last_nz).days
-        # 5+ takvim günü açık varsa bozuk say (hafta sonu = max 3 gün normal boşluk)
-        return days_gap > 5
-    except Exception:
-        return False
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _volume_is_stale
 
 
-def _fetch_bist_ohlcv_borsapy(symbol, period="1y", interval="1d"):
-    """
-    borsapy library — TradingView WebSocket üzerinden gerçek-zamanlı OHLCV.
-    yfinance + İsyatirim ikisi de başarısız olduğunda son fallback.
-
-    Avantajları:
-      - Real-time tick data (TradingView)
-      - VIOP destekli (vadeli işlemler — yfinance vermez)
-      - BIST hisse + endeks + forex + crypto + fon hepsi tek lib
-
-    Riskleri:
-      - TradingView ToS, IP block riski
-      - Tek maintainer, downtime riski
-
-    Bu yüzden SADECE primary kaynaklar başarısızken devreye girer.
-
-    Returns: DataFrame (Open, High, Low, Close, Volume) veya None
-    """
-    try:
-        import borsapy as _bp
-    except ImportError:
-        return None
-    try:
-        _sym = symbol.replace(".IS", "").upper()
-        _t = _bp.Ticker(_sym)
-        _df = _t.history(period=period, interval=interval)
-        if _df is None or len(_df) == 0:
-            return None
-        # Sütun normalize
-        _df.columns = [str(c).capitalize() for c in _df.columns]
-        _need = {'Open', 'High', 'Low', 'Close', 'Volume'}
-        if not _need.issubset(_df.columns):
-            return None
-        # Index tz temizliği
-        if _df.index.tz is not None:
-            _df.index = _df.index.tz_localize(None)
-        return _df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
-    except Exception as _ex:
-        import logging
-        logging.warning(f"[borsapy] {symbol} hata: {_ex}")
-        return None
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _fetch_bist_ohlcv_borsapy
 
 
-def _fetch_bist_ohlcv_isyatirim(symbol, start_date, end_date):
-    """
-    İş Yatırım API'sinden BIST hisse tam OHLCV verisi çeker.
-    yfinance'in bölünme/temettü adjusted price hatalarını giderir.
-    Volume = HGDG_HACIM (TL) / HGDG_AOF (ağırlıklı ort. fiyat) → hisse adedi
-    Returns: DataFrame (Open, High, Low, Close, Volume, DatetimeIndex) veya None
-    """
-    try:
-        from isyatirimhisse import fetch_stock_data
-        _sym = symbol.replace(".IS", "").replace(".is", "").upper()
-        from datetime import datetime as _dtime
-        _s = _dtime.strptime(start_date, "%Y-%m-%d").strftime("%d-%m-%Y")
-        _e = _dtime.strptime(end_date,   "%Y-%m-%d").strftime("%d-%m-%Y")
-        df_isy = fetch_stock_data(symbols=_sym, start_date=_s, end_date=_e)
-        if df_isy is None or df_isy.empty:
-            return None
-        # 4 Haz 2026 — İsyatirim API'sinde HGDG_ACILIS sütunu artık YOK.
-        # Eski zorunlu kontrol her zaman False döndürüyordu → fallback hiç çalışmıyordu.
-        # YENİ MANTIK: Volume için sadece HGDG_HACIM + HGDG_AOF + HGDG_TARIH yeter.
-        # Açılış (Open) opsiyonel — yoksa Close ile doldur (Yahoo'nun OHLC zaten doğru).
-        _minimal = {'HGDG_TARIH', 'HGDG_AOF', 'HGDG_HACIM', 'HGDG_KAPANIS'}
-        if not _minimal.issubset(df_isy.columns):
-            return None
-        df_isy = df_isy[df_isy['HGDG_AOF'] > 0].copy()
-        if df_isy.empty:
-            return None
-        idx = pd.to_datetime(df_isy['HGDG_TARIH'])
-        idx = idx.dt.tz_localize(None) if idx.dt.tz is not None else idx
-        # Açılış varsa kullan, yoksa Close ile fallback (override edici fonksiyonlar Open'i
-        # genelde Yahoo'dan korur — sadece Volume + Close gerçekten önemli).
-        _open_col = df_isy['HGDG_ACILIS'].values if 'HGDG_ACILIS' in df_isy.columns else df_isy['HGDG_KAPANIS'].values
-        _high_col = df_isy['HGDG_MAX'].values if 'HGDG_MAX' in df_isy.columns else df_isy['HGDG_KAPANIS'].values
-        _low_col  = df_isy['HGDG_MIN'].values if 'HGDG_MIN' in df_isy.columns else df_isy['HGDG_KAPANIS'].values
-        df_out = pd.DataFrame({
-            'Open':   _open_col,
-            'High':   _high_col,
-            'Low':    _low_col,
-            'Close':  df_isy['HGDG_KAPANIS'].values,
-            'Volume': (df_isy['HGDG_HACIM'] / df_isy['HGDG_AOF']).values,
-        }, index=idx)
-        df_out = df_out[df_out['Close'] > 0].dropna(subset=['Close', 'Volume'])
-        return df_out if not df_out.empty else None
-    except ImportError:
-        return None
-    except Exception as _e:
-        import logging as _lg
-        _lg.warning(f"[_fetch_bist_ohlcv_isyatirim] {symbol} hata: {_e}")
-        return None
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _fetch_bist_ohlcv_isyatirim
 
 
 # ─── EMTIA FUTURES HACIM OVERRIDE (15 Haz 2026 Oturum 22) ────────────────────
@@ -344,238 +283,31 @@ def _fetch_bist_ohlcv_isyatirim(symbol, start_date, end_date):
 # CME spesifik kontratlarından (GCQ26.CMX vs.) hacim çekiyoruz. Her gün için aktif
 # kontrat (max-hacim kuralı) seçilir → kontrat rollover'ı otomatik handle edilir.
 # Fiyat (Open/High/Low/Close) =F'in continuous serisinden değişmeden korunur.
-_FUT_CONTRACT_CANDIDATES = {
-    # =F sembolü → aday CME kontrat sembolleri (yfinance formatında)
-    # Ay kodları: F=Oca G=Sub H=Mar J=Nis K=May M=Haz N=Tem Q=Agu U=Eyl V=Eki X=Kas Z=Ara
-    # Cari + bir sonraki + bir ileri ayı kapsa; max-hacim kuralı doğruyu seçer.
-    # Bu liste yılda 1-2 kez (12 ay rollover'a yaklaşırken) güncellenebilir.
-    "GC=F": ["GCM26.CMX", "GCQ26.CMX", "GCZ26.CMX", "GCG27.CMX"],   # Gold
-    "SI=F": ["SIN26.CMX", "SIU26.CMX", "SIZ26.CMX", "SIH27.CMX"],   # Silver
-    "CL=F": ["CLN26.NYM", "CLQ26.NYM", "CLU26.NYM", "CLZ26.NYM"],   # Crude
-    "NG=F": ["NGN26.NYM", "NGQ26.NYM", "NGU26.NYM", "NGZ26.NYM"],   # NatGas
-    "HG=F": ["HGN26.CMX", "HGU26.CMX", "HGZ26.CMX"],                # Copper
-    "PL=F": ["PLN26.NYM", "PLV26.NYM", "PLF27.NYM"],                # Platinum
-    "PA=F": ["PAM26.NYM", "PAU26.NYM", "PAZ26.NYM"],                # Palladium
-}
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _FUT_CONTRACT_CANDIDATES
 
 
-def _fetch_futures_volume_yahoo_active(symbol, period="6mo"):
-    """
-    Emtia futures (=F) için Yahoo'nun aktif CME kontratlarından birleştirilmiş
-    gerçek hacim serisi döndürür. Her gün için en yüksek hacimli aday kontrat
-    seçilir → kontrat rollover'ı otomatik handle edilir.
-    Returns: pd.Series (DatetimeIndex, Volume) veya None
-    """
-    candidates = _FUT_CONTRACT_CANDIDATES.get(symbol)
-    if not candidates:
-        return None
-    try:
-        import yfinance as _yf
-        import logging as _lg0
-        # 2 Tem 2026 — Aday kontratların bir kısmı TASARIM GEREĞİ expired (GCM26 Haziran
-        # geçince boş döner). Fonksiyon bunu zaten `continue` ile atlıyor ama yfinance'in
-        # KENDİ logger'ı her expired probe'ta ERROR basıyordu (log spam). Probe boyunca sustur.
-        _yf_log = _lg0.getLogger("yfinance")
-        _yf_prev = _yf_log.level
-        _yf_log.setLevel(_lg0.CRITICAL)
-        frames = []
-        try:
-            for _c in candidates:
-                try:
-                    _df = _yf.download(_c, period=period, progress=False, auto_adjust=False, threads=False)
-                    if _df is None or _df.empty:
-                        continue
-                    if isinstance(_df.columns, pd.MultiIndex):
-                        _df.columns = _df.columns.get_level_values(0)
-                    if "Volume" not in _df.columns:
-                        continue
-                    _v = pd.to_numeric(_df["Volume"], errors="coerce").fillna(0)
-                    _v.name = _c
-                    frames.append(_v)
-                except Exception:
-                    continue
-        finally:
-            _yf_log.setLevel(_yf_prev)      # yfinance logger seviyesini geri yükle
-        if not frames:
-            return None
-        merged = pd.concat(frames, axis=1).fillna(0)
-        # Her gün için adaylar arasında max-hacim → o günkü aktif kontrat
-        active_volume = merged.max(axis=1)
-        # tz-naive normalize (parquet cache + Yahoo OHLCV ile eşleşsin)
-        if active_volume.index.tz is not None:
-            active_volume.index = active_volume.index.tz_localize(None)
-        return active_volume[active_volume > 0]
-    except Exception as _e:
-        import logging as _lg
-        _lg.warning(f"[_fetch_futures_volume_yahoo_active] {symbol} hata: {_e}")
-        return None
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _fetch_futures_volume_yahoo_active
 
 
-def _apply_futures_volume_override(df, symbol):
-    """
-    =F sembolünde df'in Volume kolonunu aktif kontrat hacmiyle override eder.
-    Tarih-eşleşmeli (df.index ile kontrat tarihi). Eşleşmeyen günler (eski tarih)
-    NaN'la doldurulmaz; orijinal =F değeri korunur (geri uyumluluk).
-    """
-    if df is None or df.empty or "Volume" not in df.columns:
-        return df
-    if not symbol or not symbol.endswith("=F"):
-        return df
-    if symbol not in _FUT_CONTRACT_CANDIDATES:
-        return df
-    vol_series = _fetch_futures_volume_yahoo_active(symbol)
-    if vol_series is None or vol_series.empty:
-        return df
-    df = df.copy()
-    # tz-naive normalize (df tarafı)
-    _idx = df.index
-    if hasattr(_idx, "tz") and _idx.tz is not None:
-        df.index = _idx.tz_localize(None)
-    # Tarih-eşleşmeli override (date'e göre, saat farklarını ignore et)
-    _df_dates = pd.to_datetime(df.index).normalize()
-    _vol_dates = pd.to_datetime(vol_series.index).normalize()
-    _vol_map = pd.Series(vol_series.values, index=_vol_dates)
-    _vol_map = _vol_map[~_vol_map.index.duplicated(keep="last")]
-    _new_vol = pd.Series(_df_dates.map(_vol_map), index=df.index)
-    # Sadece eşleşme bulunduğu yerde override; bulunamayan eski tarihler =F kalır
-    _mask = _new_vol.notna()
-    if _mask.any():
-        df.loc[_mask, "Volume"] = _new_vol[_mask].astype(float).values
-    return df
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _apply_futures_volume_override
 
 
 # 2 Tem 2026 — ÖLÜ/DELISTED SEMBOL KARA LİSTESİ. Bu semboller her taramada
 # Yahoo+İsyatirim+borsapy üçüne de boşuna gidip "delisted/404" seli + yavaşlık +
 # log kirliliği üretiyordu. Ağ denemesi atlanır (cache varsa son bilinen veri gösterilir).
 # Yeni ölü sembol logda "possibly delisted / no 1y data" tekrarlarsa buraya EKLE (çıplak ad).
-_DEAD_SYMBOLS = frozenset({
-    "UMPAS", "ISATR", "ROYAL", "RTALB", "FRIGO", "GOKNR", "YYLGD", "LKMNH",
-})
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _DEAD_SYMBOLS
 
 
-def _has_recent_gap(df, lookback_days=45):
-    """2 Tem 2026 — borsapy gap-fill'i SADECE gerçekten eksik işlem günü olan
-    sembollerde çağırmak için ucuz kapı. Önceden gap-fill HER BIST sembolü için
-    borsapy'a gidiyordu (yüzlerce çağrı → TradingView throttle → 'No data received').
-    Burada bist_calendar ile df'in son 45 gününde tamamlanmış (bugün HARİÇ) bir işlem
-    günü eksikse True döner → sadece o zaman borsapy. Şüphede False (borsapy'ı yorma)."""
-    try:
-        import bist_calendar as _bc
-        import datetime as _dt
-        if df is None or df.empty:
-            return False
-        have = set(pd.DatetimeIndex(df.index).normalize().date)
-        last = df.index[-1].date()
-        today = _dt.date.today()
-        d = last - _dt.timedelta(days=lookback_days)
-        while d < today:                       # bugünü hariç tut (oturmamış bar tetiklemesin)
-            if _bc.is_trading_day(d) and d not in have:
-                return True                     # tamamlanmış bir işlem günü eksik = delik
-            d += _dt.timedelta(days=1)
-        return False
-    except Exception:
-        return False
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _has_recent_gap
 
 
-def _apply_split_adjustments(df):
-    """
-    BIST bedelsiz artırım / bölünme tespiti ve geriye dönük fiyat düzeltmesi.
-    BIST günlük fiyat limiti ±%10 → tek günde >%20 düşüş kesinlikle bölünme.
-    Birden fazla bölünme varsa hepsini kronolojik sırayla yakalar.
-    Volume ters yönde düzeltilir (daha fazla hisse = daha fazla volume).
-    """
-    if df is None or df.empty or len(df) < 5:
-        return df
-    df = df.copy().sort_index()
-    price_cols = [c for c in ['Open', 'High', 'Low', 'Close'] if c in df.columns]
-    if 'Close' not in df.columns:
-        return df
-    # 24 Haz 2026 — Volume int64'e float ratio atanınca her bölünmede FutureWarning
-    # üretiyordu (yüz binlerce konsol satırı → Master Scan boğuluyordu). Önce float64'e
-    # çevir ki tip uyumsuzluğu uyarısı çıkmasın.
-    for _c in price_cols + (['Volume'] if 'Volume' in df.columns else []):
-        if df[_c].dtype != 'float64':
-            df[_c] = df[_c].astype('float64')
-    import logging as _lg
-    for _ in range(10):  # max 10 bölünme — sonsuz döngü koruması
-        closes = df['Close'].ffill().values
-        split_found = False
-        for i in range(1, len(closes)):
-            prev, curr = closes[i - 1], closes[i]
-            if prev <= 0 or curr <= 0:
-                continue
-            ratio = prev / curr
-            if ratio >= 1.20:  # >%20 tek günlük düşüş → bölünme/bedelsiz artırım
-                for col in price_cols:
-                    df.iloc[:i, df.columns.get_loc(col)] = (
-                        df.iloc[:i][col].values / ratio
-                    )
-                if 'Volume' in df.columns:
-                    df.iloc[:i, df.columns.get_loc('Volume')] = (
-                        df.iloc[:i]['Volume'].values * ratio
-                    )
-                _lg.info(f"[split_adj] Bölünme düzeltildi: satır={i} oran=x{ratio:.2f}")
-                split_found = True
-                break  # closes güncellendi, dışarı çık ve tekrar tara
-        if not split_found:
-            break
-    return df
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _apply_split_adjustments
 
 
-def _fix_stale_volume(df_base, clean_ticker, interval):
-    """
-    start/end ile gelen veride Volume=0 (bozuk) günler varsa,
-    period='1mo' ile kısa vadeli çekiş yapıp son 30 günü override eder.
-    Eski tarihsel veri korunur, sadece bozuk günler düzeltilir.
-    """
-    try:
-        df_short = _yf_download_with_retry(clean_ticker, period="1mo", interval=interval)
-        if df_short.empty:
-            return df_base
-        # Sütun temizleme
-        if isinstance(df_short.columns, pd.MultiIndex):
-            df_short.columns = (df_short.columns.get_level_values(0)
-                                if 'Close' in df_short.columns.get_level_values(0)
-                                else df_short.columns.get_level_values(1))
-        df_short = df_short.loc[:, ~df_short.columns.duplicated()].copy()
-        df_short.columns = [str(c).capitalize() for c in df_short.columns]
-        if df_short.index.tz is not None:
-            df_short.index = df_short.index.tz_convert(None)
-        if 'Volume' not in df_short.columns or df_short['Volume'].isna().all():
-            return df_base
-        # Merge: df_base'den short'un başladığı tarihten öncesini al, geri kalanı short ile yaz
-        cutoff = df_short.index[0]
-        df_old = df_base[df_base.index < cutoff].copy()
-        df_merged = pd.concat([df_old, df_short])
-        df_merged = df_merged[~df_merged.index.duplicated(keep='last')].sort_index()
-        return df_merged
-    except Exception:
-        return df_base
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _fix_stale_volume
 
-def is_yahoo_update_needed(ticker, local_last_date):
-    now = datetime.now(_TZ_ISTANBUL)
-    weekday = now.weekday()
-    hour_min = now.hour * 100 + now.minute
-    local_date = local_last_date.date()
-
-    if ".IS" in ticker or ticker.startswith("XU"):
-        if weekday >= 5:
-            return local_date < (now - timedelta(days=(weekday - 4))).date()
-        if hour_min < 1000:
-            return local_date < (now - timedelta(days=1)).date()
-        if hour_min > 1830:
-            return local_date < now.date()
-        return True
-
-    elif "-USD" not in ticker and "=F" not in ticker:
-        if weekday >= 5:
-            return local_date < (now - timedelta(days=(weekday - 4))).date()
-        if hour_min > 2330 or hour_min < 1630:
-            target_date = now.date() if hour_min > 2330 else (now - timedelta(days=1)).date()
-            return local_date < target_date
-        return True
-
-    return True
+# -> data_layer.py (Adim 6c, 9 Tem 2026): is_yahoo_update_needed
 
 # ==============================================================================
 # 1. AYARLAR VE STİL
@@ -2060,25 +1792,7 @@ def _compute_signal_features(ticker: str) -> dict:
 from evidence import (SCANNER_TIER_MAP, ER_BACKTEST_SCORE, ER_ELIT_SCORE_MIN,
                       SCANNER_PLAIN_DESC, GUC_SCORE, _guc_score, _guc_plain)
 
-def _er_kisa_aciklama(scenario_id):
-    """Senaryonun sade açıklaması — kod bilmeyen son kullanıcının anlayacağı dilde.
-    Örn. B8 → 'Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı.'
-    İlk cümle çok kısaysa (genel) ikinci cümleyi de ekler."""
-    try:
-        d = ERKEN_RADAR_SCENARIOS.get(str(scenario_id), {}).get('description', '')
-        if not d:
-            return ''
-        parts = [p.strip() for p in d.replace(' — ', '. ').split('. ') if p.strip()]
-        if not parts:
-            return ''
-        out = parts[0]
-        if len(out) < 45 and len(parts) > 1:   # ilk cümle genel/kısaysa ikinciyi de al
-            out = out.rstrip('.') + '. ' + parts[1]
-        if not out.endswith(('.', '?', '!')):
-            out += '.'
-        return out
-    except Exception:
-        return ''
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_kisa_aciklama
 
 
 
@@ -2418,10 +2132,12 @@ _SCAN_LOG_DISABLED = False   # tek-hisse canlı tarama sırasında True → DB'y
 _SCAN_LOG_SKIP = set()
 
 
-def log_scan_signal(scan_type: str, df_result, category: str = ""):
+def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: int = 0):
     """
     Scan sonuçlarını signals.db'ye (patron.db içinde scan_signals tablosuna) yazar.
     Aynı gün aynı scan_type + symbol kombinasyonu varsa INSERT OR IGNORE ile atlar.
+    9 Tem 2026: 'database is locked' gelirse bekle + 3 kez yeniden dene (8 Tem kazası:
+    19:30 gece backtest'i kilidi tutarken rs_leaders'ın ~80 kaydı sessizce yutulmuştu).
     """
     if _SCAN_LOG_DISABLED:
         return   # tek-hisse canlı tarama → DB log'u atla
@@ -2679,6 +2395,13 @@ def log_scan_signal(scan_type: str, df_result, category: str = ""):
             )
         conn.commit()
         conn.close()
+    except sqlite3.OperationalError as e:
+        if 'locked' in str(e).lower() and _lock_retry < 3:
+            import time as _lt
+            _lt.sleep(8 * (_lock_retry + 1))   # 8-16-24 sn — backtest yazım penceresini atlat
+            return log_scan_signal(scan_type, df_result, category, _lock_retry + 1)
+        import logging
+        logging.warning(f"[log_scan_signal] KİLİT/HATA (deneme {_lock_retry+1}) — scan_type={scan_type}: {e}")
     except Exception as e:
         import logging
         logging.warning(f"[log_scan_signal] HATA — scan_type={scan_type}: {e}")
@@ -3474,7 +3197,16 @@ def backfill_signal_returns():
 # -> db_layer.py (Adim 5, 4 Tem 2026): get_scanner_optimal_windows
 
 
-init_db()
+# 8 Tem 2026 — KİLİT TOLERANSI: 19:30 gece backtest'i (backtest_runner, ~3-4dk)
+# patron.db'ye uzun yazım tutarken app açılırsa init_db 'database is locked' ile
+# ÇÖKÜYORDU. Şema zaten kurulu bir DB'de bu adım atlanabilir → kilitliyse uyar, devam et.
+try:
+    init_db()
+except Exception as _initdb_e:
+    if 'locked' in str(_initdb_e).lower():
+        st.toast("⏳ patron.db şu an başka bir işlemde (gece backtest'i olabilir) — kurulum adımı atlandı, uygulama normal.", icon="⏳")
+    else:
+        raise
 
 # ==============================================================================
 # BÖLÜM 4 — VARLIK LİSTELERİ VE KATEGORİLER
@@ -3570,71 +3302,7 @@ commodities_list = [
     "BZ=F"    # Brent Petrol (Brent Crude Futures) - Kuzey Denizi, küresel referans fiyatı
 ]
 
-# --- BIST LİSTESİ (GENİŞLETİLMİŞ - BIST 500) ---
-priority_bist_indices = [
-    "XU100.IS", "XU030.IS", "XBANK.IS", "XTUMY.IS", "XUSIN.IS", "EREGL.IS", "SISE.IS", "TUPRS.IS",
-    # BIST30 (alfabetik, yukarıdakiler hariç)
-    "AKBNK.IS", "ARCLK.IS", "ASELS.IS", "BIMAS.IS", "CCOLA.IS", "EKGYO.IS", "ENKAI.IS",
-    "FROTO.IS", "GARAN.IS", "GUBRF.IS", "HALKB.IS", "ISCTR.IS", "KCHOL.IS",
-    "KRDMD.IS", "PETKM.IS", "PGSUS.IS", "SAHOL.IS", "SASA.IS", "TCELL.IS", "THYAO.IS",
-    "TKFEN.IS", "TOASO.IS", "TTKOM.IS", "TTRAK.IS", "VAKBN.IS", "YKBNK.IS",
-]
-
-# Buraya BIST TUM'deki hisseleri ekliyoruz
-raw_bist_stocks = [
-    "A1CAP.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS", "ADGYO.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", "AGHOL.IS", "AGROT.IS", "AGYO.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKENR.IS", "AKFGY.IS", "AKGRT.IS", "AKMGY.IS", "AKSA.IS", "AKSEN.IS", "AKSGY.IS", "AKSUE.IS", "AKYHO.IS", "ALARK.IS", "ALBRK.IS", "ALCAR.IS", "ALCTL.IS", "ALFAS.IS", "ALGYO.IS", "ALKA.IS", "ALKIM.IS", "ALTNY.IS", "ALVES.IS", "ANELE.IS", "ANGEN.IS", "ANHYT.IS", "ANSGR.IS", "ARASE.IS", "ARCLK.IS", "ARDYZ.IS", "ARENA.IS", "ARSAN.IS", "ARTMS.IS", "ARZUM.IS", "ASELS.IS", "ASGYO.IS", "ASTOR.IS", "ASUZU.IS", "ATAGY.IS", "ATAKP.IS", "ATATP.IS", "ATEKS.IS", "ATLAS.IS", "ATSYH.IS", "AVGYO.IS", "AVHOL.IS", "AVOD.IS", "AVPGY.IS", "AVTUR.IS", "AYCES.IS", "AYDEM.IS", "AYEN.IS", "AYES.IS", "AYGAZ.IS", "AZTEK.IS",
-    "BAGFS.IS", "BAKAB.IS", "BALAT.IS", "BANVT.IS", "BARMA.IS", "BASCM.IS", "BASGZ.IS", "BAYRK.IS", "BEGYO.IS", "BERA.IS", "BEYAZ.IS", "BFREN.IS", "BIENY.IS", "BIGCH.IS", "BIMAS.IS", "BINBN.IS", "BINHO.IS", "BIOEN.IS", "BIZIM.IS", "BJKAS.IS", "BLCYT.IS", "BMSCH.IS", "BMSTL.IS", "BNTAS.IS", "BOBET.IS", "BORLS.IS", "BOSSA.IS", "BRISA.IS", "BRKO.IS", "BRKSN.IS", "BRKVY.IS", "BRLSM.IS", "BRMEN.IS", "BRSAN.IS", "BRYAT.IS", "BSOKE.IS", "BTCIM.IS", "BUCIM.IS", "BURCE.IS", "BURVA.IS", "BVSAN.IS", "BYDNR.IS",
-    "CANTE.IS", "CATES.IS", "CCOLA.IS", "CELHA.IS", "CEMAS.IS", "CEMTS.IS", "CEOEM.IS", "CIMSA.IS", "CLEBI.IS", "CMBTN.IS", "CMENT.IS", "CONSE.IS", "COSMO.IS", "CRDFA.IS", "CRFSA.IS", "CUSAN.IS", "CVKMD.IS", "CWENE.IS",
-    "DAGI.IS", "DAPGM.IS", "DARDL.IS", "DENGE.IS", "DERHL.IS", "DERIM.IS", "DESA.IS", "DESPC.IS", "DEVA.IS", "DGATE.IS", "DGGYO.IS", "DGNMO.IS", "DIRIT.IS", "DITAS.IS", "DMSAS.IS", "DNISI.IS", "DOAS.IS", "DOCO.IS", "DOFER.IS", "DOGUB.IS", "DOHOL.IS", "DOKTA.IS", "DURDO.IS", "DYOBY.IS", "DZGYO.IS",
-    "EBEBK.IS", "ECILC.IS", "ECZYT.IS", "EDATA.IS", "EDIP.IS", "EGEEN.IS", "EGEPO.IS", "EGGUB.IS", "EGPRO.IS", "EGSER.IS", "EKGYO.IS", "EKIZ.IS", "EKSUN.IS", "ELITE.IS", "EMKEL.IS", "EMNIS.IS", "ENJSA.IS", "ENKAI.IS", "ENSRI.IS", "ENTRA.IS", "EPLAS.IS", "ERBOS.IS", "ERCB.IS", "EREGL.IS", "ERSU.IS", "ESCAR.IS", "ESCOM.IS", "ESEN.IS", "ETILR.IS", "ETYAT.IS", "EUHOL.IS", "EUKYO.IS", "EUPWR.IS", "EUREN.IS", "EUYO.IS", "EYGYO.IS",
-    "FADE.IS", "FENER.IS", "FLAP.IS", "FMIZP.IS", "FONET.IS", "FORMT.IS", "FORTE.IS", "FRIGO.IS", "FROTO.IS", "FZLGY.IS",
-    "GARAN.IS", "GARFA.IS", "GEDIK.IS", "GEDZA.IS", "GENIL.IS", "GENTS.IS", "GEREL.IS", "GESAN.IS", "GLBMD.IS", "GLCVY.IS", "GLRYH.IS", "GLYHO.IS", "GMTAS.IS", "GOKNR.IS", "GOLTS.IS", "GOODY.IS", "GOZDE.IS", "GRNYO.IS", "GRSEL.IS", "GSDDE.IS", "GSDHO.IS", "GSRAY.IS", "GUBRF.IS", "GWIND.IS", "GZNMI.IS",
-    "HALKB.IS", "HATEK.IS", "HATSN.IS", "HDFGS.IS", "HEDEF.IS", "HEKTS.IS", "HKTM.IS", "HLGYO.IS", "HRKET.IS", "HTTBT.IS", "HUBVC.IS", "HUNER.IS", "HURGZ.IS",
-    "ICBCT.IS", "ICUGS.IS", "IDGYO.IS", "IEYHO.IS", "IHAAS.IS", "IHEVA.IS", "IHGZT.IS", "IMASM.IS", "INDES.IS", "INFO.IS", "INGRM.IS", "INTEM.IS", "INVEO.IS", "INVES.IS", "ISATR.IS", "ISBIR.IS", "ISBTR.IS", "ISCTR.IS", "ISDMR.IS", "ISFIN.IS", "ISGSY.IS", "ISGYO.IS", "ISKPL.IS", "ISKUR.IS", "ISMEN.IS", "ISSEN.IS", "ISYAT.IS", "IZENR.IS", "IZFAS.IS", "IZINV.IS", "IZMDC.IS",
-    "JANTS.IS", "TRALT.IS", "ONRYT.IS", "EFOR.IS", "OZATD.IS", "EKDMR.IS",
-    "KAPLM.IS", "KAREL.IS", "KARSN.IS", "KATMR.IS", "KAYSE.IS", "KCAER.IS", "KCHOL.IS", "KENT.IS", "KERVN.IS", "KFEIN.IS", "KGYO.IS", "KIMMR.IS", "KLGYO.IS", "KLKIM.IS", "KLMSN.IS", "KLNMA.IS", "KLSER.IS", "KLRHO.IS", "KMPUR.IS", "KNFRT.IS", "KOCMT.IS", "KONKA.IS", "KONTR.IS", "KONYA.IS", "KOPOL.IS", "KORDS.IS", "KOTON.IS", "KRDMA.IS", "KRDMB.IS", "KRDMD.IS", "KRGYO.IS", "KRONT.IS", "KRPLS.IS", "KRSTL.IS", "KRTEK.IS", "KRVGD.IS", "KSTUR.IS", "KTLEV.IS", "KTSKR.IS", "KUTPO.IS", "KUVVA.IS", "KUYAS.IS", "KZBGY.IS", "KZGYO.IS",
-    "LIDER.IS", "LIDFA.IS", "LILAK.IS", "LINK.IS", "LKMNH.IS", "LMKDC.IS", "LOGO.IS", "LUKSK.IS",
-    "MAALT.IS", "MACKO.IS", "MAGEN.IS", "MAKIM.IS", "MAKTK.IS", "MANAS.IS", "MARBL.IS", "MARKA.IS", "MARTI.IS", "MAVI.IS", "MEDTR.IS", "MEGAP.IS", "MEGMT.IS", "MEKAG.IS", "MEPET.IS", "MERCN.IS", "MERIT.IS", "MERKO.IS", "METRO.IS", "MGROS.IS", "MIATK.IS", "MMCAS.IS", "MNDRS.IS", "MNDTR.IS", "MOBTL.IS", "MOGAN.IS", "MPARK.IS", "MRGYO.IS", "MRSHL.IS", "MSGYO.IS", "MTRKS.IS", "MTRYO.IS", "MZHLD.IS",
-    "NATEN.IS", "NETAS.IS", "NIBAS.IS", "NTGAZ.IS", "NUGYO.IS", "NUHCM.IS", "ARFYE.IS", 
-    "OBASE.IS", "OBAMS.IS", "ODAS.IS", "ODINE.IS", "OFSYM.IS", "ONCSM.IS", "ORGE.IS", "ORMA.IS", "OSMEN.IS", "OSTIM.IS", "OTKAR.IS", "OTTO.IS", "OYAKC.IS", "OYAYO.IS", "OYLUM.IS", "OYYAT.IS", "OZGYO.IS", "OZKGY.IS", "OZRDN.IS", "OZSUB.IS",
-    "PAGYO.IS", "PAMEL.IS", "PAPIL.IS", "PARSN.IS", "PASEU.IS", "PCILT.IS", "PEKGY.IS", "PENGD.IS", "PENTA.IS", "PETKM.IS", "PETUN.IS", "PGSUS.IS", "PINSU.IS", "PKART.IS", "PKENT.IS", "PNLSN.IS", "POLHO.IS", "POLTK.IS", "PRDGS.IS", "PRKAB.IS", "PRKME.IS", "PRZMA.IS", "PSDTC.IS", "PSGYO.IS",
-    "QUAGR.IS", "PLTUR.IS", "PATEK.IS", "NETCD.IS",
-    "RALYH.IS", "RAYSG.IS", "REEDR.IS", "RGYAS.IS", "RNPOL.IS", "RODRG.IS", "RTALB.IS", "RUBNS.IS", "RYGYO.IS", "RYSAS.IS",
-    "SAFKR.IS", "SAHOL.IS", "SAMAT.IS", "SANEL.IS", "SANFM.IS", "SANKO.IS", "SARKY.IS", "SASA.IS", "SAYAS.IS", "SDTTR.IS", "SEGYO.IS", "SEKFK.IS", "SEKUR.IS", "SELEC.IS", "SELVA.IS", "SEYKM.IS", "SILVR.IS", "SISE.IS", "SKBNK.IS", "SKTAS.IS", "SKYMD.IS", "SMART.IS", "SMRTG.IS", "SNGYO.IS", "SNICA.IS", "SNPAM.IS", "SODSN.IS", "SOKE.IS", "SOKM.IS", "SONME.IS", "SRVGY.IS", "SUMAS.IS", "SUNTK.IS", "SURGY.IS", "SUWEN.IS",
-    "TABGD.IS", "TATGD.IS", "TAVHL.IS", "TBORG.IS", "TCELL.IS", "TDGYO.IS", "TEKTU.IS", "TERA.IS", "TEZOL.IS", "TGSAS.IS", "THYAO.IS", "TKFEN.IS", "TKNSA.IS", "TLMAN.IS", "TMPOL.IS", "TMSN.IS", "TNZTP.IS", "TOASO.IS", "TRCAS.IS", "TRGYO.IS", "TRILC.IS", "TSGYO.IS", "TSKB.IS", "TSPOR.IS", "TTKOM.IS", "TTRAK.IS", "TUCLK.IS", "TUKAS.IS", "TUPRS.IS", "TUREX.IS", "TURGG.IS", "TURSG.IS",
-    "UFUK.IS", "ULAS.IS", "ULKER.IS", "ULUFA.IS", "ULUSE.IS", "ULUUN.IS", "UNLU.IS", "USAK.IS", "TATEN.IS",
-    "VAKBN.IS", "VAKFN.IS", "VAKKO.IS", "VANGD.IS", "VBTYZ.IS", "VERUS.IS", "VESBE.IS", "VESTL.IS", "VKFYO.IS", "VKGYO.IS", "VKING.IS", "VRGYO.IS",
-    "YAPRK.IS", "YATAS.IS", "YAYLA.IS", "YBTAS.IS", "YEOTK.IS", "YESIL.IS", "YGGYO.IS", "YKBNK.IS", "YKSLN.IS", "YONGA.IS", "YUNSA.IS", "YYAPI.IS", "YYLGD.IS",
-    "ZEDUR.IS", "ZOREN.IS", "ZRGYO.IS", "GIPTA.IS", "TEHOL.IS", "PAHOL.IS", "MARMR.IS", "BIGEN.IS", "GLRMK.IS", "TRHOL.IS", "AAGYO.IS",
-    # --- 2025-05 EKLENENler (resmi BIST listesinden eksik bulunanlar) ---
-    "AHSGY.IS", "AKFIS.IS", "AKFYE.IS", "AKHAN.IS", "ALKLC.IS", "ARMGD.IS", "ATATR.IS", "BAHKM.IS", "BALSU.IS", "BESLR.IS",
-    "BESTE.IS", "BIGTK.IS", "BLUME.IS", "BORSK.IS", "BULGS.IS", "CEMZY.IS", "CGCAM.IS", "DCTTR.IS", "DMRGD.IS", "DOFRB.IS",
-    "DSTKF.IS", "DUNYH.IS", "DURKN.IS", "ECOGR.IS", "EGEGY.IS", "EKOS.IS", "EMPAE.IS", "ENDAE.IS", "ENERY.IS", "ENPRA.IS",
-    "FRMPL.IS", "GATEG.IS", "GENKM.IS", "GRTHO.IS", "GUNDG.IS", "HOROZ.IS", "IHLAS.IS", "KARTN.IS", "KBORU.IS", "KLSYN.IS",
-    "KLYPV.IS", "LRSHO.IS", "LXGYO.IS", "LYDHO.IS", "LYDYE.IS", "MCARD.IS", "MEYSU.IS", "MHRGY.IS", "MOPAS.IS", "NTHOL.IS",
-    "OZYSR.IS", "PNSUT.IS", "QNBFK.IS", "QNBTR.IS", "RUZYE.IS", "SEGMN.IS", "SERNT.IS", "SKYLP.IS", "SMRVA.IS", "SVGYO.IS",
-    "TARKM.IS", "TCKRC.IS", "TRENJ.IS", "TRMET.IS", "UCAYM.IS", "VAKFA.IS", "VSNMD.IS", "YIGIT.IS", "ZERGY.IS", "ZGYO.IS"
-]
-
-# Kopyaları Temizle ve Birleştir
-raw_bist_stocks = list(set(raw_bist_stocks) - set(priority_bist_indices))
-raw_bist_stocks.sort()
-final_bist100_list = priority_bist_indices + raw_bist_stocks
-
-# 16 Haz 2026 — BIST whitelist (`.IS`'siz çağrıları normalize etmek için).
-# Bug: bazı çağıranlar bare "BERA" geçiyor → cache "BERA_1d.parquet" yazıyor
-# (yanlış ad) + İsyatirim/borsapy override yolları kapanıyor (Yahoo-ham veri).
-_BIST_TICKER_SET = {t.replace(".IS", "") for t in (priority_bist_indices + raw_bist_stocks)}
-
-def _normalize_bist_ticker(ticker: str) -> str:
-    """Bare BIST ticker'a `.IS` ekler. Diğer her şeyi olduğu gibi döner."""
-    if not isinstance(ticker, str) or not ticker:
-        return ticker
-    if ticker.endswith(".IS"):
-        return ticker
-    if ticker in _BIST_TICKER_SET:
-        return f"{ticker}.IS"
-    return ticker
+# -> data_layer.py (Adim 6c, 9 Tem 2026): EVREN_BLOGU
 
 ASSET_GROUPS = {
     "BIST 500 ": final_bist100_list,
@@ -3807,368 +3475,20 @@ def _compute_volume_quality_label(ticker, df=None, vol_missing=False):
         return "FINAL"  # Hata varsa muhafazakar
 
 
-def apply_volume_projection(df, ticker=""):
-    if df is None or df.empty or 'Volume' not in df.columns:
-        return df
+# -> data_layer.py (Adim 6c, 9 Tem 2026): apply_volume_projection
 
-    # FIX (30 May 2026): Merkezi tatil 'hayalet bar' temizliği — TÜM okuma yolları
-    # (get_safe_historical_data + get_batch_data_cached) buradan geçer. Sondaki
-    # O=H=L=C, V=0 kapalı-gün barlarını söker → panellerin/taramaların hepsi
-    # otomatik düzelir. Detay: _strip_holiday_bars docstring.
-    df = _strip_holiday_bars(df, ticker)
-    if df is None or df.empty:
-        return df
-
-    # FIX (21 Haz 2026): İşlenmemiş BIST bedelli/bedelsiz (split) düzeltmesi — MERKEZİ.
-    # Bozuk parquet bir kez oluşunca cache-hit serve yolu (4291/4335/4440) split-adj'i
-    # ATLIYORDU → FENER gibi çok-bölünmüş hisselerde 52H zirvesi eski ölçekte kalıp
-    # sahte -%90 düşüş + master_score çöküşü + AI "veri tutarsızlığı" üretiyordu.
-    # _apply_split_adjustments idempotent (>%20 tek-gün düşüş kalmadıysa no-op). SADECE
-    # BIST HİSSE — endeks/kripto/FX/futures'ta >%20 günlük düşüş gerçek olabilir → hariç.
-    try:
-        if (".IS" in ticker) and not ticker.startswith(("XU", "XB", "XT", "XY")):
-            df = _apply_split_adjustments(df)
-    except Exception:
-        pass
-
-    # Türkiye saatini güvenli şekilde al
-    try:
-        from datetime import timezone, timedelta
-        _tz_tr = timezone(timedelta(hours=3))
-        now = datetime.now(_tz_tr).replace(tzinfo=None)
-    except Exception:
-        now = datetime.now()
-
-    # Hafta sonu veya tam tatil günüyse projeksiyon yapma
-    if now.weekday() >= 5 or _bist_is_closed():
-        return df
-
-    # Elimizdeki son veri BUGÜNE mi ait? Değilse dokunma.
-    last_date = df.index[-1].date()
-    if last_date != now.date():
-        return df
-
-    now_min = now.hour * 60 + now.minute
-    current_volume = float(df['Volume'].iloc[-1])
-
-    # KARANTİNA KONTROLÜ: Hacim sıfır veya anlamsız küçükse projeksiyon yapma
-    if current_volume < 100:
-        return df
-
-    progress = 1.0
-
-    # PİYASA TÜRÜNE GÖRE DİNAMİK AĞIRLIK HARİTASI (U-Şekilli)
-    if "-USD" in ticker:
-        # Kripto 24 saat kesintisiz (doğrusal akışa daha uygundur)
-        progress = max(0.01, now_min / 1440)
-
-    elif "^" in ticker or (not ".IS" in ticker and not ticker.startswith("XU")):
-        # ABD Piyasası 16:30-23:00 TR Saati (Toplam 390 dakika)
-        open_min = 16 * 60 + 30
-        close_min = 23 * 60
-        if now_min < open_min:
-            return df
-        if now_min >= close_min:
-            progress = 1.0
-        else:
-            elapsed = now_min - open_min
-            # İlk 60 dk: çarpan >4x — güvenilmez, projeksiyon yapma
-            if elapsed < 60:
-                return df
-            # U-Şeklinde Ağırlık: İlk 60 dk %25 | Orta 270 dk %40 | Son 60 dk %35
-            if elapsed <= 60:
-                progress = (elapsed / 60) * 0.25
-            elif elapsed <= 330:
-                progress = 0.25 + ((elapsed - 60) / 270) * 0.40
-            else:
-                progress = 0.65 + ((elapsed - 330) / 60) * 0.35
-
-    elif _bist_is_half_day():
-        # BIST Arefe Günü — 09:55-12:30 TR Saati (Toplam 155 dakika)
-        open_min  = 9 * 60 + 55
-        close_min = 12 * 60 + 30
-        if now_min < open_min:
-            return df
-        if now_min >= close_min:
-            progress = 1.0
-        else:
-            elapsed = now_min - open_min
-            # İlk 30 dk: çarpan çok büyük — güvenilmez, projeksiyon yapma
-            if elapsed < 30:
-                return df
-            # Arefe kısa seans → lineer ilerleme yeterli (U-shape gerek yok)
-            progress = elapsed / (close_min - open_min)
-
-    else:
-        # BIST Normal Gün — 09:55-18:15 TR Saati (Toplam 500 dakika)
-        open_min = 9 * 60 + 55
-        close_min = 18 * 60 + 15
-        if now_min < open_min:
-            return df
-        if now_min >= close_min:
-            progress = 1.0
-        else:
-            elapsed = now_min - open_min
-            # İlk 60 dk: çarpan >5x — güvenilmez, projeksiyon yapma
-            if elapsed < 60:
-                return df
-            # U-Şeklinde Ağırlık: İlk 120 dk %40 | Orta 260 dk %20 | Son 120 dk %40
-            if elapsed <= 120:
-                progress = (elapsed / 120) * 0.40
-            elif elapsed <= 380:
-                progress = 0.40 + ((elapsed - 120) / 260) * 0.20
-            else:
-                progress = 0.60 + ((elapsed - 380) / 120) * 0.40
-
-    # Güvenlik kilidi: çarpan çok uçuk çıkmasın
-    progress = max(0.05, min(progress, 1.0))
-
-    df_proj = df.copy()
-    projected_volume = current_volume / progress
-    # 24 Haz 2026 — int64 Volume'a float atama FutureWarning üretiyordu; önce float64'e çevir.
-    if 'Volume' in df_proj.columns and df_proj['Volume'].dtype != 'float64':
-        df_proj['Volume'] = df_proj['Volume'].astype('float64')
-    df_proj.loc[df_proj.index[-1], 'Volume'] = projected_volume
-
-    return df_proj
-
-@st.cache_data(ttl=3600)
-def get_benchmark_data(category):
-    """
-    Seçili kategoriye göre Endeks verisini (S&P 500 veya BIST 100) çeker.
-    RS (Göreceli Güç) hesaplaması için referans noktasıdır.
-    """
-    try:
-        # Kategoriye göre sembol seçimi
-        ticker = "XU100.IS" if "BIST" in category else "^GSPC"
-        
-        # Hisse verileriyle uyumlu olması için 1 yıllık çekiyoruz
-        df = yf.download(ticker, period="1y", progress=False, auto_adjust=AUTO_ADJUST, prepost=False)
-
-        if df.empty: return None
-        df = drop_adj_close(df)
-        return df['Close']
-    except:
-        return None
+# -> data_layer.py (Adim 6c, 9 Tem 2026): get_benchmark_data
 
 # --- GLOBAL DATA CACHE KATMANI ---
-@st.cache_data(ttl=900, show_spinner=False)
-def get_batch_data_cached(asset_list, period="1y"):
-    """
-    GATEKEEPER DESTEKLİ TOPLU TARAMA MOTORU - MULTIINDEX HATASI GİDERİLDİ
-    """
-    if not asset_list:
-        return pd.DataFrame()
-    # 24 Haz 2026 — çıplak BIST sembol (EREGL) → EREGL.IS. get_safe_historical_data zaten
-    # normalize ediyordu; burada YOKTU → çıplak semboller Yahoo'ya gidip 404 seli + DONMA yapıyordu.
-    asset_list = [_normalize_bist_ticker(t) for t in asset_list]
-
-    missing_assets = []
-    combined_dict = {}
-    
-    for sym in asset_list:
-        clean_sym = sym.replace(".IS", "")
-        if "BIST" in sym or ".IS" in sym or sym.startswith("XU"):
-            clean_sym = sym if sym.endswith(".IS") else f"{sym}.IS"
-        file_path = os.path.join(CACHE_DIR, f"{clean_sym}_1d.parquet")
-
-        needs_download = True
-        if os.path.exists(file_path):
-            try:
-                df_cached = pd.read_parquet(file_path)
-                if not df_cached.empty:
-                    if not is_yahoo_update_needed(sym, df_cached.index[-1]):
-                        # Bölünme tespiti: son kapanıştaki ani sıçrama (>35% tek günde)
-                        # → cache stale, yeniden indir
-                        _rc = df_cached['Close'].dropna()
-                        _split_flag = (
-                            len(_rc) >= 2 and
-                            abs(_rc.iloc[-1] / _rc.iloc[-2] - 1) > 0.35
-                        )
-                        if _split_flag:
-                            os.remove(file_path)
-                            _CACHE_STATS['split_detected'] += 1
-                        else:
-                            df_ready = df_cached.tail(500).copy()
-                            combined_dict[sym] = apply_volume_projection(df_ready, sym)
-                            needs_download = False
-                            _CACHE_STATS['hit'] += 1
-            except: pass
-        if needs_download and clean_sym.replace(".IS", "") in _DEAD_SYMBOLS:
-            # ölü/delisted → ağ denemesi YOK (cache varsa yukarıda zaten sunuldu)
-            needs_download = False
-        if needs_download:
-            missing_assets.append(sym)
-            _CACHE_STATS['miss'] += 1
-
-    if missing_assets:
-        df_new = _yf_download_with_retry(
-            " ".join(missing_assets),
-            period="1y", group_by='ticker', threads=True, prepost=False
-        )
-
-        # ─── AŞAMA A: Yahoo verisini temizle (serial, hızlı — ~5sn) ──────
-        # Bu döngü sadece DataFrame cleanup yapar — isyatirim çağrısı YOK.
-        # İsyatirim fallback aşağıda PARALEL yapılır (max_workers=10).
-        _isy_candidates = []   # (sym, clean_sym, df_sym_new) — V=0 > %20 olanlar
-        _df_pending = {}        # sym → df_sym_new (henüz parquet'e yazılmamış)
-        for sym in missing_assets:
-            clean_sym = sym.replace(".IS", "")
-            if "BIST" in sym or ".IS" in sym or sym.startswith("XU"):
-                clean_sym = sym if sym.endswith(".IS") else f"{sym}.IS"
-
-            try:
-                # MULTIINDEX TEMİZLİĞİ
-                if len(missing_assets) > 1 and isinstance(df_new.columns, pd.MultiIndex):
-                    df_sym_new = df_new.xs(sym, axis=1, level=1).copy() if sym in df_new.columns.get_level_values(1) else df_new[sym].copy()
-                else:
-                    df_sym_new = df_new.copy()
-
-                if isinstance(df_sym_new.columns, pd.MultiIndex):
-                    if 'Close' in df_sym_new.columns.get_level_values(0):
-                        df_sym_new.columns = df_sym_new.columns.get_level_values(0)
-                    else:
-                        df_sym_new.columns = df_sym_new.columns.get_level_values(1)
-
-                df_sym_new = df_sym_new.loc[:, ~df_sym_new.columns.duplicated()]
-                df_sym_new.columns = [str(c).capitalize() for c in df_sym_new.columns]
-                if 'Volume' not in df_sym_new.columns or df_sym_new['Volume'].isna().all():
-                    df_sym_new['Volume'] = 0.0  # KARANTİNA: Sahte hacim yerine sıfır
-
-                df_sym_new = df_sym_new.dropna(subset=['Close'])
-                df_sym_new.index = df_sym_new.index.tz_localize(None)
-
-                _df_pending[sym] = (clean_sym, df_sym_new)
-
-                # İsyatirim adayı mı? (BIST hissesi + son 30g V=0 oranı > %20)
-                _is_bist_b43 = sym.endswith(".IS") and not sym.startswith(("XU", "XB", "XT"))
-                if _is_bist_b43 and len(df_sym_new) >= 30:
-                    _v0_ratio = (df_sym_new['Volume'].tail(30) == 0).sum() / 30
-                    if _v0_ratio > 0.20:
-                        _isy_candidates.append((sym, clean_sym))
-            except Exception:
-                continue
-
-        # ─── AŞAMA B: PARALEL İSYATIRIM FALLBACK (max_workers=10) ────────
-        # B4-3 v2 (4 Haz 2026): Serial → Paralel.
-        # Önceki sürümde her hisse için döngüde serial isyatirim çağrısı vardı:
-        # 600 hisse × 0.5sn ≈ 5dk. Şimdi ThreadPoolExecutor ile ~30sn'ye iner.
-        # Streamlit context gerekmiyor (isyatirim fonksiyonu salt requests+pandas).
-        if _isy_candidates:
-            import threading as _th_b43
-            from concurrent.futures import ThreadPoolExecutor as _TPE_b43, as_completed as _ac_b43
-            _isy_lock = _th_b43.Lock()
-
-            def _isy_fetch_one(item):
-                _sym_x, _clean_x = item
-                try:
-                    _clean_isy_x, _df_x = _df_pending[_sym_x]
-                    from datetime import timedelta as _td_x
-                    _end_x = _df_x.index[-1] + _td_x(days=1)
-                    _start_x = _df_x.index[0]
-                    _isy_x = _fetch_bist_ohlcv_isyatirim(
-                        _clean_x,
-                        _start_x.strftime("%Y-%m-%d"),
-                        _end_x.strftime("%Y-%m-%d")
-                    )
-                    if _isy_x is not None and len(_isy_x) > 5:
-                        _common_x = _df_x.index.intersection(_isy_x.index)
-                        if len(_common_x) > 0:
-                            _zero_x = _df_x.loc[_common_x, 'Volume'] == 0
-                            _isynz_x = _isy_x.loc[_common_x, 'Volume'] > 0
-                            _fix_x = _common_x[_zero_x & _isynz_x]
-                            if len(_fix_x) > 0:
-                                _df_x.loc[_fix_x, 'Volume'] = _isy_x.loc[_fix_x, 'Volume']
-                                with _isy_lock:
-                                    _CACHE_STATS['isy_volume_fix'] = _CACHE_STATS.get('isy_volume_fix', 0) + 1
-                                return _sym_x, True, len(_fix_x)
-                    return _sym_x, False, 0
-                except Exception as _e_x:
-                    return _sym_x, False, 0
-
-            with _TPE_b43(max_workers=10) as _ex_b43:
-                _futs_b43 = [_ex_b43.submit(_isy_fetch_one, _item) for _item in _isy_candidates]
-                for _fut_b43 in _ac_b43(_futs_b43):
-                    try: _fut_b43.result(timeout=30)
-                    except Exception: pass
-
-        # ─── AŞAMA C: Parquet'e yaz + combined_dict doldur (serial, hızlı) ──
-        for sym, (clean_sym, df_sym_new) in _df_pending.items():
-            try:
-                file_path = os.path.join(CACHE_DIR, f"{clean_sym}_1d.parquet")
-                df_sym_new.to_parquet(file_path)
-                df_ready = df_sym_new.tail(500).copy()
-                combined_dict[sym] = apply_volume_projection(df_ready, sym)
-            except Exception:
-                continue
-
-    if combined_dict:
-        return pd.concat(combined_dict.values(), axis=1, keys=combined_dict.keys())
-    return pd.DataFrame()
+# -> data_layer.py (Adim 6c, 9 Tem 2026): get_batch_data_cached
 
 
 # ── BİNANCE VERİ ÇEKİCİ (KRİPTO PARALAR İÇİN) ──────────────────────
-def _fetch_from_binance(ticker, limit=730):
-    """
-    Kripto tickerları (-USD) için Binance API'den günlük mum verisi çeker.
-    Dönen DataFrame yfinance formatıyla birebir uyumludur (Open/High/Low/Close/Volume + Date index).
-    Binance'de coin yoksa veya hata olursa None döner → yfinance'e fallback yapılır.
-    """
-    import requests as _req
-    symbol = ticker.replace("-USD", "USDT").upper()   # BTC-USD → BTCUSDT
-    url = (
-        f"https://api.binance.com/api/v3/klines"
-        f"?symbol={symbol}&interval=1d&limit={limit}"
-    )
-    try:
-        resp = _req.get(url, timeout=8)
-        data = resp.json()
-        # Binance coin bulamazsa {'code': -1121, 'msg': ...} döndürür
-        if isinstance(data, dict) and "code" in data:
-            return None
-        if not data:
-            return None
-
-        cols = [
-            "timestamp", "Open", "High", "Low", "Close", "Volume",
-            "close_time", "quote_vol", "trades",
-            "taker_base", "taker_quote", "ignore"
-        ]
-        df = pd.DataFrame(data, columns=cols)
-        for c in ["Open", "High", "Low", "Close", "Volume"]:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-        df["Date"] = pd.to_datetime(df["timestamp"], unit="ms")
-        df.set_index("Date", inplace=True)
-        df.index = df.index.tz_localize(None)
-        df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
-        return df
-
-    except Exception:
-        return None
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _fetch_from_binance
 # ─────────────────────────────────────────────────────────────────────
 
 # ── YF RETRY HELPER ──────────────────────────────────────────────────
-def _yf_download_with_retry(ticker, max_tries=3, base_delay=1.5, **kwargs):
-    """
-    yf.download() için retry sarmalayıcı.
-    max_tries kez dener; her başarısızlıkta bekleme süresi katlanır.
-    Tüm denemeler başarısızsa boş DataFrame döner.
-    """
-    import time
-    last_exc = None
-    for attempt in range(max_tries):
-        try:
-            df = yf.download(ticker, progress=False, auto_adjust=AUTO_ADJUST, **kwargs)
-            if not df.empty:
-                return drop_adj_close(df)  # ham modda 'Adj Close' fazlalığını at (şema=OHLCV)
-        except Exception as e:
-            last_exc = e
-        if attempt < max_tries - 1:
-            time.sleep(base_delay * (attempt + 1))   # 1.5s, 3s, 4.5s
-    if last_exc:
-        import logging
-        logging.warning(f"[yf_retry] {ticker} — {max_tries} denemede veri alınamadı: {last_exc}")
-    return pd.DataFrame()
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _yf_download_with_retry
 # ─────────────────────────────────────────────────────────────────────
 
 # ── MULTIINDEX FLATTEN HELPER (W3 — 8 Haz 2026 Oturum 19) ──────────────
@@ -4178,21 +3498,7 @@ def _yf_download_with_retry(ticker, max_tries=3, base_delay=1.5, **kwargs):
 # - 'Close' level 0'daysa onu kullan, değilse level 1
 # - Duplikatları sil, capitalize et
 # - Idempotent: zaten flat df'i değiştirmeden geri döndürür
-def _flatten_columns(df):
-    """MultiIndex kolonları flatten et. Zaten flat ise no-op."""
-    if df is None or not hasattr(df, 'columns'):
-        return df
-    try:
-        if isinstance(df.columns, pd.MultiIndex):
-            if 'Close' in df.columns.get_level_values(0):
-                df.columns = df.columns.get_level_values(0)
-            else:
-                df.columns = df.columns.get_level_values(1)
-            df = df.loc[:, ~df.columns.duplicated()]
-            df.columns = [str(c).capitalize() for c in df.columns]
-    except Exception:
-        pass
-    return df
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _flatten_columns
 # ─────────────────────────────────────────────────────────────────────
 
 # ── VERİ SANİTY MONITOR (T1 — 8 Haz 2026 Oturum 19) ────────────────────
@@ -4216,7 +3522,7 @@ def _data_sanity_report(symbols, sample_size=80, recent_bars=30):
         'ok': True,
         'warnings': [],
         'samples_checked': 0,
-        'details': {'doji': [], 'v0': [], 'gap': [], 'empty': []},
+        'details': {'doji': [], 'v0': [], 'gap': [], 'empty': [], 'ohlc': []},
     }
     if not symbols:
         return out
@@ -4228,6 +3534,7 @@ def _data_sanity_report(symbols, sample_size=80, recent_bars=30):
     n_v0_hit = 0
     n_gap_hit = 0
     n_empty = 0
+    n_ohlc_hit = 0
 
     for sym in sample:
         clean = sym if sym.endswith(".IS") or sym.startswith("XU") else sym.replace(".IS", "")
@@ -4267,6 +3574,17 @@ def _data_sanity_report(symbols, sample_size=80, recent_bars=30):
             if _gap_r > 0.05:
                 n_gap_hit += 1
                 out['details']['gap'].append((sym, round(_gap_r, 2)))
+
+            # 6 Tem 2026 — OHLC BÜTÜNLÜK: Open/Close, [Low,High] dışına çıkarsa veri
+            # karışması (ham Open + düzeltilmiş HLC "Frankenstein" bar — İsyatirim HLC
+            # override bug'ının imzası). Bu ASLA olmamalı; tek bar bile = kaynak/override
+            # regresyonu → sessiz zehirlenmeyi erken yakala.
+            _h, _l = df['High'].astype(float), df['Low'].astype(float)
+            _ohlc_bad = int(((_o > _h * 1.001) | (_o < _l * 0.999) |
+                             (_c > _h * 1.001) | (_c < _l * 0.999)).sum())
+            if _ohlc_bad > 0:
+                n_ohlc_hit += 1
+                out['details']['ohlc'].append((sym, _ohlc_bad))
         except Exception:
             continue
 
@@ -4279,6 +3597,8 @@ def _data_sanity_report(symbols, sample_size=80, recent_bars=30):
         out['warnings'].append(f"GAP eşik aşımı: {n_gap_hit}/{_n} hisse %15+ atlama (bölünme adjustment atlanmış).")
     if n_empty / _n > 0.10:
         out['warnings'].append(f"BOŞ CACHE: {n_empty}/{_n} hisse parquet'i yok/boş (batch download fail).")
+    if n_ohlc_hit > 0:
+        out['warnings'].append(f"OHLC BÜTÜNLÜK: {n_ohlc_hit}/{_n} hisse Open/Close [Low,High] dışında — HAM+DÜZELTİLMİŞ karışması (Frankenstein bar). İsyatirim HLC override regresyonu → repair_parquets.py/rebaseline çalıştır.")
 
     out['ok'] = (len(out['warnings']) == 0)
     return out
@@ -4292,674 +3612,36 @@ def _data_sanity_report(symbols, sample_size=80, recent_bars=30):
 # hareket koşulunda görünür). İnfografik + AI analizi zaten veriler'den okuyor.
 # FIX: bu bayrak False iken fiyatın Yahoo'ya kaçan İKİ yolu da kapanır → herkes veriler okur.
 # True yaparsan eski canlı-intraday davranışı geri gelir (çelişki de geri gelir).
-LIVE_PRICE_PATCH_ENABLED = False
+# -> data_layer.py (Adim 6c, 9 Tem 2026): LIVE_PRICE_PATCH_ENABLED
 # ═══════════════════════════════════════════════════════════════════════════
-@st.cache_data(ttl=60)
-def get_live_price(ticker: str) -> float:
-    """fast_info üzerinden canlı fiyat çeker. 60 sn cache'li.
-    Not: fast_info bir dict değil, object — .get() yerine attribute erişimi kullanılıyor."""
-    try:
-        fi = yf.Ticker(ticker).fast_info
-        # Önce last_price, yoksa regular_market_price dene (attribute, dict değil)
-        for _attr in ("last_price", "regular_market_price", "previousClose"):
-            try:
-                _v = getattr(fi, _attr, None)
-                if _v is not None and float(_v) > 0:
-                    return float(_v)
-            except Exception:
-                continue
-        # Fallback: info dict'ten dene (daha yavaş ama güvenli)
-        _info2 = yf.Ticker(ticker).info
-        for _key in ("currentPrice", "regularMarketPrice", "previousClose"):
-            _v = _info2.get(_key)
-            if _v and float(_v) > 0:
-                return float(_v)
-        return 0.0
-    except Exception:
-        return 0.0
+# -> data_layer.py (Adim 6c, 9 Tem 2026): get_live_price
 
-def _strip_holiday_bars(df: pd.DataFrame, ticker: str = "") -> pd.DataFrame:
-    """SONDAKİ tatil/kapalı-gün 'hayalet barları'nı söker (30 May 2026).
-
-    Sorun: BIST resmi tatil/bayram günlerinde (hafta içine denk gelse bile)
-    veri katmanı O=H=L=C=önceki kapanış, Volume=0 olan sahte barlar üretip
-    parquet'e yazıyordu (bkz. _patch_live_price hafta-içi dalı + holiday padding).
-    Sonuç: 610 BIST hissesinin ~%17'si günlerce %0 değişimle 'donmuş' görünüyordu
-    (her panel ve taramaya yayılan veri katmanı hatası).
-
-    Çözüm: serinin SONUNDAN başlayarak, hacmi 0 OLAN ve OHLC'si düz (O==H==L==C)
-    barları sök. İki koşul birlikte → gerçek 'işlem olmayan kapalı gün' imzası.
-    Sadece düz-trailing barlara dokunur; geçmişteki gerçek 0-hacim tek barına veya
-    gerçek seans barına dokunmaz. Tüm okuma yollarında merkezi çağrılır.
-
-    Not: gömülü (ortadaki) tatil barları nadirdir ve sonraki gerçek seans onları
-    'düz değil' yapar; bu fonksiyon kasıtlı olarak yalnız trailing'i hedefler ki
-    geçmiş seri bütünlüğü bozulmasın.
-    """
-    try:
-        if df is None or df.empty or 'Volume' not in df.columns:
-            return df
-        o = df['Open'].values; h = df['High'].values
-        l = df['Low'].values;  c = df['Close'].values
-        v = df['Volume'].values
-        i = len(df) - 1
-        cut = len(df)
-        while i >= 1:   # en az 1 gerçek bar kalsın
-            _flat = (abs(o[i] - c[i]) < 1e-9 and abs(h[i] - c[i]) < 1e-9
-                     and abs(l[i] - c[i]) < 1e-9)
-            _zero = (not (v[i] > 0))   # 0, NaN veya negatif → işlem yok
-            if _flat and _zero:
-                cut = i; i -= 1
-            else:
-                break
-        if cut < len(df):
-            return df.iloc[:cut]
-        return df
-    except Exception as _e:
-        log_error("_strip_holiday_bars", _e, ticker)
-        return df
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _strip_holiday_bars
 
 
-def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd.DataFrame:
-    """
-    Günlük veri için son satırın Close fiyatını canlı fiyatla günceller.
-    Grafik ile fiyat kutusu arasındaki cache kaynaklı uyuşmazlığı giderir.
-    Sadece interval='1d' için çalışır; intraday verilere dokunmaz.
-
-    ⚠️ BAN KORUMASI: Master Scan çalışırken (session_state['_master_scan_running']==True)
-    yfinance live API çağrılarını ATLA — 500 ticker × 1 API call = ban riski.
-    """
-    if interval != "1d" or df is None or df.empty:
-        return df
-    # 1 Tem 2026 — TEK KAYNAK: bayrak kapalıysa canlı patch YOK, ham veriler/ kapanışı döner
-    # (infografik + AI ile birebir tutarlı; seans-içi Yahoo çelişkisi ortadan kalkar).
-    if not LIVE_PRICE_PATCH_ENABLED:
-        return df
-    # Master Scan içinde live patch atla (parquet'teki kapanış zaten yeterli)
-    try:
-        if st.session_state.get('_master_scan_running', False):
-            return df
-    except Exception:
-        pass
-    try:
-        _live = get_live_price(ticker)
-        if _live <= 0:
-            return df
-
-        _now   = datetime.now(_TZ_ISTANBUL)
-        _today = _now.date()
-        # Cumartesi=5, Pazar=6 → hafta sonu
-        _is_weekend = (_now.weekday() >= 5)
-        # FIX (30 May 2026): BIST resmi tatil/bayram günü de "kapalı gün" sayılır.
-        # Eskiden sadece hafta sonu kontrol ediliyordu → bayram hafta-içine
-        # denk gelince (örn. Kurban Bayramı 27-28-29 May) "yeni bar ekle" dalı
-        # ateşlenip O=H=L=C, V=0 hayalet bar üretiyordu. Sadece BIST için.
-        _is_bist = (".IS" in ticker or "BIST" in ticker or ticker.startswith("XU"))
-        _is_holiday = False
-        if _is_bist:
-            try:
-                _is_holiday = _bist_is_closed(_today)
-            except Exception:
-                _is_holiday = False
-        _is_closed_day = _is_weekend or _is_holiday
-
-        _last_date = df.index[-1]
-        if hasattr(_last_date, "date"):
-            _last_date = _last_date.date()
-
-        if _last_date == _today:
-            # Bugünün satırı var → Close/High/Low'u canlı fiyatla güncelle
-            df = df.copy()
-            df.loc[df.index[-1], "Close"] = _live
-            df.loc[df.index[-1], "High"]  = max(float(df.loc[df.index[-1], "High"]),  _live)
-            df.loc[df.index[-1], "Low"]   = min(float(df.loc[df.index[-1], "Low"]),   _live)
-
-        elif _is_closed_day:
-            # ── KAPALI GÜN (hafta sonu VEYA BIST tatil/bayram): Sahte bar EKLEME ──
-            # Piyasa kapalı; son gerçek seansın kapanışını canlı fiyatla güncelle.
-            # Bu sayede parquet gün içinde yazılmışsa eksik kapanış düzelir.
-            df = df.copy()
-            df.loc[df.index[-1], "Close"] = _live
-            # High'ı ancak _live daha büyükse yukarı çek (aşağı çekme)
-            df.loc[df.index[-1], "High"]  = max(float(df.loc[df.index[-1], "High"]), _live)
-
-        else:
-            # Hafta içi + bugünün satırı yok → yeni satır ekle (seans açık, veri henüz gelmemiş)
-            df = df.copy()
-            new_row = df.iloc[-1].copy()
-            new_row["Close"]  = _live
-            new_row["Open"]   = _live
-            new_row["High"]   = _live
-            new_row["Low"]    = _live
-            new_row["Volume"] = 0.0
-            try:
-                _tz = df.index.tz if df.index.tz is not None else None
-                _new_idx = pd.Timestamp(_today)
-                if _tz is not None:
-                    _new_idx = _new_idx.tz_localize(_tz)
-            except Exception:
-                _new_idx = pd.Timestamp(_today)
-            # ÖNEMLİ: index name'i koru — yoksa reset_index() 'Date' kolonunu kaybeder
-            _orig_name = df.index.name
-            _new_df = pd.DataFrame([new_row], index=[_new_idx])
-            _new_df.index.name = _orig_name
-            df = pd.concat([df, _new_df])
-
-    except Exception as _pe:
-        import logging
-        logging.warning(f"[patch_live_price] {ticker} — {_pe}")
-        log_error("patch_live_price", _pe, ticker)
-    return df
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _patch_live_price
 
 # --- SINGLE STOCK CACHE (DETAY SAYFASI İÇİN) ---
 # _get_safe_historical_data_cached: saf OHLCV verisi, 300 sn cache'li
 # get_safe_historical_data: wrapper — cache sonrasına canlı fiyat patch'i uygular
-@st.cache_data(ttl=300)
-def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
-    try:
-        # ── KRİPTO YÖNLENDİRMESİ: -USD tickerları Binance'den çek ──
-        if "-USD" in ticker and interval == "1d":
-            clean_ticker = ticker.upper()
-            file_path = os.path.join(CACHE_DIR, f"{clean_ticker}_1d.parquet")
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _get_safe_historical_data_cached
 
-            # Cache varsa ve güncel ise doğrudan kullan
-            if os.path.exists(file_path):
-                df_cached = pd.read_parquet(file_path)
-                if not is_yahoo_update_needed(ticker, df_cached.index[-1]):
-                    return apply_volume_projection(df_cached.tail(500).copy(), ticker)
-
-            # Binance'den taze veri çek
-            df_bnc = _fetch_from_binance(ticker, limit=730)
-            if df_bnc is not None and not df_bnc.empty:
-                df_bnc.to_parquet(file_path)
-                return apply_volume_projection(df_bnc.tail(500).copy(), ticker)
-
-            # Binance başarısız → yfinance'e fallback (coin bazı API'lerde farklı formatta olabilir)
-            # (aşağıdaki genel yfinance akışına düşer)
-        # ─────────────────────────────────────────────────────────────
-
-        clean_ticker = ticker.replace(".IS", "")
-        if "BIST" in ticker or ".IS" in ticker or ticker.startswith("XU"):
-            clean_ticker = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
-        file_path = os.path.join(CACHE_DIR, f"{clean_ticker}_{interval}.parquet")
-
-        def safe_clean_columns(df):
-            if isinstance(df.columns, pd.MultiIndex):
-                if 'Close' in df.columns.get_level_values(0):
-                    df.columns = df.columns.get_level_values(0)
-                else:
-                    df.columns = df.columns.get_level_values(1)
-            df = df.loc[:, ~df.columns.duplicated()].copy()
-            df.columns = [str(c).capitalize() for c in df.columns]
-            if 'Volume' not in df.columns or df['Volume'].isna().all():
-                df['Volume'] = 0.0  # KARANTİNA: Sahte 1.0 atamasını iptal ettik
-            return df
-
-        import datetime as _dt
-        _start = str(_dt.date.today() - _dt.timedelta(days=380))
-        _end   = str(_dt.date.today() + _dt.timedelta(days=1))
-
-        if os.path.exists(file_path):
-            df_cached = pd.read_parquet(file_path)
-            df_cached = safe_clean_columns(df_cached)
-            # tz-aware ise convert, tz-naive ise dokunma (her iki durumda güvenli)
-            if df_cached.index.tz is not None:
-                df_cached.index = df_cached.index.tz_convert(None)
-
-            # Hacim bozukluğu kontrolü: son non-zero hacim 5+ gün eskiyse yenile
-            _vol_stale = _volume_is_stale(df_cached, ticker)
-
-            if not is_yahoo_update_needed(ticker, df_cached.index[-1]) and not _vol_stale:
-                return apply_volume_projection(df_cached.tail(500).copy(), ticker)
-
-            # Güncelleme gerekiyor — retry ile dene
-            df_new = _yf_download_with_retry(
-                clean_ticker, start=_start, end=_end, interval=interval
-            )
-            if not df_new.empty:
-                df_new = safe_clean_columns(df_new)
-                if df_new.index.tz is not None:
-                    df_new.index = df_new.index.tz_convert(None)
-                # İSYATIRIM OHLCV ENTEGRASYONU (BIST hisseleri, endeks hariç)
-                # yfinance'in bölünme/temettü adjusted price + Volume=0 hatalarını giderir.
-                _is_bist_stock = (".IS" in ticker or "BIST" in ticker) and not ticker.startswith(("XU", "XB", "XT"))
-                if _is_bist_stock and interval == "1d":
-                    _isy_ohlcv = _fetch_bist_ohlcv_isyatirim(clean_ticker, _start, _end)
-                    if _isy_ohlcv is not None and len(_isy_ohlcv) > 5:
-                        _common = df_new.index.intersection(_isy_ohlcv.index)
-                        if len(_common) > 0:
-                            # 5 Haz 2026 — Open'ı override etme! İsyatirim API'sinden HGDG_ACILIS
-                            # kaldırıldı, fonksiyon Open=Close döndürüyor (doji bug). Yahoo Open
-                            # doğru olduğu için onu koruyoruz. High/Low/Close/Volume İsyatirim'den.
-                            # 15 Haz 2026 — DTYPE FIX: Yahoo Volume=int64, İsyatirim Volume=float64.
-                            # Pandas yeni sürüm silent upcast'i kaldırdı → her atama FutureWarning + yavaşlık.
-                            # Çözüm: df_new'in tüm hedef kolonlarını float64'e CAST et (Volume dahil).
-                            for _col in ['High', 'Low', 'Close', 'Volume']:
-                                if _col in df_new.columns and df_new[_col].dtype != 'float64':
-                                    df_new[_col] = df_new[_col].astype('float64')
-                            df_new.loc[_common, ['High', 'Low', 'Close', 'Volume']] = \
-                                _isy_ohlcv.loc[_common, ['High', 'Low', 'Close', 'Volume']].values
-                    else:
-                        # isyatirimhisse başarısız → eski parquet hacim koruması
-                        if 'Volume' in df_cached.columns:
-                            _ci = df_new.index.intersection(df_cached.index)
-                            if len(_ci) > 0:
-                                _nz = df_new.loc[_ci, 'Volume'] == 0
-                                _ov = df_cached.loc[_ci, 'Volume'] > 0
-                                _rx = _ci[_nz & _ov]
-                                if len(_rx) > 0:
-                                    df_new.loc[_rx, 'Volume'] = df_cached.loc[_rx, 'Volume']
-                if _is_bist_stock and interval == "1d":
-                    df_new = _apply_split_adjustments(df_new)
-
-                # ── EMTIA FUTURES HACIM OVERRIDE (15 Haz 2026) ──
-                # Yahoo =F continuous Volume bozuk → aktif CME kontratından override
-                if ticker.endswith("=F") and interval == "1d":
-                    df_new = _apply_futures_volume_override(df_new, ticker)
-
-                # ── BORSAPY GAP-FILL (10 Haz 2026) ──
-                # Yahoo bazen iş gününü atlar (örn. XU100 9 Haz Pazartesi yok).
-                # BIST endeks/hisse için borsapy'den son 30g'i kontrol et,
-                # eksik tarihler varsa SATIRLARI EKLE (mevcut barlara dokunma).
-                _is_bist_any = (".IS" in ticker or "BIST" in ticker or ticker.startswith(("XU", "XB", "XT")))
-                # 2 Tem 2026 — SADECE gerçekten eksik işlem günü varsa borsapy'a git
-                # (önceden her sembolde → yüzlerce çağrı → TradingView throttle/'No data received').
-                if _is_bist_any and interval == "1d" and _has_recent_gap(df_new):
-                    try:
-                        import borsapy as _bp_gf
-                        _sym_gf = ticker.replace(".IS", "").upper()
-                        if ticker.startswith("XU") or ticker.startswith("^"):
-                            _obj_gf = _bp_gf.Index(_sym_gf.replace(".IS", ""))
-                        else:
-                            _obj_gf = _bp_gf.Ticker(_sym_gf)
-                        _df_gf = _obj_gf.history(period="3mo", interval="1d", auto_adjust=AUTO_ADJUST)
-                        if _df_gf is not None and len(_df_gf) > 5:
-                            if _df_gf.index.tz is not None:
-                                _df_gf.index = _df_gf.index.tz_localize(None)
-                            _df_gf.index = pd.DatetimeIndex([d.normalize() for d in _df_gf.index])
-                            _df_gf.index.name = df_new.index.name
-                            _df_gf = _df_gf[['Open','High','Low','Close','Volume']].copy()
-                            # Sadece df_new'da OLMAYAN tarihleri ekle
-                            _missing = _df_gf.index.difference(df_new.index)
-                            if len(_missing) > 0:
-                                import logging
-                                logging.info(f"[borsapy gap-fill] {ticker}: {len(_missing)} eksik bar → "
-                                             f"{[d.strftime('%Y-%m-%d') for d in _missing[-5:]]}")
-                                _add_rows = _df_gf.loc[_missing]
-                                df_new = pd.concat([df_new, _add_rows]).sort_index()
-                                df_new = df_new[~df_new.index.duplicated(keep='first')]
-                    except Exception as _gf_ex:
-                        import logging
-                        logging.warning(f"[borsapy gap-fill] {ticker} hata: {_gf_ex}")
-
-                df_new.to_parquet(file_path)
-                return apply_volume_projection(df_new.tail(500).copy(), ticker)
-
-            # ── KATMAN 2 FALLBACK: borsapy (TradingView) ──
-            # Yahoo retry başarısız + İsyatirim yok → borsapy son şans.
-            # Sadece veri ≥1 gün eskiyse devreye gir (intraday başarısızlığında atla).
-            _stale_days = (datetime.now(_TZ_ISTANBUL).date() - df_cached.index[-1].date())
-            _is_bist_stock_u = (".IS" in ticker or "BIST" in ticker) and not ticker.startswith(("XU", "XB", "XT"))
-            if _stale_days.days >= 1 and _is_bist_stock_u and interval == "1d":
-                _bp_df = _fetch_bist_ohlcv_borsapy(ticker, period="1y", interval=interval)
-                if _bp_df is not None and len(_bp_df) > 5:
-                    _bp_df = _apply_split_adjustments(_bp_df)
-                    try: _bp_df.to_parquet(file_path)
-                    except Exception: pass
-                    import logging
-                    logging.info(f"[borsapy] {ticker} cache update fallback — {len(_bp_df)} bar")
-                    return apply_volume_projection(_bp_df.tail(500).copy(), ticker)
-
-            # borsapy de başarısız → eski cache'i döndür + staleness işareti
-            if _stale_days.days >= 1:
-                st.session_state['_data_stale'] = {
-                    'ticker': ticker,
-                    'days':   _stale_days.days,
-                    'last':   df_cached.index[-1].strftime('%d.%m.%Y'),
-                }
-            return apply_volume_projection(df_cached.tail(500).copy(), ticker)
-
-        else:
-            # Parquet yok — önce start/end ile dene, başarısız olursa period ile dene
-            df_full = _yf_download_with_retry(
-                clean_ticker, start=_start, end=_end, interval=interval
-            )
-            if df_full.empty:
-                # start/end başarısız → period="1y" ile dene (Yahoo farklı davranıyor)
-                import logging as _log2
-                _log2.warning(f"[get_hist] {clean_ticker} start/end başarısız → period='1y' fallback")
-                df_full = _yf_download_with_retry(
-                    clean_ticker, period="1y", interval=interval
-                )
-            if not df_full.empty:
-                df_full = safe_clean_columns(df_full)
-                # tz-aware ise convert, tz-naive ise dokunma
-                if df_full.index.tz is not None:
-                    df_full.index = df_full.index.tz_convert(None)
-                # İSYATIRIM OHLCV ENTEGRASYONU (BIST hisseleri, endeks hariç)
-                # yfinance'in bölünme/temettü adjusted price + Volume=0 hatalarını giderir.
-                _is_bist_stock = (".IS" in ticker or "BIST" in ticker) and not ticker.startswith(("XU", "XB", "XT"))
-                if _is_bist_stock and interval == "1d":
-                    _isy_ohlcv = _fetch_bist_ohlcv_isyatirim(clean_ticker, _start, _end)
-                    if _isy_ohlcv is not None and len(_isy_ohlcv) > 5:
-                        _common = df_full.index.intersection(_isy_ohlcv.index)
-                        if len(_common) > 0:
-                            # 5 Haz 2026 — Open'ı override etme (doji bug fix, line 2142'deki ile aynı).
-                            # 15 Haz 2026 — DTYPE FIX: int64↔float64 uyumsuzluğu FutureWarning + yavaşlık üretiyordu.
-                            for _col in ['High', 'Low', 'Close', 'Volume']:
-                                if _col in df_full.columns and df_full[_col].dtype != 'float64':
-                                    df_full[_col] = df_full[_col].astype('float64')
-                            df_full.loc[_common, ['High', 'Low', 'Close', 'Volume']] = \
-                                _isy_ohlcv.loc[_common, ['High', 'Low', 'Close', 'Volume']].values
-                    # isyatirimhisse başarısız → _fix_stale_volume fallback
-                    elif _volume_is_stale(df_full, ticker):
-                        df_full = _fix_stale_volume(df_full, clean_ticker, interval)
-                if _is_bist_stock and interval == "1d":
-                    df_full = _apply_split_adjustments(df_full)
-
-                # ── EMTIA FUTURES HACIM OVERRIDE (15 Haz 2026) — fresh download path ──
-                if ticker.endswith("=F") and interval == "1d":
-                    df_full = _apply_futures_volume_override(df_full, ticker)
-
-                # ── BORSAPY GAP-FILL (10 Haz 2026) — fresh download path ──
-                # Aynı bar atlama tespiti, parquet ilk oluşturulduğunda da uygula
-                _is_bist_any2 = (".IS" in ticker or "BIST" in ticker or ticker.startswith(("XU", "XB", "XT")))
-                # 2 Tem 2026 — SADECE gerçek boşlukta borsapy (throttle önleme, yukarıdaki gibi)
-                if _is_bist_any2 and interval == "1d" and _has_recent_gap(df_full):
-                    try:
-                        import borsapy as _bp_gf2
-                        _sym_gf2 = ticker.replace(".IS", "").upper()
-                        if ticker.startswith("XU") or ticker.startswith("^"):
-                            _obj_gf2 = _bp_gf2.Index(_sym_gf2.replace(".IS", ""))
-                        else:
-                            _obj_gf2 = _bp_gf2.Ticker(_sym_gf2)
-                        _df_gf2 = _obj_gf2.history(period="3mo", interval="1d", auto_adjust=AUTO_ADJUST)
-                        if _df_gf2 is not None and len(_df_gf2) > 5:
-                            if _df_gf2.index.tz is not None:
-                                _df_gf2.index = _df_gf2.index.tz_localize(None)
-                            _df_gf2.index = pd.DatetimeIndex([d.normalize() for d in _df_gf2.index])
-                            _df_gf2.index.name = df_full.index.name
-                            _df_gf2 = _df_gf2[['Open','High','Low','Close','Volume']].copy()
-                            _missing2 = _df_gf2.index.difference(df_full.index)
-                            if len(_missing2) > 0:
-                                import logging
-                                logging.info(f"[borsapy gap-fill fresh] {ticker}: {len(_missing2)} eksik bar")
-                                _add_rows2 = _df_gf2.loc[_missing2]
-                                df_full = pd.concat([df_full, _add_rows2]).sort_index()
-                                df_full = df_full[~df_full.index.duplicated(keep='first')]
-                    except Exception: pass
-
-                df_full.to_parquet(file_path)
-                return apply_volume_projection(df_full.tail(500).copy(), ticker)
-            else:
-                # ── KATMAN 2 FALLBACK: borsapy (TradingView WebSocket) ──
-                # yfinance her iki yöntemde de başarısız. BIST hisse ise borsapy dene.
-                # Son çare — primary çalışmadığında.
-                _is_bist_stock_fb = (".IS" in ticker or "BIST" in ticker) and not ticker.startswith(("XU", "XB", "XT"))
-                if _is_bist_stock_fb and interval == "1d":
-                    _bp_df = _fetch_bist_ohlcv_borsapy(ticker, period="1y", interval=interval)
-                    if _bp_df is not None and len(_bp_df) > 5:
-                        # Bölünme düzeltmesi + cache yaz
-                        _bp_df = _apply_split_adjustments(_bp_df)
-                        try: _bp_df.to_parquet(file_path)
-                        except Exception: pass
-                        import logging
-                        logging.info(f"[borsapy] {ticker} fallback başarılı — {len(_bp_df)} bar")
-                        return apply_volume_projection(_bp_df.tail(500).copy(), ticker)
-
-                # Her iki yöntem de başarısız — session_state'e hata işareti bırak
-                st.session_state['_data_stale'] = {
-                    'ticker': ticker,
-                    'days':   999,
-                    'last':   'Hiç çekilemedi',
-                }
-
-        return None
-
-    except Exception as e:
-        import logging
-        logging.warning(f"[get_safe_historical_data] {ticker} hata: {e}")
-        log_error("get_safe_historical_data", e, ticker)
-        return None
-
-def _ensure_parquet_on_disk(ticker: str, interval: str = "1d") -> None:
-    """
-    @st.cache_data YAN ETKİ SORUNU İÇİN GÜVENLİK NETI:
-    Cached fonksiyon bellekten döndüğünde parquet yazılmayabilir.
-    Bu fonksiyon cache DIŞINDA çalışır — her çağrıda parquet var mı kontrol eder,
-    yoksa indirir ve kaydeder. Crypto ve intraday atlanır.
-    """
-    # Sadece günlük ve kripto olmayan tickerlar için
-    if interval != "1d" or "-USD" in ticker:
-        return
-    try:
-        # file_path'i hesapla (cached fonksiyonla aynı mantık)
-        _ct = ticker.replace(".IS", "")
-        if "BIST" in ticker or ".IS" in ticker or ticker.startswith("XU"):
-            _ct = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
-        _fp = os.path.join(CACHE_DIR, f"{_ct}_{interval}.parquet")
-
-        if os.path.exists(_fp):
-            return  # Zaten var → işlem yok
-
-        import datetime as _dt2
-        _s = str(_dt2.date.today() - _dt2.timedelta(days=380))
-        _e = str(_dt2.date.today() + _dt2.timedelta(days=1))
-
-        _df = _yf_download_with_retry(_ct, start=_s, end=_e, interval=interval)
-        if _df.empty:
-            _df = _yf_download_with_retry(_ct, period="1y", interval=interval)
-        if _df.empty:
-            return
-
-        # Sütunları temizle
-        if isinstance(_df.columns, pd.MultiIndex):
-            _lvl = _df.columns.get_level_values(0)
-            _df.columns = _lvl if "Close" in _lvl else _df.columns.get_level_values(1)
-        _df = _df.loc[:, ~_df.columns.duplicated()].copy()
-        _df.columns = [str(c).capitalize() for c in _df.columns]
-        if "Volume" not in _df.columns or _df["Volume"].isna().all():
-            _df["Volume"] = 0.0
-        # Timezone temizle
-        if _df.index.tz is not None:
-            _df.index = _df.index.tz_convert(None)
-        # Kaydet
-        _df.to_parquet(_fp)
-        import logging as _lg2
-        _lg2.info(f"[ensure_parquet] {_ct} yazildi: {len(_df)} satir")
-    except Exception as _ep:
-        import logging as _lg3
-        _lg3.warning(f"[ensure_parquet] {ticker} hata: {_ep}")
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _ensure_parquet_on_disk
 
 
-@st.cache_data(ttl=3600)
-def _fetch_index_isyatirim_cached(symbol):
-    """20 Haz 2026 — İsyatirim endeks kapanış serisi (XU100 vb. gap-fill için). Cache 1sa.
-    Yahoo endeksi ara işlem günü atlayabiliyor; İsyatirim VALUE tam → delik doldurma kaynağı.
-    Dönüş: {Timestamp(normalize): close_float}."""
-    try:
-        import isyatirimhisse as _iy
-        from datetime import datetime as _dtt, timedelta as _tdd
-        _e = _dtt.now(); _s = _e - _tdd(days=400)
-        ix = _iy.fetch_index_data(indices=symbol.replace('.IS', '').upper(),
-                                  start_date=_s.strftime('%d-%m-%Y'), end_date=_e.strftime('%d-%m-%Y'))
-        if ix is None or ix.empty or 'DATE' not in ix.columns or 'VALUE' not in ix.columns:
-            return {}
-        ix = ix.copy(); ix['DATE'] = pd.to_datetime(ix['DATE'])
-        return {pd.Timestamp(d).normalize(): float(v) for d, v in zip(ix['DATE'], ix['VALUE']) if v and float(v) > 0}
-    except Exception:
-        return {}
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _fetch_index_isyatirim_cached
 
 
-def _validate_index_fill(v, prev_close, next_close, limit=0.12):
-    """20 Haz 2026 — DOĞRULAMA KAPISI. Doldurulacak endeks değeri makul mü?
-    Kaynağa GÜVENMEK yerine DEĞERİ komşu gerçek barlarla kıyasla: endeks günlük ~%10 oynar,
-    eklenen değerin komşulara implike ettiği hareket ±%12 üstüyse → çöp/typo/ölçek hatası, REDDET.
-    Bu HER kaynaktan (İsyatirim dahil) gelen bozuk değeri yakalar. Dönüş: (ok: bool, reason: str)."""
-    try:
-        v = float(v)
-        if v <= 0:
-            return False, "değer ≤0"
-        if prev_close and float(prev_close) > 0:
-            mv_in = v / float(prev_close) - 1
-            if abs(mv_in) > limit:
-                return False, f"önceki güne göre %{mv_in*100:+.1f} (limit ±%{limit*100:.0f})"
-        if next_close and float(next_close) > 0:
-            mv_out = float(next_close) / v - 1
-            if abs(mv_out) > limit:
-                return False, f"sonraki güne göre %{mv_out*100:+.1f} (limit ±%{limit*100:.0f})"
-        return True, "ok"
-    except Exception as e:
-        return False, f"doğrulama hatası: {str(e)[:30]}"
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _validate_index_fill
 
 
-def _log_gapfill_rejects(ticker, rejects):
-    """Reddedilen (şüpheli) endeks dolum değerlerini logs/gapfill_rejects.json'a yaz.
-    Heartbeat/data_integrity bunu okuyup 'değer şüpheli, doldurulMADI' diye admin'e bildirir."""
-    try:
-        import json as _json
-        _base = os.path.dirname(os.path.abspath(__file__))
-        _ld = os.path.join(_base, 'logs')
-        os.makedirs(_ld, exist_ok=True)
-        _fp = os.path.join(_ld, 'gapfill_rejects.json')
-        _cur = []
-        if os.path.exists(_fp):
-            try:
-                _cur = _json.load(open(_fp, encoding='utf-8'))
-            except Exception:
-                _cur = []
-        _now = pd.Timestamp.now().isoformat()
-        for (d, v, pc, nc, reason) in rejects:
-            _cur.append({'ticker': str(ticker), 'date': pd.Timestamp(d).date().isoformat(),
-                         'value': float(v), 'prev': pc, 'next': nc, 'reason': reason, 'logged_at': _now})
-        _cur = _cur[-50:]   # son 50 kayıt yeter
-        _json.dump(_cur, open(_fp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    except Exception:
-        pass
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _log_gapfill_rejects
 
 
-def _gapfill_index_isyatirim(df, ticker):
-    """20 Haz 2026 — Yahoo endeks (XU100 vb.) ARA işlem günü deliklerini İsyatirim VALUE ile doldur.
-    Sadece eksik işlem günlerini (bist_calendar) ekler; mevcut Yahoo barlarına DOKUNMAZ.
-    Endeks olduğu için eklenen barda OHLC=kapanış, Volume=0 (sistem endeks 0-hacmi zaten yönetiyor).
-    DOĞRULAMA KAPISI: her dolum değeri _validate_index_fill'den geçer; şüpheliyi enjekte ETMEZ, loglar."""
-    try:
-        if df is None or getattr(df, 'empty', True) or len(df) < 5:
-            return df
-        import bist_calendar as _bc
-        _last = pd.Timestamp(df.index[-1]).normalize()
-        _have = set(pd.Timestamp(d).normalize() for d in df.index)
-        _exp = []
-        _d = _last - pd.Timedelta(days=35)
-        while _d <= _last:
-            if _bc.is_trading_day(_d.date()):
-                _exp.append(_d.normalize())
-            _d += pd.Timedelta(days=1)
-        _miss = [d for d in _exp if d not in _have]
-        if not _miss:
-            return df
-        _imap = _fetch_index_isyatirim_cached(ticker)
-        if not _imap:
-            return df
-        # DOĞRULAMA KAPISI: her aday değeri komşu gerçek barlarla sına; şüpheliyi enjekte etme.
-        _close = df['Close']
-        _rows = []; _rejects = []
-        for d in _miss:
-            if d not in _imap:
-                continue
-            v = _imap[d]
-            _pv = _close[_close.index < d]
-            _nx = _close[_close.index > d]
-            pc = float(_pv.iloc[-1]) if len(_pv) else None
-            nc = float(_nx.iloc[0]) if len(_nx) else None
-            ok, reason = _validate_index_fill(v, pc, nc)
-            if ok:
-                _rows.append((d, v))
-            else:
-                _rejects.append((d, v, pc, nc, reason))
-        if _rejects:
-            _log_gapfill_rejects(ticker, _rejects)
-        if not _rows:
-            return df
-        # OHLC: İsyatirim sadece kapanış (VALUE) verir → O=C=kapanış. H/L'ye MİNİK spread (±%0.01)
-        # ekliyoruz ki "düz bar" (O=H=L=C) sayılıp HAYALET-BAR temizliğine TAKILMASIN. Endeks V=0 +
-        # düz = tatil hayaleti sanılıp siliniyordu → grafik 18 Haz'ı göstermiyordu (kapanış-tabanlı
-        # %değişim doğruydu ama grafik bara kalıyordu). Spread görünmez (close-tabanlı hesaplara etkisiz).
-        _add = pd.DataFrame(
-            {'Open':   [v for _, v in _rows],
-             'High':   [round(v * 1.0001, 4) for _, v in _rows],
-             'Low':    [round(v * 0.9999, 4) for _, v in _rows],
-             'Close':  [v for _, v in _rows],
-             'Volume': [0] * len(_rows)},
-            index=[d for d, _ in _rows])
-        out = pd.concat([df, _add]).sort_index()
-        out = out[~out.index.duplicated(keep='first')]
-        return out
-    except Exception:
-        return df
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _gapfill_index_isyatirim
 
 
-def get_safe_historical_data(ticker, period="1y", interval="1d"):
-    """
-    Public wrapper — önce cache'li OHLCV'yi alır, sonra
-    cache dışında canlı fiyat patch'ini uygular.
-    Bu sayede fiyat her render'da güncellenir, OHLCV cache'i bozulmaz.
-
-    _ensure_parquet_on_disk: cache'in bellek sonucu döndürdüğü durumlarda
-    parquet'in diske yazılmasını garanti eder.
-    """
-    # 16 Haz 2026 — bare BIST ticker (örn. "BERA") gelirse `.IS` ekle.
-    # Yoksa cache yanlış isimle yazılır (BERA_1d.parquet) + İsyatirim/borsapy bypass olur.
-    ticker = _normalize_bist_ticker(ticker)
-    # 2 Tem 2026 — ÖLÜ/DELISTED sembol → ağ denemesi YOK, diskteki son bilinen veriyi döndür.
-    if ticker.replace(".IS", "") in _DEAD_SYMBOLS:
-        try:
-            _dc = ticker if ticker.endswith(".IS") else (
-                f"{ticker}.IS" if (".IS" in ticker or ticker.startswith("XU")) else ticker)
-            _dp = os.path.join(CACHE_DIR, f"{_dc}_1d.parquet")
-            if os.path.exists(_dp):
-                return pd.read_parquet(_dp)
-        except Exception:
-            pass
-        return pd.DataFrame()
-    _ensure_parquet_on_disk(ticker, interval)
-
-    # ── BÖLÜNME / TEMETTÜ TESPİTİ ────────────────────────────────────────────
-    # Parquet'teki son kapanış ile canlı fiyat arasında 2x'ten fazla fark varsa
-    # bölünme/büyük temettü sonrası düzeltme yapılmamış demektir.
-    # Parquet + Streamlit in-memory cache temizlenerek taze veri çekilir.
-    if interval == "1d":
-        try:
-            _ct_s = ticker.replace(".IS", "")
-            if ".IS" in ticker or ticker.startswith("XU"):
-                _ct_s = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
-            _fp_s = os.path.join(CACHE_DIR, f"{_ct_s}_1d.parquet")
-            if os.path.exists(_fp_s):
-                _df_p   = pd.read_parquet(_fp_s)
-                _last_p = float(_df_p['Close'].dropna().iloc[-1])
-                _live_p = get_live_price(ticker)
-                if _live_p > 0 and _last_p > 0:
-                    _ratio = max(_last_p, _live_p) / min(_last_p, _live_p)
-                    if _ratio > 2.0:
-                        os.remove(_fp_s)
-                        _get_safe_historical_data_cached.clear()
-        except Exception:
-            pass
-    # ─────────────────────────────────────────────────────────────────────────
-
-    df = _get_safe_historical_data_cached(ticker, period=period, interval=interval)
-    # 20 Haz 2026 — ENDEKS GAP-FILL: Yahoo XU100 vb. ara işlem günü atlayabiliyor (% değişim +
-    # beta/RS bozuluyor). İsyatirim'den (cache'li) eksik günleri doldur. Sadece endeks ticker'larda.
-    if interval == "1d" and ticker.upper().startswith(("XU", "XB", "XT", "XY")):
-        _df_gf = _gapfill_index_isyatirim(df, ticker)
-        if _df_gf is not df:   # delik dolduruldu → parquet'e de yaz (karne/backfill/data_integrity için)
-            try:
-                _ct_gf = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
-                _df_gf.to_parquet(os.path.join(CACHE_DIR, f"{_ct_gf}_1d.parquet"))
-            except Exception:
-                pass
-        df = _df_gf
-    return _patch_live_price(df, ticker, interval)
+# -> data_layer.py (Adim 6c, 9 Tem 2026): get_safe_historical_data
 
 # -> indicators.py (Adim 4, 4 Tem 2026): calculate_harsi
     
@@ -4969,153 +3651,7 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
 # 10 Haz 2026: TTL 600→60 — borsapy prev_close fix'in lokal yansıması için.
 # Anlık fiyat her zaman taze, intraday seans içi 1 dk güncellik. Master Scan'i
 # bozmaz (data fetch'ler get_safe_historical_data'da, o ayrı cache'te).
-@st.cache_data(ttl=60)
-def fetch_stock_info(ticker):
-    # 1 Tem 2026 — TEK KAYNAK: bayrak kapalıyken fiyat SADECE veriler/ günlük kapanışından
-    # okunur (canlı Yahoo fast_info/intraday bypass edilir). _patch_live_price de kapalı olduğu
-    # için get_safe_historical_data ham kapanış döner → sağ kart = infografik = AI, HEPSİ AYNI.
-    if not LIVE_PRICE_PATCH_ENABLED:
-        try:
-            _vt  = _normalize_bist_ticker(ticker)
-            _vdf = get_safe_historical_data(_vt, period="3mo")
-            if _vdf is None or _vdf.empty or 'Close' not in _vdf.columns:
-                return None
-            _vc = _vdf['Close'].dropna()
-            if len(_vc) < 1:
-                return None
-            _vprice = float(_vc.iloc[-1])
-            _vprev  = float(_vc.iloc[-2]) if len(_vc) >= 2 else _vprice
-            _vchg   = ((_vprice - _vprev) / _vprev * 100) if _vprev > 0 else 0.0
-            _vvol   = float(_vdf['Volume'].dropna().iloc[-1]) if ('Volume' in _vdf.columns and _vdf['Volume'].dropna().size) else 0.0
-            return {"price": _vprice, "change_pct": _vchg, "volume": _vvol, "sector": "-", "target": "-"}
-        except Exception:
-            return None
-    try:
-        t = yf.Ticker(ticker)
-        price = prev_close = volume = None
-        try:
-            fi = getattr(t, "fast_info", None)
-            if fi:
-                price = fi.get("last_price")
-                prev_close = fi.get("previous_close")
-                volume = fi.get("last_volume")
-        except: pass
-
-        if price is None or prev_close is None:
-            try:
-                # Yahoo quirk: period="5d" gives older close (good for prev_close),
-                # period="1d" gives the most recent close (good for current price).
-                h1 = yf.Ticker(ticker).history(period="1d")
-                h5 = yf.Ticker(ticker).history(period="5d")
-            except Exception:
-                h1 = h5 = None
-            if h1 is not None and not h1.empty:
-                price  = float(h1["Close"].iloc[-1])
-                volume = float(h1["Volume"].iloc[-1])
-                if h5 is not None and not h5.empty:
-                    # h1 ve h5 farklı son tarihte ise, h5'in son satırı önceki kapanış
-                    if h1.index[-1].date() != h5.index[-1].date():
-                        prev_close = float(h5["Close"].iloc[-1])
-                    elif len(h5) > 1:
-                        prev_close = float(h5["Close"].iloc[-2])
-                    else:
-                        prev_close = price
-                else:
-                    prev_close = price
-            elif h5 is not None and not h5.empty:
-                price      = float(h5["Close"].iloc[-1])
-                prev_close = float(h5["Close"].iloc[-2]) if len(h5) > 1 else price
-                volume     = float(h5["Volume"].iloc[-1])
-            else:
-                return None
-
-        # ── YAHOO 1m INTRADAY TAZELEMESİ (10 Haz 2026) ──
-        # BIST + seans açık ise Yahoo'nun 1m bar endpoint'inden son tick'i çek.
-        # Bu ~10 dk delayed (Yahoo'nun BIST için yasal limiti) ama günlük
-        # kapanışa göre daha taze. fast_info veya günlük h1 gün başı kapanışı
-        # gösterdiği için intraday hareket kaybediliyordu — şimdi yakalanıyor.
-        try:
-            _is_bist_intraday = (".IS" in ticker or "BIST" in ticker or ticker.startswith("XU"))
-            _now_tr_intr = datetime.now(_TZ_ISTANBUL)
-            _seans_acik = (
-                _now_tr_intr.weekday() < 5
-                and 1000 <= (_now_tr_intr.hour * 100 + _now_tr_intr.minute) <= 1830
-            )
-            if _is_bist_intraday and _seans_acik:
-                _h1m = yf.Ticker(ticker).history(period="1d", interval="1m")
-                if _h1m is not None and not _h1m.empty:
-                    _last_tick = float(_h1m["Close"].iloc[-1])
-                    if _last_tick > 0:
-                        price = _last_tick  # intraday son fiyat üzerine yaz
-        except Exception: pass
-
-        change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0
-
-        # FIX (30 May 2026): Kapalı günde (hafta sonu/BIST tatil) Yahoo fast_info
-        # last_price == previous_close veriyor → değişim %0.00 görünüyordu.
-        # Bu durumda günlük değişimi TEMİZLENMİŞ cache'in son iki GERÇEK seansından
-        # hesapla (hayalet barlar zaten _strip_holiday_bars ile sökülmüş olur).
-        _is_bist = (".IS" in ticker or "BIST" in ticker or ticker.startswith("XU"))
-        _closed_now = False
-        try:
-            _now_tr = datetime.now(_TZ_ISTANBUL)
-            _closed_now = (_now_tr.weekday() >= 5) or (_is_bist and _bist_is_closed(_now_tr.date()))
-        except Exception:
-            _closed_now = False
-        if abs(change_pct) < 1e-6 or _closed_now:
-            try:
-                _hist = get_safe_historical_data(ticker, period="1mo")
-                if _hist is not None and len(_hist) >= 2:
-                    _rc = _hist['Close'].dropna()
-                    if len(_rc) >= 2 and float(_rc.iloc[-2]) > 0:
-                        _last = float(_rc.iloc[-1]); _prev = float(_rc.iloc[-2])
-                        change_pct = (_last - _prev) / _prev * 100
-                        # Fiyat kutusu kapalı günde son gerçek kapanışı göstersin
-                        if _closed_now:
-                            price = _last
-            except Exception:
-                pass
-
-        # FIX (10 Haz 2026 Oturum 20): BIST endeks / hisse — Yahoo eksik bar
-        # detection. Yahoo bazen bir önceki seansı ATLIYOR (örn. 10 Haz'da Yahoo
-        # 9 Haz Pazartesi kapanışını veremedi, 8→10 atladı). prev_close=8 Haz
-        # geliyor, gerçek dün=9 Haz → %değişim YANLIŞ.
-        # Çözüm: borsapy ile dünün gerçek kapanışını DOĞRULA. Yahoo prev_close
-        # ile borsapy'nin dünkü close değeri arasında >%0.2 fark varsa
-        # borsapy'yi kullan (eşik düşük tutuldu — fark genelde küçük ama
-        # gerçek; %0.5 üstü zaten ciddi bar atlamadır).
-        # PLUS: borsapy'nin TARİH index'ini de kullan — Yahoo'nun atladığı
-        # gün borsapy'de varsa bu kesin kanıttır.
-        if _is_bist and not _closed_now and price and prev_close:
-            try:
-                import borsapy as _bp
-                _sym_b = ticker.replace(".IS", "").upper()
-                # XU100 için Index, hisse için Ticker
-                if ticker.startswith("XU") or ticker.startswith("^"):
-                    _obj_b = _bp.Index(_sym_b.replace(".IS", ""))
-                else:
-                    _obj_b = _bp.Ticker(_sym_b)
-                _df_b = _obj_b.history(period="5d", interval="1d")
-                if _df_b is not None and len(_df_b) >= 2:
-                    _bp_prev = float(_df_b['Close'].iloc[-2])
-                    _bp_today = float(_df_b['Close'].iloc[-1])
-                    # ÖNEMLİ — borsapy'nin "dün"ü Yahoo'nun "dün"ünden farklı mı?
-                    # Eğer >%0.2 fark VEYA |prev_close - bp_today| < |prev_close - bp_prev|
-                    # (yani Yahoo'nun prev_close'u borsapy'nin BUGÜNÜNE daha yakın
-                    # = bar atlamış olduğu güne karışmış)
-                    _diff_pct = abs(_bp_prev - prev_close) / _bp_prev if _bp_prev > 0 else 0
-                    _bar_skipped = abs(prev_close - _bp_today) < abs(prev_close - _bp_prev)
-                    if _bp_prev > 0 and (_diff_pct > 0.002 or _bar_skipped):
-                        import logging
-                        logging.info(f"[fetch_stock_info] {ticker}: Yahoo prev_close "
-                                     f"{prev_close:.2f} → borsapy düzeltme {_bp_prev:.2f} "
-                                     f"(diff %{_diff_pct*100:.2f})")
-                        prev_close = _bp_prev
-                        change_pct = ((price - prev_close) / prev_close * 100)
-            except Exception: pass
-
-        return { "price": price, "change_pct": change_pct, "volume": volume or 0, "sector": "-", "target": "-" }
-    except: return None
+# -> data_layer.py (Adim 6c, 9 Tem 2026): fetch_stock_info
 
 @st.cache_data(ttl=600)
 def get_tech_card_data(ticker):
@@ -5163,14 +3699,12 @@ def calculate_synthetic_sentiment(ticker):
 
         close = df['Close']; high = df['High']; low = df['Low']; volume = df['Volume']
 
-        # --- DEMA6 (Orijinal Formül) ---
-        typical_price = (high + low + close) / 3
-        ema1 = typical_price.ewm(span=6, adjust=False).mean()
-        ema2 = ema1.ewm(span=6, adjust=False).mean()
-        dema6 = (2 * ema1) - ema2
-        mf_smooth = (typical_price - dema6) / dema6 * 1000
-
-        stp = ema1
+        # --- İVME KARIŞIMI (9 Tem 2026) — eski DEMA6 konum formülünün yerine ---
+        # bar = %50 STP eğimi + %50 kompozit puan (RSI+MFI+20g konum) değişimi.
+        # TEK KAYNAK: indicators.compute_flow_momentum (bot/infografik/site de aynı).
+        mf_smooth, stp = compute_flow_momentum(df)
+        if mf_smooth is None:
+            return None
         
         df = df.reset_index()
         # Index name kaybolmuş olabilir — 'Date', 'Datetime', 'index' gibi kontrol et
@@ -5480,7 +4014,9 @@ def get_obv_divergence_status(ticker):
             _spike_r   = (abs(_obv_today) / abs(_obv_5g_d)) if abs(_obv_5g_d) > 1e-9 else 0.0
             _same_dir  = (_obv_today > 0) == (_obv_5g_d > 0)
             _spike_dom = (_spike_r > 0.60) and _same_dir
-            _spike_tag = f"  (⚠ tek-mum ağırlıklı: bugünkü mum 5g akışın %{_spike_r*100:.0f}'ini oluşturdu — teyit bekleniyor)" if _spike_dom else ""
+            # >%95: "%190'ını oluşturdu" gibi kafa karıştıran yüzdeler yerine kelime (10 Tem 2026)
+            _spike_pct_txt = "tamamına yakınını" if _spike_r >= 0.95 else f"%{_spike_r*100:.0f}'ini"
+            _spike_tag = f"  (⚠ tek-mum ağırlıklı: bugünkü mum 5g akışın {_spike_pct_txt} oluşturdu — teyit bekleniyor)" if _spike_dom else ""
         except Exception:
             _spike_dom = False; _spike_tag = ""
 
@@ -5660,329 +4196,19 @@ def process_single_stock_stp(symbol, df):
 # Çift dip, omuz baş omuz, bayrak, üçgen, fincan-kulp vb.
 # Tüm klasik formasyon tespit algoritmaları bu bölümdedir.
 # ==============================================================================
-def _validate_cup_shape(cup_arr, left_i, dip_i, right_i, r2, min_r2=0.78):
-    """Fincan-kulp gövde (fincan) şekil doğrulaması — Dengeli profil (30 May 2026).
-
-    Gerçek bir fincan: (1) dip yaklaşık ORTADA, (2) sol yarı inişli + sağ yarı
-    çıkışlı, (3) güçlü U-fit (R²). Bu üçü sağlanmazsa düşüş-sonrası-sıçrama veya
-    asimetrik salınım 'fincan' diye etiketlenir (SISE tipi sahte pozitif).
-
-    cup_arr   : sol rim'den sağ rim'e kapanış dizisi (offset 0 = left_i)
-    left_i/dip_i/right_i : mutlak bar indeksleri (sol rim / dip / sağ rim)
-    r2        : çağıran tarafça hesaplanmış polinom U-fit R²
-    Döndürür  : True = geçerli fincan gövdesi.
-    """
-    if r2 < min_r2:
-        return False
-    span = right_i - left_i
-    if span <= 0:
-        return False
-    # 1) Dip merkeziyeti — kenardaki dip fincan değildir
-    cent = (dip_i - left_i) / span
-    if not (0.30 <= cent <= 0.70):
-        return False
-    # 2) Sol yarı inişli + sağ yarı çıkışlı (V/sürüklenme eler)
-    rel = dip_i - left_i
-    lh = cup_arr[:max(2, rel + 1)]
-    rh = cup_arr[rel:]
-    if len(lh) >= 3 and len(rh) >= 3:
-        lslope = np.polyfit(np.arange(len(lh)), lh, 1)[0]
-        rslope = np.polyfit(np.arange(len(rh)), rh, 1)[0]
-        if not (lslope < 0 and rslope > 0):
-            return False
-    return True
+# -> scanners.py (Adim 6a, 6 Tem 2026): _validate_cup_shape
 
 
-def _validate_tobo_shape(sl1_i, sl1_v, sl2_i, sl2_v, sl3_i, sl3_v,
-                         sh1_i, sh1_v, sh2_i, sh2_v, bar_total):
-    """TOBO (Ters OBO) şekil doğrulaması — Dengeli profil (30 May 2026).
-
-    Gerçek bir TOBO: (1) baş omuzlardan belirgin derin, (2) sol ve sağ kanat
-    zamanca orantılı (tek yana sıkışmış değil), (3) boyun çizgisi yatay
-    OLMAK ZORUNDA değil — hafif eğimli boyunlar da geçerlidir.
-
-    Eski mantık boyunu ±%6 YATAY olmaya zorluyordu → eğimli boyunlu gerçek
-    TOBO'lar reddediliyordu. Ayrıca 5-bar sol + 60-bar sağ omuz gibi aşırı
-    asimetrik yapılar geçebiliyordu.
-
-    Döndürür: (ok, neck_now)
-      ok       : True = geçerli TOBO iskeleti
-      neck_now : eğimli boyun çizgisinin SON bardaki (kırılım referansı) değeri
-    """
-    # 1) Baş derinlik tabanı — baş omuzlardan en az %8 daha derin
-    if not (sl2_v < sl1_v * 0.92 and sl2_v < sl3_v * 0.92):
-        return False, None
-    # 2) Zaman simetrisi — sol kanat / sağ kanat oranı 0.4–2.5
-    t_left  = sl2_i - sl1_i
-    t_right = sl3_i - sl2_i
-    if t_left <= 0 or t_right <= 0:
-        return False, None
-    ratio = t_left / t_right
-    if not (0.4 <= ratio <= 2.5):
-        return False, None
-    # 3) Eğimli boyun desteği — boyun yatay zorunlu DEĞİL; sadece aşırı eğim eler
-    if abs(sh1_v - sh2_v) / sh1_v > 0.15:
-        return False, None
-    # Boyun çizgisi: iki boyun tepesinden geçen doğru, son bara ekstrapole edilir
-    nslope = (sh2_v - sh1_v) / (sh2_i - sh1_i) if sh2_i != sh1_i else 0.0
-    neck_now = sh2_v + nslope * (bar_total - 1 - sh2_i)
-    # Ekstrapolasyon güvenliği — boyun iki tepe aralığından çok sapmasın
-    nmin = min(sh1_v, sh2_v) * 0.90
-    nmax = max(sh1_v, sh2_v) * 1.12
-    neck_now = max(nmin, min(nmax, neck_now))
-    return True, neck_now
+# -> scanners.py (Adim 6a, 6 Tem 2026): _validate_tobo_shape
 
 
-def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
-                          eq_tol=0.04, min_depth=0.12, max_depth=0.40,
-                          min_dur=25, max_dur=180, max_form_dist=12.0):
-    """Çift Dip (W) tespiti — swing tabanlı (30 May 2026).
-
-    W formasyonu: Dip1 → Orta Tepe (boyun) → Dip2 (≈Dip1). İki ~eşit dip ve
-    aralarındaki belirgin tepe; boyun kırılımı yukarı dönüş sinyalidir. Fincan
-    ve TOBO ile örtüşmez (onlar tek dip / 3 dip; bu 2 dip).
-
-    Şekil garantileri (sahte W'leri eler):
-    - İki dip birbirine ±%4 yakın (eq_tol) — kademeli düşüşü W sanmayı önler
-    - Orta tepe diplerden %12–%40 arası (min/max_depth) — düz taban VE
-      "büyük çöküş + toparlanma"yı (W değil) birlikte eler
-    - Süre 25–180 bar; ikinci dip son 60 günde (taze)
-    - Fiyat ikinci dibin üstünde + R/R ≥ 1.0
-    - OLUŞAN durumda fiyat boyna ≤%12 uzakta (max_form_dist): "erken ama alakalı".
-      Bu, W'yi nadir/kaliteli tutan ANA filtredir (yoksa ~%35 hisse W görünür).
-
-    Döndürür: dict(d1_i,d1_v,neck_i,neck_v,d2_i,d2_v,target,state,dist,dur)
-              veya None.  state: 'break' (boyun kırılımı) / 'form' (oluşuyor).
-    """
-    if len(sw_l_y) < 2 or len(sw_h_y) < 1:
-        return None
-    for j in range(len(sw_l_y) - 1, 0, -1):
-        d2_i, d2_v = sw_l_y[j]
-        if bar_total - d2_i > 60:            # ikinci dip taze olmalı
-            continue
-        for k in range(j - 1, -1, -1):
-            d1_i, d1_v = sw_l_y[k]
-            dur = d2_i - d1_i
-            if not (min_dur <= dur <= max_dur):
-                continue
-            if abs(d1_v - d2_v) / d1_v > eq_tol:   # iki dip ~eşit
-                continue
-            mid_h = [(i, v) for i, v in sw_h_y if d1_i < i < d2_i]
-            if not mid_h:
-                continue
-            neck_i, neck_v = max(mid_h, key=lambda x: x[1])
-            base = min(d1_v, d2_v)
-            depth = (neck_v - base) / base
-            if not (min_depth <= depth <= max_depth):  # orta tepe belirgin ama aşırı değil
-                continue
-            if curr_price < d2_v * 0.98:            # fiyat ikinci dibin altında değil
-                continue
-            target = neck_v + (neck_v - base)
-            risk = max(curr_price - d2_v * 0.98, 0.01)
-            if (target - curr_price) / risk < 1.0:
-                continue
-            dist = ((neck_v - curr_price) / neck_v * 100) if curr_price < neck_v else 0
-            breaking = neck_v * 0.97 <= curr_price <= neck_v * 1.10
-            forming  = (curr_price > d2_v * 1.01 and curr_price < neck_v * 0.97
-                        and dist <= max_form_dist)   # erken ama boyna yakın
-            if not (breaking or forming):
-                continue
-            return dict(d1_i=d1_i, d1_v=d1_v, neck_i=neck_i, neck_v=neck_v,
-                        d2_i=d2_i, d2_v=d2_v, target=target,
-                        state="break" if breaking else "form", dist=dist, dur=dur)
-    return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): _detect_double_bottom
 
 
-def _detect_double_top(sw_h_y, sw_l_y, curr_price, bar_total,
-                       eq_tol=0.04, min_depth=0.12, max_depth=0.40,
-                       min_dur=25, max_dur=180, max_form_dist=12.0):
-    """İkili Tepe (M) tespiti — Çift Dip'in (W) AYI simetriği (30 May 2026).
-
-    M formasyonu: Tepe1 → Orta Vadi (boyun) → Tepe2 (≈Tepe1). İki ~eşit tepe ve
-    aralarındaki belirgin vadi; boyun çizgisi AŞAĞI kırılınca düşüş dönüşü
-    (tepe/satış uyarısı). Çift Dip ile örtüşmez (o boğa, bu ayı).
-
-    Şekil garantileri (sahte M'leri eler):
-    - İki tepe birbirine ±%4 yakın (kademeli yükselişi M sanmayı önler)
-    - Orta vadi tepelerden %12–%40 aşağıda (düz tavanı VE aşırı V'yi eler)
-    - Süre 25–180 bar; ikinci tepe son 60 günde (taze)
-    - Fiyat ikinci tepenin altında + R/R ≥ 1.0 (aşağı hedef)
-    - OLUŞAN durumda fiyat boyna ≤%12 uzakta (erken ama alakalı)
-
-    Döndürür: dict(t1_i,t1_v,neck_i,neck_v,t2_i,t2_v,target,state,dist,dur)
-              veya None.  state: 'break' (boyun aşağı kırıldı) / 'form' (oluşuyor).
-    """
-    if len(sw_h_y) < 2 or len(sw_l_y) < 1:
-        return None
-    for j in range(len(sw_h_y) - 1, 0, -1):
-        t2_i, t2_v = sw_h_y[j]
-        if bar_total - t2_i > 60:            # ikinci tepe taze olmalı
-            continue
-        for k in range(j - 1, -1, -1):
-            t1_i, t1_v = sw_h_y[k]
-            dur = t2_i - t1_i
-            if not (min_dur <= dur <= max_dur):
-                continue
-            if abs(t1_v - t2_v) / t1_v > eq_tol:   # iki tepe ~eşit
-                continue
-            mid_l = [(i, v) for i, v in sw_l_y if t1_i < i < t2_i]
-            if not mid_l:
-                continue
-            neck_i, neck_v = min(mid_l, key=lambda x: x[1])   # orta vadi = en düşük
-            top = max(t1_v, t2_v)
-            depth = (top - neck_v) / top
-            if not (min_depth <= depth <= max_depth):  # orta vadi belirgin ama aşırı değil
-                continue
-            if curr_price > t2_v * 1.02:            # fiyat ikinci tepenin üstünde değil
-                continue
-            target = neck_v - (top - neck_v)        # aşağı hedef
-            risk = max(t2_v * 1.02 - curr_price, 0.01)
-            if (curr_price - target) / risk < 1.0:
-                continue
-            dist = ((curr_price - neck_v) / neck_v * 100) if curr_price > neck_v else 0
-            breaking = neck_v * 0.90 <= curr_price <= neck_v * 1.03
-            forming  = (curr_price < t2_v * 0.99 and curr_price > neck_v * 1.03
-                        and dist <= max_form_dist)   # erken ama boyna yakın
-            if not (breaking or forming):
-                continue
-            return dict(t1_i=t1_i, t1_v=t1_v, neck_i=neck_i, neck_v=neck_v,
-                        t2_i=t2_i, t2_v=t2_v, target=float(max(target, 0.01)),
-                        state="break" if breaking else "form", dist=dist, dur=dur)
-    return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): _detect_double_top
 
 
-def _detect_wedge(sw_h_y, sw_l_y, close, high, low, volume, curr_price, bar_total,
-                  min_dur=25, max_dur=200, min_r2=0.50, conv_ratio=0.66):
-    """Düşen Kama (boğa) / Yükselen Kama (ayı) tespiti — regresyon tabanlı (30 May 2026).
-
-    BIST'te en çok kazandıran formasyonlardan biri ama yanlış tespiti kolay.
-    KAMA'yı kanaldan/üçgenden ayıran kritik özellik = YAKINSAMA (convergence):
-    iki trend çizgisi aynı yöne eğimli AMA birbirine yaklaşır.
-
-    Düşen Kama (boğa dönüş): üst & alt çizgi AŞAĞI eğimli; üst daha hızlı düşer
-      (s_hi < s_lo < 0). Daralan kanal, düşen tepeler+dipler. Kırılım YUKARI.
-    Yükselen Kama (ayı dönüş): üst & alt çizgi YUKARI eğimli; alt daha hızlı
-      yükselir (s_lo > s_hi > 0). Kırılım AŞAĞI.
-
-    Sahte eleme garantileri:
-    - En az 3 tepe + 3 dip (2 nokta gürültüye açık)
-    - Her iki çizgi R² ≥ 0.50 (dağınık pivot = kama değil)
-    - Yakınsama: son genişlik ≤ baş genişlik × conv_ratio (paralel kanalı eler)
-    - Eğim işaretleri net (yatay çizgi = üçgen, kama değil)
-    - Süre 25–200 bar; son pivot 60 günden taze
-    - Hacim oluşum boyunca düşer (kama imzası) → bonus, zorunlu değil
-
-    Döndürür: dict(kind, slope_hi, slope_lo, up_line, lo_line, target, state,
-                   dist, dur, r2_hi, r2_lo, vol_drop) veya None.
-      kind: 'falling' (boğa) | 'rising' (ayı)
-      state: 'break' (kırılım gerçekleşti) | 'form' (oluşuyor, kırılıma yakın)
-    """
-    if len(sw_h_y) < 3 or len(sw_l_y) < 3:
-        return None
-
-    def _fit(points):
-        x = np.array([i for i, _ in points], dtype=float)
-        y = np.array([v for _, v in points], dtype=float)
-        if len(x) < 2 or x.max() == x.min():
-            return None
-        coef = np.polyfit(x, y, 1)
-        yp = np.polyval(coef, x)
-        ss_res = np.sum((y - yp) ** 2)
-        ss_tot = np.sum((y - y.mean()) ** 2)
-        r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0
-        return coef, r2
-
-    # Formasyon penceresi: son pivotlardan geriye, 25–200 bar
-    last_h_i = sw_h_y[-1][0]; last_l_i = sw_l_y[-1][0]
-    last_piv = max(last_h_i, last_l_i)
-    if bar_total - 1 - last_piv > 60:
-        return None
-    win_start = last_piv - max_dur
-    hi_pts = [(i, v) for i, v in sw_h_y if i >= win_start]
-    lo_pts = [(i, v) for i, v in sw_l_y if i >= win_start]
-    if len(hi_pts) < 3 or len(lo_pts) < 3:
-        return None
-
-    first_i = min(hi_pts[0][0], lo_pts[0][0])
-    dur = last_piv - first_i
-    if not (min_dur <= dur <= max_dur):
-        return None
-
-    fit_hi = _fit(hi_pts); fit_lo = _fit(lo_pts)
-    if fit_hi is None or fit_lo is None:
-        return None
-    (coef_hi, r2_hi) = fit_hi
-    (coef_lo, r2_lo) = fit_lo
-    if r2_hi < min_r2 or r2_lo < min_r2:
-        return None
-    s_hi = coef_hi[0]; s_lo = coef_lo[0]
-
-    # Çizgi değerleri: baş ve son
-    x_start = first_i; x_end = bar_total - 1
-    hi_start = np.polyval(coef_hi, x_start); hi_end = np.polyval(coef_hi, x_end)
-    lo_start = np.polyval(coef_lo, x_start); lo_end = np.polyval(coef_lo, x_end)
-    w_start = hi_start - lo_start
-    w_end   = hi_end - lo_end
-    if w_start <= 0 or w_end <= 0:
-        return None
-    # Yakınsama zorunlu: aralık daralmalı (kanal değil)
-    if not (w_end <= w_start * conv_ratio):
-        return None
-
-    # Hacim oluşum boyunca düşüyor mu? (kama imzası, bonus)
-    vol_drop = False
-    try:
-        _seg = volume.iloc[first_i:bar_total]
-        if len(_seg) >= 10:
-            _half = len(_seg) // 2
-            vol_drop = float(_seg.iloc[_half:].mean()) < float(_seg.iloc[:_half].mean())
-    except Exception:
-        pass
-
-    _slope_eps = 1e-9
-    if s_hi < -_slope_eps and s_lo < -_slope_eps and s_hi < s_lo:
-        # DÜŞEN KAMA (boğa) — üst direnç çizgisi kırılımı yukarı
-        kind = "falling"
-        up_line = float(hi_end)   # kırılım çizgisi = üst
-        lo_line = float(lo_end)
-        # Hedef: kama tabanının yüksekliği kadar (ilk genişlik), üst çizgiden
-        target = up_line + w_start
-        dist = ((up_line - curr_price) / up_line * 100) if curr_price < up_line else 0
-        breaking = curr_price >= up_line * 0.985 and curr_price <= up_line * 1.10
-        forming  = (curr_price < up_line * 0.985 and curr_price > lo_line * 0.98
-                    and dist <= 12.0)
-        if not (breaking or forming):
-            return None
-        risk = max(curr_price - lo_line * 0.98, 0.01)
-        if (target - curr_price) / risk < 1.0:
-            return None
-        return dict(kind=kind, slope_hi=s_hi, slope_lo=s_lo,
-                    up_line=up_line, lo_line=lo_line, target=float(target),
-                    up_start=float(hi_start), lo_start=float(lo_start),
-                    state="break" if breaking else "form", dist=dist, dur=dur,
-                    r2_hi=r2_hi, r2_lo=r2_lo, vol_drop=vol_drop,
-                    first_i=first_i)
-
-    if s_hi > _slope_eps and s_lo > _slope_eps and s_lo > s_hi:
-        # YÜKSELEN KAMA (ayı) — alt destek çizgisi kırılımı aşağı
-        kind = "rising"
-        up_line = float(hi_end)
-        lo_line = float(lo_end)   # kırılım çizgisi = alt
-        target = lo_line - w_start   # aşağı hedef
-        dist = ((curr_price - lo_line) / lo_line * 100) if curr_price > lo_line else 0
-        breaking = curr_price <= lo_line * 1.015 and curr_price >= lo_line * 0.90
-        forming  = (curr_price > lo_line * 1.015 and curr_price < up_line * 1.02
-                    and dist <= 12.0)
-        if not (breaking or forming):
-            return None
-        return dict(kind=kind, slope_hi=s_hi, slope_lo=s_lo,
-                    up_line=up_line, lo_line=lo_line, target=float(max(target, 0.01)),
-                    up_start=float(hi_start), lo_start=float(lo_start),
-                    state="break" if breaking else "form", dist=dist, dur=dur,
-                    r2_hi=r2_hi, r2_lo=r2_lo, vol_drop=vol_drop,
-                    first_i=first_i)
-
-    return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): _detect_wedge
 
 
 def scan_chart_patterns(asset_list):
@@ -7360,185 +5586,7 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
 # Kurumsal alım izlerini tespit eden akıllı hacim + fiyat analizi.
 # Benchmark'a göre rölatif güç hesabı da burada yapılır.
 # ==============================================================================
-def process_single_accumulation(symbol, df, benchmark_series):
-    try:
-        if df.empty or 'Close' not in df.columns: return None
-        df = df.dropna(subset=['Close'])
-        if len(df) < 60: return None
-
-        close = df['Close']
-        open_ = df['Open']
-        high = df['High']
-        low = df['Low']
-        volume = df['Volume'] if 'Volume' in df.columns else pd.Series([1]*len(df), index=df.index)
-        
-        # --- 1. SAVAŞ'IN GÜVENLİK KALKANI (SON 2 GÜN KURALI) ---
-        price_now = float(close.iloc[-1])
-        if len(close) > 2:
-            price_2_days_ago = float(close.iloc[-3]) 
-            # Son 2 gün toplam %3'ten fazla düştüyse (0.97 altı) ELE.
-            if price_now < (price_2_days_ago * 0.97): 
-                return None 
-
-        # --- 2. HACİM KONTROLÜ (Artık Global Olarak Hesaplanıyor) ---
-        volume_for_check = float(volume.iloc[-1])
-
-        # --- 3. MEVCUT MANTIK (TOPLAMA & FORCE INDEX) ---
-        # FIX (30 May 2026): span 2 → 13 (Elder klasik Force Index). span=2 neredeyse
-        # ham veriydi; tek günlük fiyat×hacim sıçraması skoru domine edip dağıtımı
-        # toplama gibi gösterebiliyordu. 13 EMA gerçek birikimli baskıyı yansıtır.
-        delta = close.diff()
-        force_index = delta * volume
-        mf_smooth = force_index.ewm(span=13, adjust=False).mean()
-
-        last_10_mf = mf_smooth.tail(10)
-        last_10_close = close.tail(10)
-        
-        if len(last_10_mf) < 10: return None
-        
-        pos_days_count = (last_10_mf > 0).sum()
-        if pos_days_count < 7: return None 
-
-        price_start = float(last_10_close.iloc[0]) 
-        if price_start == 0: return None
-        
-        change_pct = (price_now - price_start) / price_start
-        avg_mf = float(last_10_mf.mean())
-        
-        if avg_mf <= 0: return None
-        if change_pct > 0.05: return None 
-        # --- HALÜSİNASYON ÖNLEYİCİ (RSI FİLTRESİ) ---
-        # Eğer RSI > 60 ise, fiyat tepededir. Bu 'Toplama' değil, 'Dağıtım'dır.
-        # Bu yüzden RSI şişikse, bu hisseyi listeden atıyoruz.
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rsi_check = 100 - (100 / (1 + (gain / loss))).iloc[-1]
-        
-        if rsi_check > 60: return None # Şişkin hisseyi yok say.
-
-        # --- 4. MANSFIELD RS (GÜÇ) ---
-        # FIX (31 May 2026): Bench veri yoksa RS kanıtı eksik → sinyali REDDET.
-        # Eskiden bench None ise rs_score=0 ile devam ediyordu (sessiz bilgi kaybı).
-        if benchmark_series is None:
-            return None
-        rs_status = "Zayıf"
-        rs_score = 0
-        try:
-            common_idx = close.index.intersection(benchmark_series.index)
-            if len(common_idx) <= 50:
-                return None  # Yeterli ortak veri yoksa RS ölçülemez → reddet
-            stock_aligned = close.loc[common_idx]
-            bench_aligned = benchmark_series.loc[common_idx]
-            rs_ratio = stock_aligned / bench_aligned
-            rs_ma = rs_ratio.rolling(50).mean()
-            mansfield = ((rs_ratio / rs_ma) - 1) * 10
-            curr_rs = float(mansfield.iloc[-1])
-            if curr_rs > 0:
-                rs_status = "GÜÇLÜ (Endeks Üstü)"
-                rs_score = 1
-                if curr_rs > float(mansfield.iloc[-5]):
-                    rs_status += " 🚀"
-                    rs_score = 2
-        except Exception:
-            return None  # RS hesabı patladıysa sinyal verme
-
-        # --- 5. POCKET PIVOT (ZAMAN AYARLI KONTROL) ---
-        is_pocket_pivot = False
-        pp_desc = "-"
-        
-        is_down_day = close < open_
-        down_volumes = volume.where(is_down_day, 0)
-        # FIX (30 May 2026): 3 gün → 10 gün (O'Neil klasik Pocket Pivot tanımı).
-        # Bugünkü up-day hacmi, son 10 günün en yüksek düşüş-günü hacmini aşmalı.
-        max_down_vol_10 = down_volumes.iloc[-11:-1].max()
-        
-        is_up_day = float(close.iloc[-1]) > float(open_.iloc[-1])
-        
-        if is_up_day and (volume_for_check > max_down_vol_10):
-            is_pocket_pivot = True
-            if float(volume.iloc[-1]) < max_down_vol_10:
-                pp_desc = "⚡ PIVOT (Hacim Hızı Yüksek)"
-            else:
-                pp_desc = "⚡ POCKET PIVOT (Onaylı)"
-
-        # --- YENİ EKLENEN: LAZYBEAR SQUEEZE KONTROLÜ ---
-        is_sq = check_lazybear_squeeze(df)
-        if is_sq:
-            quality_label = "A KALİTE (Sıkışmış)"
-        else:
-            quality_label = "B KALİTE (Normal)"
-
-        # --- CMF(20) TEYİT KATMANI (FIX 30 May 2026) ---
-        # Force Index momentum ölçer; CMF birikim (bar-içi alıcı baskısı) ölçer.
-        # İkisi de pozitifse toplama güçlü; çelişirse şüpheli → skor downgrade.
-        cmf_20 = compute_cmf(df, period=20)
-        cmf_confirms = cmf_20 > 0.05
-        cmf_conflict = cmf_20 < -0.05
-
-        # --- 52H YILLIK KONUM (FIX 31 May 2026) ---
-        # Yıllık dipte birikim = güçlü tez (alıcı düşük seviyelerden topluyor).
-        # Yıllık zirvede birikim = şüpheli (zirvede toplama olmaz, dağıtım olur).
-        y_pos = 50.0  # default — nötr
-        try:
-            _y_close = close.iloc[-252:] if len(close) >= 252 else close
-            _y_hi = float(_y_close.max())
-            _y_lo = float(_y_close.min())
-            if _y_hi > _y_lo:
-                y_pos = (price_now - _y_lo) / (_y_hi - _y_lo) * 100
-        except Exception:
-            y_pos = 50.0
-
-        # --- SKORLAMA (FIX 30 May 2026: çarpım → toplamsal 0-100 normalize) ---
-        # Eski: avg_mf × 5/10 × (1+rs_score) → bonuslar skoru 11× şişiriyordu,
-        # tek yüksek-hacim barı olan hisse gerçek toplama yapandan üste çıkıyordu.
-        # Yeni: her bileşen sabit aralıkta, toplamı ~0-100.
-        # 1) Israr (pozitif MF gün sayısı 7-10) → 0-30
-        s_israr = max(0.0, min(30.0, (pos_days_count - 6) * 7.5))
-        # 2) Gizlilik (yatay/aşağıyken giriş daha değerli) → 10 veya 20
-        s_gizli = 20.0 if change_pct < 0 else 10.0
-        # 3) Mansfield RS → 0/8/15
-        s_rs = 15.0 if rs_score >= 2 else (8.0 if rs_score >= 1 else 0.0)
-        # 4) Pocket Pivot → 0/10/15
-        if is_pocket_pivot:
-            s_pivot = 15.0 if "Onaylı" in pp_desc else 10.0
-        else:
-            s_pivot = 0.0
-        # 5) Squeeze → 0/10
-        s_squeeze = 10.0 if is_sq else 0.0
-        # 6) CMF teyit/çelişki → +10 / -15
-        s_cmf = 10.0 if cmf_confirms else (-15.0 if cmf_conflict else 0.0)
-        # 7) 52H Konum (FIX 31 May 2026): dipte +10, alt %50 0, üst %75+ -10
-        if y_pos <= 30:
-            s_52h = 10.0      # Yıllık dipte → birikim tezi güçlü
-        elif y_pos >= 75:
-            s_52h = -10.0     # Yıllık zirvede → birikim şüpheli (dağıtım riski)
-        else:
-            s_52h = 0.0       # Orta bölge → nötr
-
-        final_score = s_israr + s_gizli + s_rs + s_pivot + s_squeeze + s_cmf + s_52h
-        final_score = max(0.0, min(100.0, final_score))
-
-        if avg_mf > 1_000_000: mf_str = f"{avg_mf/1_000_000:.1f}M"
-        elif avg_mf > 1_000: mf_str = f"{avg_mf/1_000:.0f}K"
-        else: mf_str = f"{int(avg_mf)}"
-
-        return {
-            "Sembol": symbol,
-            "Fiyat": f"{price_now:.2f}",
-            "Degisim_Raw": change_pct,
-            "Degisim_Str": f"%{change_pct*100:.1f}",
-            "MF_Gucu_Goster": mf_str,
-            "Gun_Sayisi": f"{pos_days_count}/10",
-            "Skor": final_score,
-            "CMF": round(cmf_20, 3),
-            "RS_Durumu": rs_status,
-            "Pivot_Sinyali": pp_desc,
-            "Pocket_Pivot": is_pocket_pivot,
-            "Kalite": quality_label,
-            "Yillik_Konum": round(y_pos, 0),
-            "Hacim": float(volume.iloc[-1])
-        }
-    except Exception: return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): process_single_accumulation
 
 @st.cache_data(ttl=900)
 def scan_hidden_accumulation(asset_list):
@@ -7581,107 +5629,7 @@ def scan_hidden_accumulation(asset_list):
 # Radar1: momentum + trend öncü sinyaller.
 # Radar2: hacim filtreli kırılım adayları.
 # ==============================================================================
-def process_single_radar1(symbol, df, bench_series=None):
-    try:
-        if df.empty or 'Close' not in df.columns: return None
-        df = df.dropna(subset=['Close'])
-        if len(df) < 60: return None
-        
-        close = df['Close']; high = df['High']; low = df['Low']
-        volume = df['Volume'] if 'Volume' in df.columns else pd.Series([0]*len(df))
-        
-        # Göstergeler
-        ema5 = close.ewm(span=5, adjust=False).mean()
-        ema20 = close.ewm(span=20, adjust=False).mean()
-        sma20 = close.rolling(20).mean(); std20 = close.rolling(20).std()
-        
-        # Bollinger Squeeze Hesabı
-        bb_width = ((sma20 + 2*std20) - (sma20 - 2*std20)) / (sma20 - 0.0001)
-
-        # MACD Hesabı
-        ema12 = close.ewm(span=12, adjust=False).mean()
-        ema26 = close.ewm(span=26, adjust=False).mean()
-        hist = (ema12 - ema26) - (ema12 - ema26).ewm(span=9, adjust=False).mean()
-        
-        # RSI Hesabı
-        delta = close.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rsi = 100 - (100 / (1 + (gain / loss)))
-        
-        # ADX Hesabı (Trend Gücü)
-        try:
-            plus_dm = high.diff(); minus_dm = low.diff()
-            plus_dm[plus_dm < 0] = 0; minus_dm[minus_dm > 0] = 0
-            tr1 = pd.DataFrame(high - low); tr2 = pd.DataFrame(abs(high - close.shift(1))); tr3 = pd.DataFrame(abs(low - close.shift(1)))
-            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            atr_adx = tr.rolling(14).mean()
-            plus_di = 100 * (plus_dm.ewm(alpha=1/14).mean() / atr_adx)
-            minus_di = 100 * (abs(minus_dm).ewm(alpha=1/14).mean() / atr_adx)
-            dx = (abs(plus_di - minus_di) / abs(plus_di + minus_di)) * 100
-            curr_adx = float(dx.rolling(14).mean().iloc[-1])
-        except: curr_adx = 20
-
-        score = 0; reasons = []; details = {}
-        curr_c = float(close.iloc[-1]); curr_vol = float(volume.iloc[-1])
-        avg_vol = float(volume.rolling(5).mean().iloc[-1]) if len(volume) > 5 else 1.0
-        
-        # --- PUANLAMA (7 MADDE) ---
-        
-        # 1. Squeeze (Patlama Hazırlığı)
-        if bb_width.iloc[-1] <= bb_width.tail(60).min() * 1.1: score += 1; reasons.append("🚀 Squeeze"); details['Squeeze'] = True
-        else: details['Squeeze'] = False
-        
-        # 2. Trend (Kısa Vade Yükseliş)
-        trend_condition = (ema5.iloc[-1] > ema20.iloc[-1] * 1.01) 
-            
-        if trend_condition: 
-                score += 1
-                reasons.append("⚡ Trend")
-                details['Trend'] = True
-        else: 
-                details['Trend'] = False
-        
-        # 3. MACD (Momentum Artışı)
-        if hist.iloc[-1] > hist.iloc[-2]: score += 1; reasons.append("🟢 MACD"); details['MACD'] = True
-        else: details['MACD'] = False
-        
-        # 4. Hacim (İlgi Var mı?)
-        if curr_vol > avg_vol * 1.2: score += 1; reasons.append("🔊 Hacim"); details['Hacim'] = True
-        else: details['Hacim'] = False
-        
-        # 5. Breakout (Zirveye Yakınlık)
-        if curr_c >= high.tail(20).max() * 0.98: score += 1; reasons.append("🔨 Breakout"); details['Breakout'] = True
-        else: details['Breakout'] = False
-        
-        # 6. RSI Güçlü (İvme)
-        rsi_c = float(rsi.iloc[-1])
-        if 30 < rsi_c < 65 and rsi_c > float(rsi.iloc[-2]): score += 1; reasons.append("⚓ RSI Güçlü"); details['RSI Güçlü'] = (True, rsi_c)
-        else: details['RSI Güçlü'] = (False, rsi_c)
-        
-        # 7. ADX (Trendin Gücü Yerinde mi?)
-        if curr_adx > 25:
-            score += 1; reasons.append(f"💪 Güçlü Trend"); details['ADX Durumu'] = (True, curr_adx)
-        else:
-            details['ADX Durumu'] = (False, curr_adx)
-
-        # 8. Mansfield RS (Endekse Göre Göreceli Güç)
-        mansfield_r1 = 0.0
-        if bench_series is not None and len(close) > 60:
-            try:
-                common = close.index.intersection(bench_series.index)
-                if len(common) > 55:
-                    rs_r = close.reindex(common) / bench_series.reindex(common)
-                    rs_m = rs_r.rolling(50).mean()
-                    m = ((rs_r / rs_m) - 1) * 10
-                    mansfield_r1 = float(m.iloc[-1]) if not np.isnan(m.iloc[-1]) else 0.0
-            except: pass
-        if mansfield_r1 > 0: score += 1; reasons.append("📈 RS Lider"); details['Mansfield RS'] = (True, mansfield_r1)
-        elif mansfield_r1 < 0: details['Mansfield RS'] = (False, mansfield_r1)
-        else: details['Mansfield RS'] = (False, 0.0)
-
-        return { "Sembol": symbol, "Fiyat": f"{curr_c:.2f}", "Skor": score, "Nedenler": " | ".join(reasons), "Detaylar": details }
-    except: return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): process_single_radar1
 
 @st.cache_data(ttl=3600)
 def analyze_market_intelligence(asset_list, category="S&P 500"):
@@ -7712,130 +5660,7 @@ def analyze_market_intelligence(asset_list, category="S&P 500"):
 # -> indicators.py (Adim 4, 4 Tem 2026): detect_darvas_box
 
 
-def process_single_radar2(symbol, df, idx, min_price, max_price, min_avg_vol_m):
-    try:
-        if df.empty or 'Close' not in df.columns: return None
-        df = df.dropna(subset=['Close'])
-        if len(df) < 120: return None
-        
-        close = df['Close']; high = df['High']; low = df['Low']
-        volume = df['Volume'] if 'Volume' in df.columns else pd.Series([0]*len(df))
-        curr_c = float(close.iloc[-1])
-        
-        # Filtreler
-        if curr_c < min_price or curr_c > max_price: return None
-        avg_vol_20 = float(volume.rolling(20).mean().iloc[-1])
-        if avg_vol_20 < min_avg_vol_m * 1e6: return None
-        
-        # Trend Ortalamaları
-        sma20 = close.rolling(20).mean(); sma50 = close.rolling(50).mean()
-        sma100 = close.rolling(100).mean(); sma200 = close.rolling(200).mean()
-        
-        trend = "Yatay"
-        if not np.isnan(sma200.iloc[-1]):
-            if curr_c > sma50.iloc[-1] > sma100.iloc[-1] > sma200.iloc[-1] and sma200.iloc[-1] > sma200.iloc[-20]: trend = "Boğa"
-            elif curr_c < sma200.iloc[-1] and sma200.iloc[-1] < sma200.iloc[-20]: trend = "Ayı"
-        
-        # RSI ve MACD (Sadece Setup için histogram hesabı kalıyor, puanlamadan çıkacak)
-        delta = close.diff(); gain = (delta.where(delta > 0, 0)).rolling(14).mean(); loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rsi = 100 - (100 / (1 + (gain / loss))); rsi_c = float(rsi.iloc[-1])
-        ema12 = close.ewm(span=12, adjust=False).mean(); ema26 = close.ewm(span=26, adjust=False).mean()
-        hist = (ema12 - ema26) - (ema12 - ema26).ewm(span=9, adjust=False).mean()
-        
-        # Breakout Oranı
-        recent_high_60 = float(high.rolling(60).max().iloc[-1])
-        breakout_ratio = curr_c / recent_high_60 if recent_high_60 > 0 else 0
-        
-        # Mansfield RS Skoru (Endeks)
-        rs_score = 0.0
-        if idx is not None and len(close) > 60 and len(idx) > 60:
-            common_index = close.index.intersection(idx.index)
-            if len(common_index) > 55:
-                cs = close.reindex(common_index); isx = idx.reindex(common_index)
-                rs_ratio = cs / isx
-                rs_ma = rs_ratio.rolling(50).mean()
-                mansfield = ((rs_ratio / rs_ma) - 1) * 10
-                rs_score = float(mansfield.iloc[-1]) if not np.isnan(mansfield.iloc[-1]) else 0.0
-        
-        # --- YENİ EKLENEN: ICHIMOKU BULUTU (Kumo) ---
-        # Bulut şu anki fiyatın altında mı? (Trend Desteği)
-        # Ichimoku değerleri 26 periyot ileri ötelenir. Yani bugünün bulutu, 26 gün önceki verilerle çizilir.
-        tenkan = (high.rolling(9).max() + low.rolling(9).min()) / 2
-        kijun = (high.rolling(26).max() + low.rolling(26).min()) / 2
-        
-        # Span A (Bugün için değeri 26 gün önceki hesaptan gelir)
-        span_a_calc = (tenkan + kijun) / 2
-        # Span B (Bugün için değeri 26 gün önceki hesaptan gelir)
-        span_b_calc = (high.rolling(52).max() + low.rolling(52).min()) / 2
-        
-        # Bugünün bulut sınırları (Veri setinin sonundan 26 önceki değerler)
-        cloud_a = float(span_a_calc.iloc[-26])
-        cloud_b = float(span_b_calc.iloc[-26])
-        is_above_cloud = curr_c > max(cloud_a, cloud_b)
-        # -----------------------------------------------
-
-        setup = "-"; tags = []; score = 0; details = {}
-        avg_vol_20 = max(avg_vol_20, 1); vol_spike = volume.iloc[-1] > avg_vol_20 * 1.3
-        
-        # Setup Tespiti
-        if trend == "Boğa" and breakout_ratio >= 0.97: setup = "Breakout"; tags.append("Zirve")
-        if trend == "Boğa" and setup == "-":
-            if sma20.iloc[-1] <= curr_c <= sma50.iloc[-1] * 1.02 and 40 <= rsi_c <= 55: setup = "Pullback"; tags.append("Düzeltme")
-            if volume.iloc[-1] < avg_vol_20 * 0.9: score += 0; tags.append("Sığ Satış")
-        if setup == "-":
-            if rsi.iloc[-2] < 30 <= rsi_c and hist.iloc[-1] > hist.iloc[-2]: setup = "Dip Dönüşü"; tags.append("Dip Dönüşü")
-        
-        # --- PUANLAMA (7 Madde) ---
-        
-        # 1. Hacim Patlaması
-        if vol_spike: score += 1; tags.append("Hacim+"); details['Hacim Patlaması'] = True
-        else: details['Hacim Patlaması'] = False
-
-        # 2. RS (Endeks Gücü)
-        if rs_score > 0: score += 1; tags.append("RS+"); details['RS (S&P500)'] = True
-        else: details['RS (S&P500)'] = False
-        
-        # 3. Boğa Trendi (SMA Dizilimi)
-        if trend == "Boğa": score += 1; details['Boğa Trendi'] = True
-        else:
-            if trend == "Ayı": score -= 1
-            details['Boğa Trendi'] = False
-            
-        # 4. Ichimoku Bulutu (YENİ - MACD YERİNE GELDİ)
-        if is_above_cloud: score += 1; details['Ichimoku'] = True
-        else: details['Ichimoku'] = False
-
-        # 5. 60 Günlük Zirveye Yakınlık
-        details['60G Zirve'] = breakout_ratio >= 0.90
-        if details['60G Zirve']: score += 1
-
-        # 6. RSI Uygun Bölge (Aşırı şişmemiş)
-        is_rsi_suitable = (40 <= rsi_c <= 65) # Biraz genişlettim
-        details['RSI Bölgesi'] = (is_rsi_suitable, rsi_c)
-        if is_rsi_suitable: score += 1
-        
-        # 7. Setup Puanı (Yukarıda hesaplandı, max 2 puan ama biz varlığını kontrol edelim)
-        # Setup varsa ekstra güvenilirdir.
-        if setup != "-": score += 1
-        
-        # ── Darvas Kutu ───────────────────────────────────────────
-        _dbox = detect_darvas_box(df)
-        _d_quality = _dbox['quality']        if _dbox else None
-        _d_status  = _dbox['status']         if _dbox else None
-        _d_top     = _dbox['box_top']        if _dbox else None
-        _d_bottom  = _dbox['box_bottom']     if _dbox else None
-        _d_age     = _dbox['box_age']        if _dbox else None
-        _d_class   = _dbox['breakout_class'] if _dbox else None
-
-        return {
-            "Sembol": symbol, "Fiyat": round(curr_c, 2), "Trend": trend,
-            "Setup": setup, "Skor": score, "RS": round(rs_score * 100, 1),
-            "Etiketler": " | ".join(tags), "Detaylar": details,
-            "Darvas_Quality": _d_quality, "Darvas_Status": _d_status,
-            "Darvas_Top": _d_top, "Darvas_Bottom": _d_bottom,
-            "Darvas_Age": _d_age, "Darvas_Class": _d_class,
-        }
-    except: return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): process_single_radar2
 
 # ==============================================================================
 # BÖLÜM 12 — HACİM ANALİZ MODÜLLERİ
@@ -7878,20 +5703,7 @@ def fetch_market_data_cached(tickers_tuple):
     tickers_str = " ".join(tickers_tuple)
     return drop_adj_close(yf.download(tickers_str, period="1y", group_by='ticker', auto_adjust=AUTO_ADJUST, progress=False, threads=True))
 
-@st.cache_data(ttl=900, show_spinner=False)
-def fetch_index_data_cached():
-    import yfinance as yf
-    import pandas as pd
-    try:
-        index_df = drop_adj_close(yf.download("XU100.IS", period="1y", progress=False, auto_adjust=AUTO_ADJUST))
-        if not index_df.empty:
-            if isinstance(index_df.columns, pd.MultiIndex):
-                return index_df['Close'].iloc[:, 0] if not index_df['Close'].empty else None
-            else:
-                return index_df['Close']
-    except:
-        pass
-    return None
+# -> data_layer.py (Adim 6c, 9 Tem 2026): fetch_index_data_cached
 
 @st.cache_data(ttl=900)
 def radar2_scan(asset_list, min_price=5, max_price=5000, min_avg_vol_m=0.5):
@@ -8120,172 +5932,7 @@ def get_fundamental_score(ticker):
 # Düzeltme sonrası güç kazanan hisseleri tespit eder.
 # Benchmark karşılaştırmalı rölatif güç analizi içerir.
 # ==============================================================================
-def calculate_guclu_donus_adaylari(ticker, df, bist100_close=None):
-    """
-    🔄 GÜÇLÜ DÖNÜŞ+ ADAYLARI (v9 — 7 Bağımsız Kriter, min 5/7)
-    ZORUNLU  : 50 ≤ RSI ≤ 65  (bant dışı = direkt elenme)
-    PUANLANAN: 7 bağımsız kriter — her biri farklı bir boyut ölçer
-      P1. Fiyat > EMA13              : Kısa vade trend
-      P2. EMA13 eğimi + (son 5g)     : Trend kalitesi / ivme
-      P3. RS vs BIST100 > 0 (20g)    : Göreceli güç — endeksten güçlü mü?
-      P4. RSI > RSI EMA9             : Momentum ivmeleniyor
-      P5. OBV son 5g ↑               : Akıllı para yönü
-      P6. Hacim 5+/10g ort. üstünde  : Kurumsal aktivite frekansı
-      P7. Fiyat > Yıllık VWAP        : Kurumsal ortalama maliyet üstünde
-    BONUS (puan ekler, zorunlu değil):
-      +1   Geçen ay stop avı 🔍
-      +0.5 Haftalık yükseliş ↑
-    MİNİMUM: 5/7 baz puan (bonus sayılmaz)
-    """
-    try:
-        if df is None or df.empty or len(df) < 30:
-            return None
-
-        close  = df['Close']
-
-        if 'Volume' not in df.columns or df['Volume'].isnull().all():
-            return None
-        volume = df['Volume']
-
-        # ── ZORUNLU: 50 ≤ RSI ≤ 65 ──────────────────────────────────────
-        delta   = close.diff()
-        gain    = delta.where(delta > 0, 0).rolling(14).mean()
-        loss    = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rsi     = 100 - (100 / (1 + gain / loss))
-        rsi_val = float(rsi.iloc[-1])
-        if pd.isna(rsi_val) or rsi_val < 50 or rsi_val > 65:
-            return None   # bant dışı → direkt elenme
-
-        # ── PUANLAMA ─────────────────────────────────────────────────────
-        score  = 0
-        passed = []
-        missed = []
-
-        # P1: Fiyat > EMA13  [Kısa vade trend]
-        ema13 = close.ewm(span=13, adjust=False).mean()
-        if float(close.iloc[-1]) > float(ema13.iloc[-1]):
-            score += 1; passed.append("EMA13↑")
-        else:
-            missed.append("EMA13")
-
-        # P2: EMA13 eğimi pozitif (son 5 günde yükseliyor)  [Trend kalitesi]
-        if len(ema13) >= 6 and float(ema13.iloc[-1]) > float(ema13.iloc[-6]):
-            score += 1; passed.append("EMA eğimi↑")
-        else:
-            missed.append("EMA eğimi")
-
-        # P3: Göreceli Güç — hisse son 20g BIST100'den güçlü mü?  [Farklı boyut]
-        rs_pozitif = False
-        rs_pct     = 0.0
-        if bist100_close is not None and len(bist100_close) >= 21:
-            try:
-                # Ortak tarihleri hizala
-                _merged = close.align(bist100_close, join='inner')
-                _hisse_c, _bist_c = _merged[0], _merged[1]
-                if len(_hisse_c) >= 21:
-                    hisse_ret = float(_hisse_c.iloc[-1]) / float(_hisse_c.iloc[-21]) - 1
-                    bist_ret  = float(_bist_c.iloc[-1])  / float(_bist_c.iloc[-21])  - 1
-                    rs_pct    = round((hisse_ret - bist_ret) * 100, 1)
-                    rs_pozitif = rs_pct > 2.0   # en az %2 endeks üstü güç
-            except Exception:
-                rs_pozitif = False
-        if rs_pozitif:
-            score += 1; passed.append(f"RS+{rs_pct:.1f}%")
-        else:
-            missed.append(f"RS({rs_pct:+.1f}%)")
-
-        # P4: RSI > RSI EMA9 (momentum ivmeleniyor)  [Momentum]
-        rsi_ema9 = rsi.ewm(span=9, adjust=False).mean()
-        if float(rsi.iloc[-1]) > float(rsi_ema9.iloc[-1]):
-            score += 1; passed.append("RSI ivme")
-        else:
-            missed.append("RSI ivme")
-
-        # P5: OBV son 5 günde yükseliyor  [Akıllı para yönü]
-        obv = (np.sign(close.diff()) * volume).fillna(0).cumsum()
-        if float(obv.iloc[-1]) > float(obv.iloc[-6]):
-            score += 1; passed.append("OBV↑")
-        else:
-            missed.append("OBV")
-
-        # P6: Son 10 günde 5+ kez hacim ortalaması üstünde  [Kurumsal aktivite]
-        avg_vol20 = volume.rolling(20).mean()
-        if pd.isna(avg_vol20.iloc[-1]):
-            return None
-        vol_arr = volume.values
-        avg_arr = avg_vol20.values
-        vol_10g = sum(1 for i in range(-10, 0)
-                      if not np.isnan(avg_arr[i]) and avg_arr[i] > 0
-                      and float(vol_arr[i]) > float(avg_arr[i]))
-        if vol_10g >= 5:
-            score += 1; passed.append(f"Hacim {vol_10g}/10g")
-        else:
-            missed.append(f"Hacim {vol_10g}/10g")
-
-        # P7: Fiyat > Yıllık VWAP  [Kurumsal referans fiyat]
-        try:
-            vwap_annual = (close * volume).cumsum() / volume.cumsum()
-            vwap_val    = float(vwap_annual.iloc[-1])
-            if not np.isnan(vwap_val) and float(close.iloc[-1]) > vwap_val:
-                score += 1; passed.append("VWAP↑")
-            else:
-                missed.append("VWAP")
-        except Exception:
-            missed.append("VWAP")
-
-        # ── BONUS ────────────────────────────────────────────────────────
-        weekly_up   = len(close) >= 6 and float(close.iloc[-1]) > float(close.iloc[-6])
-        sweep_month = False
-        if len(close) >= 42:
-            c1 = float(close.iloc[-42])
-            c2 = float(close.iloc[-21])
-            sweep_month = (c2 < c1) and (float(close.iloc[-1]) > c2)
-
-        bonus = 0.0
-        if sweep_month: bonus += 1.0
-        if weekly_up:   bonus += 0.5
-
-        total_score = score + bonus
-
-        # ── MINIMUM PUAN KONTROLÜ (6/7 baz) ─────────────────────────────
-        _MIN_SCORE = 6
-        if score < _MIN_SCORE:
-            return None
-
-        # ── AÇIKLAMA ─────────────────────────────────────────────────────
-        hacim_kat = round(float(vol_arr[-1]) / float(avg_arr[-1]), 2) if float(avg_arr[-1]) > 0 else 0.0
-
-        _ac_parts = []
-        if sweep_month:
-            _ac_parts.append("⚡ stop avı")
-        _ac_parts.append(f"RSI {rsi_val:.0f} · {score}/7 kriter")
-        _ac_parts.append(" + ".join(passed))
-        if missed:
-            _ac_parts.append(f"eksik: {', '.join(missed)}")
-        if weekly_up:
-            _ac_parts.append("haftalık ↑")
-
-        return {
-            "Sembol"     : ticker,
-            "Fiyat"      : float(close.iloc[-1]),
-            "RSI"        : round(rsi_val, 1),
-            "Skor"       : score,
-            "ToplamSkor" : total_score,
-            "RS_Pct"     : rs_pct,
-            "Z-Score"    : 0.0,
-            "Z_Cheap"    : False,
-            "Hacim_Kat"  : hacim_kat,
-            "Hacim_10g"  : vol_10g,
-            "Sweep_Ay"   : sweep_month,
-            "Weekly_Up"  : weekly_up,
-            "RSI_Div"    : "✅",
-            "Passed"     : passed,
-            "Missed"     : missed,
-            "Aciklama"   : " · ".join(_ac_parts),
-        }
-
-    except Exception:
-        return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): calculate_guclu_donus_adaylari
 
 def scan_guclu_donus_batch(asset_list):
     """
@@ -8346,154 +5993,7 @@ def scan_guclu_donus_batch(asset_list):
 # ICT yapı analizi ile BOS öncesi setup'ları filtreler.
 # ==============================================================================
 
-def calculate_prelaunch_bos(ticker, df, bist100_close=None):
-    """
-    Sert Eleme:
-      1. Son 3 gün içinde 45-günlük swing high kırıldı (BOS)
-      2. BOS öncesi 15-25 günde ≥5 gün Bollinger/Keltner sıkışması (Squeeze)
-    Puanlama (100 üzerinden, min geçer: 55):
-      Hacim BOS günü ≥1.5x→+25, 1.2-1.5x→+15
-      RS > BIST100 (10g)→+20
-      RSI 50-65→+20, 65-70→+10, >70→ELENME
-      BOS'tan uzaklık <3%→+20, 3-6%→+10
-      SMA50 üzerinde→+15
-      BOS Day0→0, Day1→-5, Day2→-10, Day3→-15
-    """
-    try:
-        if df is None or len(df) < 50:
-            return None
-
-        close  = df['Close']
-        high   = df['High']
-        volume = df['Volume']
-
-        # ── 1. BOS: Son 3 günde 45-günlük swing high kırıldı mı? ──────────
-        bos_day  = None
-        bos_level = None
-        for lookback in range(1, 4):          # Day 0=bugün, Day1, Day2, Day3
-            idx = -(lookback)
-            swing_window = close.iloc[:idx - 1] if abs(idx - 1) < len(close) else close.iloc[:-1]
-            if len(swing_window) < 45:
-                continue
-            swing_high_45 = swing_window.iloc[-45:].max()
-            if close.iloc[idx] > swing_high_45:
-                bos_day   = lookback - 1     # 0-indexed
-                bos_level = swing_high_45
-                break
-
-        if bos_day is None:
-            return None
-
-        # ── 2. Squeeze: BOS öncesi 15-25 günde ≥5 gün sıkışma ────────────
-        pre_bos_end   = -(bos_day + 1) if bos_day > 0 else -1
-        pre_bos_start = pre_bos_end - 25
-
-        sq_slice_close = close.iloc[pre_bos_start:pre_bos_end] if pre_bos_end != 0 else close.iloc[pre_bos_start:]
-        sq_slice_high  = high.iloc[pre_bos_start:pre_bos_end]  if pre_bos_end != 0 else high.iloc[pre_bos_start:]
-        sq_slice_low   = df['Low'].iloc[pre_bos_start:pre_bos_end] if pre_bos_end != 0 else df['Low'].iloc[pre_bos_start:]
-
-        if len(sq_slice_close) < 10:
-            return None
-
-        # Bollinger Bands (10 günlük — 25 günlük dilimden yeterli geçerli değer üretir)
-        bb_mid = sq_slice_close.rolling(10).mean()
-        bb_std = sq_slice_close.rolling(10).std()
-        bb_upper = bb_mid + 2 * bb_std
-        bb_lower = bb_mid - 2 * bb_std
-        bb_width = (bb_upper - bb_lower) / bb_mid.replace(0, 1e-9)
-
-        # Keltner Channel
-        atr_sq = (sq_slice_high - sq_slice_low).rolling(5).mean()
-        kc_width = (2 * atr_sq) / bb_mid.replace(0, 1e-9)
-
-        squeeze_days = int((bb_width < kc_width).sum())
-        if squeeze_days < 3:
-            return None
-
-        # ── 3. RSI: >70 elenme ────────────────────────────────────────────
-        delta  = close.diff()
-        gain   = delta.where(delta > 0, 0).rolling(14).mean()
-        loss   = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rsi_val = float((100 - 100 / (1 + gain / loss.replace(0, 1e-9))).iloc[-1])
-
-        if rsi_val > 70:
-            return None
-
-        # ── 4. Puanlama ───────────────────────────────────────────────────
-        score = 0
-        aciklama_parts = []
-
-        # Hacim (BOS günü)
-        bos_idx    = -(bos_day + 1) if bos_day > 0 else -1
-        vol_bos    = float(volume.iloc[bos_idx])
-        vol_avg20  = float(volume.iloc[-25:-5].mean()) if len(volume) >= 25 else float(volume.mean())
-        vol_ratio  = vol_bos / vol_avg20 if vol_avg20 > 0 else 0
-        if vol_ratio >= 1.5:
-            score += 25
-            aciklama_parts.append(f"Hacim {vol_ratio:.1f}x")
-        elif vol_ratio >= 1.2:
-            score += 15
-            aciklama_parts.append(f"Hacim {vol_ratio:.1f}x")
-        else:
-            aciklama_parts.append(f"Hacim {vol_ratio:.1f}x (zayıf)")
-
-        # RS vs BIST100 (son 10 gün)
-        if bist100_close is not None and len(bist100_close) >= 11:
-            stock_ret = float(close.iloc[-1] / close.iloc[-11] - 1)
-            idx_ret   = float(bist100_close.iloc[-1] / bist100_close.iloc[-11] - 1)
-            rs_diff   = (stock_ret - idx_ret) * 100
-            if stock_ret > idx_ret:
-                score += 20
-                aciklama_parts.append(f"RS+{rs_diff:.1f}%")
-        else:
-            rs_diff = 0.0
-
-        # RSI
-        if rsi_val <= 65:
-            score += 20
-        elif rsi_val <= 70:
-            score += 10
-        aciklama_parts.append(f"RSI {rsi_val:.0f}")
-
-        # BOS'tan uzaklık
-        current_price = float(close.iloc[-1])
-        bos_dist_pct  = (current_price - bos_level) / bos_level * 100
-        if bos_dist_pct < 3:
-            score += 20
-            aciklama_parts.append(f"BOS yakın +{bos_dist_pct:.1f}%")
-        elif bos_dist_pct < 6:
-            score += 10
-            aciklama_parts.append(f"BOS +{bos_dist_pct:.1f}%")
-        else:
-            aciklama_parts.append(f"BOS uzak +{bos_dist_pct:.1f}%")
-
-        # SMA50
-        sma50 = float(close.rolling(50).mean().iloc[-1])
-        if current_price > sma50:
-            score += 15
-
-        # BOS Day cezası
-        score -= bos_day * 5
-
-        if score < 55:
-            return None
-
-        return {
-            'Sembol':      ticker,
-            'Fiyat':       round(current_price, 2),
-            'Skor':        min(score, 100),
-            'BOS_Day':     bos_day,
-            'BOS_Level':   round(float(bos_level), 2),
-            'Hacim_Kat':   round(vol_ratio, 2),
-            'RSI':         round(rsi_val, 1),
-            'RS_Pct':      round(rs_diff if bist100_close is not None else 0.0, 2),
-            'Squeeze_Gun': squeeze_days,
-            'BOS_Dist':    round(bos_dist_pct, 2),
-            'Aciklama':    ' · '.join(aciklama_parts),
-        }
-
-    except Exception:
-        return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): calculate_prelaunch_bos
 
 
 def scan_prelaunch_bos(asset_list):
@@ -8737,140 +6237,7 @@ def calculate_master_score(ticker, return_breakdown=False):
 # BÖLÜM 18 — ICT SETUP TARAMASI
 # Order Block, FVG, Displacement ve yapısal kırılım kriterlerini birleştiren ICT batch tarama sistemi.
 # ==============================================================================
-def process_single_ict_setup(symbol, df):
-    """
-    ICT Sniper — BIST Günlük Uyarlaması
-    Klasik ICT'nin BIST günlük verisinde çalışan özü:
-      1. SMA50 üstünde (kısa vade trend sağlam)
-      2. Son 30 barda swing low sweep + recovery (stop avı + dönüş)
-      3. Sweep sonrası kapanış swept seviyenin üstünde
-      4. Son 10 günde pozitif momentum (close bugün > close 10 gün önce)
-      5. RRR ≥ 1.5 (yakın direnç hedef)
-    """
-    try:
-        if df.empty or len(df) < 60: return None
-
-        close = df['Close']; high = df['High']; low = df['Low']
-        current_price = float(close.iloc[-1])
-        n = len(df)
-
-        # ── 1. TREND FİLTRESİ: SMA50 üstünde olmalı ──────────────────────────
-        sma50 = float(close.rolling(50).mean().iloc[-1])
-        if current_price <= sma50: return None
-
-        # ── 2. MOMENTUM: Son 10 günde yükseliş ────────────────────────────────
-        if float(close.iloc[-1]) <= float(close.iloc[-6]): return None
-
-        # ── 3. HACİM HAZIRLIĞI: 20 günlük ortalama hacim ─────────────────────
-        has_vol = 'Volume' in df.columns and not df['Volume'].isnull().all()
-        vol_arr = df['Volume'].values if has_vol else None
-        avg_vol_arr = df['Volume'].rolling(20).mean().values if has_vol else None
-
-        # ── 4. REFERANS DIPLARI: Pencere [-90:-30] arası swing low'lar ────────
-        #    (sweep taramasının dışında kalan "eski dip" seviyeleri)
-        ref_lows = []
-        lookback = 5  # her yanda 5 bar
-        ref_start = max(lookback, n - 90)
-        ref_end   = max(lookback, n - 30)
-        low_arr   = low.values
-        high_arr  = high.values
-        for i in range(ref_start, ref_end):
-            lo = float(low_arr[i])
-            window = low_arr[max(0, i - lookback): i + lookback + 1]
-            if lo <= float(window.min()) + 1e-9:
-                ref_lows.append((i, lo))
-
-        if not ref_lows: return None
-
-        # ── 5. SWEEP + RECOVERY + HACİM TEYİDİ: Son 30 barda ────────────────
-        #    a) Herhangi bir ref_low'un altına inilmiş (sweep)
-        #    b) Sweep gününde hacim 20g ort. × 1.5 üstünde (kurumsal baskı)
-        #    c) O gün veya sonrasında kapanış swept seviyenin ÜSTÜNDE (recovery)
-        sweep_found   = False
-        sweep_ref_low = None
-        sweep_bar_idx = None
-
-        for ref_i, ref_lo in ref_lows:
-            sweep_window_start = n - 30
-            for j in range(sweep_window_start, n):
-                if float(low_arr[j]) < ref_lo:           # sweep gerçekleşti
-                    # Hacim teyidi: sweep gününde yeterli hacim var mı?
-                    if has_vol and avg_vol_arr is not None:
-                        avg_v = float(avg_vol_arr[j]) if not np.isnan(avg_vol_arr[j]) else 0
-                        sweep_vol = float(vol_arr[j])
-                        if avg_v > 0 and sweep_vol < avg_v * 2.0:
-                            continue                       # Hacimsiz sweep → geçersiz
-                    # Recovery: j veya sonraki barlarda kapanış > ref_lo
-                    for k in range(j, min(j + 6, n)):
-                        if float(close.iloc[k]) > ref_lo:
-                            sweep_found   = True
-                            sweep_ref_low = ref_lo
-                            sweep_bar_idx = k
-                            break
-                if sweep_found: break
-            if sweep_found: break
-
-        if not sweep_found: return None
-
-        # ── 5. STOP / HEDEF / RRR ─────────────────────────────────────────────
-        # ATR tabanlı dinamik stop (sabit % yerine volatiliteye göre)
-        atr_period = 14
-        tr = pd.concat([
-            high - low,
-            (high - close.shift(1)).abs(),
-            (low  - close.shift(1)).abs()
-        ], axis=1).max(axis=1)
-        atr14 = float(tr.rolling(atr_period).mean().iloc[-1])
-
-        # Stop: sweep seviyesinin altı — en az 1.0×ATR, en fazla 2.0×ATR mesafe
-        atr_buffer  = max(atr14 * 1.0, min(atr14 * 2.0, sweep_ref_low * 0.02))
-        stop_loss   = sweep_ref_low - atr_buffer
-        entry_price = current_price
-        risk        = entry_price - stop_loss
-        if risk <= 0: return None
-
-        # Hedef: mevcut fiyatın üzerindeki en yakın swing high (son 90 bar)
-        sw_highs = []
-        for i in range(max(lookback, n - 90), n - lookback):
-            hi = float(high_arr[i])
-            window = high_arr[max(0, i - lookback): i + lookback + 1]
-            if hi >= float(window.max()) - 1e-9:
-                sw_highs.append(hi)
-
-        targets = [h for h in sw_highs if h > entry_price * 1.01]
-        if not targets: return None
-        target_price = min(targets)                  # En yakın direnç
-
-        rrr = (target_price - entry_price) / risk
-        if rrr < 2.0: return None
-
-        # ── 6. SKOR & AÇIKLAMA ───────────────────────────────────────────────
-        skor = 75
-        if rrr >= 2.5: skor += 15
-        elif rrr >= 2.0: skor += 10
-        elif rrr >= 1.5: skor += 5
-        skor = min(100, skor)
-
-        days_since_sweep = n - 1 - sweep_bar_idx
-        aciklama = (
-            f"Stop avı yapıldı ({days_since_sweep} gün önce), fiyat toparlandı ve "
-            f"SMA50 üstünde momentum devam ediyor — giriş bölgesinde set-up hazır"
-        )
-
-        return {
-            "Sembol":    symbol,
-            "Fiyat":     current_price,
-            "Yön":       "YÜKSELİŞ YÖNLÜ",
-            "İkon":      "🎯",
-            "Renk":      "#16a34a",
-            "Durum":     f"RRR: {rrr:.1f} | Stop: {stop_loss:.2f} | Hedef: {target_price:.2f}",
-            "Aciklama":  aciklama,
-            "Stop_Loss": f"{stop_loss:.2f}",
-            "Skor":      skor
-        }
-
-    except Exception:
-        return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): process_single_ict_setup
 
 
 @st.cache_data(ttl=900)
@@ -8924,114 +6291,7 @@ def scan_ict_batch(asset_list):
 # En katı çok-kriterli filtre. Tüm sistemlerin üst üste çakıştığı
 # "Royal Flush" seviyesindeki setup'ları arar.
 # ==============================================================================
-def _nadir_firsat_single_fast(symbol, df, bench_series=None):
-    """
-    Tek sembol için Royal Flush kontrolü — batch DataFrame'den inline hesaplar.
-    calculate_ict_deep_analysis / calculate_price_action_dna çağırmaz → hızlı.
-    5/5 Kriter:
-      1. BOS : son lokal swing high kırıldı (bullish yapı)
-      2. RS  : ALPHA > %1.5 (hisse 20g getirisi − endeks 20g getirisi)
-              FIX (31 May 2026): Eskiden mutlak getiri kontrol ediliyordu (yanlış);
-              şimdi endeks farkı (gerçek outperform).
-      3. VWAP sapması < %10
-      4. Hacim canlanması (3-gün veya 2-gün patlaması)
-      5. RSI < 65
-    """
-    try:
-        if df is None or df.empty or len(df) < 60:
-            return None
-
-        close = df['Close']; high = df['High']
-        low   = df['Low'];   vol  = df['Volume']
-        curr  = float(close.iloc[-1])
-
-        # ── 1. BOS: son swing high'ı kır ──
-        sh = None
-        for i in range(len(close) - 3, max(len(close) - 61, 2), -1):
-            if (high.iloc[i] > high.iloc[i-1] and high.iloc[i] > high.iloc[i-2]
-                    and high.iloc[i] > high.iloc[i+1] and high.iloc[i] > high.iloc[i+2]):
-                sh = float(high.iloc[i])
-                break
-        if sh is None or curr <= sh:
-            return None
-
-        # ── 2. RS Alpha: hisse 20g − endeks 20g getirisi > %1.5 (gerçek outperform) ──
-        if len(close) < 21:
-            return None
-        stock_ret20 = (float(close.iloc[-1]) / float(close.iloc[-21]) - 1) * 100
-        # Endeks verisi yoksa sinyali reddet — RS kanıtı olmadan Royal Flush olmaz
-        if bench_series is None or len(bench_series) < 21:
-            return None
-        try:
-            common_idx = close.index.intersection(bench_series.index)
-            if len(common_idx) < 21:
-                return None
-            _b = bench_series.loc[common_idx]
-            bench_ret20 = (float(_b.iloc[-1]) / float(_b.iloc[-21]) - 1) * 100
-        except Exception:
-            return None
-        alpha = stock_ret20 - bench_ret20
-        if alpha <= 1.5:
-            return None
-
-        # ── 3. VWAP sapması < %10 ──
-        typical  = (high + low + close) / 3
-        vwap_val = float(
-            (typical * vol).rolling(20).sum().iloc[-1] /
-            vol.rolling(20).sum().iloc[-1]
-        ) if vol.rolling(20).sum().iloc[-1] > 0 else 0
-        if vwap_val <= 0:
-            return None
-        vwap_diff = (curr - vwap_val) / vwap_val * 100
-        if vwap_diff >= 10:
-            return None
-
-        # ── 4. Hacim canlanması ──
-        if len(vol) < 22:
-            return None
-        ort20    = vol.iloc[-22:-2].mean()
-        son3_ort = vol.iloc[-3:].mean()
-        son2_ort = vol.iloc[-2:].mean()
-        onc5_ort = vol.iloc[-7:-2].mean()
-        if not ((son3_ort > ort20 * 1.3) or (son2_ort > onc5_ort * 1.3)):
-            return None
-
-        # ── 5. RSI < 65 ──
-        dd  = close.diff()
-        gg  = dd.where(dd > 0, 0).rolling(14).mean()
-        ll  = (-dd.where(dd < 0, 0)).rolling(14).mean()
-        rsi = float((100 - (100 / (1 + gg / ll))).iloc[-1])
-        if rsi >= 65:
-            return None
-
-        # ── 6. 52H KONUM (FIX 31 May 2026) ──
-        # Royal Flush mantığı: "henüz hareket etmemiş hisseye 5 dizilim geldi".
-        # Yıllık zirveye çok yakınsa hisse ZATEN yukarıda → bu fırsat değil,
-        # trend takibi. EGEPO/RYSAS gibi yıllık zirvede tetiklenmeleri eler.
-        year_window = close.iloc[-252:] if len(close) >= 252 else close
-        year_high   = float(year_window.max())
-        if year_high > 0 and (curr / year_high) > 0.85:
-            return None
-
-        # Yıllık konum % (bilgi amaçlı çıktıya yazılır)
-        year_low = float(year_window.min())
-        yearly_pos_pct = ((curr - year_low) / (year_high - year_low) * 100) if year_high > year_low else 50
-
-        return {
-            'Sembol':   symbol,
-            'Fiyat':    round(curr, 2),
-            'Durum':    '6/6 | BOS+Alpha+VWAP+VOL+RSI+52H',
-            'Aciklama': (
-                f"BOS yapı kırılımı teyitli · "
-                f"Alpha +{alpha:.1f}% (hisse {stock_ret20:+.1f}% vs endeks {bench_ret20:+.1f}%) · "
-                f"VWAP sapması %{vwap_diff:.1f} (şişmemiş) · "
-                f"RSI {rsi:.0f} (aşırı alım yok) · "
-                f"Hacim canlandı · "
-                f"52H konum %{yearly_pos_pct:.0f} (zirvenin %15+ uzağında, fırsat penceresi)"
-            ),
-        }
-    except Exception:
-        return None
+# -> scanners.py (Adim 6a, 6 Tem 2026): _nadir_firsat_single_fast
 
 
 def scan_nadir_firsat_batch(asset_list):
@@ -9096,130 +6356,6 @@ def scan_nadir_firsat_batch(asset_list):
 # Mark Minervini'nin SEPA kriterlerini uygulayan tarama.
 # Rölatif güç lideri hisseleri ayrıca listelenir.
 # ==============================================================================
-@st.cache_data(ttl=600)
-def calculate_minervini_sepa(ticker, benchmark_ticker="^GSPC", provided_df=None):
-    """
-    GÖRSEL: Eski (Sade)
-    MANTIK: Sniper (Çok Sert)
-    """
-    try:
-        # 1. VERİ YÖNETİMİ (Batch taramadan geliyorsa provided_df kullan, yoksa indir)
-        if provided_df is not None:
-            df = provided_df
-        else:
-            df = get_safe_historical_data(ticker, period="1y")
-            
-        if df is None or len(df) < 260: return None
-        
-        # MultiIndex Temizliği
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        # Endeks verisi (RS için) - Eğer cache'de yoksa indir
-        bench_df = get_safe_historical_data(benchmark_ticker, period="1y")
-        
-        close = df['Close']; volume = df['Volume']
-        curr_price = float(close.iloc[-1])
-        
-        # ---------------------------------------------------------
-        # KRİTER 1: TREND ŞABLONU (ACIMASIZ FİLTRE)
-        # ---------------------------------------------------------
-        sma50 = float(close.rolling(50).mean().iloc[-1])
-        sma150 = float(close.rolling(150).mean().iloc[-1])
-        sma200 = float(close.rolling(200).mean().iloc[-1])
-        
-        # Eğim Kontrolü: SMA200, 1 ay önceki değerinden yüksek olmalı
-        sma200_prev = float(close.rolling(200).mean().iloc[-22])
-        sma200_up = sma200 >= (sma200_prev * 0.99)
-        
-        year_high = float(close.rolling(250).max().iloc[-1])
-        year_low = float(close.rolling(250).min().iloc[-1])
-        
-        # Zirveye Yakınlık: BIST daha volatil → %15 gevşeklik; diğerleri %10
-        _near_high_thr = 0.85 if (".IS" in ticker or ticker.startswith("XU")) else 0.90
-        near_high = curr_price >= (year_high * _near_high_thr)
-        above_low = curr_price >= (year_low * 1.30)
-        
-        # HEPSİ DOĞRU OLMALI
-        trend_ok = (curr_price > sma150 > sma200) and \
-                   (sma50 > sma150) and \
-                   (curr_price > sma50) and \
-                   sma200_up and \
-                   near_high and \
-                   above_low
-                   
-        if not trend_ok: return None # Trend yoksa elendi.
-
-        # ---------------------------------------------------------
-        # KRİTER 2: RS KONTROLÜ (ACIMASIZ)
-        # ---------------------------------------------------------
-        rs_val = 0; rs_rating = "ZAYIF"
-        if bench_df is not None:
-            common = close.index.intersection(bench_df.index)
-            if len(common) > 50:
-                s_p = close.loc[common]; b_p = bench_df['Close'].loc[common]
-                ratio = s_p / b_p
-                rs_val = float(((ratio / ratio.rolling(50).mean()) - 1).iloc[-1] * 10)
-        
-        # Endeksten Zayıfsa ELE (0 altı kabul edilmez)
-        if rs_val <= 1: return None
-        
-        rs_rating = f"GÜÇLÜ (RS: {rs_val:.1f})"
-
-        # ---------------------------------------------------------
-        # KRİTER 3: PUANLAMA (VCP + ARZ + PIVOT)
-        # ---------------------------------------------------------
-        raw_score = 60 # Başlangıç puanı (Trend ve RS geçtiği için)
-        
-        # VCP (Sertleşmiş Formül: %65 daralma)
-        std_10 = close.pct_change().rolling(10).std().iloc[-1]
-        std_50 = close.pct_change().rolling(50).std().iloc[-1]
-        is_vcp = std_10 < (std_50 * 0.65)
-        if is_vcp: raw_score += 20
-        
-        # Arz Kuruması (Sertleşmiş: %75 altı)
-        avg_vol = volume.rolling(20).mean().iloc[-1]
-        last_5 = df.tail(5)
-        down_days = last_5[last_5['Close'] < last_5['Open']]
-        is_dry = True if down_days.empty else (down_days['Volume'].mean() < avg_vol * 0.75)
-        if is_dry: raw_score += 10
-        
-        # Pivot Bölgesi (Zirveye %5 kala)
-        dist_high = curr_price / year_high
-        in_pivot = 0.95 <= dist_high <= 1.02
-        if in_pivot: raw_score += 10
-
-        # ---------------------------------------------------------
-        # ÇIKTI (ESKİ TASARIMIN ANLAYACAĞI FORMAT)
-        # ---------------------------------------------------------
-        # Buradaki key isimleri (Durum, Detay vs.) senin eski kodunla aynı.
-        # Böylece UI bozulmayacak.
-        
-        status = "🔥 GÜÇLÜ TREND"
-        if is_vcp and in_pivot: status = "💎💎 SÜPER BOĞA (VCP)"
-        elif in_pivot: status = "🔥 KIRILIM EŞİĞİNDE"
-        
-        # Renk (Skor bazlı)
-        color = "#16a34a" if raw_score >= 80 else "#ea580c"
-
-        return {
-            "Sembol": ticker,
-            "Fiyat": f"{curr_price:.2f}",
-            "Durum": status,
-            "Detay": f"{rs_rating} | VCP: {'Sıkışmada düşük oynaklık' if is_vcp else '-'} | Arz: {'Kurudu(satıcılar yoruldu)' if is_dry else '-'}",
-            "Raw_Score": raw_score,
-            "score": raw_score, # UI bazen bunu arıyor
-            "trend_ok": True,
-            "is_vcp": is_vcp,
-            "is_dry": is_dry,
-            "rs_val": rs_val,
-            "rs_rating": rs_rating,
-            "reasons": ["Trend: Mükemmel", f"VCP: {is_vcp}", f"RS: {rs_val:.1f}"],
-            "color": color,
-            "sma200": sma200,
-            "year_high": year_high
-        }
-    except Exception: return None
 
 
 # *****************************************************************
@@ -9982,1649 +7118,8 @@ def detect_ict_reversal(df):
 # ====================================================================
 # NİHAİ PRICE ACTION (PA) + KLASİK FORMASYONLAR + FIBONACCI + CONFLUENCE RADARI
 # ====================================================================
-def detect_price_action_with_context(df):
-    """
-    1. Smart Money (Likidite Avı / Fitil Reddi) arar.
-    2. Klasik Dönüş Mumlarını (Engulfing, Morning Star, vb.) arar.
-    3. Fibonacci Pinbar dönüşlerini arar.
-    4. Bunların Anlamlı Kurumsal Seviyelere (Confluence) denk gelip gelmediğini kontrol eder.
-    """
-    if len(df) < 50: 
-        return "NÖTR", ""
 
-    # Son 3 mumun verilerini alıyoruz (Formasyonlar için gerekli)
-    curr = df.iloc[-1]   # 3. Mum (Bugün)
-    prev = df.iloc[-2]   # 2. Mum (Dün)
-    prev2 = df.iloc[-3]  # 1. Mum (Evvelsi gün)
-    
-    # Kısaltmalar
-    O3, C3, H3, L3 = curr['Open'], curr['Close'], curr['High'], curr['Low']
-    O2, C2, H2, L2 = prev['Open'], prev['Close'], prev['High'], prev['Low']
-    O1, C1, H1, L1 = prev2['Open'], prev2['Close'], prev2['High'], prev2['Low']
-
-    # --- 1. KURUMSAL SEVİYELERİN (CONFLUENCE) HESAPLANMASI ---
-    sma50 = df['Close'].rolling(50).mean().iloc[-1] if len(df) >= 50 else 0
-    sma100 = df['Close'].rolling(100).mean().iloc[-1] if len(df) >= 100 else 0
-    sma200 = df['Close'].rolling(200).mean().iloc[-1] if len(df) >= 200 else 0
-    ema89 = df['Close'].ewm(span=89, adjust=False).mean().iloc[-1] if len(df) >= 89 else 0
-    ema144 = df['Close'].ewm(span=144, adjust=False).mean().iloc[-1] if len(df) >= 144 else 0
-    
-    pdh, pdl = H2, L2 # Önceki Günün Tepesi ve Dibi
-
-    # TAM DONANIMLI FIBONACCI HESAPLAMASI (Son 40 Günlük Dalga Boyu)
-    recent_40 = df.iloc[-40:]
-    wave_high = recent_40['High'].max()
-    wave_low = recent_40['Low'].min()
-    fib_382 = wave_high - (wave_high - wave_low) * 0.382
-    fib_500 = wave_high - (wave_high - wave_low) * 0.500
-    fib_618 = wave_high - (wave_high - wave_low) * 0.618
-    fib_786 = wave_high - (wave_high - wave_low) * 0.786
-
-    def is_near(price, level):
-        if pd.isna(level) or level == 0: return False
-        return abs(price - level) / level < 0.015 
-
-    bounced_from = []   
-    rejected_from = []  
-    
-    # Destekler
-    if is_near(L3, sma50): bounced_from.append("SMA50 Desteği")
-    if is_near(L3, sma100): bounced_from.append("SMA100 Desteği")
-    if is_near(L3, sma200): bounced_from.append("SMA200 Majör Desteği")
-    if is_near(L3, ema89): bounced_from.append("EMA89")
-    if is_near(L3, ema144): bounced_from.append("EMA144")
-    if is_near(L3, pdl): bounced_from.append("PDL (Dünün Dibi)")
-    if is_near(L3, fib_382): bounced_from.append("Fib %38.2 Desteği")
-    if is_near(L3, fib_500): bounced_from.append("Fib %50.0 (Denge) Desteği")
-    if is_near(L3, fib_618) or is_near(L3, fib_786): bounced_from.append("ICT OTE (Altın Oran)")
-
-    # Dirençler
-    if is_near(H3, sma50): rejected_from.append("SMA50 Direnci")
-    if is_near(H3, sma100): rejected_from.append("SMA100 Direnci")
-    if is_near(H3, sma200): rejected_from.append("SMA200 Majör Direnci")
-    if is_near(H3, ema89): rejected_from.append("EMA89")
-    if is_near(H3, ema144): rejected_from.append("EMA144")
-    if is_near(H3, pdh): rejected_from.append("PDH (Dünün Tepesi)")
-    if is_near(H3, fib_382): rejected_from.append("Fib %38.2 Direnci")
-    if is_near(H3, fib_500): rejected_from.append("Fib %50.0 (Denge) Direnci")
-    if is_near(H3, fib_618) or is_near(H3, fib_786): rejected_from.append("ICT OTE (Altın Oran)")
-
-    # --- 2. MUM ANATOMİSİ VE FORMASYONLARIN TESPİTİ ---
-    body3, body2, body1 = abs(C3 - O3), abs(C2 - O2), abs(C1 - O1)
-    is_green3, is_red3 = C3 > O3, C3 < O3
-    is_green2, is_red2 = C2 > O2, C2 < O2
-    is_green1, is_red1 = C1 > O1, C1 < O1
-
-    found_bullish_pattern = ""
-    found_bearish_pattern = ""
-
-    lower_wick3 = min(O3, C3) - L3
-    upper_wick3 = H3 - max(O3, C3)
-
-    # 🚨 HATA DÜZELTME: EKSİK TANIMLAMALAR BURAYA EKLENDİ 🚨
-    dow_suffix_bull = ""
-    dow_suffix_bear = ""
-    try:
-        # Son 15 günün en düşük ve en yüksek seviyelerine bakarak HL/LH tespiti
-        recent_min = df['Low'].iloc[-15:-3].min()
-        recent_max = df['High'].iloc[-15:-3].max()
         
-        if L3 >= recent_min: 
-            dow_suffix_bull = " + Yükselen Dip (HL) Onayı 🔥"
-        else:
-            dow_suffix_bull = " + Yeni Dip (LL) Riskli Dönüş ⚠️"
-            
-        if H3 <= recent_max:
-            dow_suffix_bear = " + Alçalan Tepe (LH) Baskısı 🩸"
-        else:
-            dow_suffix_bear = " + Yeni Tepe (HH) Fırsatı 🚀"
-    except:
-        pass
-
-    # A. SMART MONEY (LİKİDİTE AVI VE V-DÖNÜŞ)
-    if is_red2 and (L3 < L2) and (lower_wick3 > body3 * 1.5 or (is_green3 and C3 > C2)):
-        found_bullish_pattern = "Smart Money Likidite Avı (V-Dönüşü)"
-        
-    elif is_green2 and (H3 > H2) and (upper_wick3 > body3 * 1.5 or (is_red3 and C3 < C2)):
-        found_bearish_pattern = "Smart Money Boğa Tuzağı (V-Dönüşü)"
-
-    # B. KLASİK VE FIBONACCI DÖNÜŞ FORMASYONLARI (BULLISH)
-    if not found_bullish_pattern:
-        # 1. Fibonacci Nokta Atışı (Pinbar)
-        is_touching_bull_fib = is_near(L3, fib_382) or is_near(L3, fib_500) or is_near(L3, fib_618) or is_near(L3, fib_786)
-        if is_touching_bull_fib and is_green3 and lower_wick3 > (body3 * 1.5):
-            found_bullish_pattern = f"Fibonacci Nokta Atışı (Pinbar Rejection){dow_suffix_bull}"
-        
-        # 2. Bullish Engulfing (Yutan Boğa)
-        elif is_red2 and is_green3 and C3 > O2 and O3 < C2:
-            found_bullish_pattern = f"Yutan Boğa (Bullish Engulfing){dow_suffix_bull}"
-            
-        # 3. Three Inside Up (Harami Onaylı) - H1 VE L1 KULLANILDI
-        elif is_red1 and (max(O2, C2) < O1) and (min(O2, C2) > C1) and is_green3 and C3 > H1:
-            found_bullish_pattern = f"Three Inside Up (Harami Onaylı){dow_suffix_bull}"
-
-        # 4. Morning Star (Sabah Yıldızı)
-        elif is_red1 and body2 < (body1 * 0.5) and max(O2, C2) <= C1 and is_green3 and C3 > (O1 + C1) / 2:
-            found_bullish_pattern = f"Sabah Yıldızı (Morning Star){dow_suffix_bull}"
-            
-        # 5. Three Outside Up
-        elif is_red1 and is_green2 and C2 > O1 and O2 < C1 and is_green3 and C3 > C2:
-            found_bullish_pattern = f"Three Outside Up{dow_suffix_bull}"
-            
-        # 6. Piercing Line (Delen Mum)
-        elif is_red2 and is_green3 and O3 <= C2 and C3 > (O2 + C2) / 2:
-            found_bullish_pattern = f"Delen Mum (Piercing Line){dow_suffix_bull}"
-
-    # C. KLASİK VE FIBONACCI DÖNÜŞ FORMASYONLARI (BEARISH)
-    if not found_bearish_pattern:
-        # 1. Fibonacci Nokta Atışı (Pinbar)
-        is_touching_bear_fib = is_near(H3, fib_382) or is_near(H3, fib_500) or is_near(H3, fib_618) or is_near(H3, fib_786)
-        if is_touching_bear_fib and is_red3 and upper_wick3 > (body3 * 1.5):
-            found_bearish_pattern = f"Fibonacci Nokta Atışı (Pinbar Rejection){dow_suffix_bear}"
-
-        # 2. Bearish Engulfing (Yutan Ayı)
-        elif is_green2 and is_red3 and C3 < O2 and O3 > C2:
-            found_bearish_pattern = f"Yutan Ayı (Bearish Engulfing){dow_suffix_bear}"
-            
-        # 3. Three Inside Down (Harami Onaylı) - H1 VE L1 KULLANILDI
-        elif is_green1 and (max(O2, C2) < C1) and (min(O2, C2) > O1) and is_red3 and C3 < L1:
-            found_bearish_pattern = f"Three Inside Down (Harami Onaylı){dow_suffix_bear}"
-
-        # 4. Evening Star (Akşam Yıldızı)
-        elif is_green1 and body2 < (body1 * 0.5) and min(O2, C2) >= C1 and is_red3 and C3 < (O1 + C1) / 2:
-            found_bearish_pattern = f"Akşam Yıldızı (Evening Star){dow_suffix_bear}"
-            
-        # 5. Three Outside Down
-        elif is_green1 and is_red2 and C2 < O1 and O2 > C1 and is_red3 and C3 < C2:
-            found_bearish_pattern = f"Three Outside Down{dow_suffix_bear}"
-            
-        # 6. Kara Bulut (Dark Cloud Cover)
-        elif is_green2 and is_red3 and O3 >= C2 and C3 < (O2 + C2) / 2:
-            found_bearish_pattern = f"Kara Bulut (Dark Cloud Cover){dow_suffix_bear}"
-
-    # --- 3. SONUÇLARIN YAPAY ZEKAYA AKTARIMI ---
-    if found_bullish_pattern:
-        conf_txt = " + ".join(bounced_from) if bounced_from else "Ara Bölge (Majör Destek Yok)"
-        return "PA_BULLISH", f"{found_bullish_pattern} | Kesişim: {conf_txt}"
-
-    if found_bearish_pattern:
-        conf_txt = " + ".join(rejected_from) if rejected_from else "Ara Bölge (Majör Direnç Yok)"
-        return "PA_BEARISH", f"{found_bearish_pattern} | Kesişim: {conf_txt}"
-
-    return "NÖTR", ""
-
-@st.cache_data(ttl=600)
-def calculate_ict_deep_analysis(ticker):
-    error_ret = {"status": "Error", "msg": "Veri Yok", "structure": "-", "bias": "-", "entry": 0, "target": 0, "structural_target": 0, "stop": 0, "rr": 0, "desc": "Veri bekleniyor", "displacement": "-", "fvg_txt": "-", "ob_txt": "-", "zone": "-", "mean_threshold": 0, "curr_price": 0, "setup_type": "BEKLE", "bottom_line": "-", "eqh_eql_txt": "-", "sweep_txt": "-", "model_score": 0, "model_checks": [], "ob_age": 0, "fvg_age": 0, "struct_age": 0}
-    
-    try:
-        df = get_safe_historical_data(ticker, period="1y")
-        if df is None or len(df) < 60: return error_ret
-        
-        high = df['High']; low = df['Low']; close = df['Close']; open_ = df['Open']
-        
-        tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
-        atr = tr.rolling(14).mean().iloc[-1]
-        avg_body_size = abs(open_ - close).rolling(20).mean()
-
-        # 5 — Swing tespiti ict_core'a taşındı: 2-bar mini fraktal yerine
-        # 5-bar fraktal + volatiliteye uyarlanan pivot budama. Bias artık tek
-        # gürültülü pivota göre dönmez (panel + FIYAT kartı + AI prompt stabil).
-        sw_highs, sw_lows = ict_core.ict_swings(df)
-
-        if not sw_highs or not sw_lows: return error_ret
-
-        curr_price = close.iloc[-1]
-        last_sh = sw_highs[-1][1] 
-        last_sl = sw_lows[-1][1]  
-
-        # --- 👇 YENİ: DOW TEORİSİ (ZİNCİRLEME TREND OKUMASI HH/HL) 👇 ---
-        dow_pattern = "Belirsiz"
-        dow_desc = "Nötr"
-        if len(sw_highs) >= 2 and len(sw_lows) >= 2:
-            h1 = sw_highs[-1][1]; h2 = sw_highs[-2][1] # h1 son tepe, h2 bir önceki tepe
-            l1 = sw_lows[-1][1]; l2 = sw_lows[-2][1]   # l1 son dip, l2 bir önceki dip
-            
-            h_txt = "HH (Yükselen Tepe)" if h1 >= h2 else "LH (Alçalan Tepe)"
-            l_txt = "HL (Yükselen Dip)" if l1 >= l2 else "LL (Alçalan Dip)"
-            dow_pattern = f"{h_txt} / {l_txt}"
-            
-            # Trendin Anatomisi (Yapay Zeka Mantığı)
-            if h1 > h2 and l1 > l2:
-                dow_desc = "Güçlü Yükseliş Zinciri"
-            elif h1 < h2 and l1 < l2:
-                dow_desc = "Güçlü Düşüş Zinciri"
-            elif h1 < h2 and l1 > l2:
-                dow_desc = "Sıkışma (Zayıflayan Momentum / Düzeltme)"
-            elif h1 > h2 and l1 < l2:
-                dow_desc = "Genişleyen Volatilite (Yön Arayışı)"
-        # --- 👆 -------------------------------------------------------- 👆 ---
-
-        # --- BİAS VE YAPI TESPİTİ ---
-        structure = "YATAY / KONSOLİDE"
-        bias = "neutral"
-        displacement_txt = "Zayıf (Hacimsiz Hareket)"
-        
-        # MSS (Market Structure Shift) Tespiti için bir önceki bias kontrolü
-        prev_close = close.iloc[-2]
-        is_prev_bearish = prev_close < last_sl
-        is_prev_bullish = prev_close > last_sh
-
-        # 5 Tem 2026 — Displacement ORTAK fonksiyona taşındı (ict_core).
-        # Bot'un 13 Haz endeks/0-hacim fix'i app'e geldi: fiyat-öncelikli ölçüm,
-        # hacim sadece teyit rozeti. XU100 gibi 0-hacim endekslerde "Hacimsiz
-        # Hareket (Sahte Olabilir)" yanlış etiketi artık üretilmez.
-        displacement_txt = ict_core.displacement_status(
-            open_.values, close.values, high.values, low.values,
-            df['Volume'].values,
-            float(atr) if pd.notna(atr) else 0.0,
-            float(avg_body_size.iloc[-1]) if pd.notna(avg_body_size.iloc[-1]) else 0.0)
-
-        breakout_margin_up   = (curr_price - last_sh) / last_sh if last_sh > 0 else 0
-        breakout_margin_down = (last_sl - curr_price) / last_sl if last_sl > 0 else 0
-
-        if curr_price > last_sh:
-            if is_prev_bearish:
-                structure = f"MSS (Trend Döndü) 🐂 | {dow_desc}"
-            elif breakout_margin_up < 0.005:
-                structure = f"⚠️ Zayıf Kırılım — Onay Bekleniyor 🐂 | {dow_desc}"
-            else:
-                structure = f"BOS (Yükseliş Kırılımı) 🐂 | {dow_desc}"
-            # 7 — Kırılım onay katmanı: kaç gündür seviyenin üstünde kapanıyor?
-            _bc = ict_core.break_confirm(close.values, float(last_sh), bullish=True)
-            structure += f" [{_bc['label']}]"
-            bias = "bullish"
-        elif curr_price < last_sl:
-            if is_prev_bullish:
-                structure = f"MSS (Trend Döndü) 🐻 | {dow_desc}"
-            elif breakout_margin_down < 0.005:
-                structure = f"⚠️ Zayıf Kırılım — Onay Bekleniyor 🐻 | {dow_desc}"
-            else:
-                structure = f"BOS (Düşüş Kırılımı) 🐻 | {dow_desc}"
-            _bc = ict_core.break_confirm(close.values, float(last_sl), bullish=False)
-            structure += f" [{_bc['label']}]"
-            bias = "bearish"
-        else:
-            if len(sw_highs) >= 2 and len(sw_lows) >= 2:
-                _h1 = sw_highs[-1][1]; _h2 = sw_highs[-2][1]
-                _l1 = sw_lows[-1][1];  _l2 = sw_lows[-2][1]
-                if _h1 > _h2 and _l1 > _l2:
-                    structure = f"📦 Boğa Sıkışması — Kırılım Yukarı Olabilir | {dow_pattern}"
-                elif _h1 < _h2 and _l1 < _l2:
-                    structure = f"📦 Ayı Sıkışması — Dikkatli Ol | {dow_pattern}"
-                else:
-                    structure = f"Internal Range | Dow: {dow_pattern}"
-            else:
-                structure = f"Internal Range | Dow: {dow_pattern}"
-            # 7 — Sahte kırılım etiketi: son 10 barda kırıp geri dönme (tuzak)
-            if ict_core.fake_break(close.values, float(last_sh), bullish=True):
-                structure = f"🪤 Sahte Yukarı Kırılım (tuzak olabilir) | {structure}"
-            elif ict_core.fake_break(close.values, float(last_sl), bullish=False):
-                structure = f"🪤 Sahte Aşağı Kırılım (silkeleme) | {structure}"
-            # 6 — Nötr bölgede yön: tek mum rengi yerine Dow zinciri + 5 bar eğim
-            bias = ict_core.retrace_bias(close.values, dow_desc)
-
-        # --- YAPISAL HEDEF (swing tabanlı, orta vade) ---
-        next_bsl = min([h[1] for h in sw_highs if h[1] > curr_price], default=float(high.max()))
-        next_ssl = max([l[1] for l in sw_lows  if l[1] < curr_price], default=float(low.min()))
-        structural_target = next_bsl if "bullish" in bias else next_ssl
-
-        # --- MIKNATIS (DOL): en yakın likidite havuzları — 3: çift hesap silindi,
-        # yukarıdaki next_bsl/next_ssl aynen kullanılıyor.
-        # Ayı piyasasında mıknatıs aşağıdaki DİP, Boğa piyasasında yukarıdaki TEPE'dir.
-        magnet_target = next_bsl if "bullish" in bias else next_ssl
-        # --- LİKİDİTE HAVUZLARI (EQH / EQL) VE LİKİDİTE AVI (SWEEP) ---
-        eqh_eql_txt = "Yok"
-        sweep_txt = "Yok"
-
-        # 8 — Eşitlik toleransı volatiliteye uyarlanır (eski sabit %0.3)
-        tol = curr_price * ict_core.eq_tolerance(close.values)
-        
-        # EQL / EQH (Eşit Tepe ve Dipler) Tespiti
-        if len(sw_lows) >= 2:
-            l1 = sw_lows[-1][1]; l2 = sw_lows[-2][1]
-            if abs(l1 - l2) < tol: eqh_eql_txt = f"EQL (Eşit Dipler): {l1:.2f}"
-                
-        if len(sw_highs) >= 2:
-            h1 = sw_highs[-1][1]; h2 = sw_highs[-2][1]
-            if abs(h1 - h2) < tol:
-                if eqh_eql_txt == "Yok": eqh_eql_txt = f"EQH (Eşit Tepeler): {h1:.2f}"
-                else: eqh_eql_txt += f" | EQH: {h1:.2f}"
-
-        # LİKİDİTE AVI (SWEEP / TURTLE SOUP) Tespiti
-        # 8 — Pencere volatiliteye uyarlanır: oynak hissede 3, sakin hissede 5 bar
-        _sw_win = ict_core.sweep_window(close.values)
-        recent_lows = low.iloc[-_sw_win:]
-        recent_highs = high.iloc[-_sw_win:]
-        
-        # BSL Sweep (Tepe Likidite Avı - Ayı Sinyali)
-        if (recent_highs.max() > last_sh) and (close.iloc[-1] < last_sh):
-            sweep_txt = f"🧹 BSL Sweep (Tepe Avı): {last_sh:.2f}"
-            
-        # SSL Sweep (Dip Likidite Avı - Boğa Sinyali)
-        elif (recent_lows.min() < last_sl) and (close.iloc[-1] > last_sl):
-            sweep_txt = f"🧹 SSL Sweep (Dip Avı): {last_sl:.2f}"
-        # --- 👆 ------------------------------------------------------------- 👆 ---
-        # FVG ve OB Taraması
-        _ob_l = _ob_h = _fvg_l = _fvg_h = 0.0   # Fiyat cetveli için sayısal değerler
-        bullish_fvgs = []; bearish_fvgs = []
-        active_fvg_txt = "Yok"
-        for i in range(len(df)-30, len(df)-1):
-            if i < 2: continue
-            if low.iloc[i] > high.iloc[i-2]:
-                gap_size = low.iloc[i] - high.iloc[i-2]
-                if gap_size > atr * 0.05:
-                    bullish_fvgs.append({'top': low.iloc[i], 'bot': high.iloc[i-2], 'idx': i})
-            elif high.iloc[i] < low.iloc[i-2]:
-                gap_size = low.iloc[i-2] - high.iloc[i]
-                if gap_size > atr * 0.05:
-                    bearish_fvgs.append({'top': low.iloc[i-2], 'bot': high.iloc[i], 'idx': i})
-
-        # 10 — Mitigasyon filtresi: sonradan TAMAMEN doldurulan FVG "açık" değildir
-        # (SMC grafiğin state mantığıyla tutarlılık); test edilenler etiketlenir.
-        bullish_fvgs = ict_core.filter_open_fvgs(bullish_fvgs, low.values, high.values, bullish=True)
-        bearish_fvgs = ict_core.filter_open_fvgs(bearish_fvgs, low.values, high.values, bullish=False)
-
-        active_ob_txt = "Yok"
-        mean_threshold = 0.0
-        lookback = 20
-        start_idx = max(0, len(df) - lookback)
-        ob_bar_idx  = -1   # OB'un oluştuğu bar (yaş hesabı için)
-        fvg_bar_idx = -1   # FVG'nin açıldığı bar (yaş hesabı için)
-
-        # OB kalite değerlendirmesi için hacim ortalaması
-        avg_vol_20 = df['Volume'].rolling(20).mean()
-
-        # ── OB GENİŞLİK FİLTRESİ — ATR bazlı ──────────────────────────────
-        # Gerçek kurumsal OB'lar dar ve spesifiktir. Volatilite günlerinde
-        # oluşan geniş mumlar (>1.8×ATR) gerçek OB değil, gürültüdür.
-        try:
-            _tr_h_l = df['High'] - df['Low']
-            _tr_h_c = (df['High'] - df['Close'].shift()).abs()
-            _tr_l_c = (df['Low']  - df['Close'].shift()).abs()
-            _true_range = pd.concat([_tr_h_l, _tr_h_c, _tr_l_c], axis=1).max(axis=1)
-            _atr14 = _true_range.rolling(14).mean()
-        except Exception:
-            _atr14 = None
-
-        def _ob_width_ok(ob_idx, ob_low, ob_high):
-            """OB genişliği ATR ile karşılaştırılır. Çok geniş ise False döner."""
-            if _atr14 is None:
-                return True
-            try:
-                _atr_i = float(_atr14.iloc[ob_idx])
-                if _atr_i <= 0 or pd.isna(_atr_i):
-                    return True
-                # OB genişliği ATR'nin 1.8 katından geniş ise gürültü
-                return (ob_high - ob_low) <= 1.8 * _atr_i
-            except Exception:
-                return True
-
-        def _ob_quality(ob_idx, ob_low, ob_high, is_bullish_ob):
-            """A: Hacim kalitesi  B: FVG çakışması  C: Tazelik"""
-            tags = []
-            # A — OB mumunun hacmi ortalama üzerinde mi?
-            try:
-                ob_vol = float(df['Volume'].iloc[ob_idx])
-                avg_v  = float(avg_vol_20.iloc[ob_idx])
-                if avg_v > 0 and ob_vol > avg_v * 1.2:
-                    tags.append("🏦 Kurumsal Hacim")
-            except: pass
-            # B — OB bölgesiyle örtüşen FVG var mı?
-            try:
-                check_fvgs = bullish_fvgs if is_bullish_ob else bearish_fvgs
-                for fvg in check_fvgs:
-                    overlap = min(ob_high, fvg['top']) - max(ob_low, fvg['bot'])
-                    if overlap > 0:
-                        tags.append("🎯 FVG+OB Çakışma")
-                        break
-            except: pass
-            # C — Tazelik: OB oluşumundan sonra fiyat bu bölgeye geri döndü mü?
-            try:
-                future_prices = close.iloc[ob_idx+1:]
-                if is_bullish_ob:
-                    revisits = (future_prices <= ob_high).sum()
-                else:
-                    revisits = (future_prices >= ob_low).sum()
-                if revisits == 0:
-                    tags.append("✨ Taze OB (İlk Test)")
-                elif revisits <= 2:
-                    tags.append("⚡ OB 2. Test")
-                else:
-                    tags.append("⚠️ Yıpranmış OB")
-            except: pass
-            return " | ".join(tags) if tags else ""
-
-        if bias == "bullish" or bias == "bullish_retrace":
-            if bullish_fvgs:
-                f = bullish_fvgs[-1]
-                _fvg_state = " · test edildi" if f.get('state') == 'tested' else ""
-                active_fvg_txt = f"Açık FVG var (Destek): {f['bot']:.2f} - {f['top']:.2f}{_fvg_state}"
-                fvg_bar_idx = f['idx']
-                _fvg_l = f['bot']; _fvg_h = f['top']
-            lowest_idx = df['Low'].iloc[start_idx:].idxmin()
-            if isinstance(lowest_idx, pd.Timestamp): lowest_idx = df.index.get_loc(lowest_idx)
-            for i in range(lowest_idx, max(0, lowest_idx-5), -1):
-                if df['Close'].iloc[i] < df['Open'].iloc[i]:
-                    ob_low = df['Low'].iloc[i]; ob_high = df['High'].iloc[i]
-                    # Genişlik filtresi: ATR'den çok geniş mum gerçek OB değil
-                    if not _ob_width_ok(i, ob_low, ob_high):
-                        continue
-                    ob_q = _ob_quality(i, ob_low, ob_high, True)
-                    ob_q_txt = f" [{ob_q}]" if ob_q else ""
-                    if ob_high >= curr_price:
-                        break  # OB fiyatın üstünde → Talep değil, gösterme
-                    active_ob_txt = f"{ob_low:.2f} - {ob_high:.2f} (Talep Bölgesi){ob_q_txt}"
-                    mean_threshold = (ob_low + ob_high) / 2
-                    _ob_l = ob_low; _ob_h = ob_high
-                    ob_bar_idx = i
-                    break
-        elif bias == "bearish" or bias == "bearish_retrace":
-            if bearish_fvgs:
-                f = bearish_fvgs[-1]
-                _fvg_state = " · test edildi" if f.get('state') == 'tested' else ""
-                active_fvg_txt = f"Açık FVG var (Direnç): {f['bot']:.2f} - {f['top']:.2f}{_fvg_state}"
-                fvg_bar_idx = f['idx']
-                _fvg_l = f['bot']; _fvg_h = f['top']
-            highest_idx = df['High'].iloc[start_idx:].idxmax()
-            if isinstance(highest_idx, pd.Timestamp): highest_idx = df.index.get_loc(highest_idx)
-            for i in range(highest_idx, max(0, highest_idx-5), -1):
-                if df['Close'].iloc[i] > df['Open'].iloc[i]:
-                    ob_low = df['Low'].iloc[i]; ob_high = df['High'].iloc[i]
-                    # Genişlik filtresi: ATR'den çok geniş mum gerçek OB değil
-                    if not _ob_width_ok(i, ob_low, ob_high):
-                        continue
-                    ob_q = _ob_quality(i, ob_low, ob_high, False)
-                    ob_q_txt = f" [{ob_q}]" if ob_q else ""
-                    if ob_low <= curr_price:
-                        break  # OB fiyatın altında → Arz değil, gösterme
-                    active_ob_txt = f"{ob_low:.2f} - {ob_high:.2f} (Arz Bölgesi){ob_q_txt}"
-                    mean_threshold = (ob_low + ob_high) / 2
-                    _ob_l = ob_low; _ob_h = ob_high
-                    ob_bar_idx = i
-                    break
-
-        range_high = max(high.tail(60)); range_low = min(low.tail(60))
-        range_loc = (curr_price - range_low) / (range_high - range_low) if range_high > range_low else 0.5
-        # 9 — Üçlü bölge: %45-55 arası DENGE (tek %50 çizgisi titremesi biter)
-        zone = ict_core.zone_of(range_loc)
-
-        # Fallback: OB bulunamadıysa 60-bar range midpoint (denge noktası) kullan
-        if mean_threshold == 0.0:
-            mean_threshold = (range_high + range_low) / 2
-
-        # --- MODEL BÜTÜNLÜĞÜ VE ZAMAN FAKTÖRÜ ---
-        ob_age  = (len(df) - 1 - ob_bar_idx)  if ob_bar_idx  >= 0 else 0
-        fvg_age = (len(df) - 1 - fvg_bar_idx) if fvg_bar_idx >= 0 else 0
-        struct_age = 0
-        try:
-            if bias in ["bullish", "bullish_retrace"] and sw_highs:
-                struct_age = len(df) - 1 - sw_highs[-1][2]
-            elif bias in ["bearish", "bearish_retrace"] and sw_lows:
-                struct_age = len(df) - 1 - sw_lows[-1][2]
-        except: struct_age = 0
-
-        _m1 = bias in ["bullish", "bearish"]
-        _m2 = ("bullish" in bias and zone == "DISCOUNT (Ucuz)") or ("bearish" in bias and zone == "PREMIUM (Pahalı)")
-        _m3 = active_ob_txt  != "Yok"
-        _m4 = active_fvg_txt != "Yok"
-        _m5 = "Güçlü" in displacement_txt and "Hacim" in displacement_txt
-        model_score  = sum([_m1, _m2, _m3, _m4, _m5])
-        model_checks = [("Bias Net", _m1), ("Doğru Bölge", _m2), ("OB Aktif", _m3), ("FVG Açık", _m4), ("Displacement", _m5)]
-
-        # --- SETUP VE HEDEF KARARI ---
-        setup_type = "BEKLE"
-        entry_price = 0.0; stop_loss = 0.0; take_profit = 0.0; rr_ratio = 0.0
-        # Varsayılan hedefi mıknatıs (DOL) olarak belirliyoruz
-        final_target = magnet_target 
-        setup_desc = "İdeal bir setup (Entry) bekleniyor. Mevcut yön mıknatısı takip ediliyor."
-
-        if bias in ["bullish", "bullish_retrace"] and zone == "DISCOUNT (Ucuz)":
-            valid_fvgs = [f for f in bullish_fvgs if f['top'] < curr_price]
-            if valid_fvgs and next_bsl > curr_price:
-                best_fvg = valid_fvgs[-1]; temp_entry = best_fvg['top']
-                if next_bsl > temp_entry:
-                    entry_price = temp_entry; take_profit = next_bsl
-                    stop_loss = last_sl if last_sl < entry_price else best_fvg['bot'] - atr * 0.5
-                    final_target = take_profit # Setup varsa hedef kâr al seviyesidir
-                    setup_type = "LONG"; setup_desc = "Fiyat ucuzluk bölgesinde. FVG desteğinden likidite (BSL) hedefleniyor."
-                    # 2 — rr artık gerçekten hesaplanıyor (eskiden hep 0 dönüyordu)
-                    _rr_risk = entry_price - stop_loss
-                    rr_ratio = round((take_profit - entry_price) / _rr_risk, 2) if _rr_risk > 0 else 0.0
-
-        elif bias in ["bearish", "bearish_retrace"] and zone == "PREMIUM (Pahalı)":
-            valid_fvgs = [f for f in bearish_fvgs if f['bot'] > curr_price]
-            if valid_fvgs and next_ssl < curr_price:
-                best_fvg = valid_fvgs[-1]; temp_entry = best_fvg['bot']
-                if next_ssl < temp_entry:
-                    entry_price = temp_entry; take_profit = next_ssl
-                    stop_loss = last_sh if last_sh > entry_price else best_fvg['top'] + atr * 0.5
-                    final_target = take_profit # Setup varsa hedef kâr al seviyesidir
-                    setup_type = "SHORT"; setup_desc = "Fiyat pahalılık bölgesinde. Direnç bloğundan likidite (SSL) hedefleniyor."
-                    # 2 — rr artık gerçekten hesaplanıyor (eskiden hep 0 dönüyordu)
-                    _rr_risk = stop_loss - entry_price
-                    rr_ratio = round((entry_price - take_profit) / _rr_risk, 2) if _rr_risk > 0 else 0.0
-
-        # --- 👇 YENİ: AKSİYON ÖZETİ (THE BOTTOM LINE) ANALİZÖRÜ 👇 ---
-        struct_summary = "Yapı zayıf (Order Flow Negatif)" if "bearish" in bias else "Yapı güçlü (Order Flow Pozitif)"
-        zone_summary = "fiyat pahalı bölgesinden" if zone == "PREMIUM (Pahalı)" else "fiyat ucuzluk bölgesinden"
-        
-        # --- GÜVENLİ SEVİYE MANTIĞI (DÜZELTİLDİ: Trader Mantığı) ---
-        safety_lvl = 0.0
-        
-        if "bearish" in bias:
-            # Ayı piyasasında "Güvenli Alım" için Önümüzdeki İLK CİDDİ ENGELE (FVG veya Swing High) bakarız.
-            candidates = []
-            
-            # 1. Aday: En yakın üst direnç FVG'sinin TEPESİ
-            valid_fvgs = [f for f in bearish_fvgs if f['bot'] > curr_price]
-            if valid_fvgs:
-                # En yakındaki FVG'yi bul
-                closest_fvg = min(valid_fvgs, key=lambda x: x['bot'] - curr_price)
-                candidates.append(closest_fvg['top'])
-            
-            # 2. Aday: Son Swing High (MSS Seviyesi)
-            if last_sh > curr_price:
-                candidates.append(last_sh)
-            
-            # Hiçbiri yoksa mecburen Mean Threshold veya %5 yukarı
-            if not candidates:
-                 safety_lvl = mean_threshold if mean_threshold > curr_price else curr_price * 1.05
-            else:
-                 # En yakın (en düşük) direnci seçiyoruz.
-                 safety_lvl = min(candidates)
-
-        else:
-            # Boğa piyasasında destek kırılımı (Stop) seviyesi
-            safety_lvl = last_sl
-
-        # ====================================================================
-        # ICT UYUMLU YAKIN LİKİDİTE (DEALING RANGE) HESAPLAMASI
-        # Minimum mesafe filtreleri: anlamsız gürültü hedefleri engellenir
-        # Yakın hedef: en az %0.8 uzakta | Asıl hedef: yakın hedeften en az %1.5 uzakta
-        # ====================================================================
-        MIN_NEAR  = 0.008   # Yakın hedef minimum %0.8 uzaklık
-        MIN_FAR   = 0.015   # Asıl hedef, yakın hedeften minimum %1.5 daha uzakta
-
-        recent_df = df.iloc[-20:]
-
-        # Fiyatın altındaki dipler (SSL) — minimum mesafe filtreli
-        lows_below = recent_df[recent_df['Low'] < curr_price * (1 - MIN_NEAR)]['Low'].drop_duplicates()
-        nearest_ssl = lows_below.sort_values(ascending=False)
-
-        # Fiyatın üstündeki tepeler (BSL) — minimum mesafe filtreli
-        highs_above = recent_df[recent_df['High'] > curr_price * (1 + MIN_NEAR)]['High'].drop_duplicates()
-        nearest_bsl = highs_above.sort_values(ascending=True)
-
-        # Yapısal swing high/low (tüm geçmiş) — asıl hedef için
-        struct_bsl_list = sorted([h[1] for h in sw_highs if h[1] > curr_price * (1 + MIN_NEAR)], reverse=False)
-        struct_ssl_list = sorted([l[1] for l in sw_lows  if l[1] < curr_price * (1 - MIN_NEAR)], reverse=True)
-
-        if "bearish" in bias:
-            # Yakın hedef: son 20 mumun en yakın SSL'i (min %0.8 aşağıda)
-            # 1 — FIX: SHORT setup varsa onun kâr-al hedefi EZİLMEZ (eskiden
-            # bu satır setup hedefini koşulsuz eziyordu — setup TP çöpe gidiyordu)
-            _near_tgt = float(nearest_ssl.iloc[0]) if len(nearest_ssl) > 0 else curr_price * (1 - MIN_NEAR * 2)
-            final_target = take_profit if (setup_type == "SHORT" and take_profit > 0) else _near_tgt
-            # Asıl hedef: yapısal SSL — yakın hedeften en az %1.5 daha aşağıda
-            _far_ssl = [v for v in struct_ssl_list if v < final_target * (1 - MIN_FAR)]
-            derin_hedef = _far_ssl[0] if _far_ssl else final_target * (1 - MIN_FAR)
-            ileri_hedef = curr_price * 1.02
-            safety_lvl  = float(nearest_bsl.iloc[0]) if len(nearest_bsl) > 0 else curr_price * (1 + MIN_NEAR)
-        else:
-            # Yakın hedef: son 20 mumun en yakın BSL'i (min %0.8 yukarıda)
-            # 1 — FIX: LONG setup varsa onun kâr-al hedefi EZİLMEZ
-            _near_tgt = float(nearest_bsl.iloc[0]) if len(nearest_bsl) > 0 else curr_price * (1 + MIN_NEAR * 2)
-            final_target = take_profit if (setup_type == "LONG" and take_profit > 0) else _near_tgt
-            # Asıl hedef: yapısal BSL — yakın hedeften en az %1.5 daha yukarıda
-            _far_bsl = [v for v in struct_bsl_list if v > final_target * (1 + MIN_FAR)]
-            ileri_hedef = _far_bsl[0] if _far_bsl else final_target * (1 + MIN_FAR)
-            derin_hedef = curr_price * 0.98
-            safety_lvl  = float(nearest_ssl.iloc[0]) if len(nearest_ssl) > 0 else curr_price * (1 - MIN_NEAR)
-
-        # Emniyet kilidi — sıra garantisi
-        if "bearish" in bias and derin_hedef >= final_target:
-            derin_hedef = final_target * (1 - MIN_FAR)
-        if "bullish" in bias and ileri_hedef <= final_target:
-            ileri_hedef = final_target * (1 + MIN_FAR)
-
-        # KARAR MATRİSİ: Yön (Bias) x Konum (Zone) Çaprazlaması (HİBRİT SENARYOLAR)
-        is_bullish = "bullish" in bias
-        is_premium = "PREMIUM" in zone
-
-        # --- YÜZDESEL MESAFEYE DUYARLI AKILLI DEĞİŞKENLER ---
-        # Hedeflerin fiyata olan % uzaklığını hesaplıyoruz
-        cp = curr_price if curr_price > 0 else 1
-        dist_final = abs(cp - final_target) / cp * 100
-        dist_derin = abs(cp - derin_hedef) / cp * 100
-        dist_ileri = abs(cp - ileri_hedef) / cp * 100
-        dist_safety = abs(cp - safety_lvl) / cp * 100
-
-        # Mesafeye göre kelime seçimi (%1'den küçükse yakın destek/direnç, büyükse uçurum/ralli)
-        hedef_1_txt = f"yakınındaki {final_target:.2f}" if dist_final < 1.0 else f"{final_target:.2f} ana hedefine"
-        hedef_2_txt = f"hemen üstündeki {ileri_hedef:.2f}" if dist_ileri < 1.0 else f"güçlü {ileri_hedef:.2f} direncine"
-        hedef_derin_txt = f"altındaki {derin_hedef:.2f} desteğine" if dist_derin < 1.0 else f"ana geri çekilme bölgesi olan {derin_hedef:.2f} seviyesine"
-        if "bearish" in bias:
-            # Ayı senaryosunda safety_lvl = son 20 günün en yakın swing high'ı (BSL)
-            safety_txt = (f"hemen üstündeki swing tepe {safety_lvl:.2f}" if dist_safety < 1.0
-                         else f"son 20 günün en yakın swing tepe seviyesi (iptal noktası) {safety_lvl:.2f}")
-        else:
-            # Boğa senaryosunda safety_lvl = son swing low (stop seviyesi)
-            safety_txt = (f"hemen dibindeki swing dip {safety_lvl:.2f}" if dist_safety < 1.0
-                         else f"son 20 günün en yakın swing dip seviyesi (iptal noktası) {safety_lvl:.2f}")
-
-        # Hedefler arası anlamlılık kontrolü: %1.5'ten küçük fark = ayrı seviye değil, küme
-        second_gap = abs(ileri_hedef - final_target) / max(abs(final_target), 1) * 100
-        deep_gap   = abs(derin_hedef - final_target) / max(abs(final_target), 1) * 100
-
-        # ── Sayı formatlama: 1000+ → tam sayı, altı → 2 ondalık ──────
-        def _bl_fmt(v):
-            return f"{int(round(v)):,}" if abs(v) >= 1000 else f"{v:.2f}"
-
-        ft  = _bl_fmt(final_target)
-        ih  = _bl_fmt(ileri_hedef)
-        dh  = _bl_fmt(derin_hedef)
-        sl2 = _bl_fmt(safety_lvl)
-
-        # Aralık gösterimi: fark %0.5'ten küçükse tek sayı yeter
-        bull_range = f"{ft}–{ih}" if second_gap >= 0.5 else ft
-        bear_range = f"{ft}–{dh}" if deep_gap   >= 0.5 else ft
-
-        if "DENGE" in zone:
-            # 9 — DENGE bölgesi: ne ucuz ne pahalı; metin tarafsız konuşur
-            if is_bullish:
-                lines = [
-                    f"Trend yukarı ancak fiyat 60 günlük aralığın ortasında (denge bölgesi) — ne ucuz ne pahalı. İlk izlenecek seviye {hedef_1_txt}; iptal noktası {safety_txt}.",
-                    f"Yapı pozitif fakat fiyat denge bölgesinde: kurumsallar için ne cazip alım ne kâr-al noktası. {ft} üzeri kalıcılık yükselişi ivmelendirir; {safety_txt} altı yapıyı bozar.",
-                ]
-            else:
-                lines = [
-                    f"Trend aşağı ve fiyat denge bölgesinde — satıcılar baskın ama fiyat ne pahalı ne ucuz. {ft} altına sarkma düşüşü derinleştirir; dönüş için {safety_txt} üzeri kapanış gerekir.",
-                    f"Yapı negatif fakat fiyat aralığın ortasında. Kısa vadede {bear_range} bölgesi izlenmeli; {safety_txt} üzerinde kalıcılık dengeyi alıcılara çevirir.",
-                ]
-        elif is_bullish and not is_premium:
-            # 1. ÇEYREK: Boğa + Ucuzluk (İdeal Long Bölgesi)
-            if second_gap >= 1.5:
-                lines = [
-                    f"Trend yukarı (Bullish) ve fiyat cazip (Discount) bölgesinde. Kurumsal alım iştahı ivmeleniyor. İlk olarak {hedef_1_txt} doğru hareket, ardından {hedef_2_txt} yürüyüşü izlenebilir. Sermaye koruması için {safety_txt} yakından takip edilmeli.",
-                    f"İdeal 'Smart Money' koşulları devrede: Yön yukarı, fiyat iskontolu. Toplanan emirlerle {hedef_1_txt} doğru likidite avı hedefleniyor. Olası tuzaklara karşı {safety_txt} seviyesinin altı yapısal iptal alanıdır.",
-                ]
-            else:
-                lines = [
-                    f"Trend yukarı (Bullish) ve fiyat cazip (Discount) bölgesinde. Yakın hedef {bull_range} bölgesinde sıkışmış (dar konsolidasyon). Bu bölgeyi yukarı kırarsa yükseliş ivmelenebilir. İptal seviyesi: {safety_txt}.",
-                    f"İdeal 'Smart Money' koşulları devrede: Yön yukarı, fiyat iskontolu. Fiyat dar bir konsolidasyon bölgesinde; {ft} üzerinde kalıcılık yükseliş için kritik. {safety_txt} altı yapısal iptal alanıdır.",
-                ]
-        elif is_bullish and is_premium:
-            # 2. ÇEYREK: Boğa + Pahalılık (FOMO / Kâr Realizasyonu Riski)
-            if second_gap >= 1.5:
-                lines = [
-                    f"Trend yukarı (Bullish) ancak fiyat pahalılık (Premium) bölgesinde. {hedef_1_txt} doğru ivme sürse de, bu bölgelerde kurumsal kâr satışları (Realizasyon) gelebileceği unutulmamalı. {safety_txt} kırılırsa trend bozulur.",
-                    f"Yapı pozitif olsa da fiyat 'Premium' seviyelerde yorulma emareleri gösterebilir. Sıradaki dirençler {ft} ve {ih} seviyeleri. Buralardan yeni maliyetlenmek risklidir; {safety_txt} altı kapanışlarda anında savunmaya geçilmeli.",
-                ]
-            else:
-                lines = [
-                    f"Trend yukarı (Bullish) ancak fiyat pahalılık (Premium) bölgesinde. Yakın dirençler {bull_range} arasında kümelenmiş; bu bölgede kurumsal realizasyon riski yüksek. Yeni alım için erken, {safety_txt} takip edilmeli.",
-                    f"Yapı pozitif olsa da fiyat 'Premium' seviyelerde. Dar direnç kümesi ({bull_range}) aşılmadan güçlü bir hareket beklenmemeli. {safety_txt} altı kapanışlarda anında savunmaya geçilmeli.",
-                ]
-        elif not is_bullish and is_premium:
-            # 3. ÇEYREK: Ayı + Pahalılık (İdeal Short / Dağıtım Bölgesi)
-            if deep_gap >= 1.5:
-                lines = [
-                    f"Trend aşağı (Bearish) ve fiyat tam dağıtım (Premium) bölgesinde. Satış baskısı sürüyor; ilk durak olan {ft} kırıldıktan sonra gözler {hedef_derin_txt} çevrilebilir. Dönüş için {safety_txt} üzerinde kalıcılık şart.",
-                    f"Piyasa yapısı zayıf ve kurumsal oyuncular mal çıkıyor (Distribution). Pahalılık bölgesinden başlayan düşüş trendinde {hedef_derin_txt} doğru çekilme ihtimali masada. İptal seviyesi: {sl2}.",
-                ]
-            else:
-                lines = [
-                    f"Trend aşağı (Bearish) ve fiyat dağıtım (Premium) bölgesinde. Alt hedef bölgesi {bear_range} arasında sıkışmış; anlamlı düşüş için bu bölgenin altına kalıcı geçiş gerekiyor. Dönüş onayı: {safety_txt} üzerinde kapanış.",
-                    f"Piyasa yapısı zayıf, dağıtım devam ediyor. Yakın hedefler dar bir bantta kümelenmiş ({bear_range}). Bu bölge kırılmadıkça gerçek bir düşüş hamlesi başlamaz; {safety_txt} direnç olarak izlenmeli.",
-                ]
-        else:
-            # 4. ÇEYREK: Ayı + Ucuzluk (Aşırı Satım / Sweep Beklentisi)
-            if deep_gap >= 1.5:
-                lines = [
-                    f"Trend aşağı (Bearish) ancak fiyat iskontolu (Discount) bölgeye inmiş durumda. İlk durak {ft} olsa da buralardan 'Short' açmak risklidir, kurumsallar stop patlatıp dönebilir. Dönüş onayı için {safety_txt} izlenmeli.",
-                    f"Aşırı satım (Oversold) bölgesi! Yapı negatif görünse de fiyat ucuzlamış. {hedef_derin_txt} doğru son bir silkeleme (Liquidity Hunt) yaşanıp sert tepki gelebilir. Trend dönüşü için {sl2} aşılmalı.",
-                ]
-            else:
-                lines = [
-                    f"Trend aşağı (Bearish) ancak fiyat aşırı satılmış bölgede. Hedef seviyeleri {bear_range} arasında kümelenmiş — anlamlı ek düşüş için alan kalmamış. Olası stop avı (Liquidity Hunt) sonrası tepki için {safety_txt} üzeri izlenmeli.",
-                    f"Aşırı satım bölgesi! Hedefler birbirine yakın ({bear_range}); büyük fonlar bu dar bantta stop avı yapabilir. Trend dönüşü için {safety_txt} üzerinde kalıcılık gerekli.",
-                ]
-
-        # 4 — Deterministik seçim: aynı hisse aynı gün hep AYNI cümleyi görür
-        # (eski random.choice cache dolunca farklı cümle gösteriyordu)
-        bottom_line = random.Random(f"{ticker}|{df.index[-1]}").choice(lines)
-        
-        # --- 🚨 YENİ: BOTTOM LINE (SONUÇ) İÇİN DİNAMİK MÜDAHALE (OVERRIDE PROTOKOLÜ) 🚨 ---
-        try:
-            pa_signal, pa_context = detect_price_action_with_context(df)
-            
-            # 1. Ralli varken "Düşüş derinleşecek" demesini yasakla! (bias.lower() yaptık)
-            if pa_signal == "PA_BULLISH" and "bearish" in bias.lower():
-                bottom_line = f"🚨 KRİTİK UYARI (TREND ÇATIŞMASI): Makro yapı düşüş yönünde olsa da, an itibariyle {pa_context} seviyesinden bir alıcı tepkisi geldi! Klasik düşüş senaryosu askıya alındı. Ayılar (satıcılar) tuzağa düşmüş olabilir, yukarı yönlü bir kırılım izlenebilir."
-                
-            # 2. Çakılırken "Alım Fırsatı" demesini yasakla! (bias.lower() yaptık)
-            elif pa_signal == "PA_BEARISH" and "bullish" in bias.lower():
-                bottom_line = f"🚨 KRİTİK UYARI (BOĞA TUZAĞI): Ana trend yükseliş yönünde olsa da, fiyat {pa_context} direncinden reddedildi! Kurumsalların bu bölgede 'Gel-Gel' yapıp mal dağıtmış olabileceğine dair göstergeler görülüyor. Yeni alım için oldukça tehlikeli bir bölgedeyiz."
-        except Exception as e:
-            pass 
-        # --------------------------------------------------------------------------------
-
-        return {
-            "status": "OK", "structure": structure, "bias": bias, "zone": zone,
-            "setup_type": setup_type, "entry": entry_price, "stop": stop_loss,
-            "target": final_target, "structural_target": ileri_hedef if "bullish" in bias else derin_hedef,
-            "rr": rr_ratio, "desc": setup_desc, "last_sl": last_sl, "last_sh": last_sh,
-            "displacement": displacement_txt, "fvg_txt": active_fvg_txt, "ob_txt": active_ob_txt,
-            "mean_threshold": mean_threshold, "curr_price": curr_price,
-            "bottom_line": bottom_line,
-            "eqh_eql_txt": eqh_eql_txt,
-            "sweep_txt": sweep_txt,
-            "model_score": model_score, "model_checks": model_checks,
-            "ob_age": ob_age, "fvg_age": fvg_age, "struct_age": struct_age,
-            "ob_low_num": _ob_l, "ob_high_num": _ob_h,
-            "fvg_low_num": _fvg_l, "fvg_high_num": _fvg_h,
-        }
-
-    except Exception: return error_ret
-        
-@st.cache_data(ttl=86400)  # 15 Haz 2026 — 600s→24sa. PA-DNA pahalı (cache miss 3.5-4sn),
-                            # günlük veriye dayanır (gün içinde sıcak kalsa yeter). Sunucu-wide
-                            # cache showcase'te paylaşımlı → bir kullanıcı ısıtsa hepsi hit.
-def calculate_price_action_dna(ticker):
-    try:
-        if _PROFILE_ENABLED:
-            import time as _pt_pa
-            _pa_t_total = _pt_pa.perf_counter()
-            _tlog("    ╔ PA-DNA cache MISS (içeri girildi)", 0.0, extra=f"ticker={ticker}")
-        with _Timer("    PA-DNA: get_safe_historical_data(6mo)"):
-            df = get_safe_historical_data(ticker, period="6mo")
-        if df is None or len(df) < 50: return None
-        # --- YENİ HACİM HESAPLAMALARI (ADIM 2) BURAYA EKLENDİ ---
-        df = df[df['Close'] > 0].copy() # Sadece hacmi olan günleri değil, fiyatı olan her günü al (Canlı mumu yakalamak için)
-        # HAFTA SONU / TATİL / BAYRAM FIX: yfinance kapalı günlere Close=önceki kapanış,
-        # Volume=0 sahte bar ekler. Bugün BIST kapalıysa (hafta sonu VEYA milli/dini tatil),
-        # trailing 0-hacimli barları at — son geçerli işlem günü iloc[-1] olsun.
-        # Hafta içi normal seansta UYGULAMA — canlı mum Volume=0 ile başlar, geçerli.
-        _wknd_now = datetime.now(_TZ_ISTANBUL).weekday() >= 5  # 5=Cmt, 6=Paz
-        _bist_closed_now = False
-        try:
-            _is_bist_pa = ".IS" in ticker or ticker.startswith(("XU", "XB", "XT", "XY"))
-            if _BIST_CAL_OK and _is_bist_pa and _bist_is_closed():
-                _bist_closed_now = True
-        except Exception:
-            pass
-        if _wknd_now or _bist_closed_now:
-            # Çok günlü bayramlarda (örn. Kurban Bayramı 4 gün) birden fazla 0-bar olabilir
-            while len(df) > 1 and float(df['Volume'].iloc[-1]) == 0:
-                df = df.iloc[:-1].copy()
-        if len(df) < 20: return None
-        with _Timer("    PA-DNA: calculate_volume_delta"):
-            df = calculate_volume_delta(df)
-        with _Timer("    PA-DNA: calculate_full_volume_profile(POC/VAH/VAL)"):
-            _vp = calculate_full_volume_profile(df, lookback=20, bins=20)
-        poc_price = _vp['poc']
-        vah_price = _vp['vah']
-        val_price = _vp['val']
-        with _Timer("    PA-DNA: detect_naked_poc (4 pencere)"):
-            naked_pocs = detect_naked_poc(df, lookback=20, bins=20, n_windows=4)
-        # --------------------------------------------------------
-        o = df['Open']; h = df['High']; l = df['Low']; c = df['Close']; v = df['Volume']
-        
-        # --- VERİ HAZIRLIĞI (SON 3 GÜN) ---
-        # Şimdi iloc[-1] dediğinde her zaman hacmi olan EN SON GERÇEK günü alacak
-        c1_o, c1_h, c1_l, c1_c = float(o.iloc[-1]), float(h.iloc[-1]), float(l.iloc[-1]), float(c.iloc[-1]) 
-        c1_v = float(v.iloc[-1])
-        c2_o, c2_h, c2_l, c2_c = float(o.iloc[-2]), float(h.iloc[-2]), float(l.iloc[-2]), float(c.iloc[-2]) # Dün
-        c3_o, c3_h, c3_l, c3_c = float(o.iloc[-3]), float(h.iloc[-3]), float(l.iloc[-3]), float(c.iloc[-3]) # Önceki Gün
-        
-        c1_v = float(v.iloc[-1])
-        # RVOL için avg_v: yfinance fast_info'dan 3 aylık ortalama (TradingView uyumlu).
-        # today_v: df'den gelen c1_v kullan — get_safe_historical_data zaten
-        # apply_volume_projection çalıştırdı, yani c1_v = gün içi projeksiyon uygulanmış tam gün tahmini.
-        # Kural: geçmiş barlara dokunma, sadece son barı normalize et.
-        with _Timer("    PA-DNA: yf.Ticker.fast_info NETWORK"):
-            try:
-                _yf_info     = yf.Ticker(ticker).fast_info
-                _avg_vol_yf  = float(getattr(_yf_info, 'three_month_average_volume', 0) or 0)
-                _fi_last_vol = float(getattr(_yf_info, 'last_volume', 0) or 0)
-            except Exception:
-                _avg_vol_yf  = 0.0
-                _fi_last_vol = 0.0
-
-        # Bugünkü bar hacmi 0 veya çok küçükse (endeks/API gecikmesi) → fast_info.last_volume ile doldur
-        # Bu sadece raw_today_v için geçerli; geçmiş barlara dokunmuyoruz.
-        _last_date = df.index[-1].date()
-        _now_date  = datetime.now(_TZ_ISTANBUL).date()
-        _is_today  = (_last_date == _now_date)
-        if c1_v < 100 and _is_today and _fi_last_vol > 100:
-            # fast_info.last_volume = raw seans hacmi; apply_volume_projection ile projekte et
-            _now_tr   = datetime.now(_TZ_ISTANBUL)
-            _now_min  = _now_tr.hour * 60 + _now_tr.minute
-            _is_bist  = ".IS" in ticker or ticker.startswith("XU")
-            _open_min = 9 * 60 + 55 if _is_bist else 16 * 60 + 30
-            _elapsed  = _now_min - _open_min
-            if _elapsed >= 60:
-                # U-şekilli progress (BIST)
-                if _is_bist:
-                    if _elapsed <= 120:
-                        _prog = (_elapsed / 120) * 0.40
-                    elif _elapsed <= 380:
-                        _prog = 0.40 + ((_elapsed - 120) / 260) * 0.20
-                    else:
-                        _prog = 0.60 + ((_elapsed - 380) / 120) * 0.40
-                else:
-                    if _elapsed <= 60:
-                        _prog = (_elapsed / 60) * 0.25
-                    elif _elapsed <= 330:
-                        _prog = 0.25 + ((_elapsed - 60) / 270) * 0.40
-                    else:
-                        _prog = 0.65 + ((_elapsed - 330) / 60) * 0.35
-                _prog = max(0.05, min(_prog, 1.0))
-                c1_v = _fi_last_vol / _prog  # projeksiyonlu tahmin
-            else:
-                c1_v = _fi_last_vol  # projeksiyon yok, ham hacim
-
-        # avg_v: geçmiş 20 GERÇEK işlem günü ortalaması (Volume=0 olan tatil/bayram günleri hariç)
-        # KRİPTO İSTİSNASI: Binance BTC cinsinden hacim verir
-        _is_crypto = "-USD" in ticker
-        _v_hist    = v.iloc[:-1]
-        _v_nonzero = _v_hist[_v_hist > 0]
-
-        # Stale veri tespiti (gelişmiş): son 30 takvim günündeki non-zero işlem günü sayısı.
-        # Sadece "son tarih eski mi?" değil, "yeterli taze veri var mı?" kontrol ediyoruz.
-        # Nisan 10-21 gibi aralarda Volume=0 döndüyse bu tarz gap'ler artık yakalanır.
-        _avg_stale = False
-        if not _is_crypto:
-            try:
-                import datetime as _dt_avg
-                _today_d  = _dt_avg.date.today()
-                _30ago    = _today_d - _dt_avg.timedelta(days=30)
-                # Son 30 gündeki non-zero sayısı
-                _recent_count = 0
-                for _d in _v_nonzero.index:
-                    _dd = _d.date() if hasattr(_d, 'date') else _d
-                    if _30ago <= _dd < _today_d:
-                        _recent_count += 1
-                # 30 takvim günü ≈ 21 işlem günü; 16'dan az varsa veri eksik say
-                _avg_stale = _recent_count < 16
-            except Exception:
-                pass
-
-        if _avg_stale and not _is_crypto:
-            if _PROFILE_ENABLED:
-                _tlog("    ⚠ PA-DNA: _avg_stale=TRUE → 2 ek Yahoo network çağrısı yapılacak!", 0.0, extra=f"ticker={ticker}")
-            # Parquet/cache bozuk: iki farklı yfinance endpoint'i dene.
-            # 1) yf.download(period="2mo")  — v7 CSV endpoint
-            # 2) yf.Ticker().history(period="3mo") — v8 Chart endpoint
-            # İkisi de Volume=0 döndürebilir; son 30 günde daha fazla non-zero veren kazanır.
-            def _nz_count_30d(vol_series):
-                """Son 30 takvim günündeki non-zero hacim günü sayısı."""
-                try:
-                    import datetime as _dtt
-                    _t = _dtt.date.today()
-                    _ago = _t - _dtt.timedelta(days=30)
-                    cnt = 0
-                    for _d in vol_series.index:
-                        _dd = _d.date() if hasattr(_d, 'date') else _d
-                        if _ago <= _dd < _t and vol_series[_d] > 0:
-                            cnt += 1
-                    return cnt
-                except Exception:
-                    return 0
-
-            def _normalize_vol_df(df_raw):
-                """MultiIndex sütunları düzleştir, Volume sütununu çıkar."""
-                if df_raw is None or df_raw.empty:
-                    return None
-                if isinstance(df_raw.columns, pd.MultiIndex):
-                    _lvl0 = df_raw.columns.get_level_values(0)
-                    df_raw.columns = _lvl0 if 'Volume' in _lvl0 else df_raw.columns.get_level_values(1)
-                df_raw = df_raw.loc[:, ~df_raw.columns.duplicated()].copy()
-                df_raw.columns = [str(c).capitalize() for c in df_raw.columns]
-                if df_raw.index.tz is not None:
-                    df_raw.index = df_raw.index.tz_localize(None)
-                return df_raw if 'Volume' in df_raw.columns else None
-
-            _best_nz_series = None
-            _best_count = 0
-
-            # Kaynak 1: yf.download period="2mo"
-            try:
-                with _Timer("    PA-DNA: _avg_stale Kaynak1 yf.download(2mo) NETWORK"):
-                    _src1 = _normalize_vol_df(_yf_download_with_retry(ticker, period="2mo"))
-                if _src1 is not None:
-                    _s1_vol = _src1['Volume'].iloc[:-1]
-                    _c1 = _nz_count_30d(_s1_vol)
-                    if _c1 > _best_count:
-                        _best_count = _c1
-                        _best_nz_series = _s1_vol[_s1_vol > 0]
-            except Exception:
-                pass
-
-            # Kaynak 2: yf.Ticker().history period="3mo"
-            try:
-                with _Timer("    PA-DNA: _avg_stale Kaynak2 yf.Ticker.history(3mo) NETWORK"):
-                    _src2_raw = yf.Ticker(ticker).history(period="3mo", auto_adjust=AUTO_ADJUST)
-                _src2 = _normalize_vol_df(_src2_raw)
-                if _src2 is not None:
-                    _s2_vol = _src2['Volume'].iloc[:-1]
-                    _c2 = _nz_count_30d(_s2_vol)
-                    if _c2 > _best_count:
-                        _best_count = _c2
-                        _best_nz_series = _s2_vol[_s2_vol > 0]
-            except Exception:
-                pass
-
-            if _best_nz_series is not None and len(_best_nz_series) >= 3:
-                # Öncelik: son 30 takvim günündeki non-zero günler
-                # (Farklı hacim rejimleri — Mart düşük, Nisan yüksek — karışmasın)
-                try:
-                    import datetime as _dtr
-                    _30ago_r = _dtr.date.today() - _dtr.timedelta(days=30)
-                    _recent_mask = [
-                        (d.date() if hasattr(d, 'date') else d) >= _30ago_r
-                        for d in _best_nz_series.index
-                    ]
-                    _recent_nz = _best_nz_series[_recent_mask]
-                    if len(_recent_nz) >= 5:
-                        avg_v = float(_recent_nz.mean())   # Sadece son 30 gün
-                    else:
-                        avg_v = float(_best_nz_series.tail(20).mean())  # Fallback
-                except Exception:
-                    avg_v = float(_best_nz_series.tail(20).mean())
-            else:
-                avg_v = float(_v_nonzero.tail(20).mean()) if len(_v_nonzero) >= 3 else 1.0
-            # Yeterli taze veri bulunamadıysa → UI'da "Veri Eksik" gösterilecek
-            _vol_data_missing = (_best_count < 16)
-        else:
-            _vol_20g = float(_v_nonzero.tail(20).mean()) if len(_v_nonzero) >= 3 else 0.0
-            avg_v = _vol_20g if (_vol_20g > 0 and not pd.isna(_vol_20g)) else 1.0
-            _vol_data_missing = False
-
-        # raw_today_v: projeksiyon uygulanmış son bar hacmi (c1_v = v.iloc[-1], veya yukarıda fast_info ile dolduruldu)
-        # Birim uyumsuzluğu koruması: fast_info.last_volume bazen tarihsel hacimlere göre ~100x farklı birimde döner.
-        # Kontrol: fast_info devreye girdiyse (_fi_last_vol kullanıldıysa) 5G tarihsel medyanla karşılaştır.
-        # Oran >100x ise birim sorunu kesin — /100 uygula (lot→adet veya adet→lot düzeltmesi).
-        _fi_was_used = (float(v.iloc[-1]) < 100 and _is_today and _fi_last_vol > 100)
-        raw_today_v = c1_v
-        if _fi_was_used and avg_v > 0:
-            _v5_ref = float(_v_nonzero.tail(5).median()) if len(_v_nonzero) >= 1 else 0.0
-            if _v5_ref > 0 and raw_today_v / _v5_ref > 100:
-                raw_today_v = raw_today_v / 100  # lot→adet birim düzeltmesi
-
-        sma50 = c.rolling(50).mean().iloc[-1]
-        # --- [YENİ] GELİŞMİŞ HACİM ANALİZİ DEĞİŞKENLERİ ---
-        # Arefe günü RVOL normalizer: beklenen hacim avg_vol * 0.3125 → oran normalize et
-        _rvol_af = _bist_rvol_factor()
-        rvol = raw_today_v / (avg_v * _rvol_af) if avg_v > 0 else 1.0
-
-        # RSI Serisi
-        delta = c.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rs_calc = gain / loss
-        rsi_series = 100 - (100 / (1 + rs_calc))
-        rsi_val = rsi_series.iloc[-1]
-
-        # Mum Geometrisi
-        body = abs(c1_c - c1_o)
-        total_len = c1_h - c1_l if (c1_h - c1_l) > 0 else 0.01
-        u_wick = c1_h - max(c1_o, c1_c)
-        l_wick = min(c1_o, c1_c) - c1_l
-        is_green = c1_c > c1_o
-        is_red = c1_c < c1_o
-        
-        # --- [YENİ] STOPPING & CLIMAX KONTROLLERİ ---
-        stop_vol_msg = "Yok"
-        if c1_v > (avg_v * 1.5) and body < (total_len * 0.3) and l_wick > (total_len * 0.5):
-            stop_vol_msg = "VAR 🔥 (Dipten kurumsal toplama emaresi!)"
-
-        climax_msg = "Yok"
-        ema20_tmp = c.ewm(span=20).mean().iloc[-1]
-        price_dist_tmp = (c1_c / ema20_tmp) - 1
-        if c1_v == v.tail(50).max() and price_dist_tmp > 0.10:
-            climax_msg = "VAR ⚠️ (Trend sonu tahliye/FOMO riski!)"
-
-        # RSI Serisi (Uyumsuzluk için)
-        delta = c.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rs_calc = gain / loss
-        rsi_series = 100 - (100 / (1 + rs_calc))
-        rsi_val = rsi_series.iloc[-1]
-
-        # Mum Geometrisi (Son gün)
-        body = abs(c1_c - c1_o)
-        total_len = c1_h - c1_l
-        u_wick = c1_h - max(c1_o, c1_c)
-        l_wick = min(c1_o, c1_c) - c1_l
-        is_green = c1_c > c1_o
-        is_red = c1_c < c1_o
-        
-        # Toleranslar
-        wick_ratio = 2.0 
-        doji_threshold = 0.15 
-        tweezer_tol = c1_c * 0.001 
-
-        bulls, bears, neutrals = [], [], []
-        
-        # --- BAĞLAM (CONTEXT) ANALİZİ ---
-        trend_dir = "YÜKSELİŞ" if c1_c > sma50 else "DÜŞÜŞ"
-        is_overbought = rsi_val > 70
-        is_oversold = rsi_val < 30
-        vol_confirmed = c1_v > avg_v * 1.2 
-
-        # Sinyal Ekleme Fonksiyonu
-        def add_signal(sig_list, name, is_bullish):
-            prefix = ""
-            if is_bullish:
-                if trend_dir == "YÜKSELİŞ":
-                    prefix = "🔥 Trend Yönünde "
-                    # Boğa sinyali + yukarı trend = normal. RSI yüksek olsa da
-                    # "Riskli Tepe" değil — Morning Star, Hammer vb. tepe değil, dip formasyonlarıdır.
-                elif trend_dir == "DÜŞÜŞ":
-                    prefix = "⚠️ Tepki/Dönüş "
-                    # Boğa sinyali düşüş trendinde + aşırı satım dipinde → gerçek "Riskli Dip"
-                    if is_oversold: prefix += "(Riskli Dip) "
-            else:
-                if trend_dir == "DÜŞÜŞ":
-                    prefix = "📉 Trend Yönünde "
-                    if is_oversold: prefix += "(Riskli Dip) "
-                elif trend_dir == "YÜKSELİŞ":
-                    prefix = "⚠️ Düzeltme/Dönüş "
-                    # Ayı sinyali + yukarı trend + aşırı alım = gerçek "Riskli Tepe"
-                    # (Evening Star, Hanging Man, Shooting Star, Bearish Engulfing)
-                    if is_overbought: prefix += "(Riskli Tepe) "
-            suffix = " (Hacimli!)" if vol_confirmed else ""
-            sig_list.append(f"{prefix}{name}{suffix}")
-
-        # ======================================================
-        # 1. TEKLİ MUM FORMASYONLARI (KESİN ÇÖZÜM - FULL BLOK)
-        # ======================================================
-        if total_len > 0:
-            # Doji çakışmasını ve hatalı "bağlam" atlamalarını önlemek için kilit değişken
-            is_identified = False 
-
-            # A) SHOOTING STAR / TERS PİNBAR (Üst Fitil Baskın)
-            # Kural: Üst fitil mumun en az %60'ı kadar olmalı ve alt fitil küçük kalmalı.
-            if u_wick > total_len * 0.60 and l_wick < total_len * 0.25:
-                is_identified = True
-                # Şekli tanıdık, şimdi bağlama göre isimlendirelim
-                if trend_dir == "YÜKSELİŞ" or is_overbought:
-                    add_signal(bears, "Shooting Star (Kayan Yıldız) 🌠", False)
-                elif trend_dir == "DÜŞÜŞ":
-                    add_signal(bulls, "Inverted Hammer (Ters Çekiç) 🏗️", True)
-                else:
-                    neutrals.append("Ters Pinbar (Üstten Ret) 📌")
-
-            # B) HAMMER / ÇEKİÇ (Alt Fitil Baskın)
-            # Kural: Alt fitil mumun en az %60'ı kadar olmalı ve üst fitil küçük kalmalı.
-            elif l_wick > total_len * 0.60 and u_wick < total_len * 0.25:
-                is_identified = True
-                if trend_dir == "DÜŞÜŞ" or is_oversold:
-                    add_signal(bulls, "Hammer (Çekiç) 🔨", True)
-                elif trend_dir == "YÜKSELİŞ":
-                    add_signal(bears, "Hanging Man (Asılı Adam) 💀", False)
-                else:
-                    neutrals.append("Pinbar (Alttan Destek) 📌")
-
-            # C) MARUBOZU (Gövde Baskın - Güçlü Mum)
-            elif body > total_len * 0.80:
-                is_identified = True
-                if is_green: 
-                    add_signal(bulls, "Marubozu (Güçlü Boğa) 🚀", True)
-                else: 
-                    add_signal(bears, "Marubozu (Güçlü Ayı) 🔻", False)
-
-            # D) STOPPING VOLUME (Fiyat Hareketi + Hacim Onayı)
-            if not is_identified and (l_wick > body * 2.0) and (c1_v > avg_v * 1.5) and (c1_l < c2_l):
-                bulls.append("🛑 STOPPING VOLUME (Kurumsal Alım)")
-                is_identified = True
-
-            # E) DOJİ (Son Çare / Çöp Kutusu)
-            # Sadece yukarıdaki belirgin şekillerden biri DEĞİLSE ve gövde çok küçükse çalışır.
-            if not is_identified and body < total_len * doji_threshold:
-                neutrals.append("Doji (Kararsızlık) ⚖️")
-
-        # ======================================================
-        # 2. İKİLİ MUM FORMASYONLARI
-        # ======================================================
-        
-        # Bullish Kicker (Sert Gap Up)
-        if (c2_c < c2_o) and is_green and (c1_o > c2_o): 
-            add_signal(bulls, "Bullish Kicker (Sert GAP) 🦵", True)
-
-        # Engulfing (Yutan)
-        if (c2_c < c2_o) and is_green and (c1_c > c2_o) and (c1_o < c2_c): add_signal(bulls, "Bullish Engulfing 🐂", True)
-        if (c2_c > c2_o) and is_red and (c1_c < c2_o) and (c1_o > c2_c): add_signal(bears, "Bearish Engulfing 🐻", False)
-        
-        # Piercing / Dark Cloud
-        c2_mid = (c2_o + c2_c) / 2
-        if (c2_c < c2_o) and is_green and (c1_o < c2_c) and (c1_c > c2_mid) and (c1_c < c2_o): add_signal(bulls, "Piercing Line 🌤️", True)
-        if (c2_c > c2_o) and is_red and (c1_o > c2_c) and (c1_c < c2_mid) and (c1_c > c2_o): add_signal(bears, "Dark Cloud Cover ☁️", False)
-        
-        # Tweezer (Cımbız)
-        if abs(c1_l - c2_l) < tweezer_tol and (c1_l < c3_l): add_signal(bulls, "Tweezer Bottom 🥢", True)
-        if abs(c1_h - c2_h) < tweezer_tol and (c1_h > c3_h): add_signal(bears, "Tweezer Top 🥢", False)
-        
-        # Harami
-        if (c1_h < c2_h) and (c1_l > c2_l):
-            # Eğer hacim de son 10 günün en düşüğüyse veya ortalamanın en az %35 altındaysa
-            if c1_v < avg_v * 0.7:
-                neutrals.append("NR4: 4 Gündür Dar Bantta (Patlama gelebilir)") # Çok daha değerli bir sinyal!
-            else:
-                neutrals.append("Inside Bar (Bekle) ⏸️")
-
-        # ======================================================
-        # 3. ÜÇLÜ MUM FORMASYONLARI
-        # ======================================================
-        
-        # Morning Star (Sabah Yıldızı - Dipten Dönüş)
-        # 1. Kırmızı, 2. Küçük Gövde, 3. Yeşil (ilk mumun yarısını geçen)
-        c2_range = (c2_h - c2_l) if (c2_h - c2_l) > 0 else 0.01
-        if (c3_c < c3_o) and (abs(c2_c - c2_o) < c2_range * 0.4) and is_green and (c1_c > (c3_o + c3_c)/2):
-            add_signal(bulls, "Morning Star (Dipten Dönüş) ⭐", True)
-
-        # [GÜNCELLENMİŞ] Evening Star (Akşam Yıldızı - Tepeden Dönüş)
-        c2_range = (c2_h - c2_l) if (c2_h - c2_l) > 0 else 0.01
-        if (c3_c > c3_o) and (abs(c2_c - c2_o) < c2_range * 0.4) and is_red and (c1_c < (c3_o + c3_c)/2):
-             add_signal(bears, "Evening Star (Trend Dönüş Risk) 🌆", False)
-
-        # 3 White Soldiers
-        if (c1_c > c1_o) and (c2_c > c2_o) and (c3_c > c3_o) and (c1_c > c2_c > c3_c):
-             if c1_c > c1_h * 0.95: add_signal(bulls, "3 White Soldiers ⚔️", True)
-
-        # 3 Black Crows
-        if (c1_c < c1_o) and (c2_c < c2_o) and (c3_c < c3_o) and (c1_c < c2_c < c3_c):
-             if c1_c < c1_l * 1.05: add_signal(bears, "3 Black Crows 🦅", False)
-
-        # ======================================================
-        # HAFTALIK MUM HESAPLAMA (Günlük veriyi resample eder,
-        # Yahoo'ya gitmiyor, ekstra süre yok)
-        # ======================================================
-        weekly_note = ""
-        try:
-            df_w = df.resample('W').agg({
-                'Open':   'first',
-                'High':   'max',
-                'Low':    'min',
-                'Close':  'last',
-                'Volume': 'sum'
-            }).dropna().tail(3)
-
-            if len(df_w) >= 2:
-                wc1_o = float(df_w['Open'].iloc[-1]);  wc1_c = float(df_w['Close'].iloc[-1])
-                wc1_h = float(df_w['High'].iloc[-1]);  wc1_l = float(df_w['Low'].iloc[-1])
-                wc2_o = float(df_w['Open'].iloc[-2]);  wc2_c = float(df_w['Close'].iloc[-2])
-                wc2_h = float(df_w['High'].iloc[-2]);  wc2_l = float(df_w['Low'].iloc[-2])
-
-                w_is_green = wc1_c > wc1_o
-                w_is_red   = wc1_c < wc1_o
-                w2_is_green = wc2_c > wc2_o
-                w2_is_red   = wc2_c < wc2_o
-
-                # Haftalık engulfing
-                if w2_is_red and w_is_green and wc1_c > wc2_o and wc1_o < wc2_c:
-                    weekly_note = "📅 Haftalık: Bullish Engulfing (Güçlü)"
-                elif w2_is_green and w_is_red and wc1_c < wc2_o and wc1_o > wc2_c:
-                    weekly_note = "📅 Haftalık: Bearish Engulfing ⚠️"
-                # Haftalık hammer / shooting star
-                elif w_is_green or w_is_red:
-                    w_body     = abs(wc1_c - wc1_o)
-                    w_total    = (wc1_h - wc1_l) if (wc1_h - wc1_l) > 0 else 0.01
-                    w_l_wick   = min(wc1_o, wc1_c) - wc1_l
-                    w_u_wick   = wc1_h - max(wc1_o, wc1_c)
-                    if w_l_wick > w_total * 0.55 and w_u_wick < w_total * 0.25:
-                        weekly_note = "📅 Haftalık: Hammer / Pinbar (Destek)"
-                    elif w_u_wick > w_total * 0.55 and w_l_wick < w_total * 0.25:
-                        weekly_note = "📅 Haftalık: Shooting Star (Direnç) ⚠️"
-                    elif w_body > w_total * 0.75:
-                        weekly_note = f"📅 Haftalık: {'Güçlü Boğa Mumu' if w_is_green else 'Güçlü Ayı Mumu ⚠️'}"
-        except Exception:
-            weekly_note = ""
-
-        # ======================================================
-        # S&D BAĞLAM KONTROLÜ (Formasyon + Zon Çakışması)
-        # Ekstra veri çekimi yok — df zaten bellekte
-        # ======================================================
-        sd_context_note = ""
-        try:
-            sd_zone = detect_supply_demand_zones(df)
-            if sd_zone:
-                z_top = sd_zone['Top']
-                z_bot = sd_zone['Bottom']
-                z_type = sd_zone['Type']
-                # Fiyat zon içinde veya ±%1 yakınında mı?
-                tolerance = c1_c * 0.01
-                in_zone = (z_bot - tolerance) <= c1_c <= (z_top + tolerance)
-                if in_zone:
-                    if "Talep" in z_type:
-                        sd_context_note = "📍 Güçlü talep bölgesinde oluştu"
-                    else:
-                        sd_context_note = "📍 Güçlü arz bölgesinde oluştu"
-        except Exception:
-            sd_context_note = ""
-
-        # ======================================================
-        # FORMASYON GÜVEN SKORU (0-100)
-        # Hacim onayı + Trend uyumu + S&D çakışması + RSI uyumu
-        # ======================================================
-        confidence_score = 0
-        has_bullish = bool(bulls)
-        has_bearish = bool(bears)
-
-        if has_bullish or has_bearish:
-            signal_is_bullish = has_bullish and not has_bearish
-
-            # 1. Hacim onayı (+25)
-            if c1_v > avg_v * 1.2:
-                confidence_score += 25
-
-            # 2. Trend uyumu (+25)
-            if signal_is_bullish and trend_dir == "YÜKSELİŞ":
-                confidence_score += 25
-            elif not signal_is_bullish and trend_dir == "DÜŞÜŞ":
-                confidence_score += 25
-
-            # 3. S&D bölgesi çakışması (+25)
-            if sd_context_note:
-                if (signal_is_bullish and "talep" in sd_context_note.lower()) or \
-                   (not signal_is_bullish and "arz" in sd_context_note.lower()):
-                    confidence_score += 25
-
-            # 4. RSI uyumu (+25)
-            if signal_is_bullish and rsi_val < 45:
-                confidence_score += 25
-            elif not signal_is_bullish and rsi_val > 60:
-                confidence_score += 25
-
-        confidence_txt = f" (Güven: {confidence_score}/100)" if confidence_score > 0 else ""
-
-        # ======================================================
-        # ÇIKTI FORMATLAMA — Öncelik sırası + Bağlam notu
-        # ======================================================
-        # Güçlü formasyonlar öne alınır
-        priority_strong = ["Bullish Kicker", "Stopping Volume", "3 White Soldiers",
-                           "Bullish Engulfing", "Morning Star", "3 Black Crows",
-                           "Bearish Engulfing", "Evening Star"]
-        priority_medium = ["Hammer", "Hanging Man", "Shooting Star", "Inverted Hammer",
-                           "Marubozu", "Piercing", "Dark Cloud"]
-        # Zayıf formasyonlar (Doji, Inside Bar, Tweezer vb.) neutrals içinde kalıyor
-
-        def sort_by_priority(sig_list, order):
-            result = []
-            rest   = list(sig_list)
-            for p in order:
-                for s in list(rest):
-                    if p in s:
-                        result.append(s)
-                        rest.remove(s)
-                        break
-            return result + rest
-
-        bulls    = sort_by_priority(bulls,   priority_strong + priority_medium)
-        bears    = sort_by_priority(bears,   priority_strong + priority_medium)
-
-        # En güçlü sinyal öne, geri kalanlar "destekleyici" olarak
-        def format_signals(sig_list):
-            if not sig_list:
-                return ""
-            if len(sig_list) == 1:
-                return sig_list[0]
-            return f"{sig_list[0]} (Destekleyici: {', '.join(sig_list[1:])})"
-
-        signal_summary = ""
-        if bulls:
-            signal_summary += f"ALICI: {format_signals(bulls)}{confidence_txt} "
-        if bears:
-            signal_summary += f"SATICI: {format_signals(bears)}{confidence_txt} "
-        if neutrals:
-            signal_summary += f"NÖTR: {', '.join(neutrals)}"
-
-        # S&D bağlam notu ekle
-        if sd_context_note and (bulls or bears):
-            signal_summary += f" | {sd_context_note}"
-
-        # Haftalık not ekle
-        if weekly_note:
-            signal_summary += f" | {weekly_note}"
-
-        candle_desc  = signal_summary if signal_summary else "Belirgin, güçlü bir formasyon yok."
-        candle_title = "Formasyon Tespiti"
-
-        # ======================================================
-        # 4. DİĞER GÖSTERGELER (SFP, VSA, KONUM, SIKIŞMA)
-        # ======================================================
-        
-        # SFP
-        sfp_txt, sfp_desc = "Yok", "Önemli bir tuzak tespiti yok."
-        recent_highs = h.iloc[-20:-1].max(); recent_lows = l.iloc[-20:-1].min()
-        if c1_h > recent_highs and c1_c < recent_highs: sfp_txt, sfp_desc = "⚠️ Bearish SFP (Boğa Tuzağı)", "Tepe temizlendi ama tutunamadı."
-        elif c1_l < recent_lows and c1_c > recent_lows: sfp_txt, sfp_desc = "💎 Bullish SFP (Ayı Tuzağı)", "Dip temizlendi ve geri döndü."
-
-        # VSA
-        vol_txt, vol_desc = "Normal", "Hacim ortalama seyrediyor."
-        if c1_v > avg_v * 1.5:
-            if "🛑 STOPPING VOLUME" in signal_summary: vol_txt, vol_desc = "🛑 STOPPING VOLUME", "Düşüşte devasa hacimle frenleme."
-            elif body < total_len * 0.3: vol_txt, vol_desc = "⚠️ Churning (Boşa Çaba)", "Yüksek hacme rağmen fiyat gidemiyor."
-            else: vol_txt, vol_desc = "🔋 Trend Destekli", "Fiyat hareketi hacimle destekleniyor."
-
-        # Konum (BOS)
-        loc_txt, loc_desc = "Denge Bölgesi", "Fiyat konsolidasyon içinde."
-        if c1_c > h.iloc[-20:-1].max(): loc_txt, loc_desc = "📈 Zirve Kırılımı (BOS)", "Son 20 günün zirvesi aşıldı."
-        elif c1_c < l.iloc[-20:-1].min(): loc_txt, loc_desc = "📉 Dip Kırılımı (BOS)", "Son 20 günün dibi kırıldı."
-
-        # Volatilite (Coil)
-        atr = (h-l).rolling(14).mean().iloc[-1]
-        range_5 = h.tail(5).max() - l.tail(5).min()
-        sq_txt, sq_desc = "Normal", "Oynaklık normal seviyede."
-        if range_5 < (1.5 * atr): sq_txt, sq_desc = "⏳ SÜPER SIKIŞMA (Coil)", "Fiyat yay gibi gerildi. Patlama yakın."
-
-        # ======================================================
-        # 5.5. OBV UYUMSUZLUĞU (SMART MONEY FİLTRELİ - YENİ)
-        # ======================================================
-        # A. OBV ve SMA Hesapla
-        change_obv = c.diff()
-        dir_obv = np.sign(change_obv).fillna(0)
-        obv = (dir_obv * v).cumsum()
-        
-        # Profesyonel Filtre: OBV'nin 20 günlük ortalaması
-        obv_sma = obv.rolling(20).mean()
-        
-        # B. Dual-Window Kıyaslamalar (5g kısa ivme + 14g orta vade)
-        p_now = c.iloc[-1]; p_old = c.iloc[-6]
-        obv_now    = obv.iloc[-1]
-        obv_5      = obv.iloc[-6]   # 5 gün önceki OBV
-        obv_14     = obv.iloc[-15]  # 14 gün önceki OBV
-        obv_sma_now = obv_sma.iloc[-1]
-
-        obv_5g_up  = obv_now > obv_5
-        obv_14g_up = obv_now > obv_14
-        p_tr       = "YUKARI" if p_now > p_old else "AŞAĞI"
-        is_obv_strong = obv_now > obv_sma_now
-
-        # CMF (20g) teyit katmanı — OBV ile çapraz kontrol
-        # OBV yönü ve CMF çelişirse sinyal downgrade yapılır.
-        _cmf_dna     = compute_cmf(df, period=20, vol_series=v)
-        _cmf_neg_dna = _cmf_dna < -0.05   # Bar içi satış baskısı — OBV'yi sorgula
-
-        obv_data = {"title": "⚖️ ZAYIF İVME (Hacimsiz Bölge)", "desc": "Hacim akışı ortalamanın altında.", "color": "#64748B"}
-
-        # Kafa çevirme: iki pencere zıt yön
-        if obv_5g_up and not obv_14g_up:
-            obv_data = {"title": "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)", "desc": "5g OBV yukarı ama 14g hâlâ baskılı — erken toparlanma sinyali.", "color": "#38bdf8"}
-        elif not obv_5g_up and obv_14g_up:
-            obv_data = {"title": "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)", "desc": "5g OBV aşağı ama 14g hâlâ pozitif — kısa vadeli zayıflama.", "color": "#f59e0b"}
-        # Senaryo 1: GİZLİ GİRİŞ (Fiyat Düşerken Mal Toplama)
-        elif p_tr == "AŞAĞI" and obv_5g_up and obv_14g_up:
-            if is_obv_strong:
-                if _cmf_neg_dna:
-                    obv_data = {"title": "⚠️ ŞÜPHELİ GİRİŞ (Para Akışı Çelişkili)",
-                                "desc": f"OBV birikim görüyor ama bar içi alıcı zayıf (Para Akışı: {_cmf_dna:+.3f}) — gün içi gerçek talep yok.",
-                                "color": "#f59e0b"}
-                else:
-                    obv_data = {"title": "🔥 GÜÇLÜ GİZLİ GİRİŞ", "desc": "Fiyat düşerken her iki OBV penceresi yukarı & ort. üstünde (Smart Money).", "color": "#16a34a"}
-            else:
-                obv_data = {"title": "👀 Olası Toplama (Zayıf)", "desc": "OBV artıyor ama henüz ortalamayı geçemedi.", "color": "#d97706"}
-        # Senaryo 2: GİZLİ ÇIKIŞ
-        elif p_tr == "YUKARI" and not obv_5g_up and not obv_14g_up:
-            obv_data = {"title": "⚠️ GİZLİ ÇIKIŞ (Dağıtım)", "desc": "Fiyat çıkarken her iki OBV penceresi de düşüyor.", "color": "#f87171"}
-        # Senaryo 3: TREND DESTEĞİ
-        elif is_obv_strong and obv_5g_up and obv_14g_up:
-            _p_yest = c.iloc[-2]
-            if p_now < _p_yest:
-                if _cmf_neg_dna:
-                    obv_data = {"title": "⚠️ SAHTE GÜÇ (OBV-Para Akışı Çelişkisi)",
-                                "desc": f"OBV güçlü görünüyor ama bar içi satış baskısı var (Para Akışı: {_cmf_dna:+.3f}) — kurumsal destek sorgulanabilir.",
-                                "color": "#f59e0b"}
-                else:
-                    obv_data = {"title": "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)", "desc": "Bugün fiyat kırmızı ama OBV her iki pencerede güçlü.", "color": "#0ea5e9"}
-            else:
-                if _cmf_neg_dna:
-                    obv_data = {"title": "⚠️ ZAYIF TEYİT (OBV güçlü, Para Akışı zayıf)",
-                                "desc": f"OBV ortalamasının üzerinde ama CMF satış baskısı gösteriyor (Para Akışı: {_cmf_dna:+.3f}) — trend kırılgan olabilir.",
-                                "color": "#f59e0b"}
-                else:
-                    obv_data = {"title": "✅ SAĞLIKLI TREND (Hacim Onaylı)", "desc": "OBV her iki pencerede de ortalamasının üzerinde.", "color": "#15803d"}
-
-        # ======================================================
-        # 6. RSI UYUMSUZLUK (DIVERGENCE) - GÜNCELLENMİŞ HASSASİYET
-        # ==========================================================
-        div_txt, div_desc, div_type = "Uyumlu", "RSI ve Fiyat paralel.", "neutral"
-        try:
-            # Son 5 gün vs Önceki 15 gün
-            current_window = c.iloc[-5:]
-            prev_window = c.iloc[-20:-5]
-
-            # Negatif Uyumsuzluk (Ayı)
-            p_curr_max = current_window.max(); p_prev_max = prev_window.max()
-            r_curr_max = rsi_series.iloc[-5:].max(); r_prev_max = rsi_series.iloc[-20:-5].max()
-
-            # --- FİLTRELER ---
-            # 1. RSI Tavanı: 75 üstüyse "Sat" deme.
-            is_rsi_saturated = rsi_val >= 75
-            # 2. SMA50 Kuralı: Fiyat SMA50'nin %20'sinden fazla yukarıdaysa "Ralli Modu"dur.
-            is_parabolic = c1_c > (sma50 * 1.20)
-            # 3. Mum Rengi: Son mum (is_red) kırmızı değilse sat deme. (is_red yukarıda tanımlıydı)
-
-            # Matematiksel Uyumsuzluk Kontrolü
-            # DÜZELTME: ">" yerine ">=" kullanarak İkili Tepeleri de dahil ettik.
-            if (p_curr_max >= p_prev_max) and (r_curr_max < r_prev_max) and (r_prev_max > 60):
-                
-                # KARAR MEKANİZMASI: Filtrelerin HEPSİNDEN geçerse uyarı ver
-                if not is_rsi_saturated and is_red and not is_parabolic:
-                    div_txt = "🐻 NEGATİF UYUMSUZLUK (Tepe Zayıflığı)"
-                    div_desc = "Fiyat zirveyi zorluyor, RSI yoruluyor ve satış geldi."
-                    div_type = "bearish"
-                else:
-                    # Uyumsuzluk var ama trend çok güçlü (Ralli Modu)
-                    div_txt = "🚀 GÜÇLÜ MOMENTUM (Aşırı Alım)"
-                    reason = "Fiyat koptu (%20+)" if is_parabolic else "RSI doygunlukta"
-                    div_desc = f"Negatif uyumsuzluk var ANCAK trend çok güçlü ({reason}). Henüz dönüş onayı yok."
-                    div_type = "neutral"
-
-            # Pozitif Uyumsuzluk (Boğa)
-            p_curr_min = current_window.min(); p_prev_min = prev_window.min()
-            r_curr_min = rsi_series.iloc[-5:].min(); r_prev_min = rsi_series.iloc[-20:-5].min()
-
-            # DÜZELTME: "<" yerine "<=" kullanarak İkili Dipleri de dahil ettik.
-            if (p_curr_min <= p_prev_min) and (r_curr_min > r_prev_min) and (r_prev_min < 45):
-                div_txt = "💎 POZİTİF UYUMSUZLUK (Gizli Güç)"
-                div_desc = "Fiyat dipte tutunuyor ve RSI yükseliyor. Toplama sinyali!"
-                div_type = "bullish"
-
-        except: pass
-
-        # ======================================================
-        # 7. & 8. SMART MONEY VERİLERİ (VWAP & RS)
-        # ======================================================
-        
-        # --- 7. VWAP (KURUMSAL MALİYET) ---
-        vwap_now = c1_c; vwap_diff = 0
-        try:
-            # 'ta' kütüphanesi ile 20 günlük (Aylık) VWAP hesabı
-            vwap_indicator = VolumeWeightedAveragePrice(high=h, low=l, close=c, volume=v, window=20)
-            vwap_series = vwap_indicator.volume_weighted_average_price()
-            vwap_now = float(vwap_series.iloc[-1])
-            
-            # Sapma Yüzdesi
-            vwap_diff = ((c1_c - vwap_now) / vwap_now) * 100
-        except:
-            pass
-
-        # --- 8. RS (PİYASA GÜCÜ / ALPHA) ---
-        alpha_val = 0.0
-        try:
-            bench_ticker = "XU100.IS" if ".IS" in ticker else "^GSPC"
-            df_bench = get_safe_historical_data(bench_ticker, period="1mo")
-
-            if df_bench is not None and not df_bench.empty:
-                # 1. Verileri kopyala ve tarih formatlarını (Timezone) temizle
-                s_series = df['Close'].copy()
-                b_series = df_bench['Close'].copy()
-                s_series.index = s_series.index.tz_localize(None)
-                b_series.index = b_series.index.tz_localize(None)
-
-                # 2. Tarih bazlı senkronize birleştirme
-                combined = pd.concat([s_series, b_series], axis=1, keys=['Stock', 'Bench']).sort_index().dropna()
-                
-                # 3. Eğer bugün (en son satır) her iki veri de mevcutsa:
-                if len(combined) >= 2:
-                    s_now = combined['Stock'].iloc[-1]; s_prev = combined['Stock'].iloc[-2]
-                    b_now = combined['Bench'].iloc[-1]; b_prev = combined['Bench'].iloc[-2]
-                    
-                    stock_chg = ((s_now - s_prev) / s_prev) * 100
-                    bench_chg = ((b_now - b_prev) / b_prev) * 100
-                    alpha_val = stock_chg - bench_chg
-                else:
-                    # Veri eşleşmediyse (Lag varsa) direkt son değerleri zorla kıyasla
-                    s_chg_forced = ((c1_c - c2_c) / c2_c) * 100
-                    b_last_chg = ((df_bench['Close'].iloc[-1] - df_bench['Close'].iloc[-2]) / df_bench['Close'].iloc[-2]) * 100
-                    alpha_val = s_chg_forced - b_last_chg
-        except Exception as e:
-            alpha_val = 0.0 # Güvenli çıkış
-        # ======================================================
-        # 9. GELİŞMİŞ HACİM ANALİZİ (SMART VOLUME)
-        # ======================================================
-        std_v_20 = float(v.rolling(20).std().iloc[-1])
-        c_std = std_v_20 if std_v_20 > 0 else 1.0
-        # raw_today_v: projeksiyon uygulanmış c1_v | avg_v: fast_info 3 aylık ortalama
-        # Arefe günü RVOL normalizer: beklenen hacim avg_vol * 0.3125 → oran normalize et
-        _rvol_af2 = _bist_rvol_factor()
-        rvol = raw_today_v / (avg_v * _rvol_af2) if avg_v > 0 else 1.0
-        
-        # Stopping Volume: Fiyat dipteyken gelen devasa karşılayıcı hacim
-        stop_vol_msg = "Yok"
-        if c1_v > (avg_v * 1.5) and body < (total_len * 0.3) and l_wick > (total_len * 0.5):
-            stop_vol_msg = "VAR 🔥 (Dipten kurumsal toplama emaresi!)"
-
-        # Climax Volume: Trend sonunda gelen aşırı şişkin hacim
-        climax_msg = "Yok"
-        ema20_val = c.ewm(span=20).mean().iloc[-1]
-        price_dist_ema20 = (c1_c / ema20_val) - 1
-        if c1_v == v.tail(50).max() and price_dist_ema20 > 0.10:
-            climax_msg = "VAR ⚠️ (Trend sonu tahliye/FOMO riski!)"
-
-        # ======================================================
-        # 10. HACİM DELTASI VE POC İLİŞKİSİ (YENİ FORMAT + YÜZDE)
-        # ======================================================
-        son_mum = df.iloc[-1]
-        onceki_mum = df.iloc[-2]
-        delta_val = son_mum['Volume_Delta']
-        fiyat = son_mum['Close']
-        toplam_hacim = son_mum['Volume']
-        
-        # DELTA GÜCÜ (tek mum, geriye uyumluluk için korundu)
-        if toplam_hacim > 0:
-            delta_gucu_yuzde = abs((delta_val / toplam_hacim) * 100)
-        else:
-            delta_gucu_yuzde = 0
-
-        # 5 SEANS KÜMÜLATİF DELTA
-        cum_delta_5 = float(df['Volume_Delta'].iloc[-5:].sum()) if 'Volume_Delta' in df.columns else 0.0
-        total_vol_5 = float(df['Volume'].iloc[-5:].sum())
-        cum_delta_pct = abs(cum_delta_5 / total_vol_5 * 100) if total_vol_5 > 0 else 0.0
-
-        # VALUE AREA POZİSYONU
-        if fiyat > vah_price:
-            va_pos = "ÜSTÜNDE"
-        elif fiyat < val_price:
-            va_pos = "ALTINDA"
-        else:
-            va_pos = "İÇİNDE"
-
-        # ANA BAŞLIK + BASIT AÇIKLAMA (senaryo matrisi)
-        # Fiyat formatı: büyükse tam sayı, küçükse ondalıklı
-        def _fmt(v): return f"{v:.0f}" if v >= 100 else f"{v:.2f}" if v >= 1 else f"{v:.4f}"
-        _poc_range = f"({_fmt(val_price)}–{_fmt(vah_price)})"
-
-        if va_pos == "ÜSTÜNDE":
-            if cum_delta_5 > 0:
-                main_title = f"🚀 POC ALANI {_poc_range} ÜSTÜNDE — Güçlü Kırılım"
-                simple_text = "Büyük oyuncuların yoğun işlem yaptığı POC alanının üstüne çıkıldı ve son 5 günde alım hacmi bunu destekliyor. Trend güçlü görünüyor."
-            else:
-                main_title = f"⚠️ POC ALANI {_poc_range} ÜSTÜNDE — Ama Satış Var"
-                simple_text = "Fiyat yukarıda görünüyor ama son 5 günde büyük oyuncular sessizce mal veriyor olabilir. Boğa tuzağı riski taşıyor olabilir."
-        elif va_pos == "ALTINDA":
-            if cum_delta_5 > 0:
-                main_title = f"🟢 POC ALANI {_poc_range} ALTINDA — Gizli Alım"
-                simple_text = "Fiyat ucuz bölgede ama son 5 günde alım hacmi artıyor. Akıllı para sessizce topluyor olabilir."
-            else:
-                main_title = f"🔴 POC ALANI {_poc_range} ALTINDA — Baskı Devam"
-                simple_text = "Fiyat adil değerin altında ve son 5 günde satış baskısı sürüyor. Kırılım onaylanmış gibi görünüyor."
-        else:  # İÇİNDE
-            if cum_delta_5 > 0:
-                main_title = f"⚖️ POC ALANINDA {_poc_range} — Alım Baskısı Var"
-                simple_text = "Fiyat en yoğun hacim bölgesinde (POC). Son 5 günde alım ağırlıklı işlem akışı görülüyor — POC üstünde tutunursa yapı güçlü kalır, altına iner ve kalırsa baskı sürebilir."
-            elif cum_delta_5 < 0:
-                main_title = f"⚖️ POC ALANINDA {_poc_range} — Satış Baskısı Var"
-                simple_text = "Piyasa büyük oyuncuların en çok işlem yaptığı POC alanında. Son 5 günde satış ağır basıyor, aşağı kırılım riski var."
-            else:
-                main_title = f"⚖️ POC ALANINDA {_poc_range} — Yön Bekleniyor"
-                simple_text = "Fiyat en yoğun hacim bölgesinde (POC). Alıcı ve satıcı dengede — POC'un hangi yönde kalıcı olarak terk edileceği sonraki yapıyı belirler."
-
-        # NAKED POC — en yakın olanı seç
-        naked_txt = ""
-        if naked_pocs:
-            closest = min(naked_pocs, key=lambda x: abs(x - fiyat))
-            direction = "aşağıda" if closest < fiyat else "yukarıda"
-            n_pct = abs(closest - fiyat) / (fiyat + 1e-9) * 100
-            naked_txt = f"{closest:.2f} (fiyattan %{n_pct:.1f} {direction})"
-
-        # OBV direction sayısal flag (GENEL ÖZET voting için — dual-window)
-        if p_tr == "AŞAĞI" and obv_5g_up and obv_14g_up:
-            _obv_direction = +1   # Gizli giriş (akümülasyon)
-        elif p_tr == "YUKARI" and not obv_5g_up and not obv_14g_up:
-            _obv_direction = -1   # Gizli çıkış (dağıtım)
-        elif obv_5g_up and not obv_14g_up:
-            _obv_direction = +1   # Kafa çeviriyor toparlanma — hafif pozitif
-        elif not obv_5g_up and obv_14g_up:
-            _obv_direction = 0    # Kafa çeviriyor zayıflama — nötr
-        elif is_obv_strong:
-            _obv_direction = +1
-        else:
-            _obv_direction = 0
-
-        _pa_result = {
-            "candle": {"title": candle_title, "desc": candle_desc},
-            "sfp": {"title": sfp_txt, "desc": sfp_desc},
-            "vol": {"title": vol_txt, "desc": vol_desc},
-            "loc": {"title": loc_txt, "desc": loc_desc},
-            "sq": {"title": sq_txt, "desc": sq_desc},
-            "obv": obv_data,
-            "obv_direction": _obv_direction,
-            "rsi_val":       float(rsi_val),
-            "sma50_val":     float(sma50),
-            "div": {"title": div_txt, "desc": div_desc, "type": div_type},
-            "vwap": {"val": vwap_now, "diff": vwap_diff},
-            "rs": {"alpha": alpha_val},
-            "smart_volume": {
-                "title":          main_title,
-                "desc":           simple_text,
-                "poc":            poc_price,
-                "vah":            vah_price,
-                "val":            val_price,
-                "va_pos":         va_pos,
-                "delta":          delta_val,
-                "delta_yuzde":    delta_gucu_yuzde,
-                "cum_delta_5":    cum_delta_5,
-                "cum_delta_pct":  round(cum_delta_pct, 1),
-                "naked_poc_txt":  naked_txt,
-                "rvol":           round(rvol, 2),
-                "vol_data_missing": _vol_data_missing,
-                "stopping":       stop_vol_msg,
-                "climax":         climax_msg
-            }
-        }
-        if _PROFILE_ENABLED:
-            _tlog("    ╚ PA-DNA TOPLAM (cache MISS)", (_pt_pa.perf_counter() - _pa_t_total) * 1000, extra=f"ticker={ticker}")
-        return _pa_result
-    except Exception:
-        if _PROFILE_ENABLED:
-            try: _tlog("    ╚ PA-DNA EXCEPTION (cache MISS)", (_pt_pa.perf_counter() - _pa_t_total) * 1000, extra=f"ticker={ticker}")
-            except Exception: pass
-        return None
 # ==============================================================================
 # BÖLÜM 23 — BANNER / ROZET RENDER FONKSİYONLARI
 # Altın Set-up, Platin Fırsat, Güçlü Dönüş, Double Hit, Pre-Launch BOS banner'larını HTML olarak üreten görsel bileşenler.
@@ -11885,216 +7380,10 @@ def render_prelaunch_bos_banner(ticker):
 # Batch tarama ve detay diyalog render fonksiyonları.
 # ==============================================================================
 
-def _harmonic_zigzag(high, low, window=3):
-    """Basit zigzag pivot noktaları — scipy gerektirmez."""
-    n = len(high)
-    pivots = []  # (bar_idx, price, 'H'|'L')
-    i = window
-    while i < n - window:
-        h_win = high[max(0, i - window): i + window + 1]
-        l_win = low[max(0, i - window): i + window + 1]
-        is_peak   = float(high[i]) >= max(h_win) - 1e-9
-        is_trough = float(low[i])  <= min(l_win) + 1e-9
-        if is_peak and not is_trough:
-            if not pivots or pivots[-1][2] == 'L':
-                pivots.append((i, float(high[i]), 'H'))
-            elif pivots[-1][2] == 'H' and float(high[i]) > pivots[-1][1]:
-                pivots[-1] = (i, float(high[i]), 'H')
-        elif is_trough and not is_peak:
-            if not pivots or pivots[-1][2] == 'H':
-                pivots.append((i, float(low[i]), 'L'))
-            elif pivots[-1][2] == 'L' and float(low[i]) < pivots[-1][1]:
-                pivots[-1] = (i, float(low[i]), 'L')
-        i += 1
-    return pivots
 
 
-def _check_harmonic_ratio(ratio, target=None, tol=0.06, lo=None, hi=None):
-    """Nokta veya aralık kontrolü."""
-    if target is not None:
-        return abs(ratio - target) <= tol
-    return lo <= ratio <= hi
 
 
-def calculate_harmonic_patterns(ticker, df):
-    """
-    🔮 HARMONİK FORMASYON TESPİTİ (XABCD Fibonacci Oranları)
-    Desteklenen: Gartley, Butterfly, Bat, Crab, Shark
-
-    Üç durum döner:
-      state='fresh'      → D 0-3 gün önce, fiyat PRZ'den <%8 uzakta
-      state='approaching'→ XAB(C) tamamlandı, fiyat tahmini D'ye <%8 yaklaşıyor
-      None               → her ikisi de yok (gösterme)
-    """
-    if df is None or len(df) < 60:
-        return None
-    try:
-        h = df['High'].values
-        l = df['Low'].values
-        c = df['Close'].values
-        n = len(c)
-        curr_price = float(c[-1])
-        TOL = 0.06
-
-        def ok(ratio, target=None, tol=TOL, lo=None, hi=None):
-            return _check_harmonic_ratio(ratio, target, tol, lo, hi)
-
-        pivots = _harmonic_zigzag(h, l, window=5)
-
-        # ── AŞAMA 1: TAMAMLANMIŞ (D oluşmuş, taze) ────────────────────────
-        if len(pivots) >= 5:
-            for pi in range(len(pivots) - 5, max(len(pivots) - 20, -1), -1):
-                pts = pivots[pi: pi + 5]
-                if len(pts) < 5:
-                    continue
-                Xi, Xp, Xt = pts[0]
-                Ai, Ap, At = pts[1]
-                Bi, Bp, Bt = pts[2]
-                Ci, Cp, Ct = pts[3]
-                Di, Dp, Dt = pts[4]
-
-                if Xt == 'L' and At == 'H' and Bt == 'L' and Ct == 'H' and Dt == 'L':
-                    direction = 'Bullish'
-                    XA = Ap - Xp; AB = Ap - Bp; BC = Cp - Bp
-                    CD = Cp - Dp; XD = abs(Dp - Xp)
-                elif Xt == 'H' and At == 'L' and Bt == 'H' and Ct == 'L' and Dt == 'H':
-                    direction = 'Bearish'
-                    XA = Xp - Ap; AB = Bp - Ap; BC = Bp - Cp
-                    CD = Dp - Cp; XD = abs(Dp - Xp)
-                else:
-                    continue
-
-                if XA <= 0 or AB <= 0 or BC <= 0 or CD <= 0:
-                    continue
-
-                AB_XA = AB / XA; BC_AB = BC / AB
-                CD_BC = CD / BC; XD_XA = XD / XA
-                prz = Dp
-                bars_ago = n - 1 - Di
-                fark_pct = abs(curr_price - prz) / (prz + 1e-9) * 100
-
-                # TAZE FİLTRE: D en fazla 10 gün önce, fiyat %8'den uzakta değil
-                if bars_ago > 10 or fark_pct > 8:
-                    continue
-
-                _pidx = [Xi, Ai, Bi, Ci, Di]
-                # Bullish: X=low,A=high,B=low,C=high,D=low  /  Bearish: X=high,A=low,B=high,C=low,D=high
-                if direction == 'Bullish':
-                    _pprices = [l[Xi], h[Ai], l[Bi], h[Ci], l[Di]]
-                else:
-                    _pprices = [h[Xi], l[Ai], h[Bi], l[Ci], h[Di]]
-
-                pat = None
-                if ok(AB_XA, 0.618) and ok(BC_AB, lo=0.382, hi=0.886) and ok(CD_BC, lo=1.272, hi=1.618) and ok(XD_XA, 0.786):
-                    pat = 'Gartley'
-                elif ok(AB_XA, 0.786) and ok(BC_AB, lo=0.382, hi=0.886) and ok(CD_BC, lo=1.618, hi=2.618) and ok(XD_XA, lo=1.27, hi=1.618):
-                    pat = 'Butterfly'
-                elif ok(AB_XA, lo=0.382, hi=0.500) and ok(BC_AB, lo=0.382, hi=0.886) and ok(CD_BC, lo=1.618, hi=2.618) and ok(XD_XA, 0.886):
-                    pat = 'Bat'
-                elif ok(AB_XA, lo=0.382, hi=0.618) and ok(BC_AB, lo=0.382, hi=0.886) and ok(CD_BC, lo=2.618, hi=3.618) and ok(XD_XA, 1.618):
-                    pat = 'Crab'
-                elif ok(AB_XA, lo=0.382, hi=0.618) and ok(BC_AB, lo=1.13, hi=1.618) and ok(XD_XA, lo=0.886, hi=1.13):
-                    pat = 'Shark'
-
-                if pat:
-                    # D noktası major destek/direnç confluence kontrolü
-                    d_sr_confluence = False
-                    try:
-                        sr_levels = find_smart_sr_levels(df, window=5, cluster_tolerance=0.015, min_touches=3)
-                        d_sr_confluence = any(abs(prz - lvl) / (lvl + 1e-9) <= 0.015 for lvl in sr_levels)
-                    except Exception:
-                        pass
-                    return {'pattern': pat, 'direction': direction, 'prz': prz,
-                            'AB_XA': round(AB_XA, 3), 'XD_XA': round(XD_XA, 3),
-                            'bars_ago': bars_ago, 'curr_price': curr_price,
-                            'pivot_idx': _pidx, 'pivot_prices': _pprices, 'state': 'fresh',
-                            'd_sr_confluence': d_sr_confluence}
-
-        # ── AŞAMA 2: YAKLAŞAN (XABC tamamlandı, D henüz oluşmadı) ─────────
-        # CD bacağının tahmini bitiş noktasını Fibonacci ortalamasıyla hesapla
-        if len(pivots) >= 4:
-            for pi in range(len(pivots) - 4, max(len(pivots) - 15, -1), -1):
-                pts = pivots[pi: pi + 4]
-                if len(pts) < 4:
-                    continue
-                Xi, Xp, Xt = pts[0]
-                Ai, Ap, At = pts[1]
-                Bi, Bp, Bt = pts[2]
-                Ci, Cp, Ct = pts[3]
-
-                # C çok eski olmasın (son 15 bar içinde oluşmuş olmalı)
-                bars_since_c = n - 1 - Ci
-                if bars_since_c > 15:
-                    continue
-
-                if Xt == 'L' and At == 'H' and Bt == 'L' and Ct == 'H':
-                    direction = 'Bullish'
-                    XA = Ap - Xp; AB = Ap - Bp; BC = Cp - Bp
-                elif Xt == 'H' and At == 'L' and Bt == 'H' and Ct == 'L':
-                    direction = 'Bearish'
-                    XA = Xp - Ap; AB = Bp - Ap; BC = Bp - Cp
-                else:
-                    continue
-
-                if XA <= 0 or AB <= 0 or BC <= 0:
-                    continue
-
-                AB_XA = AB / XA; BC_AB = BC / AB
-
-                # Her pattern için D tahmini (CD'nin orta noktası × BC)
-                projected = None; pat = None
-                if ok(AB_XA, 0.618) and ok(BC_AB, lo=0.382, hi=0.886):
-                    cd_est = BC * 1.445   # Gartley CD orta: (1.272+1.618)/2
-                    projected = (Cp - cd_est) if direction == 'Bullish' else (Cp + cd_est)
-                    pat = 'Gartley'
-                elif ok(AB_XA, 0.786) and ok(BC_AB, lo=0.382, hi=0.886):
-                    cd_est = BC * 2.118   # Butterfly CD orta
-                    projected = (Cp - cd_est) if direction == 'Bullish' else (Cp + cd_est)
-                    pat = 'Butterfly'
-                elif ok(AB_XA, lo=0.382, hi=0.500) and ok(BC_AB, lo=0.382, hi=0.886):
-                    cd_est = BC * 2.118   # Bat CD orta
-                    projected = (Cp - cd_est) if direction == 'Bullish' else (Cp + cd_est)
-                    pat = 'Bat'
-                elif ok(AB_XA, lo=0.382, hi=0.618) and ok(BC_AB, lo=0.382, hi=0.886):
-                    cd_est = BC * 3.118   # Crab CD orta
-                    projected = (Cp - cd_est) if direction == 'Bullish' else (Cp + cd_est)
-                    pat = 'Crab'
-                elif ok(AB_XA, lo=0.382, hi=0.618) and ok(BC_AB, lo=1.13, hi=1.618):
-                    cd_est = BC * 0.9     # Shark: D ≈ C ± kısa mesafe
-                    projected = (Cp - cd_est) if direction == 'Bullish' else (Cp + cd_est)
-                    pat = 'Shark'
-
-                if projected and pat and projected > 0:
-                    dist = abs(curr_price - projected) / (projected + 1e-9) * 100
-                    # Fiyat tahmini D'ye %8'den yakın VE doğru yönde ilerliyorsa
-                    heading_right = (
-                        (direction == 'Bullish' and curr_price <= projected * 1.08) or
-                        (direction == 'Bearish' and curr_price >= projected * 0.92)
-                    )
-                    if dist <= 8 and heading_right:
-                        if direction == 'Bullish':
-                            _app = [l[Xi], h[Ai], l[Bi], h[Ci], None]
-                        else:
-                            _app = [h[Xi], l[Ai], h[Bi], l[Ci], None]
-                        # D tahmini major destek/direnç confluence kontrolü
-                        d_sr_confluence = False
-                        try:
-                            sr_levels = find_smart_sr_levels(df, window=5, cluster_tolerance=0.015, min_touches=3)
-                            d_sr_confluence = any(abs(projected - lvl) / (lvl + 1e-9) <= 0.015 for lvl in sr_levels)
-                        except Exception:
-                            pass
-                        return {'pattern': pat, 'direction': direction, 'prz': projected,
-                                'AB_XA': round(AB_XA, 3), 'XD_XA': 0,
-                                'bars_ago': 0, 'curr_price': curr_price,
-                                'pivot_idx': [Xi, Ai, Bi, Ci, None],
-                                'pivot_prices': _app,
-                                'state': 'approaching',
-                                'bars_since_c': bars_since_c,
-                                'd_sr_confluence': d_sr_confluence}
-
-        return None
-    except Exception:
-        return None
 
 
 def render_harmonic_banner(ticker):
@@ -12193,72 +7482,6 @@ def render_harmonic_banner(ticker):
 # BÖLÜM 25 — HARMONİK CONFLUENCE MOTORU (Harmonic PRZ + ICT Discount + RSI Div)
 # Birden fazla harmonik sinyalin aynı fiyat bölgesinde çakıştığı setup'ları tespit eder.
 # ==============================================================================
-def calculate_harmonic_confluence(ticker, df=None):
-    """
-    PRZ mandatory. ICT Discount + RSI Div opsiyonel bonus rozet olarak eklenir.
-      Zorunlu: Harmonik formasyon (fresh veya approaching)
-      Bonus 1: ICT Discount (Bullish) / Premium (Bearish) bölgesi → '🧭 ICT Discount' rozeti
-      Bonus 2: RSI Uyumsuzluğu eşleşiyor → '💎 RSI Div' rozeti
-    PRZ sağlanıyorsa dict döner (bonus olmasa bile), aksi halde None.
-    """
-    try:
-        if df is None:
-            df = get_safe_historical_data(ticker, period="1y")
-        if df is None or df.empty:
-            return None
-
-        harm = calculate_harmonic_patterns(ticker, df)
-        if not harm:
-            return None
-
-        direction = harm['direction']
-        badges = []
-        bonus_notes = []
-
-        # --- BONUS 1: ICT Zone ---
-        ict = calculate_ict_deep_analysis(ticker) or {}
-        zone = ict.get('zone', '')
-        ict_match = False
-        if direction == 'Bullish' and 'DISCOUNT' in zone.upper():
-            ict_match = True
-        elif direction == 'Bearish' and any(k in zone.upper() for k in ('PREMIUM', 'SUPPLY', 'OB')):
-            ict_match = True
-        if ict_match:
-            badges.append('🧭 ICT Discount')
-            bonus_notes.append(f'ICT {zone}')
-
-        # --- BONUS 2: RSI Divergence ---
-        pa = calculate_price_action_dna(ticker) or {}
-        div_type = pa.get('div', {}).get('type', 'neutral')
-        rsi_match = False
-        if direction == 'Bullish' and div_type == 'bullish':
-            rsi_match = True
-        elif direction == 'Bearish' and div_type == 'bearish':
-            rsi_match = True
-        if rsi_match:
-            badges.append('💎 RSI Div')
-            bonus_notes.append('RSI Diverjans')
-
-        badge_str = ' '.join(badges)
-        aciklama = 'PRZ teyitli' + (f' + {", ".join(bonus_notes)}' if bonus_notes else '')
-
-        return {
-            'pattern':      harm['pattern'],
-            'direction':    direction,
-            'prz':          harm['prz'],
-            'state':        harm.get('state', 'fresh'),
-            'zone':         zone,
-            'div_type':     div_type,
-            'AB_XA':        harm['AB_XA'],
-            'XD_XA':        harm['XD_XA'],
-            'bars_ago':     harm['bars_ago'],
-            'ict_match':    ict_match,
-            'rsi_match':    rsi_match,
-            'badge_str':    badge_str,
-            'Aciklama':     aciklama,
-        }
-    except Exception:
-        return None
 
 
 def render_harmonic_confluence_banner(ticker):
@@ -14047,8 +9270,13 @@ def render_synthetic_sentiment_panel(data):
             alt.Tooltip('Price:Q',     title='Kapanış',   format=_price_fmt),
             alt.Tooltip('MF_Smooth:Q', title='Para Akışı', format='.2f'),
         ]
+        # 10 Tem 2026 — SABİT EKSEN: barlar σ×10 ölçeğinde → ±30 = ±3σ. Sakin gün
+        # küçük bar görünür (otomatik zoom 'her pencere coşkulu' etkisi kalkar);
+        # ±30'u aşan nadir bar olursa eksen o bara göre genişler (kırpma yok).
+        _mf_lim = max(30.0, float(data['MF_Smooth'].abs().max()) * 1.05)
         bars = base.mark_bar(size=12, opacity=0.9).encode(
-            y=alt.Y('MF_Smooth:Q', axis=alt.Axis(title='Para Akışı (Güç)', labels=False, titleColor='#64748b')),
+            y=alt.Y('MF_Smooth:Q', scale=alt.Scale(domain=[-_mf_lim, _mf_lim]),
+                    axis=alt.Axis(title='Para Akışı (Güç)', labels=False, titleColor='#64748b')),
             color=color_condition,
             tooltip=_tt1
         )
@@ -14161,16 +9389,46 @@ def _infografik_widget_html(ticker, _datekey, _srcver):
 
 
 def _render_infografik_inapp(ticker):
-    """Görsel analiz infografiği — 'Para Akış İvmesi' barının yerinde, expander içinde."""
-    import streamlit.components.v1 as _comp
+    """Görsel analiz infografiği — 'Para Akış İvmesi' barının yerinde, expander içinde.
+    8 Tem 2026 v2: OTOMATİK ama SONA SAKLANMIŞ üretim. Eskiden üretim bu noktada,
+    sayfa çizilirken yapılıyordu (~5sn her şeyi bekletir + kaleido/Chrome soğuk
+    açılış). Şimdi burada sadece YER AYRILIR; üretim _finalize_infografik_slot ile
+    sol kolonun EN SONUNDA yapılır → sayfanın kalanı beklemez, görsel kendiliğinden
+    yerine gelir. (Aradaki toggle denemesi kullanıcı istemediği için kaldırıldı.)"""
     _disp = get_display_name(ticker)
     with st.expander(f"📊 Görsel Analiz · {_disp} — TIKLA (tüm analiz tek görselde)", expanded=False):
-        _html = _infografik_widget_html(ticker, pd.Timestamp.today().strftime('%Y-%m-%d'), _infografik_src_version())
-        if _html and not _html.startswith("__ERR__"):
-            _comp.html(f"<div style='background:#0a1019;border-radius:12px;'>{_html}</div>",
-                       height=1250, scrolling=True)
-        else:
-            st.caption(f"İnfografik şu an üretilemedi. {(_html or '')[7:][:200]}")
+        st.session_state['_ig_slot'] = st.empty()
+        st.session_state['_ig_slot_ticker'] = ticker
+        with st.session_state['_ig_slot'].container():
+            st.caption("📊 Görsel otomatik hazırlanıyor — sayfanın kalanı yüklendikten hemen sonra burada belirir…")
+
+
+def _finalize_infografik_slot():
+    """Sol kolonun EN SONUNDA çağrılır — ayrılan yuvaya görseli üretip koyar.
+    Üretim (kaleido) sayfadaki diğer her şey çizildikten sonra çalıştığı için
+    kullanıcı hiçbir paneli beklemez."""
+    import streamlit.components.v1 as _comp
+    _slot = st.session_state.get('_ig_slot')
+    _t = st.session_state.get('_ig_slot_ticker')
+    if _slot is None or not _t:
+        return
+    try:
+        _html = _infografik_widget_html(_t, pd.Timestamp.today().strftime('%Y-%m-%d'), _infografik_src_version())
+        with _slot.container():
+            if _html and not _html.startswith("__ERR__"):
+                _comp.html(f"<div style='background:#0a1019;border-radius:12px;'>{_html}</div>",
+                           height=1250, scrolling=True)
+            else:
+                st.caption(f"İnfografik şu an üretilemedi. {(_html or '')[7:][:200]}")
+    except Exception as _fe:
+        try:
+            with _slot.container():
+                st.caption(f"İnfografik üretim hatası: {str(_fe)[:150]}")
+        except Exception:
+            pass
+    finally:
+        st.session_state['_ig_slot'] = None
+        st.session_state['_ig_slot_ticker'] = None
 
 
 def render_smart_volume_panel(ticker):
@@ -14508,6 +9766,138 @@ def render_smart_volume_panel(ticker):
                 t4_lbl = "Düşük Hacim · Son Seans"
                 t4_sub = f"Son seans{_sess_sfx} hacmi 20G ortalamanın %{_pct} altındaydı."
 
+    # ── Süreklilik sayacı + Absorpsiyon + Sıkışma bağlamı (10 Tem 2026, öneri 5-6-7) ──
+    # + OBV sparkline & uyumsuzluk süresi (öneri 8+10)
+    _flow_persist_html = ""
+    _absorption_html = ""
+    _obv_spark_html = ""
+    _div_badge_info = None   # ('bearish'|'bullish', days)
+    _cs_hist_list = []       # son 10 gün konsensüs skoru (yaklaşık)
+    _vp_gap_html = ""        # LVN ince bölge satırı (Değer Bölgesi kartı)
+    if not is_index and not _vol_data_missing:
+        try:
+            _df_ctx = get_safe_historical_data(ticker, period="3mo")
+            if _df_ctx is not None and len(_df_ctx) >= 25:
+                # 10) OBV 30 günlük sparkline (inline SVG) + FİYAT bindirmesi (gri):
+                #     ikisi ayrı normalize — şekiller karşılaştırılır, uyumsuzluk gözle görünür.
+                #     Kesikli referans = 30 gün önceki OBV seviyesi.
+                try:
+                    _obv_s = compute_obv_series(_df_ctx).iloc[-30:]
+                    if len(_obv_s) >= 10:
+                        _ov = _obv_s.values.astype(float)
+                        _omin, _omax = float(_ov.min()), float(_ov.max())
+                        _orng = (_omax - _omin) or 1.0
+                        _n_pts = len(_ov)
+                        def _oy(_v):
+                            return 37 - (_v - _omin) / _orng * 32   # y: 5..37 bandı
+                        _pts = " ".join(
+                            f"{(_j / (_n_pts - 1) * 100):.1f},{_oy(_v):.1f}"
+                            for _j, _v in enumerate(_ov)
+                        )
+                        # Fiyat bindirmesi — aynı 30 gün, kendi min-max'ine normalize
+                        _px_pts = ""
+                        try:
+                            _pxv = _df_ctx['Close'].iloc[-_n_pts:].values.astype(float)
+                            _pmin, _pmax = float(_pxv.min()), float(_pxv.max())
+                            _prng = (_pmax - _pmin) or 1.0
+                            _px_pts = " ".join(
+                                f"{(_j / (_n_pts - 1) * 100):.1f},{(37 - (_v - _pmin) / _prng * 32):.1f}"
+                                for _j, _v in enumerate(_pxv)
+                            )
+                        except Exception:
+                            pass
+                        _sp_clr = "#10b981" if _ov[-1] >= _ov[0] else "#f87171"
+                        _base_y = _oy(_ov[0])
+                        _ly = _oy(_ov[-1])
+                        _px_line = (
+                            f'<polyline points="{_px_pts}" fill="none" stroke="#94a3b8" '
+                            f'stroke-width="1.1" stroke-linejoin="round" opacity="0.55"/>'
+                        ) if _px_pts else ''
+                        _obv_spark_html = (
+                            f'<div style="margin-top:2px;">'
+                            f'<svg viewBox="0 0 104 42" preserveAspectRatio="none" '
+                            f'style="width:100%;height:52px;display:block;">'
+                            # Referans: 30 gün öncesinin OBV seviyesi (kesikli)
+                            f'<line x1="0" y1="{_base_y:.1f}" x2="104" y2="{_base_y:.1f}" '
+                            f'stroke="{text_muted}" stroke-width="0.8" stroke-dasharray="3,2.5" opacity="0.5"/>'
+                            f'{_px_line}'
+                            f'<polyline points="{_pts}" fill="none" stroke="{_sp_clr}" '
+                            f'stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" opacity="0.95"/>'
+                            f'<circle cx="100" cy="{_ly:.1f}" r="2.4" fill="{_sp_clr}"/>'
+                            f'</svg>'
+                            f'<div style="display:flex;justify-content:space-between;font-size:0.56rem;'
+                            f'color:{text_muted};font-weight:700;letter-spacing:0.4px;margin-top:1px;">'
+                            f'<span>OBV vs <span style="color:#94a3b8;">FİYAT</span> — SON 30 GÜN</span>'
+                            f'<span>gri = fiyat · kesikli = 30g önceki OBV</span>'
+                            f'</div>'
+                            f'</div>'
+                        )
+                except Exception:
+                    pass
+                # 8) Fiyat-OBV uyumsuzluğu kaç gündür sürüyor (5+ gün ise rozet)
+                try:
+                    _dv = compute_obv_divergence_duration(_df_ctx, window=14)
+                    if _dv.get('kind') and int(_dv.get('days', 0)) >= 5:
+                        _div_badge_info = (_dv['kind'], int(_dv['days']))
+                except Exception:
+                    pass
+                # Konsensüs skorunun son 10 günü (yaklaşık) — "fotoğraftan filme" (10 Tem 2026)
+                try:
+                    _df_cs_h = get_safe_historical_data(ticker, period="1y")
+                    if _df_cs_h is not None:
+                        _cs_hist_list = compute_panel_consensus_history(_df_cs_h, days=10)
+                except Exception:
+                    pass
+                # LVN ince hacim bölgeleri (60g profil) — "yukarısı nasıl arazi?" (10 Tem 2026)
+                try:
+                    _gaps = find_volume_gap_levels(_df_ctx, lookback=60)
+                    _gap_bits = []
+                    if _gaps.get('above') and abs(_gaps['above'][1]) <= 12:
+                        _gap_bits.append(f"üstte {_gaps['above'][0]:.2f} (+%{abs(_gaps['above'][1]):.1f})")
+                    if _gaps.get('below') and abs(_gaps['below'][1]) <= 12:
+                        _gap_bits.append(f"altta {_gaps['below'][0]:.2f} (−%{abs(_gaps['below'][1]):.1f})")
+                    if _gap_bits:
+                        _vp_gap_html = (
+                            f'<div style="margin-top:3px;font-size:0.68rem;color:#67e8f9;font-weight:700;">'
+                            f'&#128371;&#65039; İnce hacim bölgesi: {" · ".join(_gap_bits)} — girilirse hızlı geçilir</div>'
+                        )
+                except Exception:
+                    pass
+                # 5) Süreklilik: son 20 günün kaçında pozitif para akışı (kampanya vs gürültü)
+                _pd_pos, _pd_n = compute_flow_persistence(_df_ctx, window=20)
+                if _pd_pos is not None and _pd_n >= 20:
+                    if   _pd_pos >= 14: _pd_clr, _pd_tag = "#10b981", "istikrarlı giriş"
+                    elif _pd_pos <= 6:  _pd_clr, _pd_tag = "#f87171", "istikrarlı çıkış"
+                    else:               _pd_clr, _pd_tag = "#94a3b8", "karışık akış"
+                    _flow_persist_html = (
+                        f'<div style="margin-top:3px;font-size:0.68rem;color:{_pd_clr};font-weight:700;">'
+                        f'&#128197; Son {_pd_n} günün {_pd_pos}&#39;inde para girişi — {_pd_tag}</div>'
+                    )
+                # 6) Absorpsiyon: dev hacim + yerinde sayan fiyat (son 5 seans, en yenisi)
+                _abs_days = detect_absorption_days(_df_ctx, lookback=5)
+                if _abs_days:
+                    _ab = _abs_days[0]
+                    _ab_loc_txt = {'dip':  "dip bölgesi, gelen mal emiliyor (toplama emaresi)",
+                                   'tepe': "tepe bölgesi, dağıtım riski",
+                                   'orta': "aralık ortası, taraf belirsiz"}[_ab['loc']]
+                    _ab_clr = {'dip': "#10b981", 'tepe': "#f87171", 'orta': "#f59e0b"}[_ab['loc']]
+                    _ab_sign = "+" if _ab['chg_pct'] >= 0 else ""
+                    _absorption_html = (
+                        f'<div style="margin-top:3px;font-size:0.68rem;color:{_ab_clr};font-weight:700;">'
+                        f'&#129533; Absorpsiyon ({_ab["date"]}): {_ab["rvol"]:.1f}x hacim, '
+                        f'fiyat %{_ab_sign}{_ab["chg_pct"]:.1f} — {_ab_loc_txt}</div>'
+                    )
+                # 7) Düşük hacim + BB sıkışması → "ilgisiz piyasa" değil "arz kuruması"
+                if t4_pos is False and check_lazybear_squeeze(_df_ctx):
+                    t4_lbl = "Hacim Kuruması · Sıkışma"
+                    t4_sub = ("Hacim düşük ama Bollinger sıkışması aktif — arz kuruyor; "
+                              "kırılım öncesi klasik sessizlik.")
+                    t4_pos = None
+                    t4_ic  = "#f59e0b" if dark else "#92400e"
+                    rvol_fill = 0
+        except Exception:
+            pass
+
     # ── Tile arka plan renkleri (içeriğe göre) ───────────────────
     def _tile_bg(is_pos):
         if is_pos is True:
@@ -14581,11 +9971,19 @@ def render_smart_volume_panel(ticker):
         "⚠️ SAHTE GÜÇ (OBV-Para Akışı Çelişkisi)":           "Sahte Güç ⚠️",
         "⚠️ ZAYIF TEYİT (OBV güçlü, Para Akışı zayıf)":      "Zayıf Teyit",
     }
-    _t6_short = _t6_label_map.get(_t6_obv_title, (_t6_obv_title[:20] if _t6_obv_title else "—"))
+    # " ⚠ tek-mum" son eki map anahtarını bozuyordu → önce soy, sonra kompakt işaret ekle (10 Tem 2026)
+    _t6_title_base = (_t6_obv_title or "").replace(" ⚠ tek-mum", "")
+    _t6_short = _t6_label_map.get(_t6_title_base,
+                                  (_t6_title_base.split("(")[0].strip()[:22] if _t6_title_base else "—"))
+    if " ⚠ tek-mum" in (_t6_obv_title or ""):
+        _t6_short += " ⚠"
     try:
         import re as _re_sv6
-        _cmf_m6 = _re_sv6.search(r'\|\s*((?:Para Akışı|CMF):[^|]+)', _t6_obv_desc)
+        # "(" öncesinde kes — uzun tek-mum parantezi başlığı eziyordu (10 Tem 2026)
+        _cmf_m6 = _re_sv6.search(r'\|\s*((?:Para Akışı|CMF):[^|(]+)', _t6_obv_desc)
         _t6_cmf_str = _cmf_m6.group(1).strip() if _cmf_m6 else ""
+        if _t6_cmf_str and "tek-mum" in (_t6_obv_desc or ""):
+            _t6_cmf_str += " · ⚠ tek-mum"
     except Exception:
         _t6_cmf_str = ""
     _t6_short_desc = _t6_obv_desc.split(" | Para Akışı:")[0] if _t6_obv_desc else "—"
@@ -14725,11 +10123,13 @@ def render_smart_volume_panel(ticker):
     # Bugünkü RVOL boşsa (rvol<0.05 / _vol_data_missing) → 5G grafiği de gösterme;
     # aksi halde "veri yok" mesajıyla altta dolu grafik çelişiyor.
     _rvol_5d_html = ""
+    _rvol_5d_big_html = ""
     if not _vol_data_missing and rvol >= 0.05:
         try:
             _df_rv5 = get_safe_historical_data(ticker, period="3mo")
             if _df_rv5 is not None and len(_df_rv5) >= 25:
                 _rvol_5d = []
+                _rvol_5d_days = []
                 _vma20_5 = _df_rv5['Volume'].rolling(20).mean()
                 for _bi5 in range(4, -1, -1):
                     _vd5  = float(_df_rv5['Volume'].iloc[-(1 + _bi5)])
@@ -14738,8 +10138,11 @@ def render_smart_volume_panel(ticker):
                     try:
                         _bar_dt5 = _df_rv5.index[-(1 + _bi5)].date()
                         _af5     = _bist_rvol_factor(_bar_dt5)
+                        _day_lbl5 = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"][_bar_dt5.weekday()]
                     except Exception:
                         _af5 = 1.0
+                        _day_lbl5 = ""
+                    _rvol_5d_days.append(_day_lbl5)
                     _rvol_5d.append(min(_vd5 / (_va5 * _af5), 3.0) if _va5 > 0 and _vd5 > 0 else 0.0)
                 _max_rv5 = max(_rvol_5d) if max(_rvol_5d) > 0 else 1.0
                 _bars5 = ""
@@ -14763,6 +10166,26 @@ def render_smart_volume_panel(ticker):
                     f"{_bars5}"
                     f"</div>"
                     f"<span style='font-size:0.66rem;color:{_tcol};font-weight:700;'>5G {_tdir}</span>"
+                    f"</div>"
+                )
+                # Büyük varyant — üst sağ HİSSE HACMİ kartının sol 1/3 sütunu (10 Tem 2026)
+                _bars5_big = ""
+                for _rv5, _dl5 in zip(_rvol_5d, _rvol_5d_days):
+                    _bh5b = max(int(_rv5 / _max_rv5 * 46), 3)
+                    _bc5b = "#10b981" if _rv5 >= 1.5 else ("#f59e0b" if _rv5 >= 0.8 else "#f87171")
+                    _bars5_big += (
+                        f"<div style='display:flex;flex-direction:column;align-items:center;"
+                        f"justify-content:flex-end;gap:2px;flex:1;'>"
+                        f"<span style='font-size:0.64rem;font-weight:700;color:{_bc5b};'>{_rv5:.1f}</span>"
+                        f"<div style='width:100%;max-width:15px;height:{_bh5b}px;background:{_bc5b};"
+                        f"border-radius:3px 3px 0 0;'></div>"
+                        f"<span style='font-size:0.55rem;color:{text_muted};font-weight:700;'>{_dl5}</span>"
+                        f"</div>"
+                    )
+                _rvol_5d_big_html = (
+                    f"<div style='display:flex;flex-direction:column;justify-content:flex-end;height:100%;'>"
+                    f"<div style='display:flex;align-items:flex-end;gap:4px;'>{_bars5_big}</div>"
+                    f"<div style='text-align:center;font-size:0.62rem;color:{_tcol};font-weight:800;margin-top:2px;'>5G {_tdir}</div>"
                     f"</div>"
                 )
         except Exception:
@@ -14915,10 +10338,8 @@ def render_smart_volume_panel(ticker):
             f'<span>VAH {vah:.2f}</span></div>'
         )
 
-    # ── Boşluk yönetimi: t3/t4 ikisi de boşsa tek placeholder ──
+    # ── Boşluk yönetimi: Bugünkü Baskı boşsa alt satırda OBV tek başına kalır ──
     _t3_empty = (t3_pct == "—")
-    _t4_empty = (t4_pct in ("—", "Veri Eksik"))
-    _both_intraday_empty = _t3_empty and _t4_empty
 
     # ── Hisse vs Endeks hacim label netleştirme (Fix #6) ──
     _hacim_kind = "Endeks Hacmi" if is_index else "Hisse Hacmi"
@@ -14947,12 +10368,102 @@ def render_smart_volume_panel(ticker):
     except Exception:
         pass
 
+    # ── Yabancı takas rozeti (MKK — İş Yatırım feed, 10 Tem 2026) ──
+    # Feature karnesi: TEK GÜN yabancı girişi TERS çalışıyor → asla gösterme.
+    # Sadece SERİ göster: 3+ gün üst üste artış (yeşil) / son 5 raporda 2+ gün
+    # top-çıkış listesi (kırmızı). Veri yoksa rozet hiç render edilmez.
+    _yab_badge = ""
+    try:
+        if not is_index and ".IS" in ticker:
+            _yab = _compute_mkk_yabanci_signals(ticker)
+            _yab_streak = int(_yab.get('streak_days') or 0)
+            _yab_out_d  = int(_yab.get('out_days') or 0)
+            if _yab_streak >= 3:
+                _yab_badge = _mini_badge("🌍", "#10b981", "Yabancı", f"{_yab_streak} GÜN ÜST ÜSTE ALICI")
+            elif _yab_out_d >= 2:
+                _yab_badge = _mini_badge("🌍", "#f87171", "Yabancı", f"5 GÜNDE {_yab_out_d}× NET SATICI")
+    except Exception:
+        pass
+
+    # ── Uyumsuzluk rozeti (öneri 8, 10 Tem 2026) — 5+ gün süren fiyat-OBV ayrışması ──
+    _div_badge = ""
+    if _div_badge_info:
+        _dv_kind, _dv_days = _div_badge_info
+        if _dv_kind == 'bearish':
+            _div_badge = _mini_badge("⚠", "#f87171", "Uyumsuzluk", f"{_dv_days} GÜN: FİYAT ↑ AKIŞ ↓")
+        else:
+            _div_badge = _mini_badge("🌱", "#10b981", "Uyumsuzluk", f"{_dv_days} GÜN: FİYAT ↓ AKIŞ ↑")
+
+    # ── Tarihsel isabet rozeti (öneri 9, 10 Tem 2026) ──
+    # panel_verdict_backtest.py çıktısından okur (yoksa/örneklem azsa sessizce gizli).
+    _cs_hist_badge = ""
+    try:
+        import json as _json_pv
+        with open('panel_verdict_backtest.json', 'r', encoding='utf-8') as _f_pv:
+            _pv_data = _json_pv.load(_f_pv)
+        _pv_row = (_pv_data.get('labels') or {}).get(_cs_lbl)
+        if _pv_row and int(_pv_row.get('n', 0)) >= 30:
+            _pv_ret = float(_pv_row['avg_10g'])
+            _pv_clr = "#10b981" if _pv_ret > 0 else ("#f87171" if _pv_ret < 0 else "#94a3b8")
+            _cs_hist_badge = _mini_badge(
+                "📊", _pv_clr, "Geçmiş",
+                f"BU ETİKET 10G ORT {_pv_ret:+.1f}% (N={int(_pv_row['n'])})"
+            )
+    except Exception:
+        pass
+
+    # ── Konsensüs skor geçmişi şeridi (10 nokta + değişim bilgisi, 10 Tem 2026) ──
+    _cs_hist_strip = ""
+    try:
+        if _cs_hist_list:
+            # Son nokta = CANLI skor (header ile aynı kaynak). Geçmiş yaklaşık formülle
+            # hesaplandığı için bugünü farklı etiketleyebiliyordu → header'la çelişki (10 Tem fix).
+            _cs_hist_list = _cs_hist_list[:-1] + [{'score': _cs_scr, 'label': _cs_lbl}]
+            _lbl_clr_map = {"ALIM BASKISI": "#10b981", "HAFİF ALIM": "#4ade80", "NÖTR": "#94a3b8",
+                            "HAFİF SATIŞ": "#f87171", "SATIŞ BASKISI": "#ef4444"}
+            _lbl_short_map = {"ALIM BASKISI": "ALIM", "HAFİF ALIM": "H.ALIM", "NÖTR": "NÖTR",
+                              "HAFİF SATIŞ": "H.SATIŞ", "SATIŞ BASKISI": "SATIŞ"}
+            _dots = ""
+            for _k, _h in enumerate(_cs_hist_list):
+                _hc = _lbl_clr_map.get(_h['label'], "#475569") if _h['label'] else "#475569"
+                _sz = 9 if _k == len(_cs_hist_list) - 1 else 7
+                _dots += (
+                    f'<span title="{_h["label"] or "?"} ({_h["score"]})" '
+                    f'style="width:{_sz}px;height:{_sz}px;border-radius:50%;background:{_hc};'
+                    f'display:inline-block;flex:none;"></span>'
+                )
+            _chg_txt = ""
+            _lbls = [_x['label'] for _x in _cs_hist_list if _x['label']]
+            if len(_lbls) >= 2:
+                _last_l = _lbls[-1]
+                _chg_idx = None
+                for _j in range(len(_lbls) - 2, -1, -1):
+                    if _lbls[_j] != _last_l:
+                        _chg_idx = _j
+                        break
+                if _chg_idx is None:
+                    _chg_txt = f"{len(_lbls)} gündür {_lbl_short_map.get(_last_l, _last_l)}"
+                else:
+                    _d_chg = len(_lbls) - 1 - _chg_idx
+                    _chg_txt = (f"değişim {_d_chg}g önce "
+                                f"({_lbl_short_map.get(_lbls[_chg_idx], '?')} → {_lbl_short_map.get(_last_l, '?')})")
+            _cs_hist_strip = (
+                f'<span style="display:inline-flex;align-items:center;gap:3.5px;margin-right:auto;">'
+                f'<span style="font-size:0.60rem;color:{text_muted};font-weight:800;letter-spacing:0.4px;">SKOR 10G</span>'
+                f'{_dots}'
+                + (f'<span style="font-size:0.64rem;color:{text_muted};font-weight:700;margin-left:4px;">{_chg_txt}</span>' if _chg_txt else '')
+                + f'</span>'
+            )
+    except Exception:
+        pass
+
     # ── Verdict strip mini badge'leri (eski 3 büyük kart yerine) ──
     _verdict_strip = (
         _mini_badge(c1_icon, c1_clr, "Fiyat", c1_lbl) +
         _mini_badge(c2_icon, c2_clr, "Hacim", c2_lbl) +
         _mini_badge(c3_icon, c3_clr, "Akıllı Para", c3_lbl) +
-        (_mini_badge(_mfi_icon, _mfi_clr, "MFI", _mfi_lbl_v) if _mfi_lbl_v != "—" else "")
+        (_mini_badge(_mfi_icon, _mfi_clr, "MFI", _mfi_lbl_v) if _mfi_lbl_v != "—" else "") +
+        _yab_badge + _div_badge + _cs_hist_badge
     )
 
     # ── 5G dot row için kısa konsensüs cümlesi ─────────────────────
@@ -14965,6 +10476,12 @@ def render_smart_volume_panel(ticker):
         "SATIŞ BASKISI":  "Çoğu gösterge satıcı yönünde — temkinli ol.",
     }
     _cs_main_msg = _cs_main_msg_map.get(_cs_lbl, "")
+
+    # ── BÜYÜK 3 sol sütun: 5G hacim barları (varsa 1/3 alan ayrılır) ──
+    _t4_bars_col = (
+        f'<div style="flex:0 0 32%; min-width:0;">{_rvol_5d_big_html}</div>'
+        if _rvol_5d_big_html else ''
+    )
 
     # ── HTML ──────────────────────────────────────────────────────
     _html = (
@@ -14989,7 +10506,7 @@ def render_smart_volume_panel(ticker):
         #     üst başlıkta zaten geçiyor + 3 rozetle de tekrar oluyordu)
         f'<div style="padding:5px 12px;border-bottom:1px solid {divider};'
         f'display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end;">'
-        f'{_verdict_strip}'
+        f'{_cs_hist_strip}{_verdict_strip}'
         f'</div>'
 
         # ── Teknik Detay Başlığı ─────────────────────────────────────
@@ -15007,6 +10524,7 @@ def render_smart_volume_panel(ticker):
         f'<div style="font-size:0.90rem; font-weight:900; color:{t1_ic}; line-height:1.15;">{t1_icon} {t1_label}</div>'
         f'{_zone_bar_html}'
         f'<div style="font-size:0.76rem; color:{text_sub}; line-height:1.3;margin-top:3px;">{t1_sub}</div>'
+        f'{_vp_gap_html}'
         f'</div>'
 
         # — BÜYÜK 2: 5 GÜNLÜK ALIM-SATIM (kritik) —
@@ -15021,54 +10539,77 @@ def render_smart_volume_panel(ticker):
         f'{_delta_5d_dots_html}'
         f'</div>'
 
-        # — BÜYÜK 3: AKILLI PARA / OBV (kritik) —
-        f'<div style="padding:6px 10px 7px; background:{_tile_bg(_t6_tile_pos)};">'
+        # — BÜYÜK 3: HİSSE HACMİ (20G ort.) — sol 1/3 = 5G barlar, sağ 2/3 = geniş bar + yorum (OBV ile takas, 10 Tem 2026) —
+        f'<div style="padding:6px 10px 7px; background:{t4_bb}; display:flex; gap:10px; align-items:stretch;">'
+        f'{_t4_bars_col}'
+        f'<div style="flex:1; min-width:0;">'
         f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">'
-        f'<span style="font-size:0.60rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#128272; Akıllı Para Durumu (OBV)</span>'
-        f'<span style="font-size:0.66rem; color:{_t6_obv_color}; font-weight:700; opacity:0.92;white-space:nowrap;">{_t6_cmf_str}</span>'
+        f'<span style="font-size:0.60rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#128202; {_t4_short_lbl}</span>'
+        f'<span style="font-size:1.0rem; font-weight:900; color:{t4_ic};">{t4_pct}</span>'
         f'</div>'
-        f'<div style="font-size:0.90rem; font-weight:900; color:{_t6_obv_color}; line-height:1.2; margin:2px 0 3px;">{_t6_short}</div>'
-        f'<div style="font-size:0.76rem; color:{text_sub}; line-height:1.3;">{_t6_short_desc}</div>'
+        f'{bidir_bar(rvol_fill, t4_ic, t4_pos, track_bg)}'
+        f'<div style="font-size:0.80rem; color:{text_main}; font-weight:700;">{t4_lbl}</div>'
+        f'<div style="font-size:0.76rem; color:{text_sub}; line-height:1.3;">{t4_sub}</div>'
+        f'{_absorption_html}'
+        f'</div>'
         f'</div>'
 
         f'</div>'  # ana grid sonu
     )
 
-    # ── ALT SATIR: Bugünkü Baskı + Hisse Hacmi (mini) — boşsa gizle ──
-    if _both_intraday_empty:
-        # Gerçekten intraday veri yoksa satır hiç render edilmez (kullanıcı tercihi, 9 Haz 2026)
-        pass
-    else:
-        # Mini grid: 2 kompakt kart
-        _html += (
-            f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:0;">'
-
-            # MİNİ 1: Bugünkü Baskı
-            f'<div style="padding:4px 10px 5px; border-right:1px solid {divider}; background:{t3_bb};">'
-            f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
-            f'<span style="font-size:0.58rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#9889; {_t3_header_text}</span>'
-            f'<span style="font-size:0.86rem; font-weight:900; color:{t3_ic};">{t3_pct}</span>'
+    # ── ALT SATIR: Bugünkü Baskı + Akıllı Para/OBV (Hisse Hacmi ile takas, 10 Tem 2026) ──
+    # OBV her zaman içerikli → satır artık hiç gizlenmez; Bugünkü Baskı boşsa OBV tek başına tam genişlik.
+    _mini1_html = "" if _t3_empty else (
+        # MİNİ 1: Bugünkü Baskı
+        f'<div style="padding:4px 10px 5px; border-right:1px solid {divider}; background:{t3_bb};">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+        f'<span style="font-size:0.58rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#9889; {_t3_header_text}</span>'
+        f'<span style="font-size:0.86rem; font-weight:900; color:{t3_ic};">{t3_pct}</span>'
+        f'</div>'
+        f'{bidir_bar(d1_fill, t3_ic, t3_pos, track_bg)}'
+        f'<div style="font-size:0.74rem; color:{text_sub}; line-height:1.25;">'
+        f'<span style="color:{text_main};font-weight:700;">{t3_lbl}.</span> {t3_sub}</div>'
+        f'{_delta_strength_html}'
+        f'</div>'
+    )
+    # MİNİ 2: Akıllı Para Durumu (OBV) — sparkline varsa 2 sütun: sol 2/3 çizgi, sağ 1/3 açıklama
+    if _obv_spark_html:
+        _mini2_html = (
+            f'<div style="padding:4px 10px 5px; background:{_tile_bg(_t6_tile_pos)};">'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">'
+            f'<span style="font-size:0.58rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#128272; Akıllı Para Durumu (OBV)</span>'
+            f'<span style="font-size:0.66rem; color:{_t6_obv_color}; font-weight:700; opacity:0.92;white-space:nowrap;">{_t6_cmf_str}</span>'
             f'</div>'
-            f'{bidir_bar(d1_fill, t3_ic, t3_pos, track_bg)}'
-            f'<div style="font-size:0.74rem; color:{text_sub}; line-height:1.25;">'
-            f'<span style="color:{text_main};font-weight:700;">{t3_lbl}.</span> {t3_sub}</div>'
-            f'{_delta_strength_html}'
+            f'<div style="display:flex; gap:10px; align-items:stretch; margin-top:2px;">'
+            f'<div style="flex:0 0 64%; min-width:0;">'
+            f'{_obv_spark_html}'
+            f'{_flow_persist_html}'
             f'</div>'
-
-            # MİNİ 2: Hacim (Hisse/Endeks — netleştirilmiş)
-            f'<div style="padding:4px 10px 5px; background:{t4_bb};">'
-            f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
-            f'<span style="font-size:0.58rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#128202; {_t4_short_lbl}</span>'
-            f'<span style="font-size:0.86rem; font-weight:900; color:{t4_ic};">{t4_pct}</span>'
+            f'<div style="flex:1; min-width:0;">'
+            f'<div style="font-size:0.80rem; font-weight:900; color:{_t6_obv_color}; line-height:1.2; margin-bottom:2px;">{_t6_short}</div>'
+            f'<div style="font-size:0.70rem; color:{text_sub}; line-height:1.3;">{_t6_short_desc}</div>'
             f'</div>'
-            f'{bidir_bar(rvol_fill, t4_ic, t4_pos, track_bg)}'
-            f'<div style="font-size:0.74rem; color:{text_sub}; line-height:1.25;">'
-            f'<span style="color:{text_main};font-weight:700;">{t4_lbl}.</span> {t4_sub}</div>'
-            f'{_rvol_5d_html}'
             f'</div>'
-
-            f'</div>'  # mini grid sonu
+            f'</div>'
         )
+    else:
+        _mini2_html = (
+            f'<div style="padding:4px 10px 5px; background:{_tile_bg(_t6_tile_pos)};">'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">'
+            f'<span style="font-size:0.58rem; color:{text_muted}; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">&#128272; Akıllı Para Durumu (OBV)</span>'
+            f'<span style="font-size:0.66rem; color:{_t6_obv_color}; font-weight:700; opacity:0.92;white-space:nowrap;">{_t6_cmf_str}</span>'
+            f'</div>'
+            f'<div style="font-size:0.84rem; font-weight:900; color:{_t6_obv_color}; line-height:1.2; margin:2px 0 2px;">{_t6_short}</div>'
+            f'<div style="font-size:0.74rem; color:{text_sub}; line-height:1.25;">{_t6_short_desc}</div>'
+            f'{_flow_persist_html}'
+            f'</div>'
+        )
+    _mini_cols = '1fr 1fr' if _mini1_html else '1fr'
+    _html += (
+        f'<div style="display:grid; grid-template-columns:{_mini_cols}; gap:0;">'
+        f'{_mini1_html}{_mini2_html}'
+        f'</div>'  # mini grid sonu
+    )
 
     _html += '</div>'  # panel kök div sonu
     st.markdown(_html, unsafe_allow_html=True)
@@ -16490,779 +12031,102 @@ def log_erken_radar_signals(df_batch, category=""):
 
 # --- ATOMIK SİNYAL DETEKTÖRLERİ ---
 
-def _er_rsi(close, period=14):
-    """Wilder RSI."""
-    delta = close.diff()
-    gain = delta.where(delta > 0, 0).rolling(period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rsi
 
-def _er_swing_lows(low_series, lookback=30):
-    """Son N gün içinde swing low'ları bul. Pivot: 2 yan + 2 yan. (numpy hızlı)"""
-    try:
-        arr = low_series.values if hasattr(low_series, 'values') else np.asarray(low_series)
-    except Exception:
-        return []
-    n = len(arr)
-    start = max(2, n - lookback)
-    lows = []
-    for i in range(start, n - 2):
-        v = arr[i]
-        if v < arr[i-1] and v < arr[i-2] and v < arr[i+1] and v < arr[i+2]:
-            lows.append((i, float(v)))
-    return lows
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_swing_lows
 
-def _er_swing_highs(high_series, lookback=30):
-    """Son N gün içinde swing high'ları bul. (numpy hızlı)"""
-    try:
-        arr = high_series.values if hasattr(high_series, 'values') else np.asarray(high_series)
-    except Exception:
-        return []
-    n = len(arr)
-    start = max(2, n - lookback)
-    highs = []
-    for i in range(start, n - 2):
-        v = arr[i]
-        if v > arr[i-1] and v > arr[i-2] and v > arr[i+1] and v > arr[i+2]:
-            highs.append((i, float(v)))
-    return highs
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_swing_highs
 
-def _er_strong_bullish_div(low_series, rsi_series):
-    """Güçlü Pozitif: Fiyat LL + RSI HL"""
-    lows = _er_swing_lows(low_series, 30)
-    if len(lows) < 2:
-        return False
-    p1_idx, p1_val = lows[-2]; p2_idx, p2_val = lows[-1]
-    if p2_val >= p1_val:
-        return False
-    try:
-        return float(rsi_series.iloc[p2_idx]) > float(rsi_series.iloc[p1_idx])
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_strong_bullish_div
 
-def _er_medium_bullish_div(low_series, rsi_series, tol=0.02):
-    """Orta Pozitif: Fiyat yatay (±2%) + RSI HL"""
-    lows = _er_swing_lows(low_series, 30)
-    if len(lows) < 2:
-        return False
-    p1_idx, p1_val = lows[-2]; p2_idx, p2_val = lows[-1]
-    if p1_val <= 0:
-        return False
-    if abs(p2_val - p1_val) / p1_val > tol:
-        return False
-    try:
-        return float(rsi_series.iloc[p2_idx]) > float(rsi_series.iloc[p1_idx])
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_medium_bullish_div
 
-def _er_weak_bullish_div(low_series, rsi_series, rsi_tol=2.0):
-    """Zayıf Pozitif: Fiyat LL + RSI yatay (±2 puan)"""
-    lows = _er_swing_lows(low_series, 30)
-    if len(lows) < 2:
-        return False
-    p1_idx, p1_val = lows[-2]; p2_idx, p2_val = lows[-1]
-    if p2_val >= p1_val:
-        return False
-    try:
-        return abs(float(rsi_series.iloc[p2_idx]) - float(rsi_series.iloc[p1_idx])) <= rsi_tol
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_weak_bullish_div
 
-def _er_bearish_div(high_series, rsi_series):
-    """Negatif: Fiyat HH + RSI LH"""
-    highs = _er_swing_highs(high_series, 30)
-    if len(highs) < 2:
-        return False
-    p1_idx, p1_val = highs[-2]; p2_idx, p2_val = highs[-1]
-    if p2_val <= p1_val:
-        return False
-    try:
-        return float(rsi_series.iloc[p2_idx]) < float(rsi_series.iloc[p1_idx])
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_bearish_div
 
-def _er_volume_dried(volume):
-    """Son 5g < 20g ort × 0.80"""
-    if len(volume) < 21:
-        return False
-    v5 = float(volume.iloc[-5:].mean())
-    v20 = float(volume.rolling(20).mean().iloc[-1])
-    return v20 > 0 and v5 < v20 * 0.80
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_volume_dried
 
-def _er_volume_rising_slow(volume):
-    """Son 10g trend pozitif, %5-30 artış (linear regression)"""
-    if len(volume) < 11:
-        return False
-    try:
-        v_recent = volume.iloc[-10:].values
-        x = np.arange(10)
-        slope, _ = np.polyfit(x, v_recent, 1)
-        avg = float(v_recent.mean())
-        if avg <= 0:
-            return False
-        rise_pct = (slope * 10) / avg
-        return 0.05 <= rise_pct <= 0.30
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_volume_rising_slow
 
-def _er_pocket_pivot(df):
-    """Yeşil mum + hacim > son 10g'nin en yüksek kırmızı mum hacmi (numpy)"""
-    if len(df) < 11:
-        return False
-    try:
-        closes = df['Close'].values
-        opens  = df['Open'].values
-        vols   = df['Volume'].values
-        today_c, today_o, today_v = closes[-1], opens[-1], vols[-1]
-        if today_c <= today_o:
-            return False
-        # Son 10 gün (bugün hariç)
-        c10, o10, v10 = closes[-11:-1], opens[-11:-1], vols[-11:-1]
-        red_mask = c10 < o10
-        if not red_mask.any():
-            return today_v > float(v10.max())
-        return today_v > float(v10[red_mask].max())
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_pocket_pivot
 
-def _er_distribution_day(df, day_offset=-1):
-    """Belirtilen günde distribution day mi? Kırmızı + hacim 20g × 1.5+ (numpy)"""
-    if len(df) < 21 + abs(day_offset):
-        return False
-    try:
-        closes = df['Close'].values
-        opens  = df['Open'].values
-        vols   = df['Volume'].values
-        c, o, v = closes[day_offset], opens[day_offset], vols[day_offset]
-        end = len(df) + day_offset
-        start = end - 20
-        if start < 0:
-            return False
-        va = float(vols[start:end].mean())
-        return c < o and v > va * 1.5
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_distribution_day
 
-def _er_distribution_count(df, days=5):
-    """Son N günde distribution day sayısı (numpy vektorize)"""
-    if len(df) < 21:
-        return 0
-    try:
-        closes = df['Close'].values
-        opens  = df['Open'].values
-        vols   = df['Volume'].values
-        n = len(df)
-        count = 0
-        for i in range(-days, 0):
-            end = n + i
-            start = end - 20
-            if start < 0:
-                continue
-            c, o, v = closes[i], opens[i], vols[i]
-            va = vols[start:end].mean()
-            if c < o and v > va * 1.5:
-                count += 1
-        return count
-    except Exception:
-        return 0
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_distribution_count
 
-def _er_updown_vol_ratio(df, days=20):
-    """Yeşil mum hacim toplamı / kırmızı mum hacim toplamı"""
-    if len(df) < days:
-        return 1.0
-    try:
-        recent = df.iloc[-days:]
-        green = recent[recent['Close'] > recent['Open']]
-        red = recent[recent['Close'] < recent['Open']]
-        g_v = float(green['Volume'].sum()) if not green.empty else 0
-        r_v = float(red['Volume'].sum()) if not red.empty else 0
-        if r_v <= 0:
-            return 99.0 if g_v > 0 else 1.0
-        return g_v / r_v
-    except Exception:
-        return 1.0
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_updown_vol_ratio
 
-def _er_bb_width(close, period=20):
-    """BB width = (4*std) / mid — 2 üst + 2 alt"""
-    mid = close.rolling(period).mean()
-    std = close.rolling(period).std()
-    return (std * 4) / mid
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_bb_width
 
-def _er_bb_squeeze(close, threshold=0.85):
-    """BB width şu an 20g ortalamanın altında mı (threshold × avg)"""
-    if len(close) < 41:
-        return False
-    try:
-        bbw = _er_bb_width(close)
-        wn = float(bbw.iloc[-1]); wa = float(bbw.rolling(20).mean().iloc[-1])
-        return wa > 0 and wn < wa * threshold
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_bb_squeeze
 
-def _er_bb_squeeze_days(close, threshold=0.85):
-    """Kaç gündür BB sıkışma aktif"""
-    if len(close) < 41:
-        return 0
-    try:
-        bbw = _er_bb_width(close)
-        wa_series = bbw.rolling(20).mean()
-        days = 0
-        for i in range(len(bbw) - 1, -1, -1):
-            wn = float(bbw.iloc[i]); wa = float(wa_series.iloc[i])
-            if wa > 0 and wn < wa * threshold:
-                days += 1
-            else:
-                break
-        return days
-    except Exception:
-        return 0
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_bb_squeeze_days
 
-def _er_atr_contracting(df, threshold=0.7):
-    """ATR son 5g < önceki 20g'nin %X'i"""
-    if len(df) < 26:
-        return False
-    try:
-        h = df['High']; l = df['Low']; c = df['Close']
-        tr1 = h - l
-        tr2 = (h - c.shift()).abs()
-        tr3 = (l - c.shift()).abs()
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr5 = float(tr.iloc[-5:].mean())
-        atr20 = float(tr.iloc[-25:-5].mean())
-        return atr20 > 0 and atr5 < atr20 * threshold
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_atr_contracting
 
-def _er_position_60(df):
-    """60g range içinde fiyatın yüzdelik konumu (0-1)"""
-    if len(df) < 60:
-        return 0.5
-    try:
-        h60 = float(df['High'].iloc[-60:].max())
-        l60 = float(df['Low'].iloc[-60:].min())
-        rng = h60 - l60
-        if rng <= 0:
-            return 0.5
-        return (float(df['Close'].iloc[-1]) - l60) / rng
-    except Exception:
-        return 0.5
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_position_60
 
-def _er_recent_fall(df, lookback=60, threshold=0.15):
-    """Son N günde belirli %'ten fazla düştü mü (zirveden)"""
-    if len(df) < lookback:
-        return False
-    try:
-        h = float(df['High'].iloc[-lookback:].max())
-        c = float(df['Close'].iloc[-1])
-        return h > 0 and (h - c) / h > threshold
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_recent_fall
 
-def _er_fall_stopped(df, days=10):
-    """Son N gün yatay/hafif yukarı"""
-    if len(df) < days:
-        return False
-    try:
-        c_r = df['Close'].iloc[-days:]
-        change = (float(c_r.iloc[-1]) / float(c_r.iloc[0])) - 1
-        return change > -0.05
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_fall_stopped
 
-def _er_lateral_range(df, days=20, threshold=0.10):
-    """Son N gün range darlığı"""
-    if len(df) < days:
-        return False
-    try:
-        last = df.iloc[-days:]
-        h = float(last['High'].max()); l = float(last['Low'].min())
-        return l > 0 and (h - l) / l < threshold
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_lateral_range
 
-def _er_above_sma(df, period):
-    if len(df) < period:
-        return False
-    try:
-        sma = df['Close'].rolling(period).mean()
-        return float(df['Close'].iloc[-1]) > float(sma.iloc[-1])
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_above_sma
 
-def _er_sma50_rising(df):
-    if len(df) < 56:
-        return False
-    try:
-        sma50 = df['Close'].rolling(50).mean()
-        return float(sma50.iloc[-1]) > float(sma50.iloc[-6])
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_sma50_rising
 
-def _er_pullback(df, max_pct=0.08, min_pct=0.03, recent_days=10):
-    """Son N günde belirli aralıkta pullback yapmış mı (zirveden)"""
-    if len(df) < recent_days:
-        return False
-    try:
-        h = float(df['High'].iloc[-recent_days:].max())
-        c = float(df['Close'].iloc[-1])
-        if h <= 0:
-            return False
-        pb = (h - c) / h
-        return min_pct <= pb <= max_pct
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_pullback
 
-def _er_pullback_to_sma(df, period, tol=0.02):
-    """Fiyat SMA(period)'a ±tol içinde yakın mı"""
-    if len(df) < period:
-        return False
-    try:
-        sma = float(df['Close'].rolling(period).mean().iloc[-1])
-        c = float(df['Close'].iloc[-1])
-        return sma > 0 and abs(c - sma) / sma < tol
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_pullback_to_sma
 
-def _er_double_bottom(df, lookback=40, tolerance=0.04):
-    """Çift dip: 2 swing low yakın seviyede"""
-    if len(df) < lookback:
-        return False
-    lows = _er_swing_lows(df['Low'], lookback=lookback)
-    if len(lows) < 2:
-        return False
-    p1_idx, p1_val = lows[-2]; p2_idx, p2_val = lows[-1]
-    if p2_idx - p1_idx < 5 or p2_idx - p1_idx > 35:
-        return False
-    if p1_val <= 0:
-        return False
-    return abs(p2_val - p1_val) / p1_val < tolerance
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_double_bottom
 
-def _er_flag_pattern(df):
-    """Bayrak: önceki 10g sert yükseliş + son 5g yatay/hafif aşağı"""
-    if len(df) < 16:
-        return False
-    try:
-        earlier = float(df['Close'].iloc[-16])
-        flag_start = float(df['Close'].iloc[-6])
-        current = float(df['Close'].iloc[-1])
-        if earlier <= 0 or flag_start <= 0:
-            return False
-        flagpole = (flag_start - earlier) / earlier
-        flag_move = (current - flag_start) / flag_start
-        return flagpole > 0.10 and -0.05 < flag_move < 0.02
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_flag_pattern
 
-def _er_triangle_contraction(df, lookback=20):
-    """Üçgen: HH azalıyor + LL artıyor (son N gün içinde)"""
-    if len(df) < lookback:
-        return False
-    try:
-        recent_high = df['High'].iloc[-lookback:]
-        recent_low = df['Low'].iloc[-lookback:]
-        highs = _er_swing_highs(recent_high, lookback=lookback)
-        lows = _er_swing_lows(recent_low, lookback=lookback)
-        if len(highs) < 2 or len(lows) < 2:
-            return False
-        h1 = highs[-2][1]; h2 = highs[-1][1]
-        l1 = lows[-2][1]; l2 = lows[-1][1]
-        return h2 < h1 and l2 > l1
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_triangle_contraction
 
 # --- RS DETEKTÖRLERİ (Endekse karşı) ---
 
-def _er_rs_pct(close, bench_close, days, _aligned=None):
-    """RS farkı (yüzde): hisse getirisi - endeks getirisi.
-    _aligned: pre-aligned (s_arr, b_arr) numpy tuple (opsiyonel, hızlı yol)"""
-    if _aligned is not None:
-        s_arr, b_arr = _aligned
-        n = len(s_arr)
-        if n < days+1:
-            return 0.0
-        try:
-            sr = (s_arr[-1] / s_arr[-days-1]) - 1
-            br = (b_arr[-1] / b_arr[-days-1]) - 1
-            return float((sr - br) * 100)
-        except Exception:
-            return 0.0
-    # Fallback (eski yol, scan_erken_radar_batch dışından çağrılırsa)
-    if bench_close is None or len(close) < days+1 or len(bench_close) < days+1:
-        return 0.0
-    try:
-        common = close.index.intersection(bench_close.index)
-        if len(common) < days+1:
-            return 0.0
-        s = close.loc[common]; b = bench_close.loc[common]
-        sr = (float(s.iloc[-1]) / float(s.iloc[-days-1])) - 1
-        br = (float(b.iloc[-1]) / float(b.iloc[-days-1])) - 1
-        return (sr - br) * 100
-    except Exception:
-        return 0.0
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_pct
 
 
-def _er_rs_new_high(close, bench_close, lookback=20):
-    """RS oranı son N gün'ün en yüksek %98'inde"""
-    if bench_close is None:
-        return False
-    try:
-        common = close.index.intersection(bench_close.index)
-        if len(common) < lookback:
-            return False
-        rs_ratio = close.loc[common] / bench_close.loc[common]
-        if len(rs_ratio) < lookback:
-            return False
-        recent_max = float(rs_ratio.iloc[-lookback:].max())
-        current = float(rs_ratio.iloc[-1])
-        return recent_max > 0 and current >= recent_max * 0.98
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_new_high
 
 
-def _er_index_falling(bench_close, days=10):
-    """Endeks son N gün'de düşmüş"""
-    if bench_close is None or len(bench_close) < days+1:
-        return False
-    try:
-        return float(bench_close.iloc[-1]) < float(bench_close.iloc[-days-1])
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_index_falling
 
 # --- CONTEXT BUILDER ---
 
-def _er_build_context(df, bench_df=None):
-    """Tüm sinyalleri tek seferde hesapla, dict döner. RS için bench bir kez align edilir."""
-    if df is None or len(df) < 60:
-        return None
-    try:
-        close = df['Close']
-        volume = df['Volume']
-        low = df['Low']
-        high = df['High']
-        rsi_series = _er_rsi(close)
-        rsi_now = float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else 50.0
-        bench_close = bench_df['Close'] if bench_df is not None else None
-        pos60 = _er_position_60(df)
-
-        # ── RS HIZLI YOL: bench'i bir kez align et, numpy array olarak sakla ──
-        _aligned = None
-        _rs_ratio_arr = None
-        if bench_close is not None:
-            try:
-                _common = close.index.intersection(bench_close.index)
-                if len(_common) >= 21:
-                    _s_arr = close.loc[_common].values.astype(float)
-                    _b_arr = bench_close.loc[_common].values.astype(float)
-                    _aligned = (_s_arr, _b_arr)
-                    # RS ratio (Mansfield ham veri) — _er_rs_new_high için
-                    _rs_ratio_arr = _s_arr / _b_arr
-            except Exception:
-                _aligned = None
-
-        return {
-            # RSI zonları
-            'rsi_now': rsi_now,
-            'rsi_25_35': 25 <= rsi_now <= 35,
-            'rsi_30_45': 30 <= rsi_now <= 45,
-            'rsi_30_50': 30 <= rsi_now <= 50,
-            'rsi_35_50': 35 <= rsi_now <= 50,
-            'rsi_40_55': 40 <= rsi_now <= 55,
-            'rsi_42_58': 42 <= rsi_now <= 58,
-            'rsi_45_55': 45 <= rsi_now <= 55,
-            'rsi_45_60': 45 <= rsi_now <= 60,
-            'rsi_45_65': 45 <= rsi_now <= 65,
-            'rsi_50_60': 50 <= rsi_now <= 60,
-            'rsi_50_65': 50 <= rsi_now <= 65,
-            # Trend
-            'above_sma20': _er_above_sma(df, 20),
-            'above_sma50': _er_above_sma(df, 50),
-            'sma50_rising': _er_sma50_rising(df),
-            # Hacim
-            'vol_dried': _er_volume_dried(volume),
-            'vol_rising_slow': _er_volume_rising_slow(volume),
-            'pocket_pivot': _er_pocket_pivot(df),
-            'distribution_day': _er_distribution_day(df, -1),
-            'distribution_count_5d': _er_distribution_count(df, 5),
-            'updown_ratio_bullish': _er_updown_vol_ratio(df) > 1.2,
-            # Volatilite
-            'bb_squeeze': _er_bb_squeeze(close),
-            'bb_squeeze_days': _er_bb_squeeze_days(close),
-            'atr_contracting': _er_atr_contracting(df),
-            # Konum
-            'pos_60': pos60,
-            'pos_60_lower_30': pos60 < 0.30,
-            'pos_60_lower_50': pos60 < 0.50,
-            'pos_60_upper_80': pos60 > 0.80,
-            'pos_60_mid': 0.40 < pos60 < 0.70,
-            'recent_fall_15': _er_recent_fall(df, 60, 0.15),
-            'recent_fall_25': _er_recent_fall(df, 60, 0.25),
-            'fall_stopped': _er_fall_stopped(df),
-            # Yapı
-            'lateral_20': _er_lateral_range(df, 20, 0.10),
-            'lateral_10': _er_lateral_range(df, 10, 0.06),
-            'pullback_3_8': _er_pullback(df, 0.08, 0.03, 10),
-            'pullback_to_sma20': _er_pullback_to_sma(df, 20, 0.02),
-            'pullback_to_sma50': _er_pullback_to_sma(df, 50, 0.03),
-            'double_bottom': _er_double_bottom(df),
-            'flag_pattern': _er_flag_pattern(df),
-            'triangle': _er_triangle_contraction(df),
-            # Divergence
-            'strong_bull_div': _er_strong_bullish_div(low, rsi_series),
-            'medium_bull_div': _er_medium_bullish_div(low, rsi_series),
-            'weak_bull_div': _er_weak_bullish_div(low, rsi_series),
-            'bearish_div': _er_bearish_div(high, rsi_series),
-            # RS (cached aligned — common_index sadece 1 kez hesaplandı, 8x daha hızlı)
-            'rs_turning':             _er_rs_turning_fast(_aligned),
-            'rs_crossover':           _er_rs_crossover_fast(_aligned),
-            'rs_persistent_positive': _er_rs_persistent_positive_fast(_aligned),
-            'rs_accelerating':        _er_rs_accelerating_fast(_aligned),
-            'rs_new_high':            _er_rs_new_high_fast(_rs_ratio_arr),
-            'rs_healthy_pullback':    _er_rs_healthy_pullback_fast(_aligned),
-            'rs_negative_60':         _er_rs_negative_60_fast(_aligned),
-            'rs_20d_pct':             _er_rs_pct(close, bench_close, 20, _aligned=_aligned) if _aligned is not None else 0.0,
-            # Piyasa
-            'index_falling': _er_index_falling(bench_close),
-        }
-    except Exception:
-        return None
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_build_context
 
 
 # ── HIZLI RS DETEKTÖRLERİ (cached aligned tuple üzerinden) ──────────────────
 
-def _er_rs_pct_fast(_aligned, days):
-    """Aligned numpy arr ile direkt hesap (common_index gerektirmez)"""
-    if _aligned is None:
-        return 0.0
-    s_arr, b_arr = _aligned
-    if len(s_arr) < days+1:
-        return 0.0
-    try:
-        sr = (s_arr[-1] / s_arr[-days-1]) - 1
-        br = (b_arr[-1] / b_arr[-days-1]) - 1
-        return float((sr - br) * 100)
-    except Exception:
-        return 0.0
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_pct_fast
 
-def _er_rs_turning_fast(_aligned):
-    return _er_rs_pct_fast(_aligned, 20) < 0 and _er_rs_pct_fast(_aligned, 5) > 0
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_turning_fast
 
-def _er_rs_crossover_fast(_aligned):
-    return _er_rs_pct_fast(_aligned, 20) < 0 and _er_rs_pct_fast(_aligned, 10) > 0
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_crossover_fast
 
-def _er_rs_persistent_positive_fast(_aligned):
-    if _aligned is None:
-        return False
-    for d in (5, 10, 20, 60):
-        if _er_rs_pct_fast(_aligned, d) <= 0:
-            return False
-    return True
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_persistent_positive_fast
 
-def _er_rs_accelerating_fast(_aligned):
-    if _aligned is None:
-        return False
-    rs5 = _er_rs_pct_fast(_aligned, 5)
-    rs10 = _er_rs_pct_fast(_aligned, 10)
-    rs20 = _er_rs_pct_fast(_aligned, 20)
-    return rs5 > rs10 > rs20 and rs5 > 0
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_accelerating_fast
 
-def _er_rs_new_high_fast(_rs_ratio_arr, lookback=20):
-    """RS ratio (close/bench) son N gün'ün tepesinde mi"""
-    if _rs_ratio_arr is None or len(_rs_ratio_arr) < lookback:
-        return False
-    try:
-        recent_max = float(_rs_ratio_arr[-lookback:].max())
-        current = float(_rs_ratio_arr[-1])
-        return recent_max > 0 and current >= recent_max * 0.98
-    except Exception:
-        return False
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_new_high_fast
 
-def _er_rs_healthy_pullback_fast(_aligned):
-    rs20 = _er_rs_pct_fast(_aligned, 20)
-    rs5  = _er_rs_pct_fast(_aligned, 5)
-    return rs20 > 0 and -3 < rs5 < 0
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_healthy_pullback_fast
 
-def _er_rs_negative_60_fast(_aligned):
-    return _er_rs_pct_fast(_aligned, 60) < -5
+# -> scanners.py (Adim 6b, 7 Tem 2026): _er_rs_negative_60_fast
 
 # --- 36 SENARYO ---
 
-ERKEN_RADAR_SCENARIOS = {
-    # === A. GERİ DÖNÜŞ FIRSATLARI (9) ===
-    'A1': {'name': 'Dipte Sessizlik', 'category': 'A', 'stars': 5,
-           'description': 'Hisse uzun süredir düşüşte ama son günlerde satıcı baskısı azaldı. Aynı zamanda fiyat dipler yapsa da iç güç (momentum) artıyor — bu klasik bir dipten dönüş zemini.',
-           'detect': lambda c: c['rsi_30_45'] and c['strong_bull_div'] and c['vol_dried'] and c['fall_stopped'] and c['recent_fall_15']},
-    'A2': {'name': 'Hacimli Tepki', 'category': 'A', 'stars': 4,
-           'description': 'Hisse orta seviyede düşüş (RSI 45-50) sonrası bugün son 10 günün en büyük satış gününden yüksek hacimle yeşil kapattı. Düşüşten sonra net kurumsal tepki sinyali.',
-           # FIX (31 May 2026): A8 ile RSI 35-45 örtüşmesi giderildi. A2 artık SADECE
-           # RSI 45-50 aralığında tetiklenir (rsi_35_50 True + rsi_30_45 False).
-           'detect': lambda c: c['rsi_35_50'] and not c['rsi_30_45'] and c['pocket_pivot'] and c['recent_fall_15']},
-    'A3': {'name': 'İkili Dip / İkinci Test', 'category': 'A', 'stars': 4,
-           'description': 'Hisse aynı dip seviyesini ikinci kez test etti ama bu sefer satıcı baskısı belirgin şekilde daha düşük. Çift dip, klasik dönüş örüntülerinden biri.',
-           'detect': lambda c: c['double_bottom'] and c['rsi_30_50'] and c['vol_dried']},
-    'A4': {'name': 'Yön Değiştiriyor', 'category': 'A', 'stars': 4,
-           'description': 'BIST endeksi düşerken bu hisse direnç gösteriyor ve endeksten daha iyi performans göstermeye başladı. Akıllı para sessizce sahipleniyor olabilir.',
-           'detect': lambda c: c['index_falling'] and c['rs_turning'] and c['rsi_35_50']},
-    'A5': {'name': 'Toparlanma Başlıyor', 'category': 'A', 'stars': 3,
-           'description': 'Hisse düşüş hızını kaybetti, yatayda durdu ve hafif alım sinyalleri var. Henüz güçlü teyit yok ama ilk pozitif işaretler beliriyor.',
-           'detect': lambda c: c['rsi_35_50'] and c['fall_stopped'] and c['pos_60_lower_50'] and (c['weak_bull_div'] or c['vol_rising_slow'])},
-    'A6': {'name': 'Dipte Sıkışma', 'category': 'A', 'stars': 4,
-           'description': 'Hisse dipte sıkışmış, volatilitesi düşmüş. Düşüş tükendi gibi ama yön henüz belli değil — yakında bir taraf belirleyecek.',
-           'detect': lambda c: c['rsi_30_45'] and c['bb_squeeze'] and c['pos_60_lower_30'] and c['fall_stopped']},
-    'A7': {'name': 'Hacimli Toparlanma', 'category': 'A', 'stars': 4,
-           'description': 'Son 20 günde yeşil mum günlerinin toplam hacmi kırmızı mum günlerinden belirgin fazla. Alıcı baskısı satıcıdan ağır basıyor.',
-           'detect': lambda c: c['rsi_35_50'] and c['updown_ratio_bullish'] and c['pos_60_lower_50']},
-    'A8': {'name': 'Ucuz + Hacimli Atak', 'category': 'A', 'stars': 5,
-           'description': 'Hisse düşüş bölgesinde (RSI 30-45) iken bugün son 10 günün en büyük satış gününden yüksek hacimle yeşil kapattı. Düşüşten sonra net kurumsal alım sinyali.',
-           'detect': lambda c: c['rsi_30_45'] and c['pocket_pivot'] and c['recent_fall_15']},
-    'A9': {'name': 'Ucuz Bölgede Bekleyiş', 'category': 'A', 'stars': 3,
-           'description': 'Hisse aşırı satım bölgesinde ve hacim kurudu (satıcı kalmadı). Henüz dönüş tetiği yok ama zemin oluşmuş — sabırlı izleme aşaması.',
-           'detect': lambda c: (c['rsi_25_35'] or c['rsi_30_45']) and c['vol_dried'] and not c['strong_bull_div'] and not c['medium_bull_div']},
-
-    # === B. SIKIŞMA FIRSATLARI (11) ===
-    'B1': {'name': 'Mükemmel Sıkışma', 'category': 'B', 'stars': 5,
-           'description': 'Fiyatın hareket bandı 5+ gündür belirgin daraldı, hacim azaldı, RSI nötr ve hisse endeksten güçlü. Tüm kriterler aynı anda "yay gibi geriliyor" diyor — sert hareket pencereye yakın.',
-           'detect': lambda c: c['rsi_45_55'] and c['bb_squeeze'] and c['bb_squeeze_days'] >= 5 and c['vol_dried'] and c['rs_20d_pct'] > 0},
-    'B2': {'name': 'Sessiz Birikim', 'category': 'B', 'stars': 5,
-           'description': 'Fiyat 20 gündür yatay seyrediyor ama hacim sessizce artıyor ve hisse endekse karşı güç kazanıyor. Klasik "kalabalık fark etmeden büyük alıcılar pozisyon alıyor" örüntüsü.',
-           'detect': lambda c: c['lateral_20'] and c['vol_rising_slow'] and (c['rs_turning'] or c['rs_crossover'] or c['rs_persistent_positive'])},
-    'B3': {'name': 'Klasik Sıkışma', 'category': 'B', 'stars': 4,
-           'description': 'Fiyat 20+ gündür dar bantta, hacim azalmış, volatilite düşmüş. Kırılım için klasik baz zemini — yön hangi tarafa kırılırsa hızlı gidebilir.',
-           'detect': lambda c: c['lateral_20'] and c['vol_dried'] and c['atr_contracting']},
-    'B4': {'name': 'Yatayda Hacim Patlaması', 'category': 'B', 'stars': 5,
-           'description': 'Hisse yatay seyrediyordu ama bugün son 10 günün en büyük satış gününden bile yüksek hacimle yeşil kapattı. Yatay seyrin sonu — büyük alıcı belirdi.',
-           'detect': lambda c: c['lateral_20'] and c['pocket_pivot']},
-    'B5': {'name': 'Üçgen Daralma', 'category': 'B', 'stars': 4,
-           'description': 'Tepe seviyeleri alçalırken dip seviyeleri yükseliyor — fiyat üçgen içinde sıkışıyor. Üçgenler genellikle kırılımla sonuçlanır, yön yakında belli olacak.',
-           'detect': lambda c: c['triangle'] and c['vol_dried']},
-    'B6': {'name': 'Yatay + Endekse Direnç', 'category': 'B', 'stars': 4,
-           'description': 'BIST endeksi düşerken bu hisse yatay duruyor ve endeksten net daha iyi performans gösteriyor. Piyasa baskısına direnç = güçlü hisse işareti.',
-           'detect': lambda c: c['lateral_20'] and c['index_falling'] and c['rs_20d_pct'] > 0},
-    'B7': {'name': 'Yatay + Hafif Pullback', 'category': 'B', 'stars': 3,
-           'description': 'Hisse genel yatay seyrinde son birkaç günde hafif geri çekildi. Yapı bozulmamış, sadece soluklanıyor — küçük pullback alım fırsatı olabilir.',
-           'detect': lambda c: c['lateral_20'] and c['pullback_3_8'] and c['rsi_45_55']},
-    'B8': {'name': 'Sıkışma Sonu', 'category': 'B', 'stars': 4,
-           'description': 'Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı. Sıkışma uzadıkça enerji birikiyor — patlama yakın olabilir.',
-           'detect': lambda c: c['bb_squeeze_days'] >= 10 and c['vol_rising_slow']},
-    'B9': {'name': 'Alt Sınır Testi', 'category': 'B', 'stars': 3,
-           'description': 'Yatay seyirde fiyat alt sınıra dokundu ve oradan toparlandı. Alıcılar bu seviyeyi savundu — destek teyit edildi.',
-           'detect': lambda c: c['lateral_20'] and c['pos_60_mid'] and c['fall_stopped'] and c['updown_ratio_bullish']},
-    'B10': {'name': 'Yatay + Momentum Çelişkisi', 'category': 'B', 'stars': 5,
-            'description': 'Fiyat 20 gündür yatay ama momentum (RSI) içeride güçleniyor. Görünen sakinliğe rağmen iç güç birikiyor — dönüş yakın olabilir.',
-            'detect': lambda c: c['lateral_20'] and (c['strong_bull_div'] or c['medium_bull_div']) and c['vol_dried']},
-    'B11': {'name': 'Tepe Yakını Sıkışma', 'category': 'B', 'stars': 4,
-            'description': 'Hisse 60 günlük zirvesinin yakınında sıkışıyor ve endekse karşı güçlü. Tepe yakını sıkışmalar genellikle yukarı kırılımla sonuçlanır.',
-            'detect': lambda c: c['pos_60_upper_80'] and c['bb_squeeze'] and c['rs_20d_pct'] > 0},
-
-    # === C. TREND DEVAMI FIRSATLARI (11) ===
-    'C1': {'name': 'İdeal Pullback', 'category': 'C', 'stars': 5,
-           'description': 'Hisse yukarı trendde devam ediyor (50 günlük ortalama yukarı eğimli, fiyat üstünde). Şu an %3-7 arası sağlıklı bir düzeltme yaşıyor ve hacim düşük. Trend devamı için klasik alım fırsatı.',
-           'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['rsi_50_60'] and c['pullback_3_8'] and c['vol_dried']},
-    'C2': {'name': 'Ortalama Testi', 'category': 'C', 'stars': 4,
-           'description': 'Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı. Bu ortalamalar genellikle alıcıların devreye girdiği yerler — trend muhtemelen devam eder.',
-           'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and (c['pullback_to_sma20'] or c['pullback_to_sma50']) and c['rsi_45_60']},
-    'C3': {'name': 'Pullback + Hacimli Alım', 'category': 'C', 'stars': 5,
-           'description': 'Hisse yukarı trendde, son günlerde geri çekildi ama bugün son 10 günün en büyük satış gününden yüksek hacimle yeşil kapattı. Düzeltme bitti, kurumsal alım geri döndü — klasik devam sinyali.',
-           'detect': lambda c: c['above_sma50'] and c['pullback_3_8'] and c['pocket_pivot']},
-    'C4': {'name': 'Soluklanma', 'category': 'C', 'stars': 4,
-           'description': 'Trend yukarı, fiyat 50 günlük ortalama üstünde ve ortalama yukarı eğimli. Son 3-5 gün yatay seyrediyor — kısa süreli dinlenme, trend devam ediyor.',
-           'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['lateral_10'] and c['rsi_50_65']},
-    'C5': {'name': 'Bayrak Formasyonu', 'category': 'C', 'stars': 4,
-           'description': 'Hisse son 10 günde sert yükseldi (%10+), ardından son 5 günde dar bir konsolidasyona girdi. Bayrak formasyonu — devam beklentisi yüksek.',
-           'detect': lambda c: c['above_sma50'] and c['flag_pattern'] and c['rsi_45_65']},
-    'C6': {'name': 'Piyasa Lideri', 'category': 'C', 'stars': 5,
-           'description': 'Hisse endekse karşı son 20 günün zirvesinde — piyasada lider konumda. Şu an hafif sağlıklı bir geri çekilme yaşıyor — yeniden ivme kazanabilir.',
-           'detect': lambda c: c['above_sma50'] and c['rs_new_high'] and c['rs_healthy_pullback']},
-    'C7': {'name': 'Sağlam Trend Yapısı', 'category': 'C', 'stars': 4,
-           'description': 'Tüm hareketli ortalamalar düzgün hizalı (fiyat > 20 > 50 günlük) ve tüm zaman dilimlerinde hisse endeksi yeniyor. Çok temiz, profesyonel trend görünümü.',
-           'detect': lambda c: c['above_sma20'] and c['above_sma50'] and c['sma50_rising'] and c['rs_persistent_positive'] and c['rsi_45_65']},
-    'C8': {'name': 'Yukarı Kanal Testi', 'category': 'C', 'stars': 4,
-           'description': 'Hisse yukarı trendde, fiyat 20 günlük ortalamaya kadar geri çekildi ve oradan toparlandı. Kanal içinde sağlıklı düzeltme — yukarı devam beklenebilir.',
-           'detect': lambda c: c['above_sma50'] and c['pullback_to_sma20'] and c['rsi_45_55'] and c['vol_dried']},
-    'C9': {'name': 'Pullback Var', 'category': 'C', 'stars': 3,
-           'description': 'Yukarı trend var ama henüz net bir geri çekilme testi olmadı. Pullback yeni başlıyor — pozisyon almak için biraz sabır gerekebilir.',
-           'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['rsi_45_60'] and not c['pullback_to_sma20'] and not c['pullback_to_sma50']},
-    'C10': {'name': 'Trendde Sıkışma', 'category': 'C', 'stars': 4,
-            'description': 'Yukarı trendde fiyat 10+ gündür dar bantta sıkışıyor. Trend bozulmadı, sadece nefes alıyor — kırılım yukarı yönde olma olasılığı yüksek.',
-            'detect': lambda c: c['above_sma50'] and c['sma50_rising'] and c['bb_squeeze'] and c['lateral_10']},
-    'C11': {'name': 'Trendde Momentum Sağlam', 'category': 'C', 'stars': 4,
-            'description': "Yukarı trendde geri çekilmede iç momentum (RSI) düşmedi — yapı sağlam. Trend devam etme olasılığı yüksek.",
-            'detect': lambda c: c['above_sma50'] and c['pullback_3_8'] and (c['strong_bull_div'] or c['medium_bull_div'])},
-
-    # === D. UYARILAR (5) ===
-    'D1': {'name': 'Tek Güçlü Sinyal', 'category': 'D', 'stars': 3,
-           'description': 'Bugün hacimli bir alım günü oldu ama hisse 50 günlük ortalama altında ve diğer kriterler desteklemiyor. Tek başına güçlü sinyal ama riskli — temkinli yaklaş.',
-           'detect': lambda c: c['pocket_pivot'] and not c['above_sma50'] and not c['vol_dried']},
-    'D2': {'name': 'Karışık Sinyal', 'category': 'D', 'stars': 2,
-           'description': 'Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli.',
-           'detect': lambda c: (c['weak_bull_div'] or c['vol_rising_slow']) and c['bearish_div']},
-    'D3': {'name': 'Erken Aşama', 'category': 'D', 'stars': 2,
-           'description': 'Hisse ucuz bölgede ve hacim kurudu, ama henüz dönüş için yeterli teyit yok. Sabırlı izleme aşaması — beklemeli.',
-           'detect': lambda c: c['rsi_30_50'] and not c['pos_60_upper_80'] and c['vol_dried'] and not c['strong_bull_div'] and not c['medium_bull_div'] and not c['weak_bull_div'] and not c['pocket_pivot'] and not c['bb_squeeze']},
-    'D4': {'name': 'Kurumsal Satış Riski', 'category': 'D', 'stars': 'KIRMIZI',
-           'description': 'Son 5 günde 2+ defa yüksek hacimli kırmızı kapanış gördük. Bu, kurumların pozisyon küçülttüğüne işaret eder — alımdan kaçın, mevcut pozisyonda dikkatli ol.',
-           'detect': lambda c: c['distribution_count_5d'] >= 2},
-    'D5': {'name': 'Trend Bozuldu', 'category': 'D', 'stars': 'KIRMIZI',
-           'description': 'Fiyat 50 günlük ortalama altına düştü, bugün yüksek hacimli kırmızı kapanış var ve hisse endekse karşı uzun süredir zayıf. Yapı bozulmuş — alım için uygun değil.',
-           'detect': lambda c: not c['above_sma50'] and c['distribution_day'] and c['rs_negative_60']},
-}
+# -> scanners.py (Adim 6b, 7 Tem 2026): ERKEN_RADAR_SCENARIOS
 
 # --- EVALUATOR ---
 
-def evaluate_erken_radar(ticker, df, bench_df=None):
-    """36 senaryoyu test et, eşleşenleri döner.
-    Çıktı: {primary, confirmations, red_flags, overall_quality, verdict, context, matched_count}
-    """
-    ctx = _er_build_context(df, bench_df)
-    if ctx is None:
-        return None
-    matched = []
-    red_flags = []
-    for sid, sc in ERKEN_RADAR_SCENARIOS.items():
-        try:
-            if sc['detect'](ctx):
-                entry = {
-                    'id': sid,
-                    'name': sc['name'],
-                    'category': sc['category'],
-                    'stars': sc['stars'],
-                    'description': sc['description'],
-                }
-                if sc['stars'] == 'KIRMIZI':
-                    red_flags.append(entry)
-                else:
-                    matched.append(entry)
-        except Exception as _er_exc:
-            # FIX (31 May 2026): Silent exception → log_error ile errors.log'a yaz.
-            # Senaryo lambda detect'i hata verirse senaryo atlanmaya devam eder ama
-            # artık görünür: hangi senaryo, hangi hisse, hangi hata.
-            try:
-                log_error(f"evaluate_erken_radar/{sid}", _er_exc, ctx={'ticker': ticker})
-            except Exception:
-                pass
-            continue
-    # Sırala: yıldız sayısı desc, sonra ID
-    matched.sort(key=lambda x: (-(x['stars'] if isinstance(x['stars'], int) else 0), x['id']))
-    primary = matched[0] if matched else None
-    confirmations = matched[1:5] if len(matched) > 1 else []
-    # Quality
-    quality = 0
-    star_to_qual = {5: 85, 4: 65, 3: 45, 2: 25}
-    if primary:
-        quality = star_to_qual.get(primary['stars'], 30)
-        quality += min(len(confirmations) * 4, 15)
-    if red_flags:
-        quality = max(0, quality - 30)
-    return {
-        'primary': primary,
-        'confirmations': confirmations,
-        'red_flags': red_flags,
-        'overall_quality': min(quality, 100),
-        'verdict': primary['description'] if primary else ('Risk uyarısı var' if red_flags else 'Anlamlı senaryo yok'),
-        'context': ctx,
-        'matched_count': len(matched),
-        'red_flag_count': len(red_flags),
-    }
+# -> scanners.py (Adim 6b, 7 Tem 2026): evaluate_erken_radar
 
 
 def build_erken_radar_prompt_text(er_data, quality=None):
@@ -18300,6 +13164,10 @@ def calculate_8_point_roadmap(ticker, cat=None):
         if not pat_df.empty:
             pat_name  = pat_df.iloc[0]['Formasyon']
             chart_dat = pat_df.iloc[0].get('ChartData', None)
+            # 6 Tem 2026 — TEK KAYNAK FİYAT: formasyon panelinin fiyatı, seviyelerle AYNI
+            # taramadan (aynı df'in son kapanışı) gelmeli. Ayrı current_price kullanınca
+            # ölçek ayrışıp (XU100: seviye ~10 vs fiyat 14424) yüzde -%99.9 çıkıyordu.
+            _m2_scan_price = float(pat_df.iloc[0].get('Fiyat', 0) or 0) or None
             _hint = ('<br><span style="color:#38bdf8;font-weight:600;font-size:11px;">'
                      '🔍 Detaylı grafik ve kilit seviyeleri için aşağıdaki butona tıklayın</span>') if chart_dat else ""
             # 9 Haz 2026 Oturum 20 — BREAKOUT rozeti
@@ -18326,6 +13194,7 @@ def calculate_8_point_roadmap(ticker, cat=None):
                   f"<b>Ana Yapı:</b> {'İtki (Trend)' if cp > sma50 else 'Düzeltme (Pullback)'}{_bk_badge}{_hint}")
         else:
             chart_dat = None
+            _m2_scan_price = None
             m2 = f"<b>Mevcut Formasyon:</b> Kitabi bir yapı görünmüyor.<br><b>Ana Yapı:</b> {'İtki (Trend)' if cp > sma50 else 'Düzeltme Fazı'}"
 
         # --- 3. EFOR VS SONUÇ (VSA) ---
@@ -18544,6 +13413,7 @@ def calculate_8_point_roadmap(ticker, cat=None):
         return {
             "M1": m1, "M2": m2, "M3": m3, "M4": m4, "M5": m5, "M6": m6, "M7": m7, "M8": m8,
             "M2_chart_data": chart_dat,
+            "M2_scan_price": _m2_scan_price,   # 6 Tem — seviyelerle aynı ölçekteki fiyat (tek kaynak)
             "S": [s1, s2, s3, s4, s5, s6, s7, s8],
             "composite_score":    composite_score,
             "comp_decision":      _comp_decision,
@@ -19188,11 +14058,14 @@ def _formasyon_dialog(ticker, chart_data, current_price, display_ticker, pat_lab
     """Zenginleştirilmiş formasyon popup: grafik + tam analiz + sahne hikayesi."""
     _a  = _build_pattern_analysis(chart_data, current_price, ticker)
     fp  = _a["fp"]
-    txt = "#0f172a"
-    sub = "#475569"
-    brd = "#e2e8f0"
-    lbl = "#64748b"
-    card = "#f8fafc"
+    # 6 Tem 2026 — app TEK TEMA "SMR Dark" (koyu modal). Eskiden açık-tema renkleri
+    # (koyu metin #0f172a) hardcode'du → Sahne Hikayesi + Sonuç + hedef fiyatı, koyu
+    # arka planda (#0d1829) GÖRÜNMÜYORDU. Koyu-tema paletine geçir (açık metin).
+    txt = "#f1f5f9"    # açık metin — koyu modalda okunur (current_theme['text'])
+    sub = "#94a3b8"
+    brd = "#1e3a5f"
+    lbl = "#94a3b8"
+    card = "#0d1829"
 
     st.markdown(
         f"<div style='font-size:1.35rem;font-weight:800;color:{'#1e3a8a'};margin-bottom:12px;'>"
@@ -20131,7 +15004,10 @@ def render_roadmap_8_panel(ticker):
     if _m2_chart and isinstance(_m2_chart, dict):
         st.session_state['_formasyon_chart_data']    = _m2_chart
         st.session_state['_formasyon_pat_label']     = _type_labels.get(_m2_chart.get('type', ''), "Formasyon")
-        st.session_state['_formasyon_current_price'] = current_price
+        # TEK KAYNAK FİYAT: seviyeleri üreten taramanın kendi fiyatı (aynı ölçek).
+        # Yoksa detay paneli current_price'ına düş (geriye uyumlu).
+        _m2_price = data.get('M2_scan_price')
+        st.session_state['_formasyon_current_price'] = _m2_price if _m2_price else current_price
         st.session_state['_formasyon_ticker']        = ticker
         st.session_state['_formasyon_display']       = display_ticker
     else:
@@ -23151,70 +18027,7 @@ def _render_weekly_frame_panel(ticker):
 # tutarsızlık aramaz — damgaya güvenir (TEMİZ) ya da işaretli metriğe güvenmez.
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _data_integrity_check(df, ticker):
-    """Veriyi denetler, güven damgası döndürür (ONARMAZ).
-    {'clean': bool, 'durum': 'TEMİZ'|'ŞÜPHELİ', 'issues': [insan-okur], 'distrust': [metrik]}"""
-    issues = []
-    distrust = []
-    try:
-        if df is None or len(df) < 20 or 'Close' not in df.columns:
-            return {'clean': False, 'durum': 'ŞÜPHELİ',
-                    'issues': ['veri yetersiz (<20 bar)'], 'distrust': ['hepsi']}
-
-        is_index = str(ticker).upper().startswith(("XU", "XB", "XT", "XY"))
-        c = df['Close']; h = df.get('High'); l = df.get('Low'); v = df.get('Volume')
-
-        # 1) NaN / sıfır kapanış (son 60 bar)
-        if c.tail(60).isna().any() or (c.tail(60) <= 0).any():
-            issues.append('son 60 günde NaN/sıfır kapanış')
-            distrust.append('fiyat')
-
-        # 2) OHLC bütünlüğü (son 60 bar)
-        if h is not None and l is not None:
-            if int((h.tail(60) < l.tail(60)).sum()) > 0:
-                issues.append('Yüksek < Düşük olan bar(lar)')
-                distrust.append('mum')
-            try:
-                _out = int(((c.tail(60) > h.tail(60) + 1e-6) |
-                            (c.tail(60) < l.tail(60) - 1e-6)).sum())
-                if _out > 2:
-                    issues.append(f'{_out} barda kapanış mum aralığı dışında')
-                    distrust.append('mum')
-            except Exception:
-                pass
-
-        # 3) Ölçek / işlenmemiş bölünme kalıntısı (hisse)
-        if not is_index and len(df) >= 60:
-            win = df.tail(252)
-            hi = float(win['High'].max()); last = float(c.iloc[-1])
-            if hi > 0 and 0 < last < hi * 0.04:
-                issues.append(f"son fiyat 52H zirvenin %{last/hi*100:.0f}'i — işlenmemiş bölünme şüphesi")
-                distrust.extend(['52h_zirve', 'master_score'])
-            if bool((c.pct_change().tail(252) < -0.35).any()):
-                issues.append('son 1 yılda düzeltilmemiş >%35 tek-gün düşüş')
-                distrust.extend(['52h_zirve', 'getiri'])
-
-        # 4) Tekrar / büyük veri deliği
-        if bool(df.index.duplicated().any()):
-            issues.append('tekrarlı tarih (duplicate gün)')
-        try:
-            if not is_index and int((df.index.to_series().diff().dt.days.tail(60) > 6).sum()) > 0:
-                issues.append('son 60 günde >6 günlük veri deliği')
-        except Exception:
-            pass
-
-        # 5) Sıfır-hacim serisi (endeks hariç)
-        if v is not None and not is_index:
-            if int((v.tail(10) <= 0).sum()) >= 5:
-                issues.append('son 10 günde 5+ sıfır-hacim bar')
-                distrust.append('hacim')
-    except Exception as _e:
-        return {'clean': False, 'durum': 'ŞÜPHELİ',
-                'issues': [f'denetim hatası: {_e}'], 'distrust': []}
-
-    clean = (len(issues) == 0)
-    return {'clean': clean, 'durum': 'TEMİZ' if clean else 'ŞÜPHELİ',
-            'issues': issues, 'distrust': sorted(set(distrust))}
+# -> data_layer.py (Adim 6c, 9 Tem 2026): _data_integrity_check
 
 
 def _render_health_signals_panel():
@@ -24795,7 +19608,7 @@ if st.session_state.generate_prompt:
             # Bar Kırmızı (Negatif) ise şimdi Fiyata bakıyoruz
             if p_change >= 0:
                 # SENARYO: Fiyat Yükseliyor AMA Bar Kırmızı -> SENİN CÜMLEN BURADA
-                momentum_analiz_txt = "⚠️ UYARI (YORGUN BOĞA mı yoksa DEVAM mı): Fiyat hala tepede görünüyor olabilir ama aldanma. Son 6 günün ortalama hızının altına düştük: Bu yükselişin yakıtını sorgulamak gerekebilir, yakıt bitmiş olabilir, sadece rüzgarla gidiyor olabiliriz. 1) Eğer hacim düşükse bu bir 'Bayrak/Flama' (Güç Toplama) olabilir. 2) Eğer hacim yüksekse bu bir 'Mal Çıkışı' (Yorgun Boğa) olabilir. Stopları yaklaştır ve kırılımı bekle."
+                momentum_analiz_txt = "⚠️ UYARI (YORGUN BOĞA mı yoksa DEVAM mı): Fiyat hala tepede görünüyor olabilir ama aldanma. Para akış ivmesi negatife döndü (trend eğimi + RSI/MFI/konum kompoziti birlikte zayıflıyor): Bu yükselişin yakıtını sorgulamak gerekebilir, yakıt bitmiş olabilir, sadece rüzgarla gidiyor olabiliriz. 1) Eğer hacim düşükse bu bir 'Bayrak/Flama' (Güç Toplama) olabilir. 2) Eğer hacim yüksekse bu bir 'Mal Çıkışı' (Yorgun Boğa) olabilir. Stopları yaklaştır ve kırılımı bekle."
             else:
                 # SENARYO: Fiyat Düşüyor VE Bar Kırmızı -> NORMAL
                 momentum_analiz_txt = "🔻 ZAYIF (Uyumlu): Düşüş trendi momentumla teyit ediliyor."
@@ -28678,18 +23491,22 @@ def _show_fullscreen_chart():
     if _tab_pat is not None and _pat_row is not None:
         with _tab_pat:
             _chart_dat = _pat_row.get('ChartData', None)
-            _curr_px   = _px  # fetch_stock_info ile çekilen mevcut fiyat
+            # 6 Tem 2026 — TEK KAYNAK FİYAT: seviyeleri üreten taramanın kendi fiyatı
+            # (aynı df/ölçek). Ayrı _px (fetch_stock_info) ölçek ayrıştırıp -%99.9 üretebiliyordu.
+            _curr_px   = float(_pat_row.get('Fiyat', 0) or 0) or _px
 
             if _chart_dat and isinstance(_chart_dat, dict):
                 # ── _formasyon_dialog ile tamamen aynı tam analiz ──────────
                 try:
                     _a   = _build_pattern_analysis(_chart_dat, _curr_px, _ticker)
                     _fp  = _a["fp"]
-                    _txt = "#0f172a"
-                    _sub = "#475569"
-                    _brd = "#e2e8f0"
-                    _lbl = "#64748b"
-                    _crd = "#f8fafc"
+                    # 6 Tem 2026 — koyu-tema paleti (SMR Dark). Eskiden açık-tema koyu metni
+                    # koyu arka planda (_sbg=#0d1829) görünmüyordu (Sahne Hikayesi/Sonuç boş).
+                    _txt = "#f1f5f9"
+                    _sub = "#94a3b8"
+                    _brd = "#1e3a5f"
+                    _lbl = "#94a3b8"
+                    _crd = "#0d1829"
 
                     # Başlık
                     _ttl_col = "#1e3a8a"
@@ -28909,6 +23726,13 @@ col_left, col_right = st.columns([82, 20])
 # --- SOL SÜTUN ---
 
 def _render_left_col():
+    # Hayalet-veri bekçisi: süreç başladıktan sonra değişen modül varsa uyar.
+    _stale_mods = _stale_modules_since_boot()
+    if _stale_mods:
+        st.warning("⚠ Şu modüller süreç başladıktan SONRA değişti: "
+                   + ", ".join(_stale_mods)
+                   + " — hesaplar ESKİ kodla çalışıyor olabilir (hayalet veri riski). "
+                   "Streamlit'i TAM restart et.")
     # geçmiş takibi — selectbox header'da, burada sadece state güncelle
     _cur_ticker = st.session_state.ticker
     # Profil: render boyu ölçüm (SMR_PROFILE=1 ile aktif)
@@ -30487,6 +25311,11 @@ def _render_left_col():
     except Exception:
         pass
 
+    # ── GÖRSEL ANALİZ DOLDURMA — HER ŞEYİN EN SONUNDA (8 Tem 2026) ──────────
+    # İnfografik üretimi (~5sn, kaleido) bilerek en sona saklandı: yukarıdaki tüm
+    # paneller çizildi, sayfa kullanılabilir; görsel şimdi ayrılan yuvaya dolar.
+    _finalize_infografik_slot()
+
     # --- SAĞ SÜTUN ---
 
 
@@ -31476,10 +26305,48 @@ def _render_right_col():
     # --- BİRLEŞİK SİNYAL PANELİ (Canlı Sinyaller + Tarama Sonuçları) ---
     render_unified_signals_panel(st.session_state.ticker)
 
-    # 📊 SİNYAL ÖZETİ — fiyat kartından buraya, CANLI SİNYALLER'in ALTINA taşındı (24 Haz 2026)
-    _so_html_mv = st.session_state.get('_so_ozet_html', '')
-    if _so_html_mv:
-        st.markdown(_so_html_mv, unsafe_allow_html=True)
+    # 📦 DARVAS BOX — CANLI SİNYALLER'in hemen altına taşındı (7 Tem 2026)
+    try:
+        _df_darvas_live = get_safe_historical_data(st.session_state.ticker, period="6mo")
+        if _df_darvas_live is not None and len(_df_darvas_live) >= 60:
+            _dbox_live = detect_darvas_box(_df_darvas_live)
+            if _dbox_live and _dbox_live['quality'] >= 75:
+                _dl_st  = _dbox_live['status']
+                _dl_q   = _dbox_live['quality']
+                _dl_age = _dbox_live['box_age']
+                _dl_top = _dbox_live['box_top']
+                _dl_bot = _dbox_live['box_bottom']
+                _dl_cls = _dbox_live.get('breakout_class')
+                _dl_vr  = _dbox_live.get('vol_ratio', 1.0)
+                if _dl_st == 'breakout' and _dl_cls == 'A':
+                    _dl_border = "#f59e0b"; _dl_bg = "rgba(245,158,11,0.08)"
+                    _dl_title  = "⭐📦 DARVAS A-SINYAL — 3/3 Kapı Açık"
+                    _dl_desc   = f"{_dl_age} günlük birikim kutusu hacimle kırıldı · Tavan:{_dl_top} → Taban:{_dl_bot} · Hacim:{_dl_vr:.1f}x"
+                elif _dl_st == 'breakout':
+                    _dl_border = "#38bdf8"; _dl_bg = "rgba(56,189,248,0.07)"
+                    _dl_title  = "📦 Darvas Kırılım (Kısmi Onay)"
+                    _dl_desc   = f"{_dl_age} günlük kutu kırıldı · Tavan:{_dl_top} · Hacim teyidi eksik"
+                else:
+                    _dl_border = "#6366f1"; _dl_bg = "rgba(99,102,241,0.07)"
+                    _dl_title  = "🟦 Darvas Kutu Oluşuyor"
+                    _dl_desc   = f"{_dl_age} günlük konsolidasyon · Tavan:{_dl_top} → Taban:{_dl_bot} · {_dl_top} üstü kapanış kırılım tetikler"
+                st.markdown(
+                    f"<div style='border:2px solid {_dl_border};border-radius:10px;"
+                    f"padding:10px 14px;background:{_dl_bg};margin-bottom:8px;'>"
+                    f"<div style='font-size:0.8rem;font-weight:800;color:{_dl_border};"
+                    f"margin-bottom:4px;'>{_dl_title} · Kalite: {_dl_q}/100</div>"
+                    f"<div style='font-size:0.78rem;color:#cbd5e1;line-height:1.4;'>{_dl_desc}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+    except:
+        pass
+
+    # 2. Price Action Paneli (ELITE) — SİNYAL ÖZETİ ile yer değiştirdi (7 Tem 2026)
+    if _MM_ELITE_OK:
+        render_price_action_panel(st.session_state.ticker)
+    else:
+        _mm_elite_teaser("Price Action Analizi")
 
     render_risk_profile_card(st.session_state.ticker)   # risk profili (en altta)
     try:
@@ -31492,11 +26359,10 @@ def _render_right_col():
     # --- ICT BOTTOM LINE (SONUÇ) → 1 Tem 2026: ICT Smart Money Analizi panelinin İÇİNE
     # (en altına, tam genişlik) geri taşındı — render_ict_deep_panel sonunda. Sağ sütundan çıkarıldı.
 
-    # 2. Price Action Paneli (ELITE)
-    if _MM_ELITE_OK:
-        render_price_action_panel(st.session_state.ticker)
-    else:
-        _mm_elite_teaser("Price Action Analizi")
+    # 📊 SİNYAL ÖZETİ — Price Action ile yer değiştirdi, aşağıya taşındı (7 Tem 2026)
+    _so_html_mv = st.session_state.get('_so_ozet_html', '')
+    if _so_html_mv:
+        st.markdown(_so_html_mv, unsafe_allow_html=True)
 
     # 🦅 YENİ: ICT SNIPER ONAY RAPORU (Sadece Setup Varsa Çıkar) (ELITE)
     if _MM_ELITE_OK:
@@ -31557,43 +26423,6 @@ def _render_right_col():
                         f"</div>",
                         unsafe_allow_html=True
                     )
-    except:
-        pass
-    
-    # 📦 DARVAS BOX — Bireysel hisse banner'ı (kalite ≥ 75 ise göster)
-    try:
-        _df_darvas_live = get_safe_historical_data(st.session_state.ticker, period="6mo")
-        if _df_darvas_live is not None and len(_df_darvas_live) >= 60:
-            _dbox_live = detect_darvas_box(_df_darvas_live)
-            if _dbox_live and _dbox_live['quality'] >= 75:
-                _dl_st  = _dbox_live['status']
-                _dl_q   = _dbox_live['quality']
-                _dl_age = _dbox_live['box_age']
-                _dl_top = _dbox_live['box_top']
-                _dl_bot = _dbox_live['box_bottom']
-                _dl_cls = _dbox_live.get('breakout_class')
-                _dl_vr  = _dbox_live.get('vol_ratio', 1.0)
-                if _dl_st == 'breakout' and _dl_cls == 'A':
-                    _dl_border = "#f59e0b"; _dl_bg = "rgba(245,158,11,0.08)"
-                    _dl_title  = "⭐📦 DARVAS A-SINYAL — 3/3 Kapı Açık"
-                    _dl_desc   = f"{_dl_age} günlük birikim kutusu hacimle kırıldı · Tavan:{_dl_top} → Taban:{_dl_bot} · Hacim:{_dl_vr:.1f}x"
-                elif _dl_st == 'breakout':
-                    _dl_border = "#38bdf8"; _dl_bg = "rgba(56,189,248,0.07)"
-                    _dl_title  = "📦 Darvas Kırılım (Kısmi Onay)"
-                    _dl_desc   = f"{_dl_age} günlük kutu kırıldı · Tavan:{_dl_top} · Hacim teyidi eksik"
-                else:
-                    _dl_border = "#6366f1"; _dl_bg = "rgba(99,102,241,0.07)"
-                    _dl_title  = "🟦 Darvas Kutu Oluşuyor"
-                    _dl_desc   = f"{_dl_age} günlük konsolidasyon · Tavan:{_dl_top} → Taban:{_dl_bot} · {_dl_top} üstü kapanış kırılım tetikler"
-                st.markdown(
-                    f"<div style='border:2px solid {_dl_border};border-radius:10px;"
-                    f"padding:10px 14px;background:{_dl_bg};margin-bottom:8px;'>"
-                    f"<div style='font-size:0.8rem;font-weight:800;color:{_dl_border};"
-                    f"margin-bottom:4px;'>{_dl_title} · Kalite: {_dl_q}/100</div>"
-                    f"<div style='font-size:0.78rem;color:#cbd5e1;line-height:1.4;'>{_dl_desc}</div>"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
     except:
         pass
     
