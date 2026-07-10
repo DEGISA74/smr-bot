@@ -22,6 +22,7 @@ import sqlite3
 import pathlib
 
 import ict_core  # 5 Tem 2026 — ICT paketi ORTAK modül (app paneli ile aynı kurallar)
+from data_policy import AUTO_ADJUST, drop_adj_close  # 6 Tem 2026 — veri politikası TEK KAYNAK (app.py/fetcher ile aynı HAM fiyat)
 
 _SIGNALS_DB = pathlib.Path(__file__).parent / "signals.db"
 _CACHE_DIR   = pathlib.Path(os.environ.get("SMR_CACHE_DIR",
@@ -458,7 +459,7 @@ def _yf_ticker(ticker: str) -> str:
 # ─── PARQUET CACHE ────────────────────────────────────────────────────────────
 def _read_parquet_cache(yf_sym: str) -> "pd.DataFrame | None":
     """VPS parquet cache'den okur. Dosya yoksa veya 48 saatten eskiyse None döner."""
-    p = _CACHE_DIR / f"{yf_sym}.parquet"
+    p = _CACHE_DIR / f"{yf_sym}_1d.parquet"   # 6 Tem 2026 — dosya adı '_1d' ekiyle (fetcher/app ile aynı); eksik ek yüzünden cache HİÇ bulunamıyordu → her seferinde taze indirme
     if not p.exists():
         return None
     if (time.time() - p.stat().st_mtime) > 172_800:   # 48 saat
@@ -548,7 +549,8 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
         for _attempt in range(3):
             try:
                 df = yf.download(yf_sym, period=period, interval="1d",
-                                 auto_adjust=True, progress=False, timeout=15)
+                                 auto_adjust=AUTO_ADJUST, progress=False, timeout=15)
+                df = drop_adj_close(df)  # HAM modda 'Adj Close' fazlalığını at (şema=OHLCV)
                 if df is not None and not df.empty:
                     break
                 log.warning(f"get_data: {yf_sym} boş veri (deneme {_attempt+1}/3)")
@@ -1273,14 +1275,14 @@ def _calc_synth_data(df: pd.DataFrame, n: int = 30) -> pd.DataFrame | None:
         if df is None or len(df) < 15:
             return None
         close  = df["Close"].astype(float)
-        high   = df["High"].astype(float)
-        low    = df["Low"].astype(float)
 
-        typical = (high + low + close) / 3
-        ema1    = typical.ewm(span=6, adjust=False).mean()
-        ema2    = ema1.ewm(span=6, adjust=False).mean()
-        dema6   = 2 * ema1 - ema2
-        mf_smooth = (typical - dema6) / dema6 * 1000
+        # 9 Tem 2026 — İVME KARIŞIMI: eski DEMA6 konum formülü yerine
+        # %50 STP eğimi + %50 kompozit puan değişimi. TEK KAYNAK:
+        # indicators.compute_flow_momentum (app paneli/infografik/site ile aynı).
+        from indicators import compute_flow_momentum
+        mf_smooth, ema1 = compute_flow_momentum(df)
+        if mf_smooth is None:
+            return None
 
         idx = df.index
         if hasattr(idx, "to_pydatetime"):
@@ -1307,7 +1309,7 @@ def generate_chart(ticker: str, df: pd.DataFrame, ict: dict | None = None) -> by
     ile aynı tasarım, Streamlit/Playwright gerektirmez.
 
     Sol: MF_Smooth çubuk grafiği (mavi/kırmızı) + Fiyat çizgisi
-    Sağ: Fiyat (mavi) vs STP-DEMA6 (sarı) + doldurma
+    Sağ: Fiyat (mavi) vs STP eğilim çizgisi (sarı) + doldurma
 
     PNG bayt dizisi döndürür.
     """
@@ -1412,7 +1414,7 @@ def generate_chart(ticker: str, df: pd.DataFrame, ict: dict | None = None) -> by
             # ── Sağ panel: Fiyat vs STP ────────────────────────────────────────
             ax2 = fig.add_subplot(gs[1, 1], facecolor=PANEL)
             ax2.fill_between(x, st, pr, alpha=0.15, color="#94a3b8", zorder=2)
-            ax2.plot(x, st, color=STP_LINE, linewidth=2.8, zorder=4, label="STP-DEMA6")
+            ax2.plot(x, st, color=STP_LINE, linewidth=2.8, zorder=4, label="STP (Eğilim)")
             ax2.plot(x, pr, color=PRICE_LINE, linewidth=2.0, zorder=5, label="Fiyat")
             ax2.set_ylabel("Fiyat", color=LABEL, fontsize=9)
             ax2.tick_params(axis="y", colors=LABEL, labelsize=8)
@@ -1937,7 +1939,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
         clean_check = ticker.replace(".IS", "").replace("-USD", "").replace("=F", "")
         is_bist = ticker.endswith(".IS") or ticker.startswith("XU") or clean_check in _BIST_SET
         if is_bist and not ticker.startswith("XU"):
-            xu = yf.download("XU100.IS", period="2mo", interval="1d", progress=False, auto_adjust=True)
+            xu = drop_adj_close(yf.download("XU100.IS", period="2mo", interval="1d", progress=False, auto_adjust=AUTO_ADJUST))
             if xu is not None and len(xu) >= 20:
                 xu_ret  = float(xu["Close"].iloc[-1]) / float(xu["Close"].iloc[-20]) - 1
                 st_ret  = float(close.iloc[-1]) / float(close.iloc[-20]) - 1
@@ -2964,8 +2966,8 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
                 # Önce ict dict'inden dene (zaten hesaplanmış olabilir)
                 _rs_val = (ict or {}).get("rs_guc")
                 if _rs_val is None:
-                    _xu = yf.download("XU100.IS", period="2mo", interval="1d",
-                                      progress=False, auto_adjust=True)
+                    _xu = drop_adj_close(yf.download("XU100.IS", period="2mo", interval="1d",
+                                      progress=False, auto_adjust=AUTO_ADJUST))
                     if _xu is not None and len(_xu) >= 20:
                         # yfinance MultiIndex uyumluluğu
                         _xu_c = _xu["Close"]

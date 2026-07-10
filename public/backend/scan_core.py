@@ -14,6 +14,16 @@ import time
 import yfinance as yf
 import pandas as pd
 
+# 6 Tem 2026 — veri politikası TEK KAYNAK (app.py/fetcher/smr_core ile aynı HAM fiyat).
+# scan_core public/backend/ altında → repo kökünü sys.path'e ekleyip data_policy'yi çek.
+import sys as _sys
+_sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+try:
+    from data_policy import AUTO_ADJUST, drop_adj_close
+except Exception:
+    AUTO_ADJUST = False
+    def drop_adj_close(_d): return _d
+
 # VPS'te ~/smr/veriler/, local'de SMR_CACHE_DIR env var ile override
 _CACHE_DIR = pathlib.Path(os.environ.get("SMR_CACHE_DIR", "/home/wm11tr/smr/veriler"))
 
@@ -91,7 +101,7 @@ BIST_STOCKS  = [t for t in BIST_TICKERS if not t.startswith("X")]
 
 def _read_parquet_cache(ticker: str) -> "pd.DataFrame | None":
     """VPS parquet cache'den okur. Dosya yoksa veya 48 saatten eskiyse None döner."""
-    p = _CACHE_DIR / f"{ticker}.parquet"
+    p = _CACHE_DIR / f"{ticker}_1d.parquet"   # 6 Tem 2026 — dosya adı '_1d' ekiyle (fetcher/app ile aynı); eksik ek yüzünden cache HİÇ bulunamıyordu → her seferinde taze indirme
     if not p.exists():
         return None
     if (time.time() - p.stat().st_mtime) > 172_800:   # 48 saat
@@ -117,9 +127,10 @@ def fetch_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
     # ── Fallback: yfinance
     try:
         df = yf.download(ticker, period=period, progress=False,
-                         auto_adjust=True, prepost=False)
+                         auto_adjust=AUTO_ADJUST, prepost=False)
         if df.empty:
             return None
+        df = drop_adj_close(df)  # HAM modda 'Adj Close' fazlalığını at (şema=OHLCV)
         # MultiIndex temizliği
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -243,14 +254,11 @@ def analyze_xu100() -> dict:
 
 def generate_xu100_chart_data(n_rows: int = 30) -> list:
     """
-    app.py > calculate_synthetic_sentiment() ile birebir aynı formül:
-      typical_price = (H + L + C) / 3
-      EMA1  = typical_price.ewm(span=6, adjust=False).mean()
-      EMA2  = EMA1.ewm(span=6,  adjust=False).mean()
-      DEMA6 = 2*EMA1 - EMA2
-      MF_Smooth = (typical_price - DEMA6) / DEMA6 * 1000   ← momentum barları
-      STP       = EMA1                                      ← sarı çizgi
-      Price     = Close                                     ← beyaz çizgi
+    app.py > calculate_synthetic_sentiment() ile birebir aynı formül
+    (9 Tem 2026 — TEK KAYNAK: indicators.compute_flow_momentum):
+      MF_Smooth = %50 STP eğimi + %50 kompozit puan değişimi ← momentum barları
+      STP       = TP'nin EMA6'sı                             ← sarı çizgi
+      Price     = Close                                      ← beyaz çizgi
     Son n_rows satır döner — her öğe: {date, mf, stp, price}
     date formatı: '%d %b'  (ör. "27 Mar", "11 May")
     """
@@ -259,12 +267,13 @@ def generate_xu100_chart_data(n_rows: int = 30) -> list:
         if df is None or len(df) < 30:
             return []
 
-        # OHLCV — yfinance MultiIndex temizliği zaten fetch_data'da yapılıyor
-        typical = (df["High"] + df["Low"] + df["Close"]) / 3
-        ema1    = typical.ewm(span=6, adjust=False).mean()
-        ema2    = ema1.ewm(span=6, adjust=False).mean()
-        dema6   = 2 * ema1 - ema2
-        mf_smooth = (typical - dema6) / dema6 * 1000
+        # 9 Tem 2026 — İVME KARIŞIMI: eski DEMA6 konum formülü yerine %50 STP eğimi
+        # + %50 kompozit puan değişimi. TEK KAYNAK: indicators.compute_flow_momentum
+        # (repo kökü sys.path'te — dosya başındaki data_policy insert'i ile aynı yol).
+        from indicators import compute_flow_momentum
+        mf_smooth, ema1 = compute_flow_momentum(df)
+        if mf_smooth is None:
+            return []
 
         df = df.copy()
         df["MF_Smooth"] = mf_smooth.values

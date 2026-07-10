@@ -1625,3 +1625,73 @@ def detect_market_regime(df, pa=None):
     except:
         return {"phase": 0, "label": "Hata", "icon": "❓",
                 "confidence": 0.0, "color": "#64748b", "desc": "", "bull_bias": False}
+
+
+def compute_flow_momentum(df, stp_span=6):
+    """Para Akış İvmesi barları — S1+S3 %50-%50 KARIŞIM (9 Tem 2026, TEK KAYNAK).
+
+    Eski formül (TP − DEMA6)/DEMA6 KONUM ölçüyordu: fiyat trendin üstünde mi.
+    Referans davranış İVME: puan dünden bugüne arttı mı. 4 hisse (EREGL/SISE/
+    TUPRS/AKBNK) görsel karşılaştırması sonrası seçilen karışım (_bartest_karisim.py):
+
+      S1 = STP(TP'nin EMA'sı) günlük eğimi / Close × 1000   ← zamanlama omurgası
+      S3 = kompozit 0-100 puanın günlük değişimi             ← hacim + sentiment dokusu
+           (puan = RSI14 + MFI14 + 20g konum ortalaması, EMA3 yumuşatma)
+      bar = (S1/σ90 × 0.5 + S3/σ90 × 0.5) × 10               ← ortak ölçek + eski büyüklük
+
+    Hacim bekçisi: son 30 barın %20'sinden fazlası V=0 ise (endeks/gap-fill/FX)
+    MFI kompozitten düşer → puan = (RSI + konum)/2. Downstream tüketicilerin hepsi
+    yalnız İŞARET okur (>0 mavi/pozitif) — ölçek değişimi güvenli.
+
+    Kullanan yerler: app.py calculate_synthetic_sentiment (panel) · smr_core
+    _calc_synth_data (bot görseli) · clean_chart_plotly build_ivme_fig (infografik)
+    · public/backend/scan_core generate_xu100_chart_data (site) · produce_stock_json
+    + produce_light_stock calc_mf_smooth (site hisse JSON'ları).
+
+    Args:
+        df: 'High','Low','Close' (+tercihen 'Volume') içeren DataFrame, ≥25 satır önerilir.
+        stp_span: STP EMA süresi (panel standardı 6).
+    Returns:
+        (mf_blend, stp) — iki pandas.Series (df index'inde). Hata → (None, None).
+    """
+    try:
+        c = df['Close'].astype(float)
+        h = df['High'].astype(float)
+        l = df['Low'].astype(float)
+        v = df['Volume'].fillna(0).astype(float) if 'Volume' in df.columns else pd.Series(0.0, index=df.index)
+
+        tp  = (h + l + c) / 3.0
+        stp = tp.ewm(span=stp_span, adjust=False).mean()
+
+        # ── S1: STP günlük eğimi (fiyata normalize, binde) ─────────────────
+        s1 = stp.diff() / c.replace(0, np.nan) * 1000.0
+
+        # ── S3: kompozit puan değişimi ──────────────────────────────────────
+        d   = c.diff()
+        up  = d.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
+        dn  = (-d.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
+        rsi = (100 - 100 / (1 + up / dn.replace(0, np.nan))).fillna(50)
+
+        rng   = (c.rolling(20).max() - c.rolling(20).min()).replace(0, np.nan)
+        pos20 = ((c - c.rolling(20).min()) / rng * 100).fillna(50)
+
+        _vol_ok = len(v) >= 5 and float((v.tail(30) > 0).mean()) >= 0.8
+        if _vol_ok:
+            mfi = compute_mfi(df, period=14)
+            mfi = mfi.fillna(50) if mfi is not None else pd.Series(50.0, index=df.index)
+            puan = (rsi + mfi + pos20) / 3.0
+        else:
+            puan = (rsi + pos20) / 2.0   # endeks/hacimsiz: MFI kompozitten düşer
+        puan = puan.ewm(span=3, adjust=False).mean()
+        # diff sonrası ikinci EMA3 ŞART: bu adım olmadan karışım 'ham S3' gibi
+        # kırpışıyor (test: _bartest_karisim.py K-A elendi, yumuşak %50-50 seçildi)
+        s3 = puan.diff().ewm(span=3, adjust=False).mean()
+
+        # ── ortak ölçek (90g oynaklık) + %50-%50 karışım + eski bar büyüklüğü ─
+        def _n(s):
+            sd = s.tail(90).std()
+            return s / sd if sd and not np.isnan(sd) and sd > 0 else s
+        blend = (0.5 * _n(s1) + 0.5 * _n(s3)) * 10.0
+        return blend.fillna(0.0), stp
+    except Exception:
+        return None, None

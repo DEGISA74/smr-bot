@@ -93,12 +93,12 @@ def build_ivme_fig(ticker, nbar=30):
     AL/SAT dili ÇIKARILDI (uyumluluk)."""
     df = load(ticker)
     if df is None or len(df) < 40: return None
-    close = df['Close']; high = df['High']; low = df['Low']
-    tp = (high + low + close) / 3
-    ema1 = tp.ewm(span=6, adjust=False).mean(); ema2 = ema1.ewm(span=6, adjust=False).mean()
-    dema6 = 2 * ema1 - ema2
-    mf = (tp - dema6) / dema6 * 1000
-    stp = ema1
+    close = df['Close']
+    # 9 Tem 2026 — İVME KARIŞIMI: eski DEMA6 konum formülü yerine %50 STP eğimi
+    # + %50 kompozit puan değişimi. TEK KAYNAK: indicators.compute_flow_momentum.
+    from indicators import compute_flow_momentum
+    mf, stp = compute_flow_momentum(df)
+    if mf is None: return None
     d = pd.DataFrame({'Price': close.values, 'MF': mf.values, 'STP': stp.values},
                      index=df.index).tail(nbar)
     xs = [t.strftime('%d %b') for t in d.index]
