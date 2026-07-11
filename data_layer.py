@@ -1826,3 +1826,34 @@ def _data_integrity_check(df, ticker):
     clean = (len(issues) == 0)
     return {'clean': clean, 'durum': 'TEMİZ' if clean else 'ŞÜPHELİ',
             'issues': issues, 'distrust': sorted(set(distrust))}
+
+# ── GORUNTU ADI SOZLUGU (Adim 8'de app.py'den tasindi — varlik alani) ──
+# --- GÖRÜNTÜ ADI SÖZLÜĞÜ ---
+# Yahoo ticker kodu → Kullanıcıya gösterilecek isim
+TICKER_DISPLAY_NAMES = {
+    "GC=F":    "ONS ALTIN",
+    "SI=F":    "GÜMÜŞ",
+    "CL=F":    "WTI PETROL",
+    "BZ=F":    "BRENT PETROL",
+    "NG=F":    "DOĞAL GAZ",
+    "HG=F":    "BAKIR",
+    "ZW=F":    "BUĞDAY",
+    "ZC=F":    "MISIR",
+    "BTC-USD": "BITCOIN",
+    "ETH-USD": "ETHEREUM",
+    "BNB-USD": "BNB",
+    "SOL-USD": "SOLANA",
+    "XRP-USD": "XRP",
+    "DOGE-USD":"DOGECOIN",
+    "AVAX-USD":"AVALANCHE",
+    "^GSPC":   "S&P 500",
+    "^IXIC":   "NASDAQ",
+    "^DJI":    "DOW JONES",
+}
+
+
+def get_display_name(ticker):
+    """Ticker kodunu görüntü adına çevirir. Bilinmiyorsa temiz kodu döner."""
+    if ticker in TICKER_DISPLAY_NAMES:
+        return TICKER_DISPLAY_NAMES[ticker]
+    return ticker.split('.')[0].replace("=F", "").replace("-USD", "")
