@@ -19,17 +19,20 @@ from data_layer import (CACHE_DIR, _yf_download_with_retry, get_benchmark_data,
                         get_safe_historical_data)
 from evidence import SCANNER_TIER_MAP
 from ict_core import calculate_ict_deep_analysis, calculate_price_action_dna
-from indicators import (calculate_fib_levels, calculate_supertrend,
+from indicators import (calculate_fib_levels, calculate_supertrend, calculate_volume_delta,
                         calculate_volume_profile_poc, check_lazybear_squeeze_breakout,
                         compute_cmf, compute_flow_momentum)
 from scan_pipeline import _compute_signal_features, scan_chart_patterns
-from scanners import _er_bearish_div, _er_rsi
+from scanners import _er_bearish_div, _er_rsi, evaluate_erken_radar
+from scoring_core import calculate_smart_money_score
+from db_layer import log_error
 
 try:
-    from bist_calendar import is_trading_day as _bist_is_trading_day
+    from bist_calendar import is_trading_day as _bist_is_trading_day, is_half_day as _bist_is_half_day
     _BIST_CAL_OK = True
 except ImportError:
     def _bist_is_trading_day(_dt=None): return True
+    def _bist_is_half_day(_dt=None): return False
     _BIST_CAL_OK = False
 
 _TZ_ISTANBUL = pytz.timezone("Europe/Istanbul")
@@ -1452,3 +1455,274 @@ def compute_weekly_frame(ticker):
         'pos52': pos52, 'wk_rsi': wk_rsi, 'n_weeks': n,
         'ai_data': ai_data,
     }
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def compute_genel_ozet_pack(_ticker, _gs_bms):
+    """GENEL OZET panelinin deger-ureten blogu (SWOT O1+O4, 11 Tem 2026).
+    app.py _render_genel_ozet_panel icinden BIREBIR tasindi — PA-DNA + ardisik mum +
+    kapali-gun/hayalet-bar df hazirligi + Madde 1-6 (HH+HL/SMA50/stop/RSI) +
+    Erken Radar verdict + 4-sinyal oylamasi. dna yoksa/hata olursa None doner
+    (panel 'Veri bekleniyor' gosterir — eski davranisla ayni).
+    _gs_bms: session_state["bist_market_status"] — cagiran okuyup gecirir."""
+    try:
+        _gs_dna = calculate_price_action_dna(_ticker)
+
+        # Ardışık mum sayısı
+        _gs_consec_label = ""
+        _gs_df = None
+        try:
+            _gs_df = get_safe_historical_data(_ticker, period="3mo")
+            # Hayalet bar temizliği (v2 — 1 Haz 2026): V=0 + O=H=L=C flat = tatil hayaleti.
+            # Endeks V=0 ama OHLC oynayan barlar legitimate, dokunma.
+            if _gs_df is not None and 'Volume' in _gs_df.columns:
+                _v_g = _gs_df['Volume'].fillna(0)
+                _o_g = _gs_df['Open']; _h_g = _gs_df['High']
+                _l_g = _gs_df['Low'];  _c_g = _gs_df['Close']
+                _flat_g = ((_o_g - _c_g).abs() < 1e-9) & ((_h_g - _c_g).abs() < 1e-9) & ((_l_g - _c_g).abs() < 1e-9)
+                _gs_df = _gs_df[~((_v_g <= 0) & _flat_g)].copy()
+            if _gs_df is not None and len(_gs_df) >= 3:
+                _gs_cc = _gs_df['Close'].values; _gs_co = _gs_df['Open'].values
+                _gs_bull = _gs_cc[-1] > _gs_co[-1]; _gs_cnt = 1
+                for _gsi in range(2, min(8, len(_gs_df))):
+                    if (_gs_cc[-_gsi] > _gs_co[-_gsi]) == _gs_bull: _gs_cnt += 1
+                    else: break
+                _gs_consec_label = f"{_gs_cnt} gündür {'yeşil' if _gs_bull else 'kırmızı'} mum"
+        except Exception:
+            pass
+
+        if not _gs_dna:
+            return None
+        # — Veri çek —
+        _gs_sv      = _gs_dna.get('smart_volume', {})
+        _gs_rvol    = _gs_sv.get('rvol', 1.0)
+        _gs_cum5    = _gs_sv.get('cum_delta_5', 0)
+        _gs_cdpct   = _gs_sv.get('cum_delta_pct', 0.0)
+
+        # ── BIST Kapalı Gün Fix — tatil/hafta sonu → son seans verisi ─────
+        # Tek Kaynak: session_state["bist_market_status"] (B5'te hesaplanır)
+        # _gs_bms parametre olarak geliyor (SWOT O1: cagiran okur)
+        _gs_is_bist      = ".IS" in _ticker or _ticker.startswith(("XU", "XB", "XT", "XY"))
+        _gs_today_closed  = bool(_gs_bms.get("closed", False) and _gs_is_bist)
+        _gs_today_label   = _gs_bms.get("label", "")
+        _gs_last_sess_str = ""
+        _gs_last_was_half = False
+        try:
+            if _gs_today_closed and _gs_df is not None and len(_gs_df) >= 22:
+                pass  # _gs_today_label zaten session_state'ten geldi
+                # Son GEÇERLİ seansı bul — hacim VEYA fiyat hareketi (endeks hacim=0 ama
+                # fiyat oynar; tatil hayalet barı düpdüz kopya O=Y=D=K → atlanır)
+                _gs_last_back = 0
+                for _b in range(1, min(15, len(_gs_df))):
+                    _gv = float(_gs_df['Volume'].iloc[-_b])
+                    _gh = float(_gs_df['High'].iloc[-_b]); _gl = float(_gs_df['Low'].iloc[-_b])
+                    _gc = float(_gs_df['Close'].iloc[-_b])
+                    if _gv > 0 or (_gc > 0 and _gh > _gl):
+                        _gs_last_back = _b
+                        break
+                if _gs_last_back >= 1:
+                    # bugün için 0-hacimli bar varsa truncate et (son geçerli bar son satır olsun)
+                    if _gs_last_back > 1:
+                        _gs_df = _gs_df.iloc[:-(_gs_last_back - 1)]
+                    # Son seans tarihi + arefe miydi kontrolü
+                    try:
+                        _last_dt_obj = _gs_df.index[-1].date() if hasattr(_gs_df.index[-1], 'date') else None
+                        _gs_last_sess_str = _gs_df.index[-1].strftime("%d.%m")
+                        if _last_dt_obj is not None:
+                            _gs_last_was_half = bool(_bist_is_half_day(_last_dt_obj))
+                    except Exception:
+                        pass
+                    # RVOL yeniden hesapla (truncated df üzerinden)
+                    try:
+                        if 'Volume' in _gs_df.columns and len(_gs_df) >= 20:
+                            _last_v = float(_gs_df['Volume'].iloc[-1])
+                            _avg_v  = float(_gs_df['Volume'].rolling(20).mean().iloc[-1])
+                            if _avg_v > 0 and _last_v > 0:
+                                _gs_rvol = _last_v / _avg_v
+                    except Exception:
+                        pass
+                    # 5G kümülatif delta yeniden hesapla
+                    try:
+                        _gs_df_d  = calculate_volume_delta(_gs_df)
+                        _gs_cum5  = float(_gs_df_d['Volume_Delta'].iloc[-5:].sum())
+                        _tot5     = float(_gs_df_d['Volume'].iloc[-5:].sum())
+                        _gs_cdpct = abs(_gs_cum5 / _tot5 * 100) if _tot5 > 0 else 0.0
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        _gs_can     = _gs_dna.get('candle', {})
+        _gs_vol     = _gs_dna.get('vol', {})
+        _gs_obv     = _gs_dna.get('obv', {})
+        _gs_sfp     = _gs_dna.get('sfp', {})
+        _gs_cdesc   = _gs_can.get('desc', '')
+        # Madde 2: sayısal OBV flag (string matching yok)
+        _gs_obv_dir = _gs_dna.get('obv_direction', 0)
+        # Madde 6: RSI (hacimden tamamen bağımsız)
+        _gs_rsi_val = _gs_dna.get('rsi_val', 50.0)
+
+        # Madde 1: Price structure HH+HL — son 3 günde var mı?
+        _gs_hh_hl = False; _gs_hh_hl_txt = ""
+        try:
+            if _gs_df is not None and len(_gs_df) >= 4:
+                _hs = _gs_df['High'].values; _ls = _gs_df['Low'].values
+                if (_hs[-1] > _hs[-2] > _hs[-3]) and (_ls[-1] > _ls[-2] > _ls[-3]):
+                    _gs_hh_hl = True; _gs_hh_hl_txt = "HH+HL yapısı"
+        except Exception:
+            pass
+
+        # Madde 3: SMA50 bağlam
+        _gs_sma50_txt = ""; _gs_sma50_above = None
+        try:
+            if _gs_df is not None and len(_gs_df) >= 52:
+                _cl = _gs_df['Close']; _s50 = _cl.rolling(50).mean()
+                _curr = float(_cl.iloc[-1]); _s50v = float(_s50.iloc[-1])
+                _gs_sma50_above = _curr > _s50v
+                _cnt = sum(1 for i in range(1, min(80, len(_gs_df)))
+                           if not pd.isna(float(_s50.iloc[-i])) and
+                           (_cl.iloc[-i] > _s50.iloc[-i]) == _gs_sma50_above)
+                _side = "üstünde" if _gs_sma50_above else "altında"
+                if _gs_sma50_above:
+                    _interp = "Köklü yükseliş" if _cnt >= 20 else ("Yükseliş trendi" if _cnt >= 5 else "Yeni kırılım ↑")
+                else:
+                    _interp = "Köklü düşüş" if _cnt >= 20 else ("Düşüş trendi" if _cnt >= 5 else "Yeni kırılım ↓")
+                _gs_sma50_txt = f"50 günlük ortalamanın {_cnt} gündür {_side} · {_interp}"
+        except Exception:
+            _gs_sma50_txt = ""
+
+        # Madde 5: Stop / iptal seviyesi — yön-aware
+        # YUKARI senaryo → 5G dip (ATR×2 floor ile kırpılır)
+        # AŞAĞI senaryo  → 5G tepe (ATR×2 cap ile kırpılır)
+        # KARARSIZ       → ikisi birden gösterilir
+        _gs_low5_txt  = ""   # 5G dip (yukarı senaryo stop)
+        _gs_high5_txt = ""   # 5G tepe (aşağı senaryo iptal)
+        _curr_close_val = None; _low5_val = None; _high5_val = None; _atr14_val = None
+        def _fmt_lvl(v):
+            return f"{v:.0f}" if v >= 100 else (f"{v:.2f}" if v >= 1 else f"{v:.4f}")
+        try:
+            if _gs_df is not None and len(_gs_df) >= 5:
+                _curr_close = float(_gs_df['Close'].iloc[-1])
+                _raw_low5   = float(_gs_df['Low'].iloc[-5:].min())
+                _raw_high5  = float(_gs_df['High'].iloc[-5:].max())
+                # ATR hesapla (14 günlük)
+                try:
+                    _atr14 = float(
+                        ((_gs_df['High'] - _gs_df['Low']).rolling(14).mean()).iloc[-1]
+                    )
+                except Exception:
+                    _atr14 = _curr_close * 0.03  # fallback: %3
+                # Yukarı senaryo: dip çok uzaksa ATR floor ile yukarı kırp
+                _atr_floor = _curr_close - 2.0 * _atr14
+                _low5 = max(_raw_low5, _atr_floor)
+                _gs_low5_txt = _fmt_lvl(_low5)
+                # Aşağı senaryo: tepe çok uzaksa ATR cap ile aşağı kırp
+                _atr_cap = _curr_close + 2.0 * _atr14
+                _high5 = min(_raw_high5, _atr_cap)
+                _gs_high5_txt = _fmt_lvl(_high5)
+                # Numerik değerleri outer scope'a taşı (% mesafe + ATR gösterimi için)
+                _curr_close_val = _curr_close
+                _low5_val  = _low5
+                _high5_val = _high5
+                _atr14_val = _atr14
+        except Exception:
+            pass
+
+        # Madde 6: RSI zone sinyal
+        _gs_rsi_sig = 0; _gs_rsi_disp = ""
+        if _gs_rsi_val < 30:
+            _gs_rsi_sig = +1; _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — aşırı satım 💎"
+        elif _gs_rsi_val <= 60:
+            _gs_rsi_sig = +1; _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — alım bölgesi ✅"
+        elif _gs_rsi_val > 70:
+            _gs_rsi_sig = -1; _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — aşırı alım ⚠️"
+        else:
+            _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — nötr"
+
+        # ── DATA-READY FLAG (erken seans: gün içi hacim henüz yok) ──────
+        _data_ready = _gs_rvol >= 0.05
+
+        # ── ERKEN RADAR — verdict band için önceden hesapla ─────────────
+        _lr_score = None; _lr_status = ""
+        try:
+            _is_idx = (_ticker.startswith("XU") or _ticker.startswith("^") or
+                       _ticker.endswith("=F") or "-USD" in _ticker)
+            if _is_idx:
+                # Endeks için eski endeks-radar mantığı
+                _sms = calculate_smart_money_score(_ticker)
+                if _sms and _sms.get('score') is not None:
+                    _lr_score  = _sms['score']
+                    _lr_status = _sms.get('status', '')
+            else:
+                # Hisseler için Erken Radar
+                _bench_t = "XU100.IS" if ".IS" in _ticker else "^GSPC"
+                _bench_df = None
+                try:
+                    _bench_df = get_safe_historical_data(_bench_t)
+                except Exception:
+                    pass
+                _er = evaluate_erken_radar(_ticker, _gs_df, _bench_df)
+                if _er is not None:
+                    _lr_score = _er.get('overall_quality', 0)
+                    _primary  = _er.get('primary')
+                    if _primary:
+                        _lr_status = _primary.get('name', '')
+                    elif _er.get('red_flags'):
+                        _lr_status = "Risk Sinyali"
+                    else:
+                        _lr_status = "Senaryo Yok"
+        except Exception:
+            pass
+
+        # ── VOTING: 4 BAĞIMSIZ SİNYAL (hacim oyu data_ready kontrolü) ─
+        _sig_hacim = (1 if (_data_ready and _gs_cum5 > 0) else (-1 if (_data_ready and _gs_cum5 < 0) else 0))
+        _sig_obv   = (1 if _gs_obv_dir > 0 else (-1 if _gs_obv_dir < 0 else 0))
+        _sig_yapi  = (1 if _gs_hh_hl else 0)
+        _sig_rsi   = _gs_rsi_sig
+
+        _gs_up = sum(1 for s in (_sig_hacim, _sig_obv, _sig_yapi, _sig_rsi) if s > 0)
+        _gs_dn = sum(1 for s in (_sig_hacim, _sig_obv, _sig_yapi, _sig_rsi) if s < 0)
+
+        if   _gs_up == 4:                              _gs_net_clr = "#22c55e"; _gs_net_txt = "YUKARI ★"
+        elif _gs_dn == 4:                              _gs_net_clr = "#dc2626"; _gs_net_txt = "AŞAĞI ★"
+        elif _gs_up >= 3:                              _gs_net_clr = "#4ade80"; _gs_net_txt = "YUKARI"
+        elif _gs_dn >= 3:                              _gs_net_clr = "#f87171"; _gs_net_txt = "AŞAĞI"
+        elif _gs_up == 2 and _gs_dn == 2:              _gs_net_clr = "#fb923c"; _gs_net_txt = "ÇELİŞKİLİ"
+        elif _gs_up >= 2 and _gs_dn < 2:               _gs_net_clr = "#86efac"; _gs_net_txt = "HAFİF YUKARI"
+        elif _gs_dn >= 2 and _gs_up < 2:               _gs_net_clr = "#fca5a5"; _gs_net_txt = "HAFİF AŞAĞI"
+        else:                                          _gs_net_clr = "#fbbf24"; _gs_net_txt = "KARARSIZ"
+        return {
+            '_curr_close_val': _curr_close_val,
+            '_data_ready': _data_ready,
+            '_gs_cdpct': _gs_cdpct,
+            '_gs_cum5': _gs_cum5,
+            '_gs_df': _gs_df,
+            '_gs_dn': _gs_dn,
+            '_gs_high5_txt': _gs_high5_txt,
+            '_gs_low5_txt': _gs_low5_txt,
+            '_gs_net_clr': _gs_net_clr,
+            '_gs_net_txt': _gs_net_txt,
+            '_gs_obv': _gs_obv,
+            '_gs_rsi_disp': _gs_rsi_disp,
+            '_gs_rsi_val': _gs_rsi_val,
+            '_gs_rvol': _gs_rvol,
+            '_gs_sfp': _gs_sfp,
+            '_gs_sma50_above': _gs_sma50_above,
+            '_gs_sma50_txt': _gs_sma50_txt,
+            '_gs_up': _gs_up,
+            '_lr_score': _lr_score,
+            '_sig_hacim': _sig_hacim,
+            '_sig_obv': _sig_obv,
+            '_sig_rsi': _sig_rsi,
+            '_sig_yapi': _sig_yapi,
+            '_gs_today_closed': _gs_today_closed,
+            '_gs_today_label': _gs_today_label,
+            '_gs_last_sess_str': _gs_last_sess_str,
+            '_gs_last_was_half': _gs_last_was_half,
+        }
+    except Exception as _pk_e:
+        try:
+            log_error('genel_ozet_pack', _pk_e, ctx={'ticker': _ticker})
+        except Exception:
+            pass
+        return None
