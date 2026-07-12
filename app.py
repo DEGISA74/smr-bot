@@ -49,7 +49,9 @@ from analysis_core import (_risk_profile, get_active_scanner_tiers, _scanner_set
                            get_advanced_levels_data, build_erken_radar_prompt_text,
                            calculate_multi_timeframe_alignment, calculate_8_point_roadmap,
                            compute_weekly_frame,
-                           compute_genel_ozet_pack)  # Adim 9a analiz motorlari + SWOT O1/O4 paketi
+                           compute_genel_ozet_pack,
+                           compute_dual_window_confluence,
+                           compute_force_compass)  # + SWOT O1/O4/T2
 from data_policy import AUTO_ADJUST, drop_adj_close  # 3 Tem 2026 — veri politikası TEK KAYNAK (fetcher ile aynı)
 # 4 Tem 2026 — BÖLME ADIM 4: saf hesap fonksiyonları indicators.py içinde
 from indicators import (
@@ -10398,95 +10400,17 @@ def _render_genel_ozet_panel():
                 else:
                     _dpct = "dengede"
 
-                # ── FORCE COMPASS — OBV/CMF/Delta5g vektör bileşkesi ─────────────
-                # B1 (4 Haz): OBV title'ını doğrudan get_obv_divergence_status'tan al →
-                # sağdaki CANLI SİNYALLER kartı ile birebir aynı kaynak (tutarlılık).
-                # get_obv_divergence_status @st.cache_data(ttl=600) ile cache'li.
-                _obv_t_b1 = ""
-                try:
-                    _obv_ret = get_obv_divergence_status(_ticker)
-                    # 3-tuple bekleniyor: (title, color, desc) — esnek unpacking
-                    if isinstance(_obv_ret, tuple) and len(_obv_ret) >= 1:
-                        _obv_t_b1 = _obv_ret[0] or ""
-                    elif isinstance(_obv_ret, str):
-                        _obv_t_b1 = _obv_ret
-                except Exception:
-                    try:
-                        _obv_t_b1 = _gs_obv.get('title', '')  # fallback eski kaynak
-                    except Exception:
-                        _obv_t_b1 = ""
-                _obv_lower = (_obv_t_b1 or '').lower()
-
-                # Y ekseni: 8 state için tam mapping (get_obv_divergence_status üretiminden)
-                if "sağlıklı trend" in _obv_lower or "güçlü gizli giriş" in _obv_lower:
-                    _y_force = 1.0       # ✅ Net Boğa (hacim onaylı)
-                elif "düşüşe direnç" in _obv_lower:
-                    _y_force = 0.6       # 🛡️ Kurumsal emilim — geri çekilmede alım
-                elif "olası toplama" in _obv_lower:
-                    _y_force = 0.5       # 👀 Hafif pozitif, büyük oyuncu onayı eksik
-                elif "kafa çevir" in _obv_lower and "toparlanma" in _obv_lower:
-                    _y_force = 0.25      # 🔄 Erken dönüş — pozitif yana
-                elif "kafa çevir" in _obv_lower and "zayıflama" in _obv_lower:
-                    _y_force = -0.25     # 🔄 Erken bozulma — negatif yana
-                elif "gizli çıkış" in _obv_lower or "dağıtım" in _obv_lower:
-                    _y_force = -1.0      # ⚠️ Net Ayı
-                elif "sahte güç" in _obv_lower or "zayıf teyit" in _obv_lower or "şüpheli" in _obv_lower:
-                    _y_force = 0.0       # ⚠️ Çelişki — net yön diyemem (eski 0.4 yanlıştı)
-                elif "zayıf ivme" in _obv_lower or "hacimsiz" in _obv_lower:
-                    _y_force = 0.0       # ⚖️ Hacimsiz bölge — gerçekten nötr
-                else:
-                    _y_force = 0.0       # Hesaplanamadı / bilinmeyen
-
-                # X ekseni: CMF dual-window (5g + 20g, OBV mantığı gibi) + Delta 5g
-                _x_force = 0.0
-                _cmf_val_fc = None    # CMF 20g (orta vade)
-                _cmf_val_5g = None    # CMF 5g (kısa vade)
-                _cmf_state = "neutral"  # strong_pos / strong_neg / turning_up / turning_down / pos / neg / neutral
-                _d5_signed_fc = None
-                try:
-                    _cmf_val_fc = float(compute_cmf(_gs_df, period=20))
-                    _cmf_val_5g = float(compute_cmf(_gs_df, period=5))
-                    _r5_fc = _gs_df.tail(5)
-                    _d5_signed_fc = float(((_r5_fc['Close'] - _r5_fc['Open']) * _r5_fc['Volume']).sum())
-
-                    # CMF dual-window state (6 senaryo)
-                    _THR = 0.05
-                    _c5_pos = _cmf_val_5g > _THR
-                    _c5_neg = _cmf_val_5g < -_THR
-                    _c20_pos = _cmf_val_fc > _THR
-                    _c20_neg = _cmf_val_fc < -_THR
-                    if _c5_pos and _c20_pos:       _cmf_state = "strong_pos"
-                    elif _c5_neg and _c20_neg:     _cmf_state = "strong_neg"
-                    elif _c5_pos and _c20_neg:     _cmf_state = "turning_up"     # kafa çev. toparlanma
-                    elif _c5_neg and _c20_pos:     _cmf_state = "turning_down"   # kafa çev. zayıflama
-                    elif _c20_pos:                 _cmf_state = "pos"
-                    elif _c20_neg:                 _cmf_state = "neg"
-                    else:                          _cmf_state = "neutral"
-
-                    # X eksen force — state-driven
-                    _state_force_map = {
-                        "strong_pos": 1.0, "pos": 0.7, "turning_up": 0.3,
-                        "neutral": 0.0,
-                        "turning_down": -0.3, "neg": -0.7, "strong_neg": -1.0,
-                    }
-                    _x_cmf_part = _state_force_map.get(_cmf_state, 0.0)
-                    _x_d5_part = 1.0 if _d5_signed_fc > 0 else (-1.0 if _d5_signed_fc < 0 else 0.0)
-                    _x_force = (_x_cmf_part + _x_d5_part) / 2.0
-                except Exception:
-                    pass
-
-                # Compass ok rengi (yön rengi)
-                import math as _math_fc
-                # B3 (4 Haz): Eski "çift-veto" kuralı (Y>+0.4 VE X>-0.2) tek-eksen
-                # güçlü pozitif durumları turuncuya düşürüyordu. Yeni: ağırlıklı bileşke.
-                # Y (OBV) uzun vade → 1.2x ağırlık · X (CMF+Δ5g) kısa vade → 0.8x ağırlık.
-                _net_force = _y_force * 1.2 + _x_force * 0.8
-                if _net_force > 0.35:
-                    _ar_clr = _gs_up_clr  # Boğa — bileşke net yukarı
-                elif _net_force < -0.35:
-                    _ar_clr = _gs_dn_clr  # Ayı — bileşke net aşağı
-                else:
-                    _ar_clr = "#f59e0b"   # Çelişki/belirsiz — vektör kısa veya yön karışık
+                # ── FORCE COMPASS (SWOT T2: force mantığı analysis_core'da — tek gerçek) ──
+                _fc = compute_force_compass(_ticker, _gs_df, _gs_obv, _gs_up_clr, _gs_dn_clr)
+                _obv_t_b1 = _fc['_obv_t_b1']
+                _y_force = _fc['_y_force']
+                _x_force = _fc['_x_force']
+                _cmf_state = _fc['_cmf_state']
+                _cmf_val_fc = _fc['_cmf_val_fc']
+                _d5_signed_fc = _fc['_d5_signed_fc']
+                _state_force_map = _fc['_state_force_map']
+                _r5_fc = _fc['_r5_fc']
+                _ar_clr = _fc['_ar_clr']
 
                 # Compass büyütüldü (1 Haz 2026 v2): 80x75 → 110x100
                 _cx_c, _cy_c = 50, 52
@@ -10720,66 +10644,16 @@ def _render_genel_ozet_panel():
                 _cmf_icon, _cmf_clr_s, _cmf_text = _cmf_sentence_map.get(
                     _cmf_state, ("→", _gs_neu, "Para akışı verisi alınamadı"))
 
-                # ── 8 Haz 2026 Oturum 19 — DUAL-WINDOW CONFLUENCE LAYER ──────
-                # cum_delta dual (5g/20g) + RSI dual (5g/14g) state cümlesi.
-                # Sadece anlamlı state → italic satır eklenir. Neutral → satır YOK
-                # (panel kalabalıklaşmasın). Confluence: CMF + cum_delta + RSI 3
-                # state ATA bakışla görülür.
-                _cum_state = None; _cum_text_b = None; _cum_icon_b = "→"; _cum_clr_b = _gs_neu
-                _rsi_dual_state = None; _rsi_text_b = None; _rsi_icon_b = "→"; _rsi_clr_b = _gs_neu
-                try:
-                    if _gs_df is not None and len(_gs_df) >= 20:
-                        _rng_b = (_gs_df['High'] - _gs_df['Low']).replace(0, np.nan)
-                        _bp_b  = (_gs_df['Close'] - _gs_df['Low']) / _rng_b
-                        _sp_b  = (_gs_df['High'] - _gs_df['Close']) / _rng_b
-                        _vd_b  = (_gs_df['Volume'] * _bp_b - _gs_df['Volume'] * _sp_b).fillna(0)
-                        _c5b   = float(_vd_b.tail(5).sum());  _t5b   = float(_gs_df['Volume'].tail(5).sum())
-                        _c20b  = float(_vd_b.tail(20).sum()); _t20b  = float(_gs_df['Volume'].tail(20).sum())
-                        _p5b   = (_c5b  / _t5b  * 100.0) if _t5b  > 0 else 0
-                        _p20b  = (_c20b / _t20b * 100.0) if _t20b > 0 else 0
-                        if   _p5b > 5  and _p20b > 5:  _cum_state = "strong_pos"
-                        elif _p5b < -5 and _p20b < -5: _cum_state = "strong_neg"
-                        elif _p5b > 0  and _p20b < 0:  _cum_state = "turning_up"
-                        elif _p5b < 0  and _p20b > 0:  _cum_state = "turning_down"
-                        _cum_sentence_map = {
-                            "strong_pos":   ("✓", _gs_up_clr, f"Net Alıcı 5g+20g birlikte pozitif ({_p5b:+.1f}% / {_p20b:+.1f}%) — kalıcı kurumsal birikim"),
-                            "strong_neg":   ("⚠", _gs_dn_clr, f"Net Satıcı 5g+20g birlikte negatif ({_p5b:+.1f}% / {_p20b:+.1f}%) — kalıcı kurumsal dağıtım"),
-                            "turning_up":   ("↗", "#38bdf8", f"5g toparlanma ({_p5b:+.1f}%) ama 20g hâlâ negatif ({_p20b:+.1f}%) — short rally, ana dağıtım sürüyor"),
-                            "turning_down": ("↘", "#f59e0b", f"5g profit-taking ({_p5b:+.1f}%) ama 20g hâlâ pozitif ({_p20b:+.1f}%) — short zayıflama, ana birikim era'sı"),
-                        }
-                        if _cum_state in _cum_sentence_map:
-                            _cum_icon_b, _cum_clr_b, _cum_text_b = _cum_sentence_map[_cum_state]
-                except Exception:
-                    pass
-
-                # RSI Dual (5g/14g) — sadece anlamlı state'ler
-                try:
-                    if _gs_df is not None and len(_gs_df) >= 15:
-                        _dr_b = _gs_df['Close'].diff()
-                        _g5b  = _dr_b.where(_dr_b > 0, 0).rolling(5).mean()
-                        _l5b  = (-_dr_b.where(_dr_b < 0, 0)).rolling(5).mean()
-                        _r5b  = float((100 - (100 / (1 + (_g5b / _l5b)))).iloc[-1])
-                        _g14b = _dr_b.where(_dr_b > 0, 0).rolling(14).mean()
-                        _l14b = (-_dr_b.where(_dr_b < 0, 0)).rolling(14).mean()
-                        _r14b = float((100 - (100 / (1 + (_g14b / _l14b)))).iloc[-1])
-                        if   _r5b >= 80 and _r14b >= 70: _rsi_dual_state = "overbought_both"
-                        elif _r5b <= 20 and _r14b <= 30: _rsi_dual_state = "oversold_both"
-                        elif _r5b >= 80 and _r14b < 60:  _rsi_dual_state = "early_overbought"
-                        elif _r5b <= 20 and _r14b > 40:  _rsi_dual_state = "early_oversold"
-                        elif _r5b < 50  and _r14b >= 70: _rsi_dual_state = "cooling_overheat"
-                        elif _r5b > 50  and _r14b <= 30: _rsi_dual_state = "dip_recovery"
-                        _rsi_sentence_map = {
-                            "overbought_both":   ("⚠", _gs_dn_clr, f"RSI çift pencere aşırı alım (5g {_r5b:.0f} + 14g {_r14b:.0f}) — momentum tepesi yakın"),
-                            "oversold_both":     ("↗", _gs_up_clr, f"RSI çift pencere aşırı satım (5g {_r5b:.0f} + 14g {_r14b:.0f}) — dip ihtimali"),
-                            "early_overbought":  ("⚠", "#f59e0b", f"RSI(5) {_r5b:.0f} erken aşırı alım, RSI(14) {_r14b:.0f} ortada — 1-3g içinde ısınma genişleyebilir"),
-                            "early_oversold":    ("↗", "#38bdf8", f"RSI(5) {_r5b:.0f} erken aşırı satım, RSI(14) {_r14b:.0f} hâlâ ortada — short pulse dip"),
-                            "cooling_overheat":  ("↘", "#f59e0b", f"Tepe yorgunluğu — RSI(5) {_r5b:.0f} soğuyor, RSI(14) {_r14b:.0f} hâlâ aşırı alımda"),
-                            "dip_recovery":      ("↗", _gs_up_clr, f"Erken dip dönüşü — RSI(5) {_r5b:.0f} toparlanıyor, RSI(14) {_r14b:.0f} hâlâ dipte"),
-                        }
-                        if _rsi_dual_state in _rsi_sentence_map:
-                            _rsi_icon_b, _rsi_clr_b, _rsi_text_b = _rsi_sentence_map[_rsi_dual_state]
-                except Exception:
-                    pass
+                # ── DUAL-WINDOW CONFLUENCE (SWOT T2: analysis_core'a taşındı — tek gerçek) ──
+                _dwc = compute_dual_window_confluence(_gs_df, _gs_up_clr, _gs_dn_clr, _gs_neu)
+                _cum_state = _dwc['_cum_state']
+                _cum_text_b = _dwc['_cum_text_b']
+                _cum_icon_b = _dwc['_cum_icon_b']
+                _cum_clr_b = _dwc['_cum_clr_b']
+                _rsi_dual_state = _dwc['_rsi_dual_state']
+                _rsi_text_b = _dwc['_rsi_text_b']
+                _rsi_icon_b = _dwc['_rsi_icon_b']
+                _rsi_clr_b = _dwc['_rsi_clr_b']
 
                 # Pusula + sinyal listesi yan yana, altında 3 cümle (italic — panel açıklama stiliyle aynı)
                 def _flow_sentence(icon, color, text):
