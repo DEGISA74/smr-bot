@@ -1634,6 +1634,127 @@ def _apply_lean_prompt(p):
     return p
 
 
+def _genel_ozet_verdict_sc(df):
+    """GENEL ÖZET 6-oy verdicti — app.py senkronu (13 Tem 2026, V10 karne-ağırlıklı).
+
+    600 hisse × 56K örnek backtest'in kazanan sistemi: 6 bağımsız sinyal
+    (hacim delta / OBV yönü / yapı / RSI çift-pencere / CMF çift-pencere /
+    MFI çift-pencere) oylanır; karne şampiyonları RSI+CMF ÇİFT oy kullanır
+    (toplam ağırlık 8). Kanıtlı yönler: RSI iki pencerede aşırı alım = GÜÇ
+    DEVAMI (+1), dip görüntüsü = TUZAK (-1); CMF 'toparlanma' görüntüsü =
+    TUZAK (-1). Karne dosyası (genel_ozet_verdict_backtest.json) yanında
+    varsa etikete ölçülmüş geçmiş performansı ekler.
+    Dönüş: metin veya None (veri yetersiz / hacimsiz sembol)."""
+    try:
+        if df is None or len(df) < 30 or 'Volume' not in df.columns:
+            return None
+        v = df['Volume'].astype(float)
+        if float(v.tail(30).sum()) <= 0:
+            return None  # endeks/hacimsiz — oyların yarısı anlamsız olur
+        c = df['Close'].astype(float)
+        h = df['High'].astype(float)
+        l = df['Low'].astype(float)
+        rng = (h - l).replace(0, 0.0001)
+
+        # Oy 1 — hacim: 5g kümülatif CLV delta işareti
+        vd5 = float((v * ((c - l) / rng) - v * ((h - c) / rng)).tail(5).sum())
+        s_hacim = 1 if vd5 > 0 else (-1 if vd5 < 0 else 0)
+
+        # Oy 2 — OBV yönü (PA-DNA kural sırası birebir)
+        obv = (np.sign(c.diff()).fillna(0) * v).cumsum()
+        o_now, o5, o14 = float(obv.iloc[-1]), float(obv.iloc[-6]), float(obv.iloc[-15])
+        o5u, o14u = o_now > o5, o_now > o14
+        p_up = float(c.iloc[-1]) > float(c.iloc[-6])
+        o_strong = o_now > float(obv.rolling(20).mean().iloc[-1])
+        if (not p_up) and o5u and o14u:      s_obv = 1
+        elif p_up and not o5u and not o14u:  s_obv = -1
+        elif o5u and not o14u:               s_obv = 1
+        elif (not o5u) and o14u:             s_obv = 0
+        elif o_strong:                       s_obv = 1
+        else:                                s_obv = 0
+
+        # Oy 3 — yapı (HH+HL / LH+LL)
+        hs, ls = h.values, l.values
+        s_yapi = 0
+        if hs[-1] > hs[-2] > hs[-3] and ls[-1] > ls[-2] > ls[-3]:
+            s_yapi = 1
+        elif hs[-1] < hs[-2] < hs[-3] and ls[-1] < ls[-2] < ls[-3]:
+            s_yapi = -1
+
+        # Oy 4 — RSI çift pencere (Cutler; app.py confluence ile birebir)
+        d = c.diff()
+        def _crsi(p):
+            g = d.where(d > 0, 0).rolling(p).mean()
+            lo = (-d.where(d < 0, 0)).rolling(p).mean()
+            return float((100 - 100 / (1 + g / lo)).iloc[-1])
+        r5, r14 = _crsi(5), _crsi(14)
+        s_rsi = 0
+        if r5 == r5 and r14 == r14:                       # NaN guard
+            if r5 >= 80 and r14 >= 70:   s_rsi = 1        # güç devamı (10g +2.2)
+            elif r5 > 50 and r14 <= 30:  s_rsi = -1       # dip görüntüsü = tuzak
+
+        # Oy 5 — CMF çift pencere (5g/20g, eşik 0.05)
+        mfv = (((c - l) - (h - c)) / rng) * v
+        def _cmf(p):
+            vs = float(v.tail(p).sum())
+            return float(mfv.tail(p).sum() / vs) if vs > 0 else 0.0
+        c5v, c20v = _cmf(5), _cmf(20)
+        s_cmf = 0
+        if c5v > 0.05 and c20v > 0.05:     s_cmf = 1
+        elif c5v < -0.05 and c20v < -0.05: s_cmf = -1
+        elif c5v > 0.05 and c20v < -0.05:  s_cmf = -1     # "toparlanma" = tuzak
+
+        # Oy 6 — MFI çift pencere (5g/14g)
+        tp = (h + l + c) / 3.0
+        rmf = tp * v
+        tpd = tp.diff()
+        def _mfi(p):
+            pos = rmf.where(tpd > 0, 0.0).rolling(p).sum()
+            neg = rmf.where(tpd < 0, 0.0).rolling(p).sum()
+            return float((100 - 100 / (1 + pos / neg.replace(0, np.nan))).iloc[-1])
+        m5, m14 = _mfi(5), _mfi(14)
+        s_mfi = 0
+        if m5 == m5 and m14 == m14:
+            if m5 <= 20 and m14 <= 25:  s_mfi = 1
+            elif m5 >= 80 and m14 < 60: s_mfi = -1
+
+        # Ağırlıklı net (V10): RSI ve CMF ×2 — backtest kova eşikleri
+        sigs = (s_hacim, s_obv, s_yapi, s_rsi, s_cmf, s_mfi)
+        up = sum(1 for s in sigs if s > 0)
+        dn = sum(1 for s in sigs if s < 0)
+        w = (s_hacim, s_obv, s_yapi, s_rsi, s_rsi, s_cmf, s_cmf, s_mfi)
+        net = sum(1 for s in w if s > 0) - sum(1 for s in w if s < 0)
+        if net >= 6:    lbl = "YUKARI ★"
+        elif net >= 4:  lbl = "YUKARI"
+        elif net > 0:   lbl = "HAFİF YUKARI"
+        elif net <= -6: lbl = "AŞAĞI ★"
+        elif net <= -4: lbl = "AŞAĞI"
+        elif net < 0:   lbl = "HAFİF AŞAĞI"
+        else:           lbl = "KARARSIZ"
+
+        # Karne — app.py ile aynı JSON (VPS'e scp ile gider; yoksa sessiz atla)
+        karne = ""
+        try:
+            import json as _vj
+            _vp = pathlib.Path(__file__).parent / "genel_ozet_verdict_backtest.json"
+            if _vp.exists():
+                _vt = (_vj.loads(_vp.read_text(encoding="utf-8"))
+                       .get("variants", {}).get("V10_karne_agirlik", {}))
+                _map = {"YUKARI ★": "GÜÇLÜ YUKARI", "YUKARI": "YUKARI",
+                        "HAFİF YUKARI": "HAFİF YUKARI", "KARARSIZ": "NÖTR",
+                        "HAFİF AŞAĞI": "HAFİF AŞAĞI", "AŞAĞI": "AŞAĞI",
+                        "AŞAĞI ★": "GÜÇLÜ AŞAĞI"}
+                _e = _vt.get(_map.get(lbl, ""), {})
+                if _e.get("n", 0) >= 30 and _e.get("ret10") is not None:
+                    karne = (f" · geçmiş karnesi: 10g ort {_e['ret10']:+.1f}%, "
+                             f"isabet %{_e['hit10']:.0f} (600 hisse backtest)")
+        except Exception:
+            pass
+        return f"{lbl} (6 sinyal, RSI+CMF çift ağırlıklı: {up} yukarı / {dn} aşağı{karne})"
+    except Exception:
+        return None
+
+
 # ─── AI PROMPT ÜRET ──────────────────────────────────────────────────────────
 def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tuple:
     """Ortak veri bloğu — hem Görev 1 hem Görev 3 kullanır."""
@@ -2216,6 +2337,9 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
                 fi_txt += " · 🔄 AYI UYUMSUZLUĞU (fiyat yeni zirve ama FI düşüyor — dönüş)"
     except Exception: pass
 
+    # GENEL ÖZET 6-oy verdicti (13 Tem 2026 — app.py senkronu, V10)
+    genel_verdict_txt = _genel_ozet_verdict_sc(df) or "(veri eksik)"
+
     data_block = f"""═══════════════════════════════════════
 📊 HİSSE: {ticker} | Fiyat: {fiyat_str}
 📅 Veri Tarihi: {data_timestamp_txt}
@@ -2262,6 +2386,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • Hacim Kalitesi : {hacim_kal_txt}{rs_line}
 • Alıcı/Satıcı Eforu (UDVR): {udvr_txt}
 • Fiyat × Hacim Gücü (Force Index): {fi_txt}
+• GENEL ÖZET Verdicti: {genel_verdict_txt}
 💡 ICT SONUÇ: {ict.get('bottom_line', '-')}{_breakout_line}
 ═══════════════════════════════════════"""
 
@@ -3396,6 +3521,10 @@ KURAL: Her cümleyi yazarken sor — "Aynı maddedeki diğer cümle bunu destekl
 3. Z-SCORE SINIRLANDIRMASI: Z-Score veya ortalamalardan uzaklaşma verilerini analizin merkezine KOYMA. Yüksek Z-Score değerlerini bir "çöküş", "bit yeniği" veya "kesin dönüş" sinyali olarak YORUMLAMA.
 4. Güçlü kurumsal alımların olduğu yerlerde yüksek Z-Score, tehlike değil "güçlü momentumun" kanıtıdır. Z-Score'a sadece risk yönetimi paragrafında "kısa bir kâr al/izleyen stop uyarısı" olarak kısaca değin ve geç. Hikayeni bu istatistik üzerine kurma.
 
+*** GENEL ÖZET VERDİCTİ + VADE EŞLEŞTİRME (13 Tem 2026 — 600 hisse backtest) ***
+• "GENEL ÖZET Verdicti" satırı 6 bağımsız sinyalin (hacim/OBV/yapı/RSI/CMF/MFI) oylanmış özetidir; en isabetli ikili RSI+CMF çift oy kullanır. Parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir — yorum güvenini buna göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiket hikayenin merkezine alınabilir; KARARSIZ/HAFİF etiketi büyük yön iddiasına ÇEVRİLMEZ.
+• VADE EŞLEŞTİRME (kritik): DÖNÜŞ sinyalleri (aşırı satım, dip görüntüsü, panik tepkisi) SADECE KISA VADEDE (~5 iş günü) çalışır — 10. günde avantaj erir; bunları "birkaç günlük tepki" çerçevesinde yaz, 2-4 haftalık hedefe bağlama. DEVAM sinyalleri (iki pencerede pozitif para akışı, güç teyitli aşırı alım, kalıcı alıcı baskısı) 10-20 günde büyür — 2-4 haftalık ana senaryo malzemesidir. İkisini aynı vadeye koyma; ikisi birden varsa vade ayrımını açıkça yaz.
+
 *** BREAKOUT ALERT REHBERİ (data_block'ta "🚀 BREAKOUT ALERT" satırı varsa) ***
 Range/bant tabanlı boundary (60-180g yatay bant tavanı) son barda **kapanış + hacim ≥ 1.5×** ile kırıldı.
 - "🚀 BREAKOUT" = klasik kırılım.
@@ -3943,6 +4072,10 @@ YASAKLI CÜMLE KALIPLARI — Aşağıdaki kalıpları ASLA kullanma, bunları ku
 Örnek Doğru Cümle: "Z-Score +2 seviyesinin aşıldığını gösteriyor. Algoritmik olarak bu bölgeler aşırı fiyatlanma alanları, yani düzeltme riski taşıyabilir."
 Örnek Yanlış Cümle: "Z-Score +2 seviyesinin aşıldığını göstermektedir. Algoritmik olarak bu bölgeler aşırı fiyatlanma alanlarıdır ve düzeltme riski taşıyabilmektedir."
 Aşırıya kaçmadan, basit bir dilde yaz. Yatırımcıyı korkutmadan, umutlandırmadan, sadece mevcut durumun ne olduğunu ve hangi risklerin nerede olduğunu anlat.
+
+*** GENEL ÖZET VERDİCTİ + VADE EŞLEŞTİRME (13 Tem 2026 — 600 hisse backtest) ***
+• "GENEL ÖZET Verdicti" satırı 6 bağımsız sinyalin (hacim/OBV/yapı/RSI/CMF/MFI) oylanmış özetidir; en isabetli ikili RSI+CMF çift oy kullanır. Parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir — yorum güvenini buna göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiket hikayenin merkezine alınabilir; KARARSIZ/HAFİF etiketi büyük yön iddiasına ÇEVRİLMEZ.
+• VADE EŞLEŞTİRME (kritik): DÖNÜŞ sinyalleri (aşırı satım, dip görüntüsü, panik tepkisi) SADECE KISA VADEDE (~5 iş günü) çalışır — 10. günde avantaj erir; bunları "birkaç günlük tepki" çerçevesinde yaz, 2-4 haftalık hedefe bağlama. DEVAM sinyalleri (iki pencerede pozitif para akışı, güç teyitli aşırı alım, kalıcı alıcı baskısı) 10-20 günde büyür — 2-4 haftalık ana senaryo malzemesidir. İkisini aynı vadeye koyma; ikisi birden varsa vade ayrımını açıkça yaz.
 
 *** BREAKOUT ALERT REHBERİ (data_block'ta "🚀 BREAKOUT ALERT" satırı varsa) ***
 Range/bant tabanlı boundary (60-180g yatay bant tavanı) son barda **kapanış + hacim ≥ 1.5×** ile kırıldı.
