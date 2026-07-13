@@ -9609,10 +9609,36 @@ def _render_genel_ozet_panel():
                                 f"<rect x='{_xc - _body_w/2:.1f}' y='{_bt:.1f}' "
                                 f"width='{_body_w:.1f}' height='{_bh:.1f}' fill='{_clr_c}'/>"
                             )
+                        # 13 Tem 2026 — TAZELİK ETİKETİ: son mumun tarihi her zaman
+                        # görünür; işlem günü olup son mum bugüne ait değilse SARI
+                        # uyarı (cache/veri gecikmesi anında fark edilsin —
+                        # kullanıcı TradingView ile kıyaslarken 'mumlar uyuşmuyor'
+                        # kafa karışıklığı yaşamasın).
+                        _lc_date_html = ""
+                        try:
+                            _last_dt = _df5.index[-1]
+                            _lc_str = f"{_last_dt.day:02d}.{_last_dt.month:02d}"
+                            _is_today = (_last_dt.date() == datetime.now(_TZ_ISTANBUL).date())
+                            _mkt_open_now = not bool(_gs_today_closed)
+                            if _mkt_open_now and not _is_today:
+                                _lc_date_html = (
+                                    f"<div style='font-size:0.56rem;color:#f59e0b;"
+                                    f"font-weight:700;text-align:center;margin-top:1px;'>"
+                                    f"⚠ son mum: {_lc_str} — bugünkü bar henüz yok</div>"
+                                )
+                            else:
+                                _lc_date_html = (
+                                    f"<div style='font-size:0.56rem;color:#64748b;"
+                                    f"text-align:center;margin-top:1px;'>son mum: {_lc_str}</div>"
+                                )
+                        except Exception:
+                            pass
                         _mini_candles_html = (
+                            f"<div style='display:flex;flex-direction:column;align-items:center;'>"
                             f"<svg width='100%' height='{_cw_h}' viewBox='0 0 {_cw_w} {_cw_h}' "
                             f"preserveAspectRatio='xMidYMid meet' style='max-width:130px;'>"
                             + "".join(_parts) + "</svg>"
+                            f"{_lc_date_html}</div>"
                         )
                 except Exception:
                     pass
