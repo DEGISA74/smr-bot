@@ -9871,12 +9871,49 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
 
+                # 13 Tem 2026 — Momentum mini-histogramı: Para Akış İvmesi
+                # panelindeki mavi/kırmızı barların son 16 günü, satırın içinde.
+                # Kaynak calculate_synthetic_sentiment cache'i (panel zaten
+                # hesaplıyor → sıfır ek maliyet). Renkler panelle birebir.
+                _mom_hist_html = ""
+                try:
+                    _ss_pd_m = calculate_synthetic_sentiment(_ticker)
+                    if _ss_pd_m is not None and 'MF_Smooth' in _ss_pd_m.columns:
+                        _mbars = [float(x) for x in _ss_pd_m['MF_Smooth'].tail(16)
+                                  if pd.notna(x)]
+                        if len(_mbars) >= 4:
+                            _mb_n = len(_mbars); _mb_h = 30; _mb_mid = _mb_h / 2
+                            _mb_w = _mb_n * 8
+                            _mb_lim = max(30.0, max(abs(v) for v in _mbars) * 1.05)
+                            _mb_p = [f"<line x1='0' y1='{_mb_mid}' x2='{_mb_w}' y2='{_mb_mid}' "
+                                     f"stroke='#475569' stroke-width='1' stroke-dasharray='2,2'/>"]
+                            for _mi, _mv in enumerate(_mbars):
+                                _mc = "#5B84C4" if _mv > 0 else "#ef4444"
+                                _mbh = max(min(abs(_mv) / _mb_lim * (_mb_mid - 2), _mb_mid - 2), 1.0)
+                                _my = (_mb_mid - _mbh) if _mv > 0 else _mb_mid
+                                _mo = "1.0" if _mi == _mb_n - 1 else "0.72"
+                                _mb_p.append(f"<rect x='{_mi * 8 + 1}' y='{_my:.1f}' width='6' "
+                                             f"height='{_mbh:.1f}' rx='1' fill='{_mc}' opacity='{_mo}'/>")
+                            _mom_hist_html = (
+                                f"<div style='display:flex;align-items:center;gap:8px;"
+                                f"margin:5px 0 2px;padding-left:11px;'>"
+                                f"<svg width='{_mb_w}' height='{_mb_h}' viewBox='0 0 {_mb_w} {_mb_h}' "
+                                f"style='display:block;'>" + "".join(_mb_p) + "</svg>"
+                                f"<span style='font-size:0.6rem;color:{_gs_neu};font-style:normal;"
+                                f"line-height:1.3;'>son 16 gün<br>"
+                                f"<span style='color:#5B84C4;'>■</span> alıcı ivmesi · "
+                                f"<span style='color:#ef4444;'>■</span> satıcı ivmesi</span>"
+                                f"</div>"
+                            )
+                except Exception:
+                    _mom_hist_html = ""
+
                 # Sert dönüş / Tepe geri çekilme → pulse
                 _mom_pulse = ("Sert" in _mom_lbl) or ("Tepe geri çekilme" in _mom_lbl)
                 _gs_items_html += _gs_row(
                     "Momentum",
                     f"<span style='color:{_mom_clr};'>{_mom_lbl}</span>",
-                    explain=_mom_expl,
+                    explain=_mom_hist_html + _mom_expl,
                     lc=_mom_clr,
                     pulse=_mom_pulse
                 )
