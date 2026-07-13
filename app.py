@@ -13448,7 +13448,9 @@ if st.session_state.generate_prompt:
         elif _c5n and _c20n:
             cmf_dual_txt = f"Güçlü negatif (5g {_cmf_5:+.3f} + 20g {_cmf_20:+.3f}) — bar içi satıcı baskısı teyitli"
         elif _c5p and _c20n:
-            cmf_dual_txt = f"Kafa çeviriyor / toparlanma (5g {_cmf_5:+.3f} pozitif, 20g {_cmf_20:+.3f} negatif) — bar içi erken toparlanma sinyali"
+            # 13 Tem 2026 — yön düzeltme (çift backtest teyitli): bu görüntü
+            # geçmişte EN ZAYIF getiri kovası — toparlanma değil tuzak sinyali
+            cmf_dual_txt = f"Kafa çeviriyor görüntüsü (5g {_cmf_5:+.3f} pozitif, 20g {_cmf_20:+.3f} negatif) — TARİHSEL TUZAK: backtest'te en zayıf kova, ölü kedi sıçraması riski, toparlanma diye OKUMA"
         elif _c5n and _c20p:
             cmf_dual_txt = f"Kafa çeviriyor / zayıflama (5g {_cmf_5:+.3f} negatif, 20g {_cmf_20:+.3f} pozitif) — bar içi alıcı yorgun, erken uyarı"
         elif _c20p:
@@ -14055,12 +14057,16 @@ if st.session_state.generate_prompt:
             _l14r = (-_dr.where(_dr < 0, 0)).rolling(14).mean()
             _r14  = float((100 - (100 / (1 + (_g14r / _l14r)))).iloc[-1])
             _rd_txt = None
-            if   _r5 >= 80 and _r14 >= 70: _rd_txt = f"İki pencerede aşırı alım (RSI5 {_r5:.0f} + RSI14 {_r14:.0f}) — momentum tepesi yakın"
+            # 13 Tem 2026 — 2 yön düzeltildi (feature_karne + 56K örnek verdict
+            # backtest ÇİFT ONAY): overbought_both gerçekte EN İYİ kova (güç
+            # devamı, 10g ort +%2.2), dip_recovery EN KÖTÜ (tuzak, isabet %44).
+            # Çelişen state'ler (oversold_both, cooling) DOKUNULMADI.
+            if   _r5 >= 80 and _r14 >= 70: _rd_txt = f"İki pencerede aşırı alım (RSI5 {_r5:.0f} + RSI14 {_r14:.0f}) — TARİHSEL GÜÇ DEVAMI (backtest 10g ort +%2.2): trend piyasasında satış sinyali DEĞİL, güç teyidi"
             elif _r5 <= 20 and _r14 <= 30: _rd_txt = f"İki pencerede aşırı satım (RSI5 {_r5:.0f} + RSI14 {_r14:.0f}) — dip ihtimali"
             elif _r5 >= 80 and _r14 < 60:  _rd_txt = f"Erken aşırı alım sinyali (RSI5 {_r5:.0f} hızla yükseldi, RSI14 {_r14:.0f} henüz ortada) — 1-3g içinde ısınma genişleyebilir"
             elif _r5 <= 20 and _r14 > 40:  _rd_txt = f"Erken aşırı satım darbesi (RSI5 {_r5:.0f}, RSI14 {_r14:.0f}) — short pulse dip, dönüş adayı"
             elif _r5 < 50  and _r14 >= 70: _rd_txt = f"Tepe yorgunluğu (RSI5 {_r5:.0f} soğuyor, RSI14 {_r14:.0f} hâlâ aşırı alımda) — momentum kırılıyor"
-            elif _r5 > 50  and _r14 <= 30: _rd_txt = f"Erken dip dönüşü (RSI5 {_r5:.0f} toparlanıyor, RSI14 {_r14:.0f} hâlâ dipte) — dönüş işareti"
+            elif _r5 > 50  and _r14 <= 30: _rd_txt = f"Erken dip dönüşü görüntüsü (RSI5 {_r5:.0f} toparlanıyor, RSI14 {_r14:.0f} hâlâ dipte) — TARİHSEL TUZAK (backtest isabet %44, en kötü kova): dönüş işareti diye OKUMA, teyitsiz alım önerme"
             if _rd_txt:
                 # 12 Haz 2026 — Tek-mum dominance prefix (bugünkü RSI5 hareketi / 5g hareketi)
                 try:
@@ -14101,7 +14107,7 @@ if st.session_state.generate_prompt:
                     _md_txt = f"İki pencerede hacim teyitli aşırı satım (MFI5 {_m5:.0f} + MFI14 {_m14:.0f}) — akıllı para dipte boş, dönüş ihtimali yüksek"
                 elif _m5 >= 80 and _m14 < 60:
                     _md_state = 'early_overbought'
-                    _md_txt = f"Erken hacim akışı (MFI5 {_m5:.0f} hızla yükseldi, MFI14 {_m14:.0f} henüz ortada) — akıllı para agresif girdi, fiyat geleceğe sarkacak"
+                    _md_txt = f"Erken hacim akışı (MFI5 {_m5:.0f} hızla yükseldi, MFI14 {_m14:.0f} henüz ortada) — TARİHSEL ZAYIF (çift backtest: bu kova ortalamanın altında getirdi), agresif giriş diye kovalama"
                 elif _m5 <= 20 and _m14 > 40:
                     _md_state = 'early_oversold'
                     _md_txt = f"Ani panik satışı (MFI5 {_m5:.0f}, MFI14 {_m14:.0f}) — geçici flush, ana trend hâlâ pozitif"
@@ -14149,6 +14155,27 @@ if st.session_state.generate_prompt:
             "(Wyckoff effort-vs-result climax). Tek başına RSI veya tek başına MFI'dan çok daha güçlü "
             "sinyal — ana hikayeye dahil et."
         )
+
+    # ── GENEL ÖZET 6-oy verdicti (13 Tem 2026) — panel ile TEK KAYNAK ──
+    # compute_genel_ozet_pack (cache'li) + get_genel_ozet_verdict_stats:
+    # etiket + oy dağılımı + ölçülmüş geçmiş karnesi (600 hisse backtest).
+    # Sadece hisselerde (endekste hacim oyları anlamsız → emit yok).
+    _em_gs_verdict = ""
+    try:
+        if not _is_index_t:
+            _gsv = compute_genel_ozet_pack(t, st.session_state.get("bist_market_status", {}))
+            if _gsv and _gsv.get('_gs_net_txt'):
+                _gsv_lbl = _gsv['_gs_net_txt']
+                _gsv_karne = ""
+                _gsv_st = get_genel_ozet_verdict_stats().get(_gsv_lbl)
+                if _gsv_st:
+                    _gsv_karne = (f" · geçmiş karnesi: 10g ort {_gsv_st['ret10']:+.1f}%, "
+                                  f"isabet %{_gsv_st['hit10']:.0f} (600 hisse backtest)")
+                _em_gs_verdict = (f"  genel_ozet_verdict: {_gsv_lbl} "
+                                  f"(6 bağımsız sinyal oylaması — hacim/OBV/yapı/RSI/CMF/MFI: "
+                                  f"{_gsv['_gs_up']}↑/{_gsv['_gs_dn']}↓{_gsv_karne})")
+    except Exception:
+        _em_gs_verdict = ""
 
     # Relative OBV (hisse vs endeks) — hacim akışı ayrışması
     # 10 Haz 2026 Oturum 20: Mansfield RS'in hacim katmanı.
@@ -15452,7 +15479,7 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
 • institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` (SMC kurumsal — -2σ VWAP mean-reversion bölgesi; karne: gerçek edge, DESTEKLEYİCİ confluence, ANA HİKAYE YAPMA), `🏛 YABANCI KURUMSAL BİRİKİM` (MKK — yabancı net giriş VE 3+ gün süreklilik BİRLİKTE; karne bu birleşimi güçlü buldu → G1'de 'yabancı akıllı para destekliyor' vurgula), `yabanci_streak` (MKK — 3+ gün üst üste oran artışı = yapısal birikim; karne pozitif; DESTEKLEYİCİ), `yabanci_giris_tek_gun` (MKK — tek günlük top-3 giriş AMA süreklilik YOK; karne TERS [-%10, isabet %20] → bullish SAYMA, yorumun merkezine alma), `yabanci_cikis` (MKK — yabancı çıkış izi; karne negatif getiriyle uyumlu; riski vurgula).
 • smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al), `rel_obv_state` (Relative OBV — hisse hacim akışı endeksten ayrışıyor mu; outperform_strong/underperform_strong = ELIT smart money izi, mild = destekleyici), `udvr_state`/`udvr_wyckoff` (Up/Down Volume Ratio — klasik Wyckoff Effort-vs-Result, climax_top/bottom durumları = TIER_1 ELIT smart money tepe/dip teyidi; strong_buyer/strong_seller = destekleyici), `force_index_dual`/`force_index_divergence` (Alexander Elder Force Index dual — anlık FI(2) ve trend FI(13); bullish/bearish divergence = TIER_1 ELIT klasik Elder sinyali, strong/turning durumlar = destekleyici).
-• trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir.
+• trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir. `genel_ozet_verdict` (6 bağımsız sinyalin — hacim/OBV/yapı/RSI/CMF/MFI — oylanmış özeti): parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir (600 hisse backtest) — yorum güvenini bu karneye göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiketleri hikayenin merkezine alabilirsin; KARARSIZ/HAFİF etiketlerini büyük yön iddiasına ÇEVİRME. Alan adı çıktıda görünmez.
 
 *** KALİBRASYON TABLOLARI — SADECE REFERANS, gördüğünde uygula ***
 POC RETEST (84.832 event, BIST 593 hisse, 1y; retest = POC'a %1 yakına ≤10g):
@@ -15535,7 +15562,7 @@ trend_indicators:
   supertrend_60g: {st_txt}
   minervini: {mini_txt}
   radar1_momentum_hacim: {r1_txt}
-  radar2_trend_setup: {r2_txt}{(chr(10) + _em_rsi_dual) if _em_rsi_dual else ""}
+  radar2_trend_setup: {r2_txt}{(chr(10) + _em_rsi_dual) if _em_rsi_dual else ""}{(chr(10) + _em_gs_verdict) if _em_gs_verdict else ""}
 
 moving_averages:
   sma50: {sma50_str} (seviye: {sma50_val:.2f})
