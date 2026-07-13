@@ -18,6 +18,15 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 BG = '#0a1019'; CARD = '#111a28'; CARD2 = '#0d1623'; LINE = '#1e2c40'
 TXT = '#e6edf6'; MUT = '#8aa0bb'; UP = '#2ec177'; DN = '#f0556a'; INFO = '#4aa3ff'; GOLD = '#e0a72e'
 
+# 6 Tem 2026 — emtia ham sembolünü UI display adına çevir (app.py display haritasıyla aynı).
+# Başlıkta "GC=F · Teknik Görünüm" yerine "ONS ALTIN · Teknik Görünüm" gösterilsin.
+_CMDTY_DISP = {
+    "GC=F": "ONS ALTIN", "SI=F": "GÜMÜŞ", "CL=F": "WTI PETROL",
+    "BZ=F": "BRENT PETROL", "NG=F": "DOĞAL GAZ", "HG=F": "BAKIR",
+}
+def _disp_name(t):
+    return _CMDTY_DISP.get(str(t).strip().upper(), t)
+
 # Özet ile DİKKAT arasına: gözlem/eğitim disclaimer'ı (büyük harf, 22 Haz 2026)
 DISCLAIMER_PANEL = (
     f"<div style='background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px 11px;margin-bottom:7px;'>"
@@ -260,7 +269,7 @@ def build_html(ticker):
     df = ig.load(ticker)
     if df is None or len(df) < 60: return None
     d = ig.compute(ticker, df); g = ig.gorev4(d)
-    tk = d['ticker']
+    tk = _disp_name(d['ticker'])
     chart = _fig_b64(cc.build_fig(ticker)); ivme = _fig_b64(cc.build_ivme_fig(ticker))
     harsi_block = _ind_block_b64('Momentum göstergesi', cc.build_harsi_fig(ticker))
     compass = cp.build_compass_html(ticker) or ""
@@ -325,7 +334,7 @@ def build_widget_html(ticker):
     df = ig.load(ticker)
     if df is None or len(df) < 60: return None
     d = ig.compute(ticker, df); g = ig.gorev4(d)
-    tk = d['ticker']
+    tk = _disp_name(d['ticker'])
     # NOT: in-app'te inline SVG iframe'de oranını koruyamıyor (uzun render) → base64 PNG kullan.
     chart = _fig_b64(cc.build_fig(ticker)); ivme = _fig_b64(cc.build_ivme_fig(ticker))
     harsi_block = _ind_block_b64('Momentum göstergesi', cc.build_harsi_fig(ticker))
