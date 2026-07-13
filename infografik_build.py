@@ -129,39 +129,38 @@ def _card_warn(title, body):
 
 
 def _signal_box(df, d):
-    """GENEL ÖZET üst doğrulama bandı — standalone port (app _render_genel_ozet_panel).
-    Verdict (YUKARI/AŞAĞI/KARARSIZ + N/4) · LONG çubuğu · HACİM/OBV/YAPI/RSI ok kolonu ·
-    5 mumluk mini şerit · 5g/20g/50g/200g trafik ışıkları. AL/SAT dili YOK."""
+    """GENEL ÖZET üst doğrulama bandı — 13 Tem 2026 V10 senkronu.
+    ESKİ standalone 4-oy kopyası SİLİNDİ (backtest'te ters çalışıyordu, app ile
+    çelişiyordu) → TEK KAYNAK: smr_core._genel_ozet_verdict_sc (app pack ile
+    mantık eşitliği 5/5 kanıtlı, 600 hisse × 56K örnek V10 karne-ağırlıklı).
+    Verdict + oy özeti + karne · 6 ok hücresi (RSI×2/CMF×2) · 5 mum + tarih ·
+    trafik ışıkları · momentum + OBV gidişat çizgileri. AL/SAT dili YOK."""
     NEU = '#64748b'; LBL = '#94a3b8'
-    # ── 4 bağımsız sinyal ─────────────────────────────────────────────
+    # ── V10 verdicti — tek kaynak (lazy import: smr_core ağır modül) ───
     try:
-        _r5 = df.tail(5)
-        _d5 = float(((_r5['Close'] - _r5['Open']) * _r5['Volume']).sum())
+        from smr_core import _genel_ozet_verdict_sc
+        _v = _genel_ozet_verdict_sc(df, detail=True)
     except Exception:
-        _d5 = 0.0
-    sig_hacim = 1 if _d5 > 0 else (-1 if _d5 < 0 else 0)
-    _ofy = float(d.get('obv_force', 0.0) or 0.0)
-    sig_obv = 1 if _ofy > 0.1 else (-1 if _ofy < -0.1 else 0)
-    sig_yapi = 0
-    try:
-        _h = df['High'].astype(float).values; _l = df['Low'].astype(float).values
-        if _h[-1] > _h[-2] > _h[-3] and _l[-1] > _l[-2] > _l[-3]:
-            sig_yapi = 1
-    except Exception:
-        pass
-    _rv = float(d.get('rsi', 50.0) or 50.0)
-    sig_rsi = 1 if _rv <= 60 else (-1 if _rv > 70 else 0)
-    up = sum(1 for s in (sig_hacim, sig_obv, sig_yapi, sig_rsi) if s > 0)
-    dn = sum(1 for s in (sig_hacim, sig_obv, sig_yapi, sig_rsi) if s < 0)
-    if   up == 4:             net, nc = "YUKARI ★", "#22c55e"
-    elif dn == 4:             net, nc = "AŞAĞI ★", "#dc2626"
-    elif up >= 3:             net, nc = "YUKARI", "#4ade80"
-    elif dn >= 3:             net, nc = "AŞAĞI", "#f87171"
-    elif up == 2 and dn == 2: net, nc = "ÇELİŞKİLİ", "#fb923c"
-    elif up >= 2 and dn < 2:  net, nc = "HAFİF YUKARI", "#86efac"
-    elif dn >= 2 and up < 2:  net, nc = "HAFİF AŞAĞI", "#fca5a5"
-    else:                     net, nc = "KARARSIZ", "#fbbf24"
-    dom = max(up, dn)
+        _v = None
+    if _v:
+        net = _v['lbl']; up = _v['up']; dn = _v['dn']; _karne = _v['karne']
+        _s = _v['sigs']
+        sig_hacim = _s['hacim']; sig_obv = _s['obv']; sig_yapi = _s['yapi']
+        sig_rsi = _s['rsi']; sig_cmf = _s['cmf']; sig_mfi = _s['mfi']
+    else:
+        net, up, dn, _karne = "KARARSIZ", 0, 0, ""
+        sig_hacim = sig_obv = sig_yapi = sig_rsi = sig_cmf = sig_mfi = 0
+    nc = {"YUKARI ★": "#22c55e", "YUKARI": "#4ade80", "HAFİF YUKARI": "#86efac",
+          "AŞAĞI ★": "#dc2626", "AŞAĞI": "#f87171", "HAFİF AŞAĞI": "#fca5a5"}.get(net, "#fbbf24")
+    notr = 6 - up - dn
+    oy_ozet = (f"<span style='color:{UP};font-weight:800;'>{up} yukarı ▲</span>"
+               f"<span style='color:{NEU};'> · </span>"
+               f"<span style='color:{DN};font-weight:800;'>{dn} aşağı ▼</span>"
+               f"<span style='color:{NEU};'> · </span>"
+               f"<span style='color:{NEU};font-weight:700;'>{notr} kararsız →</span>")
+    karne_html = (f"<div style='font-size:10px;color:{NEU};font-style:italic;margin-top:3px;'>"
+                  f"📊 Bu etiketin geçmiş karnesi{_karne.replace(' · geçmiş karnesi', '')}</div>"
+                  if _karne else "")
 
     def _cell(lbl, sig):
         if sig > 0:   ar, clr = "▲", UP
@@ -172,9 +171,10 @@ def _signal_box(df, d):
                 f"gap:8px;line-height:1.1;min-width:74px;'>"
                 f"<span style='font-size:9px;color:{LBL};font-weight:700;letter-spacing:0.04em;'>{lbl}</span>"
                 f"<span style='font-size:13px;color:{clr};font-weight:900;'>{ar}</span></div>")
-    arrow_stack = ("<div style='display:flex;flex-direction:column;gap:3px;flex:0 0 auto;'>"
+    arrow_stack = ("<div style='display:flex;flex-direction:column;gap:2px;flex:0 0 auto;'>"
                    + _cell("HACİM", sig_hacim) + _cell("OBV", sig_obv)
-                   + _cell("YAPI", sig_yapi) + _cell("RSI", sig_rsi) + "</div>")
+                   + _cell("YAPI", sig_yapi) + _cell("RSI ×2", sig_rsi)
+                   + _cell("CMF ×2", sig_cmf) + _cell("MFI", sig_mfi) + "</div>")
 
     # ── 5 mumluk mini şerit (son 5 OHLC) ──────────────────────────────
     mini = ""
@@ -193,10 +193,78 @@ def _signal_box(df, d):
             parts.append(f"<line x1='{xc:.1f}' y1='{yh:.1f}' x2='{xc:.1f}' y2='{yl:.1f}' stroke='{_cc}' stroke-width='1.4'/>")
             bt = min(yo, yc); bh = max(abs(yc - yo), 1.5)
             parts.append(f"<rect x='{xc - bw/2:.1f}' y='{bt:.1f}' width='{bw:.1f}' height='{bh:.1f}' fill='{_cc}'/>")
-        mini = (f"<svg width='100%' height='{H}' viewBox='0 0 {W} {H}' preserveAspectRatio='xMidYMid meet' "
-                f"style='max-width:110px;'>" + "".join(parts) + "</svg>")
+        # 13 Tem 2026 — tazelik etiketi (app paneli ile aynı): son mum tarihi
+        _lc = ""
+        try:
+            _ld = _d5f.index[-1]
+            _lc = (f"<div style='font-size:9px;color:{NEU};text-align:center;"
+                   f"margin-top:1px;'>son mum: {_ld.day:02d}.{_ld.month:02d}</div>")
+        except Exception:
+            pass
+        mini = (f"<div style='display:flex;flex-direction:column;align-items:center;'>"
+                f"<svg width='100%' height='{H}' viewBox='0 0 {W} {H}' preserveAspectRatio='xMidYMid meet' "
+                f"style='max-width:110px;'>" + "".join(parts) + "</svg>" + _lc + "</div>")
     except Exception:
         pass
+
+    # ── 13 Tem 2026 — GİDİŞAT ÇİZGİLERİ (app paneli formatı, yan yana) ─
+    # Sol: momentum ivme değişimi (mavi/kırmızı) · Sağ: OBV gidişatı
+    # (yeşil birikim / turuncu dağıtım). Her ikisi 20 iş günü, günlük fark.
+    def _delta_line(vals, pos_clr, neg_clr, title, pos_w, neg_w):
+        try:
+            if not vals or len(vals) < 5:
+                return ""
+            n = len(vals); w, h = 220, 40; mid = h / 2
+            lim = max(1e-9, max(abs(x) for x in vals) * 1.1)
+            def xy(i, x):
+                return i * (w / (n - 1)), mid - (x / lim) * (mid - 3)
+            p = [f"<line x1='0' y1='{mid}' x2='{w}' y2='{mid}' stroke='#475569' "
+                 f"stroke-width='1' stroke-dasharray='3,3'/>"]
+            for i in range(1, n):
+                x1, y1 = xy(i - 1, vals[i - 1]); x2, y2 = xy(i, vals[i])
+                clr = pos_clr if vals[i] > 0 else neg_clr
+                p.append(f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' y2='{y2:.1f}' "
+                         f"stroke='{clr}' stroke-width='2' stroke-linecap='round' "
+                         f"vector-effect='non-scaling-stroke'/>")
+            lx, ly = xy(n - 1, vals[-1])
+            lc2 = pos_clr if vals[-1] > 0 else neg_clr
+            son = pos_w if vals[-1] > 0 else neg_w
+            p.append(f"<circle cx='{lx:.1f}' cy='{ly:.1f}' r='4.5' fill='{lc2}' opacity='0.25'/>")
+            p.append(f"<circle cx='{lx:.1f}' cy='{ly:.1f}' r='2.4' fill='{lc2}'/>")
+            return (f"<div style='flex:1;min-width:0;'>"
+                    f"<div style='display:flex;justify-content:space-between;font-size:9px;"
+                    f"color:{LBL};margin-bottom:1px;'><span>{title} · 20 gün</span>"
+                    f"<span style='color:{lc2};font-weight:800;'>bugün: {son}</span></div>"
+                    f"<svg width='100%' height='40' viewBox='0 0 220 40' preserveAspectRatio='none' "
+                    f"style='display:block;'>" + "".join(p) + "</svg></div>")
+        except Exception:
+            return ""
+
+    gidisat = ""
+    try:
+        from indicators import compute_flow_momentum
+        _mf, _ = compute_flow_momentum(df)
+        _mvals = []
+        if _mf is not None:
+            _mfl = [float(x) for x in _mf.tail(21) if x == x]
+            _mvals = [_mfl[i] - _mfl[i - 1] for i in range(1, len(_mfl))]
+        _ovals = []
+        if 'Volume' in df.columns:
+            _vv = df['Volume'].fillna(0).astype(float)
+            _cc2 = df['Close'].astype(float)
+            _oa = float(_vv.rolling(20).mean().iloc[-1])
+            if _oa > 0:
+                _osm = (np.sign(_cc2.diff()).fillna(0) * _vv).cumsum().ewm(span=5, adjust=False).mean()
+                _ovals = [float(x) / _oa for x in _osm.diff().tail(20) if x == x]
+        _l1 = _delta_line(_mvals, "#5B84C4", "#ef4444", "Momentum ivme değişimi",
+                          "güçleniyor", "zayıflıyor")
+        _l2 = _delta_line(_ovals, "#4ade80", "#f59e0b", "OBV gidişatı",
+                          "birikim", "dağıtım")
+        if _l1 or _l2:
+            gidisat = (f"<div style='display:flex;gap:12px;margin-top:8px;'>"
+                       + _l1 + _l2 + "</div>")
+    except Exception:
+        gidisat = ""
 
     # ── 5g/20g/50g/200g trafik ışıkları ───────────────────────────────
     tf = ""
@@ -235,14 +303,17 @@ def _signal_box(df, d):
             f"padding:9px 11px;'>"
             f"<div style='display:flex;align-items:center;flex-wrap:wrap;row-gap:4px;"
             f"font-family:\"JetBrains Mono\",ui-monospace,Consolas,monospace;font-weight:800;'>"
-            f"<span style='color:{nc};font-size:14px;white-space:nowrap;'>{net} "
-            f"<span style='opacity:0.6;font-size:10px;font-weight:600;'>{dom}/4</span></span>"
+            f"<span style='color:{nc};font-size:14px;white-space:nowrap;'>{net}</span>"
             f"<span style='display:inline-flex;align-items:center;white-space:nowrap;margin-left:auto;'>"
             f"<span style='color:{NEU};padding:0 8px;font-weight:400;font-size:12px;'>|</span>"
             f"<span style='color:{NEU};font-size:10px;font-weight:600;letter-spacing:0.04em;margin-right:4px;'>LONG</span>{longbar}</span>"
             f"</div>"
+            f"<div style='font-size:10.5px;color:{TXT};margin-top:3px;'>"
+            f"6 sinyal oylaması <span style='opacity:0.65;'>(RSI+CMF çift oy)</span>: {oy_ozet}</div>"
+            f"{karne_html}"
             f"<div style='display:flex;gap:8px;margin-top:8px;align-items:center;'>{arrow_stack}"
             f"<div style='flex:1;display:flex;justify-content:center;align-items:center;'>{mini}</div>{tf}</div>"
+            f"{gidisat}"
             f"</div>")
 
 

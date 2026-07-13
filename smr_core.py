@@ -1634,7 +1634,7 @@ def _apply_lean_prompt(p):
     return p
 
 
-def _genel_ozet_verdict_sc(df):
+def _genel_ozet_verdict_sc(df, detail=False):
     """GENEL ÖZET 6-oy verdicti — app.py senkronu (13 Tem 2026, V10 karne-ağırlıklı).
 
     600 hisse × 56K örnek backtest'in kazanan sistemi: 6 bağımsız sinyal
@@ -1750,6 +1750,11 @@ def _genel_ozet_verdict_sc(df):
                              f"isabet %{_e['hit10']:.0f} (600 hisse backtest)")
         except Exception:
             pass
+        if detail:
+            # 13 Tem 2026 — infografik senkronu: oy detayları + karne ayrı
+            return {"lbl": lbl, "net": net, "up": up, "dn": dn, "karne": karne,
+                    "sigs": {"hacim": s_hacim, "obv": s_obv, "yapi": s_yapi,
+                             "rsi": s_rsi, "cmf": s_cmf, "mfi": s_mfi}}
         return f"{lbl} (6 sinyal, RSI+CMF çift ağırlıklı: {up} yukarı / {dn} aşağı{karne})"
     except Exception:
         return None
