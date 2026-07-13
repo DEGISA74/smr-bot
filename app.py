@@ -10845,16 +10845,19 @@ def _render_genel_ozet_panel():
                                             _od_mid - (v / _od_lim) * (_od_mid - 4))
                                 _od_p = [f"<line x1='0' y1='{_od_mid}' x2='{_od_w}' y2='{_od_mid}' "
                                          f"stroke='#475569' stroke-width='1' stroke-dasharray='3,3'/>"]
+                                # Renkler MOMENTUM çizgisinden farklı (kullanıcı isteği,
+                                # 13 Tem): birikim = yeşil (#4ade80, 20G Konum noktasıyla
+                                # aynı) · dağıtım = turuncu (#f59e0b)
                                 for _oi in range(1, _od_n):
                                     _x1, _y1 = _od_xy(_oi - 1, _odel[_oi - 1])
                                     _x2, _y2 = _od_xy(_oi, _odel[_oi])
-                                    _ocl = "#5B84C4" if _odel[_oi] > 0 else "#ef4444"
+                                    _ocl = "#4ade80" if _odel[_oi] > 0 else "#f59e0b"
                                     _od_p.append(
                                         f"<line x1='{_x1:.1f}' y1='{_y1:.1f}' x2='{_x2:.1f}' y2='{_y2:.1f}' "
                                         f"stroke='{_ocl}' stroke-width='2' stroke-linecap='round' "
                                         f"vector-effect='non-scaling-stroke'/>")
                                 _olx, _oly = _od_xy(_od_n - 1, _odel[-1])
-                                _olc = "#5B84C4" if _odel[-1] > 0 else "#ef4444"
+                                _olc = "#4ade80" if _odel[-1] > 0 else "#f59e0b"
                                 _od_p.append(f"<circle cx='{_olx:.1f}' cy='{_oly:.1f}' r='5' "
                                              f"fill='{_olc}' opacity='0.25'/>")
                                 _od_p.append(f"<circle cx='{_olx:.1f}' cy='{_oly:.1f}' r='2.6' "
@@ -10869,7 +10872,8 @@ def _render_genel_ozet_panel():
                                     f"<div style='display:flex;justify-content:space-between;"
                                     f"font-size:0.6rem;color:{_gs_neu};margin-top:2px;'>"
                                     f"<span>20 gün önce</span>"
-                                    f"<span>OBV'nin günlük değişimi · üstü=birikim, altı=dağıtım</span>"
+                                    f"<span>OBV'nin günlük değişimi · üstü=<span style='color:#4ade80;'>birikim</span>, "
+                                    f"altı=<span style='color:#f59e0b;'>dağıtım</span></span>"
                                     f"<span style='color:{_olc};font-weight:700;'>bugün: {_od_son}</span>"
                                     f"</div></div>"
                                 )
