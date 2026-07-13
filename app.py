@@ -9560,11 +9560,10 @@ def _render_genel_ozet_panel():
                         f"<span style='font-size:0.9rem;color:{_clr};font-weight:900;'>{_ar}</span>"
                         f"</div>"
                     )
-                # 13 Tem 2026: 4→6 oy (CMF + MFI eklendi) — dikey kolon uzamasın
-                # diye 2 sütun × 3 satır grid
+                # 13 Tem 2026 v2: 6 oy TEK dikey kolon (2 sütun grid mum şeridini
+                # eziyordu — kullanıcı geri bildirimi). Hücreler hafif sıkılaştı.
                 _arrow_stack_html = (
-                    f"<div style='display:grid;grid-template-columns:1fr 1fr;"
-                    f"gap:3px;flex:0 0 auto;'>"
+                    f"<div style='display:flex;flex-direction:column;gap:2px;flex:0 0 auto;'>"
                     + _arrow_cell("HACİM", _sig_hacim)
                     + _arrow_cell("OBV",   _sig_obv)
                     + _arrow_cell("YAPI",  _sig_yapi)
@@ -9586,7 +9585,9 @@ def _render_genel_ozet_panel():
                         _pmin = float(_ls.min())
                         _pmax = float(_hs.max())
                         _rng = max(_pmax - _pmin, 1e-9)
-                        _cw_w, _cw_h = 110, 80
+                        # 13 Tem 2026 v2: 6 oy kolonu uzadı → mum şeridi de büyüdü
+                        # (kullanıcı: küçük mum olmaz — eski görünürlük korunmalı)
+                        _cw_w, _cw_h = 130, 104
                         _n = 5
                         _cell_w = _cw_w / _n
                         _body_w = _cell_w * 0.42
@@ -9610,7 +9611,7 @@ def _render_genel_ozet_panel():
                             )
                         _mini_candles_html = (
                             f"<svg width='100%' height='{_cw_h}' viewBox='0 0 {_cw_w} {_cw_h}' "
-                            f"preserveAspectRatio='xMidYMid meet' style='max-width:110px;'>"
+                            f"preserveAspectRatio='xMidYMid meet' style='max-width:130px;'>"
                             + "".join(_parts) + "</svg>"
                         )
                 except Exception:
@@ -9671,24 +9672,31 @@ def _render_genel_ozet_panel():
                     f"</div>"
                 )
 
-                # ── OY BARI (13 Tem 2026) — 6 segment, her oy bir hücre ──────
-                _vote_pairs = [("Hacim", _sig_hacim), ("OBV", _sig_obv),
-                               ("Yapı", _sig_yapi), ("RSI", _sig_rsi),
-                               ("CMF", _sig_cmf), ("MFI", _sig_mfi)]
-                _vb_segs = ""
-                for _vb_lbl, _vb_sig in _vote_pairs:
-                    _vb_clr = (_gs_up_clr if _vb_sig > 0
-                               else (_gs_dn_clr if _vb_sig < 0 else "#334155"))
-                    _vb_yön = "yukarı" if _vb_sig > 0 else ("aşağı" if _vb_sig < 0 else "nötr")
-                    _vb_segs += (
-                        f"<span title='{_vb_lbl}: {_vb_yön}' style='display:inline-block;"
-                        f"width:14px;height:7px;border-radius:2px;background:{_vb_clr};"
-                        f"margin-right:2px;vertical-align:middle;'></span>"
-                    )
-                _vote_bar_html = (
-                    f"<span style='white-space:nowrap;margin-left:8px;'>{_vb_segs}"
-                    f"<span style='color:{_gs_net_clr};font-size:0.62rem;font-weight:700;"
-                    f"margin-left:3px;vertical-align:middle;'>net {_gs_net:+d}</span></span>"
+                # ── OY ÖZETİ + AÇIKLAMA (13 Tem 2026 v2) — nokta barı kaldırıldı,
+                # yerine herkesin anlayacağı tek cümle: kaç sinyal nereyi gösteriyor
+                _gs_notr = 6 - _gs_up - _gs_dn
+                _oy_ozet = (
+                    f"<span style='color:{_gs_up_clr};font-weight:800;'>{_gs_up} yukarı ▲</span>"
+                    f"<span style='color:{_gs_neu};'> · </span>"
+                    f"<span style='color:{_gs_dn_clr};font-weight:800;'>{_gs_dn} aşağı ▼</span>"
+                    f"<span style='color:{_gs_neu};'> · </span>"
+                    f"<span style='color:{_gs_neu};font-weight:700;'>{_gs_notr} kararsız →</span>"
+                )
+                _verdict_sub = {
+                    "YUKARI ★":     "neredeyse tam fikir birliğiyle YUKARI",
+                    "YUKARI":       "çoğunluk YUKARI diyor",
+                    "HAFİF YUKARI": "yukarı taraf önde ama fikir birliği zayıf",
+                    "KARARSIZ":     "denge var, net yön yok",
+                    "HAFİF AŞAĞI":  "aşağı taraf önde ama fikir birliği zayıf",
+                    "AŞAĞI":        "çoğunluk AŞAĞI diyor",
+                    "AŞAĞI ★":      "neredeyse tam fikir birliğiyle AŞAĞI",
+                }.get(_gs_net_txt, "")
+                _verdict_sub_html = (
+                    f"<div style='font-size:0.66rem;color:{_gs_expl_col};"
+                    f"font-weight:500;margin-top:4px;line-height:1.45;'>"
+                    f"Aşağıdaki 6 bağımsız sinyalin oylaması: {_oy_ozet}"
+                    f"<span style='color:{_gs_neu};'> — yani </span>"
+                    f"<span style='color:{_gs_net_clr};font-weight:700;'>{_verdict_sub}</span></div>"
                 )
 
                 # ── KANIT SATIRI (13 Tem 2026) — etiketin ölçülmüş geçmişi ───
@@ -9702,11 +9710,12 @@ def _render_genel_ozet_panel():
                         _ev_clr = (_gs_up_clr if (_ev_r or 0) > 1.0
                                    else (_gs_dn_clr if (_ev_r or 0) < 0 else _gs_neu))
                         _verdict_ev_html = (
-                            f"<div style='font-size:0.62rem;color:{_gs_neu};"
+                            f"<div title='600 BIST hissesi, {_vst.get('n'):,} geçmiş örnek üzerinde ölçüldü' "
+                            f"style='font-size:0.62rem;color:{_gs_neu};"
                             f"font-weight:500;margin-top:3px;font-style:italic;'>"
-                            f"📊 geçmiş (600 hisse backtest): 10g ort "
+                            f"📊 Bu etiketin geçmiş karnesi: 10 günde ortalama "
                             f"<span style='color:{_ev_clr};font-weight:700;'>{_ev_r:+.1f}%</span>"
-                            f" · isabet %{_ev_h:.0f} · n={_vst.get('n'):,}</div>"
+                            f" · isabet %{_ev_h:.0f}</div>"
                         )
                 except Exception:
                     pass
@@ -9717,9 +9726,7 @@ def _render_genel_ozet_panel():
                     f"padding:8px 10px;margin-bottom:2px;'>"
                     f"<div style='display:flex;align-items:center;flex-wrap:wrap;row-gap:4px;"
                     f"font-family:{_mono_s};font-weight:800;'>"
-                    f"<span style='color:{_gs_net_clr};font-size:0.83rem;white-space:nowrap;'>{_gs_net_txt} "
-                    f"<span style='opacity:0.6;font-size:0.65rem;font-weight:600;'>{_dom_n}/6</span></span>"
-                    f"{_vote_bar_html}"
+                    f"<span style='color:{_gs_net_clr};font-size:0.83rem;white-space:nowrap;'>{_gs_net_txt}</span>"
                     + (
                         f"<span style='display:inline-flex;align-items:center;white-space:nowrap;margin-left:auto;'>"
                         f"<span style='color:{_gs_neu};padding:0 8px;font-weight:400;font-size:0.72rem;'>|</span>"
@@ -9728,6 +9735,7 @@ def _render_genel_ozet_panel():
                         if _lr_score is not None else ""
                     )
                     + f"</div>"
+                    f"{_verdict_sub_html}"
                     f"{_verdict_ev_html}"
                     f"{_mid_row_html}"
                     f"</div>"
@@ -10594,12 +10602,15 @@ def _render_genel_ozet_panel():
                     # Kare ■
                     return (f"<svg width='14' height='14' viewBox='0 0 14 14'>"
                             f"<rect x='2' y='2' width='10' height='10' fill='{clr}'/></svg>")
-                # OBV durumu
-                _obv_y_pos = (True if _y_force > 0.3 else (False if _y_force < -0.3 else None))
-                _obv_short = ("güçlü" if _y_force > 0.6 else
-                              ("zayıflıyor" if _y_force > 0 else
+                # OBV durumu — 13 Tem 2026 fix: pozitif ara değerler (toparlanma
+                # +0.25, olası toplama +0.5) yanlışlıkla "zayıflıyor" etiketi ve
+                # gri ikon alıyordu → üstteki oy hücresi (▲) ile çelişiyordu.
+                # Artık işaret aynı kaynağı söylüyor: pozitifse yeşilimsi.
+                _obv_y_pos = (True if _y_force > 0 else (False if _y_force < 0 else None))
+                _obv_short = ("güçlü" if _y_force >= 0.6 else
+                              ("dönüyor ↗" if _y_force > 0 else
                                ("nötr" if _y_force == 0 else
-                                ("zayıf" if _y_force > -0.6 else "neg."))))
+                                ("zayıflıyor ↘" if _y_force > -0.6 else "güçlü neg."))))
                 # CMF durumu — dual-window state'e göre
                 # 13 Tem 2026: turning_up olumludan olumsuza çevrildi — çift onay
                 # (karne -4.37 + 56K backtest en zayıf kova: "toparlanma" tuzak)
