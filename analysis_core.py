@@ -21,7 +21,7 @@ from evidence import SCANNER_TIER_MAP
 from ict_core import calculate_ict_deep_analysis, calculate_price_action_dna
 from indicators import (calculate_fib_levels, calculate_supertrend, calculate_volume_delta,
                         calculate_volume_profile_poc, check_lazybear_squeeze_breakout,
-                        compute_cmf, compute_flow_momentum)
+                        compute_cmf, compute_flow_momentum, compute_mfi)
 from scan_pipeline import _compute_signal_features, scan_chart_patterns
 from scanners import _er_bearish_div, _er_rsi, evaluate_erken_radar
 from scoring_core import calculate_smart_money_score
@@ -1628,16 +1628,19 @@ def compute_genel_ozet_pack(_ticker, _gs_bms):
         except Exception:
             pass
 
-        # Madde 6: RSI zone sinyal
-        _gs_rsi_sig = 0; _gs_rsi_disp = ""
+        # Madde 6: RSI display — 13 Tem 2026 backtest revizyonu (56K örnek):
+        # düşük RSI "alım fırsatı" DEĞİL (en kötü getiri kovası), yüksek RSI
+        # trend piyasasında güç devamı. Eski "30-60 = alım bölgesi ✅" iddiası
+        # kanıtla çelişiyordu → betimleyici dile çevrildi. Oy artık ayrı
+        # (çift-pencere state, aşağıda).
         if _gs_rsi_val < 30:
-            _gs_rsi_sig = +1; _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — aşırı satım 💎"
+            _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — aşırı satım"
         elif _gs_rsi_val <= 60:
-            _gs_rsi_sig = +1; _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — alım bölgesi ✅"
-        elif _gs_rsi_val > 70:
-            _gs_rsi_sig = -1; _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — aşırı alım ⚠️"
+            _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — nötr bant"
+        elif _gs_rsi_val <= 70:
+            _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — güçlü bant"
         else:
-            _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — nötr"
+            _gs_rsi_disp = f"RSI {_gs_rsi_val:.0f} — aşırı alım (tarihsel: güç devamı) ⚡"
 
         # ── DATA-READY FLAG (erken seans: gün içi hacim henüz yok) ──────
         _data_ready = _gs_rvol >= 0.05
@@ -1677,23 +1680,93 @@ def compute_genel_ozet_pack(_ticker, _gs_bms):
             try: log_error("genel_ozet_lr_score", _lr_e, ctx={'ticker': _ticker})
             except Exception: pass
 
-        # ── VOTING: 4 BAĞIMSIZ SİNYAL (hacim oyu data_ready kontrolü) ─
+        # ── ÇİFT-PENCERE DURUMLARI (13 Tem 2026 — V8 çift-onay oyları) ──
+        # Kaynak: genel_ozet_verdict_backtest.py (600 hisse × 56K örnek) +
+        # feature_karne_report.md. Bir durum ancak İKİ ölçüm de aynı yönü
+        # gösteriyorsa oy kullanır; çelişenler 0 (dokunma kuralı).
+        _gs_rsi_dual_state = "neutral"
+        _gs_cmf_state = "neutral"
+        _gs_mfi_state = "neutral"
+        try:
+            # RSI(5) — confluence satırıyla aynı formül (Cutler, rolling mean)
+            if _gs_df is not None and len(_gs_df) >= 15:
+                _dr_v = _gs_df['Close'].diff()
+                _g5_v = _dr_v.where(_dr_v > 0, 0).rolling(5).mean()
+                _l5_v = (-_dr_v.where(_dr_v < 0, 0)).rolling(5).mean()
+                _r5_v = float((100 - (100 / (1 + (_g5_v / _l5_v)))).iloc[-1])
+                _r14_v = float(_gs_rsi_val)
+                if np.isfinite(_r5_v) and np.isfinite(_r14_v):
+                    if   _r5_v >= 80 and _r14_v >= 70: _gs_rsi_dual_state = "overbought_both"
+                    elif _r5_v <= 20 and _r14_v <= 30: _gs_rsi_dual_state = "oversold_both"
+                    elif _r5_v >= 80 and _r14_v < 60:  _gs_rsi_dual_state = "early_overbought"
+                    elif _r5_v <= 20 and _r14_v > 40:  _gs_rsi_dual_state = "early_oversold"
+                    elif _r5_v < 50  and _r14_v >= 70: _gs_rsi_dual_state = "cooling_overheat"
+                    elif _r5_v > 50  and _r14_v <= 30: _gs_rsi_dual_state = "dip_recovery"
+        except Exception:
+            pass
+        try:
+            # CMF dual — Force Compass ile aynı eşik (±0.05)
+            if _gs_df is not None and len(_gs_df) >= 20:
+                _c5_v = float(compute_cmf(_gs_df, period=5))
+                _c20_v = float(compute_cmf(_gs_df, period=20))
+                _CTHR = 0.05
+                if   _c5_v >  _CTHR and _c20_v >  _CTHR: _gs_cmf_state = "strong_pos"
+                elif _c5_v < -_CTHR and _c20_v < -_CTHR: _gs_cmf_state = "strong_neg"
+                elif _c5_v >  _CTHR and _c20_v < -_CTHR: _gs_cmf_state = "turning_up"
+                elif _c5_v < -_CTHR and _c20_v >  _CTHR: _gs_cmf_state = "turning_down"
+                elif _c20_v >  _CTHR:                    _gs_cmf_state = "pos"
+                elif _c20_v < -_CTHR:                    _gs_cmf_state = "neg"
+        except Exception:
+            pass
+        try:
+            # MFI dual — scan_pipeline f_mfi_dual eşikleriyle birebir
+            if _gs_df is not None and len(_gs_df) >= 20 and 'Volume' in _gs_df.columns:
+                _m5_v = float(compute_mfi(_gs_df, period=5).iloc[-1])
+                _m14_v = float(compute_mfi(_gs_df, period=14).iloc[-1])
+                if np.isfinite(_m5_v) and np.isfinite(_m14_v):
+                    if   _m5_v >= 80 and _m14_v >= 75: _gs_mfi_state = "overbought_both"
+                    elif _m5_v <= 20 and _m14_v <= 25: _gs_mfi_state = "oversold_both"
+                    elif _m5_v >= 80 and _m14_v < 60:  _gs_mfi_state = "early_overbought"
+                    elif _m5_v <= 20 and _m14_v > 40:  _gs_mfi_state = "early_oversold"
+                    elif _m5_v < 50  and _m14_v >= 75: _gs_mfi_state = "cooling_smart_exit"
+                    elif _m5_v > 50  and _m14_v <= 25: _gs_mfi_state = "smart_money_recovery"
+        except Exception:
+            pass
+
+        # Yapı simetrisi: LH+LL (alçalan tepe+dip) artık -1 verebilir —
+        # eski halde yapı oyu asla eksi olamıyordu, "AŞAĞI ★" imkânsızdı.
+        _gs_lh_ll = False
+        try:
+            if _gs_df is not None and len(_gs_df) >= 4:
+                _hs_v = _gs_df['High'].values; _ls_v = _gs_df['Low'].values
+                if (_hs_v[-1] < _hs_v[-2] < _hs_v[-3]) and (_ls_v[-1] < _ls_v[-2] < _ls_v[-3]):
+                    _gs_lh_ll = True
+        except Exception:
+            pass
+
+        # ── VOTING: 6 BAĞIMSIZ SİNYAL (13 Tem 2026 — V8 çift-onay) ────
+        # Eski 4-oy backtest'te TERS çalışıyordu (YUKARI +1.13 < AŞAĞI +1.66).
+        # V8: yukarı +1.76 / aşağı +0.82 / ayrım +0.94 (en iyi varyant).
         _sig_hacim = (1 if (_data_ready and _gs_cum5 > 0) else (-1 if (_data_ready and _gs_cum5 < 0) else 0))
         _sig_obv   = (1 if _gs_obv_dir > 0 else (-1 if _gs_obv_dir < 0 else 0))
-        _sig_yapi  = (1 if _gs_hh_hl else 0)
-        _sig_rsi   = _gs_rsi_sig
+        _sig_yapi  = (1 if _gs_hh_hl else (-1 if _gs_lh_ll else 0))
+        _sig_rsi   = {"overbought_both": 1, "dip_recovery": -1}.get(_gs_rsi_dual_state, 0)
+        _sig_cmf   = {"strong_pos": 1, "strong_neg": -1, "turning_up": -1}.get(_gs_cmf_state, 0)
+        _sig_mfi   = {"oversold_both": 1, "early_overbought": -1}.get(_gs_mfi_state, 0)
 
-        _gs_up = sum(1 for s in (_sig_hacim, _sig_obv, _sig_yapi, _sig_rsi) if s > 0)
-        _gs_dn = sum(1 for s in (_sig_hacim, _sig_obv, _sig_yapi, _sig_rsi) if s < 0)
+        _sigs6 = (_sig_hacim, _sig_obv, _sig_yapi, _sig_rsi, _sig_cmf, _sig_mfi)
+        _gs_up = sum(1 for s in _sigs6 if s > 0)
+        _gs_dn = sum(1 for s in _sigs6 if s < 0)
+        _gs_net = _gs_up - _gs_dn
 
-        if   _gs_up == 4:                              _gs_net_clr = "#22c55e"; _gs_net_txt = "YUKARI ★"
-        elif _gs_dn == 4:                              _gs_net_clr = "#dc2626"; _gs_net_txt = "AŞAĞI ★"
-        elif _gs_up >= 3:                              _gs_net_clr = "#4ade80"; _gs_net_txt = "YUKARI"
-        elif _gs_dn >= 3:                              _gs_net_clr = "#f87171"; _gs_net_txt = "AŞAĞI"
-        elif _gs_up == 2 and _gs_dn == 2:              _gs_net_clr = "#fb923c"; _gs_net_txt = "ÇELİŞKİLİ"
-        elif _gs_up >= 2 and _gs_dn < 2:               _gs_net_clr = "#86efac"; _gs_net_txt = "HAFİF YUKARI"
-        elif _gs_dn >= 2 and _gs_up < 2:               _gs_net_clr = "#fca5a5"; _gs_net_txt = "HAFİF AŞAĞI"
-        else:                                          _gs_net_clr = "#fbbf24"; _gs_net_txt = "KARARSIZ"
+        # Etiket eşikleri = backtest kova eşikleri (net/6: ★≥5, normal≥3, hafif>0)
+        if   _gs_net >= 5:  _gs_net_clr = "#22c55e"; _gs_net_txt = "YUKARI ★"
+        elif _gs_net >= 3:  _gs_net_clr = "#4ade80"; _gs_net_txt = "YUKARI"
+        elif _gs_net > 0:   _gs_net_clr = "#86efac"; _gs_net_txt = "HAFİF YUKARI"
+        elif _gs_net <= -5: _gs_net_clr = "#dc2626"; _gs_net_txt = "AŞAĞI ★"
+        elif _gs_net <= -3: _gs_net_clr = "#f87171"; _gs_net_txt = "AŞAĞI"
+        elif _gs_net < 0:   _gs_net_clr = "#fca5a5"; _gs_net_txt = "HAFİF AŞAĞI"
+        else:               _gs_net_clr = "#fbbf24"; _gs_net_txt = "KARARSIZ"
         return {
             '_curr_close_val': _curr_close_val,
             '_data_ready': _data_ready,
@@ -1718,6 +1791,12 @@ def compute_genel_ozet_pack(_ticker, _gs_bms):
             '_sig_obv': _sig_obv,
             '_sig_rsi': _sig_rsi,
             '_sig_yapi': _sig_yapi,
+            '_sig_cmf': _sig_cmf,
+            '_sig_mfi': _sig_mfi,
+            '_gs_net': _gs_net,
+            '_gs_rsi_dual_state': _gs_rsi_dual_state,
+            '_gs_cmf_state': _gs_cmf_state,
+            '_gs_mfi_state': _gs_mfi_state,
             '_gs_today_closed': _gs_today_closed,
             '_gs_today_label': _gs_today_label,
             '_gs_last_sess_str': _gs_last_sess_str,
@@ -1729,6 +1808,34 @@ def compute_genel_ozet_pack(_ticker, _gs_bms):
         except Exception:
             pass
         return None
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_genel_ozet_verdict_stats():
+    """13 Tem 2026 — GENEL ÖZET verdict rozetinin kanıt satırı.
+    genel_ozet_verdict_backtest.json → V8_cift_onay kovaları → panel etiketi
+    başına {n, hit10, ret10}. Dosya yoksa/kova zayıfsa (n<30) etiket atlanır —
+    render satırı gizler (panel_verdict_backtest.json rozet kalıbıyla aynı)."""
+    try:
+        import json as _vj, os as _vo
+        _p = _vo.path.join(_vo.path.dirname(_vo.path.abspath(__file__)),
+                           "genel_ozet_verdict_backtest.json")
+        with open(_p, encoding="utf-8") as _fp:
+            _d = _vj.load(_fp)
+        _t = _d.get("variants", {}).get("V8_cift_onay", {})
+        _map = {"YUKARI ★": "GÜÇLÜ YUKARI", "YUKARI": "YUKARI",
+                "HAFİF YUKARI": "HAFİF YUKARI", "KARARSIZ": "NÖTR",
+                "HAFİF AŞAĞI": "HAFİF AŞAĞI", "AŞAĞI": "AŞAĞI",
+                "AŞAĞI ★": "GÜÇLÜ AŞAĞI"}
+        _out = {}
+        for _lbl, _bkt in _map.items():
+            _e = _t.get(_bkt)
+            if _e and _e.get("n", 0) >= 30 and _e.get("ret10") is not None:
+                _out[_lbl] = {"n": _e["n"], "hit10": _e.get("hit10"),
+                              "ret10": _e["ret10"]}
+        return _out
+    except Exception:
+        return {}
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -1785,19 +1892,44 @@ def compute_dual_window_confluence(_gs_df, _gs_up_clr, _gs_dn_clr, _gs_neu):
             elif _r5b <= 20 and _r14b > 40:  _rsi_dual_state = "early_oversold"
             elif _r5b < 50  and _r14b >= 70: _rsi_dual_state = "cooling_overheat"
             elif _r5b > 50  and _r14b <= 30: _rsi_dual_state = "dip_recovery"
+            # 13 Tem 2026 — İKİ renk çevrildi (çift onay: feature_karne + 56K
+            # örnek verdict backtest aynı yönü gösterdi):
+            #   overbought_both: eski "tepe yakın ⚠" → gerçekte EN İYİ kova
+            #   dip_recovery:    eski "dip dönüşü ↗" → gerçekte EN KÖTÜ kova
+            # Çelişen durumlar (oversold_both, cooling_overheat) DOKUNULMADI.
             _rsi_sentence_map = {
-                "overbought_both":   ("⚠", _gs_dn_clr, f"RSI çift pencere aşırı alım (5g {_r5b:.0f} + 14g {_r14b:.0f}) — momentum tepesi yakın"),
+                "overbought_both":   ("✓", _gs_up_clr, f"RSI çift pencere aşırı alım (5g {_r5b:.0f} + 14g {_r14b:.0f}) — tarihsel güç devamı (geçmişte 10g ort +%2.2)"),
                 "oversold_both":     ("↗", _gs_up_clr, f"RSI çift pencere aşırı satım (5g {_r5b:.0f} + 14g {_r14b:.0f}) — dip ihtimali"),
                 "early_overbought":  ("⚠", "#f59e0b", f"RSI(5) {_r5b:.0f} erken aşırı alım, RSI(14) {_r14b:.0f} ortada — 1-3g içinde ısınma genişleyebilir"),
                 "early_oversold":    ("↗", "#38bdf8", f"RSI(5) {_r5b:.0f} erken aşırı satım, RSI(14) {_r14b:.0f} hâlâ ortada — short pulse dip"),
                 "cooling_overheat":  ("↘", "#f59e0b", f"Tepe yorgunluğu — RSI(5) {_r5b:.0f} soğuyor, RSI(14) {_r14b:.0f} hâlâ aşırı alımda"),
-                "dip_recovery":      ("↗", _gs_up_clr, f"Erken dip dönüşü — RSI(5) {_r5b:.0f} toparlanıyor, RSI(14) {_r14b:.0f} hâlâ dipte"),
+                "dip_recovery":      ("⚠", "#f59e0b", f"Erken dip görüntüsü — RSI(5) {_r5b:.0f} toparlanıyor ama tarihsel tuzak (geçmişte 10g isabet %44)"),
             }
             if _rsi_dual_state in _rsi_sentence_map:
                 _rsi_icon_b, _rsi_clr_b, _rsi_text_b = _rsi_sentence_map[_rsi_dual_state]
     except Exception:
         pass
-    return {'_cum_state': _cum_state, '_cum_text_b': _cum_text_b, '_cum_icon_b': _cum_icon_b, '_cum_clr_b': _cum_clr_b, '_rsi_dual_state': _rsi_dual_state, '_rsi_text_b': _rsi_text_b, '_rsi_icon_b': _rsi_icon_b, '_rsi_clr_b': _rsi_clr_b}
+
+    # MFI Dual (5g/14g) — 13 Tem 2026 YENİ satır. Sadece çift-onaylı 2 durum
+    # cümle üretir (oversold_both: her iki ölçümde en yüksek isabetli dip;
+    # early_overbought: her ikisinde zayıf). Diğerleri çelişkili → satır YOK.
+    _mfi_dual_state = None; _mfi_text_b = None; _mfi_icon_b = "→"; _mfi_clr_b = _gs_neu
+    try:
+        if _gs_df is not None and len(_gs_df) >= 20 and 'Volume' in _gs_df.columns:
+            _m5b = float(compute_mfi(_gs_df, period=5).iloc[-1])
+            _m14b = float(compute_mfi(_gs_df, period=14).iloc[-1])
+            if np.isfinite(_m5b) and np.isfinite(_m14b):
+                if   _m5b <= 20 and _m14b <= 25: _mfi_dual_state = "oversold_both"
+                elif _m5b >= 80 and _m14b < 60:  _mfi_dual_state = "early_overbought"
+                _mfi_sentence_map = {
+                    "oversold_both":    ("↗", _gs_up_clr, f"MFI çift pencere aşırı satım (5g {_m5b:.0f} + 14g {_m14b:.0f}) — hacim teyitli dip (geçmişte 10g isabet %55)"),
+                    "early_overbought": ("⚠", "#f59e0b", f"MFI(5) {_m5b:.0f} erken aşırı alım, MFI(14) {_m14b:.0f} ortada — hacim öncü ısınma, tarihsel zayıf"),
+                }
+                if _mfi_dual_state in _mfi_sentence_map:
+                    _mfi_icon_b, _mfi_clr_b, _mfi_text_b = _mfi_sentence_map[_mfi_dual_state]
+    except Exception:
+        pass
+    return {'_cum_state': _cum_state, '_cum_text_b': _cum_text_b, '_cum_icon_b': _cum_icon_b, '_cum_clr_b': _cum_clr_b, '_rsi_dual_state': _rsi_dual_state, '_rsi_text_b': _rsi_text_b, '_rsi_icon_b': _rsi_icon_b, '_rsi_clr_b': _rsi_clr_b, '_mfi_dual_state': _mfi_dual_state, '_mfi_text_b': _mfi_text_b, '_mfi_icon_b': _mfi_icon_b, '_mfi_clr_b': _mfi_clr_b}
 
 
 def compute_force_compass(_ticker, _gs_df, _gs_obv, _gs_up_clr, _gs_dn_clr):

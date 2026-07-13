@@ -51,7 +51,8 @@ from analysis_core import (_risk_profile, get_active_scanner_tiers, _scanner_set
                            compute_weekly_frame,
                            compute_genel_ozet_pack,
                            compute_dual_window_confluence,
-                           compute_force_compass)  # + SWOT O1/O4/T2
+                           compute_force_compass,
+                           get_genel_ozet_verdict_stats)  # + SWOT O1/O4/T2 + 13 Tem verdict kanıt
 from data_policy import AUTO_ADJUST, drop_adj_close  # 3 Tem 2026 — veri politikası TEK KAYNAK (fetcher ile aynı)
 # 4 Tem 2026 — BÖLME ADIM 4: saf hesap fonksiyonları indicators.py içinde
 from indicators import (
@@ -9239,7 +9240,8 @@ def render_unified_signals_panel(ticker):
 # Piyasa sağlığı göstergeleri ve makro sinyal özeti.
 # ==============================================================================
 def _render_genel_ozet_panel():
-    """GENEL ÖZET — 4 bağımsız sinyal, trend bağlamı, iptal koşulu, LONG RADAR skoru."""
+    """GENEL ÖZET — 6 bağımsız sinyal (13 Tem 2026: V8 çift-onay backtest ile
+    CMF + MFI oyu eklendi), trend bağlamı, iptal koşulu, LONG RADAR skoru."""
     try:
         if not (st.session_state.get('ticker')):
             return
@@ -9280,6 +9282,9 @@ def _render_genel_ozet_panel():
                 _sig_obv = _gs_pack['_sig_obv']
                 _sig_rsi = _gs_pack['_sig_rsi']
                 _sig_yapi = _gs_pack['_sig_yapi']
+                _sig_cmf = _gs_pack['_sig_cmf']       # 13 Tem 2026 — 5. oy
+                _sig_mfi = _gs_pack['_sig_mfi']       # 13 Tem 2026 — 6. oy
+                _gs_net = _gs_pack['_gs_net']
                 _gs_today_closed = _gs_pack['_gs_today_closed']
                 _gs_today_label = _gs_pack['_gs_today_label']
                 _gs_last_sess_str = _gs_pack['_gs_last_sess_str']
@@ -9504,7 +9509,8 @@ def _render_genel_ozet_panel():
                 else:
                     _lr_vhtml = f"<span style='color:{_gs_neu};font-size:0.72rem;'>—</span>"
                 _sig_bd     = (f"Hacim {_arrow(_sig_hacim)} · OBV {_arrow(_sig_obv)} · "
-                               f"Yapı {_arrow(_sig_yapi)} · RSI {_arrow(_sig_rsi)}")
+                               f"Yapı {_arrow(_sig_yapi)} · RSI {_arrow(_sig_rsi)} · "
+                               f"CMF {_arrow(_sig_cmf)} · MFI {_arrow(_sig_mfi)}")
                 _mono_s     = '"JetBrains Mono",ui-monospace,Consolas,monospace'
 
                 # ── YÖN-AWARE SEVİYE: etiket + değer + açıklama eki ────────────
@@ -9554,12 +9560,17 @@ def _render_genel_ozet_panel():
                         f"<span style='font-size:0.9rem;color:{_clr};font-weight:900;'>{_ar}</span>"
                         f"</div>"
                     )
+                # 13 Tem 2026: 4→6 oy (CMF + MFI eklendi) — dikey kolon uzamasın
+                # diye 2 sütun × 3 satır grid
                 _arrow_stack_html = (
-                    f"<div style='display:flex;flex-direction:column;gap:3px;flex:0 0 auto;'>"
+                    f"<div style='display:grid;grid-template-columns:1fr 1fr;"
+                    f"gap:3px;flex:0 0 auto;'>"
                     + _arrow_cell("HACİM", _sig_hacim)
                     + _arrow_cell("OBV",   _sig_obv)
                     + _arrow_cell("YAPI",  _sig_yapi)
                     + _arrow_cell("RSI",   _sig_rsi)
+                    + _arrow_cell("CMF",   _sig_cmf)
+                    + _arrow_cell("MFI",   _sig_mfi)
                     + "</div>"
                 )
 
@@ -9660,6 +9671,46 @@ def _render_genel_ozet_panel():
                     f"</div>"
                 )
 
+                # ── OY BARI (13 Tem 2026) — 6 segment, her oy bir hücre ──────
+                _vote_pairs = [("Hacim", _sig_hacim), ("OBV", _sig_obv),
+                               ("Yapı", _sig_yapi), ("RSI", _sig_rsi),
+                               ("CMF", _sig_cmf), ("MFI", _sig_mfi)]
+                _vb_segs = ""
+                for _vb_lbl, _vb_sig in _vote_pairs:
+                    _vb_clr = (_gs_up_clr if _vb_sig > 0
+                               else (_gs_dn_clr if _vb_sig < 0 else "#334155"))
+                    _vb_yön = "yukarı" if _vb_sig > 0 else ("aşağı" if _vb_sig < 0 else "nötr")
+                    _vb_segs += (
+                        f"<span title='{_vb_lbl}: {_vb_yön}' style='display:inline-block;"
+                        f"width:14px;height:7px;border-radius:2px;background:{_vb_clr};"
+                        f"margin-right:2px;vertical-align:middle;'></span>"
+                    )
+                _vote_bar_html = (
+                    f"<span style='white-space:nowrap;margin-left:8px;'>{_vb_segs}"
+                    f"<span style='color:{_gs_net_clr};font-size:0.62rem;font-weight:700;"
+                    f"margin-left:3px;vertical-align:middle;'>net {_gs_net:+d}</span></span>"
+                )
+
+                # ── KANIT SATIRI (13 Tem 2026) — etiketin ölçülmüş geçmişi ───
+                # genel_ozet_verdict_backtest.json (V8, 600 hisse × 56K örnek).
+                # Etiket kovası zayıfsa (n<30) veya dosya yoksa satır gizlenir.
+                _verdict_ev_html = ""
+                try:
+                    _vst = get_genel_ozet_verdict_stats().get(_gs_net_txt)
+                    if _vst:
+                        _ev_r = _vst.get('ret10'); _ev_h = _vst.get('hit10')
+                        _ev_clr = (_gs_up_clr if (_ev_r or 0) > 1.0
+                                   else (_gs_dn_clr if (_ev_r or 0) < 0 else _gs_neu))
+                        _verdict_ev_html = (
+                            f"<div style='font-size:0.62rem;color:{_gs_neu};"
+                            f"font-weight:500;margin-top:3px;font-style:italic;'>"
+                            f"📊 geçmiş (600 hisse backtest): 10g ort "
+                            f"<span style='color:{_ev_clr};font-weight:700;'>{_ev_r:+.1f}%</span>"
+                            f" · isabet %{_ev_h:.0f} · n={_vst.get('n'):,}</div>"
+                        )
+                except Exception:
+                    pass
+
                 _gs_items_html += (
                     f"<div style='background:rgba(56,189,248,0.07);"
                     f"border:1px solid {_gs_line};border-radius:6px;"
@@ -9667,7 +9718,8 @@ def _render_genel_ozet_panel():
                     f"<div style='display:flex;align-items:center;flex-wrap:wrap;row-gap:4px;"
                     f"font-family:{_mono_s};font-weight:800;'>"
                     f"<span style='color:{_gs_net_clr};font-size:0.83rem;white-space:nowrap;'>{_gs_net_txt} "
-                    f"<span style='opacity:0.6;font-size:0.65rem;font-weight:600;'>{_dom_n}/4</span></span>"
+                    f"<span style='opacity:0.6;font-size:0.65rem;font-weight:600;'>{_dom_n}/6</span></span>"
+                    f"{_vote_bar_html}"
                     + (
                         f"<span style='display:inline-flex;align-items:center;white-space:nowrap;margin-left:auto;'>"
                         f"<span style='color:{_gs_neu};padding:0 8px;font-weight:400;font-size:0.72rem;'>|</span>"
@@ -9676,6 +9728,7 @@ def _render_genel_ozet_panel():
                         if _lr_score is not None else ""
                     )
                     + f"</div>"
+                    f"{_verdict_ev_html}"
                     f"{_mid_row_html}"
                     f"</div>"
                 )
@@ -10360,7 +10413,7 @@ def _render_genel_ozet_panel():
                 elif _gs_dn >= 3:
                     _kv_expl = f"3/4 sinyal aşağı — güçlü konsensüs ({_gs_dn} aşağı, {_gs_up} yukarı)" + _conflict_suffix
                 else:
-                    _kv_expl = f"Bu hafta yön kararsız · 4 sinyal oylaması — {_dom_n}/4 aynı yönde" + _conflict_suffix
+                    _kv_expl = f"Bu hafta yön kararsız · 6 sinyal oylaması — {_dom_n}/6 aynı yönde" + _conflict_suffix
                 _gs_items_html += _gs_row(
                     "Kısa Vade Görünüm",
                     f"<span style='color:{_gs_net_clr};'>{_gs_net_txt}</span>",
@@ -10548,10 +10601,12 @@ def _render_genel_ozet_panel():
                                ("nötr" if _y_force == 0 else
                                 ("zayıf" if _y_force > -0.6 else "neg."))))
                 # CMF durumu — dual-window state'e göre
+                # 13 Tem 2026: turning_up olumludan olumsuza çevrildi — çift onay
+                # (karne -4.37 + 56K backtest en zayıf kova: "toparlanma" tuzak)
                 _cmf_state_label = {
                     "strong_pos":   ("güçlü",       True),
                     "pos":          ("poz.",        True),
-                    "turning_up":   ("dönüyor ↗",   True),
+                    "turning_up":   ("dönüş ⚠",     False),
                     "neutral":      ("nötr",        None),
                     "turning_down": ("zayıflıyor ↘", False),
                     "neg":          ("neg.",        False),
@@ -10635,7 +10690,7 @@ def _render_genel_ozet_panel():
                 _cmf_sentence_map = {
                     "strong_pos":   ("✓", _gs_up_clr, "Para Akışı 5g ve 20g birlikte pozitif — bar içi alıcı baskısı teyitli"),
                     "pos":          ("→", _gs_up_clr, "Para Akışı 20g pozitif — orta vadede alıcı baskısı sürüyor"),
-                    "turning_up":   ("↗", "#38bdf8", "5g Para Akışı pozitife döndü ama 20g hâlâ negatif — bar içi toparlanma erken sinyali"),
+                    "turning_up":   ("⚠", "#f59e0b", "5g Para Akışı pozitife döndü ama 20g hâlâ negatif — tarihsel tuzak: bu görüntü geçmişte en zayıf getiriyi verdi (ölü kedi sıçraması riski)"),
                     "neutral":      ("→", _gs_neu,    "Para Akışı sönük — net yön sinyali yok"),
                     "turning_down": ("↘", "#f59e0b", "5g Para Akışı negatife döndü ama 20g hâlâ pozitif — bar içi alıcı yorgun, erken uyarı"),
                     "neg":          ("→", _gs_dn_clr, "Para Akışı 20g negatif — orta vadede satıcı baskısı sürüyor"),
@@ -10654,6 +10709,10 @@ def _render_genel_ozet_panel():
                 _rsi_text_b = _dwc['_rsi_text_b']
                 _rsi_icon_b = _dwc['_rsi_icon_b']
                 _rsi_clr_b = _dwc['_rsi_clr_b']
+                # 13 Tem 2026 — MFI çift pencere satırı (yalnız çift-onaylı 2 durumda)
+                _mfi_text_b = _dwc['_mfi_text_b']
+                _mfi_icon_b = _dwc['_mfi_icon_b']
+                _mfi_clr_b = _dwc['_mfi_clr_b']
 
                 # Pusula + sinyal listesi yan yana, altında 3 cümle (italic — panel açıklama stiliyle aynı)
                 def _flow_sentence(icon, color, text):
@@ -10679,6 +10738,7 @@ def _render_genel_ozet_panel():
                     + _flow_sentence(_cmf_icon, _cmf_clr_s, _cmf_text)
                     + (_flow_sentence(_cum_icon_b, _cum_clr_b, _cum_text_b) if _cum_text_b else "")
                     + (_flow_sentence(_rsi_icon_b, _rsi_clr_b, _rsi_text_b) if _rsi_text_b else "")
+                    + (_flow_sentence(_mfi_icon_b, _mfi_clr_b, _mfi_text_b) if _mfi_text_b else "")
                     + "</div>"
                 )
 
