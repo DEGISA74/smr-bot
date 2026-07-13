@@ -16690,6 +16690,19 @@ def _render_left_col():
         except Exception:
             pass
 
+        # ── Momentum mini-barları (13 Tem 2026) — Para Akış İvmesi panelinin
+        # son 16 barı, FİYAT kartındaki MOMENTUM kutusuna mini histogram olur.
+        # Kaynak: calculate_synthetic_sentiment (cache'li, panel zaten hesaplıyor
+        # → sıfır ek maliyet). Renkler panelle birebir: mavi #5B84C4 / kırmızı #ef4444.
+        _k1_mom_bars = []
+        try:
+            _ss_pd = calculate_synthetic_sentiment(_k1_ticker)
+            if _ss_pd is not None and 'MF_Smooth' in _ss_pd.columns:
+                _k1_mom_bars = [float(x) for x in _ss_pd['MF_Smooth'].tail(16)
+                                if pd.notna(x)]
+        except Exception:
+            pass
+
         # Sağ kolon kartı için değerleri session_state'e aktar
         st.session_state['_k1_metrics'] = {
             'kisa_lbl':  _k1_kisa_lbl,  'kisa_col':  _k1_kisa_col,
@@ -16697,6 +16710,7 @@ def _render_left_col():
             'makro_lbl': _k1_makro_lbl, 'makro_col': _k1_makro_col,
             'rs_str':    _k1_rs_str,    'rs_col':    _k1_rs_col,
             'mom_str':   _k1_mom_str,   'mom_col':   _k1_mom_col,
+            'mom_bars':  _k1_mom_bars,
             'rsi_val':   _k1_rsi_val,   'rsi_col':   _k1_rsi_col,
             'vol_str':   _k1_vol_str,   'vol_col':   _k1_vol_col,
             'beta_str':  _k1_beta_str,  'beta_col':  _k1_beta_col,
@@ -18610,6 +18624,39 @@ def _render_right_col():
         _makro_lbl  = _m.get('makro_lbl',  '—');  _makro_col  = _m.get('makro_col',  '#94a3b8')
         _rs_str     = _m.get('rs_str',     '—');  _rs_col     = _m.get('rs_col',     '#94a3b8')
         _mom_str    = _m.get('mom_str',    '—');  _mom_col    = _m.get('mom_col',    '#94a3b8')
+        _mom_bars   = _m.get('mom_bars',   [])
+
+        # ── MOMENTUM mini-histogram SVG (13 Tem 2026) ────────────────────
+        # Para Akış İvmesi panelindeki mavi/kırmızı barların minisi.
+        # Sıfır çizgisi ortada; pozitif bar yukarı mavi, negatif aşağı kırmızı.
+        # Son bar tam parlak, eskiler hafif soluk — bugün nerede, dün neredeydik.
+        def _build_mom_svg(bars, h, pitch=7, bw=5):
+            try:
+                if not bars or len(bars) < 4:
+                    return ""
+                n = len(bars)
+                w = n * pitch
+                mid = h / 2
+                lim = max(30.0, max(abs(v) for v in bars) * 1.05)
+                parts = [
+                    f"<line x1='0' y1='{mid}' x2='{w}' y2='{mid}' "
+                    f"stroke='#475569' stroke-width='1' stroke-dasharray='2,2'/>"
+                ]
+                for i, v in enumerate(bars):
+                    clr = "#5B84C4" if v > 0 else "#ef4444"
+                    bh = max(min(abs(v) / lim * (mid - 2), mid - 2), 1.0)
+                    y = (mid - bh) if v > 0 else mid
+                    op = "1.0" if i == n - 1 else "0.72"
+                    parts.append(
+                        f"<rect x='{i * pitch + 1}' y='{y:.1f}' width='{bw}' "
+                        f"height='{bh:.1f}' rx='1' fill='{clr}' opacity='{op}'/>"
+                    )
+                return (f"<svg width='{w}' height='{h}' viewBox='0 0 {w} {h}' "
+                        f"style='display:block;'>" + "".join(parts) + "</svg>")
+            except Exception:
+                return ""
+        _mom_svg    = _build_mom_svg(_mom_bars[-16:], 30)            # orta şerit (BIST)
+        _mom_svg_sm = _build_mom_svg(_mom_bars[-12:], 20, 6, 4)      # alt chip (endeks)
         _rsi_val    = _m.get('rsi_val',    50);   _rsi_col    = _m.get('rsi_col',    '#94a3b8')
         _vol_str    = _m.get('vol_str',    '—');  _vol_col    = _m.get('vol_col',    '#94a3b8')
         _beta_str   = _m.get('beta_str',   '—');  _beta_col   = _m.get('beta_col',   '#94a3b8')
@@ -18805,21 +18852,41 @@ def _render_right_col():
             _n_mid = len(_middle_cells)
             for _i, (_lbl, _val, _col) in enumerate(_middle_cells):
                 _sep_mid = f"border-right:1px solid {_CLR_DIVIDER};" if _i < _n_mid - 1 else ""
-                _middle_html += (
-                    f"<div style='flex:1;padding:6px 10px;{_sep_mid}'>"
-                    f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
-                    f"letter-spacing:0.5px;font-weight:700;'>{_lbl}</div>"
-                    f"<div style='font-size:1.0rem;font-weight:800;color:{_col};"
-                    f"font-family:\"JetBrains Mono\",monospace;'>{_val}</div>"
-                    f"</div>"
-                )
+                # MOMENTUM hücresi: mini mavi/kırmızı bar histogramı (Para Akış
+                # İvmesi panelinin 16-günlük minisi) + değer yan yana
+                if _lbl == "MOMENTUM" and _mom_svg:
+                    _middle_html += (
+                        f"<div style='flex:1;padding:6px 10px;{_sep_mid}'>"
+                        f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+                        f"letter-spacing:0.5px;font-weight:700;'>{_lbl} <span style='font-size:0.6rem;"
+                        f"font-weight:600;text-transform:none;opacity:0.75;'>son 16 gün</span></div>"
+                        f"<div style='display:flex;align-items:center;gap:8px;'>"
+                        f"{_mom_svg}"
+                        f"<span style='font-size:1.0rem;font-weight:800;color:{_col};"
+                        f"font-family:\"JetBrains Mono\",monospace;'>{_val}</span>"
+                        f"</div></div>"
+                    )
+                else:
+                    _middle_html += (
+                        f"<div style='flex:1;padding:6px 10px;{_sep_mid}'>"
+                        f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
+                        f"letter-spacing:0.5px;font-weight:700;'>{_lbl}</div>"
+                        f"<div style='font-size:1.0rem;font-weight:800;color:{_col};"
+                        f"font-family:\"JetBrains Mono\",monospace;'>{_val}</div>"
+                        f"</div>"
+                    )
 
         # Alt şerit
         # BIST: RSI + HACİM + BETA (MOMENTUM orta şeritte)
         # Endeks/Kripto/Emtia: RSI + MOMENTUM (orta şerit yok)
         _chips_list = [("RSI", f"{_rsi_val:.0f}", _rsi_col)]
         if not _is_bist and _mom_str and _mom_str != "—":
-            _chips_list.append(("MOMENTUM", _mom_str, _mom_col))
+            # Endeks/kripto: mini histogram chip içinde (13 Tem 2026)
+            _mom_chip_val = (
+                f"<span style='display:inline-flex;align-items:center;gap:5px;'>"
+                f"{_mom_svg_sm}{_mom_str}</span>"
+            ) if _mom_svg_sm else _mom_str
+            _chips_list.append(("MOMENTUM", _mom_chip_val, _mom_col))
         if _show_hacim and _vol_str and _vol_str != "—":
             _chips_list.append(("HACİM", _vol_str, _vol_col))
         if _show_beta and _beta_str and _beta_str != "—":
