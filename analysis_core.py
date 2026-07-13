@@ -295,11 +295,38 @@ def calculate_synthetic_sentiment(ticker):
         return plot_df
     except Exception: return None
 
-@st.cache_data(ttl=600)
+def _data_token(ticker):
+    """CACHE TUTARLILIK PARMAK İZİ (13 Tem 2026) — son mum tarihi+kapanış+hacim.
+
+    Sorun: ticker-anahtarlı ttl=600 cache'ler (pack, obv_status...) bağımsız
+    tazelendiği için aynı ekranda İKİ FARKLI ANIN fotoğrafı görünebiliyordu
+    (kanıtlı vaka: sol OBV çizgisi sabahın yarım-mumuyla 'dağıtım', sağ OBV
+    kartı güncel kareyle 'Gizli Giriş'). Bu parmak izi cache anahtarına
+    girince veri güncellenen ilk rerun'da tüm tüketiciler BİRLİKTE yeniden
+    hesaplanır. get_safe_historical_data zaten cache'li → maliyet ~ms."""
+    try:
+        _df = get_safe_historical_data(ticker, period="3mo")
+        if _df is None or not len(_df):
+            return None
+        _r = _df.iloc[-1]
+        return (f"{_df.index[-1]}_{float(_r['Close']):.4f}_"
+                f"{float(_r['Volume']) if 'Volume' in _df.columns else 0:.0f}")
+    except Exception:
+        return None
+
+
 def get_obv_divergence_status(ticker):
+    """Sarmalayıcı — veri parmak izini cache anahtarına ekler (imza değişmedi,
+    tüm çağrı yerleri aynen çalışır). Gövde: _get_obv_divergence_status_cached."""
+    return _get_obv_divergence_status_cached(ticker, _data_token(ticker))
+
+
+@st.cache_data(ttl=600)
+def _get_obv_divergence_status_cached(ticker, _dtok):
     """
     OBV ile Fiyat arasındaki uyumsuzluğu (Profesyonel SMA Filtreli) hesaplar.
     Dönüş: (Başlık, Renk, Açıklama)
+    _dtok: veri parmak izi — sadece cache anahtarı (gövdede kullanılmaz).
     """
     try:
         # Periyodu biraz geniş tutuyoruz ki SMA20 hesaplanabilsin
@@ -1457,8 +1484,14 @@ def compute_weekly_frame(ticker):
     }
 
 
-@st.cache_data(ttl=600, show_spinner=False)
 def compute_genel_ozet_pack(_ticker, _gs_bms):
+    """Sarmalayıcı — veri parmak izini cache anahtarına ekler (13 Tem 2026,
+    cache tutarlılığı; imza değişmedi). Gövde: _compute_genel_ozet_pack_cached."""
+    return _compute_genel_ozet_pack_cached(_ticker, _gs_bms, _data_token(_ticker))
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _compute_genel_ozet_pack_cached(_ticker, _gs_bms, _dtok):
     """GENEL OZET panelinin deger-ureten blogu (SWOT O1+O4, 11 Tem 2026).
     app.py _render_genel_ozet_panel icinden BIREBIR tasindi — PA-DNA + ardisik mum +
     kapali-gun/hayalet-bar df hazirligi + Madde 1-6 (HH+HL/SMA50/stop/RSI) +
