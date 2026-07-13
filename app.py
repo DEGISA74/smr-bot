@@ -9567,8 +9567,8 @@ def _render_genel_ozet_panel():
                     + _arrow_cell("HACİM", _sig_hacim)
                     + _arrow_cell("OBV",   _sig_obv)
                     + _arrow_cell("YAPI",  _sig_yapi)
-                    + _arrow_cell("RSI",   _sig_rsi)
-                    + _arrow_cell("CMF",   _sig_cmf)
+                    + _arrow_cell("RSI ×2", _sig_rsi)   # karne şampiyonu — çift oy (V10)
+                    + _arrow_cell("CMF ×2", _sig_cmf)   # karne şampiyonu — çift oy (V10)
                     + _arrow_cell("MFI",   _sig_mfi)
                     + "</div>"
                 )
@@ -9694,7 +9694,8 @@ def _render_genel_ozet_panel():
                 _verdict_sub_html = (
                     f"<div style='font-size:0.66rem;color:{_gs_expl_col};"
                     f"font-weight:500;margin-top:4px;line-height:1.45;'>"
-                    f"Aşağıdaki 6 bağımsız sinyalin oylaması: {_oy_ozet}"
+                    f"Aşağıdaki 6 bağımsız sinyalin oylaması <span style='opacity:0.7;'>"
+                    f"(en isabetli ikili RSI+CMF çift oy kullanır)</span>: {_oy_ozet}"
                     f"<span style='color:{_gs_neu};'> — yani </span>"
                     f"<span style='color:{_gs_net_clr};font-weight:700;'>{_verdict_sub}</span></div>"
                 )
@@ -14172,7 +14173,7 @@ if st.session_state.generate_prompt:
                     _gsv_karne = (f" · geçmiş karnesi: 10g ort {_gsv_st['ret10']:+.1f}%, "
                                   f"isabet %{_gsv_st['hit10']:.0f} (600 hisse backtest)")
                 _em_gs_verdict = (f"  genel_ozet_verdict: {_gsv_lbl} "
-                                  f"(6 bağımsız sinyal oylaması — hacim/OBV/yapı/RSI/CMF/MFI: "
+                                  f"(6 sinyal oylaması, RSI+CMF çift ağırlıklı — hacim/OBV/yapı/RSI/CMF/MFI: "
                                   f"{_gsv['_gs_up']}↑/{_gsv['_gs_dn']}↓{_gsv_karne})")
     except Exception:
         _em_gs_verdict = ""
@@ -15317,6 +15318,8 @@ G1 açılışı sırası: 🏛 ELIT_ANCHOR varsa → o · yoksa hâkim DESTEKLEY
 **[⚠ tek-mum ağırlıklı] rozeti okuma (KRİTİK):** Bir dual-window state'in (cmf_dual_window / cum_delta_dual_window / rsi_dual_window / mfi_dual_window) ya da yaml.obv_cmf.durum'un başında `[⚠ tek-mum ağırlıklı]` rozeti varsa, o state'i "iki periyotta birikim teyitli" diye okuma. Bugünkü tek mum 5 günlük deltanın >%60'ını oluşturmuş — yani okuma tek günün şişirmesinden geliyor, gerçek path-tabanlı birikim/dağıtım değil. Bu durumda: (a) state'i DESTEKLEYİCİ değil "TEYİT BEKLENİYOR" olarak yansıt, (b) G2'de "tek mumla şişirilmiş okumayı 2-3 gün izlemek lazım, geri verirse sahte güç" tarzı somut uyarı yaz, (c) "iki pencerede birikim sürüyor", "kalıcı kurumsal", "akıllı para iki periyotta da" gibi yapısal cümleleri KULLANMA. AI yorumunda rozeti açıkça "tek mum ağırlıklı" ya da "bugünkü tek bar okumayı şişirmiş" olarak yansıt — yutma.
 
 **MFI vs RSI okuma:** RSI fiyat momentumu, MFI hacim-ağırlıklı momentum (Wyckoff effort-vs-result). Aynı yönde uyumlu (mfi_dual ve rsi_dual aynı state) = ÇİFT TEYİT, güçlü. Divergent (örn RSI overbought ama MFI nötr) → "fiyat yorgun ama hacim destek vermiyor / fiyat üzerine çıkmaya çalışıyor ama akıllı para girmiyor" = SAHTE RALLY uyarısı. `rsi_mfi_bouquet` varsa = climax noktası, G1 açılışında merkeze al.
+
+**VADE EŞLEŞTİRME (13 Tem 2026 — 600 hisse backtest bulgusu, KRİTİK):** Sinyalin tipi vadesini belirler, ikisini karıştırma. (a) DÖNÜŞ sinyalleri (RSI/MFI çift-pencere aşırı satım, erken aşırı satım darbesi, dip adayları) SADECE KISA VADEDE çalışır — geçmişte 5 günlük getirisi pozitif, 10. günde avantaj ERİYOR. Bunlara dayanan senaryoyu "birkaç günlük tepki/kısa vade dönüş" çerçevesinde yaz, 2-4 haftalık hedef bağlama. (b) DEVAM sinyalleri (CMF çift-pencere güçlü pozitif, RSI çift-pencere aşırı alım=güç devamı, kümülatif delta iki pencerede pozitif) 10-20 GÜNDE BÜYÜR — bunlar kısa vadelik değil, 2-4 haftalık ana senaryo malzemesidir. İkisi aynı anda varsa vade ayrımını açıkça yaz: "kısa vadede tepki, ana resim için teyit şart" gibi.
 
 **Force Index Dual (force_index_dual / force_index_divergence) okuma:** Alexander Elder'in Force Index — fiyat değişimi × hacim klasik formülü, dual-window (FI(2) anlık, FI(13) trend). `bullish_divergence` (fiyat LL + FI HL) = klasik Elder dipte tepki sinyali, Smart Money birikim ihtimali → olumlu anchor. `bearish_divergence` (fiyat HH + FI LH) = klasik Elder tepede çekilme sinyali → G2 KRİTİK UYARI. `strong_pos`/`strong_neg` = anlık+trend uyum, destekleyici teyit. `turning_up`/`turning_down` = pencereler çelişiyor, erken dönüş/yorgunluk sinyali. RSI/MFI divergence ile ÇAKIŞIRSA güç çift teyit olur.
 

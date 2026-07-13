@@ -33,7 +33,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from indicators import calculate_volume_delta, compute_mfi
+from indicators import (calculate_volume_delta, compute_mfi,
+                        compute_force_index_dual, compute_relative_obv_state)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 VERI_DIR = os.path.join(BASE, "veriler")
@@ -56,6 +57,15 @@ VARIANTS = [
     "V8_cift_onay",     # SADECE çift-onaylı oylar (karne + bu test aynı yön):
                         # yapı± + rsi_dual{ob_both+1, dip_rec-1} + cmf{sp+1, sn-1, tu-1}
                         # + mfi{os_both+1, early_ob-1}  (6 oy)
+    # ── 13 Tem öğleden sonra turu (V9-V12) ────────────────────────────
+    "V9a_obv_yok",      # V8 eksi OBV oyu (ölçülmemiş tek oyun sınavı — 5 oy)
+    "V9b_rel_obv",      # V8 ama OBV yerine rel-OBV (karne: sadece underperform_strong sinyalli)
+    "V10_karne_agirlik",# V8 oyları karne gücüne göre ağırlıklı: rsi_dual×2 + cmf×2, diğerleri ×1
+    "V11_fi_ters",      # V8 + Force Index diverjansı TERS yönde 7. oy
+                        # (karne: bearish div +2.58 KAZANDIRIYOR, bullish div -3.15 KAYBETTİRİYOR)
+    "V12_agirlik_fi",   # V10 ağırlıkları + FI ters oyu (en iddialı kombo)
+    "V13_agirlik_obvsuz", # İki bağımsız kazananın birleşimi: V9a (OBV çıkınca
+                          # ayrım +1.09) + V10 (ağırlık, yukarı +1.90) — final aday
 ]
 
 
@@ -100,8 +110,8 @@ def _v0_label(up, dn):
     return "KARARSIZ"
 
 
-def eval_ticker(df, step=2):
-    """Bir hissenin tüm geçmiş günleri için: 8 varyant kovası + 4 durum + ileri getiriler."""
+def eval_ticker(df, step=2, bench=None):
+    """Bir hissenin tüm geçmiş günleri için: varyant kovaları + durumlar + ileri getiriler."""
     out = []
     # Hayalet bar temizliği (panel ile aynı: V=0 + flat OHLC)
     v0 = df["Volume"].fillna(0)
@@ -238,6 +248,33 @@ def eval_ticker(df, step=2):
         s_cmf_v8 = {"strong_pos": 1, "strong_neg": -1, "turning_up": -1}.get(cmf_state, 0)
         s_mfi_v8 = {"oversold_both": 1, "early_overbought": -1}.get(mfi_state, 0)
 
+        # ── V9-V12 oyları (13 Tem öğleden sonra) — üretim fonksiyonları
+        # BİREBİR import edildi (kopya yok): indicators.compute_force_index_dual
+        # + compute_relative_obv_state, point-in-time dilimle çağrılır.
+        fi_div = "none"
+        s_fi_ters = 0
+        try:
+            _fi_r = compute_force_index_dual(df.iloc[: i + 1])
+            if _fi_r and _fi_r.get('divergence'):
+                fi_div = _fi_r['divergence']
+                # KARNE BULGUSU (n=417/451): Elder ders kitabının TERSİ —
+                # bearish div +2.58 kazandırıyor, bullish div -3.15 kaybettiriyor
+                s_fi_ters = 1 if fi_div == 'bearish' else (-1 if fi_div == 'bullish' else 0)
+        except Exception:
+            pass
+        relobv_state = "none"
+        s_relobv = 0
+        try:
+            if bench is not None:
+                _ro = compute_relative_obv_state(df.iloc[: i + 1], bench.loc[: df.index[i]])
+                if _ro and _ro.get('state'):
+                    relobv_state = _ro['state']
+                    # Karne: sadece NEGATİF taraf sinyalli (underperform_strong
+                    # -2.78 / hit %26); pozitif kovalar düz → oy yok
+                    s_relobv = -1 if relobv_state == 'underperform_strong' else 0
+        except Exception:
+            pass
+
         # ── 8 varyantın oyları ─────────────────────────────────────
         variants = {
             "V0_mevcut":       [s_hacim, s_obv, s_yapi_mevcut, s_rsi_mev],
@@ -248,6 +285,22 @@ def eval_ticker(df, step=2):
             "V6_kombo":        [s_hacim, s_obv, s_yapi_sim,    s_rsi_guc, s_cmf],
             "V7_kombo_mfi":    [s_hacim, s_obv, s_yapi_sim,    s_rsi_guc, s_cmf, s_mfi],
             "V8_cift_onay":    [s_hacim, s_obv, s_yapi_sim,    s_rsi_v8, s_cmf_v8, s_mfi_v8],
+            # V9a: OBV oyu çıkarıldı (5 oy) — OBV taşıyor mu sınavı
+            "V9a_obv_yok":     [s_hacim, s_yapi_sim, s_rsi_v8, s_cmf_v8, s_mfi_v8],
+            # V9b: OBV yerine rel-OBV (sadece güçlü-negatif uyarısı)
+            "V9b_rel_obv":     [s_hacim, s_relobv, s_yapi_sim, s_rsi_v8, s_cmf_v8, s_mfi_v8],
+            # V10: karne-ağırlıklı — çift-pencere şampiyonları (rsi_dual +5.4,
+            # cmf_dual +4.99) 2'şer oy; ağırlık = oyu iki kez saymak
+            "V10_karne_agirlik": [s_hacim, s_obv, s_yapi_sim,
+                                  s_rsi_v8, s_rsi_v8, s_cmf_v8, s_cmf_v8, s_mfi_v8],
+            # V11: V8 + Force Index diverjansı TERS 7. oy
+            "V11_fi_ters":     [s_hacim, s_obv, s_yapi_sim, s_rsi_v8, s_cmf_v8, s_mfi_v8, s_fi_ters],
+            # V12: ağırlıklı + FI ters (en iddialı)
+            "V12_agirlik_fi":  [s_hacim, s_obv, s_yapi_sim,
+                                s_rsi_v8, s_rsi_v8, s_cmf_v8, s_cmf_v8, s_mfi_v8, s_fi_ters],
+            # V13: OBV'siz + ağırlıklı (iki bağımsız kazananın birleşimi)
+            "V13_agirlik_obvsuz": [s_hacim, s_yapi_sim,
+                                   s_rsi_v8, s_rsi_v8, s_cmf_v8, s_cmf_v8, s_mfi_v8],
         }
         row = {"fwd": fwd}
         for vn, sigs in variants.items():
@@ -268,6 +321,8 @@ def eval_ticker(df, step=2):
         row["rsi_dual"] = rsi_dual
         row["cum_dual"] = cum_state
         row["mfi_dual"] = mfi_state
+        row["fi_div"] = fi_div
+        row["relobv"] = relobv_state
         out.append(row)
     return out
 
@@ -341,6 +396,13 @@ def main():
         OUT_JSON = OUT_JSON.replace(".json", ".sample.json")
         OUT_MD = OUT_MD.replace(".md", ".sample.md")
 
+    # Benchmark (rel-OBV için) — bir kez yüklenir
+    bench = None
+    try:
+        bench = pd.read_parquet(os.path.join(VERI_DIR, "XU100.IS_1d.parquet")).sort_index()
+    except Exception:
+        print("⚠ XU100 benchmark yüklenemedi — rel-OBV oyları 0 kalır")
+
     all_rows = []
     n_ok = 0
     for k, f in enumerate(files):
@@ -349,7 +411,7 @@ def main():
             need = {"Open", "High", "Low", "Close", "Volume"}
             if not need.issubset(df.columns):
                 continue
-            rows = eval_ticker(df, step=args.step)
+            rows = eval_ticker(df, step=args.step, bench=bench)
             if rows:
                 all_rows.extend(rows)
                 n_ok += 1
@@ -418,7 +480,9 @@ def main():
     STATE_KEYS = {"cmf_dual": "CMF çift pencere (Force Compass)",
                   "rsi_dual": "RSI çift pencere (confluence satırı)",
                   "cum_dual": "Kümülatif delta çift pencere (confluence satırı)",
-                  "mfi_dual": "MFI çift pencere (panelde kullanılmıyor — aday)"}
+                  "mfi_dual": "MFI çift pencere (panelde kullanılmıyor — aday)",
+                  "fi_div":   "Force Index diverjansı (karne TERS bulgusunun tam-evren teyidi)",
+                  "relobv":   "Relative OBV (hisse vs XU100 hacim akışı)"}
     for key, title in STATE_KEYS.items():
         t = _agg(all_rows, key)
         result["states"][key] = t

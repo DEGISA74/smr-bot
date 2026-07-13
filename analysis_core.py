@@ -1744,9 +1744,13 @@ def compute_genel_ozet_pack(_ticker, _gs_bms):
         except Exception:
             pass
 
-        # ── VOTING: 6 BAĞIMSIZ SİNYAL (13 Tem 2026 — V8 çift-onay) ────
+        # ── VOTING: 6 SİNYAL, KARNE-AĞIRLIKLI (13 Tem 2026 — V10) ─────
         # Eski 4-oy backtest'te TERS çalışıyordu (YUKARI +1.13 < AŞAĞI +1.66).
-        # V8: yukarı +1.76 / aşağı +0.82 / ayrım +0.94 (en iyi varyant).
+        # V10 (56K örnek, 14 varyantın kazananı): çift-pencere şampiyonları
+        # RSI (karne yayılım +5.4) ve CMF (+4.99) ÇİFT oy kullanır — toplam
+        # ağırlık 8. Sonuç: GÜÇLÜ YUKARI 10g +2.32 / GÜÇLÜ AŞAĞI +0.49,
+        # ayrım +1.11 (V8 +0.94'tü). FI-ters ve rel-OBV reddedildi (tam
+        # evrende karneyle çelişti); OBV'siz varyant V13 de V10'u geçemedi.
         _sig_hacim = (1 if (_data_ready and _gs_cum5 > 0) else (-1 if (_data_ready and _gs_cum5 < 0) else 0))
         _sig_obv   = (1 if _gs_obv_dir > 0 else (-1 if _gs_obv_dir < 0 else 0))
         _sig_yapi  = (1 if _gs_hh_hl else (-1 if _gs_lh_ll else 0))
@@ -1755,16 +1759,21 @@ def compute_genel_ozet_pack(_ticker, _gs_bms):
         _sig_mfi   = {"oversold_both": 1, "early_overbought": -1}.get(_gs_mfi_state, 0)
 
         _sigs6 = (_sig_hacim, _sig_obv, _sig_yapi, _sig_rsi, _sig_cmf, _sig_mfi)
+        # Sinyal SAYILARI (insan cümlesi için: 6 sinyalden kaçı yukarı/aşağı)
         _gs_up = sum(1 for s in _sigs6 if s > 0)
         _gs_dn = sum(1 for s in _sigs6 if s < 0)
-        _gs_net = _gs_up - _gs_dn
+        # AĞIRLIKLI net (verdict için): RSI ve CMF ×2 — backtest kova
+        # eşikleriyle birebir aynı matematik (oyu iki kez saymak)
+        _sigs_w = (_sig_hacim, _sig_obv, _sig_yapi,
+                   _sig_rsi, _sig_rsi, _sig_cmf, _sig_cmf, _sig_mfi)
+        _gs_net = sum(1 for s in _sigs_w if s > 0) - sum(1 for s in _sigs_w if s < 0)
 
-        # Etiket eşikleri = backtest kova eşikleri (net/6: ★≥5, normal≥3, hafif>0)
-        if   _gs_net >= 5:  _gs_net_clr = "#22c55e"; _gs_net_txt = "YUKARI ★"
-        elif _gs_net >= 3:  _gs_net_clr = "#4ade80"; _gs_net_txt = "YUKARI"
+        # Etiket eşikleri = backtest kova eşikleri (net/8: ★≥6, normal≥4, hafif>0)
+        if   _gs_net >= 6:  _gs_net_clr = "#22c55e"; _gs_net_txt = "YUKARI ★"
+        elif _gs_net >= 4:  _gs_net_clr = "#4ade80"; _gs_net_txt = "YUKARI"
         elif _gs_net > 0:   _gs_net_clr = "#86efac"; _gs_net_txt = "HAFİF YUKARI"
-        elif _gs_net <= -5: _gs_net_clr = "#dc2626"; _gs_net_txt = "AŞAĞI ★"
-        elif _gs_net <= -3: _gs_net_clr = "#f87171"; _gs_net_txt = "AŞAĞI"
+        elif _gs_net <= -6: _gs_net_clr = "#dc2626"; _gs_net_txt = "AŞAĞI ★"
+        elif _gs_net <= -4: _gs_net_clr = "#f87171"; _gs_net_txt = "AŞAĞI"
         elif _gs_net < 0:   _gs_net_clr = "#fca5a5"; _gs_net_txt = "HAFİF AŞAĞI"
         else:               _gs_net_clr = "#fbbf24"; _gs_net_txt = "KARARSIZ"
         return {
@@ -1822,7 +1831,7 @@ def get_genel_ozet_verdict_stats():
                            "genel_ozet_verdict_backtest.json")
         with open(_p, encoding="utf-8") as _fp:
             _d = _vj.load(_fp)
-        _t = _d.get("variants", {}).get("V8_cift_onay", {})
+        _t = _d.get("variants", {}).get("V10_karne_agirlik", {})
         _map = {"YUKARI ★": "GÜÇLÜ YUKARI", "YUKARI": "YUKARI",
                 "HAFİF YUKARI": "HAFİF YUKARI", "KARARSIZ": "NÖTR",
                 "HAFİF AŞAĞI": "HAFİF AŞAĞI", "AŞAĞI": "AŞAĞI",
