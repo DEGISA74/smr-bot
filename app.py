@@ -9871,39 +9871,58 @@ def _render_genel_ozet_panel():
                 except Exception:
                     pass
 
-                # 13 Tem 2026 — Momentum mini-histogramı: Para Akış İvmesi
-                # panelindeki mavi/kırmızı barların son 16 günü, satırın içinde.
-                # Kaynak calculate_synthetic_sentiment cache'i (panel zaten
-                # hesaplıyor → sıfır ek maliyet). Renkler panelle birebir.
+                # 13 Tem 2026 v2 — Momentum İVME DEĞİŞİMİ çizgisi (kullanıcı tarifi):
+                # Para Akış İvmesi barlarının GÜNLÜK FARKI — 10'dan 4'e düşüş
+                # panelde iki mavi bar görünür ama burada -6'ya inen çizgi olur.
+                # Sıfırın üstü = ivme güçleniyor, altı = zayıflıyor. 20 iş günü,
+                # kutunun tamamına yayılır (20G Konum widget'ı gibi uçtan uca).
                 _mom_hist_html = ""
                 try:
                     _ss_pd_m = calculate_synthetic_sentiment(_ticker)
                     if _ss_pd_m is not None and 'MF_Smooth' in _ss_pd_m.columns:
-                        _mbars = [float(x) for x in _ss_pd_m['MF_Smooth'].tail(16)
-                                  if pd.notna(x)]
-                        if len(_mbars) >= 4:
-                            _mb_n = len(_mbars); _mb_h = 30; _mb_mid = _mb_h / 2
-                            _mb_w = _mb_n * 8
-                            _mb_lim = max(30.0, max(abs(v) for v in _mbars) * 1.05)
-                            _mb_p = [f"<line x1='0' y1='{_mb_mid}' x2='{_mb_w}' y2='{_mb_mid}' "
-                                     f"stroke='#475569' stroke-width='1' stroke-dasharray='2,2'/>"]
-                            for _mi, _mv in enumerate(_mbars):
-                                _mc = "#5B84C4" if _mv > 0 else "#ef4444"
-                                _mbh = max(min(abs(_mv) / _mb_lim * (_mb_mid - 2), _mb_mid - 2), 1.0)
-                                _my = (_mb_mid - _mbh) if _mv > 0 else _mb_mid
-                                _mo = "1.0" if _mi == _mb_n - 1 else "0.72"
-                                _mb_p.append(f"<rect x='{_mi * 8 + 1}' y='{_my:.1f}' width='6' "
-                                             f"height='{_mbh:.1f}' rx='1' fill='{_mc}' opacity='{_mo}'/>")
+                        _mfv = [float(x) for x in _ss_pd_m['MF_Smooth'].tail(21)
+                                if pd.notna(x)]
+                        _mdel = [_mfv[i] - _mfv[i - 1] for i in range(1, len(_mfv))]
+                        if len(_mdel) >= 5:
+                            _md_n = len(_mdel)
+                            _md_w, _md_h = 300, 46
+                            _md_mid = _md_h / 2
+                            _md_lim = max(5.0, max(abs(v) for v in _mdel) * 1.1)
+                            def _md_xy(i, v):
+                                x = i * (_md_w / (_md_n - 1))
+                                y = _md_mid - (v / _md_lim) * (_md_mid - 4)
+                                return x, y
+                            _md_p = [f"<line x1='0' y1='{_md_mid}' x2='{_md_w}' y2='{_md_mid}' "
+                                     f"stroke='#475569' stroke-width='1' stroke-dasharray='3,3'/>"]
+                            # Segment segment renk: bitiş değeri pozitifse mavi, negatifse kırmızı
+                            for _mi in range(1, _md_n):
+                                _x1, _y1 = _md_xy(_mi - 1, _mdel[_mi - 1])
+                                _x2, _y2 = _md_xy(_mi, _mdel[_mi])
+                                _mc = "#5B84C4" if _mdel[_mi] > 0 else "#ef4444"
+                                _md_p.append(
+                                    f"<line x1='{_x1:.1f}' y1='{_y1:.1f}' x2='{_x2:.1f}' y2='{_y2:.1f}' "
+                                    f"stroke='{_mc}' stroke-width='2' stroke-linecap='round' "
+                                    f"vector-effect='non-scaling-stroke'/>")
+                            # Son nokta: parlak yuvarlak + halo
+                            _lx, _ly = _md_xy(_md_n - 1, _mdel[-1])
+                            _lc_dot = "#5B84C4" if _mdel[-1] > 0 else "#ef4444"
+                            _md_p.append(f"<circle cx='{_lx:.1f}' cy='{_ly:.1f}' r='5' "
+                                         f"fill='{_lc_dot}' opacity='0.25'/>")
+                            _md_p.append(f"<circle cx='{_lx:.1f}' cy='{_ly:.1f}' r='2.6' "
+                                         f"fill='{_lc_dot}'/>")
+                            _md_son_txt = ("güçleniyor" if _mdel[-1] > 0 else
+                                           ("zayıflıyor" if _mdel[-1] < 0 else "sabit"))
                             _mom_hist_html = (
-                                f"<div style='display:flex;align-items:center;gap:8px;"
-                                f"margin:5px 0 2px;padding-left:11px;'>"
-                                f"<svg width='{_mb_w}' height='{_mb_h}' viewBox='0 0 {_mb_w} {_mb_h}' "
-                                f"style='display:block;'>" + "".join(_mb_p) + "</svg>"
-                                f"<span style='font-size:0.6rem;color:{_gs_neu};font-style:normal;"
-                                f"line-height:1.3;'>son 16 gün<br>"
-                                f"<span style='color:#5B84C4;'>■</span> alıcı ivmesi · "
-                                f"<span style='color:#ef4444;'>■</span> satıcı ivmesi</span>"
-                                f"</div>"
+                                f"<div style='margin:6px 0 2px;padding-left:11px;'>"
+                                f"<svg width='100%' height='{_md_h}' viewBox='0 0 {_md_w} {_md_h}' "
+                                f"preserveAspectRatio='none' style='display:block;'>"
+                                + "".join(_md_p) + "</svg>"
+                                f"<div style='display:flex;justify-content:space-between;"
+                                f"font-size:0.6rem;color:{_gs_neu};font-style:normal;margin-top:2px;'>"
+                                f"<span>20 gün önce</span>"
+                                f"<span>ivmenin günlük değişimi · üstü=güçleniyor, altı=zayıflıyor</span>"
+                                f"<span style='color:{_lc_dot};font-weight:700;'>bugün: {_md_son_txt}</span>"
+                                f"</div></div>"
                             )
                 except Exception:
                     _mom_hist_html = ""
@@ -18663,37 +18682,37 @@ def _render_right_col():
         _mom_str    = _m.get('mom_str',    '—');  _mom_col    = _m.get('mom_col',    '#94a3b8')
         _mom_bars   = _m.get('mom_bars',   [])
 
-        # ── MOMENTUM mini-histogram SVG (13 Tem 2026) ────────────────────
-        # Para Akış İvmesi panelindeki mavi/kırmızı barların minisi.
-        # Sıfır çizgisi ortada; pozitif bar yukarı mavi, negatif aşağı kırmızı.
-        # Son bar tam parlak, eskiler hafif soluk — bugün nerede, dün neredeydik.
-        def _build_mom_svg(bars, h, pitch=7, bw=5):
+        # ── MOMENTUM ivme-değişimi mini çizgisi (13 Tem 2026 v2) ─────────
+        # GENEL ÖZET Momentum satırıyla aynı konsept: Para Akış İvmesi
+        # değerlerinin GÜNLÜK FARKI çizgi olarak. Sıfırın üstü mavi
+        # (güçleniyor), altı kırmızı (zayıflıyor), son nokta parlak.
+        def _build_mom_svg(levels, w, h):
             try:
-                if not bars or len(bars) < 4:
+                if not levels or len(levels) < 6:
                     return ""
-                n = len(bars)
-                w = n * pitch
+                dels = [levels[i] - levels[i - 1] for i in range(1, len(levels))]
+                n = len(dels)
                 mid = h / 2
-                lim = max(30.0, max(abs(v) for v in bars) * 1.05)
-                parts = [
-                    f"<line x1='0' y1='{mid}' x2='{w}' y2='{mid}' "
-                    f"stroke='#475569' stroke-width='1' stroke-dasharray='2,2'/>"
-                ]
-                for i, v in enumerate(bars):
-                    clr = "#5B84C4" if v > 0 else "#ef4444"
-                    bh = max(min(abs(v) / lim * (mid - 2), mid - 2), 1.0)
-                    y = (mid - bh) if v > 0 else mid
-                    op = "1.0" if i == n - 1 else "0.72"
-                    parts.append(
-                        f"<rect x='{i * pitch + 1}' y='{y:.1f}' width='{bw}' "
-                        f"height='{bh:.1f}' rx='1' fill='{clr}' opacity='{op}'/>"
-                    )
+                lim = max(5.0, max(abs(v) for v in dels) * 1.1)
+                def _xy(i, v):
+                    return i * (w / (n - 1)), mid - (v / lim) * (mid - 3)
+                parts = [f"<line x1='0' y1='{mid}' x2='{w}' y2='{mid}' "
+                         f"stroke='#475569' stroke-width='1' stroke-dasharray='2,2'/>"]
+                for i in range(1, n):
+                    x1, y1 = _xy(i - 1, dels[i - 1]); x2, y2 = _xy(i, dels[i])
+                    clr = "#5B84C4" if dels[i] > 0 else "#ef4444"
+                    parts.append(f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' "
+                                 f"y2='{y2:.1f}' stroke='{clr}' stroke-width='1.6' "
+                                 f"stroke-linecap='round'/>")
+                lx, ly = _xy(n - 1, dels[-1])
+                lc = "#5B84C4" if dels[-1] > 0 else "#ef4444"
+                parts.append(f"<circle cx='{lx:.1f}' cy='{ly:.1f}' r='2.2' fill='{lc}'/>")
                 return (f"<svg width='{w}' height='{h}' viewBox='0 0 {w} {h}' "
                         f"style='display:block;'>" + "".join(parts) + "</svg>")
             except Exception:
                 return ""
-        _mom_svg    = _build_mom_svg(_mom_bars[-16:], 30)            # orta şerit (BIST)
-        _mom_svg_sm = _build_mom_svg(_mom_bars[-12:], 20, 6, 4)      # alt chip (endeks)
+        _mom_svg    = _build_mom_svg(_mom_bars[-21:], 120, 30)   # orta şerit (BIST)
+        _mom_svg_sm = _build_mom_svg(_mom_bars[-13:], 70, 20)    # alt chip (endeks)
         _rsi_val    = _m.get('rsi_val',    50);   _rsi_col    = _m.get('rsi_col',    '#94a3b8')
         _vol_str    = _m.get('vol_str',    '—');  _vol_col    = _m.get('vol_col',    '#94a3b8')
         _beta_str   = _m.get('beta_str',   '—');  _beta_col   = _m.get('beta_col',   '#94a3b8')
@@ -18896,7 +18915,7 @@ def _render_right_col():
                         f"<div style='flex:1;padding:6px 10px;{_sep_mid}'>"
                         f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
                         f"letter-spacing:0.5px;font-weight:700;'>{_lbl} <span style='font-size:0.6rem;"
-                        f"font-weight:600;text-transform:none;opacity:0.75;'>son 16 gün</span></div>"
+                        f"font-weight:600;text-transform:none;opacity:0.75;'>ivme değişimi · 20g</span></div>"
                         f"<div style='display:flex;align-items:center;gap:8px;'>"
                         f"{_mom_svg}"
                         f"<span style='font-size:1.0rem;font-weight:800;color:{_col};"
