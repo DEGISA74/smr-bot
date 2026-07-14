@@ -17049,7 +17049,30 @@ def _render_left_col():
             unsafe_allow_html=True
         )
     # ─────────────────────────────────────────────────────────────────────────
-    
+
+    # ── VERİ BEKÇİSİ kırmızı şeridi (13 Tem 2026) — tek kapı bloklarsa görünür ──
+    try:
+        import veri_bekcisi as _vb_ui
+        _vb_t = st.session_state.ticker
+        _vb_kayit = (_vb_ui.SORUNLAR.get(_vb_t)
+                     or _vb_ui.SORUNLAR.get(f"{_vb_t}.IS")
+                     or _vb_ui.SORUNLAR.get(_vb_t.replace(".IS", "")))
+        if _vb_kayit:
+            _vb_zaman, _vb_sorunlar = _vb_kayit
+            st.markdown(
+                f'<div style="background:rgba(239,68,68,0.12);border:1px solid #ef4444;'
+                f'border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:0.8rem;'
+                f'color:#fca5a5;font-weight:700;">'
+                f'🛑 VERİ BEKÇİSİ: <b>{get_display_name(_vb_t)}</b> verisi doğrulanamadı — '
+                f'grafikler GÖSTERİLMİYOR (yanlış veri çizilmez). '
+                f'Sebep: {" | ".join(_vb_sorunlar)}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+    except Exception:
+        pass
+    # ─────────────────────────────────────────────────────────────────────────
+
     # 1. GÖRSEL ANALİZ İNFOGRAFİĞİ (EN TEPE) — 22 Haz 2026
     with _Timer("INFOGRAFIK: _render_infografik_inapp"):
         _render_infografik_inapp(st.session_state.ticker)

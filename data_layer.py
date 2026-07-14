@@ -1517,6 +1517,101 @@ def _gapfill_index_isyatirim(df, ticker):
         return df
 
 
+def _bekci_referanslar(ticker):
+    """VERİ BEKÇİSİ için bağımsız referanslar (13 Tem 2026).
+    'disk' = veriler/ parquet son kapanışı (tek-kaynak fiyat kuralı).
+    ⚠️ Canlı fiyat BURADA ÇEKİLMEZ (sıcak yolda hisse başına API çağrısı
+    render'ı dakikalarca uzatıyordu) — sadece şüphe anında _bekci_kapisi çeker.
+    Döner: (refs: dict, mumlar: tuple|None) — mumlar = diskteki son 5 mumun
+    (tarih, Open, Close) üçlüleri (MUM AYRIŞMASI kontrolü için)."""
+    refs = {}
+    mumlar = None
+    try:
+        import veri_bekcisi as _vb
+        _ct = ticker.replace(".IS", "")
+        if "BIST" in ticker or ".IS" in ticker or ticker.startswith("XU"):
+            _ct = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
+        _pq = os.path.join(CACHE_DIR, f"{_ct}_1d.parquet")
+        refs['disk'] = _vb.disk_kapanis(_pq)
+        mumlar = _vb.son_mumlar_disk(_pq)
+    except Exception:
+        pass
+    return refs, mumlar
+
+
+def _bekci_canli_ekle(refs, ticker):
+    """Şüphe anında canlı fiyatı referanslara ekler (Master Scan'de atlanır)."""
+    try:
+        _skip_live = False
+        try:
+            _skip_live = bool(st.session_state.get('_master_scan_running', False))
+        except Exception:
+            pass
+        if not _skip_live:
+            refs = dict(refs)
+            refs['canli'] = get_live_price(ticker)
+    except Exception:
+        pass
+    return refs
+
+
+def _bekci_kapisi(df, ticker, period, interval):
+    """TEK KAPI — VERİ BEKÇİSİ (13 Tem 2026, EREGL 40.86-vs-9.4 vakası sonrası).
+    Panele giden günlük veri doğrulanmadan bu kapıdan çıkamaz:
+    1) Bozuksa önce o ticker'ın bellek deposu boşaltılıp BİR KEZ taze denenir.
+    2) Hâlâ bozuksa BOŞ df döner → panel 'veri yok' gösterir; yanlış grafik
+       ASLA çizilmez. Sorun veri_bekcisi.SORUNLAR + logs/veri_bekcisi.log'a düşer.
+    Bekçinin kendi hatası akışı KESMEZ (df aynen geçer)."""
+    try:
+        import veri_bekcisi as _vb
+    except Exception:
+        return df
+    try:
+        _refs, _mumlar = _bekci_referanslar(ticker)
+        _ok, _ = _vb.dogrula(df, ticker, ref_fiyatlar=_refs, ref_mumlar=_mumlar)
+        if _ok:
+            _vb.temizle(ticker)
+            return df
+        # Şüphe doğdu → canlı fiyatı ŞİMDİ ekle (disk bayat olabilir; canlıyla
+        # uyumluysa yanlış alarmdır, geç). Sıcak yolda API çağrısı yapılmaz.
+        _refs = _bekci_canli_ekle(_refs, ticker)
+        _ok_l, _ = _vb.dogrula(df, ticker, ref_fiyatlar=_refs, ref_mumlar=_mumlar)
+        if _ok_l:
+            _vb.temizle(ticker)
+            return df
+        # SOĞUMA: bu ticker son 10dk içinde zaten bloklandıysa Yahoo'yu tekrar
+        # dövme — doğrudan boş dön (kalıcı bozuk hisse her render'da refetch
+        # tetiklemesin; DUNYH kaskadı dersi)
+        if _vb.son_blok_yeni_mi(ticker):
+            return pd.DataFrame()
+        # 1. şans: bu girdinin bellek deposunu boşalt, taze çek
+        try:
+            _get_safe_historical_data_cached.clear(ticker, period=period, interval=interval)
+        except Exception:
+            try:
+                _get_safe_historical_data_cached.clear()
+            except Exception:
+                pass
+        df2 = _get_safe_historical_data_cached(ticker, period=period, interval=interval)
+        df2 = _patch_live_price(df2, ticker, interval)
+        # Referansları TAZE oku — taze çekim parquet'i güncellemiş olabilir;
+        # eski referansla kıyas yanlış alarm üretir (mtime değişti → cache tazelenir)
+        _refs2, _mumlar2 = _bekci_referanslar(ticker)
+        _refs2 = _bekci_canli_ekle(_refs2, ticker)
+        _ok2, _sorunlar2 = _vb.dogrula(df2, ticker, ref_fiyatlar=_refs2, ref_mumlar=_mumlar2)
+        if _ok2:
+            _vb.temizle(ticker)
+            return df2
+        _vb.kaydet(ticker, _sorunlar2)
+        try:
+            log_error("veri_bekcisi", RuntimeError(" | ".join(_sorunlar2)), ticker)
+        except Exception:
+            pass
+        return pd.DataFrame()
+    except Exception:
+        return df
+
+
 def get_safe_historical_data(ticker, period="1y", interval="1d"):
     """
     Public wrapper — önce cache'li OHLCV'yi alır, sonra
@@ -1525,6 +1620,9 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
 
     _ensure_parquet_on_disk: cache'in bellek sonucu döndürdüğü durumlarda
     parquet'in diske yazılmasını garanti eder.
+
+    13 Tem 2026 — ÇIKIŞTA VERİ BEKÇİSİ: dönen her günlük df _bekci_kapisi'ndan
+    geçer; doğrulanamayan veri panellere ULAŞAMAZ (boş df döner).
     """
     # 16 Haz 2026 — bare BIST ticker (örn. "BERA") gelirse `.IS` ekle.
     # Yoksa cache yanlış isimle yazılır (BERA_1d.parquet) + İsyatirim/borsapy bypass olur.
@@ -1577,7 +1675,11 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
             except Exception:
                 pass
         df = _df_gf
-    return _patch_live_price(df, ticker, interval)
+    df = _patch_live_price(df, ticker, interval)
+    # ── TEK KAPI: VERİ BEKÇİSİ (13 Tem 2026) — bozuk veri panele ÇIKAMAZ ──
+    if interval == "1d":
+        df = _bekci_kapisi(df, ticker, period, interval)
+    return df
 
 
 @st.cache_data(ttl=60)
