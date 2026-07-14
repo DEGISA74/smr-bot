@@ -4552,7 +4552,7 @@ def render_smart_volume_panel(ticker):
                             f'</div>'
                             # 13 Tem 2026 — "hangi kutu neyi ölçer" tek cümle (GENEL ÖZET
                             # gidişat çizgisiyle karışmasın; oradaki hız, buradaki VARLIK)
-                            f'<div style="font-size:1.0rem;color:{text_muted};font-style:italic;'
+                            f'<div style="font-size:0.8rem;color:{text_muted};font-style:italic;'
                             f'margin-top:2px;opacity:0.85;">Bu grafik birikimin <b>VARLIĞINI</b> ölçer: '
                             f'çizgi yükseliyorsa hisseye para giriyor. Hızlanıp yavaşladığı ise '
                             f'GENEL ÖZET&#39;teki &#34;OBV gidişatı&#34; çizgisinde.</div>'
@@ -10882,7 +10882,7 @@ def _render_genel_ozet_panel():
                                     f"altı=<span style='color:#f59e0b;'>dağıtım/yavaşlama</span></span>"
                                     f"<span style='color:{_olc};font-weight:700;'>bugün: {_od_son}</span>"
                                     f"</div>"
-                                    f"<div style='font-size:1.0rem;color:{_gs_neu};font-style:italic;"
+                                    f"<div style='font-size:0.8rem;color:{_gs_neu};font-style:italic;"
                                     f"margin-top:1px;opacity:0.85;'>Bu çizgi birikimin <b>HIZINI</b> ölçer: "
                                     f"para girişi hızlanıyor mu, gaz mı kesiyor? Birikim var mı sorusunun "
                                     f"cevabı ise SMART MONEY panelindeki \"OBV vs Fiyat\" grafiğinde.</div>"
