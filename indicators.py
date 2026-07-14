@@ -696,6 +696,211 @@ def calculate_volume_delta(df):
     return df
 
 
+def compute_flow_persistence(df, window=20):
+    """Son `window` işlem gününde pozitif hacim deltalı gün sayısı (10 Tem 2026).
+
+    Kurumsal birikim tek günlük olay değil kampanyadır — istikrar sayacı
+    tek günlük gürültüyü haftalarca süren akıştan ayırır.
+    Returns: (pos_days, n) — veri yetersizse (None, 0).
+    """
+    try:
+        if df is None or len(df) < window + 1:
+            return (None, 0)
+        d = calculate_volume_delta(df)
+        tail = d['Volume_Delta'].iloc[-window:]
+        return (int((tail > 0).sum()), int(len(tail)))
+    except Exception:
+        return (None, 0)
+
+
+def compute_panel_consensus_history(df, days=10):
+    """Smart Money panel konsensüs skorunun son `days` günlük YAKLAŞIK geçmişi (10 Tem 2026).
+
+    panel_verdict_backtest.py ile aynı bileşen yaklaşıklaması (OBV'de CMF teyidi yok).
+    Returns: eskiden yeniye list[{'score': int|None, 'label': str|None}]; veri yetersizse [].
+    """
+    try:
+        n = len(df) if df is not None else 0
+        if n < 45 + days:
+            return []
+        d = calculate_volume_delta(df)
+        c = d['Close'].astype(float)
+        v = d['Volume'].astype(float)
+        vd = d['Volume_Delta'].astype(float)
+        obv = compute_obv_series(df)
+        vma20 = v.rolling(20).mean()
+        vd5 = vd.rolling(5).sum()
+        out = []
+        for i in range(n - days, n):
+            try:
+                vp = calculate_full_volume_profile(df.iloc[:i + 1], lookback=20)
+                cp = float(c.iloc[i])
+                s_va = 1 if cp > vp['vah'] else (-1 if cp < vp['val'] else 0)
+                s_d1 = 1 if vd.iloc[i] > 0 else (-1 if vd.iloc[i] < 0 else 0)
+                s_5g = 1 if vd5.iloc[i] > 0 else (-1 if vd5.iloc[i] < 0 else 0)
+                vma_i = float(vma20.iloc[i])
+                rvol = float(v.iloc[i]) / vma_i if vma_i > 0 else 0.0
+                s_rv = 1 if rvol >= 2.0 else (-1 if 0 < rvol < 0.8 else 0)
+                o_now = float(obv.iloc[i]); o5 = float(obv.iloc[i - 5]); o14 = float(obv.iloc[i - 14])
+                s_obv = 1 if (o_now > o5 and o_now > o14) else (-1 if (o_now <= o5 and o_now <= o14) else 0)
+                sigs = [s_va, s_d1, s_rv, s_5g, s_obv]
+                pos = sum(1 for s in sigs if s > 0)
+                neg = sum(1 for s in sigs if s < 0)
+                scr = max(0, min(100, pos * 20 - neg * 20 + 50))
+                if scr >= 80:   lbl = "ALIM BASKISI"
+                elif scr >= 62: lbl = "HAFİF ALIM"
+                elif scr > 38:  lbl = "NÖTR"
+                elif scr >= 20: lbl = "HAFİF SATIŞ"
+                else:           lbl = "SATIŞ BASKISI"
+                out.append({'score': scr, 'label': lbl})
+            except Exception:
+                out.append({'score': None, 'label': None})
+        return out
+    except Exception:
+        return []
+
+
+def find_volume_gap_levels(df, lookback=60, bins=20):
+    """60g hacim profilinden LVN (ince/boş bölge) seviyeleri (10 Tem 2026).
+
+    LVN = hacmi profil ortalamasının 0.3x altında kalan fiyat dilimi — orada
+    sahiplenilmiş pozisyon az, fiyat girerse hızlı geçer (destek/direnç tutmaz).
+    Returns: {'above': (level, dist_pct) | None, 'below': (level, dist_pct) | None,
+              'levels': [tüm LVN seviyeleri]}
+    """
+    out = {'above': None, 'below': None, 'levels': []}
+    try:
+        if df is None or len(df) < 30:
+            return out
+        vdf = df.tail(min(lookback, len(df)))
+        lo = float(vdf['Low'].min()); hi = float(vdf['High'].max())
+        if hi <= lo:
+            return out
+        edges = np.linspace(lo, hi, bins + 1)
+        prof = np.zeros(bins)
+        for _, r in vdf.iterrows():
+            rh, rl, rv = float(r['High']), float(r['Low']), float(r['Volume'])
+            rng = rh - rl
+            if rng <= 0:
+                idx = min(max(np.digitize((rh + rl) / 2, edges) - 1, 0), bins - 1)
+                prof[idx] += rv
+                continue
+            for i in range(bins):
+                ov = min(rh, edges[i + 1]) - max(rl, edges[i])
+                if ov > 0:
+                    prof[i] += rv * (ov / rng)
+        avg = float(prof.mean())
+        if avg <= 0:
+            return out
+        centers = [(edges[i] + edges[i + 1]) / 2 for i in range(bins)]
+        lvn = sorted(round(centers[i], 2) for i in range(bins) if 0 < prof[i] <= avg * 0.3)
+        out['levels'] = lvn
+        cp = float(df['Close'].iloc[-1])
+        above = [x for x in lvn if x > cp]
+        below = [x for x in lvn if x < cp]
+        if above:
+            a = min(above)
+            out['above'] = (a, round((a - cp) / cp * 100, 1))
+        if below:
+            b = max(below)
+            out['below'] = (b, round((b - cp) / cp * 100, 1))
+    except Exception:
+        pass
+    return out
+
+
+def compute_obv_series(df):
+    """OBV serisi — get_obv_divergence_status ile aynı formül (TEK KAYNAK, 10 Tem 2026).
+
+    Kapanış yönü işareti × hacim, kümülatif toplam.
+    """
+    change = df['Close'].diff()
+    direction = np.sign(change).fillna(0)
+    return (direction * df['Volume']).cumsum()
+
+
+def compute_obv_divergence_duration(df, window=14, max_scan=30):
+    """Fiyat ile OBV'nin 14g yönleri kaç gündür ayrışıyor (10 Tem 2026).
+
+    Her gün için: fiyat son `window` günde yukarı mı, OBV yukarı mı?
+    Zıtlarsa uyumsuzluk günü. Bugünden geriye kesintisiz sayılır.
+    Returns: {'kind': 'bearish' | 'bullish' | None, 'days': int}
+      bearish = fiyat ↑ OBV ↓ (yükseliş hacimle desteklenmiyor)
+      bullish = fiyat ↓ OBV ↑ (düşüşte sessiz birikim)
+    """
+    out = {'kind': None, 'days': 0}
+    try:
+        if df is None or len(df) < window + max_scan + 2:
+            return out
+        obv = compute_obv_series(df)
+        c = df['Close'].astype(float)
+
+        def _state(i):
+            p_up = float(c.iloc[-1 - i]) > float(c.iloc[-1 - i - window])
+            o_up = float(obv.iloc[-1 - i]) > float(obv.iloc[-1 - i - window])
+            if p_up and not o_up:
+                return 'bearish'
+            if (not p_up) and o_up:
+                return 'bullish'
+            return None
+
+        k0 = _state(0)
+        if k0 is None:
+            return out
+        days = 1
+        for i in range(1, max_scan):
+            if _state(i) == k0:
+                days += 1
+            else:
+                break
+        out = {'kind': k0, 'days': days}
+    except Exception:
+        pass
+    return out
+
+
+def detect_absorption_days(df, lookback=5, vol_mult=2.0, max_chg_pct=0.5):
+    """Absorpsiyon günleri: hacim ≥ vol_mult × 20g ort VE |kapanış değişimi| ≤ max_chg_pct (10 Tem 2026).
+
+    Wyckoff çaba-vs-sonuç: dev hacim dönüyor ama fiyat yerinde sayıyor →
+    gelen mal emiliyor. Konum yorumu 20g aralığındaki yere göre:
+    alt %25 → 'dip' (toplama emaresi), üst %25 → 'tepe' (dağıtım riski), arası 'orta'.
+    Returns: en yeniden eskiye list[dict{days_ago, date, rvol, chg_pct, loc}].
+    """
+    out = []
+    try:
+        if df is None or len(df) < 25:
+            return out
+        v = df['Volume'].astype(float)
+        c = df['Close'].astype(float)
+        vma  = v.rolling(20).mean()
+        hi20 = c.rolling(20).max()
+        lo20 = c.rolling(20).min()
+        for back in range(1, lookback + 1):
+            i = len(df) - back
+            if i < 21:
+                break
+            va = float(vma.iloc[i]); vd = float(v.iloc[i])
+            cp = float(c.iloc[i]);   pp = float(c.iloc[i - 1])
+            if va <= 0 or vd <= 0 or pp <= 0:
+                continue
+            rvol_d = vd / va
+            chg = (cp - pp) / pp * 100
+            if rvol_d >= vol_mult and abs(chg) <= max_chg_pct:
+                rng = float(hi20.iloc[i]) - float(lo20.iloc[i])
+                pos = (cp - float(lo20.iloc[i])) / rng if rng > 0 else 0.5
+                loc = 'dip' if pos <= 0.25 else ('tepe' if pos >= 0.75 else 'orta')
+                try:
+                    dt = df.index[i].strftime('%d.%m')
+                except Exception:
+                    dt = ''
+                out.append({'days_ago': back, 'date': dt, 'rvol': round(rvol_d, 1),
+                            'chg_pct': round(chg, 2), 'loc': loc})
+    except Exception:
+        pass
+    return out
+
+
 def detect_classic_candle_patterns(df):
     """Son 3 mumda klasik formasyon tespiti.
 

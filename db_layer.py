@@ -399,6 +399,8 @@ def _compute_mkk_yabanci_signals(ticker: str) -> dict:
     f_yabanci_cikis   : son 5g top çıkış listesinde + bps<0
     f_yabanci_streak  : son raporda 3+ gün üst üste artış streak
     f_yabanci_anchor  : (giriş + streak) çakışması → ELIT smart money
+    streak_days       : en yüksek streak gün sayısı (panel rozeti — 10 Tem 2026)
+    in_days / out_days: son 5 raporda kaç farklı gün giriş/çıkış listesinde
 
     BIST hissesi değilse tüm None döner.
     """
@@ -407,6 +409,9 @@ def _compute_mkk_yabanci_signals(ticker: str) -> dict:
         'f_yabanci_cikis': None,
         'f_yabanci_streak': None,
         'f_yabanci_anchor': None,
+        'streak_days': 0,
+        'in_days': 0,
+        'out_days': 0,
     }
     try:
         _sym = ticker.upper().replace('.IS', '')
@@ -426,11 +431,15 @@ def _compute_mkk_yabanci_signals(ticker: str) -> dict:
         _has_in = 0
         _has_out = 0
         _max_streak = 0
+        _in_dates = set()
+        _out_dates = set()
         for _dir, _bps, _streak, _rd in _rows:
             if _dir == 'in' and _bps and _bps > 0:
                 _has_in = 1
+                _in_dates.add(_rd)
             elif _dir == 'out' and _bps and _bps < 0:
                 _has_out = 1
+                _out_dates.add(_rd)
             elif _dir == 'streak' and _streak:
                 _max_streak = max(_max_streak, int(_streak))
 
@@ -438,6 +447,9 @@ def _compute_mkk_yabanci_signals(ticker: str) -> dict:
         out['f_yabanci_cikis']  = _has_out
         out['f_yabanci_streak'] = 1 if _max_streak >= 3 else 0
         out['f_yabanci_anchor'] = 1 if (_has_in == 1 and _max_streak >= 3) else 0
+        out['streak_days'] = _max_streak
+        out['in_days']  = len(_in_dates)
+        out['out_days'] = len(_out_dates)
     except Exception as _ex:
         try: log_error("mkk_yabanci_signals", _ex, ctx={'ticker': ticker})
         except Exception: pass
