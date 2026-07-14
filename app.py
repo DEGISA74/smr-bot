@@ -11426,11 +11426,14 @@ with st.sidebar:
             if st.button("📋 Analiz Metnini Hazırla", type="primary"):
                 st.session_state.generate_prompt = True
 
-    # 💼 KURUMSAL İLGİ — ELITE'e özel (derin per-hisse panel)
-    if _MM_ELITE_OK:
-        sentiment_verisi = calculate_sentiment_score(st.session_state.ticker)
-        if sentiment_verisi:
-            render_sentiment_card(sentiment_verisi)
+    # 💼 KURUMSAL İLGİ — RENDER KALDIRILDI (13 Tem 2026, kullanıcı isteği).
+    # Hesap (calculate_sentiment_score) YAŞIYOR: AI prompt (~12268) + sinyal
+    # özeti + diğer 4 tüketici aynen okuyor; sadece sidebar kartı gizlendi.
+    # Geri açmak istersen: aşağıdaki 3 satırın yorumunu kaldır.
+    # if _MM_ELITE_OK:
+    #     sentiment_verisi = calculate_sentiment_score(st.session_state.ticker)
+    #     if sentiment_verisi:
+    #         render_sentiment_card(sentiment_verisi)
 
     st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
