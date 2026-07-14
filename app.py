@@ -4550,6 +4550,12 @@ def render_smart_volume_panel(ticker):
                             f'<span>OBV vs <span style="color:#94a3b8;">FİYAT</span> — SON 30 GÜN</span>'
                             f'<span>gri = fiyat · kesikli = 30g önceki OBV</span>'
                             f'</div>'
+                            # 13 Tem 2026 — "hangi kutu neyi ölçer" tek cümle (GENEL ÖZET
+                            # gidişat çizgisiyle karışmasın; oradaki hız, buradaki VARLIK)
+                            f'<div style="font-size:0.6rem;color:{text_muted};font-style:italic;'
+                            f'margin-top:2px;opacity:0.85;">Bu grafik birikimin <b>VARLIĞINI</b> ölçer: '
+                            f'çizgi yükseliyorsa hisseye para giriyor. Hızlanıp yavaşladığı ise '
+                            f'GENEL ÖZET&#39;teki &#34;OBV gidişatı&#34; çizgisinde.</div>'
                             f'</div>'
                         )
                 except Exception:
@@ -10872,10 +10878,15 @@ def _render_genel_ozet_panel():
                                     f"<div style='display:flex;justify-content:space-between;"
                                     f"font-size:0.6rem;color:{_gs_neu};margin-top:2px;'>"
                                     f"<span>20 gün önce</span>"
-                                    f"<span>OBV'nin günlük değişimi · üstü=<span style='color:#4ade80;'>birikim</span>, "
-                                    f"altı=<span style='color:#f59e0b;'>dağıtım</span></span>"
+                                    f"<span>üstü=<span style='color:#4ade80;'>birikim hızlanıyor</span> · "
+                                    f"altı=<span style='color:#f59e0b;'>dağıtım/yavaşlama</span></span>"
                                     f"<span style='color:{_olc};font-weight:700;'>bugün: {_od_son}</span>"
-                                    f"</div></div>"
+                                    f"</div>"
+                                    f"<div style='font-size:0.6rem;color:{_gs_neu};font-style:italic;"
+                                    f"margin-top:1px;opacity:0.85;'>Bu çizgi birikimin <b>HIZINI</b> ölçer: "
+                                    f"para girişi hızlanıyor mu, gaz mı kesiyor? Birikim var mı sorusunun "
+                                    f"cevabı ise SMART MONEY panelindeki \"OBV vs Fiyat\" grafiğinde.</div>"
+                                    f"</div>"
                                 )
                 except Exception:
                     _obv_line_html = ""
