@@ -27,21 +27,16 @@ _CMDTY_DISP = {
 def _disp_name(t):
     return _CMDTY_DISP.get(str(t).strip().upper(), t)
 
-# Özet ile DİKKAT arasına: gözlem/eğitim disclaimer'ı (büyük harf, 22 Haz 2026)
-DISCLAIMER_PANEL = (
-    f"<div style='background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px 11px;margin-bottom:7px;'>"
-    f"<span style='font-size:11px;line-height:1.5;color:{MUT};letter-spacing:0.2px;'>"
-    f"BU BİR GÖZLEM VE EĞİTİM İÇERİĞİDİR. ANALİZLER KESİNLİK İÇERMEZ, OLASILIK İÇERİR. "
-    f"YATIRIM TAVSİYESİ DEĞİLDİR.</span></div>"
-)
-
-# Özet kartının altına minik uyarı paneli (22 Haz 2026)
+# 15 Tem 2026 — TEK uyarı kaldı. Öncesi 3 kez uyarıyorduk: soldaki gri
+# DISCLAIMER_PANEL + bu rozet + en alttaki minik satır. Üçü görselin ~%10'unu
+# yiyordu, ikisi silindi; kazanılan yer içeriğe gitti.
+# Sağ kolonun tam genişliğini kaplar (yanında boşluk kalmaz).
 NOTICE_BADGE = (
     f"<div style='background:{CARD2};border:1px solid {GOLD}44;border-radius:10px;"
-    f"padding:8px 11px;margin-top:1px;'>"
+    f"padding:10px 13px;flex:1;display:flex;align-items:center;'>"
     f"<span style='font-size:17px;line-height:1.55;color:{MUT};letter-spacing:0.2px;'>"
-    f"<b style='color:{GOLD};'>DİKKAT.</b> BU GÖRSEL EĞİTİM AMAÇLIDIR. YAPAY ZEKA ÜRETİMİ DEĞİLDİR. "
-    f"33000 SATIRLIK ALGORİTMAMIN ÇIKTISIDIR. "
+    f"<b style='color:{GOLD};'>DİKKAT.</b> BU GÖRSEL EĞİTİM AMAÇLIDIR, YATIRIM TAVSİYESİ DEĞİLDİR. "
+    f"YAPAY ZEKA ÜRETİMİ DEĞİLDİR. 33000 SATIRLIK ALGORİTMAMIN ÇIKTISIDIR. "
     f"<b style='color:{INFO};'>#SMARTMONEYRADAR</b></span></div>"
 )
 
@@ -333,7 +328,14 @@ def _ind_block_svg(title, fig):
 
 # Görünen başlık etiketleri — sözlük ANAHTARLARI ('GENEL' vs) SABİT kalır (g[k] araması +
 # 'if k in g' filtresi bunlara bağlı); sadece kartta GÖRÜNEN metin buradan değişir → kırılmaz.
-_HDR = {'GENEL': 'GENEL DURUM', 'TEKNİK': 'TEKNİK ÖZET', 'AKILLI PARA': 'AKILLI PARA İZLERİ'}
+_HDR = {'GENEL': 'GENEL DURUM', 'TEKNİK': 'İZLENECEK SEVİYELER', 'AKILLI PARA': 'AKILLI PARA İZLERİ'}
+
+# 15 Tem 2026 — 'TEKNİK' render'a ALINDI. Öncesi: gorev4() her hissede
+# Fibonacci/POC/VWAP/RSI metnini hesaplıyor, render listesi onu atlıyordu →
+# görselde tek bir izlenecek seviye yoktu (grafikte çizili, metinde yok).
+# SOL kolon: yorum kartları · SAĞ kolon: 'İZLENECEK SEVİYELER' grafiğin ALTINDA
+# (seviyeler zaten o grafikte çizili) → hem doğru yer, hem iki kolon dengede.
+_CARD_ORDER = ('GENEL', 'AKILLI PARA', 'SONUÇ')
 
 
 def build_html(ticker):
@@ -346,8 +348,9 @@ def build_html(ticker):
     compass = cp.build_compass_html(ticker) or ""
     chg_clr = UP if d['chg'] >= 0 else DN; arrow = '▲' if d['chg'] >= 0 else '▼'
     stats = _statbox(d, _market_stats(ticker, df))
-    cards = "".join(_card(_HDR.get(k, k), g[k]) for k in ('GENEL', 'AKILLI PARA', 'SONUÇ') if k in g)
+    cards = "".join(_card(_HDR.get(k, k), g[k]) for k in _CARD_ORDER if k in g)
     if 'UYARI' in g: cards += _card_warn('⚠ UYARI', g['UYARI'])
+    levels = _card(_HDR['TEKNİK'], g['TEKNİK']) if 'TEKNİK' in g else ''
     sbox = _signal_box(df, d)
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}}
@@ -367,25 +370,22 @@ img{{display:block;border-radius:8px;}}
     </div>
   </div>
   <div style="background:{INFO}1a;border:1px solid {INFO}55;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-weight:700;color:{INFO};font-size:14px;">{g['hook']}</div>
-  <div style="display:grid;grid-template-columns:330px 1fr;gap:12px;align-items:start;">
+  <div style="display:grid;grid-template-columns:330px 1fr;gap:12px;align-items:stretch;">
     <div>{compass}<div style="height:8px;"></div>{sbox}<div style="height:8px;"></div>{cards}</div>
-    <div>
+    <div style="display:flex;flex-direction:column;">
       <div style="background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Teknik yapı · mumlar + SMA50/EMA144/SMA100/SMA200 + POC + VWAP</div>
         <img src="data:image/png;base64,{chart}" style="width:100%;"/>
       </div>
+      {levels}
       {harsi_block}
       <div style="background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Para Akış İvmesi & Fiyat Dengesi</div>
         <img src="data:image/png;base64,{ivme}" style="width:100%;"/>
       </div>
-      <div style="display:flex;gap:8px;align-items:stretch;">
-        <div style="flex:1;">{DISCLAIMER_PANEL}</div>
-        <div style="flex:1.5;">{NOTICE_BADGE}</div>
-      </div>
+      {NOTICE_BADGE}
     </div>
   </div>
-  <div style="font-size:10.5px;color:{MUT};margin-top:10px;text-align:center;">Eğitim amaçlıdır. Yatırım tavsiyesi değildir. http://smartmoneyradar.app</div>
 </div>
 </body></html>"""
 
@@ -412,8 +412,9 @@ def build_widget_html(ticker):
     compass = cp.build_compass_html(ticker) or ""
     chg_clr = UP if d['chg'] >= 0 else DN; arrow = '▲' if d['chg'] >= 0 else '▼'
     stats = _statbox(d, _market_stats(ticker, df))
-    cards = "".join(_card(_HDR.get(k, k), g[k]) for k in ('GENEL', 'AKILLI PARA', 'SONUÇ') if k in g)
+    cards = "".join(_card(_HDR.get(k, k), g[k]) for k in _CARD_ORDER if k in g)
     if 'UYARI' in g: cards += _card_warn('⚠ UYARI', g['UYARI'])
+    levels = _card(_HDR['TEKNİK'], g['TEKNİK']) if 'TEKNİK' in g else ''
     sbox = _signal_box(df, d)
     return f"""<div style="background:{BG};padding:16px;color:{TXT};font-family:'Segoe UI',Arial,sans-serif;border-radius:12px;">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
@@ -428,23 +429,20 @@ def build_widget_html(ticker):
     </div>
   </div>
   <div style="background:{INFO}1a;border:1px solid {INFO}55;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-weight:700;color:{INFO};font-size:14px;">{g['hook']}</div>
-  <div style="display:grid;grid-template-columns:330px 1fr;gap:12px;align-items:start;">
+  <div style="display:grid;grid-template-columns:330px 1fr;gap:12px;align-items:stretch;">
     <div>{compass}<div style="height:8px;"></div>{sbox}<div style="height:8px;"></div>{cards}</div>
-    <div>
+    <div style="display:flex;flex-direction:column;">
       <div style="background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Teknik yapı · mumlar + SMA50/EMA144/SMA100/SMA200 + POC + VWAP</div><img src="data:image/png;base64,{chart}" style="width:100%;display:block;border-radius:8px;"/>
       </div>
+      {levels}
       {harsi_block}
       <div style="background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Para Akış İvmesi & Fiyat Dengesi</div><img src="data:image/png;base64,{ivme}" style="width:100%;display:block;border-radius:8px;"/>
       </div>
-      <div style="display:flex;gap:8px;align-items:stretch;">
-        <div style="flex:1;">{DISCLAIMER_PANEL}</div>
-        <div style="flex:1.5;">{NOTICE_BADGE}</div>
-      </div>
+      {NOTICE_BADGE}
     </div>
   </div>
-  <div style="font-size:10.5px;color:{MUT};margin-top:10px;text-align:center;">Eğitim amaçlıdır. Yatırım tavsiyesi değildir. http://smartmoneyradar.app</div>
 </div>"""
 
 
