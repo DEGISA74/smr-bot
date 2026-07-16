@@ -40,6 +40,9 @@ BAYAT_GUN      = 12    # son bar 12+ takvim günü eskiyse bayat
                        # (uzun bayram tatili ~9-10 gün → 12 güvenli)
 MUM_TOLERANS   = 0.005 # servis edilen mumun Open/Close'u diskteki dosyadan
                        # %0.5+ ayrışırsa MUM AYRIŞMASI (renk/dizilim bozulur)
+HACIM_SON_N    = 5     # hacim çökmesi kontrolü son N bar
+HACIM_MIN_IHLAL = 1    # "fiyat değişmiş ama hacim 0" tek bar bile hatadır
+HACIM_GECMIS_N = 60    # normalde işlem gören hisse mi? son N barın medyanı
 
 # Son sorunlar kaydı — UI kırmızı şerit basmak için okur.
 # {ticker: (datetime, [sorun metinleri])}
@@ -50,7 +53,7 @@ _LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 
 def dogrula(df, ticker, ref_fiyatlar=None, ref_mumlar=None):
-    """Günlük OHLCV df'i 6 kontrolden geçirir.
+    """Günlük OHLCV df'i 7 kontrolden geçirir.
 
     ref_fiyatlar: {'disk': float, 'canli': float} — 0/None olanlar atlanır.
     ref_mumlar:   son_mumlar_disk() çıktısı — diskteki son 5 mumun
@@ -149,6 +152,41 @@ def dogrula(df, ticker, ref_fiyatlar=None, ref_mumlar=None):
                 if _ayrik:
                     sorunlar.append("MUM AYRIŞMASI (bellek!=disk): "
                                     + "; ".join(_ayrik[:3]))
+            except Exception:
+                pass
+
+        # 7) HACİM ÇÖKMESİ — fiyat DEĞİŞMİŞ ama hacim 0 (15 Tem 2026)
+        #    SASA vakası: Yahoo 7-14 Tem hacmi 0 verdi (gerçek ~4.7 milyar),
+        #    kaynak rotasyonu her turda birbirini eziyordu. Hacme dayanan HER
+        #    okuma (CMF/OBV/UDVR/para akışı/hacim profili) çöp oluyordu ama bu
+        #    kapının 6 kontrolü de hacme bakmadığı için sessizce geçiyordu.
+        #    Ayırt edici: fiyat oynadıysa hisse İŞLEM GÖRMÜŞTÜR, hacmi 0 olamaz.
+        #    Fiyatı değişmeyen V=0 barlar (tatil/askı/hayalet bar) MEŞRU → sayılmaz.
+        #    Endeks/kripto/vadeli muaf: hacimleri tanım gereği 0 veya yok.
+        _hacimsiz = ("Volume" not in df.columns
+                     or ticker.startswith(("XU", "^"))
+                     or "-USD" in ticker or "=F" in ticker)
+        if not _hacimsiz and len(df) >= HACIM_SON_N:
+            try:
+                _v = pd.to_numeric(df['Volume'], errors='coerce')
+                # Normalde işlem gören bir hisse mi? (hiç hacmi olmayan/askıdaki
+                # kâğıtlarda 0 meşrudur — onlara bu kontrol uygulanmaz)
+                _med = float(_v.tail(HACIM_GECMIS_N).median())
+                if _med > 0:
+                    _sN = df.tail(HACIM_SON_N)
+                    _vN = pd.to_numeric(_sN['Volume'], errors='coerce')
+                    _cN = _sN['Close'].astype(float)
+                    _pcN = df['Close'].astype(float).shift(1).tail(HACIM_SON_N)
+                    _kotu = (_vN.fillna(0) == 0) & (_cN != _pcN) & _pcN.notna()
+                    _n_kotu = int(_kotu.sum())
+                    if _n_kotu >= HACIM_MIN_IHLAL:
+                        _gunler = [pd.Timestamp(t).date().isoformat()
+                                   for t in _sN.index[_kotu.values]]
+                        sorunlar.append(
+                            f"HACİM ÇÖKMESİ: son {HACIM_SON_N} barın {_n_kotu} "
+                            f"tanesinde fiyat değişmiş ama hacim 0 "
+                            f"({', '.join(_gunler[:3])}) — normal hacim medyanı "
+                            f"{_med:,.0f}")
             except Exception:
                 pass
 

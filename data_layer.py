@@ -730,11 +730,25 @@ def get_batch_data_cached(asset_list, period="1y"):
 
                 _df_pending[sym] = (clean_sym, df_sym_new)
 
-                # İsyatirim adayı mı? (BIST hissesi + son 30g V=0 oranı > %20)
+                # İsyatirim adayı mı? (BIST hissesi + hacim boşluğu)
+                # 15 Tem 2026 — tek kural "son 30g V=0 oranı > %20" idi ve TAZE kesintiyi
+                # kaçırıyordu: SASA'da Yahoo 7 Tem'de sıfırlamaya başladı, oran %7'ydi →
+                # eşik ancak 6 gün sonra aşıldı, o süre boyunca bozuk hacim panele aktı.
+                # EK TETİK: son 5 barda "fiyatı DEĞİŞMİŞ ama hacmi 0" bar → kesin hata
+                # (hisse işlem görmüş, hacim 0 olamaz). Fiyatı değişmeyen V=0 barlar
+                # tatil/hayalet bar olabilir → onlar tetiklemez, yoksa her tatil sonrası
+                # 600 hissenin tamamı boşuna İsyatirim'e sorulurdu.
                 _is_bist_b43 = sym.endswith(".IS") and not sym.startswith(("XU", "XB", "XT"))
                 if _is_bist_b43 and len(df_sym_new) >= 30:
                     _v0_ratio = (df_sym_new['Volume'].tail(30) == 0).sum() / 30
-                    if _v0_ratio > 0.20:
+                    _v0_taze = False
+                    try:
+                        _t5 = df_sym_new.tail(5)
+                        _pc5 = df_sym_new['Close'].shift(1).tail(5)
+                        _v0_taze = bool(((_t5['Volume'] == 0) & (_t5['Close'] != _pc5)).any())
+                    except Exception:
+                        pass
+                    if _v0_ratio > 0.20 or _v0_taze:
                         _isy_candidates.append((sym, clean_sym))
             except Exception:
                 continue
@@ -800,6 +814,26 @@ def get_batch_data_cached(asset_list, period="1y"):
                             if len(_older_pq) > 0:
                                 df_sym_new = pd.concat([_older_pq, df_sym_new]).sort_index()
                                 df_sym_new = df_sym_new[~df_sym_new.index.duplicated(keep='last')]
+                        # ── HACİM KORUMASI (15 Tem 2026) ── fetcher.py'deki eşi.
+                        # Taze Yahoo indirmesi V=0 döndüğünde (SASA 7-14 Tem) bu satır
+                        # parquet'teki GERÇEK hacmi eziyordu; yukarıdaki İsyatirim
+                        # onarımı ise "son 30 barın >%20'si sıfır" eşiğine takılıp taze
+                        # kesintiyi 6 gün boyunca kaçırıyordu. Bir işlem gününün hacmi
+                        # sonradan 0'a dönmez; 0 = kaynak hatası → eskisini koru.
+                        # Endeksler etkilenmez (eski de yeni de 0 → koşul tutmaz).
+                        if 'Volume' in df_sym_new.columns and 'Volume' in _old_pq.columns:
+                            _oq = _old_pq[~_old_pq.index.duplicated(keep='last')]
+                            _ort_v = _oq.index.intersection(df_sym_new.index)
+                            if len(_ort_v):
+                                _yeni_bozuk_v = ~(pd.to_numeric(
+                                    df_sym_new.loc[_ort_v, 'Volume'], errors='coerce') > 0)
+                                _eski_saglam_v = pd.to_numeric(
+                                    _oq.loc[_ort_v, 'Volume'], errors='coerce') > 0
+                                _koru_v = _ort_v[(_yeni_bozuk_v & _eski_saglam_v).values]
+                                if len(_koru_v):
+                                    df_sym_new.loc[_koru_v, 'Volume'] = _oq.loc[_koru_v, 'Volume']
+                                    _CACHE_STATS['vol_zero_guard'] = \
+                                        _CACHE_STATS.get('vol_zero_guard', 0) + 1
                 except Exception:
                     pass
                 df_sym_new.to_parquet(file_path)
