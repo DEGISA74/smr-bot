@@ -2387,11 +2387,24 @@ def scan_hidden_accumulation(asset_list):
             res = future.result()
             if res: results.append(res)
 
-    if results: 
+    if results:
         df_res = pd.DataFrame(results)
-        # Önce Pocket Pivot olanları, sonra Skoru yüksek olanları üste al
-        return df_res.sort_values(by=["Pocket_Pivot", "Kalite", "Skor", "Hacim"], ascending=[False, True, False, False])
-    
+        # SIRALAMA — SKOR ÖNCE (15 Tem 2026, ölçümle düzeltildi)
+        # Eski sıra: Pocket_Pivot → Kalite → Skor → Hacim. Panel bu sıradan ilk 5'i
+        # aldığı için vitrini ilk iki kriter belirliyordu. 187 likit hisse × 4 yıl
+        # (15.773 sinyal) gün-nötr alfa ölçümü:
+        #   Pocket_Pivot=True  → -0.71%  (False -0.05%) → 1. sıradaydı ve EN KÖTÜSÜ
+        #   Kalite A vs B      → -0.16% vs -0.08%       → ayrım YOK (A öne geçiyordu
+        #                                                  sadece harf sırası yüzünden)
+        #   Skor >= 55         → +1.23%  (Skor < 35 → -0.76%) → tek çalışan ölçüt,
+        #                                                        3. sıradaydı = etkisiz
+        # Taramanın toplam alfası 0.00 çünkü kazanan yarı kaybeden yarıyla karışıyordu.
+        # Skor'a göre sıralayınca ilk 5 yüksek-skor bölgesinden gelir.
+        # Pocket_Pivot + Kalite kolon olarak DURUYOR (panelde gösteriliyor), yalnızca
+        # sıralama anahtarı olmaktan çıkarıldı. Ölçüm detayı:
+        # memory/project-donus-gunu-calismasi.md
+        return df_res.sort_values(by=["Skor", "Hacim"], ascending=[False, False])
+
     return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
