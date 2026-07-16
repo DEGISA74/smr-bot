@@ -26,6 +26,7 @@ import io
 import time
 from pathlib import Path
 from datetime import datetime, date, timedelta
+from collections import defaultdict
 import pandas as pd
 import pytz
 
@@ -49,6 +50,19 @@ OUTPUT_FILE     = BASE_DIR / "backtest_results.json"
 LOOKBACK_DAYS   = 90
 FORWARD_WINDOWS = [5, 10, 20]
 TZ_ISTANBUL     = pytz.timezone("Europe/Istanbul")
+
+# ── İDEAL VADE (alpha-zirvesi) taraması ──────────────────────────────────────
+# Her scan_type için gün 1..MAXD_VADE getiri+alpha biriktirilir; sinyalin piyasaya
+# göre ÜSTÜN olduğu (alpha en yüksek) gün = ideal vade. Tek "şampiyon gün" yerine
+# alpha platosu bir ARALIK olarak verilir (aşırı-uyuma karşı). UI'da alt-satır rozeti.
+MAXD_VADE       = 28
+MIN_N_VADE      = 15    # bir günün güvenilir sayılması için min sinyal (mutlak taban)
+EDGE_MIN_ALPHA  = 0.5   # "piyasayı geçiyor" demek için min α — altı gürültü sayılır
+# ÖRNEK-DESTEK KAPISI: uzun vadede örnek erir (90g lookback → geç sinyaller d-gün ileriye
+# ulaşamaz); eriyen kuyrukta 30-70 survivor α'yı şişirir = "kuyruğa-yapışma" / aşırı-uyum.
+# Gözlem (2 Tem 2026): sahte-zirve günleri HEP n/nmax ≤ 0.30, dürüst iç zirveler HEP ≥ 0.51
+# → aradaki temiz boşluğa 0.50 eşik. Bir gün ancak sinyallerin çoğu o vadeye ULAŞTIYSA güvenilir.
+NFRAC_VADE      = 0.50  # peak adayı: n >= NFRAC_VADE * nmax (o günün örnek-desteği)
 
 # ─── SENARYO ETİKETLERİ ──────────────────────────────────────────────────────
 SCENARIO_NAMES = {
@@ -131,6 +145,57 @@ def load_xu100():
     return df
 
 
+# ── KURUMSAL İŞLEM (BÖLÜNME) BEKÇİSİ — 15 Tem 2026 ──────────────────────────
+# Sorun: data_policy.AUTO_ADJUST=False → parquet'lerde bölünme/bedelsiz
+# DÜZELTİLMEMİŞ (seviyeler aracıyla tutsun diye, bilinçli karar). Seviye ölçmek
+# için doğru ama GETİRİ ölçmek için zehir: TRHOL 12 Ara 2024'te 17.33 → 1733.00
+# (×100) görünüyor → o pencereye düşen sinyal "+%9900 getiri" yazıyordu. Tek
+# böyle satır bir taramanın ortalamasını tek başına "elit" yapmaya yeter
+# (ölçüldü: Güçlü Dönüş "+%1.43 alfa"sının tamamı bu tek satırdandı).
+#
+# Zehir ret_*'ı değil, max_gain/max_loss ve STOP_HIT'i de bozuyor (bölünmede
+# fiyat düşer → sahte stop tetiklemesi).
+#
+# Eşik %15: BIST günlük limiti ±%10. Tüm evrende (156.598 günlük hareket)
+# ölçüldü → %10-11.5 arası 612 meşru limit hareketi var, %13-15 arası SIFIR
+# gözlem (temiz uçurum), %15 üstü 15 olayın hepsi kurumsal işlem. %25 eşiği
+# %15-25 bandındaki bedelsizleri kaçırırdı.
+#
+# Politika: bölünme içeren pencere ÖLÇÜLEMEZ → None (uydurma değil, dürüst
+# boşluk). Etkilenen ~%0.5 sinyal; kısa pencere temizse o korunur.
+KURUMSAL_ESIK = 0.15
+
+# ── VERİ TUTARSIZLIĞI BEKÇİSİ — 15 Tem 2026 ─────────────────────────────────
+# İkinci (ve daha sinsi) zehir yolu: entry_price scan anında CANLI kaydedilir
+# (scan_signals), çıkış fiyatı ise parquet'ten okunur. İkisi AYNI gün AYNI
+# hisseyi gösterir → ayrışamaz. Ayrışıyorsa parquet bozuktur.
+#   Gerçek vaka: AKYHO 21 May 2026 — DB entry 2.60 (İsyatirim doğruluyor: 2.65),
+#   parquet 13163.90 (5294x şişik) → "5 günde +%546.061 getiri". Bu TEK satır
+#   er_A9'un 5g ortalamasını -%1.11'den +%177.34'e çıkarıyordu.
+# Bölünme bekçisi bunu YAKALAMAZ (pencerede bölünme yok, parquet'in TAMAMI
+# yanlış ölçekte). Eşik veri_bekcisi.TOL_REF_ORAN ile aynı: 1.25 (BIST günlük
+# limit ±%10 → aynı günün canlı fiyatı ile kapanışı %25'ten fazla ayrışamaz).
+TUTARSIZLIK_ORAN = 1.25
+
+
+def kurumsal_islem_indeksleri(df):
+    """|günlük değişim| > %15 olan barların POZİSYONEL indeksleri (set).
+    BIST'te ±%10 limit → %15+ tek-gün hareketi ancak bölünme/bedelsiz olabilir."""
+    try:
+        r = df['Close'].astype(float).pct_change()
+        return {i for i, v in enumerate((r.abs() > KURUMSAL_ESIK).tolist()) if v}
+    except Exception:
+        return set()
+
+
+def ilk_kurumsal_islem(kurumsal_idx, bas, son):
+    """(bas, son] aralığındaki İLK kurumsal işlem pozisyonu — yoksa None."""
+    if not kurumsal_idx:
+        return None
+    aday = [i for i in kurumsal_idx if bas < i <= son]
+    return min(aday) if aday else None
+
+
 def ensure_signal_results_table(conn):
     """signal_results tablosunu oluştur (yoksa)."""
     conn.execute("""
@@ -197,7 +262,8 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
     if forward_windows is None:
         forward_windows = FORWARD_WINDOWS
 
-    conn = sqlite3.connect(DB_FILE)
+    # OneDrive senkronu patron.db'yi anlık kilitleyebiliyor → hemen çökme, 30sn bekle.
+    conn = sqlite3.connect(DB_FILE, timeout=30)
     ensure_signal_results_table(conn)
 
     signals = pd.read_sql(
@@ -213,12 +279,17 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
     pending = 0
     total   = len(signals)
 
+    # İdeal vade birikimi: {scan_type: {day: {'rets':[], 'alphas':[]}}}
+    vade_accum = defaultdict(lambda: defaultdict(lambda: {'rets': [], 'alphas': []}))
+
     # ── XU100 benchmark — alpha hesabı için ─────────────────────────────────
     df_xu100 = load_xu100()
     print(f"  → XU100 benchmark: {'yüklendi' if df_xu100 is not None else 'bulunamadı'}")
 
     print(f"  → {total} sinyal değerlendiriliyor (min {min_fwd}g geçmiş gerekir)...")
     last_pct = -1
+    kurumsal_atlanan = 0   # 15 Tem 2026 — bölünme penceresine düşen sinyal sayısı
+    tutarsiz_bazlanan = 0  # 15 Tem 2026 — girişi parquet bazına taşınan (bölünme)
 
     for i, (_, sig) in enumerate(signals.iterrows()):
         pct = int((i + 1) / total * 100)
@@ -244,12 +315,39 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
 
             # ── Entry fiyatı ────────────────────────────────────────────────
             entry = sig.get('entry_price')
-            if pd.isna(entry) or not entry:
+            _entry_dbden = not (pd.isna(entry) or not entry)
+            if not _entry_dbden:
                 entry = float(df_hist['Close'].iloc[idx])
             else:
                 entry = float(entry)
             if entry == 0:
                 continue
+
+            # ── BAZ UYUMU BEKÇİSİ (15 Tem 2026) ─────────────────────────────
+            # DB'nin CANLI kaydettiği giriş fiyatı ile parquet'in aynı günkü
+            # kapanışı ayrışıyorsa getiri İKİ FARKLI BAZDAN hesaplanır → anlamsız
+            # (AKYHO: 2.60 vs 13163.90 → "+%546.061").
+            #
+            # Ayrışmanın ASIL sebebi (ölçüldü, 506 sinyal): BÖLÜNME. Yahoo
+            # bölünmeyi GERİYE DÖNÜK düzeltir → parquet'in o günkü fiyatı
+            # düzeltilmiş; entry_price ise scan anında kaydedilmiş = bölünme
+            # ÖNCESİ ham fiyat. Ayrışma oranları temiz bölünme katsayısı:
+            # BMSTL/TURSG/ULUFA 2.00 (1:2) · ISGSY 5.88 (1:6) · GOODY 5.63.
+            # Kanıt: ISGSY 19 May → DB 111.30, parquet 18.56, İsyatirim 18.56.
+            #
+            # ÇÖZÜM: ATLAMA — girişi parquet'e TAŞI. Giriş+çıkış aynı bazda olur,
+            # getiri ekonomik olarak DOĞRU (bölünmede lot sayısı da katlanır;
+            # düzeltilmiş seri bunu zaten içerir). Parquet'in TAMAMI bozuksa
+            # (nadir) giriş+çıkış aynı bozuk ölçekte → oran yine doğru; baz
+            # KIRILMASI pencereye düşerse yukarıdaki kurumsal işlem bekçisi
+            # zaten o vadeyi NULL yapar. İki bekçi birlikte tam koruma verir.
+            if _entry_dbden:
+                _pq_kapanis = float(df_hist['Close'].iloc[idx])
+                if _pq_kapanis > 0:
+                    _ayrisma = max(entry, _pq_kapanis) / min(entry, _pq_kapanis)
+                    if _ayrisma > TUTARSIZLIK_ORAN:
+                        entry = _pq_kapanis      # baz uyumu: parquet kazanır
+                        tutarsiz_bazlanan += 1
 
             # ── Stop seviyesi ────────────────────────────────────────────────
             stop = sig.get('stop_level')
@@ -259,13 +357,24 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
             bias = str(sig.get('bias', 'bullish') or 'bullish').lower()
             is_bullish = 'bear' not in bias
 
+            # ── KURUMSAL İŞLEM BEKÇİSİ (15 Tem 2026) ─────────────────────────
+            # Bölünme/bedelsiz penceredeyse fiyat serisi süreksiz → o pencerenin
+            # getirisi/stop'u ÖLÇÜLEMEZ. Aşağıda etkilenen alanlar None bırakılır.
+            _kur_idx = kurumsal_islem_indeksleri(df_hist)
+            _split_i = ilk_kurumsal_islem(_kur_idx, idx, idx + max_fwd)
+            if _split_i is not None:
+                kurumsal_atlanan += 1
+
             # ── Pencere boyunca fiyat serisi ─────────────────────────────────
             window_slice = df_hist.iloc[idx: idx + max_fwd + 1]
             has_low      = 'Low'  in window_slice.columns
             has_high     = 'High' in window_slice.columns
 
-            # Max gain / max loss (tüm 20g penceresi)
-            if has_high and has_low and len(window_slice) > 1:
+            # Max gain / max loss (tüm 20g penceresi) — bölünme varsa ölçülemez
+            if _split_i is not None:
+                max_gain_20g = None
+                max_loss_20g = None
+            elif has_high and has_low and len(window_slice) > 1:
                 max_high   = float(window_slice['High'].max())
                 min_low    = float(window_slice['Low'].min())
                 max_gain_20g = round((max_high - entry) / entry * 100, 2)
@@ -314,6 +423,11 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
                 if f_idx >= len(df_hist):
                     continue
 
+                # Bölünme bu pencerenin İÇİNDE mi? (kısa pencere temizse korunur —
+                # 15. günde bölünme varsa 5g/10g geçerli, 20g ölçülemez)
+                if _split_i is not None and _split_i <= f_idx:
+                    continue
+
                 f_price = float(df_hist['Close'].iloc[f_idx])
                 ret     = round((f_price - entry) / entry * 100, 2)
 
@@ -358,14 +472,53 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
             results.append(result_row)
             upsert_result(conn, db_row)
 
+            # ── İDEAL VADE: gün 1..MAXD_VADE getiri + alpha (bias-düzeltmeli) ──
+            # Kurumsal işlem bekçisi: bölünme gününden İTİBAREN seri süreksiz →
+            # o günden sonraki vadeler ölçülemez, döngü kırılır (öncesi geçerli).
+            _split_vade = ilk_kurumsal_islem(_kur_idx, idx, idx + MAXD_VADE)
+            for dd in range(1, MAXD_VADE + 1):
+                v_idx = idx + dd
+                if v_idx >= len(df_hist):
+                    break
+                if _split_vade is not None and _split_vade <= v_idx:
+                    break
+                v_price = float(df_hist['Close'].iloc[v_idx])
+                v_ret   = (v_price - entry) / entry * 100
+                if not is_bullish:
+                    v_ret = -v_ret  # bearish sinyal → düşüş = kâr
+                v_alpha = None
+                if xu100_idx is not None:
+                    v_xf = xu100_idx + dd
+                    if v_xf < len(df_xu100):
+                        v_xe = float(df_xu100['Close'].iloc[xu100_idx])
+                        v_xx = float(df_xu100['Close'].iloc[v_xf])
+                        if v_xe > 0:
+                            v_xr = (v_xx - v_xe) / v_xe * 100
+                            if not is_bullish:
+                                v_xr = -v_xr
+                            v_alpha = v_ret - v_xr
+                bucket = vade_accum[sig['scan_type']][dd]
+                bucket['rets'].append(v_ret)
+                if v_alpha is not None:
+                    bucket['alphas'].append(v_alpha)
+
         except Exception:
             continue
 
     conn.commit()
     conn.close()
 
+    if kurumsal_atlanan:
+        print(f"  → 🛡 Kurumsal işlem bekçisi: {kurumsal_atlanan} sinyalin penceresinde "
+              f"bölünme/bedelsiz var → etkilenen vadeler ölçülmedi (NULL)")
+    if tutarsiz_bazlanan:
+        print(f"  → 🛡 Baz uyumu bekçisi: {tutarsiz_bazlanan} sinyalin girişi parquet "
+              f"bazına taşındı (DB girişi bölünme öncesi = bayat) → getiri artık ölçülüyor")
+
     df = pd.DataFrame(results)
-    return df, {'pending': pending, 'evaluated': len(df)}
+    return df, {'pending': pending, 'evaluated': len(df),
+                'kurumsal_atlanan': kurumsal_atlanan,
+                'tutarsiz_bazlanan': tutarsiz_bazlanan}, vade_accum
 
 
 def summarize(df):
@@ -455,9 +608,81 @@ def summarize(df):
     return out
 
 
+def compute_ideal_vade(vade_accum):
+    """
+    Her scan_type için alpha-zirvesi gününü (sinyalin piyasaya üstünlüğü en yüksek)
+    bulup ideal vade ARALIĞI + getirisi + edge bayrağını döner.
+    Döner: {scan_type: {ideal_lo, ideal_hi, ideal_ret, ideal_alpha, ideal_hit, ideal_n, has_edge}}
+    """
+    out = {}
+    for scan_type, days in vade_accum.items():
+        per_day = []
+        for d in sorted(days.keys()):
+            rets = days[d]['rets']
+            if len(rets) < MIN_N_VADE:
+                continue
+            s = pd.Series(rets, dtype=float)
+            pos = s[s > 0]; neg = s[s <= 0]
+            hit = round(len(pos) / len(s) * 100, 1)
+            avg = round(float(s.mean()), 2)
+            win = round(float(pos.mean()), 2) if len(pos) else 0.0
+            loss = round(float(neg.mean()), 2) if len(neg) else 0.0
+            alphas = days[d]['alphas']
+            a = round(float(pd.Series(alphas).mean()), 2) if alphas else 0.0
+            per_day.append({'d': d, 'n': len(s), 'hit': hit, 'avg': avg,
+                            'a': a, 'win': win, 'loss': loss})
+        if not per_day:
+            continue
+
+        # ── ÖRNEK-DESTEK KAPISI: kuyruğa-yapışmayı önle ─────────────────────────────
+        # Sadece sinyallerin çoğunun ULAŞTIĞI vadeleri peak adayı say. Eriyen kuyruktaki
+        # (n/nmax düşük) birkaç survivor'ın şişirdiği sahte α-zirvesi ideal vadeyi çalamaz.
+        _nmax = max(p['n'] for p in per_day)
+        _support = [p for p in per_day if p['n'] >= NFRAC_VADE * _nmax]
+        if _support:                      # destekli gün varsa onlarla çalış (yoksa eski davranış)
+            per_day = _support
+
+        # ── KARARLI ZİRVE: α eğrisini 3g pencerede yumuşat → gün-gün argmax sıçramasını önle ──
+        # Sonra zirveye yakın (tolerans içi) EN ERKEN günü seç: "aynı piyasa farkını en kısa
+        # sürede yakaladığın vade". Uzun vadede örnek azalıp α şiştiği için saf argmax kararsız.
+        per_day.sort(key=lambda x: x['d'])
+        _aseq = [p['a'] for p in per_day]
+        for i, p in enumerate(per_day):
+            _l = max(0, i - 1); _h = min(len(per_day), i + 2)
+            p['a_s'] = sum(_aseq[_l:_h]) / (_h - _l)   # 3g merkezli yumuşatma
+        peak_s = max(p['a_s'] for p in per_day)
+        TOL = 0.3
+        _cand = [p for p in per_day if p['a_s'] >= peak_s - TOL]
+        peak = min(_cand, key=lambda x: x['d'])        # tolerans içi en erken gün
+        has_edge = peak_s >= EDGE_MIN_ALPHA            # +%0.1 gibi gürültü "geçiyor" sayılmasın
+
+        # Aralık: peak çevresinde yumuşak-α platosu kaldığı sürece genişlet
+        thr = max(0.0, peak_s - TOL)
+        by_d = {p['d']: p for p in per_day}
+        lo = hi = peak['d']
+        while (lo - 1) in by_d and by_d[lo - 1]['a_s'] >= thr:
+            lo -= 1
+        while (hi + 1) in by_d and by_d[hi + 1]['a_s'] >= thr:
+            hi += 1
+
+        out[scan_type] = {
+            'ideal_lo':    lo,
+            'ideal_hi':    hi,
+            'ideal_day':   peak['d'],      # α-zirvesi tek gün (sütun alt-satırı için)
+            'ideal_ret':   peak['avg'],
+            'ideal_win':   peak['win'],    # o vadede ort. kazanç
+            'ideal_loss':  peak['loss'],   # o vadede ort. kayıp
+            'ideal_alpha': peak['a'],      # o vadede piyasa farkı
+            'ideal_hit':   peak['hit'],
+            'ideal_n':     peak['n'],
+            'has_edge':    has_edge,
+        }
+    return out
+
+
 def db_stats():
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, timeout=30)
         c    = conn.cursor()
         total   = c.execute("SELECT COUNT(*) FROM scan_signals").fetchone()[0]
         first   = c.execute("SELECT MIN(scan_date) FROM scan_signals").fetchone()[0]
@@ -509,7 +734,7 @@ def main():
     print()
 
     print(f"🔍 Değerlendirme başlıyor (lookback={LOOKBACK_DAYS}g)...")
-    df, eval_meta = evaluate_signals(LOOKBACK_DAYS)
+    df, eval_meta, vade_accum = evaluate_signals(LOOKBACK_DAYS)
     print(f"   Değerlendirildi  : {eval_meta['evaluated']}")
     print(f"   Bekleyen         : {eval_meta['pending']}")
     print()
@@ -517,6 +742,16 @@ def main():
     print("📈 Özet çıkarılıyor...")
     summary = summarize(df)
     print(f"   {len(summary)} tarama tipinde sonuç var.")
+
+    # İdeal vade (alpha-zirvesi) → her özet satırına işle
+    ideal = compute_ideal_vade(vade_accum)
+    _iv_n = 0
+    for r in summary:
+        iv = ideal.get(r['scan_type'])
+        if iv:
+            r.update(iv)
+            _iv_n += 1
+    print(f"   {_iv_n} taramada ideal vade hesaplandı.")
     print()
 
     # Top 5 — expectancy 10G
