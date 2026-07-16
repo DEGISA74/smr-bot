@@ -1397,6 +1397,32 @@ def evaluate_signals(lookback_days=90, forward_windows=None):
     today = datetime.now(_TZ_ISTANBUL).date()
     results = []
 
+    # 14 Tem 2026 — PERFORMANS KÖK FIX: eski kod her sinyal SATIRI için
+    # get_safe_historical_data çağırıyordu → seans içinde her benzersiz hisse
+    # Yahoo+İsyatirim AĞ ÇEKİMİ tetikliyordu (binlerce satır × saniyeler =
+    # dakikalarca donan render; py-spy suçüstü yakaladı: İsyatirim SSL read).
+    # Geçmiş getiri hesabına bugünün barı GEREKMEZ → parquet DİSKTEN,
+    # sembol başına 1 KEZ okunur. Docstring'in "ek internet isteği yapmaz"
+    # sözü artık gerçekten doğru.
+    _hist_cache = {}
+    def _load_hist(sym):
+        if sym in _hist_cache:
+            return _hist_cache[sym]
+        df_h = None
+        try:
+            _adaylar = [f"{sym}_1d.parquet"]
+            if not str(sym).endswith(".IS"):
+                _adaylar.append(f"{sym}.IS_1d.parquet")
+            for _cand in _adaylar:
+                _pq = os.path.join("veriler", _cand)
+                if os.path.exists(_pq):
+                    df_h = pd.read_parquet(_pq).sort_index()
+                    break
+        except Exception:
+            df_h = None
+        _hist_cache[sym] = df_h
+        return df_h
+
     for _, sig in signals.iterrows():
         try:
             signal_date = pd.to_datetime(sig['scan_date']).date()
@@ -1404,12 +1430,10 @@ def evaluate_signals(lookback_days=90, forward_windows=None):
             if days_elapsed < min(forward_windows):
                 continue  # henüz değerlendirilemez
 
-            # Parquet cache'ten tarihi veri al
-            df_hist = get_safe_historical_data(sig['symbol'], period='1y', interval='1d')
+            # Diskteki parquet'ten tarihi veri al (ağ YOK, sembol başına 1 okuma)
+            df_hist = _load_hist(sig['symbol'])
             if df_hist is None or df_hist.empty:
                 continue
-
-            df_hist = df_hist.sort_index()
 
             # Sinyal tarihine en yakın index'i bul
             sig_ts = pd.Timestamp(sig['scan_date'])
@@ -2051,7 +2075,7 @@ except Exception as _initdb_e:
 # tüm ticker listeleri ve display ad sözlüğü burada tanımlıdır.
 # ==============================================================================
 # --- VARLIK LİSTELERİ ---
-priority_sp = ["^GSPC", "^DJI", "^NDX", "^IXIC", "^RUT", "NVDA", "GOOGL", "RKLB", "META", "MSFT", "TSPY", "ARCC", "JEPI", "QQQI", "SPYI"]
+priority_sp = ["^GSPC", "^DJI", "^NDX", "^IXIC", "^RUT", "NVDA", "GOOGL", "RKLB", "META", "MSFT", "TSPY", "ARCC", "JEPI", "QQQI", "SPYI", "SPCX"]
 
 # S&P 500'ün Tamamı (503 Hisse - Güncel)
 raw_sp500_rest = [
@@ -2080,7 +2104,7 @@ raw_sp500_rest = [
     "TGT", "TJX", "TMO", "TMUS", "TPR", "TRGP", "TRMB", "TROW", "TRV", "TSCO", "TSLA", "TSN", "TT", "TTWO", "TXN", "TXT", "TYL", "UAL", "UBER", 
     "UDR", "UHS", "ULTA", "UNH", "UNP", "UPS", "URI", "USB", "V", "VICI", "VLO", "VLTO", "VMC", "VRSK", "VRSN", "VRTX", "VTR", "VTRS", "VZ", 
     "WAB", "WAT", "WBA", "WBD", "WDC", "WEC", "WELL", "WFC", "WM", "WMB", "WMT", "WRB", "WRK", "WST", "WTW", "WY", "WYNN", "XEL", "XOM", "XYL", 
-    "YUM", "ZBH", "ZBRA", "ZTS", "SOFI", "RKLB"
+    "YUM", "ZBH", "ZBRA", "ZTS", "SOFI", "RKLB", "SPCX"
 ]
 
 # Kopyaları Temizle ve Birleştir
@@ -4055,7 +4079,7 @@ def render_synthetic_sentiment_panel(data):
                     _layers += [_ring_outer, _ring_inner, _ring_text]
         except Exception:
             pass
-        st.altair_chart(alt.layer(*_layers).resolve_scale(y='independent').properties(height=280, title=alt.TitleParams("Momentum", fontSize=14, color="#38bdf8")), width='stretch')
+        st.altair_chart(alt.layer(*_layers).resolve_scale(y='independent').properties(height=280, title=alt.TitleParams(f"Momentum — {display_ticker}", fontSize=14, color="#38bdf8")), width='stretch')
     with c2:
         _ymin2 = min(data['STP'].min(), data['Price'].min()) * 0.999
         _ymax2 = max(data['STP'].max(), data['Price'].max()) * 1.001
@@ -4077,7 +4101,7 @@ def render_synthetic_sentiment_panel(data):
         _overlay2  = base2.mark_point(opacity=0, size=200).encode(
                         y=alt.Y('Price:Q', scale=_ys2), tooltip=_tt2).add_params(_hover2)
         st.altair_chart(alt.layer(area, line_stp, line_price, _vrule2, _dot_p2, _dot_s2, _overlay2).properties(
-            height=280, title=alt.TitleParams("Sentiment: Fiyat (mavi) ↔ Eğilim (sarı) — yukarı keserse AL, aşağı keserse SAT", fontSize=14, color="#38bdf8")), width='stretch')
+            height=280, title=alt.TitleParams(f"Sentiment — {display_ticker}: Fiyat (mavi) ↔ Eğilim (sarı) — yukarı keserse AL, aşağı keserse SAT", fontSize=14, color="#38bdf8")), width='stretch')
 
 
 # ── GÖRSEL ANALİZ İNFOGRAFİĞİ (22 Haz 2026) — birebir PNG görünümü, st.html ile ──
@@ -4108,19 +4132,60 @@ def _infografik_widget_html(ticker, _datekey, _srcver):
         return f"__ERR__{_e}"
 
 
+def _ig_start_bg(ticker):
+    """Görsel üretimini ARKA PLANDA başlat (15 Tem 2026 — PARALEL ÜRETİM).
+    ÖLÇÜM: build_widget_html ~15.7sn soğuk / ~11.5sn veri sıcakken bile (içinde 3
+    ayrı kaleido çizimi var: ana grafik + momentum + ivme). Veri sıcakken de
+    düşmemesi maliyetin ÇİZİMDE olduğunu gösterir.
+    ÖNCEDEN sıralıydı: sayfa render (~45sn) BİTİP sonra görsel (~15sn) → ~60sn.
+    Artık yuva ayrılırken iş burada başlar, sayfanın kalanı çizilirken PARALEL
+    koşar; en dipte finalize'a gelindiğinde sonuç çoktan hazırdır → görsel sayfa
+    biter bitmez oturur (15sn render'ın içinde saklanır).
+    Güvenli: build_widget_html saf hesap (grafik çiz → HTML döndür), st.* çağırmaz.
+    add_script_run_ctx → thread içinde st.cache_data normal çalışsın (yoksa cache
+    bypass + 'missing ScriptRunContext' uyarısı)."""
+    import threading
+    _key = (ticker, pd.Timestamp.today().strftime('%Y-%m-%d'), _infografik_src_version())
+    # Aynı hedef için koşan iş varsa tekrar başlatma (autorefresh/rerun koruması)
+    if (st.session_state.get('_ig_bg_key') == _key
+            and st.session_state.get('_ig_bg') is not None):
+        return
+    _box = {}
+
+    def _work():
+        try:
+            _box['html'] = _infografik_widget_html(*_key)
+        except Exception as _e:
+            _box['html'] = f"__ERR__{_e}"
+
+    _th = threading.Thread(target=_work, daemon=True)
+    try:
+        from streamlit.runtime.scriptrunner import add_script_run_ctx
+        add_script_run_ctx(_th)
+    except Exception:
+        pass
+    _th.start()
+    st.session_state['_ig_bg']     = (_th, _box)
+    st.session_state['_ig_bg_key'] = _key
+
+
 def _render_infografik_inapp(ticker):
     """Görsel analiz infografiği — 'Para Akış İvmesi' barının yerinde, expander içinde.
     8 Tem 2026 v2: OTOMATİK ama SONA SAKLANMIŞ üretim. Eskiden üretim bu noktada,
     sayfa çizilirken yapılıyordu (~5sn her şeyi bekletir + kaleido/Chrome soğuk
     açılış). Şimdi burada sadece YER AYRILIR; üretim _finalize_infografik_slot ile
-    sol kolonun EN SONUNDA yapılır → sayfanın kalanı beklemez, görsel kendiliğinden
-    yerine gelir. (Aradaki toggle denemesi kullanıcı istemediği için kaldırıldı.)"""
+    betiğin EN DİBİNDE (sağ kolondan da SONRA) yuvaya konur → sayfanın hiçbir yeri
+    beklemez, görsel kendiliğinden yerine gelir.
+    15 Tem 2026: üretim ayrıca burada ARKA PLANDA başlatılır (_ig_start_bg) →
+    sayfa render'ı ile paralel koşar, en dipte hazır bekler."""
     _disp = get_display_name(ticker)
     with st.expander(f"📊 Görsel Analiz · {_disp} — TIKLA (tüm analiz tek görselde)", expanded=False):
         st.session_state['_ig_slot'] = st.empty()
         st.session_state['_ig_slot_ticker'] = ticker
         with st.session_state['_ig_slot'].container():
             st.caption("📊 Görsel otomatik hazırlanıyor — sayfanın kalanı yüklendikten hemen sonra burada belirir…")
+    # Yuva ayrıldı → üretimi ŞİMDİ başlat (sayfanın kalanı çizilirken paralel koşsun)
+    _ig_start_bg(ticker)
 
 
 def _finalize_infografik_slot():
@@ -4133,7 +4198,18 @@ def _finalize_infografik_slot():
     if _slot is None or not _t:
         return
     try:
-        _html = _infografik_widget_html(_t, pd.Timestamp.today().strftime('%Y-%m-%d'), _infografik_src_version())
+        # 15 Tem 2026 — arka planda başlayan iş (bkz. _ig_start_bg) burada TOPLANIR.
+        # Paralel koştuğu için normalde çoktan bitmiştir → join anında döner.
+        _html = None
+        _bg = st.session_state.get('_ig_bg')
+        if _bg is not None:
+            _th, _box = _bg
+            _th.join(timeout=120)
+            _html = ("__ERR__görsel üretimi 120sn'yi aştı (kaleido takıldı?)"
+                     if _th.is_alive() else _box.get('html'))
+        if _html is None:   # arka plan iş yok (ilk kurulum/beklenmedik) → eski senkron yol
+            _html = _infografik_widget_html(_t, pd.Timestamp.today().strftime('%Y-%m-%d'),
+                                            _infografik_src_version())
         with _slot.container():
             if _html and not _html.startswith("__ERR__"):
                 _comp.html(f"<div style='background:#0a1019;border-radius:12px;'>{_html}</div>",
@@ -4149,6 +4225,8 @@ def _finalize_infografik_slot():
     finally:
         st.session_state['_ig_slot'] = None
         st.session_state['_ig_slot_ticker'] = None
+        st.session_state['_ig_bg'] = None
+        st.session_state['_ig_bg_key'] = None
 
 
 def render_smart_volume_panel(ticker):
@@ -4491,6 +4569,8 @@ def render_smart_volume_panel(ticker):
     _flow_persist_html = ""
     _absorption_html = ""
     _obv_spark_html = ""
+    _obv_expl_html = ""
+    _obv_sentez_html = ""
     _div_badge_info = None   # ('bearish'|'bullish', days)
     _cs_hist_list = []       # son 10 gün konsensüs skoru (yaklaşık)
     _vp_gap_html = ""        # LVN ince bölge satırı (Değer Bölgesi kartı)
@@ -4516,16 +4596,43 @@ def render_smart_volume_panel(ticker):
                         )
                         # Fiyat bindirmesi — aynı 30 gün, kendi min-max'ine normalize
                         _px_pts = ""
+                        _pyv = []
                         try:
                             _pxv = _df_ctx['Close'].iloc[-_n_pts:].values.astype(float)
                             _pmin, _pmax = float(_pxv.min()), float(_pxv.max())
                             _prng = (_pmax - _pmin) or 1.0
+                            _pyv = [37 - (_v - _pmin) / _prng * 32 for _v in _pxv]
                             _px_pts = " ".join(
-                                f"{(_j / (_n_pts - 1) * 100):.1f},{(37 - (_v - _pmin) / _prng * 32):.1f}"
-                                for _j, _v in enumerate(_pxv)
+                                f"{(_j / (_n_pts - 1) * 100):.1f},{_py:.1f}"
+                                for _j, _py in enumerate(_pyv)
                             )
                         except Exception:
                             pass
+                        # 14 Tem 2026 — AYRIŞMA DOLGUSU: OBV ile fiyat çizgisinin
+                        # arası yönüne göre boyanır. OBV üstte (görsel olarak fiyatın
+                        # üzerinde) = para akışı fiyatın önünde → yeşil (birikim önde);
+                        # OBV altta = akış fiyatı desteklemiyor → kırmızı (dağıtım/tuzak).
+                        # Üst üste giden segmentler boyanmaz (uyum = boş kutu = sinyal yok).
+                        _fill_html = ""
+                        try:
+                            if _pyv and len(_pyv) == _n_pts:
+                                _oyv = [_oy(_v) for _v in _ov]
+                                _fp = []
+                                for _j in range(1, _n_pts):
+                                    _fx1 = (_j - 1) / (_n_pts - 1) * 100
+                                    _fx2 = _j / (_n_pts - 1) * 100
+                                    # SVG'de küçük y = yukarı → fark = fiyat_y - obv_y
+                                    _fd = ((_pyv[_j-1] - _oyv[_j-1]) + (_pyv[_j] - _oyv[_j])) / 2
+                                    if abs(_fd) < 0.6:
+                                        continue  # üst üste — gürültü boyanmaz
+                                    _fc_clr = "#10b981" if _fd > 0 else "#ef4444"
+                                    _fp.append(
+                                        f'<polygon points="{_fx1:.1f},{_oyv[_j-1]:.1f} '
+                                        f'{_fx2:.1f},{_oyv[_j]:.1f} {_fx2:.1f},{_pyv[_j]:.1f} '
+                                        f'{_fx1:.1f},{_pyv[_j-1]:.1f}" fill="{_fc_clr}" opacity="0.34"/>')
+                                _fill_html = "".join(_fp)
+                        except Exception:
+                            _fill_html = ""
                         _sp_clr = "#10b981" if _ov[-1] >= _ov[0] else "#f87171"
                         _base_y = _oy(_ov[0])
                         _ly = _oy(_ov[-1])
@@ -4533,10 +4640,14 @@ def render_smart_volume_panel(ticker):
                             f'<polyline points="{_px_pts}" fill="none" stroke="#94a3b8" '
                             f'stroke-width="1.1" stroke-linejoin="round" opacity="0.55"/>'
                         ) if _px_pts else ''
+                        # 14 Tem 2026 v2 — 4 SÜTUN düzeni için grafik bloğu SADE
+                        # (sadece çizim + lejant); açıklama ve sentez ayrı sütunlara gider.
                         _obv_spark_html = (
                             f'<div style="margin-top:2px;">'
                             f'<svg viewBox="0 0 104 42" preserveAspectRatio="none" '
-                            f'style="width:100%;height:52px;display:block;">'
+                            f'style="width:100%;height:88px;display:block;">'
+                            # Ayrışma dolgusu (en arkada)
+                            f'{_fill_html}'
                             # Referans: 30 gün öncesinin OBV seviyesi (kesikli)
                             f'<line x1="0" y1="{_base_y:.1f}" x2="104" y2="{_base_y:.1f}" '
                             f'stroke="{text_muted}" stroke-width="0.8" stroke-dasharray="3,2.5" opacity="0.5"/>'
@@ -4550,14 +4661,56 @@ def render_smart_volume_panel(ticker):
                             f'<span>OBV vs <span style="color:#94a3b8;">FİYAT</span> — SON 30 GÜN</span>'
                             f'<span>gri = fiyat · kesikli = 30g önceki OBV</span>'
                             f'</div>'
-                            # 13 Tem 2026 — "hangi kutu neyi ölçer" tek cümle (GENEL ÖZET
-                            # gidişat çizgisiyle karışmasın; oradaki hız, buradaki VARLIK)
-                            f'<div style="font-size:0.8rem;color:{text_muted};font-style:italic;'
-                            f'margin-top:2px;opacity:0.85;">Bu grafik birikimin <b>VARLIĞINI</b> ölçer: '
-                            f'çizgi yükseliyorsa hisseye para giriyor. Hızlanıp yavaşladığı ise '
-                            f'GENEL ÖZET&#39;teki &#34;OBV gidişatı&#34; çizgisinde.</div>'
                             f'</div>'
                         )
+                        # SÜTUN 2 — okuma rehberi (hiç bilmeyen biri için, kısa)
+                        _obv_expl_html = (
+                            f'<b>Yeşil çizgi</b> = para akışı, <b>gri</b> = fiyat. Dolgu: '
+                            f'<span style="color:#10b981;">yeşil</span> = akış fiyattan güçlü · '
+                            f'<span style="color:#ef4444;">kırmızı</span> = akış fiyattan zayıf · '
+                            f'boş = uyumlu.'
+                        )
+                        # SÜTUN 4 — SENTEZ: günlük hız (GENEL ÖZET barlarıyla aynı hesap:
+                        # OBV EMA5 günlük farkı) × fiyata göre konum (son 10 gün dolgu yönü)
+                        # → tek basit cümle. (14 Tem 2026, kullanıcı tarifi: AKBNK örneği)
+                        try:
+                            _dn_ss = get_display_name(ticker)
+                            _ema5_ss = _obv_s.ewm(span=5, adjust=False).mean()
+                            _spd_n = float(_ema5_ss.diff().iloc[-1]) / (float(
+                                _df_ctx['Volume'].rolling(20).mean().iloc[-1]) or 1.0)
+                            _rel_ss = 0.0
+                            if _pyv and len(_pyv) == _n_pts:
+                                _oyv_ss = [_oy(_v) for _v in _ov]
+                                _k = min(10, _n_pts)
+                                _rel_ss = (sum(_pyv[-_k:]) / _k) - (sum(_oyv_ss[-_k:]) / _k)
+                            _c_ye = '<span style="color:#10b981;">yeşil</span>'
+                            _c_ki = '<span style="color:#ef4444;">kırmızı</span>'
+                            _c_tu = '<span style="color:#f59e0b;">turuncu</span>'
+                            _c_ba = '<span style="color:#4ade80;">yeşil</span>'
+                            if _spd_n > 0.005:
+                                if _rel_ss > 1.5:
+                                    _sz = f'Para giriyor (barlar {_c_ba}) ✚ fiyattan da güçlü (dolgu {_c_ye}) — birikim izi.'
+                                elif _rel_ss < -1.5:
+                                    _sz = f'Para giriyor (barlar {_c_ba}) ama fiyat daha hızlı koşuyor (dolgu {_c_ki}) — hacim desteği zayıf.'
+                                else:
+                                    _sz = f'Para giriyor (barlar {_c_ba}), fiyatla uyumlu — sağlıklı görünüm.'
+                            elif _spd_n < -0.005:
+                                if _rel_ss > 1.5:
+                                    _sz = f'Para çıkıyor (barlar {_c_tu}) ✚ ama çıkış, fiyattan daha yavaş (dolgu {_c_ye}) — satışta panik yok.'
+                                elif _rel_ss < -1.5:
+                                    _sz = f'Para çıkıyor (barlar {_c_tu}) ✚ üstelik fiyattan da hızlı (dolgu {_c_ki}) — zayıflık teyitli.'
+                                else:
+                                    _sz = f'Para çıkıyor (barlar {_c_tu}), fiyatla aynı tempoda — akış fiyatı doğruluyor.'
+                            else:
+                                if _rel_ss > 1.5:
+                                    _sz = f'Akış yatay ✚ fiyata göre güçlü duruyor (dolgu {_c_ye}) — satıcı isteksiz.'
+                                elif _rel_ss < -1.5:
+                                    _sz = f'Akış yatay ✚ fiyata göre zayıf (dolgu {_c_ki}) — alıcı isteksiz.'
+                                else:
+                                    _sz = 'Akış yatay, fiyatla uyumlu — belirgin sinyal yok.'
+                            _obv_sentez_html = f'<b>{_dn_ss}</b> — {_sz}'
+                        except Exception:
+                            _obv_sentez_html = ""
                 except Exception:
                     pass
                 # 8) Fiyat-OBV uyumsuzluğu kaç gündür sürüyor (5+ gün ise rozet)
@@ -5298,7 +5451,8 @@ def render_smart_volume_panel(ticker):
         f'{_delta_strength_html}'
         f'</div>'
     )
-    # MİNİ 2: Akıllı Para Durumu (OBV) — sparkline varsa 2 sütun: sol 2/3 çizgi, sağ 1/3 açıklama
+    # MİNİ 2: Akıllı Para Durumu (OBV) — 14 Tem 2026 v2: 4 SÜTUN
+    # [grafik] [okuma rehberi] [ivme yorumu] [SENTEZ — iki sinyalin tek cümlesi]
     if _obv_spark_html:
         _mini2_html = (
             f'<div style="padding:4px 10px 5px; background:{_tile_bg(_t6_tile_pos)};">'
@@ -5307,13 +5461,26 @@ def render_smart_volume_panel(ticker):
             f'<span style="font-size:0.66rem; color:{_t6_obv_color}; font-weight:700; opacity:0.92;white-space:nowrap;">{_t6_cmf_str}</span>'
             f'</div>'
             f'<div style="display:flex; gap:10px; align-items:stretch; margin-top:2px;">'
-            f'<div style="flex:0 0 64%; min-width:0;">'
+            # SÜTUN 1 — grafik
+            f'<div style="flex:1.7; min-width:0;">'
             f'{_obv_spark_html}'
             f'{_flow_persist_html}'
             f'</div>'
-            f'<div style="flex:1; min-width:0;">'
-            f'<div style="font-size:0.80rem; font-weight:900; color:{_t6_obv_color}; line-height:1.2; margin-bottom:2px;">{_t6_short}</div>'
-            f'<div style="font-size:0.70rem; color:{text_sub}; line-height:1.3;">{_t6_short_desc}</div>'
+            # SÜTUN 2 — okuma rehberi (kısa, jargonsuz)
+            f'<div style="flex:0.9; min-width:0; display:flex; align-items:center; '
+            f'font-size:0.68rem; color:{text_sub}; font-style:italic; line-height:1.35;">'
+            f'<span>{_obv_expl_html}</span></div>'
+            # SÜTUN 3 — ivme yorumu (Zayıf İvme vb.)
+            f'<div style="flex:0.9; min-width:0; border-left:1px solid {divider}; padding-left:9px;">'
+            f'<div style="font-size:0.78rem; font-weight:900; color:{_t6_obv_color}; line-height:1.2; margin-bottom:2px;">{_t6_short}</div>'
+            f'<div style="font-size:0.68rem; color:{text_sub}; line-height:1.3;">{_t6_short_desc}</div>'
+            f'</div>'
+            # SÜTUN 4 — SENTEZ: iki sinyalin birleşik, basit okuması
+            f'<div style="flex:1.2; min-width:0; border-left:1px solid {divider}; padding-left:9px; '
+            f'display:flex; flex-direction:column; justify-content:center;">'
+            f'<div style="font-size:0.56rem; color:{text_muted}; font-weight:800; '
+            f'letter-spacing:0.5px; text-transform:uppercase; margin-bottom:3px;">&#129517; Ne Anlama Geliyor?</div>'
+            f'<div style="font-size:0.74rem; color:{text_main}; line-height:1.45;">{_obv_sentez_html}</div>'
             f'</div>'
             f'</div>'
             f'</div>'
@@ -5330,7 +5497,8 @@ def render_smart_volume_panel(ticker):
             f'{_flow_persist_html}'
             f'</div>'
         )
-    _mini_cols = '1fr 1fr' if _mini1_html else '1fr'
+    # 14 Tem 2026 — 20/80 bölüşüm: Bugünkü Baskı dar, Akıllı Para (4 sütun) geniş
+    _mini_cols = '1fr 4fr' if _mini1_html else '1fr'
     _html += (
         f'<div style="display:grid; grid-template-columns:{_mini_cols}; gap:0;">'
         f'{_mini1_html}{_mini2_html}'
@@ -7144,9 +7312,14 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
         try:
             if chart_data.get('retest'):
                 stage = 4; stage_label = "Retest — Boyun Destek Testi"
-                conclusion = ("Fiyat boynu kırdıktan sonra geri çekilip boyun çizgisini <b>destek</b> "
-                              "olarak test ediyor — klasik giriş bölgesi. Stop boynun ~%3 altına "
-                              "konulabilir (dar risk, aynı hedef). ") + conclusion
+                # Retest = boyun kırıldı + fiyat boynun üstünde tutunuyor. Eski
+                # "henüz kırmadı, sabırla bekle" cümlesini EKLEME (çelişki) —
+                # tutarlı tek SONUÇ yeniden kur.
+                conclusion = (
+                    f"Fiyat boyun çizgisini (<b>{fp(neck)}</b>) yukarı kırdıktan sonra geri çekilip "
+                    f"bu seviyeyi <b>destek</b> olarak test ediyor — klasik giriş bölgesi. "
+                    f"Hedef <b>{fp(target)}</b> ({pct(target, curr_price)}). Stop boynun ~%3 altına "
+                    f"konulabilir (dar risk). <b>{fp(invalid)}</b> altına kapanış formasyonu geçersiz kılar.")
             elif int(chart_data.get('breakout_state', 0) or 0) >= 2:
                 stage = 4; stage_label = "Kırılım Gerçekleşti"
         except Exception: pass
@@ -9921,28 +10094,25 @@ def _render_genel_ozet_panel():
                             _md_w, _md_h = 300, 46
                             _md_mid = _md_h / 2
                             _md_lim = max(5.0, max(abs(v) for v in _mdel) * 1.1)
-                            def _md_xy(i, v):
-                                x = i * (_md_w / (_md_n - 1))
-                                y = _md_mid - (v / _md_lim) * (_md_mid - 4)
-                                return x, y
+                            # 14 Tem 2026 — BAR görünümü (kullanıcı isteği): her bar O GÜNÜN
+                            # ivme değişimi. Sıfır çizgisinden yukarı mavi (güçlendi),
+                            # aşağı kırmızı (zayıfladı). Hesap AYNI (_mdel günlük fark).
                             _md_p = [f"<line x1='0' y1='{_md_mid}' x2='{_md_w}' y2='{_md_mid}' "
                                      f"stroke='#475569' stroke-width='1' stroke-dasharray='3,3'/>"]
-                            # Segment segment renk: bitiş değeri pozitifse mavi, negatifse kırmızı
-                            for _mi in range(1, _md_n):
-                                _x1, _y1 = _md_xy(_mi - 1, _mdel[_mi - 1])
-                                _x2, _y2 = _md_xy(_mi, _mdel[_mi])
-                                _mc = "#5B84C4" if _mdel[_mi] > 0 else "#ef4444"
+                            _md_step = _md_w / _md_n
+                            _md_bw   = _md_step * 0.62          # bar genişliği (aralıklı)
+                            for _mi, _mv in enumerate(_mdel):
+                                _bx = _mi * _md_step + (_md_step - _md_bw) / 2
+                                _bh = abs(_mv) / _md_lim * (_md_mid - 4)
+                                _bh = max(_bh, 1.0)             # sıfıra yakın gün de görünsün
+                                _by = _md_mid - _bh if _mv >= 0 else _md_mid
+                                _mc = "#5B84C4" if _mv > 0 else ("#ef4444" if _mv < 0 else "#64748B")
+                                _mo = "1.0" if _mi == len(_mdel) - 1 else "0.75"
                                 _md_p.append(
-                                    f"<line x1='{_x1:.1f}' y1='{_y1:.1f}' x2='{_x2:.1f}' y2='{_y2:.1f}' "
-                                    f"stroke='{_mc}' stroke-width='2' stroke-linecap='round' "
-                                    f"vector-effect='non-scaling-stroke'/>")
-                            # Son nokta: parlak yuvarlak + halo
-                            _lx, _ly = _md_xy(_md_n - 1, _mdel[-1])
-                            _lc_dot = "#5B84C4" if _mdel[-1] > 0 else "#ef4444"
-                            _md_p.append(f"<circle cx='{_lx:.1f}' cy='{_ly:.1f}' r='5' "
-                                         f"fill='{_lc_dot}' opacity='0.25'/>")
-                            _md_p.append(f"<circle cx='{_lx:.1f}' cy='{_ly:.1f}' r='2.6' "
-                                         f"fill='{_lc_dot}'/>")
+                                    f"<rect x='{_bx:.1f}' y='{_by:.1f}' width='{_md_bw:.1f}' "
+                                    f"height='{_bh:.1f}' rx='1' fill='{_mc}' opacity='{_mo}'/>")
+                            _lc_dot = ("#5B84C4" if _mdel[-1] > 0 else
+                                       ("#ef4444" if _mdel[-1] < 0 else "#64748B"))
                             _md_son_txt = ("güçleniyor" if _mdel[-1] > 0 else
                                            ("zayıflıyor" if _mdel[-1] < 0 else "sabit"))
                             _mom_hist_html = (
@@ -10568,8 +10738,11 @@ def _render_genel_ozet_panel():
                 _ax_end_c = _cx_c + _x_force * _r_max_c
                 _ay_end_c = _cy_c - _y_force * _r_max_c
 
-                # 3 sinyal noktası — her biri SABİT açıda, uzaklık = sinyal gücü
-                # OBV: Y ekseni (90°/270°), CMF: NE-SW (45°), Delta 5g: NW-SE (135°)
+                # 2 sinyal noktası — her biri SABİT açıda, uzaklık = sinyal gücü
+                # OBV: Y ekseni (90°/270°), CMF: NE-SW (45°)
+                # (14 Tem 2026: Δ5g işareti kaldırıldı — dar alanda üst üste
+                #  biniyordu; Δ5g bilgisi zaten alttaki hız barlarının işi.
+                #  Bileşke ok hesabı DEĞİŞMEDİ.)
                 # Min görünür offset: 0.35 (nötr sinyaller de görünsün)
                 def _safe_pos(strength, min_visible=0.35):
                     """0 dahil sinyalleri en az min_visible mesafede tut."""
@@ -10580,20 +10753,9 @@ def _render_genel_ozet_panel():
 
                 # CMF güç — dual-window state'ten gel (turning durumları zayıf konum)
                 _cmf_strength = _state_force_map.get(_cmf_state, 0.0) if _cmf_val_fc is not None else 0.0
-                # Delta 5g güç
-                _d5_strength = 0.0
-                if _d5_signed_fc is not None and _d5_signed_fc != 0:
-                    try:
-                        _d5_abs_max = float(abs(_r5_fc['Close'] * _r5_fc['Volume']).sum())
-                        if _d5_abs_max > 0:
-                            _d5_strength = max(-1.0, min(1.0, _d5_signed_fc / _d5_abs_max * 5))
-                    except Exception:
-                        _d5_strength = 1.0 if _d5_signed_fc > 0 else -1.0
-
                 # Görünür pozisyonlar (sinyal 0 olsa bile dışarıda görünsün)
                 _obv_disp = _safe_pos(_y_force)
                 _cmf_disp = _safe_pos(_cmf_strength)
-                _d5_disp  = _safe_pos(_d5_strength)
 
                 # Dot konumları (sabit açılar)
                 _r_dot = _r_max_c * 0.78
@@ -10601,8 +10763,6 @@ def _render_genel_ozet_panel():
                 _obv_dot_y = _cy_c - _obv_disp * _r_dot  # 90° (kuzey ekseni)
                 _cmf_dot_x = _cx_c + _cmf_disp * _r_dot * 0.707  # 45° (NE)
                 _cmf_dot_y = _cy_c - _cmf_disp * _r_dot * 0.707
-                _d5_dot_x  = _cx_c - _d5_disp  * _r_dot * 0.707   # 135° (NW)
-                _d5_dot_y  = _cy_c - _d5_disp  * _r_dot * 0.707
 
                 def _dot_color(strength):
                     if strength > 0.1:  return _gs_up_clr
@@ -10611,12 +10771,10 @@ def _render_genel_ozet_panel():
 
                 _obv_dc = _dot_color(_y_force)
                 _cmf_dc = _dot_color(_cmf_strength)
-                _d5_dc  = _dot_color(_d5_strength)
 
-                # 3 distinct shape — kullanıcı tek bakışta tanısın
+                # 2 distinct shape — kullanıcı tek bakışta tanısın
                 # OBV: ▲ üçgen (pozitif) / ▼ üçgen (negatif) — Y ekseni
                 # Para Akışı: ◆ elmas — NE-SW
-                # Δ 5g: ■ kare — NW-SE
                 _sh_r = 5  # shape boyutu (radius) — %30 küçültüldü
 
                 # OBV — üçgen (yön yön'ü gösterir)
@@ -10638,10 +10796,6 @@ def _render_genel_ozet_panel():
                               f"{_cmf_dot_x - _sh_r:.1f},{_cmf_dot_y:.1f}' "
                               f"fill='{_cmf_dc}'/>")
 
-                # Δ 5g — kare
-                _d5_shape = (f"<rect x='{_d5_dot_x - _sh_r*0.85:.1f}' y='{_d5_dot_y - _sh_r*0.85:.1f}' "
-                             f"width='{_sh_r*1.7:.1f}' height='{_sh_r*1.7:.1f}' fill='{_d5_dc}'/>")
-
                 _compass_svg = (
                     f"<svg width='110' height='100' viewBox='0 0 110 100' style='flex-shrink:0;'>"
                     # Ekseni
@@ -10652,10 +10806,9 @@ def _render_genel_ozet_panel():
                     # Bileşke ok (3 sinyalin toplamı, arkada)
                     f"<line x1='{_cx_c}' y1='{_cy_c}' x2='{_ax_end_c:.1f}' y2='{_ay_end_c:.1f}' "
                     f"stroke='{_ar_clr}' stroke-width='2.2' stroke-linecap='round' opacity='0.55'/>"
-                    # 3 sinyal şekli (öne)
+                    # 2 sinyal şekli (öne)
                     f"{_obv_shape}"
                     f"{_cmf_shape}"
-                    f"{_d5_shape}"
                     # Etiketler
                     f"<text x='50' y='12' text-anchor='middle' font-size='8.5' fill='#94a3b8' font-weight='700'>BOĞA</text>"
                     f"<text x='50' y='97' text-anchor='middle' font-size='8.5' fill='#94a3b8' font-weight='700'>AYI</text>"
@@ -10687,10 +10840,6 @@ def _render_genel_ozet_panel():
                     # Elmas ◆
                     return (f"<svg width='14' height='14' viewBox='0 0 14 14'>"
                             f"<polygon points='7,1 13,7 7,13 1,7' fill='{clr}'/></svg>")
-                def _mini_d5_icon(clr):
-                    # Kare ■
-                    return (f"<svg width='14' height='14' viewBox='0 0 14 14'>"
-                            f"<rect x='2' y='2' width='10' height='10' fill='{clr}'/></svg>")
                 # OBV durumu — 13 Tem 2026 fix: pozitif ara değerler (toparlanma
                 # +0.25, olası toplama +0.5) yanlışlıkla "zayıflıyor" etiketi ve
                 # gri ikon alıyordu → üstteki oy hücresi (▲) ile çelişiyordu.
@@ -10715,14 +10864,12 @@ def _render_genel_ozet_panel():
                 _cmf_short, _cmf_pos = _cmf_state_label.get(_cmf_state, ("—", None))
                 if _cmf_val_fc is None:
                     _cmf_short, _cmf_pos = "—", None
-                # Delta5g durumu
-                _d5_pos = (None if _d5_signed_fc is None else (True if _d5_signed_fc > 0 else (False if _d5_signed_fc < 0 else None)))
-                _d5_short = "poz." if (_d5_signed_fc and _d5_signed_fc > 0) else ("neg." if (_d5_signed_fc and _d5_signed_fc < 0) else "—")
+                # (14 Tem 2026: Δ5g lejant satırı kaldırıldı — pusulada 2 işaret,
+                #  Δ5g bilgisi alttaki hız barlarında yaşıyor)
                 _signals_block = (
                     f"<div style='display:flex;flex-direction:column;gap:3px;flex:1;justify-content:center;padding-left:38px;'>"
                     + _sig_line("OBV",         _obv_short, _obv_y_pos, _mini_obv_icon(_obv_dc, _obv_y_pos))
                     + _sig_line("Para Akışı",  _cmf_short, _cmf_pos,   _mini_cmf_icon(_cmf_dc))
-                    + _sig_line("Δ 5g",        _d5_short,  _d5_pos,    _mini_d5_icon(_d5_dc))
                     + "</div>"
                 )
 
@@ -10846,28 +10993,25 @@ def _render_genel_ozet_panel():
                                 _od_w, _od_h = 300, 46
                                 _od_mid = _od_h / 2
                                 _od_lim = max(0.3, max(abs(v) for v in _odel) * 1.1)
-                                def _od_xy(i, v):
-                                    return (i * (_od_w / (_od_n - 1)),
-                                            _od_mid - (v / _od_lim) * (_od_mid - 4))
+                                # 14 Tem 2026 — BAR görünümü ("bar=hız, çizgi=seviye" kuralı;
+                                # Momentum satırıyla aynı kalıp). Hesap AYNI (_odel günlük fark).
+                                # Renkler MOMENTUM'dan farklı (kullanıcı isteği, 13 Tem):
+                                # birikim = yeşil (#4ade80) · dağıtım = turuncu (#f59e0b)
                                 _od_p = [f"<line x1='0' y1='{_od_mid}' x2='{_od_w}' y2='{_od_mid}' "
                                          f"stroke='#475569' stroke-width='1' stroke-dasharray='3,3'/>"]
-                                # Renkler MOMENTUM çizgisinden farklı (kullanıcı isteği,
-                                # 13 Tem): birikim = yeşil (#4ade80, 20G Konum noktasıyla
-                                # aynı) · dağıtım = turuncu (#f59e0b)
-                                for _oi in range(1, _od_n):
-                                    _x1, _y1 = _od_xy(_oi - 1, _odel[_oi - 1])
-                                    _x2, _y2 = _od_xy(_oi, _odel[_oi])
-                                    _ocl = "#4ade80" if _odel[_oi] > 0 else "#f59e0b"
+                                _od_step = _od_w / _od_n
+                                _od_bw   = _od_step * 0.62
+                                for _oi, _ov_d in enumerate(_odel):
+                                    _obx = _oi * _od_step + (_od_step - _od_bw) / 2
+                                    _obh = max(abs(_ov_d) / _od_lim * (_od_mid - 4), 1.0)
+                                    _oby = _od_mid - _obh if _ov_d >= 0 else _od_mid
+                                    _ocl = "#4ade80" if _ov_d > 0 else ("#f59e0b" if _ov_d < 0 else "#64748B")
+                                    _oo  = "1.0" if _oi == len(_odel) - 1 else "0.75"
                                     _od_p.append(
-                                        f"<line x1='{_x1:.1f}' y1='{_y1:.1f}' x2='{_x2:.1f}' y2='{_y2:.1f}' "
-                                        f"stroke='{_ocl}' stroke-width='2' stroke-linecap='round' "
-                                        f"vector-effect='non-scaling-stroke'/>")
-                                _olx, _oly = _od_xy(_od_n - 1, _odel[-1])
-                                _olc = "#4ade80" if _odel[-1] > 0 else "#f59e0b"
-                                _od_p.append(f"<circle cx='{_olx:.1f}' cy='{_oly:.1f}' r='5' "
-                                             f"fill='{_olc}' opacity='0.25'/>")
-                                _od_p.append(f"<circle cx='{_olx:.1f}' cy='{_oly:.1f}' r='2.6' "
-                                             f"fill='{_olc}'/>")
+                                        f"<rect x='{_obx:.1f}' y='{_oby:.1f}' width='{_od_bw:.1f}' "
+                                        f"height='{_obh:.1f}' rx='1' fill='{_ocl}' opacity='{_oo}'/>")
+                                _olc = ("#4ade80" if _odel[-1] > 0 else
+                                        ("#f59e0b" if _odel[-1] < 0 else "#64748B"))
                                 _od_son = ("birikim" if _odel[-1] > 0 else
                                            ("dağıtım" if _odel[-1] < 0 else "denge"))
                                 _obv_line_html = (
@@ -10883,7 +11027,7 @@ def _render_genel_ozet_panel():
                                     f"<span style='color:{_olc};font-weight:700;'>bugün: {_od_son}</span>"
                                     f"</div>"
                                     f"<div style='font-size:0.8rem;color:{_gs_neu};font-style:italic;"
-                                    f"margin-top:1px;opacity:0.85;'>Bu çizgi birikimin <b>HIZINI</b> ölçer: "
+                                    f"margin-top:1px;opacity:0.85;'>Bu barlar birikimin <b>HIZINI</b> ölçer: "
                                     f"para girişi hızlanıyor mu, gaz mı kesiyor? Birikim var mı sorusunun "
                                     f"cevabı ise SMART MONEY panelindeki \"OBV vs Fiyat\" grafiğinde.</div>"
                                     f"</div>"
@@ -14487,23 +14631,39 @@ if st.session_state.generate_prompt:
     # SCANNER TIER inject — bu ticker'ı flag eden TIER'lı scanner varsa emit
     # 15 Haz 2026 GÜNCELLEME: TIER_1 garantili emit (max sınırından bağımsız) — kullanıcı
     # tweet için kritik sinyali kaçırmasın. TIER_1'ler ÖNCE + ayrı vurgu, TIER_2/3 sonra.
+    # 15 Tem 2026 — ELİT VURGU KISILDI (geri almak için _ELIT_VURGU_KISIK = False):
+    # bölünme-zehiri temizlenmiş backtest (N'ler 2-5 kat büyüdü) 4 TIER_1'in DÖRDÜNÜ de
+    # desteklemiyor — er_D1 ret -1.93 / er_A8 -1.52 (EKSİ!), er_A2 +0.45 / er_B8 +0.61.
+    # Harita revizyonu 28 Tem'de (er_A1 randevusuyla birlikte). O güne dek: sınırsız
+    # emit YOK (herkes tek havuzda max 4), 🏆 prefiksi YOK, TIER_1 satırına temkin notu.
+    _ELIT_VURGU_KISIK = True
     _scanner_tier_lines = []
     _has_tier1_flag = False
     try:
         _tiers = get_active_scanner_tiers(t)
-        # TIER_1'leri ayır — HEPSİ emit edilir (sınır yok)
         _tier1_list = [_ti for _ti in _tiers if _ti.get('tier') == 'TIER_1_ELIT']
         _other_list = [_ti for _ti in _tiers if _ti.get('tier') != 'TIER_1_ELIT']
         _has_tier1_flag = len(_tier1_list) > 0
-        for _ti in _tier1_list:
-            _scanner_tier_lines.append(
-                f"    - 🏆 {_ti['tier']} · {_ti['display']} → {_ti['note']}"
-            )
-        # TIER_2/3 — max 4 (gürültü kontrolü)
-        for _ti in _other_list[:4]:
-            _scanner_tier_lines.append(
-                f"    - {_ti['tier']} · {_ti['display']} → {_ti['note']}"
-            )
+        if _ELIT_VURGU_KISIK:
+            # TIER_1 sırada önde ama havuz ORTAK — toplam max 4, vurgu yok
+            for _ti in (_tier1_list + _other_list)[:4]:
+                _satir = f"    - {_ti['tier']} · {_ti['display']} → {_ti['note']}"
+                if _ti.get('tier') == 'TIER_1_ELIT':
+                    _satir += (" [⚠ NOT: bu etiketin rakamları ESKİ ölçümden; temiz backtest"
+                               " (15 Tem 2026) şu an desteklemiyor — analiz merkezine TAŞIMA,"
+                               " sıradan destekleyici sinyal olarak tart]")
+                _scanner_tier_lines.append(_satir)
+        else:
+            # TIER_1'leri ayır — HEPSİ emit edilir (sınır yok)
+            for _ti in _tier1_list:
+                _scanner_tier_lines.append(
+                    f"    - 🏆 {_ti['tier']} · {_ti['display']} → {_ti['note']}"
+                )
+            # TIER_2/3 — max 4 (gürültü kontrolü)
+            for _ti in _other_list[:4]:
+                _scanner_tier_lines.append(
+                    f"    - {_ti['tier']} · {_ti['display']} → {_ti['note']}"
+                )
     except Exception:
         pass
     _em_scanner_tiers = ("\n  scanner_tiers_aktif:\n" + "\n".join(_scanner_tier_lines)) if _scanner_tier_lines else ""
@@ -14583,7 +14743,9 @@ if st.session_state.generate_prompt:
         pass
 
     # ELIT_FLAG_AKTIF açık etiketi — AI'nin gözünden kaçmasın
-    if _has_tier1_flag:
+    # 15 Tem 2026: _ELIT_VURGU_KISIK iken KAPALI — "analiz merkezine taşı" emri,
+    # temiz backtest'in desteklemediği etikete AI'yı zorluyordu (canlı zarar riski).
+    if _has_tier1_flag and not _ELIT_VURGU_KISIK:
         _em_scanner_tiers = "\n  elit_flag_aktif: TRUE  # 🏆 TIER_1_ELIT scanner bu hissede flag — analiz merkezine taşı" + _em_scanner_tiers
 
     # 9 Haz 2026 Oturum 20 — BREAKOUT ALERT (Kibar Type 1)
@@ -15532,6 +15694,7 @@ Algoritma adlarını ("cum_delta_5g", "Net Baskınlık", "OBV slope", "CMF Dual"
   ✅ "Son 5 günde -%28.8'lik satış ağırlığı var"
   ✅ "Bugün gün içinde alıcı/satıcı dağılımı -%70.7 satıcı tarafına eğik — anlık tablo onların"
 İlk geçişte teknik terim parantezde gösterilebilir ("para akışı eğrisi (OBV)") ama 2. geçişten itibaren çıplak adlandırma yasak. Sayının "ne ölçtüğünü" Türkçe diyerek geç.
+⚠️ İSTİSNA: Akıllı para ÇEKİRDEK 5 terimi (Kümülatif Delta / OBV durum / para akış ivmesi / CMF Dual / Force Index) — o günün BASKIN 1-2 tanesi için bu kural GEÇERSİZ; rakam ÖNE çıkar → bkz. "AKILLI PARA MERDİVEN AÇILIMI".
 
 *** İNFERENTIAL MOOD — "VARMIŞ GİBİ / SANKİ / İZLENİMİ" (Türkçe analist sezgisi) ***
 Gerçek analistler kesin yargı yerine sezgi yumuşatması kullanır. AI bunu kullanmayınca "haber spikeri" tonuna düşer. **Her analiz içinde en az 2 inferential ifade bulunsun:**
@@ -15540,6 +15703,23 @@ KURAL: Çelişkili veya belirsiz sinyallerde MUTLAKA inferential. Kesin sinyalde
 ÖRNEK FİX (kullanıcı geri bildirimi):
   ❌ "Son 5 günlük net işlem farkı -%28.8 seviyesinde gerçekleşirken fiyat yine de yeşil kapandı."
   ✅ "Tuhafı şu: Son 5 günde -%28.8'lik satış baskısı varmış gibi görünüyor ama fiyat yine de yeşil kapandı."
+
+*** AKILLI PARA MERDİVEN AÇILIMI (çekirdek terimler — bilimsel + halk dili, 14 Tem 2026) ***
+Akıllı para çekirdeği bu 5 terim: Kümülatif Delta (net işlem farkı) · OBV durum/uyumsuzluk · para akış ivmesi (OBV Momentum σ) · CMF Dual-Window · Force Index.
+Bu hesabın adı "Smart Money Radar" — okuyan "masal değil, bilimsel konuşuyor" desin diye rakamı VERİRİZ; ama sadece bilimsel değil, aynı anda HİKAYE de anlatırız. Yani rakamı yazıp geçme; katman katman aç.
+KURAL: O günün BASKIN 1-2 akıllı para sinyalini şu 4 katmanla aç (yardımcı sinyaller tek-satır anchor kalır):
+  1) ÇIPA     — metriği rakamıyla ver: "Son 5 günlük net işlem farkı -%42.0"
+  2) ÇEVİRİ   — rakam neyi ölçüyor, düz Türkçe: "alım-satımlar net %42 satıcı lehine dengesiz"
+  3) YANİ     — sokak dili sonuç: "satıcılar alıcılara baskın, net satış ağırlığı var"
+  4) KURUMSAL — büyük oyuncu tarafında ne demek: "kurumsal kâr satışı / dağıtım baskısı izlenimi"
+ÖRNEK MERDİVENLER (kopya değil, yapıyı kap):
+  • Net işlem farkı: "Son 5 günlük net işlem farkı -%42.0 → alım-satımlar net %42 satıcı lehine dengesiz. Yani satıcılar baskın, net satış ağırlığı var. Bu da kurumsal tarafta kâr satışı ve dağıtım baskısı izlenimi veriyor."
+  • CMF Dual: "CMF 5 günlük -0.21, 20 günlük hâlâ +0.08 → son bir haftada para çıkışa dönmüş ama son ayın ana eğilimi girişte. Yani kısa vadeli el kâr satıyor, kurumsal taban henüz bozulmadı gibi. Kalıcı dönüş için 5 günlüğün de sıfır altına yerleşmesi beklenir."
+  • Para akış ivmesi: "Para akış ivmesi +2.1 sigma → giriş hızı normal dalgalanmanın 2 standart sapma üstünde, istatistiksel olarak sıra dışı. Yani toplanma ivmeleniyor. Kurumsal taraf sessizce değil, hızlanarak mal alıyor izlenimi."
+  • OBV durum: "OBV 14 günlük eğim yukarı ama son 5 günde aşağı sızıyor → akış çizgisi uzun vadede girişte, kısa vadede yön çeviriyor. Yani büyük resim birikim ama sessiz bir el değiştirme başlamış gibi. Fiyat zirve denerken akış onaylamıyorsa yükseliş içi boş olabilir."
+  • Force Index: "Force Index kısa ve orta vadede satış tarafında (13 günlük negatife döndü) → fiyatı iten hacimli güç zayıflamış. Yani hareketin arkasındaki motor kısılıyor. Büyük hacimli emirler alış değil satış yönünde çalışıyor izlenimi."
+⚠️ SINIR: Merdiven yalnız o günün baş 1-2 sinyaline. 6 anchor'ın HEPSİNİ merdivenle açma → duvar/tekrar olur. Diğerleri tek anchor cümlesi.
+⚠️ Bu blok, yukarıdaki "METRİK ADI YERİNE ZAMAN+DEĞER" kuralını akıllı para çekirdeği için EZER (o 5 terimde rakam öne çıkar). Diğer tüm metrikler ZAMAN+DEĞER kuralına tabi kalır.
 
 ═══════════════════════════════════════════════════════════════════════
 
@@ -17042,6 +17222,17 @@ def _render_left_col():
         border-top: 1px solid #1e3a5f !important;
         padding: 0 !important;
     }
+    /* 14 Tem 2026 — ESKİ İÇERİK PERDESİ: hisse değişince render bitene kadar
+       önceki hissenin panelleri ekranda kalıyordu (ALKLC grafiği XU100 başlığı
+       altında vakası). Stale elementler artık soluk + bulanık → eski grafik
+       güncel sanılamaz. */
+    div[data-stale="true"],
+    div[data-stale="true"] *,
+    [data-testid="stElementContainer"][data-stale="true"] {
+        opacity: 0.12 !important;
+        filter: blur(2px) grayscale(0.9) !important;
+        transition: opacity 0.4s ease;
+    }
     </style>""", unsafe_allow_html=True)
 
     # 📈 SMC Concept Analiz (SMC Derin Yapı) — 22 Haz 2026: "Trend & Seviyeler"
@@ -18236,10 +18427,12 @@ def _render_left_col():
     except Exception:
         pass
 
-    # ── GÖRSEL ANALİZ DOLDURMA — HER ŞEYİN EN SONUNDA (8 Tem 2026) ──────────
-    # İnfografik üretimi (~5sn, kaleido) bilerek en sona saklandı: yukarıdaki tüm
-    # paneller çizildi, sayfa kullanılabilir; görsel şimdi ayrılan yuvaya dolar.
-    _finalize_infografik_slot()
+    # ── GÖRSEL ANALİZ DOLDURMA — betiğin EN DİBİNE taşındı (14 Tem 2026) ─────
+    # ÖNCEDEN burada (sol kolon SONU) çağrılıyordu; ama Streamlit tek geçişte
+    # çalıştığı için sağ kolon (_render_right_col) bu ~5sn kaleido üretimini
+    # BEKLİYORDU. Artık finalize, sağ kolon çizildikten SONRA en dipte çağrılır.
+    # st.empty yuvası sol koldaki expander'da ayrıldığı için oradan doldurulunca
+    # görsel yine DOĞRU yere oturur (yuva konumunu oluşturulduğu anda hatırlar).
 
     # --- SAĞ SÜTUN ---
 
@@ -19735,3 +19928,10 @@ def _render_right_col():
 with col_right:
     with st.container(height=2300, border=False):
         _render_right_col()
+
+
+# ── GÖRSEL ANALİZ DOLDURMA — TÜM SAYFA (sol + sağ) çizildikten SONRA ────────
+# İnfografik üretimi (~5sn, kaleido) bilerek en sona saklandı. Sol koldaki
+# expander'da ayrılan st.empty yuvası buradan doldurulur → hem sol hem SAĞ kolon
+# artık bu üretimi beklemez; görsel yuvanın konumuna (sol kol) oturur (14 Tem 2026).
+_finalize_infografik_slot()

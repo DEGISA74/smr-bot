@@ -3516,6 +3516,23 @@ KURAL: Her cümleyi yazarken sor — "Aynı maddedeki diğer cümle bunu destekl
 ✅ DOLGU KELİME TEMİZLİĞİ (her cümlede ara):
 "seviyesinde gerçekleşirken / değeriyle / rasyosuyla / matrisinde belirlenirken / oranıyla ölçülürken / piyasa anatomisi / bar içi kontrol / yarı yapı senaryosu / tek taraflı bozulma" → görürsen at, yalın yaz.
 
+*** AKILLI PARA MERDİVEN AÇILIMI (çekirdek terimler — bilimsel + halk dili, 14 Tem 2026) ***
+Akıllı para çekirdeği bu 5 terim: 5G Kümülatif Delta (net işlem farkı) · OBV durum/uyumsuzluk · para akış ivmesi (OMI sigma) · CMF (para akışı, 5g/20g) · Force Index (fiyat×hacim gücü).
+Bu hesabın adı "Smart Money Radar" — okuyan "masal değil, bilimsel konuşuyor" desin diye rakamı VERİRİZ; ama sadece bilimsel değil, aynı anda HİKAYE de anlatırız. Rakamı yazıp geçme; katman katman aç.
+KURAL: O günün BASKIN 1-2 akıllı para sinyalini şu 4 katmanla aç (yardımcı sinyaller tek-satır anchor kalır):
+  1) ÇIPA     — metriği rakamıyla ver: "Son 5 günlük net işlem farkı -%42.0"
+  2) ÇEVİRİ   — rakam neyi ölçüyor, düz Türkçe: "alım-satımlar net %42 satıcı lehine dengesiz"
+  3) YANİ     — sokak dili sonuç: "satıcılar alıcılara baskın, net satış ağırlığı var"
+  4) KURUMSAL — büyük oyuncu tarafında ne demek: "kurumsal kâr satışı / dağıtım baskısı izlenimi"
+ÖRNEK MERDİVENLER (kopya değil, yapıyı kap):
+  • Net işlem farkı: "Son 5 günlük net işlem farkı -%42.0 → alım-satımlar net %42 satıcı lehine dengesiz. Yani satıcılar baskın, net satış ağırlığı var. Bu da kurumsal tarafta kâr satışı ve dağıtım baskısı izlenimi veriyor."
+  • CMF: "CMF 5 günlük -0.21, 20 günlük hâlâ +0.08 → son bir haftada para çıkışa dönmüş ama son ayın ana eğilimi girişte. Yani kısa vadeli el kâr satıyor, kurumsal taban henüz bozulmadı gibi. Kalıcı dönüş için 5 günlüğün de sıfır altına yerleşmesi beklenir."
+  • Para akış ivmesi: "Para akış ivmesi +2.1 sigma → giriş hızı normal dalgalanmanın 2 standart sapma üstünde, istatistiksel olarak sıra dışı. Yani toplanma ivmeleniyor. Kurumsal taraf sessizce değil, hızlanarak mal alıyor izlenimi."
+  • OBV durum: "OBV 14 günlük eğim yukarı ama son 5 günde aşağı sızıyor → akış çizgisi uzun vadede girişte, kısa vadede yön çeviriyor. Yani büyük resim birikim ama sessiz bir el değiştirme başlamış gibi. Fiyat zirve denerken akış onaylamıyorsa yükseliş içi boş olabilir."
+  • Force Index: "Force Index kısa ve orta vadede satış tarafında (13 günlük negatife döndü) → fiyatı iten hacimli güç zayıflamış. Yani hareketin arkasındaki motor kısılıyor. Büyük hacimli emirler alış değil satış yönünde çalışıyor izlenimi."
+⚠️ SINIR: Merdiven yalnız o günün baş 1-2 sinyaline. TÜM akıllı para metriklerini merdivenle açma → duvar/tekrar olur. Diğerleri tek anchor cümlesi.
+⚠️ Bu blok, K5 (açılım max 3 kelime) kuralını akıllı para çekirdeği için EZER — o 5 terimde rakam + açılım öne çıkar. Diğer tüm terimler K5'e tabi kalır.
+
 *** EN ÖNEMLİ KURAL: VERİ ODAK NOKTASI VE AĞIRLIKLANDIRMA KURALI ***
 1. ANALİZİN MERKEZİ: Her zaman "Akıllı Para ne yapıyor?", "Senaryo Çerçevesi (Bias+Zone)" ve "Fitil Çekiliyor mu?" soruları olmalıdır.
   3 ana odağın var:
@@ -3548,7 +3565,7 @@ Aksi durumda: uzaklık → SEVİYE bilgisi (destek/direnç, izleyen stop noktas�
 
 ÖZEL DURUMLAR:
 - PRE-LAUNCH / "BİRİKİM TAMAMLANDI" → bu analizin birincil hikayesi olmalı; Z-Score arka plana atılır.
-🚨 BACKTEST KANITLI TIER_1_ELIT SİNYALLER (8 Haz 2026 — sert kural): Pre-Launch BOS (hit %78, ret %+12.9), Erken Radar A8 "Ucuz+Hacimli Atak" (hit %100, ret %+12.4), Erken Radar B1 "Mükemmel Sıkışma" (hit %75, ret %+4.6) — 11.797 sinyal backtest doğrulamalı. Bu üçünden biri tetiklenmişse → analizin AÇILIŞ paragrafı o senaryoyu merkeze alır, scenario başlığı/master skor sonra gelir. "Backtest kanıtı: hit %X, ret %+Y" notunu açıkça yaz. Birden fazla varsa en yüksek hit önce.
+⚠️ TARAMA ETİKETLERİ KURALI (güncelleme 15 Tem 2026): Tarama işaretleri (Pre-Launch BOS, Erken Radar senaryoları vb.) DESTEKLEYİCİ sinyaldir, ana hikaye değil. Eski "elit" backtest rakamları veri temizliği sonrası DOĞRULANAMADI — hiçbir taramayı tek başına analizin merkezine alma ve geçmiş hit/getiri RAKAMI YAZMA (eski rakamlar geçersiz). Tarama tetiklenmişse mevcut fiyat yapısı + hacim kanıtıyla birlikte, sıradan bir teyit unsuru olarak tart; çelişiyorsa fiyat yapısı kazanır.
 - ALTIN SET-UP (Golden Trio) + yüksek Z-Score → "güçlü momentum + uzama"; ton olumlu, Z-Score "stop yukarı taşı" notu, panik dili YASAK.
 
 🚫 5 KESİN YASAK CÜMLE KATEGORİSİ (Bağımsız kanıt yoksa yazma — analiz reddedilir):
@@ -3659,6 +3676,10 @@ Hashtag yanıtının SON satırıdır — sonrasında HİÇBİR ŞEY YAZMA.
 # #1 güç tag tek-hisse canlı; #3 DB köprüsü patron.db scan_signals'tan okur (tazelik kapılı).
 # _ER_GOOD: app.py ER_BACKTEST_SCORE'da puanı ≥45 olan senaryolar (iki-rejim kanıtlı). DRIFT
 # uyarısı: app.py ER_BACKTEST_SCORE değişirse burayı da güncelle.
+# ⚠️ 15 Tem 2026 — bu beyaz liste ESKİ (8 Haz) ölçümden. Bölünme-zehiri temizlenmiş
+# backtest'te A1 (-1.27) / D1 (-1.93) / C5 (-0.44) EKSİ, A2/B8/D2 nötr; sağlam kalanlar
+# C2/C6/B5/A7. Liste 28 Tem harita revizyonunda güncellenecek (şimdi tek-rejim veriyle
+# yeniden etiketlemek ters yönde aynı hata olur) — o güne dek aşağıdaki metin İDDİASIZ.
 _ER_GOOD = {'B8', 'D2', 'C2', 'C5', 'C6', 'A2', 'B5', 'A1', 'A7', 'D1'}
 _SCANNER_NAMES_EV = {
     'harmonik_confluence': 'Harmonik Confluence (geometrik dönüş bölgesi)',
@@ -3722,15 +3743,19 @@ def _db_evidence_g1(ticker: str) -> str:
             if str(t).startswith("er_"):
                 code = str(t)[3:]
                 if code in _ER_GOOD:
-                    hits.append(f"Erken Radar {code} (backtest-kanıtlı senaryo)")
+                    hits.append(f"Erken Radar {code} (izlenen senaryo)")
             elif t in _SCANNER_NAMES_EV:
                 hits.append(_SCANNER_NAMES_EV[t])
         if not hits:
             return ""
-        return ("\n*** KANIT KATMANI (son tarama " + last + " — geçmiş backtest'te değer üretmiş kurulumlar) ***\n"
-                "Bu hisse son piyasa taramasında şu KANIT-tabanlı taramalarda çıktı:\n- " + "\n- ".join(hits) +
-                "\nBunları analizde bir GÜVEN katmanı olarak kullan (geçmişte kazandırmış kurulumlar) — "
-                "ama tek başına kehanet sayma, mevcut fiyat yapısıyla birlikte değerlendir.\n")
+        # 15 Tem 2026 — metin İDDİASIZLAŞTIRILDI: eski hali "geçmişte kazandırmış /
+        # KANIT-tabanlı / GÜVEN katmanı" diyordu; temiz backtest bu listedeki birkaç
+        # senaryoyu desteklemiyor. Etiket bilgisi kalır, performans iddiası kalkar.
+        return ("\n*** TARAMA KATMANI (son tarama " + last + " — bu hisseyi işaretleyen taramalar) ***\n"
+                "Bu hisse son piyasa taramasında şu taramalarda çıktı:\n- " + "\n- ".join(hits) +
+                "\nNOT: bunlar DESTEKLEYİCİ işaretlerdir; geçmiş performans iddiası taşımaz "
+                "(eski backtest rakamları veri temizliği sonrası doğrulanamadı). Tek başına "
+                "kehanet sayma — mevcut fiyat yapısı ve hacim kanıtıyla birlikte değerlendir.\n")
     except Exception:
         return ""
 
@@ -3996,6 +4021,23 @@ Sana atanan persona (defansif/momentum/nadir/Golden/Z-uçta vs) sadece ANLATIM T
 4) Pozitif sinyaller "süs kırıntı" olarak yazılmaz — eşit ağırlıklı paragraf hak ederler.
 5) Örnek: Günlük Delta -%77 (negatif) AMA 5g cum_delta +%17 (pozitif) → ASIL hikaye bu ÇELİŞKİ; tek yönlü dağıtım anlatısı HATALI.
 
+*** AKILLI PARA MERDİVEN AÇILIMI (çekirdek terimler — bilimsel + halk dili, 14 Tem 2026) ***
+Akıllı para çekirdeği bu 5 terim: 5G Kümülatif Delta (net işlem farkı) · OBV durum/uyumsuzluk · para akış ivmesi (OMI sigma) · CMF (para akışı, 5g/20g) · Force Index (fiyat×hacim gücü).
+Bu hesabın adı "Smart Money Radar" — okuyan "masal değil, bilimsel konuşuyor" desin diye rakamı VERİRİZ; ama sadece bilimsel değil, aynı anda HİKAYE de anlatırız. Rakamı yazıp geçme; katman katman aç.
+KURAL: O günün BASKIN 1-2 akıllı para sinyalini şu 4 katmanla aç (yardımcı sinyaller tek-satır anchor kalır):
+  1) ÇIPA     — metriği rakamıyla ver: "Son 5 günlük net işlem farkı -%42.0"
+  2) ÇEVİRİ   — rakam neyi ölçüyor, düz Türkçe: "alım-satımlar net %42 satıcı lehine dengesiz"
+  3) YANİ     — sokak dili sonuç: "satıcılar alıcılara baskın, net satış ağırlığı var"
+  4) KURUMSAL — büyük oyuncu tarafında ne demek: "kurumsal kâr satışı / dağıtım baskısı izlenimi"
+ÖRNEK MERDİVENLER (kopya değil, yapıyı kap):
+  • Net işlem farkı: "Son 5 günlük net işlem farkı -%42.0 → alım-satımlar net %42 satıcı lehine dengesiz. Yani satıcılar baskın, net satış ağırlığı var. Bu da kurumsal tarafta kâr satışı ve dağıtım baskısı izlenimi veriyor."
+  • CMF: "CMF 5 günlük -0.21, 20 günlük hâlâ +0.08 → son bir haftada para çıkışa dönmüş ama son ayın ana eğilimi girişte. Yani kısa vadeli el kâr satıyor, kurumsal taban henüz bozulmadı gibi. Kalıcı dönüş için 5 günlüğün de sıfır altına yerleşmesi beklenir."
+  • Para akış ivmesi: "Para akış ivmesi +2.1 sigma → giriş hızı normal dalgalanmanın 2 standart sapma üstünde, istatistiksel olarak sıra dışı. Yani toplanma ivmeleniyor. Kurumsal taraf sessizce değil, hızlanarak mal alıyor izlenimi."
+  • OBV durum: "OBV 14 günlük eğim yukarı ama son 5 günde aşağı sızıyor → akış çizgisi uzun vadede girişte, kısa vadede yön çeviriyor. Yani büyük resim birikim ama sessiz bir el değiştirme başlamış gibi. Fiyat zirve denerken akış onaylamıyorsa yükseliş içi boş olabilir."
+  • Force Index: "Force Index kısa ve orta vadede satış tarafında (13 günlük negatife döndü) → fiyatı iten hacimli güç zayıflamış. Yani hareketin arkasındaki motor kısılıyor. Büyük hacimli emirler alış değil satış yönünde çalışıyor izlenimi."
+⚠️ SINIR: Merdiven yalnız o günün baş 1-2 sinyaline. TÜM akıllı para metriklerini merdivenle açma → duvar/tekrar olur. Diğerleri tek anchor cümlesi.
+⚠️ Bu blok, K5 (açılım max 3 kelime) kuralını akıllı para çekirdeği için EZER — o 5 terimde rakam + açılım öne çıkar. Diğer tüm terimler K5'e tabi kalır.
+
 *** EN ÖNEMLİ KURAL: VERİ ODAK NOKTASI VE AĞIRLIKLANDIRMA KURALI ***
 1. ANALİZİN MERKEZİ: Her zaman "Akıllı Para ne yapıyor?", "Senaryo Çerçevesi (Bias+Zone)" ve "Fitil Çekiliyor mu?" soruları olmalıdır.
   3 ana odağın var:
@@ -4100,7 +4142,7 @@ Aksi durumda: uzaklık → SEVİYE bilgisi (destek/direnç, izleyen stop noktas�
 
 ÖZEL DURUMLAR:
 - PRE-LAUNCH / "BİRİKİM TAMAMLANDI" → bu analizin birincil hikayesi olmalı; Z-Score arka plana atılır.
-🚨 BACKTEST KANITLI TIER_1_ELIT SİNYALLER (8 Haz 2026 — sert kural): Pre-Launch BOS (hit %78, ret %+12.9), Erken Radar A8 "Ucuz+Hacimli Atak" (hit %100, ret %+12.4), Erken Radar B1 "Mükemmel Sıkışma" (hit %75, ret %+4.6) — 11.797 sinyal backtest doğrulamalı. Bu üçünden biri tetiklenmişse → analizin AÇILIŞ paragrafı o senaryoyu merkeze alır, scenario başlığı/master skor sonra gelir. "Backtest kanıtı: hit %X, ret %+Y" notunu açıkça yaz. Birden fazla varsa en yüksek hit önce.
+⚠️ TARAMA ETİKETLERİ KURALI (güncelleme 15 Tem 2026): Tarama işaretleri (Pre-Launch BOS, Erken Radar senaryoları vb.) DESTEKLEYİCİ sinyaldir, ana hikaye değil. Eski "elit" backtest rakamları veri temizliği sonrası DOĞRULANAMADI — hiçbir taramayı tek başına analizin merkezine alma ve geçmiş hit/getiri RAKAMI YAZMA (eski rakamlar geçersiz). Tarama tetiklenmişse mevcut fiyat yapısı + hacim kanıtıyla birlikte, sıradan bir teyit unsuru olarak tart; çelişiyorsa fiyat yapısı kazanır.
 - ALTIN SET-UP (Golden Trio) + yüksek Z-Score → "güçlü momentum + uzama"; ton olumlu, Z-Score "stop yukarı taşı" notu, panik dili YASAK.
 
 🚫 5 KESİN YASAK CÜMLE KATEGORİSİ (Bağımsız kanıt yoksa yazma — analiz reddedilir):
