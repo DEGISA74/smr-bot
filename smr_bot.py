@@ -978,9 +978,9 @@ async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[ADMIN] adduser: @{uname} → {tier} ({days}g) bitiş:{expiry}")
 
 
-# ── 🎁 HEDİYE PRO (1 Tem 2026) — /hediye @kullanici → 3 günlük PRO + otomatik hoş geldin ──
+# ── 🎁 HEDİYE PRO (1 Tem 2026) — /hediye @kullanici → 5 günlük PRO + otomatik hoş geldin ──
 GIFT_TIER = "PRO"
-GIFT_DAYS = 3
+GIFT_DAYS = 5
 GIFT_NOTE = "🎁 hediye"
 
 def _pro_gift_welcome(invite_link: str = "") -> str:
@@ -988,8 +988,8 @@ def _pro_gift_welcome(invite_link: str = "") -> str:
     kısmı YOK — bu mesaj kişi zaten bot içindeyken (DM ya da /start sonrası) gösterilir."""
     _inv = f"\n\n🔗 *PRO kanal daveti* (48 saat geçerli):\n{invite_link}" if invite_link else ""
     return (
-        "🎁 *Sana 3 günlük SMR PRO hediye edildi!*\n\n"
-        "Merhaba! Smart Money Radar PRO'yu 3 gün boyunca ücretsiz kullanabilirsin. "
+        "🎁 *Sana 5 günlük SMR PRO hediye edildi!*\n\n"
+        "Merhaba! Smart Money Radar PRO'yu 5 gün boyunca ücretsiz kullanabilirsin. "
         "Neler yapabileceğini anlatayım:\n\n"
         "*💎 SMR PRO'da neler var*\n\n"
         "📊 *Hisse Analizi* _(günde 3 hak)_\n"
@@ -1006,9 +1006,40 @@ def _pro_gift_welcome(invite_link: str = "") -> str:
         "2️⃣ Her akşam 19:00'da bülten otomatik düşer — hiçbir şey yapma.\n"
         "3️⃣ Aşağıdaki linkle PRO kanalına katıl."
         f"{_inv}\n\n"
-        "⏳ 3 gün sonunda otomatik biter, hiçbir ücret çıkmaz. "
+        "⏳ 5 gün sonunda otomatik biter, hiçbir ücret çıkmaz. "
         "Beğenirsen Twitter'da *@SMRadar\\_26*'nın kampanyalarını takip etmeye devam et. "
         "Eminim yakında bir kampanya daha yapacaktır :)"
+    )
+
+def _gift_forward_text() -> str:
+    """Botu HENÜZ başlatmamış kişiye admin'in KOPYALAYIP İLETECEĞİ metin.
+    Kural: DÜZ metin (Markdown YOK — kopyalanınca * / _ yıldızları görünmesin) +
+    hiç bilmeyen birine adım adım (hangi düğme, nereye ne yazılır). Jargon yok."""
+    return (
+        "🎁 Sana bir hediye var! Smart Money Radar PRO'yu 5 gün boyunca ÜCRETSİZ "
+        "kullanabilirsin — borsadaki hisseleri senin için analiz eden bir Telegram botu.\n"
+        "\n"
+        "Açması çok kolay, adım adım yapalım:\n"
+        "\n"
+        "1) Şu yazıya dokun:  t.me/SMRBorsaBot\n"
+        "   → Telegram, \"Smart Money Radar\" adlı botun sohbetini açar.\n"
+        "\n"
+        "2) Ekranın EN ALTINDA \"BAŞLAT\" (bazı telefonlarda \"START\") yazan bir düğme çıkar. "
+        "Ona bir kez dokun.\n"
+        "\n"
+        "3) Hemen bir \"hoş geldin\" mesajı gelir. İşte bu kadar — PRO artık açık! ✅\n"
+        "\n"
+        "Bundan sonra ne yapabilirsin:\n"
+        "\n"
+        "📊 Bir hisseyi analiz ettirmek için: bu sohbete sadece o hissenin kodunu yaz ve enter'a bas. "
+        "Örnek → #THYAO  (ya da #EREGL, #ASELS, #GARAN...). Birkaç saniye içinde o hissenin "
+        "grafiği ve yorumu sana özel gelir.\n"
+        "\n"
+        "📰 Her akşam saat 19:00'da borsanın o günkü özeti kendiliğinden düşer. "
+        "Hiçbir şey yapmana gerek yok, kendisi gelir.\n"
+        "\n"
+        "⏳ 5 günün sonunda kendiliğinden biter. Cebinden tek kuruş çıkmaz, "
+        "kart bilgisi vs. istenmez."
     )
 
 async def _safe_dm(context, chat_id: int, text: str) -> bool:
@@ -1034,7 +1065,7 @@ async def _fresh_pro_invite(context) -> str:
         return ""
 
 async def cmd_hediye(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/hediye @kullanici — 3 günlük PRO hediye + otomatik hoş geldin (admin).
+    """/hediye @kullanici — 5 günlük PRO hediye + otomatik hoş geldin (admin).
     Kişi botu başlatmışsa mesajı direkt DM'ler; başlatmamışsa admin'e 'ilet' metni verir."""
     msg = update.message or update.channel_post
     if not msg:
@@ -1046,7 +1077,7 @@ async def cmd_hediye(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     args = context.args
     if not args or not args[0].lstrip("@").strip():
-        await msg.reply_text("❌ Kullanım: /hediye @kullaniciadi\nÖrnek: /hediye @DenizDegirmenci  (3 günlük PRO otomatik)")
+        await msg.reply_text("❌ Kullanım: /hediye @kullaniciadi\nÖrnek: /hediye @DenizDegirmenci  (5 günlük PRO otomatik)")
         return
     uname = args[0].lstrip("@").strip()
     try:
@@ -1063,22 +1094,22 @@ async def cmd_hediye(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sent = await _safe_dm(context, rec["user_id"], _pro_gift_welcome(invite))
         if sent:
             await msg.reply_text(
-                f"✅ @{uname} → 3 günlük PRO verildi (bitiş `{expiry}`).\n"
+                f"✅ @{uname} → 5 günlük PRO verildi (bitiş `{expiry}`).\n"
                 f"📩 Hoş geldin mesajı + kanal daveti *ona gönderildi*.", parse_mode="Markdown")
         else:
             await msg.reply_text(
-                f"✅ @{uname} → 3 günlük PRO verildi (bitiş `{expiry}`).\n"
-                f"⚠️ Mesaj ulaşmadı — *şunu ona ilet:*\n\n"
-                f"🎁 Sana 3 günlük SMR PRO hediye edildi! Aç: t.me/SMRBorsaBot → *START*'a bas.",
+                f"✅ @{uname} → 5 günlük PRO verildi (bitiş `{expiry}`).\n"
+                f"⚠️ Hoş geldin mesajı ona ulaşmadı.\n"
+                f"👇 *Aşağıdaki mesajı ona ilet:*",
                 parse_mode="Markdown")
+            await msg.reply_text(_gift_forward_text())
     else:
         await msg.reply_text(
-            f"✅ @{uname} → 3 günlük PRO verildi (bitiş `{expiry}`).\n"
-            f"ℹ️ Kullanıcı botu henüz başlatmamış — bot ona doğrudan yazamaz. *Şu metni ona ilet:*\n\n"
-            f"🎁 Sana 3 günlük SMR PRO hediye edildi! Açmak için: t.me/SMRBorsaBot → *START*'a bas. "
-            f"Gerisi (analiz + bülten) otomatik gelir.\n\n"
-            f"_(START'a basınca tam tanıtım otomatik gidecek.)_",
+            f"✅ @{uname} → 5 günlük PRO verildi (bitiş `{expiry}`).\n"
+            f"ℹ️ Kullanıcı botu henüz başlatmamış — bot ona doğrudan yazamaz.\n"
+            f"👇 *Aşağıdaki mesajı olduğu gibi ona ilet* (İlet düğmesi ya da kopyala-yapıştır):",
             parse_mode="Markdown")
+        await msg.reply_text(_gift_forward_text())
 
 
 async def check_scheduled_messages(context: ContextTypes.DEFAULT_TYPE):
