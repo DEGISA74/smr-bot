@@ -2215,6 +2215,82 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
                 hvn_lvn_txt = "(yatay fiyat)"
     except Exception: pass
 
+    # ── SMART MONEY HAZIR CÜMLELERİ (16 Tem 2026) ────────────────────────────
+    # app.py Smart Money panelinin okuyucuya gösterdiği hazır algoritma cümleleri
+    # bot prompt'una da gider — Telegram analizleri de panel diliyle konuşsun
+    # ("yapay zeka cümlesi" değil algoritmanın cümlesi). Başlık+özet TEK KAYNAK:
+    # ict_core.smart_volume_title_desc (panel PA-DNA ile aynı matris). Tile
+    # cümleleri app.py render_smart_volume_panel Tile 1/3/4 ile birebir.
+    sm_ozet_txt = ""
+    deger_bolgesi_txt = ""
+    bugunku_baski_txt = ""
+    hacim_okuma_txt = ""
+    akis_sureklilik_txt = ""
+    try:
+        if "Volume" in df.columns and n >= 20:
+            from indicators import (calculate_volume_delta, calculate_full_volume_profile,
+                                    compute_flow_persistence)
+            _svd = calculate_volume_delta(df)
+            _vp_sm = calculate_full_volume_profile(_svd, lookback=20, bins=20)
+            _sm_poc = float(_vp_sm['poc']); _sm_vah = float(_vp_sm['vah']); _sm_val = float(_vp_sm['val'])
+            _sm_cum5 = float(_svd['Volume_Delta'].iloc[-5:].sum())
+            _sm_vapos = "ÜSTÜNDE" if curr > _sm_vah else ("ALTINDA" if curr < _sm_val else "İÇİNDE")
+            _sm_title, _sm_desc = ict_core.smart_volume_title_desc(_sm_vapos, _sm_cum5, _sm_val, _sm_vah)
+            sm_ozet_txt = f"{_sm_title} — {_sm_desc}"
+            # Panel Tile 1 — Değer bölgesi cümlesi
+            if _sm_vapos == "ÜSTÜNDE":
+                deger_bolgesi_txt = "Kurumların yoğun işlem yaptığı bölgenin üstündeyiz. Güçlü pozitif sinyal."
+            elif _sm_vapos == "ALTINDA":
+                deger_bolgesi_txt = "Kurumların işlem bölgesinin altındayız. Satış baskısı sürüyor."
+            else:
+                deger_bolgesi_txt = "Kurumların en çok işlem yaptığı bölgenin tam içindeyiz. Karar noktası."
+            deger_bolgesi_txt += f" (VA {_fmt(_sm_val)}–{_fmt(_sm_vah)} | POC {_fmt(_sm_poc)})"
+            # Panel Tile 3 — Bugünkü/son seans baskı cümlesi
+            _sm_dv = float(_svd['Volume_Delta'].iloc[-1])
+            _sm_vt = float(_svd['Volume'].iloc[-1])
+            if _sm_vt > 0:
+                _sm_dy = abs(_sm_dv / _sm_vt * 100)
+                if _sm_dv > 0:
+                    bugunku_baski_txt = f"+%{_sm_dy:.0f} — " + (
+                        "Kapanışa doğru alıcılar daha agresif davrandı."
+                        if _sm_dy >= 60 else "Hafif alım ağırlığı var, güçlü değil.")
+                elif _sm_dv < 0:
+                    bugunku_baski_txt = f"-%{_sm_dy:.0f} — " + (
+                        "Kapanışa doğru satıcılar daha agresif davrandı."
+                        if _sm_dy >= 60 else "Hafif satış ağırlığı var, güçlü değil.")
+            # Panel Tile 4 — Hacim cümlesi (rvol yukarıda arefe-normalize hesaplandı)
+            if rvol >= 2.0:
+                _sm_rp = (rvol - 1.0) * 100
+                hacim_okuma_txt = f"Yüksek Hacim — hacim 20G ortalamanın %{_sm_rp:.0f} üzerinde — kurumsal aktivite var."
+            elif rvol >= 0.8:
+                _sm_rp = (rvol - 1.0) * 100
+                _sm_dir = "üzerinde" if _sm_rp >= 0 else "altında"
+                hacim_okuma_txt = f"Normale Yakın Hacim — hacim 20G ortalamanın %{abs(_sm_rp):.0f} {_sm_dir} — bekleme modu."
+            elif rvol >= 0.05:
+                _sm_rp = (1.0 - rvol) * 100
+                hacim_okuma_txt = f"Düşük Hacim — hacim 20G ortalamanın %{_sm_rp:.0f} altında — piyasa ilgisiz, sinyal zayıf."
+            # Süreklilik: son 20 günün kaçında pozitif para akışı (kampanya vs gürültü)
+            _sm_pos, _sm_n = compute_flow_persistence(df, window=20)
+            if _sm_pos is not None and _sm_n >= 20:
+                _sm_tag = ("istikrarlı giriş" if _sm_pos >= 14
+                           else ("istikrarlı çıkış" if _sm_pos <= 6 else "karışık akış"))
+                akis_sureklilik_txt = f"Son {_sm_n} günün {_sm_pos}'inde para girişi — {_sm_tag}"
+    except Exception:
+        pass
+
+    _hc_lines = []
+    if sm_ozet_txt:         _hc_lines.append(f"• Smart Money Özeti: {sm_ozet_txt}")
+    if deger_bolgesi_txt:   _hc_lines.append(f"• Değer Bölgesi: {deger_bolgesi_txt}")
+    if bugunku_baski_txt:   _hc_lines.append(f"• Son Seans Baskısı: {bugunku_baski_txt}")
+    if hacim_okuma_txt:     _hc_lines.append(f"• Hacim Okuması: {hacim_okuma_txt}")
+    if akis_sureklilik_txt: _hc_lines.append(f"• Akış Sürekliliği: {akis_sureklilik_txt}")
+    hazir_cumleler_block = ""
+    if _hc_lines:
+        hazir_cumleler_block = (
+            "\n🗣 HAZIR ALGORİTMA CÜMLELERİ (panel dili — bu boyutları anlatırken kendi cümleni "
+            "sıfırdan kurma, bu cümleleri aynen veya çok yakın varyantla kullan; alan adlarını yazma)\n"
+            + "\n".join(_hc_lines))
+
     # ── OBV + CMF (Bar içi alış/satış teyit katmanı) ─────────────────────────
     # 12 Haz 2026 — CMF tek-mum dominance ek koruması: bugünkü mfv 5g toplam
     # mfv'nin >%60'ı ise TEYİTLİ ALIM rozetine "(⚠ tek-mum ağırlıklı)" eklenir.
@@ -2391,7 +2467,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • Hacim Kalitesi : {hacim_kal_txt}{rs_line}
 • Alıcı/Satıcı Eforu (UDVR): {udvr_txt}
 • Fiyat × Hacim Gücü (Force Index): {fi_txt}
-• GENEL ÖZET Verdicti: {genel_verdict_txt}
+• GENEL ÖZET Verdicti: {genel_verdict_txt}{hazir_cumleler_block}
 💡 ICT SONUÇ: {ict.get('bottom_line', '-')}{_breakout_line}
 ═══════════════════════════════════════"""
 
@@ -3533,6 +3609,9 @@ KURAL: O günün BASKIN 1-2 akıllı para sinyalini şu 4 katmanla aç (yardımc
 ⚠️ SINIR: Merdiven yalnız o günün baş 1-2 sinyaline. TÜM akıllı para metriklerini merdivenle açma → duvar/tekrar olur. Diğerleri tek anchor cümlesi.
 ⚠️ Bu blok, K5 (açılım max 3 kelime) kuralını akıllı para çekirdeği için EZER — o 5 terimde rakam + açılım öne çıkar. Diğer tüm terimler K5'e tabi kalır.
 
+*** HAZIR ALGORİTMA CÜMLELERİ — ÖNCELİKLİ DİL KAYNAĞI ***
+Veri bloğunda "🗣 HAZIR ALGORİTMA CÜMLELERİ" bölümü varsa: o satırlardaki cümleler algoritmanın kendi ürettiği HAZIR Türkçe yorumlardır. O boyutları (POC/değer bölgesi konumu, son seans baskısı, hacim durumu, akış sürekliliği) anlatırken KENDİ cümleni sıfırdan kurma — bu cümleleri aynen veya çok yakın varyantla kullan, gerekirse hikayene bağlayan yarım cümle ekle. Satır etiketlerini ("Smart Money Özeti:", "Değer Bölgesi:" vb.) çıktıya kopyalama; sadece cümlelerin kendisini kullan. Bu cümlelerle başka bir veri satırı çelişik görünürse hazır cümleye güven.
+
 *** EN ÖNEMLİ KURAL: VERİ ODAK NOKTASI VE AĞIRLIKLANDIRMA KURALI ***
 1. ANALİZİN MERKEZİ: Her zaman "Akıllı Para ne yapıyor?", "Senaryo Çerçevesi (Bias+Zone)" ve "Fitil Çekiliyor mu?" soruları olmalıdır.
   3 ana odağın var:
@@ -4037,6 +4116,9 @@ KURAL: O günün BASKIN 1-2 akıllı para sinyalini şu 4 katmanla aç (yardımc
   • Force Index: "Force Index kısa ve orta vadede satış tarafında (13 günlük negatife döndü) → fiyatı iten hacimli güç zayıflamış. Yani hareketin arkasındaki motor kısılıyor. Büyük hacimli emirler alış değil satış yönünde çalışıyor izlenimi."
 ⚠️ SINIR: Merdiven yalnız o günün baş 1-2 sinyaline. TÜM akıllı para metriklerini merdivenle açma → duvar/tekrar olur. Diğerleri tek anchor cümlesi.
 ⚠️ Bu blok, K5 (açılım max 3 kelime) kuralını akıllı para çekirdeği için EZER — o 5 terimde rakam + açılım öne çıkar. Diğer tüm terimler K5'e tabi kalır.
+
+*** HAZIR ALGORİTMA CÜMLELERİ — ÖNCELİKLİ DİL KAYNAĞI ***
+Veri bloğunda "🗣 HAZIR ALGORİTMA CÜMLELERİ" bölümü varsa: o satırlardaki cümleler algoritmanın kendi ürettiği HAZIR Türkçe yorumlardır. O boyutları (POC/değer bölgesi konumu, son seans baskısı, hacim durumu, akış sürekliliği) anlatırken KENDİ cümleni sıfırdan kurma — bu cümleleri aynen veya çok yakın varyantla kullan, gerekirse hikayene bağlayan yarım cümle ekle. Satır etiketlerini ("Smart Money Özeti:", "Değer Bölgesi:" vb.) çıktıya kopyalama; sadece cümlelerin kendisini kullan. Bu cümlelerle başka bir veri satırı çelişik görünürse hazır cümleye güven.
 
 *** EN ÖNEMLİ KURAL: VERİ ODAK NOKTASI VE AĞIRLIKLANDIRMA KURALI ***
 1. ANALİZİN MERKEZİ: Her zaman "Akıllı Para ne yapıyor?", "Senaryo Çerçevesi (Bias+Zone)" ve "Fitil Çekiliyor mu?" soruları olmalıdır.
