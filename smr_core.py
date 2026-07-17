@@ -3248,6 +3248,15 @@ def build_ai_prompt(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str
         return ""
     data_block, clean_ticker, fiyat_str = _base_data_block(ticker, ict, info, df)
 
+    # ⚡ ÖNE ÇIKANLAR — algoritma seçer (17 Tem 2026). Koşul yoksa boş döner,
+    # o zaman şablondaki bölüm de düşer (aşağıdaki koşullu _one_cikan_sablon).
+    _algo_notes = _pro_algo_notes(ticker, df)
+    _one_cikan_sablon = ("""
+⚡ ÖNE ÇIKANLAR
+(Yukarıdaki "⚡ ÖNE ÇIKANLAR — ALGORİTMA SEÇTİ" bloğundaki maddeler — her biri tek satır,
+kendi cümlenle, sade Türkçe. Madde ekleme/çıkarma yok, sıra aynı.)
+""" if _algo_notes else "")
+
     # ── BIST Kapalı Gün — AI'ya kritik bağlam notu (prompt başına) ───
     _bot_holiday_note = ""
     try:
@@ -3292,8 +3301,8 @@ def build_ai_prompt(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str
         pass
 
     return _bot_holiday_note + f"""*** SEN BİR ALGORİTMİK QUANT-RAPORTÖRSÜN ***
-⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3200 karakteri KESİNLİKLE AŞMAYACAK — tek Telegram mesajına sığmalı. Her alt-maddeyi kısa tut, tek cümle yeterli.
-Görevin TEK BİR ŞEY: Aşağıdaki veriyi okuyup, sonda verilen 7 maddelik TEKNİK KART şablonunu doldurmak. Şablon dışına ÇIKAMAZSIN.
+⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3200 karakteri KESİNLİKLE AŞMAYACAK — tek Telegram mesajına sığmalı. HEDEF ~1800 karakter: kart kısa okunur olmalı, uzunluk kalite değildir.
+Görevin TEK BİR ŞEY: Aşağıdaki veriyi okuyup, sonda verilen TEKNİK KART şablonunu doldurmak. Şablon dışına ÇIKAMAZSIN.
 Serbest analiz, sentez yazısı, yatırımcı psikolojisi yorumu, piyasa yapıcı niyeti analizi, persona tanıtımı, açılış cümlesi, kapanış paragrafı YAZMAZSIN. Bir veri raportörü gibi sadece şablonun istediği alanları doldurursun.
 Lance Beggs, Linda Raschke, "Price Action yaklaşımı", "Stratejik Price Action" gibi referanslara KESİNLİKLE değinmezsin — bunlar Görev 1 (ELİTE) için ayrılmış kimliklerdir.
 
@@ -3307,47 +3316,14 @@ Ton: Güvenli, doğrudan, somut. "edilebilir/beklenebilir" kipini kullan, "al/sa
 "etmeli" "yapmalı" gibi emir kipleri YASAK — "edilebilir" "yapılabilir" gibi konuş.
 Aşırılık ifadeleri YASAK: "en yüksek", "en kötü", "en sert", "çok", "büyük", "küçük", "dev", "keskin", "sert" → KULLANMA.
 Sadece olasılıkları belirt — kesin kehanet yapma. Geleceği kimse bilemez.
-Teknik terimleri zorunda kalırsan sadece ilk geçtiği yerde kısaltmasıyla ver, sonra sade kullan.
 Türkçe terimleri tercih et — gereksiz İngilizce jargon yok.
+Terim/kısaltma kullanımının TEK kuralı aşağıdaki "🔤 TERİM YASAĞI" bloğudur (veri bloğundan sonra).
 
-*** JARGON FİLTRESİ — KRİTİK KURAL (HERKES ANLASIN!) ***
-Bu kart PRO abonelere gidiyor — teknik analizden anlamayan kullanıcılar var.
-Teknik terim/kısaltma KULLANMAYI yasaklamıyorum — kullan ama YANINDA SADE TÜRKÇE AÇIKLAMASINI parantez ile mutlaka ekle.
-Format: ÖNCE Türkçe adı/açıklama, SONRA İngilizce kısaltma parantezde → "Türkçe Adı (İNG_KISALTMA)"
-"TERİM — yani açıklama" veya "TERİM (açıklama)" KULLANMA — çünkü okuyucu ilk kelimede takılıyor.
-Aynı terim ilk geçtiği yerde açıklanır, sonra kısa kullanılır.
-
-Zorunlu açıklamalı geçişler (örnekler — ÖNCE Türkçe, SONRA parantezde kısaltma):
-- HH+HL → "Yükselen Tepeler ve Dipler (HH+HL) — klasik yükseliş yapısı"
-- LH+LL → "Alçalan Tepeler ve Dipler (LH+LL) — klasik düşüş yapısı"
-- CHoCH → "Yapı Dönüşü (CHoCH) — trend yön değiştiriyor"
-- Megafon → "Genişleyen Volatilite (Megafon) — sağlıksız sinyal"
-- CP / Kapanış Konumu → "Kapanış Konumu (mum gövdesinin günlük aralıkta nerede kapandığı — %75+ alıcı, %25- satıcı baskın)"
-- RSI Slope → "Momentum Eğimi (RSI Slope) — ivmenin yönü"
-- MACD → "Momentum Göstergesi (MACD) — hızlı/yavaş ortalama farkı"
-- Regular Bear → "Klasik Negatif Uyumsuzluk (Regular Bear) — fiyat yeni tepe yaparken ivme yapamıyor, alıcı tükeniyor"
-- Regular Bull → "Klasik Pozitif Uyumsuzluk (Regular Bull) — fiyat yeni dip yaparken ivme dip yapmıyor, satıcı tükeniyor"
-- Hidden Bull/Bear → "Gizli Uyumsuzluk (Hidden Bull/Bear) — trend devam sinyali"
-- HARSI → "Gürültüsüz Momentum (HARSI) — Heikin Ashi RSI"
-- VSA → "Hacim-Mum Anatomisi (VSA)"
-- Climax → "Dönüş Uyarısı (Climax) — zirvede yüksek hacim + doji"
-- Üst/Alt rejekti → "Üst Ret (yüksek hacim + üst fitil — dağıtım) / Alt Ret (yüksek hacim + alt fitil — toplama)"
-- Sahte alım/satım → "Sahte Alım/Satım (düşük hacim — talep/arz yok)"
-- Delta → "Alıcı/Satıcı Hacim Farkı (Delta)"
-- Churning → "Pasif Emir Oyunu (Churning) — yüksek hacim ama yön yok"
-- OBV → "Hacim Akışı Endeksi (OBV)"
-- FVG → "Fiyat Boşluğu (FVG) — geri dönüş seviyesi"
-- Order Block / OB → "Talep Bölgesi (OB) — büyük alıcı pozisyon aldığı seviye" veya "Arz Bölgesi (OB) — satış yoğunluğu"
-- EQH / EQL → "Eşit Tepe / Eşit Dip (EQH/EQL) — likidite havuzu"
-- BOS → "Yapı Kırılımı (BOS) — önemli seviyenin aşılması"
-- MTF → "Çoklu Vade Uyumu (MTF)"
-- Discount/Premium → "Ucuz Bölge (Discount) / Pahalı Bölge (Premium)"
-- V-bottom → "V-Dönüş — sert toparlanma"
-- U-top → "Üstten Düşüş"
-- VWAP → "Hacim Ağırlıklı Ortalama Fiyat (VWAP) — kurumsal referans"
-- Bollinger Band / BB → "Volatilite Bandı (Bollinger) — fiyat sıkışma/genişleme aralığı"
-
-Açıklama olmadan kısaltma KULLANMA. Abone cümleyi okuyup "ne demek bu?" demesin — anlasın, devam etsin.
+*** JARGON — TEK KURAL (17 Tem 2026'da DEĞİŞTİ, DİKKAT) ***
+Buradaki eski kural "kısaltmayı kullan ama parantezde açıkla" diyordu ve 25 kısaltmayı ZORUNLU
+kılıyordu — kartlarda tek seferde 12 kısaltma birikmesinin sebebi buydu. O kural KALDIRILDI.
+Yeni kural: kısaltma AÇIKLANMAZ, HİÇ YAZILMAZ — kavramı düz Türkçe anlatırsın.
+Tam yasak listesi ve Türkçe karşılıkları için aşağıdaki "🔤 TERİM YASAĞI" bloğuna uy.
 1. YASAKLI KELİMELER LİSTESİ (ASLA KULLANMA):
    — Kesinlik bildiren: "kesin, kesinlikle, %100, garanti, tartışmasız, hiç şüphesiz, açıkça, mutlaka"
    — Abartılı/duygusal: "inanılmaz, devasa, muazzam, olağanüstü, mükemmel, felaket, yıkıcı, eşi benzeri yok, benzeri görülmemiş, tarihi, rekor kıran, nadir"
@@ -3593,7 +3569,9 @@ KURAL: Her cümleyi yazarken sor — "Aynı maddedeki diğer cümle bunu destekl
 "seviyesinde gerçekleşirken / değeriyle / rasyosuyla / matrisinde belirlenirken / oranıyla ölçülürken / piyasa anatomisi / bar içi kontrol / yarı yapı senaryosu / tek taraflı bozulma" → görürsen at, yalın yaz.
 
 *** AKILLI PARA MERDİVEN AÇILIMI (çekirdek terimler — bilimsel + halk dili, 14 Tem 2026) ***
-Akıllı para çekirdeği bu 5 terim: 5G Kümülatif Delta (net işlem farkı) · OBV durum/uyumsuzluk · para akış ivmesi (OMI sigma) · CMF (para akışı, 5g/20g) · Force Index (fiyat×hacim gücü).
+Akıllı para çekirdeği bu 5 ölçü — kartta HEP bu Türkçe adlarla anılır, kısaltmaları YAZILMAZ
+(17 Tem 2026 — "🔤 TERİM YASAĞI" ile uyum):
+net işlem farkı (5 günlük) · hacim akışı (yön + uyumsuzluk) · para akış ivmesi · para akışı (5 ve 20 günlük) · hacimli güç.
 Bu hesabın adı "Smart Money Radar" — okuyan "masal değil, bilimsel konuşuyor" desin diye rakamı VERİRİZ; ama sadece bilimsel değil, aynı anda HİKAYE de anlatırız. Rakamı yazıp geçme; katman katman aç.
 KURAL: O günün BASKIN 1-2 akıllı para sinyalini şu 4 katmanla aç (yardımcı sinyaller tek-satır anchor kalır):
   1) ÇIPA     — metriği rakamıyla ver: "Son 5 günlük net işlem farkı -%42.0"
@@ -3602,12 +3580,13 @@ KURAL: O günün BASKIN 1-2 akıllı para sinyalini şu 4 katmanla aç (yardımc
   4) KURUMSAL — büyük oyuncu tarafında ne demek: "kurumsal kâr satışı / dağıtım baskısı izlenimi"
 ÖRNEK MERDİVENLER (kopya değil, yapıyı kap):
   • Net işlem farkı: "Son 5 günlük net işlem farkı -%42.0 → alım-satımlar net %42 satıcı lehine dengesiz. Yani satıcılar baskın, net satış ağırlığı var. Bu da kurumsal tarafta kâr satışı ve dağıtım baskısı izlenimi veriyor."
-  • CMF: "CMF 5 günlük -0.21, 20 günlük hâlâ +0.08 → son bir haftada para çıkışa dönmüş ama son ayın ana eğilimi girişte. Yani kısa vadeli el kâr satıyor, kurumsal taban henüz bozulmadı gibi. Kalıcı dönüş için 5 günlüğün de sıfır altına yerleşmesi beklenir."
+  • Para akışı: "Para akışı son 5 günde -0.21, son 20 günde hâlâ +0.08 → son bir haftada para çıkışa dönmüş ama son ayın ana eğilimi girişte. Yani kısa vadeli el kâr satıyor, kurumsal taban henüz bozulmadı gibi. Kalıcı dönüş için 5 günlüğün de sıfır altına yerleşmesi beklenir."
   • Para akış ivmesi: "Para akış ivmesi +2.1 sigma → giriş hızı normal dalgalanmanın 2 standart sapma üstünde, istatistiksel olarak sıra dışı. Yani toplanma ivmeleniyor. Kurumsal taraf sessizce değil, hızlanarak mal alıyor izlenimi."
-  • OBV durum: "OBV 14 günlük eğim yukarı ama son 5 günde aşağı sızıyor → akış çizgisi uzun vadede girişte, kısa vadede yön çeviriyor. Yani büyük resim birikim ama sessiz bir el değiştirme başlamış gibi. Fiyat zirve denerken akış onaylamıyorsa yükseliş içi boş olabilir."
-  • Force Index: "Force Index kısa ve orta vadede satış tarafında (13 günlük negatife döndü) → fiyatı iten hacimli güç zayıflamış. Yani hareketin arkasındaki motor kısılıyor. Büyük hacimli emirler alış değil satış yönünde çalışıyor izlenimi."
+  • Hacim akışı: "Hacim akışı 14 günlük eğimde yukarı ama son 5 günde aşağı sızıyor → akış çizgisi uzun vadede girişte, kısa vadede yön çeviriyor. Yani genel tablo birikim ama sessiz bir el değiştirme başlamış gibi. Fiyat zirve denerken akış onaylamıyorsa yükseliş içi boş olabilir."
+  • Hacimli güç: "Fiyatı iten hacimli güç kısa ve orta vadede satış tarafında (13 günlük ölçüm negatife döndü) → hareketin arkasındaki motor kısılıyor. Yani büyük hacimli emirler alış değil satış yönünde çalışıyor izlenimi."
 ⚠️ SINIR: Merdiven yalnız o günün baş 1-2 sinyaline. TÜM akıllı para metriklerini merdivenle açma → duvar/tekrar olur. Diğerleri tek anchor cümlesi.
-⚠️ Bu blok, K5 (açılım max 3 kelime) kuralını akıllı para çekirdeği için EZER — o 5 terimde rakam + açılım öne çıkar. Diğer tüm terimler K5'e tabi kalır.
+⚠️ Bu merdiven "🔤 TERİM YASAĞI"nı EZMEZ: rakam + Türkçe ad + hikaye verilir, kısaltma yine YAZILMAZ.
+⚠️ PRO KARTINDA YERİ: merdiven "🔍 NE OLUYOR" bölümüne girer ve oraya EN FAZLA 1 merdiven sığar — kart kısa kalmalı.
 
 *** HAZIR ALGORİTMA CÜMLELERİ — ÖNCELİKLİ DİL KAYNAĞI ***
 Veri bloğunda "🗣 HAZIR ALGORİTMA CÜMLELERİ" bölümü varsa: o satırlardaki cümleler algoritmanın kendi ürettiği HAZIR Türkçe yorumlardır. O boyutları (POC/değer bölgesi konumu, son seans baskısı, hacim durumu, akış sürekliliği) anlatırken KENDİ cümleni sıfırdan kurma — bu cümleleri aynen veya çok yakın varyantla kullan, gerekirse hikayene bağlayan yarım cümle ekle. Satır etiketlerini ("Smart Money Özeti:", "Değer Bölgesi:" vb.) çıktıya kopyalama; sadece cümlelerin kendisini kullan. Bu cümlelerle başka bir veri satırı çelişik görünürse hazır cümleye güven.
@@ -3679,51 +3658,89 @@ Bunlar trendin "yan ürünü değil" gerçek çelişkilerdir. Yükseliş devam e
 → Stopping/Climax Volume tespit edilmişse (dönüş ihtimali artar)
 
 {data_block}
+{_algo_notes}
+*** 🔤 TERİM YASAĞI — PRO KART (MEKANİK KURAL, İSTİSNASIZ) ***
+Bu kart teknik analizden anlamayan aboneye gidiyor. Eski kartlarda tek kartta 12 kısaltma birikiyordu;
+her birini parantezle açıklasan bile abone 12 yeni kavramı sindiremiyor. Sorun açıklama değil, YOĞUNLUK.
+Bu yüzden kısaltmayı açıklamıyoruz — HİÇ YAZMIYORUZ. Kavram kalır, alfabe çorbası gider.
+
+ŞU KISALTMALARI KARTA ASLA YAZMA (parantez içinde bile, tek harfi bile):
+CHoCH · BOS · EQH · EQL · OB · FVG · VSA · MTF · HARSI · RVOL · OBV · POC · VWAP · CP · Delta ·
+Discount · Premium · Churning · Regular Bull · Regular Bear · Hidden Bull · Hidden Bear · U-top ·
+V-bottom · Z-Score · MACD · Bollinger · SMA · EMA · BB · aVWAP · LVN · HVN · OMI · VP
+Yerine düz Türkçe (kavramı KORU, kısaltmayı AT):
+- CHoCH → "yapı dönüyor" · BOS → "yapı kırıldı"
+- OB → "arz bölgesi" / "talep bölgesi" · FVG → "fiyat boşluğu" · EQH/EQL → "eşit tepe/dip — likidite havuzu"
+- OBV → "hacim akışı" · Delta → "alıcı-satıcı farkı" · RVOL → "hacim ortalamanın X katı"
+- VWAP → "günün ortalama işlem fiyatı" · POC → "en çok işlem gören fiyat"
+- SMA/EMA → "50 günlük ortalama" (rakamla söyle) · MACD/HARSI → "ivme" / "momentum"
+- Discount/Premium → "aralığın dibinde (ucuz)" / "aralığın tepesinde (pahalı)"
+- Regular Bull/Bear → "fiyat yeni dip yapıyor ama ivme yapmıyor — satıcı tükeniyor" (durumu ANLAT, ad verme)
+- Hidden Bull/Bear → "trend devam işareti" · VSA → "hacim-mum uyumu" · MTF → "kısa/orta/uzun vade"
+
+TEK İSTİSNA: "RSI" yazabilirsin (en bilinen terim). Onu da rakamıyla ver: "RSI 20.7 — aşırı satım".
+Bunun DIŞINDA terim kullanman gerekirse: Türkçe adı + en fazla 3 kelime açıklama, kartta EN FAZLA 3 kez.
+Kart bittiğinde geri dön ve yasak listeyi TARA — bir tane bulursan Türkçesiyle değiştir.
 
 *** ÇIKIŞ KURALI (KRİTİK — İHLAL EDERSEN GÖREV HATALI ÇIKMIŞ OLUR) ***
-Sen sadece ve sadece aşağıdaki 7 maddelik TEKNİK KART şablonunu doldurursun. Şablonun başlangıcı "### TEKNİK KART: {clean_ticker}" satırı, bitişi ise "#SmartMoneyRadar #{clean_ticker}" hashtag satırıdır.
+Sen sadece ve sadece aşağıdaki TEKNİK KART şablonunu doldurursun. Şablonun başlangıcı "### TEKNİK KART: {clean_ticker}" satırı, bitişi ise "#SmartMoneyRadar #{clean_ticker}" hashtag satırıdır.
 - Hashtag satırından sonra HİÇBİR ŞEY YAZMA. Yeni satır bile bırakma.
 - "### TEKNİK KART:" başlığından önce HİÇBİR ŞEY YAZMA — açılış cümlesi, persona tanıtımı, giriş paragrafı YASAK.
 - Şablon bittikten sonra ek başlık AÇMA: "{clean_ticker} Teknik Analizi", "Price Action Yaklaşımıyla", "SASA Teknik Görünüm", "Genel Değerlendirme", "Sonuç", "Özet" vb. YENİ BAŞLIKLAR KESİNLİKLE YASAK.
 - Lance Beggs, Linda Raschke, "Stratejik Price Action", "yatırımcı psikolojisi", "kurumsal niyet analizi", "piyasa yapıcı hamlesi" gibi referans veya yorumlar YASAK — bunlar ELİTE Görev 1'in alanı, sen PRO Görev 3'ü doldurursun.
-- 7. madde "Teknik Okuma Özeti" ile şablon biter, hashtag satırı ile son verir, DURURSUN. Tek bir karakter daha ekleme.
+- "📌 GENEL ÖZET" bölümü ile şablon biter, hashtag satırı ile son verir, DURURSUN. Tek bir karakter daha ekleme.
+
+🚫 TAVSİYE KAÇAĞI — DOLAYLI KALIPLAR DA YASAK (17 Tem 2026, canlı kartta sızdı):
+Emir kipi olmadan da tavsiye verilmiş olur. Şunlar YASAK:
+× "izlenmesi önemlidir / izlenmesi gerekir / izlenmelidir / takip edilmelidir"
+× "önem taşıyor / önemli olacaktır / kritik olacaktır / belirleyici olacaktır"
+× "beklenmelidir / görülmesi gerekir / teyit beklenmeli / sabırlı olunmalı"
+× "-dir/-dır/-tir/-tır" ekiyle biten hüküm cümleleri (robot dili + gizli emir)
+✓ DOĞRU: seviyeyi söyle, koşulu kur, orada bırak — "5.45 üzerinde kapanış olursa tepki
+  güçlenebilir." Okuyucuya ne yapması gerektiğini ima ETME; ne olabileceğini söyle.
 
 * Görevin (TEKNİK KART — PRO):
-Veri yoksa maddeyi atla. Alt başlıkları aynen kullan. Her alt-madde 1 cümle (en fazla 2), öz.
+Bölüm başlıklarını (emoji dahil) AYNEN kullan. Veri yoksa satırı atla — uydurma.
+🚫 HİSSE ADI: kartın HER yerinde sadece "{clean_ticker}" yaz. ".IS" uzantısı YASAK
+("{clean_ticker}.IS" değil "{clean_ticker}") — borsa kodu abonenin gördüğü ad değildir.
+⚠️ ÖNEMLİ — VERİNİN TAMAMINI SAYMA: Yukarıdaki veri bloğunda onlarca gösterge var. Hepsini karta
+DÖKME. O veriler senin YORUMUNU beslemek için — çıktıda satır satır listelenmek için değil.
+Karta sadece şablonun istediği alanlar girer. "Eşit tepe/dip yok", "ivme yatay" gibi BOŞ bulgu
+satırları YAZMA — söyleyecek bir şey yoksa o cümle kartta olmasın.
 
 ### TEKNİK KART: {clean_ticker}
 
-1⃣🔹) Genel Sentez (Yapı + Bölge Uyumu)
-- Trend Yönü: (Bias + Structure'dan dominant yön. Son swing tepesi/dibi somut seviyeleriyle yaz.)
-- Bölge Uyumu: (DISCOUNT/PREMIUM konumu. Kurumsal alım/satım için ne anlama gelir?)
+📊 DURUM
+- Fiyat: (güncel fiyat + KONUMU TAM YAZ — "20 günlük aralığın dibinde/ortasında/tepesinde".
+  Tek başına "(dibinde)" YAZMA, neyin dibinde olduğu MUTLAKA cümlede olsun. Örn: "5.40 — 20 günlük aralığın dibinde")
+- Destek: (fiyatın altındaki en yakın seviye + parantezsiz 3 kelime ne olduğu, örn: "5.04 — 52 hafta dibi")
+- Direnç: (fiyatın üstündeki en yakın seviye + 3 kelime ne olduğu)
+- Yapı: (son yapı kırılımının SEVİYESİ + yönü — örn: "5.59'da aşağı kırıldı" / "6.20'de yukarı kırıldı".
+  Bu satır önemli: yapının nerede bozulduğu somut bilgidir, atlanmaz. Kırılım verisi yoksa satırı KOMPLE atla.)
+- Kurulum: (veri bloğundaki "Model Skoru" değerini X/5 yaz + YANINA TEK CÜMLE NE OLDUĞU.
+  Bu skor 5 kurumsal şartın kaçının tuttuğunu sayar: yön netliği · fiyatın doğru bölgede olması ·
+  arz/talep bölgesinin aktif olması · fiyat boşluğunun açık olması · güçlü hacimli hareket.
+  Örn: "3/5 — kurumsal kurulumun 5 şartından 3'ü tutuyor". "Enerji" DEME, bu bir enerji ölçüsü değil.)
+{_one_cikan_sablon}
+🔍 NE OLUYOR
+(2-3 cümle. Şu an fiyatı kim kontrol ediyor, hacim bunu doğruluyor mu? Sayı ver.
+Veri bloğundaki yapı/hacim/ivme okumalarını burada BİRLEŞTİR — tek tek sayma, hikâyeyi anlat.)
 
-2⃣🔹) Yapı & Fiyat Davranışı
-- Trend Yapısı: (8 yapı durumundan hangisi aktif? HH+HL (klasik yükseliş) / LH+LL (klasik düşüş) / CHoCH up (dönüş yukarı ⤴) / CHoCH down (dönüş aşağı ⤵) / Megafon (genişleyen, sağlıksız) / Üçgen sıkışma (kırılım yakın) / Yatay range / Yarı yapı. CHoCH varsa "dönüş başlıyor", megafon varsa "sağlıksız volatilite", üçgen varsa "kırılım yakın" vurgusu yap.)
-- Mum & Fitil (Kapanış Konumu): (Son 5g gövde/fitil oranı + kapanışların günlük aralıkta ortalama konumu. %75+ = alıcı baskın, %25- = satıcı baskın. Önceki 5g ile karşılaştır — Güçlü tutunma ★ / V-bottom ⤴ / Alıcı geldi ↑ / Yorgun alıcı ⚠ / Sert çöküş ⤵ / Alıcı çekiliyor ↘ / Çöküş sürüyor gibi geçişler kim kontrol ediyor sorusunun objektif cevabıdır.)
-- OB/FVG Durumu: (Aktif Order Block veya FVG somut seviyeleriyle. Taze mi, yıpranmış mı?)
-- EQH/EQL & Sweep: (Eşit tepe/dip varsa seviyesini yaz. Likidite avı tuzak mı, gerçek kırılım mı?)
+🎯 HANGİ SEVİYELER ÖNEMLİ
+(2-3 cümle. Somut seviye ver ve KOŞULLU dille bağla: "X kırılırsa Y görülebilir",
+"Z altında baskı sürebilir". Tavsiye YOK.)
 
-3⃣🔹) Momentum & Vade Uyumu
-- RSI Slope & MACD: (RSI seviyesi DEĞİL, 5g'lik DEĞİŞİM HIZI önemli. Sert dönüş ↗↗ / Toparlanma ↗ / Trend hızlanıyor ↑ / Yatay → / Yavaşlıyor ↘ / Aşağı ivme ↓↓ / Tepe geri çekilme ⤵ — bunlardan hangisi aktif? "Alım bölgesi", "nötr bölge" gibi vague seviye etiketlerini KULLANMA. Seviye gerekirse: aşırı satım/zayıf/nötr/güçlü/aşırı alım. MACD histogram genişliyor mu daralıyor mu? HARSI rengi/yönü.)
-- Uyumsuzluk (RSI Divergence): (5 tip ayrımı kritik — Regular Bull ✓ (fiyat yeni dip, RSI dip yok → dönüş yakın yukarı), Regular Bear ✗ (fiyat yeni tepe, RSI tepe yok → dönüş yakın aşağı), Hidden Bull ↗ (yükseliş trendinde sağlıklı geri çekilme → trend devam), Hidden Bear ↘ (düşüş trendinde sağlıklı sıçrama → trend devam), Yok. Regular = tükenme/dönüş sinyali, Hidden = trend devamı — karıştırma.)
-- MTF Momentum: (Kısa/orta/uzun vade momentum uyumu; hangi periyotta zayıflama başladı?)
+⚠️ RİSK
+(1-2 cümle. Bu hissenin en somut zayıf noktası — düşük hacim, yıpranmış arz bölgesi,
+ince tahta, zayıf kurulum. Genel uyarı değil, BU hisseye özel olan.)
 
-4⃣🔹) Hacim, Efor ve Akıllı Para İzi (VSA)
-- MA & EMA Dizilimi: (SMA20/50/100/200 ve EMA8/13/21 konumu — boğa/ayı dizilimi var mı?)
-- Hacim/Mum Uyumu (VSA): (Hacim × mum anatomisi 9 senaryosu — Alım onayı ★ (yüksek hacim + güçlü yeşil), Satım onayı ★ (yüksek hacim + güçlü kırmızı), Climax ⚠⚠ (yüksek hacim + doji → dönüş yakın), Üst rejekti ⤵ (yüksek hacim + üst fitil → dağıtım), Alt rejekti ⤴ (yüksek hacim + alt fitil → toplama), Sahte alım ⚠ (düşük hacim + yeşil → no demand), Sahte satım ⚠ (düşük hacim + kırmızı → no supply), Ölü piyasa, Normal. RVOL, 5 günlük delta ve OBV ayrışmasını da entegre et.)
-- Kurumsal Akış: (VWAP konumu + Bollinger Band pozisyonu + PDH/PDL seviyesi + Piyasa Fazı; emilim mi agresif çıkış mı?)
-
-5⃣🔹) Likidite & Kritik Bantlar
-- Üst Havuz: (Fiyatın üstündeki en yakın likidite / kritik seviye)
-- Alt Havuz: (Fiyatın altındaki en yakın destek / kritik seviye)
-- Karar Bandı (Range Konumu): (Fiyatın son 20g aralığın neresinde ve 5g önce neredeydi? 9 senaryo — Dipte tutunma / Sert düşüş ⤵ (U-top) / Discount (ucuz) / Tepede tıkalı ⚠ (dağıtım riski) / V-bottom ⤴ (sert dönüş) / Premium tutunma ★ (sağlıklı yükseliş) / Premium (pahalı) / Toparlanma ↗ (discount'tan çıkış) / Premium kaybı ↘ / Orta-yatay. Konum × değişim birlikte okunmalı.)
-
-6⃣🔹) Trend Skoru ve Enerji
-- Enerji Puanı: (Algoritmadan gelen Skoru yaz ve grafikteki sıkışmayı/momentumu yorumla)
-
-7⃣🔹) Teknik Okuma Özeti
-- Özet: (2 cümle — en kritik bulguyu öne çıkar, rakam ver)
-- Risk Uyarısı: (Varsa kritik uyarı — düşük hacim, yıpranmış OB vb.)
+📌 GENEL ÖZET
+(2 cümle, kartın kapanışı — tablonun tek nefeste hükmü.
+🚫 TEKRAR YASAĞI (MEKANİK — canlı kartta ihlal edildi): Bu bölümü yazmadan ÖNCE yukarıdaki
+"🔍 NE OLUYOR" ve "⚠️ RİSK" bölümlerine geri dön ve oradaki cümleleri OKU. Aynı bulguyu aynı
+kelimelerle İKİNCİ KEZ yazma — "düşük hacim + ortalama altı + riskli" cümlesini RİSK'te
+yazdıysan ÖZET'te tekrar etme. Özet, bulguları yeniden saymak değil BAĞLAMAKTIR:
+şu an tablo ne diyor + hangi tek seviye tabloyu değiştirir. Rakam ver, yeni bulgu ekleme.)
 
 ═══════════════════════════════════════════════════════════════════════
 🔒 İÇ DENETİM ÖZ-KONTROL [SADECE SANA ÖZEL — YANITA DAHİL ETMEK MUTLAK YASAK]
@@ -3760,6 +3777,25 @@ Hashtag yanıtının SON satırıdır — sonrasında HİÇBİR ŞEY YAZMA.
 # C2/C6/B5/A7. Liste 28 Tem harita revizyonunda güncellenecek (şimdi tek-rejim veriyle
 # yeniden etiketlemek ters yönde aynı hata olur) — o güne dek aşağıdaki metin İDDİASIZ.
 _ER_GOOD = {'B8', 'D2', 'C2', 'C5', 'C6', 'A2', 'B5', 'A1', 'A7', 'D1'}
+
+# ER senaryo kodu → (gerçek ad, tek cümle sade açıklama, tip)
+# Kaynak: scanners.py ERKEN_RADAR senaryo tablosu (17 Tem 2026) — birebir kopya, uydurma YOK.
+# ⚠️ DRIFT: scanners.py'deki 'name'/'description' değişirse burayı da güncelle.
+# ⚠️ KRİTİK: 'D' kategorisi UYARI'dır, olumlu sinyal DEĞİL. Eski metin hepsini
+# "izlenen senaryo / DESTEKLEYİCİ işaret" diye sunuyordu — D1 (temiz backtest -1.93)
+# olumlu bir bulgu sanılıyordu. Artık tip'e göre ayrı sunulur.
+_ER_INFO = {
+    'A1': ("Dipte Sessizlik", "uzun düşüş sonrası satıcı baskısı azaldı, iç güç artıyor", "olumlu"),
+    'A2': ("Hacimli Tepki", "düşüş sonrası yüksek hacimle yeşil kapanış — kurumsal tepki", "olumlu"),
+    'A7': ("Hacimli Toparlanma", "son 20 günde alıcı hacmi satıcıdan belirgin fazla", "olumlu"),
+    'B5': ("Üçgen Daralma", "fiyat üçgen içinde sıkışıyor, yön yakında belli olur", "nötr"),
+    'B8': ("Sıkışma Sonu", "10+ gündür dar bantta, son 3 günde hacim canlanıyor", "olumlu"),
+    'C2': ("Ortalama Testi", "yukarı trendde geri çekilip ortalamadan destek aldı", "olumlu"),
+    'C5': ("Bayrak Formasyonu", "sert yükseliş sonrası dar konsolidasyon — devam beklentisi", "olumlu"),
+    'C6': ("Piyasa Lideri", "endekse karşı 20 günün zirvesinde, sağlıklı geri çekilmede", "olumlu"),
+    'D1': ("Tek Güçlü Sinyal", "hacimli alım günü ama 50 günlük ortalama altında — tek başına riskli", "uyarı"),
+    'D2': ("Karışık Sinyal", "hem pozitif hem zayıflama işaretleri var, tablo kararsız", "uyarı"),
+}
 _SCANNER_NAMES_EV = {
     'harmonik_confluence': 'Harmonik Confluence (geometrik dönüş bölgesi)',
     'prelaunch_bos':       'Pre-Launch BOS (kurumsal kırılım başlangıcı)',
@@ -3771,22 +3807,38 @@ _SCANNER_NAMES_EV = {
 }
 
 
-def _guc_tag_g1(df: pd.DataFrame) -> str:
-    """#1 — 52H/RSI KURULUM GÜCÜ (tek-hisse canlı, iki-rejim backtest kanıtlı)."""
+def _guc_vals(df: pd.DataFrame):
+    """52H/RSI kurulum gücü — HAM DEĞERLER (tek kaynak).
+    _guc_tag_g1 (ELITE blok metni) ve _pro_algo_notes (PRO madde) ikisi de bunu okur.
+    Dönüş: {'p52','rsi','tier','lvl'} veya None."""
     try:
         c = df["Close"]; seg = df.tail(252)
         h, l, cv = float(seg["High"].max()), float(seg["Low"].min()), float(c.iloc[-1])
         if h <= l:
-            return ""
+            return None
         p52 = (cv - l) / (h - l) * 100
         d = c.diff(); g = d.where(d > 0, 0).rolling(14).mean(); ls = (-d.where(d < 0, 0)).rolling(14).mean()
         rsi = float((100 - 100 / (1 + g / ls)).iloc[-1])
+        if rsi != rsi:      # NaN guard
+            return None
         if p52 >= 60 and rsi >= 55:
-            lvl = "🟢 GÜÇLÜ kurulum (zirveye yakın + RSI güçlü)"
+            tier, lvl = "guclu", "🟢 GÜÇLÜ kurulum (zirveye yakın + RSI güçlü)"
         elif p52 < 40 or rsi < 45:
-            lvl = "🔴 ZAYIF kurulum (dipte / RSI zayıf)"
+            tier, lvl = "zayif", "🔴 ZAYIF kurulum (dipte / RSI zayıf)"
         else:
-            lvl = "🟡 ORTA kurulum"
+            tier, lvl = "orta", "🟡 ORTA kurulum"
+        return {"p52": p52, "rsi": rsi, "tier": tier, "lvl": lvl}
+    except Exception:
+        return None
+
+
+def _guc_tag_g1(df: pd.DataFrame) -> str:
+    """#1 — 52H/RSI KURULUM GÜCÜ (tek-hisse canlı, iki-rejim backtest kanıtlı)."""
+    try:
+        _g = _guc_vals(df)
+        if not _g:
+            return ""
+        p52, rsi, lvl = _g["p52"], _g["rsi"], _g["lvl"]
         return (f"\n*** KURULUM GÜCÜ (iki-rejim backtest — 19 Haz 2026) ***\n"
                 f"52H konumu %{p52:.0f}, RSI {rsi:.0f} → {lvl}. "
                 f"Backtest dersi: güçlü kurulum düşüş ortamında bile getiride önde; zayıf kurulum yatay/düşüşte "
@@ -3796,14 +3848,16 @@ def _guc_tag_g1(df: pd.DataFrame) -> str:
         return ""
 
 
-def _db_evidence_g1(ticker: str) -> str:
-    """#3 — DB KÖPRÜSÜ: patron.db scan_signals'tan bu hissenin SON taramada hangi kanıtlı
-    taramalarda çıktığını okur. TAZELİK KAPISI ≤7 gün — bayatsa boş döner (zehir yok)."""
+def _db_evidence_hits(ticker: str):
+    """DB köprüsü — HAM LİSTE (tek kaynak). _db_evidence_g1 (ELITE blok metni) ve
+    _pro_algo_notes (PRO madde) ikisi de bunu okur.
+    Dönüş: (hits_listesi, son_tarama_tarihi, ham_scan_type_kümesi) veya (None, None, None).
+    ham küme PRO içindir — PRO metni _ER_INFO ile kendi kurar (ELITE metni değişmez)."""
     try:
         import datetime as _dt
         pdb = pathlib.Path(__file__).parent / "patron.db"
         if not pdb.exists():
-            return ""
+            return None, None, None
         sym = ticker.replace(".IS", "")
         # TAZELİK + .IS tutarsızlığı: son 7 günün TAMAMINA bak (tek güne değil — farklı scanner'lar
         # sembolü .IS'li/.IS'siz tutar, MAX tek gün kanıtlı er'i kaçırabiliyordu).
@@ -3814,7 +3868,7 @@ def _db_evidence_g1(ticker: str) -> str:
         rows = cur.fetchall()
         con.close()
         if not rows:
-            return ""   # son 7 günde kayıt yok (bayat/yok) → sus
+            return None, None, None   # son 7 günde kayıt yok (bayat/yok) → sus
         types = {r[0] for r in rows}
         last = max(r[1] for r in rows)
         hits = []
@@ -3826,22 +3880,159 @@ def _db_evidence_g1(ticker: str) -> str:
             elif t in _SCANNER_NAMES_EV:
                 hits.append(_SCANNER_NAMES_EV[t])
         if not hits:
-            return ""
-        # 15 Tem 2026 — metin İDDİASIZLAŞTIRILDI: eski hali "geçmişte kazandırmış /
-        # KANIT-tabanlı / GÜVEN katmanı" diyordu; temiz backtest bu listedeki birkaç
-        # senaryoyu desteklemiyor. Etiket bilgisi kalır, performans iddiası kalkar.
-        return ("\n*** TARAMA KATMANI (son tarama " + last + " — bu hisseyi işaretleyen taramalar) ***\n"
-                "Bu hisse son piyasa taramasında şu taramalarda çıktı:\n- " + "\n- ".join(hits) +
+            return None, None, None
+        return hits, last, types
+    except Exception:
+        return None, None, None
+
+
+def _db_evidence_g1(ticker: str) -> str:
+    """#3 — DB KÖPRÜSÜ (ELITE blok metni). Ham liste → _db_evidence_hits.
+
+    17 Tem 2026 — İKİ HATA DÜZELTİLDİ (PRO ile aynı kök):
+      1. Senaryolar KOD olarak veriliyordu ("Erken Radar D1") — ne olduğu belirsiz,
+         AI ya uyduruyor ya atlıyordu. Artık gerçek ad + tanım (_ER_INFO).
+      2. HEPSİ "DESTEKLEYİCİ işaret" diye sunuluyordu. Oysa D grubu UYARI'dır
+         ("temkinli yaklaş"); D1 temiz backtest'te -1.93. Olumlu sanılıyordu.
+    """
+    _h, last, types = _db_evidence_hits(ticker)
+    if not types:
+        return ""
+    iyi, uyari = [], []
+    for t in types:
+        if str(t).startswith("er_"):
+            code = str(t)[3:]
+            if code in _ER_INFO:
+                ad, desc, tip = _ER_INFO[code]
+                (uyari if tip == "uyarı" else iyi).append(f"{ad} — {desc}")
+        elif t in _SCANNER_NAMES_EV:
+            iyi.append(_SCANNER_NAMES_EV[t])
+    if not iyi and not uyari:
+        return ""
+    # 15 Tem 2026 — metin İDDİASIZLAŞTIRILDI: eski hali "geçmişte kazandırmış /
+    # KANIT-tabanlı / GÜVEN katmanı" diyordu; temiz backtest bu listedeki birkaç
+    # senaryoyu desteklemiyor. Etiket bilgisi kalır, performans iddiası kalkar.
+    out = "\n*** TARAMA KATMANI (son tarama " + last + " — bu hisseyi işaretleyen taramalar) ***\n"
+    if iyi:
+        out += ("Bu hisse son piyasa taramasında şu kurulumlarda çıktı:\n- " + "\n- ".join(iyi) +
                 "\nNOT: bunlar DESTEKLEYİCİ işaretlerdir; geçmiş performans iddiası taşımaz "
                 "(eski backtest rakamları veri temizliği sonrası doğrulanamadı). Tek başına "
                 "kehanet sayma — mevcut fiyat yapısı ve hacim kanıtıyla birlikte değerlendir.\n")
-    except Exception:
-        return ""
+    if uyari:
+        out += ("⚠ UYARI SENARYOSU (algoritmanın 'temkinli yaklaş' dediği durum — OLUMLU bulgu DEĞİL):\n- "
+                + "\n- ".join(uyari) +
+                "\nBunu destekleyici/olumlu bir sinyal gibi sunma; riskini açıkça yaz.\n")
+    return out
 
 
 def _evidence_block_g1(ticker: str, df: pd.DataFrame) -> str:
     """ELITE prompt'una eklenen kanıt katmanı: güç tag (#1) + DB köprüsü (#3)."""
     return _guc_tag_g1(df) + _db_evidence_g1(ticker)
+
+
+def _pro_algo_notes(ticker: str, df: pd.DataFrame) -> str:
+    """PRO kartı '⚡ ÖNE ÇIKANLAR' maddelerini ALGORİTMA seçer (17 Tem 2026).
+
+    Kart eskiden her hisseye aynı 15 satırı doldurtuyordu; kritik bulgu dolgu
+    satırlarının arasında kayboluyordu. Artık maddeleri burası seçer, AI sadece
+    cümleye döker. app.py'nin koşullu YAML notlarının (risk_profili /
+    likidite_manip_uyari / kanit_skoru) PRO karşılığı.
+
+    Kaynaklar — üçü de zaten bot tarafında hesaplı, yeni hesap YOK:
+      1. 6-oy verdict  (_genel_ozet_verdict_sc — 600 hisse × 56K örnek kalibre)
+      2. Kurulum gücü  (_guc_vals — 52H konumu + RSI, iki-rejim backtest)
+      3. Tarama katmanı (_db_evidence_hits — patron.db, tazelik ≤7g)
+
+    KURAL: koşul yoksa madde YOK — sabit dolgu üretmez. Tavan 3 madde.
+    Dönüş: prompt bloğu metni veya "" (hiç not yoksa şablon bölümü de düşer).
+    """
+    notes = []
+
+    # 1) 6-OY VERDICT — kartın açılış yönü. En kalibre sinyal, ilk sıraya.
+    try:
+        v = _genel_ozet_verdict_sc(df, detail=True)
+        if isinstance(v, dict) and v.get("lbl"):
+            up, dn, lbl = v.get("up", 0), v.get("dn", 0), v["lbl"]
+            if lbl == "KARARSIZ":
+                notes.append(
+                    f"6 bağımsız sinyal bölünmüş ({up} yukarı / {dn} aşağı) — net yön yok. "
+                    f"Kartta tek yöne kesin bağlanma, iki tarafı da göster."
+                )
+            else:
+                # 17 Tem 2026 — KARNE BİLEREK DIŞARIDA: v['karne'] ("10g ort +0.9%,
+                # isabet %48") etiketin GEÇMİŞ istatistiği, bu hissenin performansı
+                # DEĞİL. Nota konunca AI "geçmiş performansı %48 isabetli" diye
+                # hisseye mal etti → abone yanılır. Karne data_block'ta duruyor
+                # (AI bağlam olarak görür), karta çıkmaz.
+                notes.append(
+                    f"6 bağımsız sinyalin {up} tanesi yukarı, {dn} tanesi aşağı diyor → genel görüntü "
+                    f"{lbl}. Kartın açılışı bu yönü yansıtsın."
+                )
+    except Exception:
+        pass
+
+    # 2) KURULUM GÜCÜ — sadece uçlarda madde (ORTA = dolgu, atlanır).
+    try:
+        g = _guc_vals(df)
+        if g and g["tier"] == "guclu":
+            notes.append(
+                f"52 haftalık aralığın %{g['p52']:.0f}'inde, RSI {g['rsi']:.0f} → kurulum güçlü. "
+                f"Bunu kartın güven seviyesine yansıt."
+            )
+        elif g and g["tier"] == "zayif":
+            notes.append(
+                f"52 haftalık aralığın %{g['p52']:.0f}'inde, RSI {g['rsi']:.0f} → kurulum zayıf "
+                f"(dipte ve/veya ivme düşük). Olumlu yorumu bu zayıflıkla dengele; "
+                f"net yükseliş trendi yoksa dip alımını peşinen olumlu sayma."
+            )
+    except Exception:
+        pass
+
+    # 3) TARAMA KATMANI — sadece taze kayıt varsa. Kod DEĞİL gerçek ad + açıklama;
+    #    D grubu (uyarı) olumlu sinyalden AYRI sunulur (17 Tem 2026).
+    try:
+        _h, last, types = _db_evidence_hits(ticker)
+        if types:
+            iyi, uyari = [], []
+            for t in types:
+                if str(t).startswith("er_"):
+                    code = str(t)[3:]
+                    if code in _ER_INFO:
+                        ad, desc, tip = _ER_INFO[code]
+                        (uyari if tip == "uyarı" else iyi).append(f"{ad} ({desc})")
+                elif t in _SCANNER_NAMES_EV:
+                    iyi.append(_SCANNER_NAMES_EV[t])
+            if iyi:
+                notes.append(
+                    f"Son piyasa taramasında ({last}) şu kurulumlarda çıktı: {'; '.join(iyi)}. "
+                    f"Kartta tarama ADINI ve ne olduğunu 1 cümleyle söyle — kod ('D1', 'C2') YAZMA. "
+                    f"DESTEKLEYİCİ işaret, performans iddiası taşımaz."
+                )
+            if uyari:
+                notes.append(
+                    f"⚠ UYARI senaryosu: {'; '.join(uyari)}. Bu OLUMLU bir bulgu DEĞİL — "
+                    f"algoritmanın 'temkinli yaklaş' dediği durum. Kartta olumlu/destekleyici "
+                    f"gibi sunma; adını ve neden riskli olduğunu söyle."
+                )
+    except Exception:
+        pass
+
+    if not notes:
+        return ""
+
+    return (
+        "\n*** ⚡ ÖNE ÇIKANLAR — ALGORİTMA SEÇTİ (KART İÇİN BAĞLAYICI) ***\n"
+        "Aşağıdakiler bu hisse için algoritmanın seçtiği en önemli bulgular.\n"
+        "Kartın '⚡ ÖNE ÇIKANLAR' bölümüne SADECE bunları yaz — madde EKLEME, ÇIKARMA, sırayı BOZMA.\n"
+        "Her maddeyi kendi cümlenle, sade Türkçe, tek satırda ifade et. Parantezdeki yönerge\n"
+        "('kartın açılışı bu yönü yansıtsın' gibi) SANA verilen talimattır — onu karta YAZMA, uygula.\n"
+        "🚫 GEÇMİŞ KARNE YASAĞI: Veri bloğunda 'geçmiş karnesi: 10g ort +X%, isabet %Y (600 hisse\n"
+        "backtest)' gibi ifadeler görebilirsin. Bunlar O ETİKETİN tüm piyasadaki geçmiş istatistiği —\n"
+        "BU HİSSENİN performansı DEĞİL. Karta ASLA yazma. 'geçmiş performansı %48 isabetli',\n"
+        "'isabet oranı %Y', 'geçmişte ortalama +X% getirmiş' gibi cümleler YASAK — abone bunu\n"
+        "hissenin karnesi sanıyor. Yön etiketini yaz, istatistiği yut.\n"
+        + "\n".join(f"- {x}" for x in notes[:4]) + "\n"
+    )
 
 
 def build_ai_prompt_gorev1(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str:
