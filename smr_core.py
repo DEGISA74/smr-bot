@@ -3348,6 +3348,10 @@ def build_ai_prompt(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str
         return ""
     data_block, clean_ticker, fiyat_str = _base_data_block(ticker, ict, info, df)
 
+    # PRO'ya giden veri bloğunda kopyalanacak KISALTMA bırakma (17 Tem 2026).
+    # ⚠️ SADECE PRO — ELITE (build_ai_prompt_gorev1) ham bloğu kullanmaya devam eder.
+    data_block = _pro_turkcelestir(data_block)
+
     # ⚡ ÖNE ÇIKANLAR — algoritma seçer (17 Tem 2026). Koşul yoksa boş döner,
     # o zaman şablondaki bölüm de düşer (aşağıdaki koşullu _one_cikan_sablon).
     _algo_notes = _pro_algo_notes(ticker, df)
@@ -3418,7 +3422,13 @@ kendi cümlenle, sade Türkçe. Madde ekleme/çıkarma yok, sıra aynı.)
         pass
 
     return _bot_holiday_note + f"""*** SEN BİR ALGORİTMİK QUANT-RAPORTÖRSÜN ***
-⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3200 karakteri KESİNLİKLE AŞMAYACAK — tek Telegram mesajına sığmalı. HEDEF ~1800 karakter: kart kısa okunur olmalı, uzunluk kalite değildir.
+⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3200 karakteri KESİNLİKLE AŞMAYACAK — tek Telegram mesajına sığmalı.
+🎯 HEDEF ~2000 KARAKTER (bant: 1900–2300). İKİ TARAFLI SINIR, ikisine de uy:
+   · ALT: 1800'ün altına düşme — kart cılız/kısır kalıyor, abone "bu kadar mı?" diyor.
+   · ÜST: 2400'ü AŞMA — kart duvara dönüyor, Telegram'da kimse sonuna kadar okumuyor.
+Bölümleri hakkını vererek doldur (özellikle 🔍 NE OLUYOR ve 📌 GENEL ÖZET) ama dolgu YAPMA:
+uzunluk cümle şişirerek değil, SOMUT BULGU + rakam vererek gelir. Söyleyecek gerçek bir şeyin
+yoksa kısa bırak — uydurma pahasına uzatma YASAK. Her bölümün cümle bütçesine SADIK KAL.
 Görevin TEK BİR ŞEY: Aşağıdaki veriyi okuyup, sonda verilen TEKNİK KART şablonunu doldurmak. Şablon dışına ÇIKAMAZSIN.
 Serbest analiz, sentez yazısı, yatırımcı psikolojisi yorumu, piyasa yapıcı niyeti analizi, persona tanıtımı, açılış cümlesi, kapanış paragrafı YAZMAZSIN. Bir veri raportörü gibi sadece şablonun istediği alanları doldurursun.
 Lance Beggs, Linda Raschke, "Price Action yaklaşımı", "Stratejik Price Action" gibi referanslara KESİNLİKLE değinmezsin — bunlar Görev 1 (ELİTE) için ayrılmış kimliklerdir.
@@ -3850,16 +3860,21 @@ satırları YAZMA — söyleyecek bir şey yoksa o cümle kartta olmasın.
   Örn: "3/5 — kurumsal kurulumun 5 şartından 3'ü tutuyor". "Enerji" DEME, bu bir enerji ölçüsü değil.)
 {_one_cikan_sablon}
 🔍 NE OLUYOR
-(2-3 cümle. Şu an fiyatı kim kontrol ediyor, hacim bunu doğruluyor mu? Sayı ver.
-Veri bloğundaki yapı/hacim/ivme okumalarını burada BİRLEŞTİR — tek tek sayma, hikâyeyi anlat.)
+(3-4 cümle — kartın en dolu bölümü ama duvar değil. Şu an fiyatı kim kontrol ediyor,
+hacim bunu doğruluyor mu? Sayı ver. Veri bloğundaki yapı/hacim/ivme okumalarını BİRLEŞTİR —
+tek tek sayma, hikâyeyi anlat. Akıllı para çekirdeğinden BASKIN olanı merdivenle aç
+(rakam → çeviri → yani → kurumsal taraf). Çelişki varsa (fiyat bir şey, hacim başka şey
+diyorsa) onu SÖYLE — çelişki en değerli bulgudur, yutma.)
 
 🎯 HANGİ SEVİYELER ÖNEMLİ
-(2-3 cümle. Somut seviye ver ve KOŞULLU dille bağla: "X kırılırsa Y görülebilir",
-"Z altında baskı sürebilir". Tavsiye YOK.)
+(3 cümle. En az 2 somut seviye ver ve her birini KOŞULLU dille bağla: "X kırılırsa Y
+görülebilir", "Z altında baskı sürebilir". Seviyenin NEDEN önemli olduğunu da söyle
+(52 hafta dibi mi, yapının kırıldığı yer mi, fiyat boşluğu mu). Tavsiye YOK.)
 
 ⚠️ RİSK
-(1-2 cümle. Bu hissenin en somut zayıf noktası — düşük hacim, yıpranmış arz bölgesi,
-ince tahta, zayıf kurulum. Genel uyarı değil, BU hisseye özel olan.)
+(2 cümle. Bu hissenin en somut zayıf noktası — düşük hacim, yıpranmış arz bölgesi,
+ince tahta, zayıf kurulum. Genel uyarı değil, BU hisseye özel olan. Riskin ne zaman
+gerçekleşeceğini de bağla: hangi seviye/koşul o riski tetikler?)
 
 📌 GENEL ÖZET
 (⚠️ EN AZ 5 CÜMLE — kartın EN DEĞERLİ bölümü, kısa geçme. Canlı kartta 2 cümlede kesiliyordu
@@ -4091,6 +4106,59 @@ def _db_evidence_g1(ticker: str) -> str:
 def _evidence_block_g1(ticker: str, df: pd.DataFrame) -> str:
     """ELITE prompt'una eklenen kanıt katmanı: güç tag (#1) + DB köprüsü (#3)."""
     return _guc_tag_g1(df) + _db_evidence_g1(ticker)
+
+
+# ─── PRO VERİ BLOĞU TÜRKÇELEŞTİRME (17 Tem 2026) ─────────────────────────────
+# NEDEN: PRO kartında "kısaltma YAZMA" kuralı var ama VERİ BLOĞUNUN KENDİ ETİKETLERİ
+# kısaltmalı ("• OMI (OBV Momentum Index):", "• Fiyat × Hacim Gücü (Force Index):",
+# "• RVOL :") + hazır cümleler "(VA 5.09–6.10 | POC 5.29)" yazıyor. Kart kısayken
+# model bunlara uzanmıyordu; uzunluk hedefi 2K'ya çıkınca eline verilen etiketi aynen
+# kopyalamaya başladı → POC/VWAP/Force Index/Delta sızdı, "sıfır kısaltma" bozuldu.
+# Kural veriyle kavga ediyordu, veri kazandı (bugünün 4. tekrarı: endeks modu, uyarı
+# kapısı, -meli kapısı... hepsinde çözüm KURAL DEĞİL MEKANİZMA oldu).
+# ÇÖZÜM: PRO'ya giden veri bloğunda kopyalanacak kısaltma BIRAKMA.
+# ⚠️ SADECE PRO — ELITE'in veri bloğu DEĞİŞMEZ (orada kısaltma serbest, açılım sözlüğü
+#    ve terim kuralları ayrı; ELITE çıktısı byte-birebir korunuyor).
+# ⚠️ SIRA ÖNEMLİ: uzun anahtar önce (HARSI → RSI'dan önce, aVWAP → VWAP'tan önce),
+#    yoksa kısa olan uzunun içini yer. "RSI" bilerek YOK — tek izinli terim.
+_PRO_TR_MAP = [
+    ("HARSI", "Gürültüsüz Momentum"), ("aVWAP", "Çapalı Ortalama Fiyat"),
+    ("Order Block", "Arz/Talep Bölgesi"), ("Force Index", "Fiyat × Hacim Gücü"),
+    ("OBV Momentum Index", "Para Akış İvmesi"), ("Volume Profile", "Hacim Profili"),
+    ("Z-Score", "Sapma Skoru"), ("Regular Bull", "Klasik Pozitif Uyumsuzluk"),
+    ("Regular Bear", "Klasik Negatif Uyumsuzluk"), ("Hidden Bull", "Gizli Pozitif Uyumsuzluk"),
+    ("Hidden Bear", "Gizli Negatif Uyumsuzluk"), ("Bollinger Band", "Volatilite Bandı"),
+    ("Bollinger", "Volatilite Bandı"),
+    # "Güçlü Hamle" DEĞİL: etiket "güçlü" derken değer "Zayıf" olunca
+    # "Güçlü Hamle: Zayıf" diye çelişik okunuyordu. Nötr etiket:
+    ("Displacement", "Hamle Gücü"),
+    ("Churning", "Pasif Emir Oyunu"), ("Discount", "Ucuz Bölge"), ("Premium", "Pahalı Bölge"),
+    ("EQH/EQL", "Eşit Tepe/Dip"), ("EQH", "Eşit Tepe"), ("EQL", "Eşit Dip"),
+    ("CHoCH", "Yapı Dönüşü"), ("Sweep", "Likidite Avı"),
+    ("RVOL", "Hacim/20g Ortalama"), ("OBV", "Hacim Akışı"), ("CMF", "Para Akışı"),
+    ("OMI", "Para Akış İvmesi"), ("UDVR", "Alıcı/Satıcı Eforu"),
+    ("VWAP", "Günün Ortalama İşlem Fiyatı"), ("POC", "En Çok İşlem Gören Fiyat"),
+    ("HVN", "Yüksek Hacim Bölgesi"), ("LVN", "Düşük Hacim Bölgesi"),
+    ("MACD", "Momentum Göstergesi"), ("MTF", "Çoklu Vade"), ("VSA", "Hacim-Mum Uyumu"),
+    ("FVG", "Fiyat Boşluğu"), ("BOS", "Yapı Kırılımı"), ("Delta", "Net İşlem Farkı"),
+    ("VA", "Değer Bölgesi"), ("OB", "Arz/Talep Bölgesi"), ("BB", "Volatilite Bandı"),
+]
+
+
+def _pro_turkcelestir(blok: str) -> str:
+    """PRO veri bloğundaki kısaltmaları Türkçeye çevir — model kopyalayacak
+    kısaltma bulamasın. SMA20/EMA8 gibi sayılı kalıplar ayrıca ele alınır."""
+    try:
+        import re as _re_tr
+        out = blok
+        # SMA20 → "20 Günlük Ortalama" · EMA8 → "8 Günlük Üssel Ortalama"
+        out = _re_tr.sub(r"\bSMA(\d+)\b", r"\1 Günlük Ortalama", out)
+        out = _re_tr.sub(r"\bEMA(\d+)\b", r"\1 Günlük Üssel Ortalama", out)
+        for src, dst in _PRO_TR_MAP:
+            out = _re_tr.sub(r"\b" + _re_tr.escape(src) + r"\b", dst, out)
+        return out
+    except Exception:
+        return blok
 
 
 def _pro_ozet_context(ticker: str, df: pd.DataFrame) -> str:
