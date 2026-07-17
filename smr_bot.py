@@ -427,6 +427,10 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
                             call_gemini_gorev3(prompt, ticker), timeout=220
                         )
 
+                        # DETERMİNİSTİK UYARI KAPISI (17 Tem 2026) — PRO+ELITE ortak.
+                        # AI uyarı senaryosunu yutmuşsa algoritma notu olarak eklenir.
+                        ai_text = _enforce_warning_note(ticker, ai_text)
+
                 except asyncio.TimeoutError:
                     log.error(f"[{ticker}] Gemini timeout — fallback AI metni gönderilecek")
                     ai_text = ai_fallback_text
@@ -450,6 +454,49 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
         except Exception as e:
             log.error(f"get_analysis hatası [{ticker}]: {e}", exc_info=True)
             return None, "", ""
+
+
+# ─── DETERMİNİSTİK UYARI KAPISI (17 Tem 2026) ────────────────────────────────
+def _enforce_warning_note(ticker: str, ai_text: str) -> str:
+    """Algoritma bu hissede UYARI senaryosu görmüşse kartta MUTLAKA görünsün.
+
+    NEDEN KOD, NEDEN PROMPT DEĞİL: prompt'a "⚠ UYARI SENARYOSU bloğunu mutlaka bir
+    maddede işle" diye bağlayıcı kural konuldu — canlı ELITE testinde iki turdan
+    birinde yine yutuldu (~%50). LLM'e "şunu mutlaka yaz" dedirtmek güvenilmez;
+    aynı ders daha önce de alındı ("SAYIM kuralları prompt'ta çalışmaz → deterministik
+    post-pass"). Bu kapı prompt'a ek DEĞİL, sigorta: AI yazdıysa dokunmaz, yutmuşsa
+    algoritma notu olarak ekler.
+
+    Uyarı senaryosu = Erken Radar D grubu (ör. "Tek Güçlü Sinyal") — algoritmanın
+    "temkinli yaklaş" dediği durum. Eskiden bunlar aboneye "DESTEKLEYİCİ işaret"
+    diye gidiyordu; artık ne yanlış sunulur ne de kaybolur.
+    """
+    try:
+        if not ai_text:
+            return ai_text
+        warns = smr_core.get_warning_scenarios(ticker)
+        if not warns:
+            return ai_text
+        low = ai_text.lower()
+        missing = [(ad, desc) for ad, desc in warns if ad.lower() not in low]
+        if not missing:
+            return ai_text          # AI zaten yazmış — dokunma
+
+        notes = "\n".join(f"⚠️ _Algoritma uyarısı — {ad}: {desc}. Tek başına olumlu sayılmaz._"
+                          for ad, desc in missing)
+        log.warning(f"[{ticker}] UYARI senaryosu AI tarafından yutuldu → deterministik olarak "
+                    f"eklendi: {[a for a, _ in missing]}")
+
+        # Yasal kapanış bloğundan (ayraç + disclaimer + hashtag) ÖNCE yerleştir.
+        lines = ai_text.splitlines()
+        for i in range(len(lines) - 1, -1, -1):
+            if lines[i].strip().startswith("---"):
+                lines.insert(i, notes + "\n")
+                return "\n".join(lines)
+        return ai_text.rstrip() + "\n\n" + notes   # ayraç yoksa sona ekle
+    except Exception as e:
+        log.error(f"[{ticker}] _enforce_warning_note hatası (kart bozulmadı): {e}")
+        return ai_text
 
 
 # ─── TEKNİK KART: TELEGRAM FORMATLAMA ────────────────────────────────────────

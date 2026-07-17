@@ -3251,6 +3251,8 @@ def build_ai_prompt(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str
     # ⚡ ÖNE ÇIKANLAR — algoritma seçer (17 Tem 2026). Koşul yoksa boş döner,
     # o zaman şablondaki bölüm de düşer (aşağıdaki koşullu _one_cikan_sablon).
     _algo_notes = _pro_algo_notes(ticker, df)
+    # GENEL ÖZET ek bağlamı (17 Tem 2026): son seansların yörüngesi + bugünkü endeks ayrışması
+    _ozet_ctx = _pro_ozet_context(ticker, df)
     _one_cikan_sablon = ("""
 ⚡ ÖNE ÇIKANLAR
 (Yukarıdaki "⚡ ÖNE ÇIKANLAR — ALGORİTMA SEÇTİ" bloğundaki maddeler — her biri tek satır,
@@ -3658,7 +3660,7 @@ Bunlar trendin "yan ürünü değil" gerçek çelişkilerdir. Yükseliş devam e
 → Stopping/Climax Volume tespit edilmişse (dönüş ihtimali artar)
 
 {data_block}
-{_algo_notes}
+{_algo_notes}{_ozet_ctx}
 *** 🔤 TERİM YASAĞI — PRO KART (MEKANİK KURAL, İSTİSNASIZ) ***
 Bu kart teknik analizden anlamayan aboneye gidiyor. Eski kartlarda tek kartta 12 kısaltma birikiyordu;
 her birini parantezle açıklasan bile abone 12 yeni kavramı sindiremiyor. Sorun açıklama değil, YOĞUNLUK.
@@ -3735,12 +3737,24 @@ Veri bloğundaki yapı/hacim/ivme okumalarını burada BİRLEŞTİR — tek tek 
 ince tahta, zayıf kurulum. Genel uyarı değil, BU hisseye özel olan.)
 
 📌 GENEL ÖZET
-(2 cümle, kartın kapanışı — tablonun tek nefeste hükmü.
+(⚠️ EN AZ 5 CÜMLE — kartın EN DEĞERLİ bölümü, kısa geçme. Canlı kartta 2 cümlede kesiliyordu
+ve kısır kalıyordu. Abone kartı okumayı bıraksa bile bu bölümü okur; tabloyu burada BAĞLA.
+Şu 5 şeyi sırayla işle:
+ 1) Tablonun genel hükmü — tek cümlede ne oluyor.
+ 2) KISA VADE YÖRÜNGESİ: "📌 GENEL ÖZET İÇİN EK BAĞLAM" bloğundaki son seans rakamlarını
+    kullan. Bugünü saymazsak önceki 3 seans ne yapmış? Rakam ver.
+ 3) ENDEKSE GÖRE BUGÜN: aynı bloktaki endeks kıyasını yaz (varsa). Endeks düşerken hisse
+    ayakta kaldıysa bu GERÇEK bir güç işareti — atlanmaz.
+ 4) Hangi TEK seviye tabloyu değiştirir — rakamla.
+ 5) DENGELİ KAPANIŞ: Tablo olumsuzsa bile küçük bir olumlu kıvılcım varsa (kısa vade
+    toparlanma, endeksten iyi performans, gizli alım izi) onu SÖYLE. "Zayıf ama şu taraf
+    dikkat çekiyor" tonu. ⚠️ SÖZ VERME, BAĞLAYICI OLMA, kehanet etme — sadece kıvılcımın
+    varlığını kabul et. Tersi de geçerli: tablo olumluysa gölgeyi söyle.
+    Amaç tek yönlü körlük değil, dürüst denge. Kıvılcım gerçekten yoksa UYDURMA.
 🚫 TEKRAR YASAĞI (MEKANİK — canlı kartta ihlal edildi): Bu bölümü yazmadan ÖNCE yukarıdaki
 "🔍 NE OLUYOR" ve "⚠️ RİSK" bölümlerine geri dön ve oradaki cümleleri OKU. Aynı bulguyu aynı
 kelimelerle İKİNCİ KEZ yazma — "düşük hacim + ortalama altı + riskli" cümlesini RİSK'te
-yazdıysan ÖZET'te tekrar etme. Özet, bulguları yeniden saymak değil BAĞLAMAKTIR:
-şu an tablo ne diyor + hangi tek seviye tabloyu değiştirir. Rakam ver, yeni bulgu ekleme.)
+yazdıysan ÖZET'te tekrar etme. Özet bulguları yeniden saymak değil BAĞLAMAKTIR.)
 
 ═══════════════════════════════════════════════════════════════════════
 🔒 İÇ DENETİM ÖZ-KONTROL [SADECE SANA ÖZEL — YANITA DAHİL ETMEK MUTLAK YASAK]
@@ -3886,6 +3900,37 @@ def _db_evidence_hits(ticker: str):
         return None, None, None
 
 
+def _classify_hits(types):
+    """Ham scan_type kümesi → (iyi_listesi, uyari_listesi). TEK KAYNAK:
+    _pro_algo_notes (PRO not) + _db_evidence_g1 (ELITE blok) + get_warning_scenarios
+    (smr_bot deterministik kontrolü) üçü de bunu kullanır — sınıflandırma tek yerde."""
+    iyi, uyari = [], []
+    for t in (types or []):
+        if str(t).startswith("er_"):
+            code = str(t)[3:]
+            if code in _ER_INFO:
+                ad, desc, tip = _ER_INFO[code]
+                (uyari if tip == "uyarı" else iyi).append((ad, desc))
+        elif t in _SCANNER_NAMES_EV:
+            iyi.append((_SCANNER_NAMES_EV[t], ""))
+    return iyi, uyari
+
+
+def get_warning_scenarios(ticker: str):
+    """UYARI (D grubu) senaryoları → [(ad, açıklama), ...] veya [].
+
+    smr_bot'un DETERMİNİSTİK KONTROLÜ bunu okur (17 Tem 2026): prompt'a "bu uyarıyı
+    MUTLAKA yaz" demek LLM'de ~%50 tutuyor (canlı ELITE testinde iki turda bir yutuldu).
+    Kart üretildikten SONRA burada kontrol edilip eksikse eklenir — prompt'a güvenilmez.
+    (Aynı ders: "SAYIM kuralları prompt'ta çalışmaz → deterministik post-pass".)"""
+    try:
+        _h, _last, types = _db_evidence_hits(ticker)
+        _iyi, uyari = _classify_hits(types)
+        return uyari
+    except Exception:
+        return []
+
+
 def _db_evidence_g1(ticker: str) -> str:
     """#3 — DB KÖPRÜSÜ (ELITE blok metni). Ham liste → _db_evidence_hits.
 
@@ -3898,15 +3943,9 @@ def _db_evidence_g1(ticker: str) -> str:
     _h, last, types = _db_evidence_hits(ticker)
     if not types:
         return ""
-    iyi, uyari = [], []
-    for t in types:
-        if str(t).startswith("er_"):
-            code = str(t)[3:]
-            if code in _ER_INFO:
-                ad, desc, tip = _ER_INFO[code]
-                (uyari if tip == "uyarı" else iyi).append(f"{ad} — {desc}")
-        elif t in _SCANNER_NAMES_EV:
-            iyi.append(_SCANNER_NAMES_EV[t])
+    _iyi_p, _uyari_p = _classify_hits(types)
+    iyi = [f"{a} — {d}" if d else a for a, d in _iyi_p]
+    uyari = [f"{a} — {d}" for a, d in _uyari_p]
     if not iyi and not uyari:
         return ""
     # 15 Tem 2026 — metin İDDİASIZLAŞTIRILDI: eski hali "geçmişte kazandırmış /
@@ -3928,6 +3967,96 @@ def _db_evidence_g1(ticker: str) -> str:
 def _evidence_block_g1(ticker: str, df: pd.DataFrame) -> str:
     """ELITE prompt'una eklenen kanıt katmanı: güç tag (#1) + DB köprüsü (#3)."""
     return _guc_tag_g1(df) + _db_evidence_g1(ticker)
+
+
+def _pro_ozet_context(ticker: str, df: pd.DataFrame) -> str:
+    """GENEL ÖZET için EK BAĞLAM — kartın körlemesine kaçırdığı iki gerçek (17 Tem 2026).
+
+    Canlı OBAMS kartında iki bulgu görülmedi ÇÜNKÜ prompt'ta VERİ olarak yoktu:
+      1. SON SEANSLARIN YÖRÜNGESİ — prompt sadece BUGÜNKÜ değişimi taşıyordu
+         (fiyat_str "5.35 (+0.19%)"). Bugünü saymazsak son 3 günde toparlanma
+         varsa AI bunu göremiyordu → kart "sadece olumsuz" çıkıyordu.
+      2. ENDEKSE GÖRE BUGÜNKÜ GÜÇ — endeksin günlük değişimi prompt'ta HİÇ yoktu.
+         OBAMS +%0.19 iken XU100 -%1.80 → hisse endeksin 2 puan üstünde; bu gerçek
+         bir göreli güç işareti ve kart tamamen kaçırdı. (RS vs XU100 satırı VAR ama
+         o 20 GÜNLÜK bağıl güç — bugünün ayrışmasını göstermez.)
+
+    Ölçüm, yorum DEĞİL: rakamları verir, hükmü AI kurar.
+    """
+    try:
+        if df is None or len(df) < 6 or "Close" not in df.columns:
+            return ""
+        # Hayalet bar koruması: hacimsiz (tatil) barları at — yoksa "%0.00 değişim"
+        # günleri yörüngeyi bozar.
+        d = df
+        if "Volume" in df.columns:
+            _nz = df[df["Volume"].astype(float) > 0]
+            if len(_nz) >= 6:
+                d = _nz
+        c = d["Close"].astype(float)
+        chg = c.pct_change() * 100
+
+        son4 = [f"{chg.iloc[-i]:+.2f}%" for i in range(4, 0, -1)]
+        parts = [f"Son 4 seansın günlük değişimi (eskiden yeniye): {' · '.join(son4)} "
+                 f"— sonuncusu bugün/son seans."]
+
+        # Bugünü saymazsak önceki 3 seansın toplam yönü
+        onceki3 = (float(c.iloc[-2]) / float(c.iloc[-5]) - 1) * 100
+        if onceki3 > 0.5:
+            parts.append(f"Bugünü saymazsak önceki 3 seans TOPLAMDA {onceki3:+.2f}% — "
+                         f"kısa vadede toparlanma çabası var. Tablo olumsuzsa bile bu "
+                         f"kıvılcımı görmezden GELME.")
+        elif onceki3 < -0.5:
+            parts.append(f"Bugünü saymazsak önceki 3 seans TOPLAMDA {onceki3:+.2f}% — "
+                         f"kısa vade de zayıf, satış üst üste gelmiş.")
+        else:
+            parts.append(f"Bugünü saymazsak önceki 3 seans TOPLAMDA {onceki3:+.2f}% — "
+                         f"kısa vade yatay.")
+
+        # Bugün endekse göre (sadece BIST hissesi — endeksin kendisi hariç)
+        _clean = ticker.replace(".IS", "")
+        if ".IS" in ticker and not _clean.startswith(("XU", "XB", "XT", "XY")):
+            try:
+                xu = drop_adj_close(yf.download("XU100.IS", period="1mo", interval="1d",
+                                                progress=False, auto_adjust=AUTO_ADJUST))
+                if xu is not None and len(xu) >= 2:
+                    # ⚠️ İKİ TUZAK (17 Tem 2026, canlı testte ikisi de yakalandı):
+                    # 1) yfinance MultiIndex kolon döndürüyor (('Close','XU100.IS')) →
+                    #    xu["Close"] Series değil DataFrame; astype+pct_change NaN üretti.
+                    #    (Satır ~2074'teki eski RS kodu float(Series) ile tesadüfen
+                    #    çalışıyor ama FutureWarning basıyor — burada düzgün yapılıyor.)
+                    # 2) ENDEKSTE HACİM FİLTRESİ UYGULANMAZ: XU100'ün bugünkü barı
+                    #    Volume=0 gelir (endeks + tamamlanmamış bar). Hisse için doğru
+                    #    olan "hacimsiz bar = hayalet" kuralı endekste BUGÜNÜ siler ve
+                    #    yanlış günle kıyaslatır. Sadece dropna yeterli.
+                    xc = xu["Close"]
+                    if isinstance(xc, pd.DataFrame):
+                        xc = xc.iloc[:, 0]
+                    xc = xc.astype(float).dropna()
+                    if len(xc) < 2:
+                        raise ValueError("XU100 kapanış serisi yetersiz")
+                    xu_chg = (float(xc.iloc[-1]) / float(xc.iloc[-2]) - 1) * 100
+                    st_chg = float(chg.iloc[-1])
+                    fark = st_chg - xu_chg
+                    if abs(fark) >= 1.0:
+                        yon = "ÜSTÜNDE" if fark > 0 else "ALTINDA"
+                        vurgu = ("Endeks düşerken hisse ayakta kalmış/yükselmiş — bu GERÇEK bir "
+                                 "göreli güç işareti, özette MUTLAKA yer versin."
+                                 if fark > 0 and xu_chg < 0 else
+                                 "Endeks yükselirken hisse geride kalmış — göreli zayıflık."
+                                 if fark < 0 and xu_chg > 0 else "")
+                        parts.append(f"BUGÜN endeks (XU100) {xu_chg:+.2f}% iken hisse {st_chg:+.2f}% "
+                                     f"→ hisse endeksin {abs(fark):.2f} puan {yon}. {vurgu}".strip())
+                    else:
+                        parts.append(f"BUGÜN endeks (XU100) {xu_chg:+.2f}%, hisse {st_chg:+.2f}% "
+                                     f"— endeksle paralel, ayrışma yok.")
+            except Exception:
+                pass
+
+        return ("\n*** 📌 GENEL ÖZET İÇİN EK BAĞLAM (kart bu rakamları kaçırıyordu) ***\n"
+                + "\n".join(f"- {x}" for x in parts) + "\n")
+    except Exception:
+        return ""
 
 
 def _pro_algo_notes(ticker: str, df: pd.DataFrame) -> str:
@@ -3993,15 +4122,9 @@ def _pro_algo_notes(ticker: str, df: pd.DataFrame) -> str:
     try:
         _h, last, types = _db_evidence_hits(ticker)
         if types:
-            iyi, uyari = [], []
-            for t in types:
-                if str(t).startswith("er_"):
-                    code = str(t)[3:]
-                    if code in _ER_INFO:
-                        ad, desc, tip = _ER_INFO[code]
-                        (uyari if tip == "uyarı" else iyi).append(f"{ad} ({desc})")
-                elif t in _SCANNER_NAMES_EV:
-                    iyi.append(_SCANNER_NAMES_EV[t])
+            _iyi_p, _uyari_p = _classify_hits(types)
+            iyi = [f"{a} ({d})" if d else a for a, d in _iyi_p]
+            uyari = [f"{a} ({d})" for a, d in _uyari_p]
             if iyi:
                 notes.append(
                     f"Son piyasa taramasında ({last}) şu kurulumlarda çıktı: {'; '.join(iyi)}. "
@@ -4452,6 +4575,53 @@ Bunlar trendin "yan ürünü değil" gerçek çelişkilerdir. Yükseliş devam e
 {data_block}
 {_evidence_g1}
 
+*** 🔒 BEŞ KAÇAK — ELITE ZORUNLU KURALLAR (17 Tem 2026, canlı kartta hepsi sızdı) ***
+⚠️ Bu blok BİLEREK burada (veri bloğundan sonra): yukarıdaki "F) UYDURMA KELİME YASAĞI" ve
+"ANTİ-KALIP" blokları gönderim öncesi prompt'tan KESİLİYOR (lean filtresi) — yani sana hiç
+ulaşmıyor. Aşağıdakiler kesilmeyen bölgede, İSTİSNASIZ uyulacak.
+
+1) 🚫 AÇILIM UYDURMA YASAĞI (EN KRİTİK — canlı kartta "CMF (Chop & Flow Meter)" yazıldı, BÖYLE
+   BİR GÖSTERGE YOK). Bir kısaltmanın açılımını SADECE aşağıdaki listeden yazabilirsin:
+   - CMF  = Chaikin Money Flow (para akışı)          - OBV   = On-Balance Volume (hacim akışı)
+   - MFI  = Money Flow Index (para akışı endeksi)    - RVOL  = Relative Volume (bağıl hacim)
+   - RS   = Relative Strength (bağıl güç)            - RSI   = Relative Strength Index
+   - VWAP = Volume Weighted Average Price            - POC   = Point of Control
+   - HARSI= Heikin Ashi RSI                          - ATR   = Average True Range
+   - MACD = Moving Average Convergence Divergence    - BB    = Bollinger Bands
+   - VSA  = Volume Spread Analysis                   - OB    = Order Block
+   - FVG  = Fair Value Gap                           - BOS   = Break of Structure
+   - CHoCH= Change of Character                      - EQH/EQL = Equal High / Equal Low
+   Bu listede OLMAYAN bir kısaltmanın açılımını YAZMA — açılımdan emin değilsen sadece Türkçe
+   adını kullan ("para akışı -0.546"). Emin olmadığın açılımı TAHMİN ETME. Yanlış açılım,
+   yanlış veriden daha kötüdür: abone algoritmaya güvenini kaybeder.
+
+2) 🚫 UYARI SENARYOSUNU YUTMA (BAĞLAYICI): Yukarıda "⚠ UYARI SENARYOSU" başlıklı bir blok
+   VARSA, o senaryoyu analizde MUTLAKA kullan — adını yaz, neden riskli olduğunu bir cümleyle
+   açıkla. Canlı kartta bu blok verildi ve tamamen yutuldu. Bu blok "algoritma bu hissede
+   temkin işareti gördü" demektir; olumlu bir bulguymuş gibi sunmak da, hiç yazmamak da YASAK.
+   Yeri: olumsuz maddeler bölümü (📍) veya SONUÇ.
+
+3) 🚫 RETORİK SORU / MERAK BIRAKMA YASAĞI: Hiçbir madde/paragraf soruyla bitmez. Canlı kartta
+   "Peki, bu toparlanma kalıcı olur mu sorusu akla geliyor." yazıldı — bu YASAK. "Peki ...mi? /
+   ...sürdürülebilir mi? / ne yöne kırılacak? / sorusu akla geliyor / merak uyandırıyor /
+   sorgulamak gerekiyor" hepsi yasak. Her madde somut SONUÇ, SEVİYE veya net çıkarımla biter.
+
+4) 🚫 DOLAYLI TAVSİYE YASAĞI (emir kipi olmadan da tavsiye olur):
+   ⛔ MEKANİK KURAL — "-meli / -malı" EKİ TAMAMEN YASAK. Cümlelerini tara: "-meli" veya "-malı"
+      ile biten TEK BİR fiil bile kalmayacak. Canlı kartta "seviyeler yakından İZLENMELİ"
+      yazıldı — bu bir emirdir, yasaktır. ("izlenmeli / beklenmeli / alınmalı / görülmeli /
+      dikkat edilmeli / takip edilmeli / değerlendirilmeli" — hepsi aynı ihlal.)
+   × "izlenmesi gereken / izlenmesi önemlidir / izlenmelidir / takip edilmelidir / izlemekte fayda var"
+   × "önem taşıyor / kritik olacaktır / belirleyici olacaktır / sabırlı olunmalı / yakından izlenmeli"
+   × "-dir/-dır/-tir/-tır" ekiyle biten hüküm cümleleri (robot dili + gizli emir)
+   ⚠️ ÖZELLİKLE SONUÇ/KAPANIŞ CÜMLESİNDE DİKKAT: kartı "şu seviyeler izlenmeli" diye bağlamak
+      en sık düştüğün tuzak. Kapanışta da seviye + koşul ver, emir verme.
+   ✓ DOĞRU: seviyeyi söyle, koşulu kur, orada bırak — "5.44 üzerinde kapanış olursa tepki
+     güçlenebilir; 5.04 altında baskı sürebilir." Okuyucuya ne yapması gerektiğini İMA ETME.
+
+5) 🚫 HİSSE ADI: analizin HER yerinde sadece "{clean_ticker}" yaz. ".IS" uzantısı YASAK
+   ("{clean_ticker}.IS" değil "{clean_ticker}") — borsa kodu abonenin gördüğü ad değildir.
+
 * Görevin (DERİN ANALİZ — ELİTE):
 
 AÇILIŞ (3 cümle, etiket koyma):
@@ -4460,13 +4630,25 @@ Kurumsal niyet (para akışı verisi, VWAP konumu, Hacim Kalitesi, VSA) ile kü�
 Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu entegre et.
 
 ### 1. GENEL ANALİZ
+   - 🔴 ZORUNLU MADDE (HER ŞEYDEN ÖNCE OKU): Yukarıdaki veride "⚠ UYARI SENARYOSU" başlıklı bir
+     blok VAR MI? Kontrol et. VARSA: olumsuz (📍) maddelerden BİRİ mutlaka o senaryo olacak —
+     senaryonun ADINI başlığa yaz (örn: "📍 (7/10) Tek Güçlü Sinyal — Teyitsiz Alım Günü") ve
+     3 cümlede neden riskli olduğunu aç. Bu madde ATLANAMAZ; algoritmanın bu hissede gördüğü
+     temkin işaretidir ve abonenin görmesi gereken şeydir. (Canlı kartta bu blok iki kez verildi,
+     iki kez de yutuldu — bu yüzden artık zorunlu madde.) Blok YOKSA bu maddeyi hiç açma.
    - SIRALAMA KURALI (BU KURAL ÖNEMLİ): Maddeleri "Önem Derecesine" göre azalan şekilde sırala. Düzyazı halinde yapma; Her madde için paragraf aç. Önce olumlu olanları sırala; en çok olumlu’dan en az olumlu’ya doğru sırala. Sonra da olumsuz olanları sırala; en çok olumsuz’dan en az olumsuz’a doğru sırala. Olumsuz olanları sıralamadan evvel şu geçişi kullan: "Tablonun parlak tarafı bu. Ama sahneyi tamamlamak için arka plandaki ağırlıklara da bakmak gerekiyor:" — "Öte Yandan;" gibi sert bir kopuş değil, okuyucuyu doğal olarak oraya taşı. Otoriter yazma. Geleceği kimse bilemez.
    - SIRALAMA KURALI DEVAMI: Her maddeyi 3 cümle ile yorumla ve yorumlarken; o verinin neden önemli olduğunu (8/10) gibi puanla ve finansal bir dille açıkla. Olumlu maddelerin başına "✅" ve verdiğin puanı, olumsuz/nötr maddelerin başına " 📍 " ve verdiğin puanı koy. (Örnek Başlık: "📍 (8/10) Momentum Kaybı ve HARSI Zayıflığı:") Olumlu maddeleri alt alta, Olumsuz maddeleri de alt alta yaz. Sırayı asla karıştırma. (Yani bir olumlu bir olumsuz madde yazma)
    - AKIŞ KURALI (BU KURAL KRİTİK): Her maddeyi birbirinden kopuk bağımsız bir kutu gibi yazma. Her madde bir öncekinin üzerine inşa edilsin ve bir sonrakine köprü kursun. Bunun için her maddenin 3 cümlesi şu işlevi taşısın:
      · 1. cümle: Veriyi söyle — net, sade, doğrudan.
      · 2. cümle: Ne anlama geldiğini söyle — okuyucu için, teknik jargon değil.
-     · 3. cümle: Köprü kur — ya bir soru bırak ("Peki bunu teyit eden var mı?"), ya bir sonraki maddenin cevabını ima et ("Cevap bir sonraki sinyalde gizli."), ya da önceki maddeyle bağlantı kur ("Bu da BOS sinyalini güçlendiriyor.").
+     · 3. cümle: Köprü kur — ya bir sonraki maddenin cevabını ima et ("Cevap bir sonraki sinyalde gizli."), ya da önceki maddeyle bağlantı kur ("Bu da yapı kırılımı sinyalini güçlendiriyor.").
+       ⛔ 17 Tem 2026 — "ya bir soru bırak (‘Peki bunu teyit eden var mı?’)" seçeneği BU LİSTEDEN
+       KALDIRILDI. Retorik soru yasağıyla çelişiyordu ve canlı kartta iki kez soru sızdırdı
+       ("Peki bu tepkiyi destekleyen başka veriler var mı?"). Köprüyü SORUYLA KURMA — üstteki iki
+       teknikle kur. Madde soruyla bitmez; somut sonuç/seviye/çıkarımla biter.
    Okuyucu her maddeyi okuyunca bir sonrakini okumak zorunda hissetmeli. Analizin bir hikayesi olsun — başı, gerilimi ve çözümü.
+   ⚠️ Ama bu "gerilim" retorik soruyla değil, BULGU ile kurulur: çelişkiyi göster, eksik teyidi
+   söyle, sonraki maddenin onu tamamlayacağını ima et — soru sorma.
    Ayrıca, yorumları bir robot gibi değil, tecrübeli ve sezgileri kuvvetli bir stratejist gibi yap.
      a) Listenin en başına EN GÜÇLÜ sinyalleri koy ve bunlara (8/10) ile (10/10) arasında puan ver. Yüksek puan hak eden sinyaller:
         - Klasik güçlü sinyaller: "Kırılım (Breakout)", "Akıllı Para (Smart Money)", "Trend Dönüşü", "BOS"
