@@ -427,9 +427,12 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
                             call_gemini_gorev3(prompt, ticker), timeout=220
                         )
 
-                        # DETERMİNİSTİK UYARI KAPISI (17 Tem 2026) — PRO+ELITE ortak.
-                        # AI uyarı senaryosunu yutmuşsa algoritma notu olarak eklenir.
+                        # DETERMİNİSTİK KAPILAR (17 Tem 2026) — PRO+ELITE ortak.
+                        # Prompt'ta tutmayan iki kural kodla garanti altına alınıyor:
+                        # (1) uyarı senaryosu yutulmuşsa eklenir,
+                        # (2) "-meli/-malı" emir eki koşullu dile çevrilir.
                         ai_text = _enforce_warning_note(ticker, ai_text)
+                        ai_text = _enforce_no_meli(ticker, ai_text)
 
                 except asyncio.TimeoutError:
                     log.error(f"[{ticker}] Gemini timeout — fallback AI metni gönderilecek")
@@ -496,6 +499,89 @@ def _enforce_warning_note(ticker: str, ai_text: str) -> str:
         return ai_text.rstrip() + "\n\n" + notes   # ayraç yoksa sona ekle
     except Exception as e:
         log.error(f"[{ticker}] _enforce_warning_note hatası (kart bozulmadı): {e}")
+        return ai_text
+
+
+# ─── DETERMİNİSTİK "-meli/-malı" KAPISI (17 Tem 2026) ────────────────────────
+# NEDEN KOD: "-meli/-malı eki YASAK" kuralı prompt'a ÜÇ kez, giderek sertleşerek
+# yazıldı (PRO + ELITE + _LEAN_SAFE_RULES, mekanik kural olarak) — canlı kartlarda
+# hâlâ ara ara sızıyor ("13,751–12,966 bölgesi kısa vadede izlenmeli"). Bu ek
+# okuyucuya verilmiş EMİRDİR = tavsiye = hukuki sınır. Prompt'a güvenilmez.
+#
+# ⚠️ KÖR SUFFIX DEĞİŞİMİ YAPILAMAZ: Türkçede "-meli" ile biten ama FİİL OLMAYAN
+# kelimeler var — "kademeli" (kademeli düşüş), "temeli" (trendin temeli). Kör kural
+# bunları "kadeebilir"/"temeebilir" yapar. (Bu tuzak bu oturumda gerçekten yaşandı:
+# regex denetimi "kademeli"yi ihlal sandı.) Bu yüzden BEYAZ LİSTE: sadece bilinen
+# fiil kalıpları, elle yazılmış güvenli karşılıklarla. Listede olmayan → DOKUNMA, LOGLA.
+#
+# Dönüşüm yönü ev kuralıyla uyumlu: "tavsiyeyi KOŞULLU dile çevir" (izlenmeli →
+# izlenebilir). Emir kipi gider, gözlem kalır.
+_MELI_MAP = {
+    # gözlem fiilleri — güvenli koşullu karşılık
+    "izlenmelidir": "izlenebilir",
+    "izlenmeli": "izlenebilir",
+    "takip edilmelidir": "takip edilebilir",
+    "takip edilmeli": "takip edilebilir",
+    "beklenmelidir": "beklenebilir",
+    "beklenmeli": "beklenebilir",
+    "görülmelidir": "görülebilir",
+    "görülmeli": "görülebilir",
+    "değerlendirilmelidir": "değerlendirilebilir",
+    "değerlendirilmeli": "değerlendirilebilir",
+    "gözlenmelidir": "gözlenebilir",
+    "gözlenmeli": "gözlenebilir",
+    "yapılmalıdır": "yapılabilir",
+    "yapılmalı": "yapılabilir",
+    "aşılmalıdır": "aşılabilir",
+    "aşılmalı": "aşılabilir",
+    "kırılmalıdır": "kırılabilir",
+    "kırılmalı": "kırılabilir",
+    "korunmalıdır": "korunabilir",
+    "korunmalı": "korunabilir",
+    "tutulmalıdır": "tutulabilir",
+    "tutulmalı": "tutulabilir",
+}
+# Doğrudan İŞLEM TAVSİYESİ — sadece yumuşatma yetmez, ERROR logla (hukuki risk)
+_MELI_TRADE = {
+    "alınmalıdır": "alınabilir", "alınmalı": "alınabilir",
+    "satılmalıdır": "satılabilir", "satılmalı": "satılabilir",
+    "girilmelidir": "girilebilir", "girilmeli": "girilebilir",
+    "çıkılmalıdır": "çıkılabilir", "çıkılmalı": "çıkılabilir",
+}
+
+
+def _enforce_no_meli(ticker: str, ai_text: str) -> str:
+    """Kartta '-meli/-malı' emir eki kalmasın (prompt'ta tutmuyor → kod garantisi)."""
+    try:
+        if not ai_text:
+            return ai_text
+        import re as _re_m
+        out, degisen = ai_text, []
+        for _map, _tip in ((_MELI_TRADE, "İŞLEM TAVSİYESİ"), (_MELI_MAP, "gözlem")):
+            for src, dst in _map.items():
+                # kelime sınırı — "kademeli/temeli" gibi fiil-olmayanlara dokunmaz
+                pat = _re_m.compile(r"\b" + _re_m.escape(src) + r"\b", _re_m.IGNORECASE)
+                if pat.search(out):
+                    out = pat.sub(dst, out)
+                    degisen.append(f"{src}→{dst}")
+                    if _tip == "İŞLEM TAVSİYESİ":
+                        log.error(f"[{ticker}] ⛔ KARTTA İŞLEM TAVSİYESİ SIZDI: '{src}' "
+                                  f"→ '{dst}' olarak düzeltildi (hukuki sınır!)")
+        if degisen:
+            log.warning(f"[{ticker}] '-meli' eki AI tarafından sızdırıldı → deterministik "
+                        f"düzeltildi: {degisen}")
+
+        # Beyaz listede OLMAYAN -meli/-malı fiilleri: dokunma ama ÖĞREN (listeyi büyütmek için)
+        _bilinen = set(_MELI_MAP) | set(_MELI_TRADE)
+        _yok_say = {"kademeli", "temeli", "önemli", "gizemli", "sistemli", "dönemli",
+                    "kalemli", "verimli", "denemeli"}
+        for m in _re_m.findall(r"\b\w+(?:meli|malı|melidir|malıdır)\b", out, _re_m.IGNORECASE):
+            if m.lower() not in _bilinen and m.lower() not in _yok_say:
+                log.warning(f"[{ticker}] ⚠ beyaz listede OLMAYAN '-meli' kalıbı: '{m}' "
+                            f"— dokunulmadı; fiilse _MELI_MAP'e ekle")
+        return out
+    except Exception as e:
+        log.error(f"[{ticker}] _enforce_no_meli hatası (kart bozulmadı): {e}")
         return ai_text
 
 
