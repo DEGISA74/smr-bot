@@ -1615,6 +1615,59 @@ _LEAN_ANTITIK_RULE = """
 2) Aynı cümle iskeletini ("[sinyal] görülüyor, bu da [ima] gösteriyor") arka arkaya tekrarlama; her maddede cümle yapısını değiştir."""
 
 
+# ─── LEAN-GÜVENLİ ZORUNLU KURALLAR (17 Tem 2026) ─────────────────────────────
+# NEDEN VAR: Bu 5 kural eskiden prompt'un "ANTİ-KALIP → ANLAŞILIRLIK" aralığında
+# (F/G/H maddeleri) ve "İÇ DENETİM ÖZ-KONTROL" bloğunda (KATMAN 4) duruyordu.
+# _apply_lean_prompt O İKİ BÖLGEYİ KOMPLE KESİYOR → kurallar AYLARDIR canlıya hiç
+# gitmedi. Denetim (17 Tem): PRO+ELITE'ten 13.2K karakter / 120 satır kural kesiliyor;
+# 7 tanesinin canlıda kopyası yoktu. KANIT: XU100 kartı endekse "akıllı para sessizce
+# topluyor" yazdı (H yasaklıyor) + "endeksin düşüşüne rağmen HİSSE" diye endeksi
+# kendisiyle kıyasladı (uydurma); ELITE "CMF (Chop & Flow Meter)" diye gösterge
+# uydurdu (F yasaklıyor).
+# KÖK SEBEP: LEAN 12 Haz'da ÜSLUP/anti-kalıp bloklarını kısmak için yazıldı (kara
+# liste analizi robotlaştırıyordu) — kesim ARALIK tabanlı. Sonradan o aralığa
+# DOĞRULUK kuralları eklendi; ekleyen oranın kesildiğini bilmiyordu. Hata LEAN'de
+# değil, kuralın yanlış mahalleye konmasında.
+# KURAL: Doğruluk/hukuk taşıyan kural BURAYA yazılır (veri bloğundan sonra emit
+# edilir = kesilmez). Üslup/anti-kalıp kuralları eski bölgede kalabilir.
+_LEAN_SAFE_RULES = """
+*** 🔒 ZORUNLU DOĞRULUK KURALLARI (İSTİSNASIZ — 17 Tem 2026) ***
+
+1) 📊 VERİ SADAKATİ: Yazdığın HER sayı/seviye/etiket için yukarıdaki veri bloğuna dön ve
+   DOĞRULA. Fiyat, destek/direnç, RSI, ortalama seviyeleri, yüzde değişim, formasyon adı —
+   hepsi veride yazana BİREBİR uymalı. Hafızadan yazma, tahmin etme, yuvarlama yapma.
+   Veride OLMAYAN bir sayıyı ÜRETME. Emin değilsen o cümleyi hiç kurma.
+
+2) 🏛 ENDEKS İSTİSNASI — XU100 / XU030 / XBANK / XHOLD / XUSIN / XGIDA vb. analiz ediyorsan:
+   × MİKRO-YAPI YORUMU YASAK: "akıllı para topluyor / kurumsal alım / mal topluyor /
+     akümülasyon / kurumsal birikim / arz-talep bölgesi" — endeks tek bir kurumun alıp
+     sattığı şey değil, yüzlerce hissenin ortalamasıdır. Yerine "genel piyasa katılımı" dili.
+   × BAĞIL HACİM YORUMU YASAK: endeks hacmi bileşen hisselerin toplamıdır; "hacim
+     ortalamanın X katı / hacim düşük" çıkarımı endekste anlamlı değildir.
+   × Endeksi "hisse" diye ANMA. Endeksi ENDEKSLE KIYASLAMA — "endekse göre daha iyi/kötü
+     performans" cümlesi endeksin KENDİSİ için anlamsızdır; o kıyas verisi sana zaten
+     gönderilmez, UYDURMA.
+   ✓ Endekste geçerli: 52 hafta konumu, ortalama dizilimi, RSI/ivme, yapı, destek/direnç.
+
+3) ⚖️ ÇELİŞKİ YASAĞI — günün ortalama işlem fiyatı × bölge eşleşmesi:
+   Fiyat günün ortalama işlem fiyatının ÜSTÜNDEyse o gün alıcı baskın taraftadır; ALTINDAysa
+   satıcı baskın taraftadır. "Ortalamanın altında ama pahalı bölgede" / "ortalamanın üstünde
+   ama ucuz bölgede" gibi ÇELİŞKİLİ eşleme YASAK — biri mutlaka yanlıştır, veriye geri dön.
+   NOT: günün ortalama işlem fiyatı "kurumların maliyeti" DEĞİLDİR, istatistiksel bir
+   referanstır. "Kurumların maliyeti/ortalama alım fiyatı" tanımı YASAK.
+
+4) 🔀 UYUMSUZLUK SADAKATİ: Veri bloğundaki uyumsuzluk (divergence) değerini AYNEN yansıt.
+   Veri "Uyumlu" diyorsa "gizli pozitif / trend devam sinyali" YAZMA; "Klasik Negatif"
+   diyorsa onu yaz. Kendi yorumunu verinin ÜZERİNE BİNDİRME.
+   Hatırlatma: Klasik (Regular) = tükenme, dönüş sinyali · Gizli (Hidden) = trend devamı.
+
+5) 🚫 "-meli / -malı" EKİ YASAK: cümlelerini tara, bu ekle biten TEK BİR fiil bile kalmayacak
+   ("izlenmeli / beklenmeli / görülmeli / dikkat edilmeli / takip edilmeli"). Bunlar okuyucuya
+   verilmiş emirdir. Seviyeyi söyle, koşulu kur, orada bırak: "X üzerinde kapanış olursa
+   tepki güçlenebilir." Ne yapılması gerektiğini İMA ETME; ne olabileceğini söyle.
+"""
+
+
 def _apply_lean_prompt(p):
     """Yasak/anti-kalıp + İÇ DENETİM öz-kontrol bloklarını analiz prompt'undan çıkar,
     sona kısa hedefli anti-tik kuralını ekle. PRO + ELITE ortak (aynı marker'lar).
@@ -2421,20 +2474,77 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     # GENEL ÖZET 6-oy verdicti (13 Tem 2026 — app.py senkronu, V10)
     genel_verdict_txt = _genel_ozet_verdict_sc(df) or "(veri eksik)"
 
+    # ══ ENDEKS MODU (17 Tem 2026) — hisseye-özel alanlar endekse GÖNDERİLMEZ ══
+    # NEDEN VERİ SEVİYESİNDE: prompt'ta "endekste akıllı para/kurumsal alım yorumu
+    # YASAK" kuralı vardı (H maddesi) ama tutmuyordu — üstelik kural lean tarafından
+    # kesildiği için aylardır canlıya bile gitmiyordu. Kesilmeyen bölgeye taşındı,
+    # YİNE tutmadı: canlı XU100 kartı "akıllı para sessizce topluyor" + "arz bölgesi
+    # 14,657-14,876" + "hacim ortalamanın altında" yazdı. Sebep basit — veri bloğu
+    # endekse Order Block, akıllı para metrikleri ve bağıl hacim gönderiyordu; AI
+    # eline verileni anlatır. Görmediğini yazamaz → KURAL YERİNE MEKANİZMA.
+    # (Aynı ders: uyarı senaryosu da prompt'ta tutmadı, deterministik kapıyla çözüldü.)
+    #
+    # Endeks = tüm BIST evreninde X ile başlayan semboller (XU100/XU030/XBANK/XUSIN/
+    # XTUMY...). Doğrulandı: evrende X ile başlayan GERÇEK HİSSE yok → prefix güvenli.
+    _clean_ix = ticker.replace(".IS", "").upper()
+    _is_index = _clean_ix.startswith("X")
+
+    # Endekse ham hacim KALIR (kullanıcı kararı): endeks hacmi gerçektir ve "genel
+    # piyasa katılımı" olarak anlamlıdır — düşen sadece BAĞIL hacim (RVOL) ve akıllı
+    # para metrikleri, çünkü onlar "kurumlar mal topluyor" anlatısına zemin veriyor.
+    _ix_vol_line = ""
+    if _is_index:
+        try:
+            _vv = df["Volume"].astype(float)
+            _v_last = float(_vv.iloc[-1])
+            if _v_last <= 0 and len(_vv) >= 2:      # endeksin son barı 0 gelebilir
+                _v_last = float(_vv.iloc[-2])
+            _v_avg = float(_vv.iloc[-21:-1].mean())
+            def _hf_ix(x):
+                if x >= 1e9:  return f"{x/1e9:.2f} milyar"
+                if x >= 1e6:  return f"{x/1e6:.0f} milyon"
+                return f"{x:,.0f}"
+            _ix_vol_line = (f"\n📦 HACİM\n• İşlem Hacmi (genel piyasa katılımı): {_hf_ix(_v_last)}"
+                            f" — 20 günlük ortalama {_hf_ix(_v_avg)}"
+                            f"\n  NOT: endeks hacmi bileşen hisselerin TOPLAMIDIR — tek bir kurumun"
+                            f" alım/satımı DEĞİLDİR. 'Kurumsal alım/mal toplama' göstergesi olarak"
+                            f" yorumlama; sadece genel piyasa katılımının ölçüsüdür."
+                            f"\n• GENEL ÖZET Verdicti: {genel_verdict_txt}")
+        except Exception:
+            _ix_vol_line = f"\n📦 HACİM\n• GENEL ÖZET Verdicti: {genel_verdict_txt}"
+
+    # ICT mikro-yapı (Order Block / FVG / bölge yaşı / EQH-EQL / Sweep) — endekste DÜŞER
+    _ict_micro_block = "" if _is_index else f"""
+• Order Block : {ict.get('ob_txt', 'Yok')}
+• FVG         : {ict.get('fvg_txt', 'Yok')}
+• Bölge Yaşları (Taze/Orta/Eski): {ict_age_txt}
+• EQH/EQL     : {ict.get('eqh_eql_txt', 'Yok')}
+• Sweep       : {ict.get('sweep_txt', 'Yok')}"""
+
+    # Bağıl hacim (RVOL) — endekste anlamsız (endeks hacmi bileşenlerin toplamı)
+    _rvol_line = "" if _is_index else f"\n• RVOL    : {rvol:.2f}x — {rvol_tag}"
+
+    # Akıllı para bloğu — endekste komple DÜŞER (yerine yukarıdaki ham hacim satırı)
+    _akilli_para_block = _ix_vol_line if _is_index else f"""
+📦 PARA AKIŞI & HACİM
+• OBV Durumu     : {para_akisi}
+• OBV + CMF Teyit: {obv_cmf_txt}
+• OMI (OBV Momentum Index): {omi_txt}
+• 5G Kümülatif Delta: {delta5_txt}
+• Hacim Kalitesi : {hacim_kal_txt}{rs_line}
+• Alıcı/Satıcı Eforu (UDVR): {udvr_txt}
+• Fiyat × Hacim Gücü (Force Index): {fi_txt}
+• GENEL ÖZET Verdicti: {genel_verdict_txt}{hazir_cumleler_block}"""
+
     data_block = f"""═══════════════════════════════════════
-📊 HİSSE: {ticker} | Fiyat: {fiyat_str}
+📊 {'ENDEKS' if _is_index else 'HİSSE'}: {ticker} | Fiyat: {fiyat_str}
 📅 Veri Tarihi: {data_timestamp_txt}
 ═══════════════════════════════════════
 🔬 ICT YAPI ANALİZİ
 • Yapı   : {ict.get('structure', '-')}
 • Bias   : {ict.get('bias', '-').upper()} | Bölge: {ict.get('zone', '-')}
 • Displacement: {ict.get('displacement', '-')}
-• Model Skoru : {ict.get('model_score', 0)}/5
-• Order Block : {ict.get('ob_txt', 'Yok')}
-• FVG         : {ict.get('fvg_txt', 'Yok')}
-• Bölge Yaşları (Taze/Orta/Eski): {ict_age_txt}
-• EQH/EQL     : {ict.get('eqh_eql_txt', 'Yok')}
-• Sweep       : {ict.get('sweep_txt', 'Yok')}
+• Model Skoru : {ict.get('model_score', 0)}/5{_ict_micro_block}
 📐 SETUP
 • Senaryo : {ict.get('setup_type', 'BEKLE')}
 • Giriş   : {_fmt(ict.get('entry', 0)) if ict.get('entry') else 'Bekle'}
@@ -2446,8 +2556,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • {ema_stack}
 • RSI(14) : {rsi:.1f} {rsi_tag}
 • HARSI(14): {harsi_txt}
-• ATR(14) : {atr_txt}
-• RVOL    : {rvol:.2f}x — {rvol_tag}
+• ATR(14) : {atr_txt}{_rvol_line}
 🌍 MAKRO KONUM
 • 52H Menzil : {range_52h_txt}
 • BB-Keltner Sıkışma : {squeeze_txt}
@@ -2458,16 +2567,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • VWAP(20G): {vwap_txt}
 • Piyasa Fazı: {faz_txt}
 • Smart S/R: {smart_sr_txt}
-• Volume Profile HVN/LVN: {hvn_lvn_txt}
-📦 PARA AKIŞI & HACİM
-• OBV Durumu     : {para_akisi}
-• OBV + CMF Teyit: {obv_cmf_txt}
-• OMI (OBV Momentum Index): {omi_txt}
-• 5G Kümülatif Delta: {delta5_txt}
-• Hacim Kalitesi : {hacim_kal_txt}{rs_line}
-• Alıcı/Satıcı Eforu (UDVR): {udvr_txt}
-• Fiyat × Hacim Gücü (Force Index): {fi_txt}
-• GENEL ÖZET Verdicti: {genel_verdict_txt}{hazir_cumleler_block}
+• Volume Profile HVN/LVN: {hvn_lvn_txt}{_akilli_para_block}
 💡 ICT SONUÇ: {ict.get('bottom_line', '-')}{_breakout_line}
 ═══════════════════════════════════════"""
 
@@ -3253,6 +3353,21 @@ def build_ai_prompt(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> str
     _algo_notes = _pro_algo_notes(ticker, df)
     # GENEL ÖZET ek bağlamı (17 Tem 2026): son seansların yörüngesi + bugünkü endeks ayrışması
     _ozet_ctx = _pro_ozet_context(ticker, df)
+
+    # ÖZET'in "endekse göre" maddesi VERİYE BAĞLI olmalı (17 Tem 2026 — canlı bug):
+    # Şablonda madde "(varsa)" diye koşulluydu; AI "varsa"yı yutup ENDEKS KARTINDA BİLE
+    # kıyas uydurdu ("Endeks düşerken XU100'ün ayakta kalması güç işareti" — XU100
+    # endeksin KENDİSİ, o kıyas verisi hiç gönderilmiyor). LLM'e koşul bırakma:
+    # veri yoksa madde de olmasın, üstüne açık "uydurma" yasağı.
+    _ozet_madde3 = (
+        " 3) ENDEKSE GÖRE BUGÜN: 'GENEL ÖZET İÇİN EK BAĞLAM' bloğundaki endeks kıyas satırını\n"
+        "    yaz. Endeks düşerken varlık ayakta kaldıysa bu GERÇEK bir güç işareti — atlama."
+        if "BUGÜN endeks" in _ozet_ctx else
+        " 3) ⛔ ENDEKS KIYASI YOK — bu varlık için endekse-göre kıyas verisi SANA GÖNDERİLMEDİ\n"
+        "    (analiz edilen şey endeksin KENDİSİ olabilir ya da BIST dışı bir varlık).\n"
+        "    'Endekse göre daha iyi/kötü', 'endeks düşerken ayakta kaldı' gibi HİÇBİR kıyas\n"
+        "    cümlesi KURMA — veri yok, uydurma olur. Bu maddeyi tamamen ATLA."
+    )
     _one_cikan_sablon = ("""
 ⚡ ÖNE ÇIKANLAR
 (Yukarıdaki "⚡ ÖNE ÇIKANLAR — ALGORİTMA SEÇTİ" bloğundaki maddeler — her biri tek satır,
@@ -3410,6 +3525,15 @@ Her bir paragrafı yazarken kendine şu soruyu sor: 'Eee, yani? Kahvehanedeki ya
 × "ciddi bir risk / ciddi şekilde" — "ciddi" YASAK drama sıfatı, somut neden ile değiştir.
 × "büyük fonların / büyük oyuncuların / büyük resim" — "büyük" yasak; "kurumsal fonlar" / "kurumsal oyuncular" / "genel tablo" kullan.
 × "perakende yatırımcı / perakende alıcılar" — "küçük yatırımcı" yaz.
+
+⛔⛔ DİKKAT — BURADAN ANLAŞILIRLIK-FİLTRESİ BAŞLIĞINA KADARKİ HER ŞEY CANLIYA GİTMİYOR ⛔⛔
+(⚠️ bu uyarıya o başlığın TAM METNİNİ yazma — lean regex'i onu arıyor, kesim erken biter!)
+_apply_lean_prompt bu aralığı gönderim öncesi KOMPLE KESER (LEAN_PROMPT_ENABLED=True).
+Buraya yazılan kural = ÖLÜ KURAL. 17 Tem 2026 denetimi: bu bölgede aylardır hiç çalışmayan
+7 kural bulundu (F uydurma-kelime / G çelişki / H endeks istisnası / RSI divergence check...).
+✅ DOĞRULUK veya HUKUK kuralı ekleyeceksen → `_LEAN_SAFE_RULES` sabitine yaz (veri bloğundan
+   sonra emit edilir, kesilmez).
+🎨 Sadece ÜSLUP/anti-kalıp kuralı ekleyeceksen → burası uygun (zaten kesilmesi isteniyor).
 
 🚨 GENİŞLETİLMİŞ KARA LİSTE — AÇILIŞ + AKIŞ + JARGON (G3 anti-kalıp v2):
 
@@ -3661,6 +3785,7 @@ Bunlar trendin "yan ürünü değil" gerçek çelişkilerdir. Yükseliş devam e
 
 {data_block}
 {_algo_notes}{_ozet_ctx}
+{_LEAN_SAFE_RULES}
 *** 🔤 TERİM YASAĞI — PRO KART (MEKANİK KURAL, İSTİSNASIZ) ***
 Bu kart teknik analizden anlamayan aboneye gidiyor. Eski kartlarda tek kartta 12 kısaltma birikiyordu;
 her birini parantezle açıklasan bile abone 12 yeni kavramı sindiremiyor. Sorun açıklama değil, YOĞUNLUK.
@@ -3743,8 +3868,7 @@ ve kısır kalıyordu. Abone kartı okumayı bıraksa bile bu bölümü okur; ta
  1) Tablonun genel hükmü — tek cümlede ne oluyor.
  2) KISA VADE YÖRÜNGESİ: "📌 GENEL ÖZET İÇİN EK BAĞLAM" bloğundaki son seans rakamlarını
     kullan. Bugünü saymazsak önceki 3 seans ne yapmış? Rakam ver.
- 3) ENDEKSE GÖRE BUGÜN: aynı bloktaki endeks kıyasını yaz (varsa). Endeks düşerken hisse
-    ayakta kaldıysa bu GERÇEK bir güç işareti — atlanmaz.
+{_ozet_madde3}
  4) Hangi TEK seviye tabloyu değiştirir — rakamla.
  5) DENGELİ KAPANIŞ: Tablo olumsuzsa bile küçük bir olumlu kıvılcım varsa (kısa vade
     toparlanma, endeksten iyi performans, gizli alım izi) onu SÖYLE. "Zayıf ama şu taraf
@@ -4252,6 +4376,15 @@ KURAL: Bir terim tanımını analizde EN FAZLA 1 kez ver. İkinci geçişten iti
 × "perakende yatırımcı / perakende alıcılar" — "küçük yatırımcı" yaz.
 × "3 hafta beklemek / şimdilik beklemek" — örtük tavsiye, koşullu dile çevir.
 
+⛔⛔ DİKKAT — BURADAN ANLAŞILIRLIK-FİLTRESİ BAŞLIĞINA KADARKİ HER ŞEY CANLIYA GİTMİYOR ⛔⛔
+(⚠️ bu uyarıya o başlığın TAM METNİNİ yazma — lean regex'i onu arıyor, kesim erken biter!)
+_apply_lean_prompt bu aralığı gönderim öncesi KOMPLE KESER (LEAN_PROMPT_ENABLED=True).
+Buraya yazılan kural = ÖLÜ KURAL. 17 Tem 2026 denetimi: bu bölgede aylardır hiç çalışmayan
+7 kural bulundu (F uydurma-kelime / G çelişki / H endeks istisnası / RSI divergence check...).
+✅ DOĞRULUK veya HUKUK kuralı ekleyeceksen → `_LEAN_SAFE_RULES` sabitine yaz (veri bloğundan
+   sonra emit edilir, kesilmez).
+🎨 Sadece ÜSLUP/anti-kalıp kuralı ekleyeceksen → burası uygun (zaten kesilmesi isteniyor).
+
 🚨 GENİŞLETİLMİŞ KARA LİSTE — AÇILIŞ + AKIŞ + JARGON (G3 anti-kalıp v2):
 
 A) YASAKLI MADDE AÇILIŞLARI (madde/alt-başlık açılışı şunlardan hiçbiriyle başlamaz):
@@ -4574,7 +4707,7 @@ Bunlar trendin "yan ürünü değil" gerçek çelişkilerdir. Yükseliş devam e
 
 {data_block}
 {_evidence_g1}
-
+{_LEAN_SAFE_RULES}
 *** 🔒 BEŞ KAÇAK — ELITE ZORUNLU KURALLAR (17 Tem 2026, canlı kartta hepsi sızdı) ***
 ⚠️ Bu blok BİLEREK burada (veri bloğundan sonra): yukarıdaki "F) UYDURMA KELİME YASAĞI" ve
 "ANTİ-KALIP" blokları gönderim öncesi prompt'tan KESİLİYOR (lean filtresi) — yani sana hiç
