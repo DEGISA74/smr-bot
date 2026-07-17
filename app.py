@@ -15,7 +15,6 @@ except ImportError:
     def _st_autorefresh(*_a, **_kw): return 0
 import yfinance as yf
 import pandas as pd
-from ta.volume import VolumeWeightedAveragePrice
 from datetime import datetime, timedelta
 import pytz
 _TZ_ISTANBUL = pytz.timezone("Europe/Istanbul")
@@ -27,12 +26,10 @@ import pattern_core  # 4 Tem 2026 — formasyon geliştirme paketi (ön-trend, h
 import ict_core  # 4 Tem 2026 — ICT paneli geliştirme paketi (swing kalitesi, kırılım onayı, denge bölgesi)
 from ict_core import (calculate_ict_deep_analysis, calculate_price_action_dna,
                       calculate_minervini_sepa, calculate_harmonic_confluence,
-                      calculate_harmonic_patterns, detect_price_action_with_context,
-                      _check_harmonic_ratio, _harmonic_zigzag)  # Adım 7 motor göçü
+                      calculate_harmonic_patterns, detect_price_action_with_context)  # Adım 7 motor göçü
 from scoring_core import (calculate_smart_money_score, calculate_sentiment_score,
-                          calculate_master_score, _compute_smc_elements,
-                          compute_smart_money_split_scores, _compute_risk_profile,
-                          _liquidity_manip, _detect_breakout_state, get_tech_card_data)  # Adım 7b
+                          calculate_master_score, compute_smart_money_split_scores,
+                          _compute_risk_profile, _liquidity_manip, get_tech_card_data)  # Adım 7b
 from scan_pipeline import (_compute_signal_features, log_scan_signal, log_erken_radar_signals,
                            backfill_signal_returns, scan_chart_patterns, scan_golden_pattern_agent,
                            scan_hidden_accumulation, analyze_market_intelligence, radar2_scan,
@@ -41,7 +38,7 @@ from scan_pipeline import (_compute_signal_features, log_scan_signal, log_erken_
                            scan_harmonic_confluence_batch, scan_erken_radar_batch,
                            get_golden_trio_batch_scan, _SCAN_LOG_SKIP)  # Adim 7c boru hatti
 from charts import _main_price_chart_plotly  # Adim 8 grafik goc
-from data_layer import TICKER_DISPLAY_NAMES, get_display_name  # Adim 8 — varlik alanina tasindi
+from data_layer import get_display_name  # Adim 8 — varlik alanina tasindi
 from analysis_core import (_risk_profile, get_active_scanner_tiers, _scanner_setup_strength,
                            _compute_volume_quality_label, calculate_synthetic_sentiment,
                            get_obv_divergence_status, process_single_stock_stp,
@@ -56,39 +53,27 @@ from analysis_core import (_risk_profile, get_active_scanner_tiers, _scanner_set
 from data_policy import AUTO_ADJUST, drop_adj_close  # 3 Tem 2026 — veri politikası TEK KAYNAK (fetcher ile aynı)
 # 4 Tem 2026 — BÖLME ADIM 4: saf hesap fonksiyonları indicators.py içinde
 from indicators import (
-    _spike_dom_ratio, calculate_harsi, check_lazybear_squeeze_breakout, check_lazybear_squeeze,
+    calculate_harsi, check_lazybear_squeeze_breakout, check_lazybear_squeeze,
     compute_mfi, compute_relative_obv_state, compute_force_index_dual, compute_updown_volume_ratio,
-    compute_cmf, find_smart_sr_levels, detect_darvas_box, calculate_volume_delta, detect_classic_candle_patterns,
-    calculate_volume_profile_poc, calculate_full_volume_profile, calculate_multi_tf_pocs, calculate_anchored_vwap,
-    detect_naked_poc, detect_supply_demand_zones, _harmonik_52h_strength, calculate_supertrend,
-    calculate_fib_levels, calculate_z_score_live, _z_score_details, detect_market_regime,
-    compute_flow_momentum,  # 9 Tem 2026 — Para Akış İvmesi karışım formülü (TEK KAYNAK)
+    compute_cmf, detect_darvas_box, calculate_volume_delta, detect_classic_candle_patterns,
+    calculate_volume_profile_poc, calculate_multi_tf_pocs, calculate_anchored_vwap,
+    detect_naked_poc, detect_supply_demand_zones,
+    calculate_z_score_live, _z_score_details, detect_market_regime,
     compute_flow_persistence, detect_absorption_days,  # 10 Tem 2026 — Smart Money panel: süreklilik + absorpsiyon
     compute_obv_series, compute_obv_divergence_duration,  # 10 Tem 2026 — OBV sparkline + uyumsuzluk rozeti
     compute_panel_consensus_history, find_volume_gap_levels)  # 10 Tem 2026 — skor geçmişi + LVN boşlukları
 # 4 Tem 2026 — BÖLME ADIM 5: DB çekirdeği db_layer.py içinde
 from db_layer import (DB_FILE, log_error, init_db, _fetch_mkk_yabanci_rss,
-                      _compute_mkk_yabanci_signals, load_watchlist_db, add_watchlist_db,
-                      remove_watchlist_db, get_scanner_optimal_windows, get_scenario_ages_batch)
+                      _compute_mkk_yabanci_signals, load_watchlist_db, get_scenario_ages_batch)
 # 6 Tem 2026 — BÖLME ADIM 6a: tek-hisse tarayıcı çekirdekleri scanners.py içinde
-from scanners import (_validate_cup_shape, _validate_tobo_shape, _detect_double_bottom, _detect_double_top, _detect_wedge, process_single_accumulation,
-                      process_single_radar1, process_single_radar2, calculate_guclu_donus_adaylari, calculate_prelaunch_bos, process_single_ict_setup, _nadir_firsat_single_fast)
+from scanners import (process_single_accumulation, process_single_radar1, process_single_radar2,
+                      calculate_guclu_donus_adaylari, calculate_prelaunch_bos, process_single_ict_setup)
 # 7 Tem 2026 — BÖLME ADIM 6b: Erken Radar ailesi scanners.py içinde
-from scanners import (ERKEN_RADAR_SCENARIOS, evaluate_erken_radar, _er_build_context, _er_kisa_aciklama,
-                      _er_rsi, _er_swing_lows, _er_swing_highs, _er_strong_bullish_div, _er_medium_bullish_div,
-                      _er_weak_bullish_div, _er_bearish_div, _er_volume_dried, _er_volume_rising_slow,
-                      _er_pocket_pivot, _er_distribution_day, _er_distribution_count, _er_updown_vol_ratio,
-                      _er_bb_width, _er_bb_squeeze, _er_bb_squeeze_days, _er_atr_contracting, _er_position_60,
-                      _er_recent_fall, _er_fall_stopped, _er_lateral_range, _er_above_sma, _er_sma50_rising,
-                      _er_pullback, _er_pullback_to_sma, _er_double_bottom, _er_flag_pattern, _er_triangle_contraction,
-                      _er_rs_pct, _er_rs_new_high, _er_index_falling, _er_rs_pct_fast, _er_rs_turning_fast,
-                      _er_rs_crossover_fast, _er_rs_persistent_positive_fast, _er_rs_accelerating_fast,
-                      _er_rs_new_high_fast, _er_rs_healthy_pullback_fast, _er_rs_negative_60_fast)
+from scanners import (ERKEN_RADAR_SCENARIOS, evaluate_erken_radar, _er_kisa_aciklama)
 # 9 Tem 2026 — BÖLME ADIM 6c: veri katmanı data_layer.py içinde
 from data_layer import (
-    CACHE_DIR, _apply_split_adjustments, _data_integrity_check, _normalize_bist_ticker, _yf_download_with_retry,
-    fetch_index_data_cached, fetch_stock_info, final_bist100_list, get_batch_data_cached, get_benchmark_data,
-    get_safe_historical_data)
+    CACHE_DIR, _apply_split_adjustments, _data_integrity_check, fetch_stock_info,
+    final_bist100_list, get_batch_data_cached, get_benchmark_data, get_safe_historical_data)
 import concurrent.futures
 import re
 import altair as alt
@@ -1110,8 +1095,8 @@ def log_analysis_snapshot(ticker):
 # SCANNER_TIER_MAP · ER_BACKTEST_SCORE · ER_ELIT_SCORE_MIN · SCANNER_PLAIN_DESC
 # GUC_SCORE · _guc_score · _guc_plain — kalibrasyon günlüğü de evidence.py içinde.
 # ===============================================================
-from evidence import (SCANNER_TIER_MAP, ER_BACKTEST_SCORE, ER_ELIT_SCORE_MIN,
-                      SCANNER_PLAIN_DESC, GUC_SCORE, _guc_score, _guc_plain)
+from evidence import (ER_BACKTEST_SCORE, ER_ELIT_SCORE_MIN,
+                      SCANNER_PLAIN_DESC, _guc_score, _guc_plain)
 
 # -> scanners.py (Adim 6b, 7 Tem 2026): _er_kisa_aciklama
 
@@ -4123,8 +4108,10 @@ def _infografik_src_version():
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def _infografik_widget_html(ticker, _datekey, _srcver):
-    # _srcver = kaynak dosyaların mtime'ı; düzenleme olunca değişir → önbellek otomatik tazelenir.
+def _infografik_widget_html(ticker, datekey, srcver):
+    # srcver = kaynak dosyaların mtime'ı; düzenleme olunca değişir → önbellek otomatik tazelenir.
+    # 16 Tem 2026: _datekey/_srcver → datekey/srcver. Alt çizgili parametre
+    # st.cache_data anahtarına GİRMEZ — tarih/sürüm tazelemesi çalışmıyordu.
     try:
         import infografik_build as _ib
         return _ib.build_widget_html(ticker)
@@ -11753,8 +11740,10 @@ _TAV_REJIM_AGIRLIK = {
 }
 
 @st.cache_data(ttl=600, show_spinner=False)
-def _tav_compute_panel(_cache_key="default"):
-    """Tüm parquet'leri tarayıp tavan skor DataFrame'i döner. 10dk cache."""
+def _tav_compute_panel(cache_key="default"):
+    """Tüm parquet'leri tarayıp tavan skor DataFrame'i döner. 10dk cache.
+    16 Tem 2026: _cache_key → cache_key (alt çizgili parametre anahtara girmiyordu;
+    10dk kova anahtarı fiilen yok sayılıyordu, ttl=600 maskeliyordu)."""
     import glob, os
     import pandas as pd
     import numpy as np
@@ -12154,7 +12143,7 @@ with col_btn:
                 import datetime as _tav_dt
                 _tav_now = _tav_dt.datetime.now()
                 _tav_ck = f"{_tav_now.strftime('%Y-%m-%d')}_{_tav_now.hour:02d}{(_tav_now.minute//10)*10:02d}"
-                _tav_df, _tav_rejim, _tav_chg, _tav_target = _tav_compute_panel(_cache_key=_tav_ck)
+                _tav_df, _tav_rejim, _tav_chg, _tav_target = _tav_compute_panel(cache_key=_tav_ck)
                 if _tav_df is not None and not _tav_df.empty:
                     st.session_state.tavan_adaylari_data = {
                         'df': _tav_df, 'rejim': _tav_rejim, 'xu_chg': _tav_chg,
@@ -12544,7 +12533,11 @@ if st.session_state.generate_prompt:
     else:
         # Veri gelmezse AI hata almasın diye varsayılan değerler
         guncel_ivme = 0; guncel_stp = 0; guncel_fiyat = 0; denge_sapmasi = 0; ivme_yonu = "Bilinmiyor"
-    mini_data = calculate_minervini_sepa(t) or {}
+    # 16 Tem 2026 fix: benchmark verilmeyince default ^GSPC'ye düşüyordu → BIST hissesi
+    # S&P'ye kıyaslanıp RS hesaplanamıyor, fonksiyon None dönüyordu (panel dolu, YAML boş).
+    # Panel ile aynı seçim (bkz. bench_tkr ~8760): BIST kategorisi → XU100.
+    _min_bench = "XU100.IS" if "BIST" in st.session_state.get('category', 'BIST') else "^GSPC"
+    mini_data = calculate_minervini_sepa(t, benchmark_ticker=_min_bench) or {}
     master_score, pros, cons, master_breakdown = calculate_master_score(t, return_breakdown=True)
     # --- YENİ: AI İÇİN S&D VE LİKİDİTE VERİLERİ ---
     try: 
@@ -13041,22 +13034,29 @@ if st.session_state.generate_prompt:
         else:
             harsi_txt += " | Görünüm: NEGATİF (Kırmızı Bar - Momentum Kayboluyor)"
     # Diğer Metin Hazırlıkları
-    radar_val = "Veri Yok"; radar_setup = "Belirsiz"
+    # 16 Tem 2026: Radar 1/2 artık CANLI hesap — panel CANLI SİNYALLER rozetiyle aynı
+    # çağrılar (process_single_radar1/2). Eskiden Master Scan session-cache'inden
+    # okunuyordu → tarama koşmamış oturumda panel rozeti doluyken YAML "(veri eksik)"
+    # düşüyordu. r2_res zaten yukarıda (AJAN HESAPLAMALARI) canlı hesaplanıyor.
     r1_txt = "Veri Yok"
-    if st.session_state.radar2_data is not None and not st.session_state.radar2_data.empty:
-        if 'Sembol' in st.session_state.radar2_data.columns:
-            r_row = st.session_state.radar2_data[st.session_state.radar2_data['Sembol'] == t]
-            if not r_row.empty:
-                radar_val = f"{r_row.iloc[0]['Skor']}/7"
-                radar_setup = r_row.iloc[0]['Setup']
-    
-    if st.session_state.scan_data is not None and not st.session_state.scan_data.empty:
-        col_name = 'Sembol' if 'Sembol' in st.session_state.scan_data.columns else 'Ticker'
-        if col_name in st.session_state.scan_data.columns:
-            r_row = st.session_state.scan_data[st.session_state.scan_data[col_name] == t]
-            if not r_row.empty: r1_txt = f"Skor: {r_row.iloc[0]['Skor']}/7"
-            
-    r2_txt = f"Skor: {radar_val} | Setup: {radar_setup}"
+    try:
+        _r1_live = process_single_radar1(t, df_hist)  # panel ~9102 ile aynı imza (bench'siz → /7)
+        if _r1_live and _r1_live.get('Skor') is not None:
+            r1_txt = f"Skor: {_r1_live['Skor']}/7"
+            if _r1_live.get('Nedenler'):
+                r1_txt += f" | Aktif: {_r1_live['Nedenler']}"
+    except Exception:
+        pass
+
+    r2_txt = "Veri Yok"
+    try:
+        if r2_res and r2_res.get('Skor') is not None:
+            _r2_setup_live = r2_res.get('Setup', '-')
+            if not _r2_setup_live or _r2_setup_live == '-':
+                _r2_setup_live = 'Trend Takibi'
+            r2_txt = f"Skor: {r2_res['Skor']}/7 | Setup: {_r2_setup_live}"
+    except Exception:
+        pass
 
     # --- GERÇEK PARA AKIŞI (OBV & DIVERGENCE — Dual Window 5g+14g) ---
     para_akisi_txt = "Nötr"
@@ -13120,7 +13120,7 @@ if st.session_state.generate_prompt:
         
     mini_txt = "Veri Yok"
     if mini_data:
-        mini_txt = f"{mini_data.get('Durum', '-')} | RS Rating: {mini_data.get('rs_rating', '-')}"
+        mini_txt = f"{mini_data.get('Durum', '-')} ({mini_data.get('Raw_Score', '-')} puan) | RS Rating: {mini_data.get('rs_rating', '-')}"
         if mini_data.get('is_vcp'): mini_txt += " | VCP Var"
             
     def clean_html_val(key):
@@ -13468,6 +13468,66 @@ if st.session_state.generate_prompt:
         vah_txt      = "Veri Yok"
         val_txt      = "Veri Yok"
         cum5_txt     = "Veri Yok"
+
+    # ── PANEL HAZIR CÜMLELERİ → YAML (16 Tem 2026) ──────────────────────────
+    # Smart Money panelinin okuyucuya gösterdiği hazır Türkçe cümleler AI'a da
+    # aynen gider (amaç: AI panelin diliyle konuşsun, "yapay zeka cümlesi" değil
+    # algoritmanın cümlesi görünsün). Eşikler render_smart_volume_panel Tile
+    # 1/3/4 + süreklilik satırı ile BİREBİR aynı — panel metni değişirse burası
+    # da güncellenmeli.
+    _em_panel_sents = ""
+    try:
+        if dna and "smart_volume" in dna:
+            _ps_lines = []
+            _ps_desc = str(sv.get('desc') or '').strip()
+            if _ps_desc:
+                _ps_lines.append(f"    akis_ozeti: {_ps_desc}")
+            _ps_va = str(sv.get('va_pos') or '')
+            if 'ÜSTÜNDE' in _ps_va:
+                _ps_lines.append("    deger_bolgesi: Kurumların yoğun işlem yaptığı bölgenin üstündeyiz. Güçlü pozitif sinyal.")
+            elif 'ALTINDA' in _ps_va:
+                _ps_lines.append("    deger_bolgesi: Kurumların işlem bölgesinin altındayız. Satış baskısı sürüyor.")
+            elif 'İÇİNDE' in _ps_va:
+                _ps_lines.append("    deger_bolgesi: Kurumların en çok işlem yaptığı bölgenin tam içindeyiz. Karar noktası.")
+            _ps_dv = float(sv.get('delta') or 0)
+            _ps_dy = float(sv.get('delta_yuzde') or 0)
+            if _ps_dv > 0:
+                _ps_lines.append(f"    bugunku_baski: +%{_ps_dy:.0f} — "
+                                 + ("Kapanışa doğru alıcılar daha agresif davrandı."
+                                    if _ps_dy >= 60 else "Hafif alım ağırlığı var, güçlü değil."))
+            elif _ps_dv < 0:
+                _ps_lines.append(f"    bugunku_baski: -%{_ps_dy:.0f} — "
+                                 + ("Kapanışa doğru satıcılar daha agresif davrandı."
+                                    if _ps_dy >= 60 else "Hafif satış ağırlığı var, güçlü değil."))
+            # Hacim cümlesi (panel Tile 4 eşikleri: 2.0 / 0.8)
+            try:
+                _ps_rv = float(rvol_val)
+                if (not _vol_missing_flag) and _ps_rv >= 0.05:
+                    if _ps_rv >= 2.0:
+                        _ps_rp = (_ps_rv - 1.0) * 100
+                        _ps_lines.append(f"    hacim_durumu: Yüksek Hacim — Bugünün hacmi 20G ortalamanın %{_ps_rp:.0f} üzerinde — kurumsal aktivite var.")
+                    elif _ps_rv >= 0.8:
+                        _ps_rp = (_ps_rv - 1.0) * 100
+                        _ps_dir = "üzerinde" if _ps_rp >= 0 else "altında"
+                        _ps_lines.append(f"    hacim_durumu: Normale Yakın Hacim — Bugünün hacmi 20G ortalamanın %{abs(_ps_rp):.0f} {_ps_dir} — bekleme modu.")
+                    else:
+                        _ps_rp = (1.0 - _ps_rv) * 100
+                        _ps_lines.append(f"    hacim_durumu: Düşük Hacim — Bugünün hacmi 20G ortalamanın %{_ps_rp:.0f} altında — piyasa ilgisiz, sinyal zayıf.")
+            except Exception:
+                pass
+            # Akış sürekliliği (panel: son 20 günün kaçında pozitif para akışı)
+            try:
+                _ps_pos, _ps_n = compute_flow_persistence(df_hist, window=20)
+                if _ps_pos is not None and _ps_n >= 20:
+                    _ps_tag = ("istikrarlı giriş" if _ps_pos >= 14
+                               else ("istikrarlı çıkış" if _ps_pos <= 6 else "karışık akış"))
+                    _ps_lines.append(f"    akis_surekliligi: Son {_ps_n} günün {_ps_pos}'inde para girişi — {_ps_tag}")
+            except Exception:
+                pass
+            if _ps_lines:
+                _em_panel_sents = "  panel_okumalari:\n" + "\n".join(_ps_lines)
+    except Exception:
+        _em_panel_sents = ""
         # -----------------------------------------------------
 
     # ── MULTI-TF POC + EVENT-ANCHORED VWAP + NAKED POC (RAW — emit aşağıda) ─
@@ -13914,7 +13974,7 @@ if st.session_state.generate_prompt:
             _hvn_levels = sorted([round(_vp_centers[_i], 2) for _i in _hvn_idx])
             _lvn_levels = sorted([round(_vp_centers[_i], 2) for _i in _lvn_idx])
             hvn_lvn_txt = (
-                f"HVN (yoğun hacim — doğal destek/direnç): {', '.join(map(str, _hvn_levels)) if _hvn_levels else 'yok'} | "
+                f"[60g profil] HVN (yoğun hacim — doğal destek/direnç): {', '.join(map(str, _hvn_levels)) if _hvn_levels else 'yok'} | "
                 f"LVN (boş bölge — hızlı geçilir): {', '.join(map(str, _lvn_levels)) if _lvn_levels else 'yok'}"
             )
             # Fiyat ile HVN/LVN/POC ilişkisi (AI yorumu için)
@@ -13929,7 +13989,9 @@ if st.session_state.generate_prompt:
                     hvn_en_yakin_txt = "yok"
                 _curr_bin = min(max(np.digitize(_curr_p, _vp_edges) - 1, 0), _vp_bins - 1)
                 fiyat_lvn_icinde_txt = "evet" if _curr_bin in _lvn_idx else "hayır"
-                fiyat_poc_konumu_txt = f"{'üstünde' if _curr_p > _poc_price else 'altında'} (POC: {_poc_price})"
+                # 16 Tem 2026: pencere etiketi eklendi — poc_20g (20 günlük) ile bu 60 günlük
+                # POC farklı sayılar verebiliyor; etiketsiz "POC" YAML'da çelişki gibi görünüyordu.
+                fiyat_poc_konumu_txt = f"{'üstünde' if _curr_p > _poc_price else 'altında'} (60g POC: {_poc_price} — 20g POC'tan farklı pencere, çelişki değil)"
                 # 12 Haz 2026 (Prompt v3 — Trajectory) — Fiyat→POC yaklaşma hızı
                 # 5g önceki POC mesafesi (aynı POC referans) vs bugünkü mesafe.
                 # |delta dist| ≥ %3 = anlamlı yaklaşma/uzaklaşma · küçük → sus.
@@ -13945,7 +14007,7 @@ if st.session_state.generate_prompt:
                             else:
                                 _yon_pt = "POC'TAN UZAKLAŞIYOR"
                             _poc_velocity_txt = (f"[gelişim] fiyat_poc_yaklasma: 5g önce %{_dist_5g:+.1f} → "
-                                                 f"bugün %{_dist_now:+.1f} ({_delta_dist:+.1f} puan, {_yon_pt})")
+                                                 f"bugün %{_dist_now:+.1f} ({_delta_dist:+.1f} puan, {_yon_pt}, referans 60g POC)")
                         else:
                             _poc_velocity_txt = ""
                     else:
@@ -14828,32 +14890,28 @@ if st.session_state.generate_prompt:
     except Exception:
         hidden_acc_txt = "(veri eksik)"
 
-    # 7d) Platin Fırsat (19 Haz 2026) — en güçlü kurulum sınıfı: Altın Set-up (3/3) +
-    # SMA200 üstü + SMA50 üstü + RSI<70. Batch membership (platin_results / tekli_altin_results).
+    # 7d) Platin Fırsat — 16 Tem 2026: CANLI hesap. Panel banner'ı
+    # (render_platin_live_banner ~3054) ile BİREBİR aynı kriterler:
+    # Adım 1 Altın 3/3 (c_pwr+c_loc+c_nrg, yukarıda zaten canlı hesaplandı) +
+    # Adım 2 SMA200 üstü + SMA50 üstü + RSI<70. Eskiden Master Scan
+    # session-cache'inden okunuyordu → panel 6/6 gösterirken YAML
+    # "Tarama yapılmamış" düşüyordu.
     try:
-        _tc_p = str(t).upper().replace('.IS', '')
-        _platin_hit = False
-        for _pk in ('platin_results', 'tekli_altin_results'):
-            _pdf = st.session_state.get(_pk)
-            if _pdf is None or not hasattr(_pdf, 'empty') or _pdf.empty:
-                continue
-            for _pcol in ('Hisse', 'Sembol', 'Ticker'):
-                if _pcol in _pdf.columns:
-                    _ser = _pdf[_pcol].astype(str).str.upper()
-                    _sub = _pdf[(_ser == str(t).upper()) | (_ser == _tc_p)]
-                    if _pk == 'tekli_altin_results' and 'is_platin' in _pdf.columns:
-                        _sub = _sub[_sub['is_platin'] == True]
-                    if not _sub.empty:
-                        _platin_hit = True
-                    break
-            if _platin_hit:
-                break
-        if _platin_hit:
-            platin_txt = "AKTİF — NADİR: Altın Set-up (3/3) + SMA200 üstü + SMA50 üstü + RSI<70 (en güçlü kurulum sınıfı, master_score'dan önce vurgula)"
-        elif st.session_state.get('platin_results') is not None:
-            platin_txt = "Hisse Platin listesinde değil"
+        _platin_live = False
+        if (c_pwr and c_loc and c_nrg) and df_hist is not None and len(df_hist) >= 200:
+            _pl_c    = df_hist['Close']
+            _pl_cp   = float(_pl_c.iloc[-1])
+            _pl_s200 = float(_pl_c.rolling(200).mean().iloc[-1])
+            _pl_s50  = float(_pl_c.rolling(50).mean().iloc[-1])
+            _pl_d    = _pl_c.diff()
+            _pl_g    = _pl_d.where(_pl_d > 0, 0).rolling(14).mean()
+            _pl_l    = (-_pl_d.where(_pl_d < 0, 0)).rolling(14).mean()
+            _pl_rsi  = float(100 - (100 / (1 + _pl_g / _pl_l)).iloc[-1])
+            _platin_live = (_pl_cp > _pl_s200 and _pl_cp > _pl_s50 and _pl_rsi < 70)
+        if _platin_live:
+            platin_txt = "✅ AKTİF (6/6) — NADİR: Altın Set-up (3/3) + SMA200 üstü + SMA50 üstü + RSI<70 (en güçlü kurulum sınıfı, master_score'dan önce vurgula)"
         else:
-            platin_txt = "Tarama yapılmamış"
+            platin_txt = "HAYIR — 6/6 kriter aynı anda sağlanmadı"
     except Exception:
         platin_txt = "(veri eksik)"
 
@@ -15876,7 +15934,7 @@ ict_pa:
 
 {("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  durum: {obv_div_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else "") + (chr(10) + _em_udvr if _em_udvr else "") + (chr(10) + _em_force_index if _em_force_index else "") + (chr(10) + _em_smart_split if _em_smart_split else ""))}
 
-{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + (chr(10) + "  " + _poc_velocity_txt if _poc_velocity_txt else "") + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + "  " + _vp_sekil_trajectory_txt if _vp_sekil_trajectory_txt else "") + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x{_rvol_5g_str}") + chr(10) + f"  volume_quality: {_volume_quality}" + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
+{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + f"  delta_durumu: {delta_durumu}" + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + (chr(10) + "  " + _poc_velocity_txt if _poc_velocity_txt else "") + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + "  " + _vp_sekil_trajectory_txt if _vp_sekil_trajectory_txt else "") + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + ("  rvol: VERİ EKSİK" if _vol_missing_flag else f"  rvol: {rvol_val}x{_rvol_5g_str}") + chr(10) + f"  volume_quality: {_volume_quality}" + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else "") + (chr(10) + _em_panel_sents if _em_panel_sents else ""))}
 
 institutional_ref:
   vwap: {v_val:.2f}
@@ -15962,6 +16020,8 @@ Hissenin son 1 aydaki günlük oynama büyüklüğü, son 3 ayın oynama büyük
 **ICT_PA:** structure (HH+HL / LH+LL / CHoCH) yön; mss_yapi_kirilimi varsa analiz başına koy; zone (Discount/Premium) RR'ı belirler; OB filtreli (>1.8×ATR gürültü atılır) — zone_ages 0-5g taze / 6-15g orta / 16g+ eski; harmonik + ICT çakışması varsa vurgula; sweep = stop temizleme magnet.
 
 **SMART_MONEY:** VP Şekli (Akümülasyon POC alt yarı = kurumsal dipte topladı / Dağıtım üst yarı = tepede sattı / Denge orta = mean revert); HVN_en_yakin %2 içinde = kurumsal mıknatıs, kırılırsa sonraki HVN hedef; fiyat_lvn_icinde = boşluk, hızlı geçiş; Mum CP × 5g net — "Yanıltıcı" etiketi varsa CP'ye değil 5g'ye uy; cum_delta_5g işareti birikim/dağıtım ana skoru. Net Baskınlık %40+ = ciddi SM müdahalesi (bugüne ait, yarın değişebilir notu düş). Fiyat ↑ + Net Baskınlık − = Boğa Tuzağı uyarısı.
+
+**PANEL_OKUMALARI (hazır algoritma cümleleri — ÖNCELİKLİ DİL KAYNAĞI):** `smart_money.panel_okumalari` altındaki cümleler algoritmanın panelde okuyucuya gösterdiği HAZIR Türkçe yorumlardır. Bu boyutları anlatırken KENDİ cümleni sıfırdan kurma — bu cümleleri aynen veya çok yakın varyantla kullan, gerekirse hikayene bağlayan yarım cümle ekle. Amaç: analiz dili panel diliyle AYNI kalsın. Alan adlarını (akis_ozeti, bugunku_baski vb.) çıktıya YAZMA; sadece cümlelerin kendisini kullan. Bu cümlelerle diğer YAML alanları arasında fark görürsen panel cümlesine güven.
 
 **OBV_CMF:** OBV durum başlığı "ŞÜPHELİ/SAHTE GÜÇ/ZAYIF TEYİT" = OBV göründüğü kadar güçlü değil ("güçlü ama bar dinamiği zayıf"); "SAĞLIKLI TREND/KAFA ÇEVİRİYOR" = bar dinamiği OBV'yi onaylıyor. CMF Dual: güçlü pozitif (5g+ 20g+) = kalıcı kurumsal ilgi · güçlü negatif (her ikisi −) = kalıcı satıcı · kafa çev. toparlanma (5g+ 20g−) = erken dönüş · kafa çev. zayıflama (5g− 20g+) = orta vade poz ama kısa vade yorgun. OMI > +1σ = güçlü kurumsal momentum · 0—+1σ = pozitif teyit · <−0.5σ = momentum eksik.
 
@@ -18517,7 +18577,7 @@ def _render_tavan_adaylari_panel():
             # 2. Fallback: standalone hesap (10dk cache)
             _now = _dt.datetime.now()
             _ck = f"{_now.strftime('%Y-%m-%d')}_{_now.hour:02d}{(_now.minute//10)*10:02d}"
-            df, rejim, chg, target_date = _tav_compute_panel(_cache_key=_ck)
+            df, rejim, chg, target_date = _tav_compute_panel(cache_key=_ck)
         if df.empty:
             return
 

@@ -1,6 +1,9 @@
 # Patron Terminal — CLAUDE.md
 # Hızlı navigasyon. Sistemin TAMAMI: `memory/SMR_SISTEM_OZETI.md` (tek kaynak).
-# Son güncelleme: 13 Haz 2026 Oturum 21 (flag bug avı + TEFAS/KAP kaldırıldı + bülten faz_X fix + LEAN PROMPT bot&app.py + UDVR/FI port · SONRAKİ: web üyelik/monetizasyon → memory/project_web_membership.md)
+# Son güncelleme: 11 Tem 2026 (BÖLME 9a SONRASI KOD AĞACI — app.py 33.7K→19.7K saf UI + 11 uzman modül [data_layer/indicators/db_layer/evidence/scanners/pattern_core/ict_core/scoring_core/scan_pipeline/charts/analysis_core]. "Genel Mimari" bölümünde tam ağaç + import akışı. Bölüm Haritası B1-B37 satırları ARTIK ESKİ. AI prompt bloğu app.py'de — 9b belirsiz. Detay → memory/project_appy_bolme.md)
+# Önceki: 19 Haz 2026 Oturum 24 (KANIT-TEMELLİ SKOR DEVRİMİ — iki-rejim backtest ile 4 taramaya 52H/RSI güç filtresi + GOLD MINE vitrini [tüm taramalar tek listede backtest-puanlı] + tek-hisse "Kanıt Skoru/güven-çelişki" + tüm taramalar AI prompt'a [platin dahil] + Build1 goldmine_log meta-backtest + Build2 kanıt skoru + smr_core bota kanıt katmanı portu [güç tag + DB köprüsü] + otomatik patron.db→VPS sync + scanner_karne.py. YOL HARİTASI → memory/project_scoring_roadmap.md · güç filtre detay → memory/project_scanner_strength_filters.md)
+# Önceki: Oturum 22 (WEB ÜYELİK CANLI — smartmoneyradar.app landing+/test, SHOWCASE_MODE, free_gate/üye-modu. → memory/project_launch_roadmap.md · project_web_membership.md)
+# ⚠️ app.py'de YENİ: ÜYE MODU bloğu (~387-600) — MEMBER_MODE/SHOWCASE_MODE env flag'leri, _mm_* + _free_* + _overload_block helper'ları, _mm_quota_check, panel tier-gizleme (_MM_ELITE_OK / _MM_MEMBER_VIEW return'leri). Admin (flag kapalı) etkilenmez.
 
 ---
 
@@ -36,63 +39,84 @@
 
 ---
 
-## Genel Mimari
+## Genel Mimari — KOD AĞACI (11 Tem 2026, bölme 9a sonrası)
 - **Dil/Framework:** Python + Streamlit
-- **Ana dosya:** `app.py` (~25,040 satır, 37+ bölüm)
-- **Yardımcı modüller:**
-  - `bist_calendar.py` — BIST işlem takvimi (tatil/arefe/RVOL normalizer)
-  - `backtest_runner.py` — Forward returns + XU100 alpha (standalone, Task Scheduler 19:30)
-  - `backup_patron_db.ps1` — Haftalık DB yedeği (Task Scheduler Pazar 21:00)
+- **Ana dosya:** `app.py` (**19.997 satır** — saf UI + AI prompt if-bloğu; 16 Tem 2026 ölü-import temizliği: 67 kullanılmayan import silindi). Hesap kodu AŞAĞIDAKİ MODÜLLERDE; app.py sadece import edip render eder.
+- **AI PROMPT (B35):** `if st.session_state.generate_prompt:` altında ~4K satır inline script — app.py'de. Ayrı modüle taşınması (9b) BELİRSİZ/opsiyonel; taşınacaksa önce fonksiyona sarma + aynı-gün karakter-karakter metin kıyası şart (detay: `memory/project_appy_bolme.md`).
+
+### Bölme modülleri (app.py'den doğdu — VPS'e app.py ile BİRLİKTE gider, 12 dosya)
+| Modül | ~Satır | İçerik |
+|---|---|---|
+| `data_layer.py` | 1.860 | VERİ KATMANI: get_batch/get_safe/benchmark/fetch aileleri, parquet cache, BIST evreni, TICKER_DISPLAY_NAMES/get_display_name |
+| `indicators.py` | 1.900 | Saf göstergeler: CMF/MFI/UDVR/FI/VP/POC/aVWAP/supertrend/fib/52H + `compute_flow_momentum` (tek kaynak) |
+| `db_layer.py` | 610 | patron.db: init_db, log_error, MKK yabancı, watchlist, senaryo yaşı |
+| `evidence.py` | 125 | SCANNER_TIER_MAP + ER/GUC backtest puan tabloları |
+| `scanners.py` | 2.150 | 12 tek-hisse tarayıcı çekirdeği + Erken Radar ailesi (36 senaryo + _er_* helper'lar) |
+| `pattern_core.py` | 300 | Formasyon paketi: zigzag budama, hacim imzası, retest, adaptif eşik |
+| `ict_core.py` | 2.360 | ICT yardımcıları + **calculate_ict_deep_analysis + PA-DNA + Minervini + harmonik küme** |
+| `scoring_core.py` | 1.500 | 9 saf skor motoru: **smart_money/sentiment/master skor** + SMC elements + split scores + risk |
+| `scan_pipeline.py` | 3.420 | **MASTER SCAN boru hattı**: _compute_signal_features + log_scan_signal + backfill + tüm scan_*_batch + chart_patterns + GPA + golden_trio |
+| `charts.py` | 860 | `_main_price_chart_plotly` (SMC candlestick ana grafik) |
+| `analysis_core.py` | 1.455 | 14 panel/prompt motoru: **8'li roadmap + weekly frame** + STP/breakout/MTF/OBV-div/synthetic-sentiment/ICT-reversal/advanced-levels/ER-prompt-text/risk_profile/tier+güç/hacim-kalite |
+
+Import akışı (döngüsüz): `app.py → analysis_core/charts → scan_pipeline → scoring_core → ict_core/scanners → pattern_core/indicators → data_layer/db_layer/evidence/bist_calendar/data_policy`
+
+- **Bağımsız yardımcılar:** `veri_bekcisi.py` (🛡 **TEK KAPI veri doğrulama, 13 Tem 2026** — `get_safe_historical_data` çıkışında 5 kontrol: referans ayrışması ±1.25x / Frankenstein bar / doji salgını / bölünme zıplaması / bayat veri. Bozuk veri panele ÇIKAMAZ: önce depo boşaltılıp taze denenir, olmadı boş df + app.py kırmızı şerit + `logs/veri_bekcisi.log`. **VPS scp listesine DAHİL.** EREGL 40.86-vs-9.4 vakası sonrası) · `bist_calendar.py` (BIST takvimi) · `data_policy.py` (AUTO_ADJUST tek-kaynak) · `golden_record.py` (⚡ emniyet kemeri, 350 ölçüm — LOKAL kalır, git/VPS'e gitmez) · `backtest_runner.py` (19:30 forward returns) · `backup_patron_db.ps1` (Pazar 21:00 yedek)
 - **Veri:** **Yahoo (OHLC) + İsyatirim (Volume override)** hibrit + parquet cache. Detay: `memory/SMR_SISTEM_OZETI.md` → "VERİ KATMANI" bölümü
 - **DB:** patron.db (Master Scan + scan_signals + signal_returns + signal_results), signals.db (bot)
+- ⚠️ **Kural:** modül dosyasına dokunulan her bloğun SONUNDA 8501 TAM restart (hot-reload modülü yenilemez — bekçi sarı şeritle uyarır) + hesap değişikliğinde `python golden_record.py`
 
 ---
 
-## Bölüm Haritası — B1-B37 (köşe taşı yorumları, grep ile doğrulandı)
+## Bölüm Haritası — B1-B37 (16 Tem 2026 — satırlar GÜNCEL, app.py=19.997)
 
-| # | Satır | Başlık |
-|---|---|---|
-| B1 | 6 | Bağımlılıklar + import |
-| B2 | 50 | Tarama cache sistemi |
-| B3 | 631 | Veritabanı (SQLite) |
-| B4 | 856 | Varlık listeleri + kategoriler |
-| B5 | 1039 | Session state + callback |
-| B6 | 1085 | Veri çekme + önbellekleme |
-| B7 | 2128 | Teknik analiz fonksiyonları |
-| B8 | 2281 | Formasyon tarama (chart patterns) |
-| B9 | 3258 | STP sinyal taraması |
-| B10 | 3303 | Gizli Birikim |
-| B11 | 3471 | Radar 1 + Radar 2 |
-| B12 | 3838 | Hacim analiz modülleri |
-| B13 | 4097 | Kırılım taramaları |
-| B14 | 4324 | Temel skor + Master skor |
-| B15 | 4395 | Güçlü Dönüş |
-| B16 | 4620 | Pre-Launch BOS |
-| B17 | 5038 | Arz/Talep bölgeleri |
-| B18 | 5142 | ICT Setup |
-| B19 | 5317 | Royal Flush Nadir Fırsat |
-| B20 | 5451 | Minervini SEPA + RS Momentum |
-| B21 | 6051 | Sentiment skor |
-| B22 | 6284 | ICT Derin Analiz + PA-DNA |
-| B23 | 7865 | Banner / rozet render |
-| B24 | 8119 | Harmonik (XABCD) |
-| B25 | 8491 | Harmonik Confluence |
-| B26 | 8722 | SuperTrend + Fibonacci + Z-Score |
-| B27 | 8981 | Piyasa rejimi + Konviksiyon |
-| B28 | 9342 | Grafik + görselleştirme |
-| B29 | 10379 | Detay kartı + panel render |
-| **B37** | **12360** | **Erken Radar Senaryo Motoru** (sıra dışı — sonradan eklendi) |
-| B30 | 13942 | 8 maddelik hibrit yol haritası |
-| B31 | 15074 | Roadmap + birleşik sinyal paneli |
-| B32 | 16189 | Genel Özet + sağlık sinyalleri |
-| B33 | 17390 | Elit Tarama (Altın/Platin) |
-| B34 | 17738 | **Ana sayfa panel UI + Master Scan butonu** |
-| B35 | ~21280 | **AI Prompt sistemi** |
-| B36 | ~22420 | Streamlit giriş noktası |
+> **16 Tem 2026 (temizlik adımı):** Satır no'ları app.py'deki gerçek `# BÖLÜM` başlıklarından yeniden ölçüldü (`grep -nE "^# BÖLÜM" app.py`). Çoğu bölümün hesap kodu modüllere taşındı → başlık artık modüle işaret eden köprü-stub. **B13 (Kırılım), B22 (ICT Derin), B30 (8-madde roadmap) başlıkları app.py'den TAMAMEN KALDIRILDI.** app.py'de gerçekten YAŞAYAN kod: UI render (B23/B29/B31/B32/B33/B34) + B35 AI prompt + B36 giriş. "Durum" sütunu kodun asıl yerini gösterir — fonksiyon ararken oraya grep at.
+
+| # | Satır | Başlık | Durum (kod nerede) |
+|---|---|---|---|
+| B1 | 6 | Bağımlılıklar + import | app.py |
+| B2 | 219 | Tarama cache sistemi | app.py |
+| B3 | 1010 | Veritabanı (SQLite) | →db_layer |
+| B4 | 2058 | Varlık listeleri + kategoriler | app.py |
+| B5 | 2165 | Session state + callback | app.py |
+| B6 | 2224 | Veri çekme + önbellekleme | →data_layer |
+| B7 | 2432 | Teknik analiz fonksiyonları | →indicators |
+| B8 | 2441 | Formasyon tarama (chart patterns) | →scan_pipeline |
+| B9 | 2463 | STP sinyal taraması | →scan_pipeline |
+| B10 | 2469 | Gizli Birikim | →scan_pipeline |
+| B11 | 2477 | Radar 1 + Radar 2 | →scan_pipeline |
+| B12 | 2490 | Hacim analiz modülleri | →indicators |
+| ~~B13~~ | — | Kırılım taramaları | **KALDIRILDI** →scan_pipeline |
+| B14 | 2536 | Temel skor + Master skor | →scoring_core |
+| B15 | 2607 | Güçlü Dönüş | →scan_pipeline |
+| B16 | 2615 | Pre-Launch BOS | →scan_pipeline |
+| B17 | 2632 | Arz/Talep bölgeleri | →indicators |
+| B18 | 2639 | ICT Setup | →scanners |
+| B19 | 2647 | Royal Flush Nadir Fırsat | →scanners |
+| B20 | 2656 | Minervini SEPA + RS Momentum | →scan_pipeline |
+| B21 | 2979 | Sentiment skor | →scoring_core |
+| ~~B22~~ | — | ICT Derin Analiz + PA-DNA | **KALDIRILDI** →ict_core |
+| B23 | 2992 | Banner / rozet render | **app.py UI** |
+| B24 | 3246 | Harmonik (XABCD) | →ict_core |
+| B25 | 3350 | Harmonik Confluence | →ict_core |
+| B26 | 3413 | SuperTrend + Fibonacci + Z-Score | →indicators |
+| B27 | 3427 | Piyasa rejimi + Konviksiyon | →indicators |
+| B28 | 3609 | Grafik + görselleştirme | →charts |
+| B29 | 3824 | Detay kartı + panel render | **app.py UI** |
+| **B37** | **6188** | **Erken Radar Senaryo Motoru** | →scanners |
+| ~~B30~~ | — | 8 maddelik hibrit yol haritası | **KALDIRILDI** →analysis_core |
+| B31 | 7861 | Roadmap + birleşik sinyal paneli | **app.py UI** |
+| B32 | 9404 | Genel Özet + sağlık sinyalleri | **app.py UI** |
+| B33 | 11903 | Elit Tarama (Altın/Platin) | **app.py UI** |
+| B34 | 11909 | **Ana sayfa panel UI + Master Scan butonu** (buton @11961) | **app.py UI** |
+| B35 | 14919 | **AI Prompt sistemi** | app.py |
+| B36 | 16481 | Streamlit giriş noktası | app.py |
 
 ---
 
-## En sık ihtiyaç duyulan fonksiyonlar
+## En sık ihtiyaç duyulan fonksiyonlar (⚠️ MODÜL fonksiyonlarının satır no'ları ESKİ — MODÜL kolonuna güven; app.py render fonksiyonları 16 Tem GÜNCEL)
+
+> Hızlı eşleme: `get_batch/get_safe` → **data_layer** · `compute_cmf/mfi/flow_momentum` → **indicators** · `calculate_ict_deep_analysis/price_action_dna/minervini/harmonik` → **ict_core** · `calculate_smart_money/master/sentiment_score` → **scoring_core** · `_compute_signal_features/log_scan_signal/backfill/scan_*_batch/scan_chart_patterns` → **scan_pipeline** · `_main_price_chart_plotly` → **charts** · `calculate_8_point_roadmap/compute_weekly_frame/synthetic_sentiment/scanner tiers` → **analysis_core** · `evaluate_erken_radar/_er_*/process_single_*` → **scanners** · `init_db/log_error/MKK` → **db_layer** · `SCANNER_TIER_MAP` → **evidence**
 
 | Fonksiyon | Yaklaşık satır | Ne yapar |
 |---|---|---|
@@ -108,15 +132,24 @@
 | `get_scenario_ages_batch` | 13114 | Senaryo yaşları (Erken Radar için) |
 | `scan_erken_radar_batch` | 12157 | Master Scan step 13 |
 | `_main_price_chart_plotly` | 9798 | Ana fiyat grafiği (Plotly/SMC) — tek sürüm |
-| `render_smart_volume_panel` | 10635 | Smart Money Tile grid (6 tile + 3 büyük kart) |
-| `_render_genel_ozet_panel` | 16193 | **GENEL ÖZET sol panel** (shape-driven) |
-| `render_ict_deep_panel` | 13219 | Ana ICT deep panel |
-| `_render_left_col` | 20442 | Sol sütun (hisse detay panelleri) |
-| `_render_right_col` | 21909 | Sağ sütun (tarama sonuçları) |
+| `render_smart_volume_panel` | 4219 | Smart Money Tile grid (6 tile + 3 büyük kart) |
+| `_render_genel_ozet_panel` | 9408 | **GENEL ÖZET sol panel** (shape-driven) |
+| `render_ict_deep_panel` | 6296 | Ana ICT deep panel |
+| `_render_left_col` | 16856 | Sol sütun (hisse detay panelleri) |
+| `_render_right_col` | 19054 | Sağ sütun (tarama sonuçları) |
+| `SCANNER_TIER_MAP` / `ER_BACKTEST_SCORE` / `GUC_SCORE` | ~2180/2228/2290 | **O24** backtest puan tabloları (tarama tier + ER senaryo puanı + güç-temelli puan) |
+| `_scanner_setup_strength` | ~2276 | **O24** ticker'ın 4 güç-filtreli taramadaki 🟢/🔴 gücü (AI prompt + mini panel) |
+| `_compute_goldmine_entries` / `render_gold_mine_showcase` | ~2300/2400 | **O24** GOLD MINE vitrini — tüm taramalar tek listede backtest-puanlı (render+logger ortak) |
+| `log_goldmine_selection` | ~2360 | **O24** Build1 — vitrin top20'yi `goldmine_log`'a yazar (meta-backtest) |
+| `_compute_kanit_ozeti` | ~30914 | **O24** Build2 — tek hisse Kanıt Skoru 0-100 + güven/çelişki |
+| `render_scanner_membership_panel` | 18883 | **O24** "📡 Bu hisse hangi taramalarda?" mini panel (CANLI SİNYALLER altı) |
+| `_harmonik_52h_strength` | ~12369 | **O24** 52H güç etiketi (Harmonik/Pre-Launch scanner'larında kullanılır) |
+
+> **O24 yeni fonksiyonlar (smr_core.py):** `_guc_tag_g1` + `_db_evidence_g1` + `_evidence_block_g1` (~3445) — ELITE prompt kanıt katmanı (güç tag + patron.db köprüsü). Detay → `memory/project_scoring_roadmap.md`.
 
 ---
 
-## Master Scan akışı (B34, satır ~17789-17904)
+## Master Scan akışı (B34, buton @11961; orkestrasyon app.py Master Scan bloğunda)
 
 ```
 0.  backfill_signal_returns                  (%5)   [step 0, 28 May 2026]
@@ -140,10 +173,10 @@
 
 ## UI ana taşıyıcılar
 
-- **Sol sütun (col_left):** satır ~22780 → `st.container(height=2500, border=False)`
-- **Sağ sütun (col_right):** satır ~23412 → `st.container(height=1800, border=False)`
-- `st.columns([75, 25])` — sol %75, sağ %25
-- Master Scan butonu (B34): satır ~17764 `💎 TÜM PİYASAYI TARA`
+- **Kolon ayrımı:** satır 16852 → `col_left, col_right = st.columns([82, 20])` (sol %82, sağ %20)
+- **Sol sütun (col_left):** `with col_left:` satır 18690 → `st.container(height=2500, border=False)` (18691)
+- **Sağ sütun (col_right):** `with col_right:` satır 19988 → `st.container(height=2300, border=False)` (19989)
+- Master Scan butonu (B34): satır 11961 `💎 TÜM PİYASAYI TARA (MASTER SCAN)`
 
 ---
 
@@ -153,10 +186,99 @@
 - **Weinstein Stage Analysis → YAPILMAYACAK** (analysis paralysis — 30 May 2026 reddedildi)
 - `detect_market_regime` UI'da var (sağ kart Makro) — ama scanner filtresi VEYA AI context'i olarak kullanılmaz
 - **CLAUDE.md uzatma yasağı:** Bu dosya kısa kalır. Detay → `memory/SMR_SISTEM_OZETI.md`
+- **🧩 Yeni hesap kodu app.py'ye YAZILMAZ (4 Tem 2026):** yeni hesaplama/analiz fonksiyonları ayrı modüle (radar_core/tavan_engine kalıbı); app.py'de sadece UI + import. Mevcut kodu taşıma YOK (büyük refactor yasak). Detay → `memory/feedback_yeni_kod_ayri_modul.md`
 
 ---
 
-## Son Oturum Notu — 12 Haz 2026 Oturum 21 (flag bug avı + bülten kurtarma)
+## 📐 AÇIKLAMA TARZI KURALI (15 Haz 2026 — kalıcı)
+
+**Ana ilke:** Teknik konuyu anlatırken **terim değil hikaye** anlat. Programcı diliyle başlama; günlük dile çevir.
+
+### Yapı (her açıklamada bu sırayla)
+
+1. **Sorun:** Ne oldu, kim kimi neyle vurdu? Somut isim ver (Yahoo, İsyatirim, Pandas, Streamlit). Teknik terim varsa **hemen yanına Türkçe karşılığı** koy: "Pandas (Python kütüphanesi)", "FutureWarning (uyarı mesajı)".
+2. **Niye sorun:** Birkaç madde halinde **iç içe sebepleri** ayır. Tek tek say. Her madde 1 cümle. Türkçe bir benzetme ekle ("ekrana yazma yavaş", "telefon santrali tıkandı", "trafik sıkıştı").
+3. **Çözüm:** Adım adım, **N tane düzeltme** şeklinde. Her adımı **ne yaptım** + **niye işe yaradı** olarak yaz. Kod gösterme — fonksiyon adı bile söyleme. "Kolonu önce ondalıklı tipe çevirdim" yeter, "`astype('float64')`" deme.
+4. **Sonuç:** ❌ Ne durduruldu, ⏱ ne hızlandı, 🚀 ne açıldı. Emoji'ler etki sırasına göre.
+5. **Test et:** Kullanıcının elini tutan adım adım talimat. "Streamlit'i durdur → yeniden başlat → şunu yap → şuna bak."
+
+### Yasaklar
+- ❌ Kod fragmanı paste etme (gerekli değilse)
+- ❌ Fonksiyon adı, dosya satır numarası gibi metadata atma (kullanıcı bilmiyor, ilgilenmiyor)
+- ❌ "dtype", "regex", "thread pool", "cache miss" gibi terimleri **açıklamadan** kullanma
+- ❌ Saçma uzun teknik tablolar
+- ❌ "Çok karmaşık ama özetle..." gibi köprü cümleleri
+
+### İzinli (gerekli olduğunda)
+- ✅ Somut isim ("İki kaynaktan veri geliyor: Yahoo + İsyatirim")
+- ✅ Somut fark ("Yahoo tam sayı, İsyatirim ondalıklı")
+- ✅ Somut sayı ("800 hisse × her birinde 5-10 satır uyarı = on binlerce satır")
+- ✅ Türkçe benzetme ("santrali tıkandı", "trafik sıkıştı", "fıçı doldu")
+
+### Kontrol sorusu (yazmadan önce)
+> "Bu açıklamayı kod yazmayı bilmeyen biri okursa **olayı anlar mı**?"
+> Cevap "evet" değilse yeniden yaz.
+
+---
+
+## Son Oturum Notu — 15-16 Haz 2026 Oturum 23 (tier düzeltme + tweet sistemi + performans)
+
+**Çok yönlü oturum: veri kalitesi + tweet sistemi + UI hiyerarşi + backtest kanıtlı tier reform + performans cerrahisi.**
+
+### A. EMTIA FUTURES HACİM OVERRİDE (canlı bug fix)
+- **Sorun:** Yahoo `=F` continuous sembolleri (GC=F, SI=F, CL=F) hacmi gerçeğin **binde 1'i** veriyordu (GC=F 20g medyan **1,121** vs gerçek CME ~250K). Sentiment panelde 18.6x sahte spike halkalar.
+- **Çözüm:** `_FUT_CONTRACT_CANDIDATES` haritası + `_fetch_futures_volume_yahoo_active` helper (~app.py:276). Yahoo'nun **CME spesifik kontratlarından** (GCQ26.CMX gibi) hacim çekiyor, her gün için **max-hacimli aday kontrat** seçiliyor (rollover otomatik). `get_batch_data_cached`'a 2 kanca (incremental + fresh download path). Eski `=F` parquet'leri silindi → yeniden indirme tetiklendi. Override sonrası medyan 1,121 → **148,030**.
+- Detay: backup `app_backup_pre_futures_volume_override.py`.
+
+### B. PERFORMANS CERRAHİSİ (20sn → soğuk 5sn, sıcak <1sn)
+**Profil altyapısı:** `SMR_PROFILE=1` env ile `_Timer` + `_tlog` → `logs/profile.log` (app.py ~80). `_render_left_col` + KATMAN1 alt parçalar + PA-DNA iç fonksiyonlar + render_smart_volume_panel'e timer enjekte. Profile testleri TUPRS/AKBNK/ASELS/THYAO/EREGL/SISE ile çoklu turlar.
+**Tespit edilen darboğazlar + fix'ler:**
+- **Fix A — KATMAN1 RS+Beta birleştirme:** Eskiden XU100 için **2 ayrı `get_safe_historical_data` çağrısı** ("3mo" + "1y") = 1.7-3.5sn cold cache miss. Şimdi tek 1y çağrı, RS için son 90 günü slice. -1.7sn kazanç.
+- **Fix 1 — PA-DNA cache TTL:** 600s → **86400s (24sa)**. Günlük veriye dayanır, sunucu-wide cache showcase'te paylaşımlı → bir kullanıcı ısıtsa hepsi sıcakta gelir.
+- **Fix 4 — `render_smart_volume_panel` 1mo→1y slice:** Günlük değişim için ayrı "1mo" cache key 1.8-2.3sn miss üretiyordu. 1y verisinin son 2 satırını kullan → cache hit ~5ms.
+- **Sonuçlar:** TUPRS 1. açılış 20sn → **2.7sn**, 2. açılış (sıcak) **0.4sn**. SISE 4.7sn → **0.4sn sıcak**. THYAO 13.7sn → **5.8sn cold**, **0.6sn sıcak**.
+- Backup: `app_backup_pre_futures_volume_override.py`. Tüm timer instrumentation flag-gated kalıyor (`SMR_PROFILE` set değilse no-op).
+
+### C. DTYPE FIX (Master Scan %65 takılıyor sorunu)
+- **Sorun:** Yahoo `Volume` int64, İsyatirim `Volume` float64. `df_new.loc[_common, ['High','Low','Close','Volume']] = _isy_ohlcv...` her ticker'da `FutureWarning` üretiyordu (yüz binlerce satır console I/O → Master Scan boğuluyordu).
+- **Çözüm:** 2 yerde (app.py:3706 + 3818) önce hedef kolonları float64'e cast, sonra `.values` ile atama (pandas tip uyumluluk kontrolü atlanır). Warning gitti, Master Scan rahatladı.
+
+### D. TWEET SİSTEMİ SIFIRDAN KURULDU (Twitter algoritması karşı koruma + insani ses)
+**Sorun:** Kullanıcı 17 dk'da 6 tweet atıyordu, hepsi aynı format (📌 #TICKER + analiz + ekran görüntüsü). Algoritma "spam" sayıp erişimi düşürdü (Mayıs sonu 36K görüntüleme → Haziran ortası 5K). Önemli: kullanıcı **"Cuma Royal Flush nadir fırsat" diye tweet attı, hepsi göçtü, takipçileri gitti — "kırık vazo"**. Vazo bir daha çatlamasın diye sistemik koruma.
+- **5 Alternatif Hook (rastgele 6 yön sorusundan):** Görev 4 başında AI 5 farklı tarzda hook üretiyor. Havuz **saf yön soruları**: Dönüş Sorusu ("Buradan döner mi?"), Yükseliş Devamı, Düşüş Hedefi, Direnç Sınaması, Destek Sınaması, Dip/Zirve. Yön sorusu + 3-7 kelime mini gözlem (örn. "Buradan döner mi? RSI 89, hacim hâlâ alıcıda."). Jargon yasağı: "çift pencere", YAML alanları, uzun jargon ❌.
+- **4 Gövde Formatı (rastgele 1):** A Klasik akıcı / B Madde listesi / C Trader iç sesi / E Yoğun + somut. **D Soru-cevap havuzdan SİLİNDİ** (rezalet çıktı). Yapı sabit: GENEL YORUM → Teknik Görünüm → Smart Money İzi → SONUÇ → UYARI (başlıklar her formatta AYNI, sadece iç cümle tarzı değişir).
+- **"Algoritmama göre" vurgu sistemi (rastgele 3 yer):** 10 ifadelik havuz. 3 yere inject: G4 GENEL YORUM açılışı, G1 giriş paragrafı 2-3. cümlesi, G1 📍 olumsuz listesi başı. "Algoritma veri sunar, ben yorumlarım" konumlandırması.
+- **"SIFIRINCI HOOK" eski sistemi silindi:** Önceden ayrı bir tek-hook (📌) üretiyordu, Görev 4'teki 5 hook ile çakışıyordu — AI 5'liyi atlıyordu. Tamamen kaldırıldı.
+- **Yasak listesi sertleştirme:** "ÇIPLAK YASAK LİSTE"ye "çift pencere · iki pencerede · iki farklı zaman diliminde · dual window" eklendi. ÖZ-DENETLEME'ye madde 16-17 eklendi: Tarih damgası `(GG.AA.YYYY, SS:DD)` ZERO geçiş + "çift pencere" ZERO geçiş.
+- Backup: `app_backup_pre_tweet_variation.py`.
+
+### E. BACKTEST'E DAYALI TIER REFORM (29.023 sinyal, ana iş)
+**Veri:** 6 aylık backtest panelinde 47 tarama tipi, 29K sinyal değerlendirildi.
+**Tespit (kanıt):**
+- 🏆 **ELİT (kanıtlı iyi):** Pre-Launch BOS (hit %45.5 ret %+15.1 PF 1.86 · 66 sinyal), ER A8 Ucuz+Hacimli (hit %100 ret %+12.4), ER B1 Mükemmel Sıkışma, **ER A1 Dipte Sessizlik (hit %66.7 ret %+4.0 · 99 sinyal · Geri Dönüş ŞAMPİYONU)**, **ER B8 Sıkışma Sonu (hit %69.2 ret %+3.7 · 46 sinyal · Sıkışma ŞAMPİYONU)**.
+- 🚫 **ZAYIF (kanıtlı kötü):** Royal Flush (hit %24-34 · 71 sinyal · TIER_VADE_UZUN hipotezi REDDEDİLDİ), ICT Sniper (534 sinyal hit %39 PF 0.88), Radar 1 (2097 sinyal hit %40 ret -%0.16). Yeterli örnek + negatif beklenti = kesin yanlış.
+**6 Adım uygulandı:**
+1. **SCANNER_TIER_MAP güncellendi** (app.py ~2059): ER A1 → TIER_1_ELIT yükseltildi, ER B8 → TIER_2_GUVENILIR yükseltildi, Royal Flush map'ten KALDIRILDI ("nadir_firsat" → `get_active_scanner_tiers` `_classic_map`'ten de çıkarıldı). ICT Sniper + Radar 1 zaten map'te yoktu.
+2. **Master Scan tier sırasına yeniden sıralandı** (app.py:23693+): ELİT ÖNCE (%20 Pre-Launch BOS → %35 Erken Radar), GÜVENİLİR ortada (%45 Hidden Acc → %72 RS Momentum), ZAYIF EN SONA (%92 ICT+Royal Flush paralel → %95 Radar 1 → %97 Güçlü Dönüş). İlerleme barı etiketlerinde "ELİT (TIER_1)" / "GÜVENİLİR (TIER_2)" / "ZAYIF" yazıyor.
+3. **Sağ panel etiketleri terslendi** (app.py:28898+): Önceden "🥇 TIER 1 — Kanıtlanmış Yöntemler" başlığı altında ICT Sniper + Royal Flush vardı (yanlış etiket) → şimdi "⚠ GEÇMİŞTE ZAYIF — ICT Sniper + Royal Flush (geçmiş backtest negatif)" + `st.expander` ile **collapsed**. Sarı uyarı kartı backtest sayılarını gösteriyor. Önceden "🥈 TIER 2 — Yüksek Güven" altında Pre-Launch BOS + Erken Radar vardı (asıl ELİT) → şimdi "🥇 ELİT TARAMALAR — Backtest Kanıtladı".
+4. **Zayıf scanner minimal render** (app.py:28930+): ICT Sniper + Royal Flush expander içinde artık 2 sütun **isim listesi** (sadece ticker, fiyat/durum/LONG-SHORT/açıklama yok). Eski süslü kart sistemi silindi. Tıklayınca tek hisse paneline gider.
+5. **AI Prompt TIER_1 garantili emit** (app.py:26148+): `get_active_scanner_tiers` sonuçları artık **TIER_1 ayrı vurgu + sınırsız emit** (max 4 sınırı sadece TIER_2/3'e uygulanır), TIER_1 satırları 🏆 ile prefiks. Ek olarak hisse'de TIER_1 flag varsa YAML'a `elit_flag_aktif: TRUE  # 🏆 ... merkeze taşı` satırı ekleniyor. AI'nin gözünden kaçma şansı yok.
+6. **Tek hisse paneline tier rozeti** (app.py:20996+): `_render_genel_ozet_panel` başına TIER rozeti. TIER_1 → büyük yeşil gradient ("🏆 ELİT İŞARETLİ — Backtest Kanıtladı"). TIER_2 → orta sarı ("🥈 GÜVENİLİR İŞARETLİ"). ZAYIF için rozet YOK (sessizce gizli).
+- Backup: `app_backup_pre_tier_render.py`.
+
+### F. AÇIKLAMA TARZI KURALI (kalıcı CLAUDE.md kuralı)
+Kullanıcı talebi: "rezalet, robotik anlattın" diye uyarmak yorucu. CLAUDE.md'ye "📐 AÇIKLAMA TARZI KURALI" eklendi (kalıcı). Yapı: Sorun → Niye sorun → Çözüm (kod gösterme, terim ve satır numarası yasak) → Sonuç (❌/⏱/🚀 emoji) → Test et (elini tutar adımlar). Kontrol sorusu: "Bu açıklamayı kod yazmayı bilmeyen biri okursa olayı anlar mı?"
+
+### G. AÇIK KONULAR
+- Twitter takipçi artışı: Mayıs sonu zirvesi (+35/gün) sonrası düştü; algoritma bastırıyor olabilir. Bekleme listesinde 1 lead (utatli@gmail.com gerçek). Strateji: posting cadence (17dk'da 6 → 2-3 saat aralık), thread + video + soru tweet'leri.
+- Showcase performansı: Cold open 5-20sn, sıcak <1sn. Pre-warm cron önerisi (gece BIST top 30'u ısıt) ileride yapılabilir.
+- Adım 5 sonraki: Eylül 2026 ortası — ER B8 (46 sample sınır) sample artarsa TIER_1'e yükseltme · 20G isabet verisi olgunlaşır · Minervini SEPA örnek sayısı yeterli olursa kalibre.
+
+Backup'lar (bu oturum): `app_backup_pre_futures_volume_override.py` · `app_backup_pre_tweet_variation.py` · `app_backup_pre_tier_render.py`.
+
+---
+
+## Önceki Oturum Notu — 12 Haz 2026 Oturum 21 (flag bug avı + bülten kurtarma)
 
 **Stratejik soru ("app.py'yi nasıl ileri taşırız, analysis-paralysis olmadan") → eyleme döndü.** Teşhis: sorun feature eksikliği değil, **validasyon borcu** — son 2 oturumda 29 flag eklendi, çoğu "Eylül backtest beklemede". Doktrin: (1) tek kâhin = `signal_returns × scan_signals` JOIN, (2) ~3 haftada bir budama (ret≤0 / hit<%50 → AI'dan çık), (3) ölçülemeyen flag AI'a kalıcı girmez. Kullanıcı "envanter çıkar" (A) dedi → bugünkü Master Scan flag-doluluk taraması **3 bozuk + 1 ölü sistem** ortaya döktü:
 
