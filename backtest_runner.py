@@ -29,6 +29,7 @@ from datetime import datetime, date, timedelta
 from collections import defaultdict
 import pandas as pd
 import pytz
+from signal_policy import ensure_event_schema, resolve_next_open_entry
 
 # UTF-8 stdout zorunlu (Windows cp1254 emoji uyumsuzluğunu çöz)
 try:
@@ -105,6 +106,12 @@ CLASSIC_LABELS = {
     'para_akisi_lider': '💧 Para Akışı Liderleri',
     'tavan_alarm':    '🚀 Tavan Alarm (Skor≥150)',
     'tavan_top30':    '🚀 Tavan TOP 30',
+    'rsi_pozitif_uyumsuzluk': '📈 RSI Pozitif Uyumsuzluk',
+    'liderlik_aday':     '🔎 Liderlik Adayı (Radar2)',
+    'liderlik_yeni':     '🟢 Yeni Lider (Radar2+C6)',
+    'liderlik_teyitli':  '✅ Liderlik Teyitli',
+    'liderlik_c6':       '🏁 C6 Liderlik Teyidi',
+    'liderlik_gec':      '⏳ Geç Liderlik Sinyali',
 }
 
 
@@ -207,6 +214,10 @@ def ensure_signal_results_table(conn):
             signal_date    TEXT,
             bias           TEXT,
             entry_price    REAL,
+            entry_date     TEXT,
+            entry_gap_pct  REAL,
+            entry_delay    INTEGER,
+            entry_status   TEXT,
             stop_level     REAL,
             ret_5g         REAL,
             ret_10g        REAL,
@@ -223,6 +234,36 @@ def ensure_signal_results_table(conn):
             UNIQUE(signal_id)
         )
     """)
+    for column, kind in (
+        ("entry_date", "TEXT"),
+        ("entry_gap_pct", "REAL"),
+        ("entry_delay", "INTEGER"),
+        ("entry_status", "TEXT"),
+    ):
+        try:
+            conn.execute(f"ALTER TABLE signal_results ADD COLUMN {column} {kind}")
+        except sqlite3.OperationalError:
+            pass
+    conn.commit()
+
+
+def ensure_signal_returns_table(conn):
+    """Bağımsız olayların girişten sonraki 1-20 seans yolunu saklar."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS signal_returns (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_id   INTEGER NOT NULL,
+            scan_type   TEXT NOT NULL,
+            symbol      TEXT NOT NULL,
+            signal_date TEXT NOT NULL,
+            entry_price REAL,
+            day_offset  INTEGER NOT NULL,
+            close_price REAL,
+            return_pct  REAL,
+            category    TEXT,
+            UNIQUE(signal_id, day_offset)
+        )
+    """)
     conn.commit()
 
 
@@ -231,20 +272,23 @@ def upsert_result(conn, row: dict):
     conn.execute("""
         INSERT INTO signal_results (
             signal_id, symbol, scan_type, signal_date, bias,
-            entry_price, stop_level,
+            entry_price, entry_date, entry_gap_pct, entry_delay, entry_status, stop_level,
             ret_5g, ret_10g, ret_20g,
             hit_5g, hit_10g, hit_20g,
             stop_hit_5g, stop_hit_10g, stop_hit_20g,
             max_gain_20g, max_loss_20g, evaluated_at
         ) VALUES (
             :signal_id, :symbol, :scan_type, :signal_date, :bias,
-            :entry_price, :stop_level,
+            :entry_price, :entry_date, :entry_gap_pct, :entry_delay, :entry_status, :stop_level,
             :ret_5g, :ret_10g, :ret_20g,
             :hit_5g, :hit_10g, :hit_20g,
             :stop_hit_5g, :stop_hit_10g, :stop_hit_20g,
             :max_gain_20g, :max_loss_20g, :evaluated_at
         )
         ON CONFLICT(signal_id) DO UPDATE SET
+            entry_price=excluded.entry_price, entry_date=excluded.entry_date,
+            entry_gap_pct=excluded.entry_gap_pct, entry_delay=excluded.entry_delay,
+            entry_status=excluded.entry_status, stop_level=excluded.stop_level,
             ret_5g=excluded.ret_5g, ret_10g=excluded.ret_10g, ret_20g=excluded.ret_20g,
             hit_5g=excluded.hit_5g, hit_10g=excluded.hit_10g, hit_20g=excluded.hit_20g,
             stop_hit_5g=excluded.stop_hit_5g, stop_hit_10g=excluded.stop_hit_10g,
@@ -264,10 +308,13 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
 
     # OneDrive senkronu patron.db'yi anlık kilitleyebiliyor → hemen çökme, 30sn bekle.
     conn = sqlite3.connect(DB_FILE, timeout=30)
+    ensure_event_schema(conn)
     ensure_signal_results_table(conn)
+    ensure_signal_returns_table(conn)
 
     signals = pd.read_sql(
-        "SELECT * FROM scan_signals WHERE scan_date >= date('now', ?)",
+        "SELECT * FROM scan_signals WHERE scan_date >= date('now', ?) "
+        "AND COALESCE(is_event_start, 1)=1",
         conn,
         params=(f'-{lookback_days} days',)
     )
@@ -276,6 +323,8 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
     min_fwd = min(forward_windows)
     max_fwd = max(forward_windows)
     results = []
+    db_rows = []   # 21 Tem 2026 — yazmalar döngü SONUNA ertelenir (kilit süresi kök çözümü, aşağı bak)
+    daily_return_rows = []
     pending = 0
     total   = len(signals)
 
@@ -290,6 +339,21 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
     last_pct = -1
     kurumsal_atlanan = 0   # 15 Tem 2026 — bölünme penceresine düşen sinyal sayısı
     tutarsiz_bazlanan = 0  # 15 Tem 2026 — girişi parquet bazına taşınan (bölünme)
+    entry_status_counts = defaultdict(int)
+    entry_gaps = []
+
+    # ── İş #8 (28 Tem 2026): KURUMSAL TAKVİM — TEMETTÜ getiri düzeltmesi ──────────
+    # Yukarıdaki %15 sıçrama bekçisi (kurumsal_islem_indeksleri) sadece BÖLÜNMEYİ
+    # yakalar; temettü (~%2) eşiğin altında kaçıp getiriyi mekanik ~%2 EKSİK ölçtürür.
+    # Oran-yöntemi takvimi (kurumsal_takvim, İsyatirim÷Yahoo, kırmızı çizgi: fiyat
+    # değil sadece olay) temettü penceresinde getiriye düşüşü GERİ EKLER — sinyali
+    # ATMADAN dürüstleştirir. Cache TEK okumada (per-sinyal dosya okuma YOK).
+    try:
+        from kurumsal_takvim import load_all_cached as _kt_load_all
+        _ca_events = _kt_load_all()
+    except Exception:
+        _ca_events = {}
+    temettu_ayarlanan = 0
 
     for i, (_, sig) in enumerate(signals.iterrows()):
         pct = int((i + 1) / total * 100)
@@ -298,75 +362,103 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
             last_pct = pct
 
         try:
-            sig_date     = pd.to_datetime(sig['scan_date']).date()
-            days_elapsed = (today - sig_date).days
-            if days_elapsed < min_fwd:
-                pending += 1
-                continue
+            sig_date = pd.to_datetime(sig['scan_date']).date()
 
             df_hist = load_parquet(sig['symbol'])
             if df_hist is None or df_hist.empty:
                 continue
 
             sig_ts = pd.Timestamp(sig['scan_date'])
-            idx    = df_hist.index.searchsorted(sig_ts)
-            if idx >= len(df_hist):
+            _hist_dates = pd.to_datetime(df_hist.index)
+            if getattr(_hist_dates, 'tz', None) is not None:
+                _hist_dates = _hist_dates.tz_localize(None)
+            signal_idx = int(_hist_dates.normalize().searchsorted(sig_ts.normalize()))
+            if signal_idx >= len(df_hist):
                 continue
-
-            # ── Entry fiyatı ────────────────────────────────────────────────
-            entry = sig.get('entry_price')
-            _entry_dbden = not (pd.isna(entry) or not entry)
-            if not _entry_dbden:
-                entry = float(df_hist['Close'].iloc[idx])
-            else:
-                entry = float(entry)
-            if entry == 0:
-                continue
-
-            # ── BAZ UYUMU BEKÇİSİ (15 Tem 2026) ─────────────────────────────
-            # DB'nin CANLI kaydettiği giriş fiyatı ile parquet'in aynı günkü
-            # kapanışı ayrışıyorsa getiri İKİ FARKLI BAZDAN hesaplanır → anlamsız
-            # (AKYHO: 2.60 vs 13163.90 → "+%546.061").
-            #
-            # Ayrışmanın ASIL sebebi (ölçüldü, 506 sinyal): BÖLÜNME. Yahoo
-            # bölünmeyi GERİYE DÖNÜK düzeltir → parquet'in o günkü fiyatı
-            # düzeltilmiş; entry_price ise scan anında kaydedilmiş = bölünme
-            # ÖNCESİ ham fiyat. Ayrışma oranları temiz bölünme katsayısı:
-            # BMSTL/TURSG/ULUFA 2.00 (1:2) · ISGSY 5.88 (1:6) · GOODY 5.63.
-            # Kanıt: ISGSY 19 May → DB 111.30, parquet 18.56, İsyatirim 18.56.
-            #
-            # ÇÖZÜM: ATLAMA — girişi parquet'e TAŞI. Giriş+çıkış aynı bazda olur,
-            # getiri ekonomik olarak DOĞRU (bölünmede lot sayısı da katlanır;
-            # düzeltilmiş seri bunu zaten içerir). Parquet'in TAMAMI bozuksa
-            # (nadir) giriş+çıkış aynı bozuk ölçekte → oran yine doğru; baz
-            # KIRILMASI pencereye düşerse yukarıdaki kurumsal işlem bekçisi
-            # zaten o vadeyi NULL yapar. İki bekçi birlikte tam koruma verir.
-            if _entry_dbden:
-                _pq_kapanis = float(df_hist['Close'].iloc[idx])
-                if _pq_kapanis > 0:
-                    _ayrisma = max(entry, _pq_kapanis) / min(entry, _pq_kapanis)
-                    if _ayrisma > TUTARSIZLIK_ORAN:
-                        entry = _pq_kapanis      # baz uyumu: parquet kazanır
-                        tutarsiz_bazlanan += 1
-
-            # ── Stop seviyesi ────────────────────────────────────────────────
-            stop = sig.get('stop_level')
-            stop = float(stop) if stop and not pd.isna(stop) and float(stop) > 0 else None
 
             # ── Bias (bullish varsayılan) ─────────────────────────────────────
             bias = str(sig.get('bias', 'bullish') or 'bullish').lower()
             is_bullish = 'bear' not in bias
 
+            # ── Gerçekçi giriş: sinyal kapanışından sonraki işlem yapılabilir açılış ──
+            _entry_info = resolve_next_open_entry(
+                df_hist, sig['scan_date'], bias=bias,
+                apply_bist_limit=(
+                    not str(sig.get('category', '') or '').strip()
+                    or 'BIST' in str(sig.get('category', '') or '').upper()
+                    or str(sig['symbol']).upper().endswith('.IS')
+                ),
+                max_locked_sessions=3,
+            )
+            _entry_status = str(_entry_info.get('status', 'unknown'))
+            entry_status_counts[_entry_status] += 1
+            if _entry_info.get('entry_gap_pct') is not None:
+                entry_gaps.append(float(_entry_info['entry_gap_pct']))
+            _blank_db_row = {
+                'signal_id': int(sig['id']), 'symbol': sig['symbol'],
+                'scan_type': sig['scan_type'], 'signal_date': sig['scan_date'],
+                'bias': bias, 'entry_price': _entry_info.get('entry_price'),
+                'entry_date': _entry_info.get('entry_date'),
+                'entry_gap_pct': _entry_info.get('entry_gap_pct'),
+                'entry_delay': _entry_info.get('entry_delay'),
+                'entry_status': _entry_status, 'stop_level': None,
+                'ret_5g': None, 'ret_10g': None, 'ret_20g': None,
+                'hit_5g': None, 'hit_10g': None, 'hit_20g': None,
+                'stop_hit_5g': None, 'stop_hit_10g': None, 'stop_hit_20g': None,
+                'max_gain_20g': None, 'max_loss_20g': None,
+                'evaluated_at': datetime.now(TZ_ISTANBUL).strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            if not _entry_status.startswith('filled'):
+                db_rows.append(_blank_db_row)
+                if _entry_status.startswith('pending'):
+                    pending += 1
+                continue
+
+            entry = float(_entry_info['entry_price'])
+            idx = int(_entry_info['entry_pos'])
+            _entry_date_obj = pd.to_datetime(_entry_info['entry_date']).date()
+            _ca_sym = str(sig['symbol']).replace('.IS', '').replace('.is', '').upper()
+            if idx + min_fwd - 1 >= len(df_hist):
+                pending += 1
+                db_rows.append(_blank_db_row)
+                continue
+
+            # ── Stop seviyesi + geçmiş bölünme bazını koruma ─────────────────
+            stop = sig.get('stop_level')
+            stop = float(stop) if stop and not pd.isna(stop) and float(stop) > 0 else None
+            _stored_entry = sig.get('entry_price')
+            _stored_entry = (
+                float(_stored_entry)
+                if _stored_entry is not None and not pd.isna(_stored_entry) and float(_stored_entry) > 0
+                else None
+            )
+            if _stored_entry and stop:
+                _pq_kapanis = float(df_hist['Close'].iloc[signal_idx])
+                _ayrisma = max(_stored_entry, _pq_kapanis) / min(_stored_entry, _pq_kapanis)
+                if _ayrisma > TUTARSIZLIK_ORAN:
+                    stop *= _pq_kapanis / _stored_entry
+                    tutarsiz_bazlanan += 1
+
             # ── KURUMSAL İŞLEM BEKÇİSİ (15 Tem 2026) ─────────────────────────
             # Bölünme/bedelsiz penceredeyse fiyat serisi süreksiz → o pencerenin
             # getirisi/stop'u ÖLÇÜLEMEZ. Aşağıda etkilenen alanlar None bırakılır.
             _kur_idx = kurumsal_islem_indeksleri(df_hist)
-            _split_i = ilk_kurumsal_islem(_kur_idx, idx, idx + max_fwd)
+            _split_i = ilk_kurumsal_islem(_kur_idx, idx - 1, idx + max_fwd - 1)
             if _split_i is not None:
                 kurumsal_atlanan += 1
+            if _split_i == idx:
+                # Giriş seansındaki %15+ fiyat kırılması BIST'te işlem hareketi değil,
+                # bölünme/bedelsiz baz değişimidir. "Alındı" etiketi vermek yanıltıcı olur.
+                entry_status_counts[_entry_status] = max(
+                    0, entry_status_counts[_entry_status] - 1
+                )
+                entry_status_counts['excluded_corporate_action'] += 1
+                _blank_db_row['entry_status'] = 'excluded_corporate_action'
+                db_rows.append(_blank_db_row)
+                continue
 
             # ── Pencere boyunca fiyat serisi ─────────────────────────────────
-            window_slice = df_hist.iloc[idx: idx + max_fwd + 1]
+            window_slice = df_hist.iloc[idx: idx + max_fwd]
             has_low      = 'Low'  in window_slice.columns
             has_high     = 'High' in window_slice.columns
 
@@ -383,26 +475,26 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
                 max_gain_20g = None
                 max_loss_20g = None
 
-            db_row = {
-                'signal_id':   int(sig['id']),
-                'symbol':      sig['symbol'],
-                'scan_type':   sig['scan_type'],
-                'signal_date': sig['scan_date'],
-                'bias':        bias,
+            db_row = dict(_blank_db_row)
+            db_row.update({
                 'entry_price': round(entry, 4),
-                'stop_level':  round(stop, 4) if stop else None,
-                'ret_5g':      None, 'ret_10g': None, 'ret_20g': None,
-                'hit_5g':      None, 'hit_10g': None, 'hit_20g': None,
-                'stop_hit_5g': None, 'stop_hit_10g': None, 'stop_hit_20g': None,
+                'entry_date': _entry_info['entry_date'],
+                'entry_gap_pct': _entry_info.get('entry_gap_pct'),
+                'entry_delay': _entry_info.get('entry_delay'),
+                'entry_status': _entry_status,
+                'stop_level': round(stop, 4) if stop else None,
                 'max_gain_20g': max_gain_20g,
                 'max_loss_20g': max_loss_20g,
-                'evaluated_at': datetime.now(TZ_ISTANBUL).strftime("%Y-%m-%d %H:%M:%S"),
-            }
+            })
 
             result_row = {
                 'symbol':      sig['symbol'],
                 'scan_type':   sig['scan_type'],
                 'signal_date': sig['scan_date'],
+                'entry_date':  _entry_info['entry_date'],
+                'entry_gap_pct': _entry_info.get('entry_gap_pct'),
+                'entry_delay': _entry_info.get('entry_delay'),
+                'entry_status': _entry_status,
                 'bias':        bias,
                 'entry':       round(entry, 4),
                 'stop':        stop,
@@ -413,13 +505,14 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
             # ── XU100 index satırını bir kez bul (tüm pencereler için) ─────────
             xu100_idx = None
             if df_xu100 is not None and not df_xu100.empty:
-                xu100_sig_ts = pd.Timestamp(sig['scan_date'])
-                xu100_idx    = df_xu100.index.searchsorted(xu100_sig_ts)
+                xu100_entry_ts = pd.Timestamp(_entry_info['entry_date'])
+                xu100_idx = int(df_xu100.index.searchsorted(xu100_entry_ts))
                 if xu100_idx >= len(df_xu100):
                     xu100_idx = None
 
             for fwd in forward_windows:
-                f_idx = idx + fwd
+                # 5 seans tutma = giriş seansı dahil beşinci kapanış.
+                f_idx = idx + fwd - 1
                 if f_idx >= len(df_hist):
                     continue
 
@@ -430,6 +523,21 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
 
                 f_price = float(df_hist['Close'].iloc[f_idx])
                 ret     = round((f_price - entry) / entry * 100, 2)
+
+                # İş #8: TEMETTÜ (scan_date, forward] penceresindeyse ham getiri mekanik
+                # düşüşle eksik → temettü oranını GERİ EKLE (holder nakit temettüyü aldı).
+                # Bölünme (type='bolunme') buraya girmez — o zaten %15 bekçisiyle NULL'lanır.
+                _fwd_date = df_hist.index[f_idx].date()
+                for _ev in _ca_events.get(_ca_sym, []):
+                    if _ev.get('type') != 'temettu':
+                        continue
+                    try:
+                        _ed = datetime.strptime(str(_ev['date'])[:10], '%Y-%m-%d').date()
+                    except Exception:
+                        continue
+                    if _entry_date_obj < _ed <= _fwd_date:
+                        ret = round(ret + (float(_ev['factor']) - 1.0) * 100, 2)
+                        temettu_ayarlanan += 1
 
                 # Bias-corrected hit
                 if is_bullish:
@@ -451,9 +559,9 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
                 xu100_ret = None
                 alpha     = None
                 if xu100_idx is not None:
-                    xu100_f = xu100_idx + fwd
+                    xu100_f = xu100_idx + fwd - 1
                     if xu100_f < len(df_xu100):
-                        xu100_entry_p = float(df_xu100['Close'].iloc[xu100_idx])
+                        xu100_entry_p = float(df_xu100['Open'].iloc[xu100_idx])
                         xu100_exit_p  = float(df_xu100['Close'].iloc[xu100_f])
                         if xu100_entry_p > 0:
                             xu100_ret = round((xu100_exit_p - xu100_entry_p) / xu100_entry_p * 100, 2)
@@ -470,27 +578,44 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
                 db_row[f'stop_hit_{fwd}g'] = stop_hit
 
             results.append(result_row)
-            upsert_result(conn, db_row)
+            db_rows.append(db_row)   # döngüde YAZMA YOK → yavaş parquet okumaları boyunca DB kilidi tutulmaz
 
             # ── İDEAL VADE: gün 1..MAXD_VADE getiri + alpha (bias-düzeltmeli) ──
             # Kurumsal işlem bekçisi: bölünme gününden İTİBAREN seri süreksiz →
             # o günden sonraki vadeler ölçülemez, döngü kırılır (öncesi geçerli).
-            _split_vade = ilk_kurumsal_islem(_kur_idx, idx, idx + MAXD_VADE)
+            _split_vade = ilk_kurumsal_islem(_kur_idx, idx - 1, idx + MAXD_VADE - 1)
             for dd in range(1, MAXD_VADE + 1):
-                v_idx = idx + dd
+                v_idx = idx + dd - 1
                 if v_idx >= len(df_hist):
                     break
                 if _split_vade is not None and _split_vade <= v_idx:
                     break
                 v_price = float(df_hist['Close'].iloc[v_idx])
-                v_ret   = (v_price - entry) / entry * 100
+                v_raw_ret = (v_price - entry) / entry * 100
+                _v_date = df_hist.index[v_idx].date()
+                for _ev in _ca_events.get(_ca_sym, []):
+                    if _ev.get('type') != 'temettu':
+                        continue
+                    try:
+                        _ed = datetime.strptime(str(_ev['date'])[:10], '%Y-%m-%d').date()
+                    except Exception:
+                        continue
+                    if _entry_date_obj < _ed <= _v_date:
+                        v_raw_ret += (float(_ev['factor']) - 1.0) * 100
+                if dd <= 20:
+                    daily_return_rows.append((
+                        int(sig['id']), sig['scan_type'], sig['symbol'], sig['scan_date'],
+                        round(entry, 4), dd, v_price, round(v_raw_ret, 4),
+                        sig.get('category', ''),
+                    ))
+                v_ret = v_raw_ret
                 if not is_bullish:
                     v_ret = -v_ret  # bearish sinyal → düşüş = kâr
                 v_alpha = None
                 if xu100_idx is not None:
-                    v_xf = xu100_idx + dd
+                    v_xf = xu100_idx + dd - 1
                     if v_xf < len(df_xu100):
-                        v_xe = float(df_xu100['Close'].iloc[xu100_idx])
+                        v_xe = float(df_xu100['Open'].iloc[xu100_idx])
                         v_xx = float(df_xu100['Close'].iloc[v_xf])
                         if v_xe > 0:
                             v_xr = (v_xx - v_xe) / v_xe * 100
@@ -505,7 +630,34 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
         except Exception:
             continue
 
+    # 21 Tem 2026 — KİLİT KÖK ÇÖZÜMÜ. Eskiden upsert_result döngü İÇİNDE çağrılıyor, tek commit döngü
+    # SONUNDA yapılıyordu → binlerce sinyallik TEK yazma işlemi, yavaş parquet okumaları boyunca (dakikalar)
+    # SQLite yazma kilidini elde tutuyordu. patron.db WAL değil (scp/OneDrive gerekçesi) → yazan kilit TÜM
+    # okumaları bloke eder → 19:30 backtest'i çalışırken uygulama ilk açılışta DB okumalarında bekleyip BOŞ
+    # kalıyordu. Çözüm: hesap döngüsü hiç yazmaz (kilit yok); yazma burada, parquet I/O'suz HIZLI fazda +
+    # her 500 satırda commit → kilit yalnız kısa aralıklarla, aralarda uygulama rahatça okur.
+    for _wi, _r in enumerate(db_rows):
+        try:
+            upsert_result(conn, _r)
+        except Exception:
+            continue
+        if (_wi + 1) % 500 == 0:
+            conn.commit()   # kilidi periyodik bırak → uygulamanın okuma penceresi
     conn.commit()
+    _daily_sql = """
+        INSERT INTO signal_returns(
+            signal_id, scan_type, symbol, signal_date, entry_price,
+            day_offset, close_price, return_pct, category
+        ) VALUES (?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(signal_id, day_offset) DO UPDATE SET
+            entry_price=excluded.entry_price,
+            close_price=excluded.close_price,
+            return_pct=excluded.return_pct,
+            category=excluded.category
+    """
+    for _di in range(0, len(daily_return_rows), 5000):
+        conn.executemany(_daily_sql, daily_return_rows[_di:_di + 5000])
+        conn.commit()
     conn.close()
 
     if kurumsal_atlanan:
@@ -514,24 +666,50 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
     if tutarsiz_bazlanan:
         print(f"  → 🛡 Baz uyumu bekçisi: {tutarsiz_bazlanan} sinyalin girişi parquet "
               f"bazına taşındı (DB girişi bölünme öncesi = bayat) → getiri artık ölçülüyor")
+    if temettu_ayarlanan:
+        print(f"  → 💰 Temettü düzeltmesi (İş #8): {temettu_ayarlanan} vade-getirisine "
+              f"pencereye düşen temettü geri eklendi (oran-yöntemi takvimi)")
+    elif not _ca_events:
+        print(f"  → 💰 Temettü düzeltmesi: kurumsal_takvim cache BOŞ — önce "
+              f"`python kurumsal_takvim.py --precompute` koş (aksi halde temettü düzeltmesi devre dışı)")
 
     df = pd.DataFrame(results)
+    if entry_status_counts:
+        _status_text = ", ".join(f"{k}={v}" for k, v in sorted(entry_status_counts.items()))
+        print(f"  → Gerçek giriş karnesi: {_status_text}")
     return df, {'pending': pending, 'evaluated': len(df),
                 'kurumsal_atlanan': kurumsal_atlanan,
-                'tutarsiz_bazlanan': tutarsiz_bazlanan}, vade_accum
+                'tutarsiz_bazlanan': tutarsiz_bazlanan,
+                'entry_status_counts': dict(entry_status_counts),
+                'daily_return_rows': len(daily_return_rows),
+                'avg_entry_gap_pct': (
+                    round(sum(entry_gaps) / len(entry_gaps), 3) if entry_gaps else None
+                )}, vade_accum
 
 
 def summarize(df):
-    """scan_type bazında zengin özet."""
+    """scan_type bazında zengin özet.
+
+    Ham fiyat getirisi raporda aynen korunur. Ayı yönlü uyarılarda kazanma/kaybetme,
+    beklenti ve kâr faktörü ise sinyal yönüne çevrilerek hesaplanır; böylece D4/D5
+    düşüş başarısı hiçbir zaman boğa getirisi gibi görünmez.
+    """
     if df is None or df.empty:
         return []
 
     out = []
     for scan_type, grp in df.groupby('scan_type'):
+        _bias_values = (grp['bias'].fillna('bullish').astype(str).str.lower()
+                        if 'bias' in grp.columns else pd.Series(dtype=str))
+        _bearish_votes = int(_bias_values.str.contains('bear', na=False).sum())
+        is_bearish = scan_type in ('er_D4', 'er_D5') or (
+            len(_bias_values) > 0 and _bearish_votes > len(_bias_values) / 2
+        )
         row = {
             'scan_type':     scan_type,
             'label':         label_for_scan_type(scan_type),
             'category':      category_for_scan_type(scan_type),
+            'bias':          'bearish' if is_bearish else 'bullish',
             'total_signals': len(grp),
         }
 
@@ -549,14 +727,17 @@ def summarize(df):
                 avg_ret     = round(float(rets.mean()), 2)
                 std_dev     = round(float(rets.std()), 2) if len(rets) >= 2 else None
 
-                pos_rets    = rets[rets > 0]
-                neg_rets    = rets[rets <= 0]
+                # Yönsel getiri: boğada yükseliş, ayıda düşüş kazançtır.
+                directional_rets = -rets if is_bearish else rets
+                directional_avg  = round(float(directional_rets.mean()), 2)
+                pos_rets    = directional_rets[directional_rets > 0]
+                neg_rets    = directional_rets[directional_rets <= 0]
                 avg_win     = round(float(pos_rets.mean()), 2) if len(pos_rets) > 0 else 0.0
                 avg_loss    = round(float(neg_rets.mean()), 2) if len(neg_rets) > 0 else 0.0
 
-                # Expectancy: (hit% × avg_win) + (miss% × avg_loss)
-                miss_pct    = 1.0 - (hit_pct / 100)
-                expectancy  = round((hit_pct / 100) * avg_win + miss_pct * avg_loss, 2)
+                # Beklenti doğrudan yönsel getirinin ortalamasıdır. Bu, hit oranı ile
+                # kazanç/kayıp kümelerinin aynı yön tanımını kullanmasını garanti eder.
+                expectancy  = directional_avg
 
                 # Profit Factor: toplam kazanç / toplam kayıp (abs)
                 gross_profit   = float(pos_rets.sum()) if len(pos_rets) > 0 else 0.0
@@ -569,6 +750,11 @@ def summarize(df):
                 acol   = f'alpha_{fwd}g'
                 alphas = grp[acol].dropna() if acol in grp.columns else pd.Series(dtype=float)
                 alpha_avg = round(float(alphas.mean()), 2) if len(alphas) >= 3 else None
+                directional_alpha = (-alphas if is_bearish else alphas)
+                directional_alpha_avg = (
+                    round(float(directional_alpha.mean()), 2)
+                    if len(directional_alpha) >= 3 else None
+                )
 
                 xu100col  = f'xu100_{fwd}g'
                 xu100s    = grp[xu100col].dropna() if xu100col in grp.columns else pd.Series(dtype=float)
@@ -576,6 +762,7 @@ def summarize(df):
 
                 row[f'hit_{fwd}g_pct']       = hit_pct
                 row[f'avg_{fwd}g_ret']       = avg_ret
+                row[f'directional_avg_{fwd}g_ret'] = directional_avg
                 row[f'std_{fwd}g']           = std_dev
                 row[f'avg_win_{fwd}g']       = avg_win
                 row[f'avg_loss_{fwd}g']      = avg_loss
@@ -584,10 +771,12 @@ def summarize(df):
                 row[f'stop_hit_{fwd}g_pct']  = stop_hit_pct
                 row[f'eval_{fwd}g']          = int(len(hits))
                 row[f'alpha_{fwd}g']         = alpha_avg
+                row[f'directional_alpha_{fwd}g'] = directional_alpha_avg
                 row[f'xu100_avg_{fwd}g']     = xu100_avg
             else:
                 row[f'hit_{fwd}g_pct']       = None
                 row[f'avg_{fwd}g_ret']       = None
+                row[f'directional_avg_{fwd}g_ret'] = None
                 row[f'std_{fwd}g']           = None
                 row[f'avg_win_{fwd}g']       = None
                 row[f'avg_loss_{fwd}g']      = None
@@ -596,6 +785,7 @@ def summarize(df):
                 row[f'stop_hit_{fwd}g_pct']  = None
                 row[f'eval_{fwd}g']          = int(len(hits))
                 row[f'alpha_{fwd}g']         = None
+                row[f'directional_alpha_{fwd}g'] = None
                 row[f'xu100_avg_{fwd}g']     = None
 
         out.append(row)
@@ -754,10 +944,18 @@ def main():
     print(f"   {_iv_n} taramada ideal vade hesaplandı.")
     print()
 
-    # Top 5 — expectancy 10G
-    top5  = [r for r in summary if r.get('expectancy_10g') is not None and r['expectancy_10g'] > 0][:5]
-    # Worst 5
-    worst = [r for r in summary if r.get('expectancy_10g') is not None and r['expectancy_10g'] < 0][-5:]
+    # Boğa taramaları ve düşüş uyarıları ayrı liglerde sıralanır.
+    bullish_summary = [r for r in summary if r.get('bias') != 'bearish']
+    bearish_warnings = [
+        r for r in summary
+        if r.get('bias') == 'bearish' and r.get('expectancy_10g') is not None
+    ]
+    bearish_warnings.sort(key=lambda r: r['expectancy_10g'], reverse=True)
+
+    # Top 5 — yalnız boğa taramaları, expectancy 10G
+    top5  = [r for r in bullish_summary if r.get('expectancy_10g') is not None and r['expectancy_10g'] > 0][:5]
+    # Worst 5 — yalnız boğa taramaları
+    worst = [r for r in bullish_summary if r.get('expectancy_10g') is not None and r['expectancy_10g'] < 0][-5:]
     worst.reverse()
     # Kategori bazlı en iyi
     best_per_cat = {}
@@ -785,6 +983,7 @@ def main():
         'summary':           summary,
         'top5_by_expectancy': top5,
         'worst_5':           worst,
+        'bearish_warnings':   bearish_warnings,
         'best_per_category': best_per_cat,
     }
 

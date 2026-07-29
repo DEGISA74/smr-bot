@@ -271,16 +271,20 @@ from datetime import datetime, timedelta
 
 from ta.volume import VolumeWeightedAveragePrice
 from data_policy import AUTO_ADJUST
-from data_layer import get_safe_historical_data, _yf_download_with_retry
+from data_layer import (get_safe_historical_data, _yf_download_with_retry,
+                        is_last_bar_projected, final_bist100_list as _BIST_TICKERS)
 from indicators import (calculate_full_volume_profile, calculate_volume_delta,
                         compute_cmf, detect_naked_poc, detect_supply_demand_zones,
-                        find_smart_sr_levels)
+                        find_smart_sr_levels, compute_force_index_dual)
 try:
-    from bist_calendar import is_closed as _bist_is_closed, get_rvol_day_factor as _bist_rvol_factor
+    from bist_calendar import (is_closed as _bist_is_closed,
+                               get_rvol_day_factor as _bist_rvol_factor,
+                               get_session_hours as _bist_session_hours)
     _BIST_CAL_OK = True
 except ImportError:
     def _bist_is_closed(_dt=None):   return False
     def _bist_rvol_factor(_dt=None): return 1.0
+    def _bist_session_hours(_dt=None): return ("10:00", "18:00")
     _BIST_CAL_OK = False
 
 _TZ_ISTANBUL = pytz.timezone("Europe/Istanbul")
@@ -515,8 +519,35 @@ def detect_price_action_with_context(df):
 
     return "NÖTR", ""
 
-@st.cache_data(ttl=600)
+def _bos_sonuc_rafa_konmasin(_cached_fn, _ticker, _sonuc, _bos_mu, *_extra_keys):
+    """BOŞ SONUÇ RAFA KONMAZ (17 Tem 2026 — XBANK vakası).
+
+    st.cache_data başarısız sonucu da raf ömrü boyunca saklar: veri bekçisi bir
+    ticker'ı geçici bloklarsa panel "veri yok" cevabını rafa koyup blok kalksa
+    bile göstermeye devam eder (PA-DNA'da 24 SAAT). Çare: sonuç boşsa o
+    ticker'ın raf kaydını hemen sil → sonraki render yeniden hesaplar.
+    Sadece o ticker'ın kaydı düşer, diğerleri sıcak kalır (Streamlit 1.36+).
+
+    27 Tem 2026: _extra_keys — cached fonksiyonun ticker DIŞINDA anahtar parametresi
+    varsa (örn. PA-DNA gun_key) doğru kaydı temizlemek için iletilir. Parametresiz
+    çağıranlar (ICT deep) etkilenmez — geriye tam uyumlu."""
+    if _bos_mu:
+        try:
+            _cached_fn.clear(_ticker, *_extra_keys)
+        except Exception:
+            pass  # raf temizliği başarısızsa akışı KESME — eski davranış sürsün
+    return _sonuc
+
+
 def calculate_ict_deep_analysis(ticker):
+    out = _calculate_ict_deep_analysis_cached(ticker)
+    return _bos_sonuc_rafa_konmasin(
+        _calculate_ict_deep_analysis_cached, ticker, out,
+        not out or out.get("status") == "Error")
+
+
+@st.cache_data(ttl=600)
+def _calculate_ict_deep_analysis_cached(ticker):
     error_ret = {"status": "Error", "msg": "Veri Yok", "structure": "-", "bias": "-", "entry": 0, "target": 0, "structural_target": 0, "stop": 0, "rr": 0, "desc": "Veri bekleniyor", "displacement": "-", "fvg_txt": "-", "ob_txt": "-", "zone": "-", "mean_threshold": 0, "curr_price": 0, "setup_type": "BEKLE", "bottom_line": "-", "eqh_eql_txt": "-", "sweep_txt": "-", "model_score": 0, "model_checks": [], "ob_age": 0, "fvg_age": 0, "struct_age": 0}
     
     try:
@@ -1090,10 +1121,76 @@ def calculate_ict_deep_analysis(ticker):
 
     except Exception: return error_ret
 
-@st.cache_data(ttl=86400)  # 15 Haz 2026 — 600s→24sa. PA-DNA pahalı (cache miss 3.5-4sn),
-                            # günlük veriye dayanır (gün içinde sıcak kalsa yeter). Sunucu-wide
-                            # cache showcase'te paylaşımlı → bir kullanıcı ısıtsa hepsi hit.
+def compute_sfp_flags(df):
+    """SFP (Swing Failure Pattern / tuzak) tespiti — TEK KAYNAK (17 Tem 2026, ekran reformu 2c).
+    Son mum önceki 19 günün zirvesini fitille aşıp ALTINDA kapatmışsa boğa tuzağı (bearish SFP),
+    dibini fitille delip ÜSTÜNDE kapatmışsa ayı tuzağı (bullish SFP).
+    Kullanıcılar: PA-DNA paneli + scan_pipeline f_sfp_* loglaması (Eylül 2026 karnesi).
+    Döner: (bull, bear) 0/1 — veri yetersizse (None, None)."""
+    try:
+        if df is None or len(df) < 20:
+            return None, None
+        _h = df['High']; _l = df['Low']
+        _c1_h = float(_h.iloc[-1]); _c1_l = float(_l.iloc[-1]); _c1_c = float(df['Close'].iloc[-1])
+        _rh = float(_h.iloc[-20:-1].max()); _rl = float(_l.iloc[-20:-1].min())
+        _bear = 1 if (_c1_h > _rh and _c1_c < _rh) else 0
+        _bull = 1 if (_c1_l < _rl and _c1_c > _rl) else 0
+        return _bull, _bear
+    except Exception:
+        return None, None
+
+
+def _pa_dna_cache_key(ticker, now=None):
+    """BIST seansında 15 dk, seans dışında dönemsel PA-DNA fotoğraf anahtarı."""
+    _now = now or datetime.now(_TZ_ISTANBUL)
+    if _now.tzinfo is None:
+        _now = _TZ_ISTANBUL.localize(_now)
+    else:
+        _now = _now.astimezone(_TZ_ISTANBUL)
+
+    _day = _now.date().isoformat()
+    _ticker = str(ticker or "").upper()
+    _is_bist = (".IS" in _ticker or
+                _ticker.startswith(("XU", "XB", "XT", "XY")) or
+                f"{_ticker}.IS" in _BIST_TICKERS)
+    if not _is_bist:
+        return f"{_day}:daily"
+
+    _hours = None if _bist_is_closed(_now) else _bist_session_hours(_now)
+    if not _hours:
+        return f"{_day}:closed"
+
+    _open_h, _open_m = map(int, _hours[0].split(":"))
+    _close_h, _close_m = map(int, _hours[1].split(":"))
+    _minute = _now.hour * 60 + _now.minute
+    _open_minute = _open_h * 60 + _open_m
+    _close_minute = _close_h * 60 + _close_m
+
+    if _minute < _open_minute:
+        return f"{_day}:pre"
+    if _minute >= _close_minute:
+        return f"{_day}:close"
+
+    _bucket = (_minute - _open_minute) // 15
+    return f"{_day}:session:{_bucket:02d}"
+
+
 def calculate_price_action_dna(ticker):
+    # 28 Tem 2026: BIST seansı içinde 15 dakikalık fotoğraf; seans öncesi,
+    # kapanış sonrası ve kapalı günlerde dönem boyunca tek fotoğraf.
+    # Böylece sabahki eksik günlük bar akşama taşınmaz, aynı 15 dakikada Yahoo
+    # tekrar tekrar çağrılmaz. BIST dışı sembollerde eski günlük davranış korunur.
+    _cache_key = _pa_dna_cache_key(ticker)
+    out = _calculate_price_action_dna_cached(ticker, _cache_key)
+    return _bos_sonuc_rafa_konmasin(
+        _calculate_price_action_dna_cached, ticker, out, not out, _cache_key)
+
+
+@st.cache_data(ttl=86400)  # 15 Haz 2026 — 600s→24sa. PA-DNA pahalı (cache miss 3.5-4sn).
+                            # 28 Tem 2026 — cache_key BIST seansında 15 dakikada bir,
+                            # seans dışında dönem değişince yenilenir. ALT-ÇİZGİSİZ olmalı;
+                            # yoksa Streamlit anahtara katmaz (16 Tem boş-anahtar dersi).
+def _calculate_price_action_dna_cached(ticker, cache_key):
     try:
         if _PROFILE_ENABLED:
             import time as _pt_pa
@@ -1102,6 +1199,10 @@ def calculate_price_action_dna(ticker):
         with _Timer("    PA-DNA: get_safe_historical_data(6mo)"):
             df = get_safe_historical_data(ticker, period="6mo")
         if df is None or len(df) < 50: return None
+        # İş 4 (28 Tem 2026): son barın hacmi gün-içi TAHMİN mi — damgayı HEMEN,
+        # sonraki transform'lar (mask/copy/volume_delta) attrs'ı düşürmeden önce yakala.
+        # smart_volume dict'ine konur → panel + AI prompt "kesin gerçek" gibi sunmaz.
+        _vol_proj, _vol_prog = is_last_bar_projected(df)
         # --- YENİ HACİM HESAPLAMALARI (ADIM 2) BURAYA EKLENDİ ---
         df = df[df['Close'] > 0].copy() # Sadece hacmi olan günleri değil, fiyatı olan her günü al (Canlı mumu yakalamak için)
         # HAFTA SONU / TATİL / BAYRAM FIX: yfinance kapalı günlere Close=önceki kapanış,
@@ -1661,9 +1762,11 @@ def calculate_price_action_dna(ticker):
         
         # SFP
         sfp_txt, sfp_desc = "Yok", "Önemli bir tuzak tespiti yok."
-        recent_highs = h.iloc[-20:-1].max(); recent_lows = l.iloc[-20:-1].min()
-        if c1_h > recent_highs and c1_c < recent_highs: sfp_txt, sfp_desc = "⚠️ Bearish SFP (Boğa Tuzağı)", "Tepe temizlendi ama tutunamadı."
-        elif c1_l < recent_lows and c1_c > recent_lows: sfp_txt, sfp_desc = "💎 Bullish SFP (Ayı Tuzağı)", "Dip temizlendi ve geri döndü."
+        # 17 Tem 2026 (reform 2c): koşullar compute_sfp_flags'a taşındı — tek kaynak.
+        # Bear önceliği korundu (ikisi birden yanarsa eski davranış: Bearish gösterilir).
+        _sfp_bull_f, _sfp_bear_f = compute_sfp_flags(df)
+        if _sfp_bear_f: sfp_txt, sfp_desc = "⚠️ Bearish SFP (Boğa Tuzağı)", "Tepe temizlendi ama tutunamadı."
+        elif _sfp_bull_f: sfp_txt, sfp_desc = "💎 Bullish SFP (Ayı Tuzağı)", "Dip temizlendi ve geri döndü."
 
         # VSA
         vol_txt, vol_desc = "Normal", "Hacim ortalama seyrediyor."
@@ -1897,34 +2000,26 @@ def calculate_price_action_dna(ticker):
             va_pos = "İÇİNDE"
 
         # ANA BAŞLIK + BASIT AÇIKLAMA (senaryo matrisi)
-        # Fiyat formatı: büyükse tam sayı, küçükse ondalıklı
-        def _fmt(v): return f"{v:.0f}" if v >= 100 else f"{v:.2f}" if v >= 1 else f"{v:.4f}"
-        _poc_range = f"({_fmt(val_price)}–{_fmt(vah_price)})"
+        # 16 Tem 2026: matris smart_volume_title_desc'e taşındı — TEK KAYNAK.
+        # app paneli (buradan) ve smr_core bot prompt'u aynı cümleleri kullanır.
+        main_title, simple_text = smart_volume_title_desc(va_pos, cum_delta_5, val_price, vah_price, rvol=rvol)
 
-        if va_pos == "ÜSTÜNDE":
-            if cum_delta_5 > 0:
-                main_title = f"🚀 POC ALANI {_poc_range} ÜSTÜNDE — Güçlü Kırılım"
-                simple_text = "Büyük oyuncuların yoğun işlem yaptığı POC alanının üstüne çıkıldı ve son 5 günde alım hacmi bunu destekliyor. Trend güçlü görünüyor."
-            else:
-                main_title = f"⚠️ POC ALANI {_poc_range} ÜSTÜNDE — Ama Satış Var"
-                simple_text = "Fiyat yukarıda görünüyor ama son 5 günde büyük oyuncular sessizce mal veriyor olabilir. Boğa tuzağı riski taşıyor olabilir."
-        elif va_pos == "ALTINDA":
-            if cum_delta_5 > 0:
-                main_title = f"🟢 POC ALANI {_poc_range} ALTINDA — Gizli Alım"
-                simple_text = "Fiyat ucuz bölgede ama son 5 günde alım hacmi artıyor. Akıllı para sessizce topluyor olabilir."
-            else:
-                main_title = f"🔴 POC ALANI {_poc_range} ALTINDA — Baskı Devam"
-                simple_text = "Fiyat adil değerin altında ve son 5 günde satış baskısı sürüyor. Kırılım onaylanmış gibi görünüyor."
-        else:  # İÇİNDE
-            if cum_delta_5 > 0:
-                main_title = f"⚖️ POC ALANINDA {_poc_range} — Alım Baskısı Var"
-                simple_text = "Fiyat en yoğun hacim bölgesinde (POC). Son 5 günde alım ağırlıklı işlem akışı görülüyor — POC üstünde tutunursa yapı güçlü kalır, altına iner ve kalırsa baskı sürebilir."
-            elif cum_delta_5 < 0:
-                main_title = f"⚖️ POC ALANINDA {_poc_range} — Satış Baskısı Var"
-                simple_text = "Piyasa büyük oyuncuların en çok işlem yaptığı POC alanında. Son 5 günde satış ağır basıyor, aşağı kırılım riski var."
-            else:
-                main_title = f"⚖️ POC ALANINDA {_poc_range} — Yön Bekleniyor"
-                simple_text = "Fiyat en yoğun hacim bölgesinde (POC). Alıcı ve satıcı dengede — POC'un hangi yönde kalıcı olarak terk edileceği sonraki yapıyı belirler."
+        # HACİM 4-PARÇA HÜKMÜ — tek başlığı yön/katılım/süreklilik/fiyat teyidine böler
+        try:
+            _delta_ser = df['Volume_Delta'].iloc[-5:].tolist() if 'Volume_Delta' in df.columns else []
+            _close_ser = df['Close'].iloc[-6:].tolist() if 'Close' in df.columns else []
+            # Fiyat-hacim gücü uyumsuzluğu (Force Index) → hükme karşı-sinyal
+            _fi_karsi = None
+            try:
+                _fi_hd = compute_force_index_dual(df, span_short=2, span_long=13)
+                if _fi_hd:
+                    _fi_karsi = _fi_hd.get('divergence')  # 'bullish'/'bearish'/None
+            except Exception:
+                pass
+            hacim_4soru = hacim_dort_soru(cum_delta_5, rvol, _delta_ser, _close_ser,
+                                          vol_missing=_vol_data_missing, karsi=_fi_karsi)
+        except Exception:
+            hacim_4soru = None
 
         # NAKED POC — en yakın olanı seç
         naked_txt = ""
@@ -1975,6 +2070,9 @@ def calculate_price_action_dna(ticker):
                 "naked_poc_txt":  naked_txt,
                 "rvol":           round(rvol, 2),
                 "vol_data_missing": _vol_data_missing,
+                "vol_projected":  _vol_proj,   # İş 4: son bar hacmi gün-içi TAHMİN mi
+                "vol_progress":   _vol_prog,   # seansın geçen oranı (0.4=%40; düşük=spekülatif)
+                "dort_soru":      hacim_4soru,
                 "stopping":       stop_vol_msg,
                 "climax":         climax_msg
             }
@@ -1987,6 +2085,203 @@ def calculate_price_action_dna(ticker):
             try: _tlog("    ╚ PA-DNA EXCEPTION (cache MISS)", (_pt_pa.perf_counter() - _pa_t_total) * 1000, extra=f"ticker={ticker}")
             except Exception: pass
         return None
+
+def smart_volume_title_desc(va_pos, cum_delta_5, val_price, vah_price, rvol=None):
+    """Smart Money hacim özeti — ANA BAŞLIK + BASIT AÇIKLAMA (senaryo matrisi).
+
+    TEK KAYNAK (16 Tem 2026): app paneli (calculate_price_action_dna üzerinden)
+    ve smr_core bot prompt'u (_base_data_block) aynı cümleleri buradan alır —
+    metin burada değişirse panel VE Telegram analizi birlikte değişir.
+    """
+    # Fiyat formatı: büyükse tam sayı, küçükse ondalıklı
+    def _fmt(v): return f"{v:.0f}" if v >= 100 else f"{v:.2f}" if v >= 1 else f"{v:.4f}"
+    _poc_range = f"({_fmt(val_price)}–{_fmt(vah_price)})"
+    # 21 Tem 2026 (Codex geri bildirimi): başlık katılıma duyarlı. Fiyat kırılsa bile
+    # HACİM zayıfsa "Güçlü" deme — fiyat ayağı güçlü, hacim ayağı aynı kuvvette değil.
+    _zayif_katilim = (rvol is not None and 0.05 < float(rvol) < 0.8)
+
+    if va_pos == "ÜSTÜNDE":
+        if cum_delta_5 > 0:
+            if _zayif_katilim:
+                main_title = f"🚀 POC ALANI {_poc_range} ÜSTÜNDE — Kırılım (hacim teyidi zayıf)"
+                simple_text = "POC alanının üstüne çıkıldı ama son 5 günde katılım (işlem hacmi) zayıf. Fiyat kırılımı güçlü, hacim ayağı aynı kuvvette değil — teyit kısmi."
+            else:
+                main_title = f"🚀 POC ALANI {_poc_range} ÜSTÜNDE — Güçlü Kırılım"
+                simple_text = "Büyük oyuncuların yoğun işlem yaptığı POC alanının üstüne çıkıldı ve son 5 günde alım hacmi bunu destekliyor. Trend güçlü görünüyor."
+        else:
+            main_title = f"⚠️ POC ALANI {_poc_range} ÜSTÜNDE — Ama Satış Var"
+            simple_text = "Fiyat yukarıda görünüyor ama son 5 günde büyük oyuncular sessizce mal veriyor olabilir. Boğa tuzağı riski taşıyor olabilir."
+    elif va_pos == "ALTINDA":
+        if cum_delta_5 > 0:
+            main_title = f"🟢 POC ALANI {_poc_range} ALTINDA — Gizli Alım"
+            simple_text = "Fiyat ucuz bölgede ama son 5 günde alım hacmi artıyor. Akıllı para sessizce topluyor olabilir."
+        else:
+            main_title = f"🔴 POC ALANI {_poc_range} ALTINDA — Baskı Devam"
+            simple_text = "Fiyat adil değerin altında ve son 5 günde satış baskısı sürüyor. Kırılım onaylanmış gibi görünüyor."
+    else:  # İÇİNDE
+        if cum_delta_5 > 0:
+            main_title = f"⚖️ POC ALANINDA {_poc_range} — Alım Ağırlıklı"
+            simple_text = "Fiyat en yoğun hacim bölgesinde (POC). Son 5 günde alım ağırlıklı işlem akışı görülüyor — POC üstünde tutunursa yapı güçlü kalır, altına iner ve kalırsa baskı sürebilir."
+        elif cum_delta_5 < 0:
+            main_title = f"⚖️ POC ALANINDA {_poc_range} — Satış Ağırlıklı"
+            simple_text = "Piyasa büyük oyuncuların en çok işlem yaptığı POC alanında. Son 5 günde satış ağır basıyor, aşağı kırılım riski var."
+        else:
+            main_title = f"⚖️ POC ALANINDA {_poc_range} — Yön Bekleniyor"
+            simple_text = "Fiyat en yoğun hacim bölgesinde (POC). Alıcı ve satıcı dengede — POC'un hangi yönde kalıcı olarak terk edileceği sonraki yapıyı belirler."
+    return main_title, simple_text
+
+
+def _hacim_hukum_cumlesi(yon_sign, kat_lvl, sur_lvl, teyit_durum, karsi=None):
+    """4 parçadan (yön/katılım/süreklilik/fiyat teyidi) birleşik, dürüst tek cümle.
+    Çelişkiyi ('para var ama hacim düşük') puan eksilten ayrıntı olmaktan çıkarıp
+    tek hikâyeye çevirir. hacim_dort_soru içinden çağrılır.
+
+    karsi: fiyat-hacim gücü uyumsuzluğu yönü ('bearish'/'bullish'/None). Para yönüyle
+    ÇELİŞİYORSA (Codex geri bildirimi) hükme temkin cümlesi eklenir — hüküm sadece
+    yeşil tarafı değil, zayıf halkayı da söyler."""
+    if yon_sign == 0:
+        return "Alıcı ve satıcı dengede — hacimde net bir yön yok, beklemek mantıklı."
+
+    if yon_sign > 0:  # para giriyor
+        if teyit_durum == "var" and kat_lvl == "yogun":
+            base = "Kalabalık ve fiyatı taşıyan gerçek alım — hacim yönü teyit ediyor, güçlü."
+        elif teyit_durum == "var":
+            base = "Katılım güçlü olmasa da alım fiyatı taşıyor — teyitli ama ölçülü bir giriş."
+        elif teyit_durum == "kismi":
+            israr = "ısrarlı" if sur_lvl == "israrli" else "yeni"
+            base = (f"Para girişi {israr} ve fiyatı taşıyor ama zayıf katılımla — teyit KISMİ, "
+                    "güçlü katılım artışı aranmalı.")
+        elif kat_lvl == "yogun" and teyit_durum == "eksik":
+            base = "Yoğun para geldi ama fiyat kımıldamadı — emilme/dağıtım olabilir, teyit bekle."
+        else:
+            israr = "ısrarla" if sur_lvl == "israrli" else "sessizce"
+            base = ("Az kişi ama " + israr + " alıyor gibi — henüz güçlü, kalabalık bir alım "
+                    "değil; fiyat teyidi bekleniyor.")
+    else:  # yon_sign < 0 — para çıkıyor
+        if teyit_durum == "var" and kat_lvl == "yogun":
+            base = "Yoğun ve fiyatı düşüren gerçek satış — baskı teyitli, sürüyor."
+        elif teyit_durum == "var":
+            base = "Ölçülü ama fiyatı aşağı çeken satış — baskı devam ediyor."
+        elif teyit_durum == "kismi":
+            base = "Satış fiyatı aşağı çekiyor ama zayıf katılımla — teyit KISMİ."
+        elif teyit_durum == "iraksama":
+            base = "Para çıkıyor ama fiyat direniyor — zayıf ralli / dağıtım riski, dikkat."
+        else:
+            base = "Satış ağırlığı var ama fiyat henüz kırılmadı — baskı oluşuyor, teyit bekle."
+
+    # Karşı sinyal (fiyat-hacim gücü uyumsuzluğu) — para yönüyle ÇELİŞİYORSA temkin ekle
+    if yon_sign > 0 and karsi == 'bearish':
+        base += " Ancak fiyat-hacim gücü zirveyi teyit etmiyor (ayı uyumsuzluğu) — temkinli."
+    elif yon_sign < 0 and karsi == 'bullish':
+        base += " Ancak fiyat-hacim gücü dibi teyit etmiyor (boğa uyumsuzluğu) — dönüş riskine dikkat."
+    return base
+
+
+def hacim_dort_soru(cum_delta_5, rvol, delta_serisi, close_serisi, vol_missing=False, karsi=None):
+    """HACİM 4-PARÇA HÜKMÜ — tek hacim başlığını dört ayrı soruya böler.
+
+    Sorun: 'POC ALANINDA — Alım Baskısı Var' tek başlığı, aynı ekrandaki 'hacim
+    ortalamanın altında' ile çelişki gibi görünüyordu. Oysa hacim tek soru değil,
+    DÖRT ayrı soru — dördü de aynı anda doğru olabilir:
+      1. Yön        — para giriyor mu, çıkıyor mu?      (cum_delta_5)
+      2. Katılım    — kalabalık mı, tenha mı?           (rvol)
+      3. Süreklilik — tek günlük mü, ısrarlı mı?        (son 5 günün delta işaretleri)
+      4. Fiyat teyidi — gelen para fiyatı taşıdı mı?    (son ~5 günün fiyat değişimi)
+
+    BETİMLEYİCİ — puanlı yeni bir sinyal DEĞİL; var olan sayıları dürüstçe adlandırır
+    (bu yüzden backtest borcu doğurmaz). TEK KAYNAK: panel (render_smart_volume_panel)
+    + AI prompt + bot (smr_core) buradan okur; metin/eşik burada değişirse üçü birden
+    değişir.
+
+    Dönüş: dict {yon, katilim, sureklilik, fiyat_teyidi, satir, hukum} — veya veri
+           yoksa None (endeks/hacimsiz sembol)."""
+    if vol_missing:
+        return None
+    try:
+        cum = float(cum_delta_5 or 0)
+        rv  = float(rvol or 0)
+    except Exception:
+        return None
+
+    # ── 1. YÖN — para giriyor mu, çıkıyor mu? ─────────────────────────────────
+    if cum > 0:
+        yon_lbl, yon_kisa, yon_sign = "Pozitif (para giriyor)", "Pozitif", +1
+    elif cum < 0:
+        yon_lbl, yon_kisa, yon_sign = "Negatif (para çıkıyor)", "Negatif", -1
+    else:
+        yon_lbl, yon_kisa, yon_sign = "Nötr (dengede)", "Nötr", 0
+
+    # ── 2. KATILIM — kalabalık mı, tenha mı? (rvol; panel Tile eşikleriyle uyumlu)
+    if rv >= 1.5:
+        kat_lbl, kat_kisa, kat_lvl = "Yoğun (ortalama üstü)", "Yoğun", "yogun"
+    elif rv >= 0.8:
+        kat_lbl, kat_kisa, kat_lvl = "Normal", "Normal", "normal"
+    else:
+        kat_lbl, kat_kisa, kat_lvl = "Zayıf (tenha)", "Zayıf", "zayif"
+
+    # ── 3. SÜREKLİLİK — son 5 günün kaçı baskın yönle aynı? ───────────────────
+    gun = 0
+    try:
+        _dser = [float(x) for x in list(delta_serisi)[-5:] if x is not None]
+        if yon_sign > 0:
+            gun = sum(1 for x in _dser if x > 0)
+        elif yon_sign < 0:
+            gun = sum(1 for x in _dser if x < 0)
+    except Exception:
+        pass
+    if gun >= 4:
+        sur_lbl, sur_kisa, sur_lvl = f"Israrlı ({gun}/5 gün aynı yönde)", "Israrlı", "israrli"
+    elif gun == 3:
+        sur_lbl, sur_kisa, sur_lvl = "Birkaç gündür sürüyor (3/5)", "Birkaç gün", "birkac"
+    else:
+        sur_lbl, sur_kisa, sur_lvl = "Yeni / tek güne dayalı", "Yeni", "yeni"
+
+    # ── 4. FİYAT TEYİDİ — gelen para fiyatı gerçekten taşıdı mı? ───────────────
+    _FLAT = 1.0  # ±%1 → yatay say (BIST 5 günlük gürültü payı)
+    pct = None
+    try:
+        _c = [float(x) for x in list(close_serisi) if x is not None and float(x) > 0]
+        if len(_c) >= 6:
+            pct = (_c[-1] / _c[-6] - 1) * 100
+        elif len(_c) >= 2:
+            pct = (_c[-1] / _c[0] - 1) * 100
+    except Exception:
+        pct = None
+
+    # 3 KADEME (21 Tem 2026): fiyat yükseldi ama KATILIM zayıfsa → tam "Var" değil
+    # "Kısmi" (Codex geri bildirimi: EREGL'de fiyat teyidi fazla kesin görünüyordu).
+    if pct is None or yon_sign == 0:
+        teyit_lbl, teyit_kisa, teyit_durum = "—", "—", "yok"
+    elif yon_sign > 0:
+        if pct > _FLAT:
+            if kat_lvl == "zayif":
+                teyit_lbl, teyit_kisa, teyit_durum = "Kısmi (fiyat yükseldi ama katılım zayıf)", "Kısmi", "kismi"
+            else:
+                teyit_lbl, teyit_kisa, teyit_durum = "Var (fiyat yükseldi, katılım da destekliyor)", "Var", "var"
+        else:
+            teyit_lbl, teyit_kisa, teyit_durum = "Eksik (para geldi ama fiyat taşınmadı)", "Eksik", "eksik"
+    else:  # yon_sign < 0
+        if pct < -_FLAT:
+            if kat_lvl == "zayif":
+                teyit_lbl, teyit_kisa, teyit_durum = "Kısmi (fiyat düştü ama katılım zayıf)", "Kısmi", "kismi"
+            else:
+                teyit_lbl, teyit_kisa, teyit_durum = "Var (fiyat düştü, katılım da destekliyor)", "Var", "var"
+        else:
+            teyit_lbl, teyit_kisa, teyit_durum = "Iraksama (para çıkıyor ama fiyat direniyor)", "Iraksama", "iraksama"
+
+    hukum = _hacim_hukum_cumlesi(yon_sign, kat_lvl, sur_lvl, teyit_durum, karsi)
+    satir = (f"Para yönü: {yon_kisa} · Katılım: {kat_kisa} · "
+             f"Süreklilik: {sur_kisa} · Fiyat teyidi: {teyit_kisa}")
+
+    return {
+        "yon":          {"label": yon_lbl, "kisa": yon_kisa, "sign": yon_sign},
+        "katilim":      {"label": kat_lbl, "kisa": kat_kisa, "level": kat_lvl},
+        "sureklilik":   {"label": sur_lbl, "kisa": sur_kisa, "level": sur_lvl, "gun": gun},
+        "fiyat_teyidi": {"label": teyit_lbl, "kisa": teyit_kisa, "durum": teyit_durum},
+        "satir":        satir,
+        "hukum":        hukum,
+    }
+
 
 @st.cache_data(ttl=600)
 def calculate_minervini_sepa(ticker, benchmark_ticker="^GSPC", provided_df=None):

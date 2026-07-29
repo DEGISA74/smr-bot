@@ -9,6 +9,7 @@ hacim kalite etiketi. app.py'de kalanlar (UI/goldmine-yapisik): _compute_kanit_o
 Fotograf: golden_record an_* hedefleri (sifir fark).
 """
 import os
+import re
 import numpy as np
 import pandas as pd
 import pytz
@@ -26,6 +27,7 @@ from scan_pipeline import _compute_signal_features, scan_chart_patterns
 from scanners import _er_bearish_div, _er_rsi, evaluate_erken_radar
 from scoring_core import calculate_smart_money_score
 from db_layer import log_error
+from signal_policy import scanner_family
 
 try:
     from bist_calendar import is_trading_day as _bist_is_trading_day, is_half_day as _bist_is_half_day
@@ -75,9 +77,24 @@ def _risk_profile(ticker):
         pass
     return out
 
+# İş 2 (27 Tem 2026, borsacı geri bildirimi): YETERSİZ ÖRNEK EŞİĞİ. Bir tier'ın
+# hit/ret rakamı bu örnek sayısının altındaysa istatistik sayılmaz — AI prompt'ta
+# ham rakam SUSTURULUR (bkz. app.py scanner_tiers emisyonu). 25 = SCANNER_TIER_MAP'in
+# kendi TIER_1 tanımındaki N≥25 eşiğiyle aynı (minervini N=12 → susturulur).
+_MIN_TIER_SAMPLE_N = 25
+
+
+def _parse_tier_n(note) -> int:
+    """Tier notundaki BİRİNCİL örnek sayısını (ilk 'N=<sayı>') çıkar. Yoksa None."""
+    _m = re.search(r'N=(\d+)', str(note or ''))
+    return int(_m.group(1)) if _m else None
+
+
 def get_active_scanner_tiers(ticker: str) -> list:
     """Bu ticker'ı flag eden TIER'lı scanner'ları döndür.
-    Returns: list of dict {scan_type, tier, hit10, avg10, display, note}"""
+    Returns: list of dict {scan_type, tier, hit10, avg10, display, note, n_sample, reliable}
+    n_sample: nottan çıkarılan örnek sayısı (None=belirsiz) · reliable: N≥eşik mi
+    (yetersizse AI prompt ham hit/ret'i susturur — İş 2)."""
     out = []
     try:
         # Klasik scanner → session_state map (df içinde 'Sembol' kolonu)
@@ -86,6 +103,7 @@ def get_active_scanner_tiers(ticker: str) -> list:
         _classic_map = {
             'prelaunch_bos': 'prelaunch_bos_data',
             'guclu_donus':   'guclu_donus_data',
+            'minervini':     'minervini_data',   # 18 Tem 2026 — tier haritasına girdi (TIER_2, ⚠ N küçük)
         }
         for _scan_type, _key in _classic_map.items():
             if _scan_type not in SCANNER_TIER_MAP: continue
@@ -125,15 +143,28 @@ def get_active_scanner_tiers(ticker: str) -> list:
                             'hit10': _t[1], 'avg10': _t[2], 'display': _t[3], 'note': _t[4]})
     except Exception:
         pass
+    # İş 2: örnek sayısını çıkar + güvenilirlik damgası (yetersizse AI ham rakamı susturur)
+    for _d in out:
+        _d['n_sample'] = _parse_tier_n(_d.get('note'))
+        _d['reliable'] = (_d['n_sample'] is None) or (_d['n_sample'] >= _MIN_TIER_SAMPLE_N)
     # Tier önceliği: TIER_1 > TIER_2 > TIER_VADE_UZUN > TIER_3
     _order = {'TIER_1_ELIT': 0, 'TIER_2_GUVENILIR': 1, 'TIER_VADE_UZUN': 2, 'TIER_3_ZAYIF': 3}
     out.sort(key=lambda x: _order.get(x['tier'], 99))
-    return out
+    # Aynı hikâyenin farklı adları AI'a üç ayrı kanıt gibi gitmez.
+    # B11 + C5 + Zirve Sıkışma için en güçlü/güvenilir temsilci tutulur.
+    _family_best = {}
+    for _d in out:
+        _family = scanner_family(_d.get('scan_type'))
+        if _family not in _family_best:
+            _d['family'] = _family
+            _family_best[_family] = _d
+    return list(_family_best.values())
 
 def _scanner_setup_strength(ticker: str) -> list:
-    """Güç-filtreli 3 tarama (Harmonik/VIP/Erken Radar) bu ticker'da ateşlediyse
-    52H/RSI güç etiketini döndürür. İki-rejim backtest kanıtlı (19 Haz 2026):
-    güçlü kurulum ayı ayında bile tutar, zayıf kurulum çöker.
+    """Yalnız karne katkısı açık taramaların güç etiketini döndürür.
+
+    Harmonik ve VIP gözlem katmanındadır; güç etiketiyle AI'a veya kanıt paneline
+    taşınmaz. Erken Radar'ın RSI konumu bilgi olarak korunur.
     Returns: list of (scanner, guc_str, deger)."""
     out = []
     _tu = str(ticker).upper(); _tc = _tu.replace('.IS', '')
@@ -149,9 +180,6 @@ def _scanner_setup_strength(ticker: str) -> list:
             return None
 
     try:
-        _r = _match(st.session_state.get('harmonic_confluence_data'))
-        if _r is not None and _r.get('Guc'):
-            out.append(('harmonik_confluence', str(_r.get('Guc')), _r.get('Guc_52h')))
         # VIP Formasyon güç → AI'a EMIT EDİLMİYOR (20 Haz 2026): 52H güç backtest'te ters çıktı
         # (dönüş formasyonu dipte olur). RSI 55-70 adayı izlemede, Temmuz cross-rejim doğrulanınca
         # gerçek güç olarak eklenecek. Yanıltıcı 52H etiketini AI'a sokmuyoruz.
@@ -322,11 +350,13 @@ def get_obv_divergence_status(ticker):
 
 
 @st.cache_data(ttl=600)
-def _get_obv_divergence_status_cached(ticker, _dtok):
+def _get_obv_divergence_status_cached(ticker, dtok):
     """
     OBV ile Fiyat arasındaki uyumsuzluğu (Profesyonel SMA Filtreli) hesaplar.
     Dönüş: (Başlık, Renk, Açıklama)
-    _dtok: veri parmak izi — sadece cache anahtarı (gövdede kullanılmaz).
+    dtok: veri parmak izi — sadece cache anahtarı (gövdede kullanılmaz).
+    16 Tem 2026: _dtok → dtok. Alt çizgili parametre st.cache_data anahtarına
+    GİRMEZ — 13 Tem'de eklenen parmak izi bu yüzden hiç çalışmamıştı.
     """
     try:
         # Periyodu biraz geniş tutuyoruz ki SMA20 hesaplanabilsin
@@ -781,7 +811,7 @@ def build_erken_radar_prompt_text(er_data, quality=None):
 
     cat_label = {'A': 'GERİ DÖNÜŞ', 'B': 'SIKIŞMA', 'C': 'TREND DEVAMI', 'D': 'UYARI'}
     parts = []
-    parts.append(f"📊 Kalite Skoru: {quality}/100 — Toplam {matched_n} senaryo eşleşti")
+    parts.append(f"📊 ER Kurulum Kalitesi: {quality}/100 — Toplam {matched_n} senaryo eşleşti")
     if primary:
         stars = primary.get('stars', 0)
         sgs = '★' * (int(stars) if isinstance(stars, int) else 0)
@@ -1491,13 +1521,21 @@ def compute_genel_ozet_pack(_ticker, _gs_bms):
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def _compute_genel_ozet_pack_cached(_ticker, _gs_bms, _dtok):
+def _compute_genel_ozet_pack_cached(ticker, gs_bms, dtok):
     """GENEL OZET panelinin deger-ureten blogu (SWOT O1+O4, 11 Tem 2026).
     app.py _render_genel_ozet_panel icinden BIREBIR tasindi — PA-DNA + ardisik mum +
     kapali-gun/hayalet-bar df hazirligi + Madde 1-6 (HH+HL/SMA50/stop/RSI) +
     Erken Radar verdict + 4-sinyal oylamasi. dna yoksa/hata olursa None doner
     (panel 'Veri bekleniyor' gosterir — eski davranisla ayni).
-    _gs_bms: session_state["bist_market_status"] — cagiran okuyup gecirir."""
+    gs_bms: session_state["bist_market_status"] — cagiran okuyup gecirir.
+
+    16 Tem 2026 — MUM TAKILMASI FIX: parametreler _ticker/_gs_bms/_dtok idi;
+    st.cache_data alt cizgiyle baslayan parametreyi ANAHTARA KATMAZ → uc
+    parametre de yok sayiliyordu, cache TEK GLOBAL kayda dusmustu: ilk
+    hesaplanan hisse (orn. EREGL) 600 sn boyunca HER hisseye servis edildi
+    (GENEL OZET mum seridi + 6-oy verdicti baska hissede takili kalyordu).
+    Alt cizgisiz adlar anahtara girer; govde ici adlar asagida aliaslanir."""
+    _ticker, _gs_bms, _dtok = ticker, gs_bms, dtok
     try:
         _gs_dna = calculate_price_action_dna(_ticker)
 
@@ -1880,12 +1918,14 @@ def get_genel_ozet_verdict_stats():
         return {}
 
 
-@st.cache_data(ttl=600, show_spinner=False)
 def compute_dual_window_confluence(_gs_df, _gs_up_clr, _gs_dn_clr, _gs_neu):
     """GENEL ÖZET dual-window confluence (SWOT T2, 11 Tem 2026) — app.py render'dan
     BİREBİR taşındı (tek gerçek: panel = AI prompt = bot aynı kaynaktan okuyabilir).
     cum_delta 5g/20g + RSI 5g/14g state cümlesi; anlamlı state → (icon,renk,metin),
-    neutral → None. İç except'ler saf pandas (len-guard'lı) → benign, sessiz."""
+    neutral → None. İç except'ler saf pandas (len-guard'lı) → benign, sessiz.
+    16 Tem 2026: @st.cache_data KALDIRILDI — tüm parametreler alt çizgili olduğu
+    için anahtar BOŞTU (ilk hissenin sonucu 600 sn herkese gidiyordu); hesap
+    zaten ~ms mertebesinde, cache'e ihtiyaç yok."""
     # ── 8 Haz 2026 Oturum 19 — DUAL-WINDOW CONFLUENCE LAYER ──────
     # cum_delta dual (5g/20g) + RSI dual (5g/14g) state cümlesi.
     # Sadece anlamlı state → italic satır eklenir. Neutral → satır YOK

@@ -33,12 +33,21 @@ from scoring_core import (calculate_smart_money_score, calculate_sentiment_score
 from scan_pipeline import (_compute_signal_features, log_scan_signal, log_erken_radar_signals,
                            backfill_signal_returns, scan_chart_patterns, scan_golden_pattern_agent,
                            scan_hidden_accumulation, analyze_market_intelligence, radar2_scan,
-                           scan_guclu_donus_batch, scan_prelaunch_bos, scan_ict_batch,
+                           scan_guclu_donus_batch, scan_wilder_positive_divergence_batch,
+                           scan_prelaunch_bos, scan_ict_batch,
                            scan_nadir_firsat_batch, scan_minervini_batch, scan_rs_momentum_leaders,
                            scan_harmonic_confluence_batch, scan_erken_radar_batch,
+                           scan_leadership_lifecycle,
                            get_golden_trio_batch_scan, _SCAN_LOG_SKIP)  # Adim 7c boru hatti
+import scan_pipeline as scan_pipeline_mod  # birleşik motor flag'i (_BIRLESIK_ON) için modül erişimi
+from rsi_divergence_scanner import (build_positive_divergence_view,
+                                    detect_wilder_positive_divergence)
 from charts import _main_price_chart_plotly  # Adim 8 grafik goc
 from data_layer import get_display_name  # Adim 8 — varlik alanina tasindi
+import terazi_core  # 17 Tem 2026 EKRAN REFORMU 1a — Kanıt Terazisi saf hesap çekirdeği
+import ekran_v2     # 23 Tem 2026 — 🧪 YENİ EKRAN DENEMESİ (kapalı bar; mevcut ekran değişmez)
+import formasyon_core  # 21 Tem 2026 — yaşam döngüsü rozeti (stage_badge tek kaynak)
+import formasyon_v2_app  # 25 Tem 2026 — yalnız Formasyon Grafiği için V2 uyum katmanı
 from analysis_core import (_risk_profile, get_active_scanner_tiers, _scanner_setup_strength,
                            _compute_volume_quality_label, calculate_synthetic_sentiment,
                            get_obv_divergence_status, process_single_stock_stp,
@@ -65,6 +74,8 @@ from indicators import (
 # 4 Tem 2026 — BÖLME ADIM 5: DB çekirdeği db_layer.py içinde
 from db_layer import (DB_FILE, log_error, init_db, _fetch_mkk_yabanci_rss,
                       _compute_mkk_yabanci_signals, load_watchlist_db, get_scenario_ages_batch)
+from signal_policy import (BADGE_SCAN_TYPES, resolve_next_open_entry,
+                           scanner_family, unique_scanner_families)
 # 6 Tem 2026 — BÖLME ADIM 6a: tek-hisse tarayıcı çekirdekleri scanners.py içinde
 from scanners import (process_single_accumulation, process_single_radar1, process_single_radar2,
                       calculate_guclu_donus_adaylari, calculate_prelaunch_bos, process_single_ict_setup)
@@ -73,7 +84,8 @@ from scanners import (ERKEN_RADAR_SCENARIOS, evaluate_erken_radar, _er_kisa_acik
 # 9 Tem 2026 — BÖLME ADIM 6c: veri katmanı data_layer.py içinde
 from data_layer import (
     CACHE_DIR, _apply_split_adjustments, _data_integrity_check, fetch_stock_info,
-    final_bist100_list, get_batch_data_cached, get_benchmark_data, get_safe_historical_data)
+    final_bist100_list, get_batch_data_cached, get_benchmark_data, get_safe_historical_data,
+    is_last_bar_projected, kritik_endeks_kapisi)
 import concurrent.futures
 import re
 import altair as alt
@@ -1092,11 +1104,10 @@ def log_analysis_snapshot(ticker):
 
 # ===============================================================
 # 4 Tem 2026 — BÖLME ADIM 3: kanıt tabloları evidence.py'ye taşındı (birebir).
-# SCANNER_TIER_MAP · ER_BACKTEST_SCORE · ER_ELIT_SCORE_MIN · SCANNER_PLAIN_DESC
-# GUC_SCORE · _guc_score · _guc_plain — kalibrasyon günlüğü de evidence.py içinde.
+# SCANNER_TIER_MAP · ER_ELIT_SCORE_MIN · SCANNER_PLAIN_DESC · _guc_plain
+# Eski elle girilmiş ER/Güç puanları kaldırıldı; sıralama güncel backtest özetinden gelir.
 # ===============================================================
-from evidence import (ER_BACKTEST_SCORE, ER_ELIT_SCORE_MIN,
-                      SCANNER_PLAIN_DESC, _guc_score, _guc_plain)
+from evidence import (ER_ELIT_SCORE_MIN, SCANNER_PLAIN_DESC, _guc_plain)
 
 # -> scanners.py (Adim 6b, 7 Tem 2026): _er_kisa_aciklama
 
@@ -1104,11 +1115,13 @@ from evidence import (ER_BACKTEST_SCORE, ER_ELIT_SCORE_MIN,
 
 @st.cache_data(ttl=600, show_spinner=False)
 def get_scanner_scores():
-    """29 Haz 2026 — VERİ-TEMELLİ PUAN: backtest_results.json summary'den her tarama için
-    EN İYİ VADE'de (5/10/20g) ölçülen BEKLENTİ'ye göre 0-100 puan türetir. Otomatik —
-    özet gece güncellendikçe puanlar kendiliğinden tazelenir (elle ER_BACKTEST_SCORE bitti).
-    puan = clip(40 + beklenti*15). Örnek < MIN_N → puan yok (çağıran eski sabite düşer).
-    Dönüş: {scan_type: {'score','window','exp','n'}}."""
+    """Güncel backtest özetinden tarama puanı üretir.
+
+    Taramanın kendi ölçülmüş ideal günü ve endeks üstü avantajı kullanılır. Bu alan
+    eski bir özette hiç yoksa yalnız geriye uyumluluk için 5/10/20 pencerelerine
+    bakılır. Düşüş uyarıları boğa puanlamasına hiç alınmaz. Örnek yetersizse,
+    endeks üstü avantaj yoksa veya beklenti pozitif değilse puan yoktur.
+    """
     MIN_N = 30
     try:
         import json as _ssj
@@ -1122,46 +1135,62 @@ def get_scanner_scores():
     out = {}
     for r in _summ:
         _st = r.get('scan_type')
-        if not _st:
+        _bias = str(r.get('bias', '') or '').lower()
+        if not _st or 'bear' in _bias or _st in ('er_D4', 'er_D5'):
             continue
-        # Vadeyi ADİL kıyasla: GÜNLÜK beklenti (beklenti/vade). Yoksa 20g hep kazanır
-        # (uzun vade = mekanik olarak daha büyük mutlak getiri). En yüksek günlük-
-        # beklentili vade seçilir → gerçek "en iyi vade" + tüm taramalar kıyaslanabilir.
-        _best = None  # (window, expectancy, per_day, n)
-        for _w in (5, 10, 20):
-            _exp = r.get(f'expectancy_{_w}g'); _n = r.get(f'eval_{_w}g') or 0
-            if _exp is None or _n < MIN_N:
+        _best = None  # (window, expectancy, per_day, n, source)
+        _ideal_day = r.get('ideal_day')
+        _ideal_ret = r.get('ideal_ret')
+        _ideal_n = r.get('ideal_n') or 0
+        _ideal_available = _ideal_day is not None and _ideal_ret is not None
+        if _ideal_available:
+            if _ideal_day and _ideal_n >= MIN_N and r.get('has_edge') is True:
+                _best = (int(_ideal_day), float(_ideal_ret),
+                         float(_ideal_ret) / int(_ideal_day), int(_ideal_n), 'ideal')
+            else:
                 continue
-            _pd = _exp / _w
-            if _best is None or _pd > _best[2]:
-                _best = (_w, _exp, _pd, _n)
+        else:
+            for _w in (5, 10, 20):
+                _exp = r.get(f'expectancy_{_w}g'); _n = r.get(f'eval_{_w}g') or 0
+                if _exp is None or _n < MIN_N:
+                    continue
+                _pd = _exp / _w
+                if _best is None or _pd > _best[2]:
+                    _best = (_w, _exp, _pd, _n, 'fixed_fallback')
         if _best is None:
             continue
-        _w, _exp, _pd, _n = _best
+        _w, _exp, _pd, _n, _source = _best
+        if _exp <= 0:
+            continue
         out[_st] = {'score': int(max(0, min(100, round(40 + _pd * 150)))),
-                    'window': _w, 'exp': round(_exp, 2), 'n': _n}
+                    'window': _w, 'exp': round(_exp, 2), 'n': _n,
+                    'source': _source}
     return out
 
 
 def _compute_goldmine_entries():
-    """🏆 GOLD MINE sıralamasını hesaplar — render + loglama ORTAK kullanır (19 Haz 2026).
-    TÜM tarama session df'lerinden hisse-başı en güçlü sinyali toplar, backtest puanına göre
-    sıralar. Kanıtı olmayan (Platin/Altın/Minervini) 'kanıt bekliyor', en sonda.
-    Dönüş: puana göre sıralı list[dict] (boşsa [])."""
+    """Güncel backtest puanı olan pozitif taramaları hisse bazında sıralar."""
     try:
         entries = {}  # sym_clean -> dict(en yüksek puanlı sinyal) + extra sayacı
 
-        def _push(sembol, icon, scanner, score, plain, guc=None, unmeasured=False):
+        def _push(sembol, icon, scanner, score, plain, guc=None, unmeasured=False,
+                  scan_type=None):
             _sc = str(sembol).replace('.IS', '')
             if not _sc:
                 return
+            _family = scanner_family(scan_type or scanner)
             _cur = entries.get(_sc)
             if _cur is None:
                 entries[_sc] = {'sym': _sc, 'sembol': sembol, 'icon': icon, 'scanner': scanner,
                                 'score': score, 'plain': plain, 'guc': guc,
-                                'unmeasured': unmeasured, 'extra': 0}
+                                'unmeasured': unmeasured, 'extra': 0,
+                                'families': {_family}, 'family_count': 1}
             else:
-                _cur['extra'] += 1
+                _is_new_family = _family not in _cur['families']
+                if _is_new_family:
+                    _cur['families'].add(_family)
+                    _cur['family_count'] = len(_cur['families'])
+                    _cur['extra'] = _cur['family_count'] - 1
                 # daha yüksek puanlı sinyal gelirse baş sinyali güncelle
                 _cmp_new = -1 if unmeasured else score
                 _cmp_old = -1 if _cur['unmeasured'] else _cur['score']
@@ -1169,60 +1198,52 @@ def _compute_goldmine_entries():
                     _cur.update({'icon': icon, 'scanner': scanner, 'score': score,
                                  'plain': plain, 'guc': guc, 'unmeasured': unmeasured})
 
-        # 0) Veri-temelli puanlar (backtest özetinden, EN İYİ VADE beklenti). Bulunmazsa
-        #    (özet yok/örnek az) eski elle-girilmiş sabite düşer — geriye uyumlu.
+        # Veri-temelli puanlar. Özet yoksa/örnek azsa eski elle girilmiş puana düşülmez.
         _SS = get_scanner_scores()
-        def _sscore(scan_type, fallback):
+        def _sscore(scan_type):
             v = _SS.get(scan_type)
-            return int(v['score']) if v else fallback
+            return int(v['score']) if v else None
 
-        # 1) Erken Radar (senaryo bazlı, veri-temelli puan ≥ eşik)
+        # 1) Erken Radar (senaryo bazlı güncel puan ≥ eşik)
         _er = st.session_state.get('erken_radar_data')
         if _er is not None and hasattr(_er, 'empty') and not _er.empty and {'Sembol', 'ScenarioId', 'Role'} <= set(_er.columns):
             _erp = _er[_er['Role'].isin(['primary', 'confirmation'])].copy()
-            _erp['_sc'] = _erp['ScenarioId'].apply(lambda s: _sscore(f"er_{s}", ER_BACKTEST_SCORE.get(str(s), 0)))
+            _erp['_sc'] = _erp['ScenarioId'].apply(lambda s: _sscore(f"er_{s}"))
+            _erp = _erp[_erp['_sc'].notna()]
             _erp = _erp[_erp['_sc'] >= ER_ELIT_SCORE_MIN].sort_values('_sc', ascending=False)
             for _, r in _erp.iterrows():
                 _push(r['Sembol'], '🎯', f"Erken Radar {r['ScenarioId']}", int(r['_sc']),
-                      _er_kisa_aciklama(r['ScenarioId']), r.get('Guc'))
+                      _er_kisa_aciklama(r['ScenarioId']), r.get('Guc'),
+                      scan_type=f"er_{r['ScenarioId']}")
 
-        # 2) Harmonik Confluence (güç-temelli puan)
-        _hc = st.session_state.get('harmonic_confluence_data')
-        if _hc is not None and hasattr(_hc, 'empty') and not _hc.empty and 'Sembol' in _hc.columns:
-            for _, r in _hc.iterrows():
-                _push(r['Sembol'], '⚡', 'Harmonik Confluence',
-                      _guc_score('harmonik_confluence', r.get('Guc', '')),
-                      SCANNER_PLAIN_DESC['harmonik'], r.get('Guc'))
+        # Harmonik Confluence gözlem katmanındadır; Gold Mine puanı ve sırası almaz.
 
-        # 3) Pre-Launch BOS — 52H GÜÇ KALDIRILDI (20 Haz 2026). Denetim: 🟢(52H≥60) 5g −%2.31 /
+        # 2) Pre-Launch BOS — 52H GÜÇ KALDIRILDI (20 Haz 2026). Denetim: 🟢(52H≥60) 5g −%2.31 /
         # 10g −%4.06 PARA KAYBETTİRİYOR (VIP'ten beter), 🟡-orta +%1.09. Mantık: zirveye yakınsa
         # fırlama ÇOKTAN olmuş = geç → 52H yine yanlış eksen. 🔴 dışlaması + 🟢 boost iyi sinyalleri
         # atıp kaybedenleri tutuyordu. Düz nötr puan, guc=None. Candidate (🟡-orta) izlemede, n ince.
         _pb = st.session_state.get('prelaunch_bos_data')
         if _pb is not None and hasattr(_pb, 'empty') and not _pb.empty and 'Sembol' in _pb.columns:
-            for _, r in _pb.iterrows():
-                _push(r['Sembol'], '🚀', 'Pre-Launch BOS', _sscore('prelaunch_bos', 30), SCANNER_PLAIN_DESC['prelaunch'])
+            _pb_score = _sscore('prelaunch_bos')
+            if _pb_score is not None:
+                for _, r in _pb.iterrows():
+                    _push(r['Sembol'], '🚀', 'Pre-Launch BOS', _pb_score,
+                          SCANNER_PLAIN_DESC['prelaunch'], scan_type='prelaunch_bos')
 
-        # 4) VIP Formasyon — 52H GÜÇ KALDIRILDI (20 Haz 2026). Backtest: 🟢(5g +%0.45) zayıf
-        # 🔴(+%0.81)'den KÖTÜ çıktı + Çift Dip gibi dönüş formasyonu doğası gereği DİPTE → 52H
-        # yanlış eksen, üstelik 🔴 dışlaması iyi sinyalleri atıyordu. Artık dışlama+boost YOK; tek
-        # nötr puan (genel 5g +%0.91 = modest). RSI 55-70 adayı İZLEMEDE (Haz-only, Temmuz cross-rejim
-        # doğrulaması — bkz memory project-scoring-roadmap). guc=None → yanıltıcı 🟢/🔴 etiketi yok.
-        _gp = st.session_state.get('golden_pattern_data')
-        _fdf = _gp.get('formations') if isinstance(_gp, dict) else None
-        if _fdf is not None and hasattr(_fdf, 'empty') and not _fdf.empty and 'Sembol' in _fdf.columns:
-            for _, r in _fdf.iterrows():
-                _push(r['Sembol'], '📐', 'VIP Formasyon', _sscore('vip_formasyon', 32), SCANNER_PLAIN_DESC['vip'])
+        # 3) Altın / Platin / VIP puan değildir; uygunluk rozeti olarak üyelik panelinde kalır.
 
-        # 5) Gizli Birikim (ham backtest 19 — düşük ama gösterilir)
+        # 4) Gizli Birikim — yalnız güncel pozitif karne varsa gösterilir.
         _ac = st.session_state.get('accum_data')
         if _ac is not None and hasattr(_ac, 'empty') and not _ac.empty and 'Sembol' in _ac.columns:
-            for _, r in _ac.iterrows():
-                _push(r['Sembol'], '🔍', 'Gizli Birikim', _sscore('gizli_birikim', 19), SCANNER_PLAIN_DESC['gizli'])
+            _ac_score = _sscore('gizli_birikim')
+            if _ac_score is not None:
+                for _, r in _ac.iterrows():
+                    _push(r['Sembol'], '🔍', 'Gizli Birikim', _ac_score,
+                          SCANNER_PLAIN_DESC['gizli'], scan_type='gizli_birikim')
 
         # NOT (19 Haz 2026 — düzeltme): Altın/Platin/Minervini vitrine ALINMIYOR. Backtest puanları
         # yok ("kanıt bekliyor") + generic açıklamaları yanıltıcıydı (AKBNK 60g %91/RSI83 iken
-        # "henüz pahalılaşmamış" diyordu). Vitrin = SADECE backtest-kanıtlı. Onlar alttaki dedike
+        # "henüz pahalılaşmamış" diyordu). Vitrin = yalnız güncel pozitif karneli. Onlar alttaki dedike
         # "Altın Set-up & VIP" panelinde + mini panelde gerçek verisiyle duruyor.
 
         if not entries:
@@ -1263,7 +1284,7 @@ def log_goldmine_selection(category="", top_n=20):
                     "VALUES (?,?,?,?,?,?,?,?)",
                     (today, str(e.get('sembol', e['sym'])), i + 1,
                      None if e.get('unmeasured') else float(e.get('score', 0)),
-                     str(e.get('scanner', '')), int(e.get('extra', 0)) + 1,
+                     str(e.get('scanner', '')), int(e.get('family_count', 1)),
                      1 if e.get('unmeasured') else 0, category)
                 )
             except Exception:
@@ -1278,8 +1299,8 @@ def log_goldmine_selection(category="", top_n=20):
 
 
 def render_gold_mine_showcase():
-    """🏆 GOLD MINE VİTRİNİ — İKİ SÜTUN (19 Haz 2026): güç AYRAÇ, puan sütun-içi sıra.
-    Sol = kanıtlı + güçlü/orta konum (hazır) · Sağ = kanıtlı ama zayıf konum (izle).
+    """🏆 GOLD MINE VİTRİNİ — İKİ SÜTUN: konum ayraç, güncel puan sütun-içi sıra.
+    Sol = pozitif karne + güçlü/orta konum · Sağ = pozitif karne + zayıf konum.
     Dönüş: True (içerik gösterildi) / False (boş)."""
     try:
         _ranked = _compute_goldmine_entries()
@@ -1294,7 +1315,7 @@ def render_gold_mine_showcase():
         st.markdown(
             "<div style='background:linear-gradient(90deg,#422006,#1c1917);border:1px solid #a16207;"
             "border-radius:8px;padding:6px 11px;margin:6px 0 5px 0;font-size:0.82rem;font-weight:900;"
-            "color:#fbbf24;letter-spacing:0.03em;'>🏆 GOLD MINE — Backtest-Kanıtlı Sinyaller</div>",
+            "color:#fbbf24;letter-spacing:0.03em;'>🏆 GOLD MINE — Güncel Pozitif Karneli Sinyaller</div>",
             unsafe_allow_html=True
         )
 
@@ -1319,7 +1340,7 @@ def render_gold_mine_showcase():
                     _d = e['plain']
                     if len(_d) > 70:
                         _d = _d[:67].rstrip() + '…'
-                    _extra = f" · +{e['extra']} tarama" if e['extra'] else ""
+                    _extra = f" · +{e['extra']} bağımsız aile" if e['extra'] else ""
                     st.markdown(
                         f"<div style='font-size:0.69rem;color:#cbd5e1;margin:-6px 0 4px 6px;line-height:1.3;'>"
                         f"<span style='color:#fbbf24;font-weight:800;'>puan {e['score']}</span>{_extra} — {_d}</div>",
@@ -1328,13 +1349,13 @@ def render_gold_mine_showcase():
 
         _cL, _cR = st.columns(2)
         with _cL:
-            _gm_col(_left, "L", "💪 HEM KANITLI HEM HAZIR",
-                    "Geçmişte kazandırdı + şu an konumu güçlü", "#22c55e",
-                    "Şu an hem kanıtlı hem güçlü konumda sinyal yok.")
+            _gm_col(_left, "L", "💪 POZİTİF KARNE + UYGUN KONUM",
+                    "Kendi ölçülmüş vadesinde pozitif + şu an konumu güçlü", "#22c55e",
+                    "Şu an pozitif karneli ve güçlü konumda sinyal yok.")
         with _cR:
-            _gm_col(_right, "R", "⏳ İYİ KURULUM, AMA ACELE ETME",
-                    "Geçmişte kazandırdı ama şu an dipte/zayıf — izle", "#f59e0b",
-                    "Şu an zayıf konumda kanıtlı sinyal yok.")
+            _gm_col(_right, "R", "⏳ POZİTİF KARNE, ZAYIF KONUM",
+                    "Karnesi pozitif ama şu an dipte/zayıf — izle", "#f59e0b",
+                    "Şu an zayıf konumda pozitif karneli sinyal yok.")
         return True
     except Exception:
         return False
@@ -1368,7 +1389,8 @@ def evaluate_signals(lookback_days=90, forward_windows=None):
     try:
         conn = sqlite3.connect(DB_FILE, timeout=30)
         signals = pd.read_sql(
-            "SELECT * FROM scan_signals WHERE scan_date >= date('now', ?)",
+            "SELECT * FROM scan_signals WHERE scan_date >= date('now', ?) "
+            "AND COALESCE(is_event_start, 1)=1",
             conn,
             params=(f'-{lookback_days} days',)
         )
@@ -1426,26 +1448,34 @@ def evaluate_signals(lookback_days=90, forward_windows=None):
             if idx_arr >= len(df_hist):
                 continue
 
-            # Giriş fiyatı: kayıtlı entry_price yoksa o günün kapanışını kullan
-            if sig['entry_price'] and not pd.isna(sig['entry_price']):
-                entry = float(sig['entry_price'])
-            else:
-                entry = float(df_hist['Close'].iloc[idx_arr])
-
-            if entry == 0:
+            _entry_info = resolve_next_open_entry(
+                df_hist, sig['scan_date'], bias=sig.get('bias', 'bullish'),
+                apply_bist_limit=(
+                    not str(sig.get('category', '') or '').strip()
+                    or 'BIST' in str(sig.get('category', '') or '').upper()
+                    or str(sig['symbol']).upper().endswith('.IS')
+                ),
+                max_locked_sessions=3,
+            )
+            if not str(_entry_info.get('status', '')).startswith('filled'):
                 continue
+            entry = float(_entry_info['entry_price'])
+            entry_idx = int(_entry_info['entry_pos'])
 
             row_result = {
                 'Sembol':        sig['symbol'],
                 'Tarama':        sig['scan_type'],
                 'Sinyal Tarihi': sig['scan_date'],
+                'Giriş Tarihi':  _entry_info['entry_date'],
                 'Giriş':         round(entry, 2),
+                'Açılış Farkı %': _entry_info.get('entry_gap_pct'),
+                'Giriş Gecikmesi': _entry_info.get('entry_delay', 0),
                 'Geçen Gün':     days_elapsed,
                 'Kategori':      sig.get('category', ''),
             }
 
             for fwd in forward_windows:
-                fwd_idx = idx_arr + fwd
+                fwd_idx = entry_idx + fwd - 1
                 if fwd_idx < len(df_hist):
                     fwd_price = float(df_hist['Close'].iloc[fwd_idx])
                     ret = (fwd_price - entry) / entry * 100
@@ -2013,13 +2043,26 @@ def render_kriter_performans_panel():
             # kolon sırası: 0=Kriter Durumu 1=n 2=Hit % 3=Ort Getiri % 4=_guven
             for _r in _fp_df.itertuples(index=False, name=None):
                 _durum, _n, _hit, _ret, _tag = _r[0], _r[1], _r[2], _r[3], _r[4]
-                _ret_c = '#10b981' if _ret > 0 else '#ef4444'
+                # İş 2 (27 Tem 2026, borsacı geri bildirimi): YETERSİZ ÖRNEKLİ kova
+                # (n<12) Hit%/Getiri sayısını GÖSTERMEZ — 3 örneklik "Hit %100" tesadüfü
+                # sinyal gibi görünmesin. Kova satırda kalır (kriterin var olduğu belli)
+                # ama sayılar "—" ile susturulur; kullanıcı gürültüye göre karar veremez.
+                if _tag == 'yetersiz':
+                    _hit_cell = ("<td style='padding:4px 8px;text-align:center;"
+                                 "color:#64748b;'>—</td>")
+                    _ret_cell = ("<td style='padding:4px 8px;text-align:center;"
+                                 "color:#64748b;'>—</td>")
+                else:
+                    _ret_c = '#10b981' if _ret > 0 else '#ef4444'
+                    _hit_cell = ("<td style='padding:4px 8px;text-align:center;"
+                                 f"color:#cbd5e1;font-weight:700;'>%{_hit}</td>")
+                    _ret_cell = ("<td style='padding:4px 8px;text-align:center;"
+                                 f"color:{_ret_c};font-weight:700;'>%{_ret:+.2f}</td>")
                 _fp_rows_html += (
                     "<tr>"
                     f"<td style='padding:4px 8px;color:#cbd5e1;'>{_durum}</td>"
                     f"<td style='padding:4px 8px;text-align:center;color:#94a3b8;'>{_n}</td>"
-                    f"<td style='padding:4px 8px;text-align:center;color:#cbd5e1;font-weight:700;'>%{_hit}</td>"
-                    f"<td style='padding:4px 8px;text-align:center;color:{_ret_c};font-weight:700;'>%{_ret:+.2f}</td>"
+                    + _hit_cell + _ret_cell +
                     f"<td style='padding:4px 8px;text-align:center;color:{_fp_tag_color.get(_tag,'#64748b')};"
                     f"font-size:0.72rem;'>{_tag}</td>"
                     "</tr>"
@@ -2172,6 +2215,7 @@ if 'ticker' not in st.session_state: st.session_state.ticker = "XU100.IS"
 if 'scan_data' not in st.session_state: st.session_state.scan_data = None
 if 'generate_prompt' not in st.session_state: st.session_state.generate_prompt = False
 if 'radar2_data' not in st.session_state: st.session_state.radar2_data = None
+if 'liderlik_yolculugu_data' not in st.session_state: st.session_state.liderlik_yolculugu_data = None
 if 'watchlist' not in st.session_state: st.session_state.watchlist = load_watchlist_db()
 if 'accum_data' not in st.session_state: st.session_state.accum_data = None
 if 'minervini_data' not in st.session_state: st.session_state.minervini_data = None
@@ -2209,6 +2253,7 @@ def on_category_change():
         st.session_state.ticker = ASSET_GROUPS[new_cat][0]
         st.session_state.scan_data = None
         st.session_state.radar2_data = None
+        st.session_state.liderlik_yolculugu_data = None
         st.session_state.accum_data = None
 
 def on_asset_change():
@@ -2535,7 +2580,7 @@ def fetch_market_data_cached(tickers_tuple):
 # ==============================================================================
 # BÖLÜM 14 — TEMEL SKOR VE MASTER SKOR
 # Finansal temel verilerden skor üretimi. Tüm alt skorları
-# (Trend %40, Momentum %30, ICT %15, Radar2 %15) birleştiren calculate_master_score fonksiyonu burada.
+# (ICT canlı ağırlığı %0; Trend, Momentum ve Radar2 kalan oranlarla normalize) birleştiren calculate_master_score fonksiyonu burada.
 # ==============================================================================
 @st.cache_data(ttl=3600)
 def get_fundamental_score(ticker):
@@ -2669,21 +2714,22 @@ def fetch_technical_engine_data(ticker, sources_list):
     YENİ HİYERARŞİK TEKNİK MOTOR V5: "10 Gerçek Piyasa Senaryosu" Eklendi
     Hisse özel kombinasyonlar yakaladığında jenerik mesaj yerine stratejik tanım gösterir.
     """
-    # TÜM TARAMALAR TEK TABLODA — her taramanın güç puanı
-    # Birincil model = en yüksek puanlı kaynak; diğerleri kendi puanının %20'si kadar bonus katar
+    # TÜM TARAMALAR TEK TABLODA — her taramanın canlı sıralama puanı
+    # ICT Sniper, Royal Flush ve Harmonik Confluence çalışmaya/kayda devam eder;
+    # geçmiş karneleri zayıf olduğu için canlı sıralama ve senaryo katkıları sıfırdır.
     base_powers = {
-        '♠️ Royal Flush Nadir Set-up':           93,
-        '🦅 ICT Sniper':                         88,
+        '♠️ Royal Flush Nadir Set-up':            0,
+        '🦅 ICT Sniper':                          0,
         '🔄 Güçlü Dönüş Adayları':              85,
         '🚀 Pre-Launch BOS':                     78,
         '🦁 Minervini':                          76,
-        '⚡ Harmonik Confluence (3\'lü Teyit)':  75,
+        '⚡ Harmonik Confluence (3\'lü Teyit)':   0,
         '🚀 Erken Radar (5★)':                   72,
-        '🏆 Altın Set-up':                       68,
-        '💎 Platin Set-up':                      73,
+        '🏆 Altın Set-up':                        0,
+        '💎 Platin Set-up':                       0,
         '🤫 Gizli Birikim':                      62,
         '📈 RS Momentum Lideri':                 60,
-        '💎 VIP Formasyon':                      45,
+        '💎 VIP Formasyon':                       0,
         '⭐ Yıldız Adayı':                       30,
         '📡 1-5 Günlük Yükseliş':               20,
     }
@@ -2697,7 +2743,9 @@ def fetch_technical_engine_data(ticker, sources_list):
             max_base_score = base_powers[src]
             primary_model = src
 
-    current_score = max_base_score if max_base_score > 0 else 20
+    # Yalnızca sıfır ağırlıklı kaynaklardan gelen adaylara eski 20 puanlık
+    # varsayılan tabanı verme; aksi halde "sıfır katkı" dolaylı olarak bozulur.
+    current_score = max_base_score
 
     # 4. ÇOKLU TARAMA BONUSU — her ek kaynak kendi gücünün %20'sini katar
     for src in sources_list:
@@ -2713,7 +2761,7 @@ def fetch_technical_engine_data(ticker, sources_list):
     icons = [src.split(' ')[0] for src in sources_list if any(src.startswith(i) for i in all_icons)]
     icon_str = " ".join(icons)
 
-    confluence_count = len(sources_list)
+    confluence_count = sum(1 for src in sources_list if base_powers.get(src, 0) > 0)
 
     # ====================================================================
     # 6. ÖZEL SENARYO DEDEKTÖRÜ (AĞIRLIKLI PUANLAMA MİMARİSİ)
@@ -2732,42 +2780,50 @@ def fetch_technical_engine_data(ticker, sources_list):
     has_star     = '⭐ Yıldız Adayı'                      in sources_list
     has_1_5      = '📡 1-5 Günlük Yükseliş'              in sources_list
 
+    # Ham tarama varlığı ikonlarda/kayıtlarda korunur; canlı senaryo etiketi ise
+    # yalnız pozitif sıralama ağırlığı bulunan kaynaklarla kurulabilir.
+    has_ict_rank      = has_ict and base_powers['🦅 ICT Sniper'] > 0
+    has_royal_rank    = has_royal and base_powers['♠️ Royal Flush Nadir Set-up'] > 0
+    has_harmonic_rank = has_harmonic and base_powers["⚡ Harmonik Confluence (3'lü Teyit)"] > 0
+    has_rfc_rank      = has_rfc and base_powers['💎 Platin Set-up'] > 0
+    has_altin_rank    = has_altin and base_powers['🏆 Altın Set-up'] > 0
+
     # Hissenin uygun olduğu tüm senaryoları bu sepete atacağız
     gecerli_senaryolar = []
 
     # 1. MÜKEMMEL KURULUM (En Güçlü - Ağırlık: 95)
     # Royal Flush + ICT veya Minervini + Pre-Launch → yapı + güç + tetikleyici üçlüsü
-    if has_royal and (has_ict or has_min) and has_prelaunch:
+    if has_royal_rank and (has_ict_rank or has_min) and has_prelaunch:
         gecerli_senaryolar.append((95, "👑 Mükemmel Kurulum: Royal Flush yapısı + ICT/Minervini trend gücü + Pre-Launch BOS tetikleyicisi aynı anda. En nadir eşleşme."))
 
     # 2. BÜYÜME PATLAMASI (Ağırlık: 90)
     # Minervini veya Platin + Pre-Launch BOS kırılım hazır
-    if (has_min or has_rfc) and has_prelaunch:
+    if (has_min or has_rfc_rank) and has_prelaunch:
         gecerli_senaryolar.append((90, "🌪️ Büyüme Patlaması: Trend gücü doğrulandı, Pre-Launch BOS kırılım fitilini ateşliyor. Fiyat daralmayı tamamladı, arz kurudu."))
 
     # 3. KURUMSAL LİKİDİTE AVI (Ağırlık: 85)
     # ICT veya Güçlü Dönüş + Harmonik → sweep + pattern teyiti
-    if (has_ict or has_dip) and has_harmonic:
+    if (has_ict_rank or has_dip) and has_harmonic_rank:
         gecerli_senaryolar.append((85, "🪤 Kurumsal Likidite Avı: Stop sweep + Harmonik PRZ teyiti. Akıllı para dipten malı topluyor, V-Dönüşü yapısı oluşuyor."))
 
     # 4. TREND İÇİ İSKONTO (Ağırlık: 82)
     # Platin veya Minervini + ICT veya Güçlü Dönüş → doğru bölge + yapı
-    if (has_rfc or has_min) and (has_ict or has_dip):
+    if (has_rfc_rank or has_min) and (has_ict_rank or has_dip):
         gecerli_senaryolar.append((82, "🌊 Trend İçi İskonto: Güçlü ana trendde kurumsal maliyetlenme bölgesine (OTE/FVG) harika bir pullback. Teknik koşulların örtüştüğü bölge."))
 
     # 5. ROYAL FLUSH + ALTIN (Ağırlık: 80)
     # Çok sıkı yapı filtresi + değer konumu bir arada
-    if has_royal and has_altin:
+    if has_royal_rank and has_altin_rank:
         gecerli_senaryolar.append((80, "♠️🏆 Royal Flush + Altın Set-up: En sıkı yapısal filtre, doğru fiyat bölgesinde. Kurumsal ve teknik teyit çakışıyor."))
 
     # 6. SESSİZ FIRTINA (Ağırlık: 75)
     # Yıldız Adayı + Altın Set-up → henüz kırılmamış, birikim evresinde
-    if has_star and has_altin and not has_prelaunch:
+    if has_star and has_altin_rank and not has_prelaunch:
         gecerli_senaryolar.append((75, "🤫 Sessiz Fırtına: Ekranda durgun görünse de arka planda birikim var. Pre-Launch henüz tetiklenmedi — erken pozisyon fırsatı."))
 
     # 7. GÜVENLİ LİMAN (Ağırlık: 70)
     # Minervini + Platin → trend gücü + değer konumu
-    if has_min and has_rfc:
+    if has_min and has_rfc_rank:
         gecerli_senaryolar.append((70, "🛡️ Güvenli Liman: Trend gücü (Minervini) + doğru fiyat bölgesi (Platin). Piyasa kötüyken ayakta kalan, kurumsal ilgisi yüksek hisse."))
 
 
@@ -2819,7 +2875,6 @@ def compile_top_20_summary():
     add_candidates(st.session_state.get('minervini_data'), '🦁 Minervini', limit=5)
     # Geniş tarama yapan scanner'lar — limit 10 (daha fazla aday)
     add_candidates(st.session_state.get('radar2_data'), '⭐ Yıldız Adayı', limit=10)
-    add_candidates(st.session_state.get('scan_data'), '📡 1-5 Günlük Yükseliş', limit=10)
     add_candidates(st.session_state.get('harmonic_confluence_data'), '⚡ Harmonik Confluence (3\'lü Teyit)', limit=5)
     add_candidates(st.session_state.get('golden_results'), '🏆 Altın Set-up', limit=10)
     # golden_pattern_data dict formatı: {"formations": df, "hazirlik": df}
@@ -2844,10 +2899,19 @@ def compile_top_20_summary():
 
     candidate_list = [{'Sembol': k, **v} for k, v in candidates.items()]
 
-    # 1b. TEK ONAY FİLTRESİ: Sadece 1 kaynaktan gelen hisse NADİR FIRSAT ise kabul edilir
+    # 1b. TEK ONAY FİLTRESİ: Canlı sıralama için puanlı en az iki tarama onayı gerekir.
+    # ICT/Royal çalışır ve kaynaklarda görünür; fakat onay kapısını açamaz.
+    _non_scoring_sources = {
+        '♠️ Royal Flush Nadir Set-up',
+        '🦅 ICT Sniper',
+        "⚡ Harmonik Confluence (3'lü Teyit)",
+        '🏆 Altın Set-up',
+        '💎 Platin Set-up',
+        '💎 VIP Formasyon',
+    }
     candidate_list = [
         item for item in candidate_list
-        if len(item['sources']) > 1 or '♠️ Royal Flush Nadir Set-up' in item['sources']
+        if sum(1 for src in item['sources'] if src not in _non_scoring_sources) > 1
     ]
 
     # 2. TEKNİK SINAV (HİYERARŞİK SKORLAMA)
@@ -2855,8 +2919,14 @@ def compile_top_20_summary():
         tot_score, msg, icons = fetch_technical_engine_data(item['Sembol'], item['sources'])
         item['score'] = tot_score
         item['katalizor'] = f"{icons} | {msg}"
-        item['onay_sayisi'] = len(item['sources'])
-        
+        item['onay_sayisi'] = sum(
+            1 for src in item['sources'] if src not in _non_scoring_sources
+        )
+
+    # İki sıfır ağırlıklı kaynak (ICT + Royal) birbirini teyit etmiş gibi görünerek
+    # Top 20'ye giremez; ham tarama sonuçları kendi panellerinde görünmeye devam eder.
+    candidate_list = [item for item in candidate_list if item['score'] > 0]
+
     # 3. SIRALAMA
     candidate_list.sort(key=lambda x: (x['score'], x['onay_sayisi']), reverse=True)
 
@@ -2865,25 +2935,28 @@ def compile_top_20_summary():
 
 def compile_confluence_hits():
     """
-    Cross-Scanner Confluence Motoru V2 — 4 Grup + Ağırlıklı Skor.
+    Cross-Scanner Confluence Motoru V2 — 3 Puanlı + 1 Gözlem Grubu.
 
-    4 metodoloji grubu ve ağırlıkları:
-      🏗️ Yapı    (40pt): ICT Sniper, Royal Flush               — kurumsal iz, en sıkı filtre
-      ⚡ Güç     (30pt): Minervini, Pre-Launch BOS, Harmonik   — hareket başlıyor
-      💡 Kurulum (20pt): Platin Set-up, Altın Set-up, Güçlü Dönüş — doğru fiyat bölgesi
-      🔍 Teyit   (10pt): VIP Formasyon, Gizli Birikim, Radar1, Radar2 — hacim/formasyon destekli
+    ICT Sniper, Royal Flush, Harmonik ve Altın/Platin/VIP gözlem/rozet katmanıdır;
+    canlı confluence puanına ve bağımsız teyit sayısına katkıları sıfırdır.
 
-    Geçiş şartı: min 2/4 gruptan + en az 1'i Yapı veya Güç'ten.
+    Metodoloji grupları ve ağırlıkları:
+      🏗️ Gözlem  (0pt):  ICT, Royal, Harmonik, Altın/Platin/VIP — rozet/kayıt
+      ⚡ Güç     (30pt): Minervini, Pre-Launch BOS              — hareket başlıyor
+      💡 Kurulum (20pt): Güçlü Dönüş                            — doğru fiyat bölgesi
+      🔍 Teyit   (10pt): Gizli Birikim, Radar2, Erken Radar     — destekleyici iz
+
+    Geçiş şartı: min 2 puanlı gruptan + en az 1'i Güç'ten.
     Sıralama: ağırlıklı puan ↓, beraberlikte total_scanners ↓.
     """
     GROUP_WEIGHTS = {
-        'yapi':    40,
+        'yapi':     0,
         'guc':     30,
         'kurulum': 20,
         'teyit':   10,
     }
     groups = {
-        'yapi':    {'label': '🏗️ Yapı',    'weight': 40, 'scanned': False, 'sources': {}},
+        'yapi':    {'label': '🏗️ Yapı (gözlem)', 'weight': 0, 'scanned': False, 'sources': {}},
         'guc':     {'label': '⚡ Güç',     'weight': 30, 'scanned': False, 'sources': {}},
         'kurulum': {'label': '💡 Kurulum', 'weight': 20, 'scanned': False, 'sources': {}},
         'teyit':   {'label': '🔍 Teyit',   'weight': 10, 'scanned': False, 'sources': {}},
@@ -2901,36 +2974,32 @@ def compile_confluence_hits():
             if source_name not in groups[g_key]['sources'][sym]['scanners']:
                 groups[g_key]['sources'][sym]['scanners'].append(source_name)
 
-    # --- GRUP 1: YAPI (40pt) — Kurumsal iz, en sıkı filtre ---
+    # --- GÖZLEM GRUBU: görünür/kayıtlı kalır, canlı puan ve teyit sayısına girmez ---
     add_to_group('yapi', st.session_state.get('ict_scan_data'),          'ICT Sniper')
     add_to_group('yapi', st.session_state.get('nadir_firsat_scan_data'), 'Royal Flush')
+    add_to_group('yapi', st.session_state.get('harmonic_confluence_data'),'Harmonik Confluence')
+    add_to_group('yapi', st.session_state.get('platin_results'),         'Rozet: Platin Set-up')
+    add_to_group('yapi', st.session_state.get('golden_results'),         'Rozet: Altın Set-up')
+    _gp_conf = st.session_state.get('golden_pattern_data')
+    if isinstance(_gp_conf, dict):
+        add_to_group('yapi', _gp_conf.get('formations', pd.DataFrame()), 'Rozet: VIP Formasyon')
 
-    # --- GRUP 2: GÜÇ (30pt) — Hareket başlıyor ---
+    # --- GRUP 1: GÜÇ (30pt) — Hareket başlıyor ---
     add_to_group('guc', st.session_state.get('minervini_data'),          'Minervini')
     add_to_group('guc', st.session_state.get('prelaunch_bos_data'),      'Pre-Launch BOS')
     add_to_group('guc', st.session_state.get('rs_leaders_data'),         'RS Momentum Lideri')
-    _hconf_df = st.session_state.get('harmonic_confluence_data')
-    if _hconf_df is not None and not (hasattr(_hconf_df, 'empty') and _hconf_df.empty):
-        add_to_group('guc', _hconf_df, 'Harmonik Confluence')
 
-    # --- GRUP 3: KURULUM (20pt) — Doğru fiyat bölgesi ---
-    add_to_group('kurulum', st.session_state.get('platin_results'),  'Platin Set-up')
-    add_to_group('kurulum', st.session_state.get('golden_results'),  'Altın Set-up')
+    # --- GRUP 2: KURULUM (20pt) — Doğru fiyat bölgesi ---
     add_to_group('kurulum', st.session_state.get('guclu_donus_data'),'Güçlü Dönüş')
 
-    # --- GRUP 4: TEYİT (10pt) — Hacim ve formasyon destekli ---
+    # --- GRUP 3: TEYİT (10pt) — Hacim ve formasyon destekli ---
     add_to_group('teyit', st.session_state.get('accum_data'),      'Gizli Birikim')
-    add_to_group('teyit', st.session_state.get('scan_data'),        'Radar1')
     add_to_group('teyit', st.session_state.get('radar2_data'),      'Radar2')
     # Erken Radar — sadece primary satırlar
     _er_conf = st.session_state.get('erken_radar_data')
     if _er_conf is not None and not (hasattr(_er_conf, 'empty') and _er_conf.empty):
         if 'Role' in _er_conf.columns:
             add_to_group('teyit', _er_conf[_er_conf['Role'] == 'primary'], 'Erken Radar')
-    _gp_conf = st.session_state.get('golden_pattern_data')
-    if isinstance(_gp_conf, dict):
-        add_to_group('teyit', _gp_conf.get('formations', pd.DataFrame()), 'VIP Formasyon')
-
     # --- CONFLUENCE HESABI ---
     all_syms = set()
     for g in groups.values():
@@ -2947,16 +3016,18 @@ def compile_confluence_hits():
             if sym in g_data['sources']:
                 scanners = g_data['sources'][sym]['scanners']
                 hit_groups.append({'key': g_key, 'label': g_data['label'], 'scanners': scanners})
-                total_scanners += len(scanners)
-                weighted_score += GROUP_WEIGHTS[g_key]
+                if GROUP_WEIGHTS[g_key] > 0:
+                    total_scanners += len(scanners)
+                    weighted_score += GROUP_WEIGHTS[g_key]
                 if price == 0:
                     price = g_data['sources'][sym]['price']
             elif g_data['scanned']:
                 missing_groups.append(g_data['label'])
 
-        group_count   = len(hit_groups)
-        hit_keys      = {hg['key'] for hg in hit_groups}
-        has_anchor    = bool(hit_keys & {'yapi', 'guc'})  # en az 1 üst grup şartı
+        scored_hit_groups = [hg for hg in hit_groups if GROUP_WEIGHTS[hg['key']] > 0]
+        group_count   = len(scored_hit_groups)
+        hit_keys      = {hg['key'] for hg in scored_hit_groups}
+        has_anchor    = 'guc' in hit_keys  # en az 1 ölçülmüş üst grup şartı
 
         if group_count >= 2 and has_anchor:
             results.append({
@@ -3028,8 +3099,8 @@ def render_golden_trio_banner(ict_data, sent_data, ticker=None):
 <div style="display:flex; align-items:center; gap:10px;">
 <span style="font-size:1.6rem;">🏆</span>
 <div style="line-height:1.2;">
-<div style="font-weight:800; color:{txt}; font-size:1rem; letter-spacing:0.5px;">ALTIN SET-UP (GOLDEN TRIO){red_note}</div>
-<div style="font-size:0.75rem; color:{txt}; opacity:0.95;">RS Gücü + Ucuz Konum + Güçlü Enerji (ICT): Mükemmel Uyum.</div>
+<div style="font-weight:800; color:{txt}; font-size:1rem; letter-spacing:0.5px;">ROZET: ALTIN SET-UP{red_note}</div>
+<div style="font-size:0.75rem; color:{txt}; opacity:0.95;">3 uygunluk koşulu sağlandı; bağımsız oy veya alım teyidi değildir.</div>
 </div>
 </div>
 <div style="font-family:'JetBrains Mono'; font-weight:800; font-size:1.2rem; color:{txt}; background:rgba(255,255,255,0.25); padding:4px 10px; border-radius:6px;">3/3</div>
@@ -3084,8 +3155,8 @@ def render_platin_live_banner(ticker, ict_data, sent_data):
 <div style="display:flex; align-items:center; gap:10px;">
 <span style="font-size:1.6rem;">💎</span>
 <div style="line-height:1.2;">
-<div style="font-weight:800; color:#ffffff; font-size:1rem; letter-spacing:0.5px;">💎 PLATİN SET-UP{_red_note_p}</div>
-<div style="font-size:0.75rem; color:#ffffff; opacity:0.95;">Altın Set-Up (3/3) + SMA200 üstü + SMA50 üstü + RSI &lt; 70</div>
+<div style="font-weight:800; color:#ffffff; font-size:1rem; letter-spacing:0.5px;">💎 ROZET: PLATİN SET-UP{_red_note_p}</div>
+<div style="font-size:0.75rem; color:#ffffff; opacity:0.95;">6 uygunluk koşulu sağlandı; bağımsız oy veya alım teyidi değildir.</div>
 </div>
 </div>
 <div style="font-family:'JetBrains Mono'; font-weight:800; font-size:1.2rem; color:#ffffff; background:rgba(255,255,255,0.25); padding:4px 10px; border-radius:6px;">6/6</div>
@@ -3129,15 +3200,15 @@ def render_guclu_donus_banner(ticker):
 
 def render_double_hit_banner(ticker, ict_data, sent_data):
     """
-    Hem ELİT hem Pre-Launch BOS kriterlerini aynı anda karşılayan hisseler için
-    özel 'ÇİFT TEYİT' banner'ı. Canlı Sinyaller'de diğer banner'lardan önce gösterilir.
+    Altın uygunluk rozeti ile Pre-Launch BOS tetikleyicisini aynı anda taşıyan hisseler.
+    Altın ayrı bir teyit sayılmaz; görünür rozet olarak korunur.
     """
     try:
         df = get_safe_historical_data(ticker, period="1y")
         if df is None or len(df) < 50:
             return
 
-        # ELİT kriteri (platin live kontrolü)
+        # Altın Set-up kriteri
         if not ict_data or not sent_data:
             return
         rs_text    = sent_data.get('rs', '').lower()
@@ -3168,10 +3239,10 @@ def render_double_hit_banner(ticker, ict_data, sent_data):
                 <span style="font-size:1.6rem;">💎🚀</span>
                 <div>
                     <div style="font-weight:900;color:#ffffff;font-size:1.05rem;letter-spacing:0.3px;">
-                        ÇİFT TEYİT — ELİT + PRE-LAUNCH BOS
+                        ROZET + TETİKLEYİCİ — ALTIN + PRE-LAUNCH BOS
                     </div>
                     <div style="font-size:0.72rem;color:#c7d2fe;margin-top:2px;">
-                        Hem kurumsal kalite kriterlerini hem de kırılım zamanlamasını karşılıyor
+                        Altın uygunluk etiketi var; bağımsız işlem sinyali Pre-Launch BOS
                     </div>
                 </div>
                 <div style="margin-left:auto;background:rgba(129,140,248,0.2);border:1px solid #818cf8;
@@ -3183,7 +3254,7 @@ def render_double_hit_banner(ticker, ict_data, sent_data):
             <div style="display:flex;flex-wrap:wrap;gap:6px;">
                 <span style="background:rgba(255,255,255,0.1);border:1px solid rgba(129,140,248,0.4);
                              padding:3px 10px;border-radius:4px;font-size:0.78rem;color:#e0e7ff;font-weight:600;">
-                    💎 ELİT: RS güçlü + Discount + Enerji
+                    💎 ALTIN: RS güçlü + Discount + Enerji
                 </span>
                 <span style="background:rgba(255,255,255,0.1);border:1px solid rgba(129,140,248,0.4);
                              padding:3px 10px;border-radius:4px;font-size:0.78rem;color:#e0e7ff;font-weight:600;">
@@ -3375,7 +3446,7 @@ def render_harmonic_confluence_banner(ticker):
                 <div>
                     <span style="font-size:1rem;">⚡</span>
                     <span style="color:#7c3aed; font-weight:900; font-size:0.92rem; margin-left:6px;">
-                        HARMONİK CONFLUENCE — {res["pattern"].upper()}
+                        GÖZLEM: HARMONİK CONFLUENCE — {res["pattern"].upper()}
                     </span>
                     <span style="color:#64748b; font-size:0.75rem; margin-left:8px;">{dir_lbl}</span>
                 </div>
@@ -3394,6 +3465,7 @@ def render_harmonic_confluence_banner(ticker):
             </div>
             <div style="margin-top:6px; font-size:0.71rem; color:#64748b; font-style:italic;">
                 {res.get("Aciklama", "Harmonik PRZ teyitli")} — kriterler: {int(res.get("ict_match", False)) + int(res.get("rsi_match", False))}/2
+                · araştırma/gözlem katmanı; canlı puan ve kanıt katkısı 0
             </div>
         </div>
         ''', unsafe_allow_html=True)
@@ -3875,8 +3947,8 @@ def render_detail_card_advanced(ticker):
         if not temp_df2.empty and "Detaylar" in temp_df2.columns: r2_res = temp_df2.iloc[0]["Detaylar"]; r2_score = temp_df2.iloc[0]["Skor"]
 
     r1_suffix = ""
-    if r1_score < 2: r1_suffix = " <span style='color:#f87171; font-weight:500; background:rgba(248,113,113,0.08); padding:1px 4px; border-radius:3px; margin-left:5px; font-size:0.7rem;'>(⛔ RİSKLİ)</span>"
-    elif r1_score > 5: r1_suffix = " <span style='color:#16a34a; font-weight:500; background:rgba(16,185,129,0.07); padding:1px 4px; border-radius:3px; margin-left:5px; font-size:0.7rem;'>(🚀 GÜÇLÜ)</span>"
+    if r1_score < 2: r1_suffix = " <span style='color:#f87171; font-weight:500; background:rgba(248,113,113,0.08); padding:1px 4px; border-radius:3px; margin-left:5px; font-size:0.7rem;'>(⛔ ÖN FİLTREDE ZAYIF)</span>"
+    elif r1_score > 5: r1_suffix = " <span style='color:#16a34a; font-weight:500; background:rgba(16,185,129,0.07); padding:1px 4px; border-radius:3px; margin-left:5px; font-size:0.7rem;'>(✅ ÖN FİLTREYİ GEÇTİ)</span>"
 
     def get_icon(val): return "✅" if val else "❌"
 
@@ -3936,7 +4008,7 @@ def render_detail_card_advanced(ticker):
         </div>
         <div style="font-size:0.8rem; color:#f87171; margin-bottom:8px;">🛑 Stop: {stop_vals}</div>
         <div style="background:rgba(56,189,248,0.05); padding:4px; border-radius:4px; margin-bottom:4px;">
-            <div style="font-weight:700; color:#38bdf8; font-size:0.75rem; margin-bottom:4px;">🧠 RADAR 1 (3-12 gün): Momentum ve Hacim - SKOR: {r1_score}/7{r1_suffix}</div>
+            <div style="font-weight:700; color:#38bdf8; font-size:0.75rem; margin-bottom:4px;">🧠 RADAR 1 ÖN FİLTRE (fırsat sinyali değil): Momentum ve Hacim - SKOR: {r1_score}/7{r1_suffix}</div>
             <div class="tech-grid" style="font-size:0.75rem;">{r1_html}</div>
         </div>
         <div style="background:rgba(16,185,129,0.07); padding:4px; border-radius:4px;">
@@ -4197,6 +4269,23 @@ def _finalize_infografik_slot():
         if _html is None:   # arka plan iş yok (ilk kurulum/beklenmedik) → eski senkron yol
             _html = _infografik_widget_html(_t, pd.Timestamp.today().strftime('%Y-%m-%d'),
                                             _infografik_src_version())
+        # 23 Tem 2026 — ANA KART parçalarını infografiğe ENJEKTE et (ana thread,
+        # terazi verisi taze). Grafik önbellekten gelse bile yön/oylar o anki
+        # veriden basılır. Paket _render_ekran_v2_deneme'de hazırlandı.
+        if _html and not _html.startswith("__ERR__"):
+            try:
+                _pkt = st.session_state.get('_ekran_v2_paketi') or {}
+                if _pkt.get('ticker') == _t and _pkt.get('terazi'):
+                    _ter_ig = _pkt['terazi']
+                    _yon_ig = _ter_ig.get('yon')
+                    _html = _html.replace('<!--EKRANV2_YON-->', ekran_v2.ig_yon(_ter_ig))
+                    _html = _html.replace('<!--EKRANV2_GECERSIZLIK-->',
+                                          ekran_v2.ig_gecersizlik(_pkt.get('gecersizlik'), _yon_ig))
+                    _html = _html.replace('<!--EKRANV2_OYLAR-->',
+                                          ekran_v2.ig_oylar(_ter_ig, _pkt.get('degisimler')))
+            except Exception:
+                pass  # enjeksiyon başarısızsa infografik yine de basılır (placeholder'lar görünmez yorumdur)
+
         with _slot.container():
             if _html and not _html.startswith("__ERR__"):
                 _comp.html(f"<div style='background:#0a1019;border-radius:12px;'>{_html}</div>",
@@ -4216,8 +4305,110 @@ def _finalize_infografik_slot():
         st.session_state['_ig_bg_key'] = None
 
 
+def _render_index_participation_panel(ticker):
+    """ENDEKS MODU (18 Tem 2026) — endekste 'akıllı para/kurumsal birikim/POC' YASAK
+    (100 hissenin toplamı, tek kurum değil). Yerine GENEL PİYASA KATILIMI: bileşen
+    kapanış×işlem adedi toplamından yaklaşık katılım (data_layer override). Bot'taki endeks modunun
+    ekran karşılığı. Smart Money panelinin yerine geçer (render_smart_volume_panel erken döner)."""
+    try:
+        df = get_safe_historical_data(ticker, period="3mo")
+        if df is None or len(df) < 22:
+            return
+        v = pd.to_numeric(df['Volume'], errors='coerce')
+        v = v[v > 0]
+        if len(v) < 22:
+            return
+        _bugun = float(v.iloc[-1])
+        _ort20 = float(v.iloc[-21:-1].mean())
+        _pct = (_bugun / _ort20 - 1.0) * 100.0 if _ort20 > 0 else 0.0
+        # 5g trend: son 5 ort vs önceki 5 ort
+        _son5 = float(v.iloc[-5:].mean()); _onc5 = float(v.iloc[-10:-5].mean())
+        _tr_pct = (_son5 / _onc5 - 1.0) * 100.0 if _onc5 > 0 else 0.0
+        if _tr_pct > 8:   _tr_txt, _tr_clr = "yükseliyor — katılım artıyor", "#22c55e"
+        elif _tr_pct < -8: _tr_txt, _tr_clr = "düşüyor — katılım zayıflıyor", "#f87171"
+        else:              _tr_txt, _tr_clr = "yatay — katılım sabit", "#94a3b8"
+        def _mlr(x): return f"{x/1e9:.1f} milyar TL" if x >= 1e9 else f"{x/1e6:.0f} milyon TL"
+        _pct_clr = "#22c55e" if _pct >= 0 else "#f87171"
+        _disp = get_display_name(ticker)
+        st.markdown(
+            f"<div style='margin:8px 0;border:1px solid #334155;border-radius:10px;overflow:hidden;background:#0b1220;'>"
+            f"<div style='background:linear-gradient(90deg,#1e293b,#0f172a);border-bottom:1px solid #334155;"
+            f"padding:8px 12px;display:flex;justify-content:space-between;align-items:center;'>"
+            f"<span style='font-size:0.9rem;font-weight:800;color:#e2e8f0;'>&#128202; YAKLAŞIK PİYASA KATILIMI</span>"
+            f"<span style='font-size:0.75rem;color:#64748b;font-weight:700;'>{_disp}</span></div>"
+            f"<div style='padding:12px;'>"
+            f"<div style='display:flex;align-items:baseline;gap:10px;margin-bottom:8px;'>"
+            f"<span style='font-size:1.7rem;font-weight:900;color:#f1f5f9;'>{_mlr(_bugun)}</span>"
+            f"<span style='font-size:0.82rem;font-weight:700;color:{_pct_clr};'>{_pct:+.0f}% (20g ort.)</span></div>"
+            f"<div style='font-size:0.78rem;color:#cbd5e1;margin-bottom:5px;'>"
+            f"20 günlük yaklaşık katılım ortalaması: <b>{_mlr(_ort20)}</b></div>"
+            f"<div style='font-size:0.78rem;color:{_tr_clr};font-weight:600;margin-bottom:9px;'>"
+            f"Son 5 gün: {_tr_txt}</div>"
+            f"<div style='font-size:0.68rem;color:#64748b;line-height:1.5;border-top:1px solid rgba(100,116,139,0.2);padding-top:7px;'>"
+            f"Bu gösterge, eldeki XU100 bileşenlerinin günlük kapanış fiyatı × işlem adedi toplamından "
+            f"üretilen yaklaşık piyasa katılımıdır; resmi endeks cirosu değildir. Tek bir kurumun "
+            f"alım/satımı DEĞİL — piyasa genelinin yaklaşık katılım ölçüsüdür. Bu yüzden endekste "
+            f"'akıllı para / kurumsal birikim / mal toplama' yorumu yapılmaz.</div>"
+            f"</div></div>", unsafe_allow_html=True)
+    except Exception:
+        pass
+
+
+def _index_has_tl_ciro(ticker):
+    """XU100 (ve INDEX_CIRO_TARGETS'taki endeksler) yaklaşık piyasa katılımı göstergesine
+    kavuştu (data_layer bileşen-toplamı) → hacim analizinde HİSSE gibi davranır, endeks-susturması
+    UYGULANMAZ. Diğer endeks/futures/kripto hâlâ güvenilmez hacim → susturulur."""
+    try:
+        from data_layer import INDEX_CIRO_TARGETS as _ICT
+        return str(ticker).upper().replace(".IS", "") in _ICT
+    except Exception:
+        return str(ticker).upper().replace(".IS", "") == "XU100"
+
+
+# 18 Tem 2026 akşam — ENDEKS DİL NORMALLEŞTİRİCİSİ (kullanıcı: "kozmetik değil").
+# XU100 zengin hisse panelini kullanıyor ama panel HİSSE diliyle konuşuyor: "akıllı para
+# topluyor / kurumların işlem bölgesi / kurumsal birikim" — 100 hissenin TOPLAMINDA tek
+# aktör YOK, bunlar YANLIŞ. Panel HTML'ini render'dan önce buradan geçir → tek-aktör dili
+# PİYASA GENELİ diline döner. (bot "-meli" kapısının aynı kanıtlanmış deseni; sayılara
+# dokunmaz, sadece kelime.) Sıra: çok-kelimeli/özel önce, tek-kelime catch-all sonra.
+_ENDEKS_DIL_MAP = [
+    ("SMART MONEY HACİM ANALİZİ", "PİYASA HACİM ANALİZİ"),
+    ("Akıllı Para Durumu (OBV)",  "Para Akışı Durumu (OBV)"),
+    ("AKILLI PARA DURUMU",        "PARA AKIŞI DURUMU"),
+    ("HİSSE HACMİ",               "PİYASA HACMİ"),
+    ("Hisse Hacmi",               "Piyasa Hacmi"),
+    ("Kurumsal birikim",          "Piyasa geneli birikim"),
+    ("kurumsal birikim",          "piyasa geneli birikim"),
+    ("Kurumsal emilim",           "Piyasa geneli emilim"),
+    ("kurumsal emilim",           "piyasa geneli emilim"),
+    ("Kurumların",                "Piyasanın"),
+    ("kurumların",                "piyasanın"),
+    ("Büyük oyuncuların",         "Piyasa katılımcılarının"),
+    ("büyük oyuncuların",         "piyasa katılımcılarının"),
+    ("Büyük oyuncular",           "Piyasa katılımcıları"),
+    ("büyük oyuncular",           "piyasa katılımcıları"),
+    ("Balina İzi",                "Yoğun Hacim İzi"),
+    ("Akıllı Para",               "Para Akışı"),
+    ("Akıllı para",               "Piyasa geneli"),
+    ("akıllı para",               "piyasa geneli"),
+    ("Kurumsal",                  "Piyasa geneli"),
+    ("kurumsal",                  "piyasa geneli"),
+]
+
+
+def _endeks_dil(html, ticker):
+    """Endeksin yaklaşık katılım panelinde tek-aktör dilini piyasa-geneli diline çevirir."""
+    if not _index_has_tl_ciro(ticker) or not html:
+        return html
+    for _a, _b in _ENDEKS_DIL_MAP:
+        html = html.replace(_a, _b)
+    return html
+
+
 def render_smart_volume_panel(ticker):
-    """SMART MONEY HACİM ANALİZİ — 4 tile kompakt panel. ICT altında gösterilir."""
+    """SMART MONEY HACİM ANALİZİ — 4 tile kompakt panel. ICT altında gösterilir.
+    18 Tem 2026 — XU100 yaklaşık piyasa katılımı göstergesine kavuşunca zengin panel endekste de çalışır
+    (kullanıcı: "hisse hacim analizini endeks için de istiyorum"). Erken-dönüş kaldırıldı."""
     with _Timer("    SMART-VOL: calculate_price_action_dna çağrısı"):
         pa = calculate_price_action_dna(ticker)
     if not pa or "smart_volume" not in pa:
@@ -4234,13 +4425,20 @@ def render_smart_volume_panel(ticker):
     delta_yuzde      = sv.get("delta_yuzde", 0)
     _vol_data_missing = sv.get("vol_data_missing", False)
     rvol        = sv.get("rvol", 1.0)
+    # İş 4 (28 Tem 2026): seans açıkken son barın hacmi gün-içi TAHMİN (projeksiyon) —
+    # RVOL/spike "kesin gerçek" gibi sunulmasın, Tile 4 altına niteleyici eklenir.
+    _vol_proj   = bool(sv.get("vol_projected", False))
+    _vol_prog   = sv.get("vol_progress", 1.0)
     # 8 Haz 2026 Oturum 19 — Futures (=F: GC=F gold, SI=F silver, CL=F oil)
     # Yahoo bunlara güvenilmez hacim veriyor (gün-gün 7-89000 arası dalgalı,
     # gerçek CME ~250K kontrat). 20g ortalama yapay düşük → RVOL şişiyor (9x/18x).
     # AI prompt'u zaten "_is_index_t = ... endswith('=F')" ile koruyor; UI tile'ı
     # geri kalıyordu → is_index'e futures de dahil edildi, Tile 3/4/5 hacim
     # rakamı yerine "Endeks/Emtia Hacmi sağlanamadı" gösterir.
-    is_index    = ticker.startswith(("XU", "XB", "XT", "XY", "^")) or ticker.endswith("=F") or "-USD" in ticker
+    # 18 Tem akşam: XU100 yaklaşık piyasa katılımı göstergesine kavuştu → is_index'ten ÇIKAR (tile'lar dolsun,
+    # hisse gibi tam analiz). Diğer endeks/futures/kripto hâlâ güvenilmez → susturulur.
+    is_index    = ((ticker.startswith(("XU", "XB", "XT", "XY", "^")) or ticker.endswith("=F") or "-USD" in ticker)
+                   and not _index_has_tl_ciro(ticker))
 
     # ── XU100 + HAFTA SONU FİX ────────────────────────────────────────────────
     # XU100 için Yahoo bazen Cumartesi/Pazar'a 0-hacimli bar koyuyor → rvol=0
@@ -4320,6 +4518,27 @@ def render_smart_volume_panel(ticker):
         except Exception:
             pass
     # ──────────────────────────────────────────────────────────────────────────
+
+    # ── Canonical RVOL — Tile 4 headline'ını 5G bar'ın SON değeriyle EŞİTLE (22 Tem 2026) ──
+    # BUG (kullanıcı yakaladı): headline rvol (ict_core) = raw_today_v(gün-içi PROJEKSİYON)
+    #   ÷ 3-AYLIK fast_info ortalaması. Ama Tile 4 metni "20G ortalama" diyor + hemen
+    #   altındaki 5G bar bugünü 20G rolling ortalamaya bölüyor. İki ayrı tanım →
+    #   headline "%12 ÜZERİNDE" derken son bar 0.8 (ortalama ALTI) gösteriyordu (çelişki).
+    # FIX: normal seans gününde headline rvol'ü de HAM bugün ÷ 20G rolling ort. (× arefe)
+    #   ile hesapla → "20G ortalama" etiketi dürüstleşir, headline == son bar. (weekend/
+    #   kapalı-gün blokları rvol'ü zaten 20G tabanlı override ediyor; onları bozmuyoruz.)
+    if not (_is_xu100 and _is_weekend) and not _today_closed and not _vol_data_missing:
+        try:
+            _df_rvc = get_safe_historical_data(ticker, period="3mo")
+            if _df_rvc is not None and len(_df_rvc) >= 22:
+                _vma20c = _df_rvc['Volume'].rolling(20).mean()
+                _vd_c   = float(_df_rvc['Volume'].iloc[-1])
+                _va_c   = float(_vma20c.iloc[-1])
+                _af_c   = _bist_rvol_factor(_df_rvc.index[-1].date())
+                if _va_c > 0 and _vd_c > 0:
+                    rvol = min(_vd_c / (_va_c * _af_c), 3.0)   # 5G bar son değeriyle bire-bir aynı formül
+        except Exception:
+            pass
 
     # Mevcut fiyat + display ticker — ICT paneli ile aynı kaynak (fetch_stock_info)
     display_ticker = get_display_name(ticker)
@@ -4492,7 +4711,7 @@ def render_smart_volume_panel(ticker):
         t4_ic  = "#10b981" if dark else "#15803d"
         _rvol_pct = (rvol - 1.0) * 100
         t4_pct = f"+%{_rvol_pct:.0f}"; t4_lbl = f"Yüksek Hacim{_t4_arefe_sfx}"
-        t4_sub = f"Bugünün hacmi 20G ortalamanın %{_rvol_pct:.0f} üzerinde — kurumsal aktivite var.{_t4_arefe_note}"
+        t4_sub = f"Bugünün hacmi 20G ortalamanın %{_rvol_pct:.0f} üzerinde — olağandışı piyasa katılımı.{_t4_arefe_note}"
         t4_pos = True; rvol_fill = min((rvol - 1.0) / 2.0 * 100, 100)
     elif rvol >= 0.8:
         t4_ic  = "#f59e0b" if dark else "#92400e"
@@ -4510,12 +4729,34 @@ def render_smart_volume_panel(ticker):
         t4_sub = f"Bugünün hacmi 20G ortalamanın %{_rvol_pct:.0f} altında — piyasa ilgisiz, sinyal zayıf.{_t4_arefe_note}"
         t4_pos = False; rvol_fill = min((1.0 - rvol) * 100, 100)
 
+    # İş 4 (28 Tem 2026): RVOL gerçek bir dalda (veri var) VE son bar gün-içi TAHMİN ise
+    # niteleyici ekle — "olağandışı piyasa katılımı" gibi kesin ifade tahmine dayanmasın.
+    if _vol_proj and not _vol_data_missing and rvol >= 0.05:
+        _prog_pct = int(round((_vol_prog or 1.0) * 100))
+        t4_lbl = "TAHMİNİ · " + t4_lbl
+        t4_sub = (t4_sub.rstrip('.') +
+                  f". ⏳ Gün içi TAHMİN — seansın ~%{_prog_pct}'i geçti, kapanışta kesinleşir.")
+
     # ── TILE 5: 5 Seans Kümülatif Delta ──────────────────────────
-    if cum5 > 0:
+    # 22 Tem 2026 — effort ≠ result kapısı (kullanıcı yakaladı): alım/satım hacmi (effort)
+    #   TEK BAŞINA "birikim/dağıtım" DEMEZ; fiyatın değer bölgesine göre konumu (result)
+    #   teyit etmeli. cum5>0 ama fiyat değer bölgesi ALTINDA → birikim DEĞİL, belirsiz
+    #   (absorbsiyon ya da zayıflık). Simetrik: cum5<0 ama fiyat ÜSTÜNDE → dağıtım değil, silkeleme olabilir.
+    if cum5 > 0 and va_pos == "ALTINDA":
+        t5_ic = "#f59e0b" if dark else "#92400e"
+        t5_pct = f"+%{cum5_pct:.1f}"; t5_lbl = "5G Alım — Teyitsiz"
+        t5_sub = "5 günde alıcı hacmi baskındı, ama fiyat değer bölgesi altında kaldı. Birikim mi zayıflık mı belirsiz — fiyat teyidi yok."
+        t5_pos = None
+    elif cum5 > 0:
         t5_ic = "#10b981" if dark else "#15803d"
         t5_pct = f"+%{cum5_pct:.1f}"; t5_lbl = "5 Günde Net Alım"
-        t5_sub = "Son 5 işlem günü boyunca alıcılar baskındı. Kurumsal birikim sinyali."
+        t5_sub = "Son 5 işlem günü boyunca alıcılar baskındı. Fiyat değer bölgesini koruyor — birikim sinyali."
         t5_pos = True
+    elif cum5 < 0 and va_pos == "ÜSTÜNDE":
+        t5_ic = "#f59e0b" if dark else "#92400e"
+        t5_pct = f"-%{cum5_pct:.1f}"; t5_lbl = "5G Satış — Teyitsiz"
+        t5_sub = "5 günde satıcı hacmi baskındı, ama fiyat değer bölgesi üstünde tutundu. Dağıtım mı silkeleme mi belirsiz — fiyat teyidi yok."
+        t5_pos = None
     elif cum5 < 0:
         t5_ic = "#ef4444" if dark else "#f87171"
         t5_pct = f"-%{cum5_pct:.1f}"; t5_lbl = "5 Günde Net Satış"
@@ -4540,7 +4781,7 @@ def render_smart_volume_panel(ticker):
         if not _vol_data_missing and rvol >= 0.05:
             if rvol >= 2.0:
                 t4_lbl = "Yüksek Hacim · Son Seans"
-                t4_sub = f"Son seans{_sess_sfx} hacmi 20G ortalamanın %{int((rvol-1)*100)} üzerindeydi — kurumsal aktivite."
+                t4_sub = f"Son seans{_sess_sfx} hacmi 20G ortalamanın %{int((rvol-1)*100)} üzerindeydi — olağandışı piyasa katılımı."
             elif rvol >= 0.8:
                 _pct = int(abs((rvol-1)*100))
                 _dir = "üzerinde" if rvol >= 1 else "altında"
@@ -4558,6 +4799,7 @@ def render_smart_volume_panel(ticker):
     _obv_spark_html = ""
     _obv_expl_html = ""
     _obv_sentez_html = ""
+    _obv_sentez_txt = ""     # 22 Tem: HÜKÜM 2. paragrafı için düz (renk-span'li) OBV sentez cümlesi
     _div_badge_info = None   # ('bearish'|'bullish', days)
     _cs_hist_list = []       # son 10 gün konsensüs skoru (yaklaşık)
     _vp_gap_html = ""        # LVN ince bölge satırı (Değer Bölgesi kartı)
@@ -4696,6 +4938,7 @@ def render_smart_volume_panel(ticker):
                                 else:
                                     _sz = 'Akış yatay, fiyatla uyumlu — belirgin sinyal yok.'
                             _obv_sentez_html = f'<b>{_dn_ss}</b> — {_sz}'
+                            _obv_sentez_txt = _sz
                         except Exception:
                             _obv_sentez_html = ""
                 except Exception:
@@ -5073,6 +5316,9 @@ def render_smart_volume_panel(ticker):
     elif _cs_scr >  38: _cs_lbl, _cs_clr = "NÖTR",          "#94a3b8"
     elif _cs_scr >= 20: _cs_lbl, _cs_clr = "HAFİF SATIŞ",   "#f87171"
     else:               _cs_lbl, _cs_clr = "SATIŞ BASKISI", "#ef4444"
+    # 21 Tem 2026 (Codex): "100" bir kalite/başarı puanı DEĞİL, sadece gösterge YÖN
+    # uzlaşması. Rozete "Yön" öneki + katılım zayıfsa uyarı eki → yanlış "kusursuz" algısı.
+    _cs_kat_sfx = " · katılım zayıf" if (not _vol_data_missing and 0.05 < rvol < 0.8) else ""
 
     # ── 3 Büyük Kart — Verdict (mevcut değişkenlerden türetilir, yeni hesap yok) ──
     # Kart 1: Fiyat Nerede?  → va_pos
@@ -5271,10 +5517,16 @@ def render_smart_volume_panel(ticker):
         if _pv_row and int(_pv_row.get('n', 0)) >= 30:
             _pv_ret = float(_pv_row['avg_10g'])
             _pv_clr = "#10b981" if _pv_ret > 0 else ("#f87171" if _pv_ret < 0 else "#94a3b8")
-            _cs_hist_badge = _mini_badge(
-                "📊", _pv_clr, "Geçmiş",
-                f"BU ETİKET 10G ORT {_pv_ret:+.1f}% (N={int(_pv_row['n'])})"
-            )
+            # 17 Tem 2026 REFORM 2a — tek karne şablonu: "10g ort X · isabet %Y" (N tooltip'e değil,
+            # bağırgan "BU ETİKET...(N=...)" biçimi terk edildi; GENEL ÖZET satırıyla aynı dil)
+            _pv_hit = _pv_row.get('hit_10g')
+            _pv_txt = f"10 günde ort {_pv_ret:+.1f}%" + (f" · isabet %{float(_pv_hit):.0f}" if _pv_hit is not None else "")
+            # 18 Tem 2026 — isabet <%55 = yazı-tura bandı: rozet yeşile boyanmaz,
+            # "ayırt edici değil" açıkça yazılır (GENEL ÖZET kanıt satırıyla aynı kural).
+            if _pv_hit is not None and float(_pv_hit) < 55.0:
+                _pv_clr = "#94a3b8"
+                _pv_txt += " · ayırt edici değil"
+            _cs_hist_badge = _mini_badge("◆", _pv_clr, "Geçmiş", _pv_txt)
     except Exception:
         pass
 
@@ -5314,12 +5566,27 @@ def render_smart_volume_panel(ticker):
                     _chg_txt = (f"değişim {_d_chg}g önce "
                                 f"({_lbl_short_map.get(_lbls[_chg_idx], '?')} → {_lbl_short_map.get(_last_l, '?')})")
             _cs_hist_strip = (
-                f'<span style="display:inline-flex;align-items:center;gap:3.5px;margin-right:auto;">'
+                f'<span style="display:inline-flex;align-items:center;gap:3.5px;">'
                 f'<span style="font-size:0.60rem;color:{text_muted};font-weight:800;letter-spacing:0.4px;">SKOR 10G</span>'
                 f'{_dots}'
                 + (f'<span style="font-size:0.64rem;color:{text_muted};font-weight:700;margin-left:4px;">{_chg_txt}</span>' if _chg_txt else '')
                 + f'</span>'
             )
+    except Exception:
+        pass
+
+    # ── Çelişki rozeti: 5G akış yönü (cum_delta_5) ↔ 10G konsensüs (22 Tem 2026, ara-çözüm) ──
+    # Kısa/gürültülü (5G) ve daha sağlam (10G konsensüs) pencere ZIT yön gösteriyorsa,
+    # kullanıcı yanılmasın diye görünür uyarı. Hangisinin "kazandığı" ölçümle netleşene dek
+    # (flow_conflict_backtest.py) motor tek yön DAYATMAZ — çelişkiyi açıkça söyler.
+    # [[feedback-extrapolation-yasak]]: eşik/ağırlık sezgiyle değiştirilmedi, sadece çelişki teşhir edildi.
+    _conflict_badge = ""
+    try:
+        _c10 = 1 if _cs_lbl in ("ALIM BASKISI", "HAFİF ALIM") else (-1 if _cs_lbl in ("HAFİF SATIŞ", "SATIŞ BASKISI") else 0)
+        _c5  = 1 if cum5 > 0 else (-1 if cum5 < 0 else 0)
+        if _c10 != 0 and _c5 != 0 and _c10 != _c5:
+            _cf_txt = "5G alıcı ↔ 10G satıcı" if _c5 > 0 else "5G satıcı ↔ 10G alıcı"
+            _conflict_badge = _mini_badge("⚠", "#f59e0b", "Çelişki", _cf_txt)
     except Exception:
         pass
 
@@ -5329,7 +5596,8 @@ def render_smart_volume_panel(ticker):
         _mini_badge(c2_icon, c2_clr, "Hacim", c2_lbl) +
         _mini_badge(c3_icon, c3_clr, "Akıllı Para", c3_lbl) +
         (_mini_badge(_mfi_icon, _mfi_clr, "MFI", _mfi_lbl_v) if _mfi_lbl_v != "—" else "") +
-        _yab_badge + _div_badge + _cs_hist_badge
+        _yab_badge + _div_badge + _conflict_badge
+        # 22 Tem 2026: "◆ Geçmiş" (_cs_hist_badge) kaldırıldı — kullanıcı isteği (ayırt edici değildi)
     )
 
     # ── 5G dot row için kısa konsensüs cümlesi ─────────────────────
@@ -5349,6 +5617,149 @@ def render_smart_volume_panel(ticker):
         if _rvol_5d_big_html else ''
     )
 
+    # ── HACİM 4-PARÇA HÜKMÜ bloğu (yön / katılım / süreklilik / fiyat teyidi) ──
+    # ict_core.hacim_dort_soru çıktısını renkli segment kartlarına + birleşik hükme
+    # çevirir. "Alım var ama hacim düşük" çelişkisini panelin en üstünde tek dille çözer.
+    _dort_soru_html = ""
+    _ds = sv.get("dort_soru")
+    if _ds:
+        _pal = {
+            "grn": ("#10b981" if dark else "#15803d", "rgba(16,185,129,0.12)"  if dark else "rgba(21,128,61,0.08)"),
+            "amb": ("#f59e0b" if dark else "#b45309", "rgba(245,158,11,0.12)"  if dark else "rgba(180,83,9,0.08)"),
+            "red": ("#ef4444" if dark else "#dc2626", "rgba(239,68,68,0.12)"   if dark else "rgba(220,38,38,0.08)"),
+            "gry": ("#94a3b8" if dark else "#6b7280", "rgba(148,163,184,0.10)" if dark else "rgba(107,114,128,0.06)"),
+        }
+        _y_sign = _ds["yon"]["sign"]
+        _yk = "grn" if _y_sign > 0 else ("red" if _y_sign < 0 else "gry")
+        _y_ic = "&#9650;" if _y_sign > 0 else ("&#9660;" if _y_sign < 0 else "&#9644;")  # ▲ ▼ ▬
+        _kk = {"yogun": "grn", "normal": "amb", "zayif": "gry"}.get(_ds["katilim"]["level"], "gry")
+        _sk = {"israrli": "grn", "birkac": "amb", "yeni": "gry"}.get(_ds["sureklilik"]["level"], "gry")
+        _fd = _ds["fiyat_teyidi"]["durum"]
+        _fk = {"var": "grn", "kismi": "amb", "eksik": "amb", "iraksama": "red", "yok": "gry"}.get(_fd, "gry")
+        _f_ic = ("&#10003;" if _fd == "var" else "&#9680;" if _fd == "kismi"          # ✓ / ◐ (kısmi)
+                 else "&#9888;&#65039;" if _fd in ("eksik", "iraksama") else "&#8213;")  # ⚠ / —
+
+        def _hd_chip(ic, lbl, val, key):
+            _c, _t = _pal[key]
+            return (
+                f'<div style="flex:1; min-width:0; padding:4px 8px 5px; border-radius:5px; '
+                f'border-left:3px solid {_c}; background:{_t};">'
+                f'<div style="font-size:0.53rem; color:{text_muted}; font-weight:800; '
+                f'letter-spacing:0.4px; text-transform:uppercase; margin-bottom:1px;">{lbl}</div>'
+                f'<div style="font-size:0.80rem; font-weight:800; color:{_c}; line-height:1.15; '
+                f'white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{ic} {val}</div>'
+                f'</div>'
+            )
+        _chips = (
+            _hd_chip(_y_ic, "Para Yönü",   _ds["yon"]["kisa"],          _yk)
+            + _hd_chip("&#128101;", "Katılım",    _ds["katilim"]["kisa"],      _kk)
+            + _hd_chip("&#9203;",   "Süreklilik", _ds["sureklilik"]["kisa"],   _sk)
+            + _hd_chip(_f_ic,       "Fiyat Teyidi", _ds["fiyat_teyidi"]["kisa"], _fk)
+        )
+        # ── HÜKÜM = tek genel sonuç (22 Tem 2026) — SADECE panel okuma dili ──
+        # 3 parça birleşir: ① GENEL (rozet/konsensüs omurgası — sağ üst rozetle AYNI kaynak)
+        # + ② AMA (tek karşı/destek nüansı, çelişkiyi cümleye döker) + ③ SONUÇ (durum betimi,
+        # EMİR YOK). Alttaki chip'ler farklı pencerelere bakıyor; bu kutu hepsini tek sade
+        # hikâyeye bağlar. Kaynak sinyaller/hesap DEĞİŞMEZ; AI prompt + bot hâlâ _ds["hukum"]
+        # okur (dokunulmadı). Dil 22 Tem kullanıcı onayıyla kilitlendi.
+        _gen_map = {"ALIM BASKISI": ("güçlü", 2), "HAFİF ALIM": ("hafif olumlu", 1),
+                    "NÖTR": ("kararsız", 0), "HAFİF SATIŞ": ("hafif zayıf", -1),
+                    "SATIŞ BASKISI": ("zayıf", -2)}
+        _gen_word, _gen_lvl = _gen_map.get(_cs_lbl, ("kararsız", 0))
+        _fk_konum = {"ALTINDA": "fiyat ucuz tarafta", "İÇİNDE": "fiyat dengeli bantta",
+                     "ÜSTÜNDE": "fiyat pahalı tarafta"}.get(va_pos, "")
+        _fk_hacim = "işlem sönük" if rvol < 0.8 else ("işlem canlı" if rvol >= 1.5 else "işlem normal")
+        _neden = ", ".join([x for x in (_fk_konum, _fk_hacim) if x])
+        _hk_genel = f"Genel tablo {_gen_word}" + (f": {_neden}." if _neden else ".")
+        _div_dir = _div_badge_info[0] if isinstance(_div_badge_info, (tuple, list)) and _div_badge_info else None
+        _asiri = (_gen_lvl >= 2 and rvol >= 2.0)
+        _teyitsiz = _fd in ("eksik", "iraksama")
+        # ② AMA — tek parça, öncelik sırasıyla (uygun yoksa boş)
+        _hk_ama = ""
+        if _gen_lvl < 0:
+            if cum5 > 0 and _div_dir == "bullish":
+                _hk_ama = "Ama son 5 günde alıcılar hafif öne geçti ve para sessizce içeri sızıyor gibi — henüz fiyata yansımadı."
+            elif cum5 > 0:
+                _hk_ama = "Ama son 5 günde alıcılar hafif öne geçti."
+            elif _div_dir == "bullish":
+                _hk_ama = "Ama para sessizce içeri sızıyor gibi — henüz fiyata yansımadı."
+        elif _gen_lvl > 0:
+            if cum5 < 0 or _div_dir == "bearish":
+                _hk_ama = "Ama para sessizce çıkmaya başladı."
+            elif _teyitsiz:
+                _hk_ama = "Ama gelen para fiyatı henüz yukarı taşımadı."
+            elif _asiri:
+                _hk_ama = "Ama fazla koşmuş, geç kalmış olabilirsin."
+        if not _hk_ama and _teyitsiz:
+            _hk_ama = "Ama gelen para fiyatı henüz yukarı taşımadı."
+        # ③ SONUÇ — durum betimi (emir yok)
+        if _gen_lvl < 0:
+            _hk_sonuc = ("Gerçek bir dönüş için fiyatın yukarı kırması gerekiyor; henüz o teyit yok."
+                         if _hk_ama else "Hacimle gelen bir kırılım yok; zayıflık sürüyor.")
+        elif _gen_lvl == 0:
+            _hk_sonuc = "Yön henüz oluşmadı."
+        elif _asiri:
+            _hk_sonuc = "Aşırı ısınmış; kısa vadede geri çekilme riski yüksek."
+        elif _teyitsiz or cum5 < 0 or _div_dir == "bearish":
+            _hk_sonuc = "Fiyat teyidi eksik, bu yüzden güç kırılgan."
+        elif _gen_lvl == 1:
+            _hk_sonuc = "Olumlu, ama teyit için hacmin fiyatı taşıması gerekiyor."
+        else:
+            _hk_sonuc = "Trend sağlıklı, güç alıcıların elinde."
+        _hukum_txt = _hk_genel + (f" {_hk_ama}" if _hk_ama else "") + f" {_hk_sonuc}"
+
+        # Kutu rengi GENEL'e (konsensüs/rozet) bağlanır → HÜKÜM ile sağ üst rozet renk uyumu
+        _hk_key = "grn" if _gen_lvl > 0 else ("red" if _gen_lvl < 0 else "gry")
+        _hk_clr, _hk_tint = _pal[_hk_key]
+        # 5. sütun: Hüküm — alt banttan buraya taşındı (boşluğu kapatır, tek sıra)
+        # 2. paragraf — HÜKÜM kutusunun boş altını doldurur (kullanıcı isteği, 22 Tem): bugünkü
+        # baskı cümlesi + OBV sentez cümlesi birleşimi. Aynı bilgi başka yerde de var (sorun değil),
+        # burada HÜKÜM'ü tam bir "sonuç kutucuğu" yapar. _sz renk-span'li olduğu gibi taşınır.
+        # Cümle 1 = bugünkü baskı, zaman çıpası "Bugün" ile (ne zamana ait olduğu belli olsun).
+        # Cümle 2 = "PARA AKIŞI:" etiketli OBV sentez → iki ayrı etiketli cümle, hiç bilmeyen
+        # okuyucu her birinin NE olduğunu görür. (22 Tem kullanıcı düzeltmesi)
+        _hk_press = t3_sub or ""
+        if _hk_press and not _hk_press.lower().startswith(("bugün", "son seans")):
+            _hk_press = f"Bugün {_hk_press[0].lower()}{_hk_press[1:]}"
+        _hk_flow = (f'<b style="color:{text_muted}; font-weight:800;">PARA AKIŞI:</b> {_obv_sentez_txt}'
+                    if _obv_sentez_txt else "")
+        _hk_p2 = " ".join(x for x in (_hk_press, _hk_flow) if x)
+        _hk_p2_div = (
+            f'<div style="font-size:0.70rem; color:{text_sub}; font-weight:500; line-height:1.32; '
+            f'margin-top:5px; padding-top:5px; border-top:1px dashed {divider};">{_hk_p2}</div>'
+        ) if _hk_p2 else ''
+        _hukum_cell = (
+            f'<div style="flex:2.6; min-width:0; padding:4px 9px 5px; border-radius:5px; '
+            f'border-left:3px solid {_hk_clr}; background:{_hk_tint};">'
+            f'<div style="font-size:0.53rem; color:{text_muted}; font-weight:800; '
+            f'letter-spacing:0.4px; text-transform:uppercase; margin-bottom:1px;">&#9878;&#65039; Hüküm</div>'
+            f'<div style="font-size:0.73rem; color:{text_main}; font-weight:600; line-height:1.3;">{_hukum_txt}</div>'
+            f'{_hk_p2_div}'
+            f'</div>'
+        )
+        # 22 Tem 2026 — 5 sütunlu yapı (kullanıcı): SOL sütun = 4 chip (üstte) + SKOR 10G/pil
+        # şeridi (altta), justify-content:space-between ile dikeyi doldurur. SAĞ sütun = HÜKÜM
+        # tam boy. Alt şerit buraya taşındı + "Geçmiş" rozeti kaldırıldı → alt boşluk kapandı.
+        _dort_soru_html = (
+            f'<div style="margin:7px 12px 8px; display:flex; gap:6px; align-items:stretch; '
+            f'border-bottom:1px solid {divider}; padding-bottom:8px;">'
+            f'<div style="flex:4; min-width:0; display:flex; flex-direction:column; justify-content:space-between; gap:7px;">'
+            f'<div style="display:flex; gap:6px; align-items:stretch;">{_chips}</div>'
+            f'<div style="display:flex; align-items:center; gap:6px 8px; flex-wrap:wrap;">{_cs_hist_strip}{_verdict_strip}</div>'
+            f'</div>'
+            f'{_hukum_cell}'
+            f'</div>'
+        )
+
+    # ── VERDICT STRIP — _ds varsa yukarı (HÜKÜM bloğunun sol sütununa) taşındı;
+    #     _ds yoksa (endeks/hacimsiz sembol) fallback olarak kendi satırında kalır.
+    _strip_row_html = (
+        f'<div style="padding:4px 12px;border-bottom:1px solid {divider};'
+        f'display:flex;align-items:center;gap:7px 8px;flex-wrap:wrap;justify-content:flex-start;">'
+        f'{_cs_hist_strip}{_verdict_strip}'
+        f'</div>'
+    ) if not _ds else ''
+
     # ── HTML ──────────────────────────────────────────────────────
     _html = (
         f'<div style="border:1px solid {bc}; background:{bg}; border-radius:8px; margin-top:10px; box-shadow:0 1px 6px rgba(0,0,0,{"0.22" if dark else "0.07"});">'
@@ -5362,18 +5773,18 @@ def render_smart_volume_panel(ticker):
         f'<span style="margin-left:6px;font-size:0.72rem;font-weight:800;color:{_cs_clr};'
         f'background:rgba(0,0,0,0.28);padding:2px 8px;border-radius:4px;'
         f'border:1px solid {_cs_clr};white-space:nowrap;opacity:0.92;">'
-        f'&#128176; {_cs_scr} — {_cs_lbl}</span>'
+        f'&#128176; Yön {_cs_scr} — {_cs_lbl}{_cs_kat_sfx}</span>'
         f'</div>'
 
         # AÇIKLAMA satırı (mevcut)
-        f'<div style="padding:4px 12px; border-bottom:1px solid {divider}; font-size:0.88rem; color:{text_sub}; line-height:1.35;">{_desc_text}</div>'
+        f'<div style="padding:4px 12px; font-size:0.88rem; color:{text_sub}; line-height:1.35;">{_desc_text}</div>'
 
-        # ── VERDICT STRIP (9 Haz 2026: "ÖZET: yön belirsiz..." metni kaldırıldı —
-        #     üst başlıkta zaten geçiyor + 3 rozetle de tekrar oluyordu)
-        f'<div style="padding:5px 12px;border-bottom:1px solid {divider};'
-        f'display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end;">'
-        f'{_cs_hist_strip}{_verdict_strip}'
-        f'</div>'
+        # ── HACİM 4-PARÇA HÜKMÜ (yön/katılım/süreklilik/fiyat teyidi + birleşik hüküm) ──
+        f'{_dort_soru_html}'
+
+        # ── VERDICT STRIP — _ds varsa yukarı HÜKÜM bloğunun sol sütununa taşındı;
+        #     yoksa fallback satır (bkz. _strip_row_html) ──
+        f'{_strip_row_html}'
 
         # ── Teknik Detay Başlığı ─────────────────────────────────────
         f'<div style="padding:3px 12px; font-size:0.60rem; color:{text_muted}; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; background:rgba(0,0,0,0.18); border-bottom:1px solid {divider};">&#9881;&#65039; Teknik Detaylar</div>'
@@ -5493,6 +5904,7 @@ def render_smart_volume_panel(ticker):
     )
 
     _html += '</div>'  # panel kök div sonu
+    _html = _endeks_dil(_html, ticker)   # endekste tek-aktör dili → piyasa geneli
     st.markdown(_html, unsafe_allow_html=True)
 
 
@@ -5535,14 +5947,26 @@ def render_price_action_panel(ticker):
     if pattern_name:
         pa_candle_title = f"{pa_candle_title} | 📐 {pattern_name} (Skor: {pattern_score})"
         _chart_img = ""
+        # YAŞAM DÖNGÜSÜ ROZETİ (21 Tem 2026) — chart_d['stage'] → tutarlı rozet
+        # (formasyon_core.stage_badge tek kaynak). Aşama yoksa (fincan dışı) sessizce gizli.
+        _stage_badge_html = ""
         if pattern_chart and isinstance(pattern_chart, dict):
+            _st = formasyon_core.stage_badge(pattern_chart.get('stage'))
+            if _st:
+                _s_emoji, _s_lbl, _s_clr = _st
+                # Aşama yaşı — "Tetiklendi · 2 günlük" (Codex: taze mi bayat mı görünsün)
+                _s_days = pattern_chart.get('stage_days')
+                _s_age = f" · {int(_s_days)} günlük" if isinstance(_s_days, (int, float)) and _s_days and _s_days > 0 else ""
+                _stage_badge_html = (f"<span style='margin-left:8px;background:{_s_clr}1f;color:{_s_clr};"
+                                     f"border:1px solid {_s_clr}55;border-radius:8px;padding:1px 8px;"
+                                     f"font-size:0.72rem;font-weight:800;white-space:nowrap;'>{_s_emoji} {_s_lbl}{_s_age}</span>")
             _b64 = _mini_pattern_chart_b64(ticker, pattern_chart, False)
             if _b64:
                 _chart_img = f"<img src='data:image/png;base64,{_b64}' style='width:100%;border-radius:4px;margin-top:6px;display:block;'/>"
         pa_candle_desc = (f"{pa_candle_desc}<br><br>"
                           f"<div style='background:rgba(56,189,248,0.08); border-left:3px solid #38bdf8; "
                           f"border-radius:0 4px 4px 0; padding:6px 10px; margin-top:4px;'>"
-                          f"<span style='color:#38bdf8; font-weight:800; font-size:0.85rem;'>📐 {pattern_name}</span><br>"
+                          f"<span style='color:#38bdf8; font-weight:800; font-size:0.85rem;'>📐 {pattern_name}</span>{_stage_badge_html}<br>"
                           f"<span style='color:#94a3b8; font-size:0.78rem;'>{pattern_desc}</span>"
                           f"{_chart_img}</div>")
     # =========================================================
@@ -5690,7 +6114,11 @@ def render_price_action_panel(ticker):
     top_signals = []
     if div_active:         top_signals.append((10, div_data['title'],                    div_col))
     if sfp_active:         top_signals.append((9,  pa['sfp']['title'],                   sfp_color))
-    if pattern_name:       top_signals.append((8,  pattern_name,                         "#38bdf8"))
+    # Aggregator denetimi (21 Tem 2026, Codex): Tamamlandı/Geçersiz formasyon kartta
+    # görünür ama "fırsat/top sinyal" listesine GİRMEZ — bitmiş hareket fırsat sayılmaz.
+    _pat_stage = pattern_chart.get('stage') if isinstance(pattern_chart, dict) else None
+    if pattern_name and _pat_stage not in ('completed', 'failed'):
+        top_signals.append((8,  pattern_name,                         "#38bdf8"))
     if v_diff > 15.0:      top_signals.append((7,  vwap_txt.split("(")[0].strip(),       vwap_col))
     if v_diff < -2.0:      top_signals.append((7,  "Dip Fırsatı — Aşırı İskonto",       vwap_col))
     if rs_active:          top_signals.append((4,  rs_txt.split("(")[0].strip(),         rs_col))
@@ -5893,6 +6321,9 @@ def render_erken_radar_panel(ticker):
         _cache[ticker] = {
             'primary': er.get('primary'),
             'confirmations': er.get('confirmations', []) or [],
+            # 18 Tem 2026 (1b şemsiye) — D4/D5 kırmızı bayraklar Master Scan yokken de
+            # Kanıt Terazisi'ne akabilsin diye cache'e eklendi.
+            'red_flags': er.get('red_flags', []) or [],
         }
         st.session_state['_er_single_cache'] = _cache
     except Exception:
@@ -6083,6 +6514,7 @@ def render_erken_radar_panel(ticker):
         f'</div>'
         f'<div style="text-align:right;flex-shrink:0;margin-left:8px;">'
         f'<div style="font-family:JetBrains Mono,monospace;font-size:2.0rem;font-weight:900;color:{s_color};line-height:1;">{quality}<span style="font-size:1rem;font-weight:600;color:{text_muted}">/100</span></div>'
+        f'<div style="font-size:0.61rem;color:{text_muted};font-weight:700;letter-spacing:0.04em;margin-top:3px;">ER KURULUM KALİTESİ</div>'
         + (f'<div style="font-size:0.66rem;font-style:italic;color:{text_muted};margin-top:3px;line-height:1;">5G önce: {quality_5g}/100</div>' if quality_5g is not None else '')
         + f'</div>'
         f'</div>'
@@ -6115,8 +6547,8 @@ def render_erken_radar_panel(ticker):
 
 def render_ict_certification_card(ticker):
     """
-    Sadece 5 şartı geçen hisselerde 'Onay Sertifikası' gösterir.
-    Görsel: Başlık solda, Sonuç sağda (Yeşil Tikli), Açıklama altta (Edu Note).
+    Fonksiyonun GERÇEKTEN kontrol ettiği 5 şartı gösterir (deneysel formasyon izi —
+    ana alım sinyali değil; ekran gerçek hesapla eşitlendi 27 Tem 2026).
     """
     # 1. Teyit Et (Logic Çalıştır)
     df = get_safe_historical_data(ticker, period="1y")
@@ -6130,48 +6562,51 @@ def render_ict_certification_card(ticker):
     html_content = f"""
     <div class="info-card" style="border-top: 3px solid #7c3aed; background:rgba(139,92,246,0.07); margin-bottom: 10px;">
         <div class="info-header" style="color:#8b5cf6; display:flex; justify-content:space-between; align-items:center;">
-            <span>🦅 ICT Sniper Onay Raporu</span>
-            <span style="font-size:0.8rem; background:#7c3aed15; padding:2px 8px; border-radius:10px; font-weight:700;">5/5</span>
+            <span>🦅 ICT Sniper — Kurulum İzi</span>
+            <span style="font-size:0.7rem; background:#7c3aed15; padding:2px 8px; border-radius:10px; font-weight:700; color:#a78bfa;">DENEYSEL</span>
         </div>
         
         <div class="info-row" style="margin-top:5px;">
-            <div class="label-long" style="width:160px; color:#8b5cf6;">1. Likidite Temizliği (SSL):</div>
+            <div class="label-long" style="width:170px; color:#8b5cf6;">1. Trend (SMA50 üstü):</div>
             <div class="info-val" style="color:#16a34a; font-weight:800;">GEÇTİ ✅</div>
         </div>
         <div class="edu-note" style="margin-bottom:8px;">
-            Son 20-40 günün dibi aşağı kırıldı. Stoplar patlatıldı.
+            Fiyat 50 günlük ortalamanın üstünde — kısa vade trend yukarı.
         </div>
 
         <div class="info-row">
-            <div class="label-long" style="width:160px; color:#8b5cf6;">2. Market Yapı Kırılımı:</div>
+            <div class="label-long" style="width:170px; color:#8b5cf6;">2. Momentum (son 5 gün):</div>
             <div class="info-val" style="color:#16a34a; font-weight:800;">GEÇTİ ✅</div>
         </div>
         <div class="edu-note" style="margin-bottom:8px;">
-            Fiyat ani bir "U" dönüşüyle son tepeyi yukarı kırdı.
+            Bugünkü kapanış 5 gün öncesinin üstünde — ivme pozitif.
         </div>
 
         <div class="info-row">
-            <div class="label-long" style="width:160px; color:#8b5cf6;">3. Enerji / Hacim:</div>
+            <div class="label-long" style="width:170px; color:#8b5cf6;">3. Stop Avı + Dönüş:</div>
             <div class="info-val" style="color:#16a34a; font-weight:800;">GEÇTİ ✅</div>
         </div>
         <div class="edu-note" style="margin-bottom:8px;">
-            Yükseliş cılız mumlarla değil, gövdeli ve iştahlı mumlarla oldu.
+            Eski bir dip aşağı kırılıp geri alındı — stoplar temizlendi, fiyat toparlandı.
         </div>
 
         <div class="info-row">
-            <div class="label-long" style="width:160px; color:#8b5cf6;">4. FVG Bıraktılar (İmza):</div>
-            <div class="info-val" style="color:#16a34a; font-weight:800;">VAR (Destek) ✅</div>
+            <div class="label-long" style="width:170px; color:#8b5cf6;">4. Hacim Teyidi (≥2× ort.):</div>
+            <div class="info-val" style="color:#16a34a; font-weight:800;">GEÇTİ ✅</div>
         </div>
         <div class="edu-note" style="margin-bottom:8px;">
-            Yükselirken arkasında doldurulmamış boşluk bıraktı.
+            Stop avı günü hacmi 20 günlük ortalamanın en az 2 katı — hareket hacimle desteklendi.
         </div>
 
         <div class="info-row" style="border-top:1px dashed #d8b4fe; padding-top:6px; margin-top:4px;">
-            <div class="label-long" style="width:160px; color:#8b5cf6; font-weight:800;">5. İndirimli Bölge:</div>
-            <div class="info-val" style="color:#16a34a; font-weight:800;">OTE (Mükemmel) ✅</div>
+            <div class="label-long" style="width:170px; color:#8b5cf6; font-weight:800;">5. Risk/Ödül (RRR ≥ 2.0):</div>
+            <div class="info-val" style="color:#16a34a; font-weight:800;">GEÇTİ ✅</div>
         </div>
         <div class="edu-note">
-            Fiyat, hareketin %50'sinden fazlasını geri alarak "Toptan Fiyat" bölgesine indi.
+            En yakın dirence göre potansiyel ödül, riskin en az 2 katı. {res.get('Durum','')}
+        </div>
+        <div style="margin-top:8px; padding:6px 8px; border-radius:6px; background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.3); font-size:0.7rem; line-height:1.4; color:#b45309;">
+            ⚠ <b>Deneysel ve rejime duyarlı.</b> Geçmiş testte 10 günlük isabet ~%41 (534 sinyal). Ana alım sinyali değil — izleme/bağlam amaçlı bir formasyon izi.
         </div>
     </div>
     """
@@ -6294,6 +6729,59 @@ def render_ict_certification_card(ticker):
 
 
 def render_ict_deep_panel(ticker):
+    """ICT gözlem paneli: karşılanan koşul sayısı yalnız panel derinliğini belirler.
+    model_score 1-5 panel boyutunu belirler. ≥4 tam panel · 3 kompakt şerit (amber,
+    sentez cümlesi + seviyeler) · ≤2 tek şerit (gri) — her ikisinde detay collapsed
+    expander'da. Seviyeler her modda korunur (skordan bağımsız değerli — geçersizlik
+    çizgisi hammaddesi). Eylül 2026: f_ict_model karnesi çıkınca eşikler kanıta bağlanır."""
+    try:
+        _d3a = calculate_ict_deep_analysis(ticker)  # cache'li — gövdedeki çağrı hit olur
+        _ms3a = _d3a.get('model_score') if isinstance(_d3a, dict) else None
+        _ms3a = float(_ms3a) if _ms3a is not None else None
+    except Exception:
+        _d3a, _ms3a = None, None
+    if (not _d3a or (isinstance(_d3a, dict) and _d3a.get('status') == 'Error')
+            or _ms3a is None or _ms3a >= 4):
+        return _render_ict_deep_panel_full(ticker)
+
+    def _fv3a(v):
+        try:
+            v = float(v)
+            if v <= 0:
+                return None
+            return f"{v:,.0f}".replace(",", ".") if v >= 1000 else f"{v:.2f}"
+        except Exception:
+            return None
+    _lv3a = [(_l, _fv3a(_d3a.get(_k))) for _l, _k in
+             (("giriş bölgesi", "entry"), ("stop", "stop"), ("yakın hedef", "target"))]
+    _lv_txt = " · ".join(f"{_l}: <b style='color:#e2e8f0;'>{_v}</b>" for _l, _v in _lv3a if _v)
+    if _ms3a <= 2:
+        _renk3a, _etk3a = "#64748b", "GÖZLEM — koşul desteği sınırlı"
+    else:
+        _renk3a, _etk3a = "#f59e0b", "GÖZLEM — 3 koşul var, yön kanıtı değil"
+    _sentez3a = ""
+    if _ms3a == 3:
+        try:
+            _s1 = str(_d3a.get('bottom_line', '')).split('.')[0].strip()
+            if _s1:
+                _sentez3a = (f"<div style='font-size:0.72rem;color:#cbd5e1;margin-top:3px;"
+                             f"line-height:1.4;'>{_s1}.</div>")
+        except Exception:
+            pass
+    st.markdown(
+        f"<div style='border:1px solid {_renk3a}55;border-left:3px solid {_renk3a};border-radius:6px;"
+        f"background:rgba(15,23,42,0.6);padding:8px 12px;margin:4px 0 2px;'>"
+        f"<div style='display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;'>"
+        f"<span style='font-size:0.8rem;font-weight:800;color:#94a3b8;'>ICT YAPI GÖZLEMİ</span>"
+        f"<span style='font-size:0.74rem;font-weight:800;color:{_renk3a};'>{int(_ms3a)}/5 koşul · {_etk3a}</span></div>"
+        f"{_sentez3a}"
+        + (f"<div style='font-size:0.7rem;color:#94a3b8;margin-top:4px;'>Seviyeler — {_lv_txt}</div>" if _lv_txt else "")
+        + "</div>", unsafe_allow_html=True)
+    with st.expander("ICT detayları (tam analiz)", expanded=False):
+        _render_ict_deep_panel_full(ticker)
+
+
+def _render_ict_deep_panel_full(ticker):
     data = calculate_ict_deep_analysis(ticker)
     if not data or data.get("status") == "Error": return st.warning(f"ICT Analiz Bekleniyor... ({data.get('msg', 'Veri Yok')})")
     
@@ -6483,7 +6971,7 @@ def render_ict_deep_panel(ticker):
     if model_score >= ict_core.MODEL_SCORE_STRONG: _sc = "#10b981"
     elif model_score == 3: _sc = "#f59e0b"
     else: _sc = "#f87171"
-    _slabel = ["SETUP YOK", "ÇOK ZAYIF", "ZAYIF", "ORTA", "GÜÇLÜ", "TAM MODEL"][model_score]
+    _slabel = f"{model_score} KOŞUL · GÖZLEM"
     # Kriter ipucu metni (title attribute için)
     _checks_tip = " | ".join([f"{'✅' if ok else '❌'} {name}" for name, ok in model_checks])
 
@@ -6615,7 +7103,7 @@ def render_ict_deep_panel(ticker):
     bg = "rgba(74,222,128,0.08)" if "bullish" in data['bias'] else "rgba(248,113,113,0.08)" if "bearish" in data['bias'] else "rgba(167,139,250,0.08)"
     st.markdown(f"""
     <div class="info-card" style="border-top: 4px solid {mc}; margin-bottom:10px; border-radius: 8px;">
-        <div class="info-header" style="color:#38bdf8; display:flex; justify-content:space-between; align-items:center; padding: 3px 12px;"><span style="font-size:1.15rem; font-weight: 800;">🧠 ICT Smart Money Analizi: {display_ticker}</span><span title="{_checks_tip}" style="cursor:default; font-family:monospace; color:{_sc}; font-size:0.88rem; font-weight:700; letter-spacing:2px; background:#0d1829; padding:3px 10px; border-radius:6px; border:2px solid {_sc};">{_blocks} &nbsp;{model_score}/5 · {_slabel}</span><span style="background:rgba(56,189,248,0.1); color:#38bdf8; padding:2px 10px; border-radius:4px; font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.9rem; border:1px solid rgba(30,58,138,0.2);">{display_ticker} <span style="opacity:0.6; margin:0 4px; font-weight:400;">—</span> <span style="color:#38bdf8;">{current_price_str}</span></span></div>
+        <div class="info-header" style="color:#38bdf8; display:flex; justify-content:space-between; align-items:center; padding: 3px 12px;"><span style="font-size:1.15rem; font-weight: 800;">🔬 ICT Yapı Gözlemi: {display_ticker}</span><span title="{_checks_tip}" style="cursor:default; font-family:monospace; color:{_sc}; font-size:0.88rem; font-weight:700; letter-spacing:2px; background:#0d1829; padding:3px 10px; border-radius:6px; border:2px solid {_sc};">{_blocks} &nbsp;{_slabel}</span><span style="background:rgba(56,189,248,0.1); color:#38bdf8; padding:2px 10px; border-radius:4px; font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.9rem; border:1px solid rgba(30,58,138,0.2);">{display_ticker} <span style="opacity:0.6; margin:0 4px; font-weight:400;">—</span> <span style="color:#38bdf8;">{current_price_str}</span></span></div>
         <div style="height:4px;background:rgba(30,58,95,0.5);"><div style="height:100%;width:{model_score * 20}%;background:{_sc};border-radius:0 2px 2px 0;"></div></div>
     </div>""", unsafe_allow_html=True)
 
@@ -6627,7 +7115,8 @@ def render_ict_deep_panel(ticker):
     if _bl_text and _bl_text != '-':
         _bl_card = (
             '<div style="grid-column:2 / span 2; grid-row:3; border:2px solid #0d9488; background:rgba(13,148,136,0.06); border-radius:8px; padding:12px;">'
-            '<div style="font-weight:800;color:#2dd4bf;font-size:0.9rem;text-transform:uppercase;border-bottom:2px solid rgba(13,148,136,0.4);padding-bottom:6px;margin-bottom:10px;">🖥️ ICT BOTTOM LINE / SONUÇ</div>'
+            '<div style="font-weight:800;color:#2dd4bf;font-size:0.9rem;text-transform:uppercase;border-bottom:2px solid rgba(13,148,136,0.4);padding-bottom:6px;margin-bottom:10px;">🔬 ICT GÖZLEM ÖZETİ</div>'
+            f'<div style="font-size:0.72rem;color:#94a3b8;margin-bottom:6px;">Araştırma katmanı · canlı puan ve yön kanıtı katkısı yok</div>'
             f'<div style="font-size:0.82rem;color:#cbd5e1;font-style:italic;line-height:1.55;">"{_bl_text}"</div></div>')
     st.markdown(f"""
     <div style="display:grid; grid-template-columns:0.95fr 1fr 1fr; grid-template-rows:auto auto 1fr; gap:12px; align-items:stretch; margin-bottom:10px;">
@@ -6789,8 +7278,13 @@ def render_minervini_panel_v2(ticker):
     vol_icon = "✅" if data['is_dry'] else "❌"
     rs_icon = "✅" if data['rs_val'] > 0 else "❌"
     
-    rs_width = min(max(int(data['rs_val'] * 5 + 50), 0), 100)
-    rs_color = "#16a34a" if data['rs_val'] > 0 else "#f87171"
+    # NaN koruması (27 Tem 2026): XU100 kapanışı boşsa rs_val NaN gelir →
+    # int(NaN) tüm sağ kolonu çökertiyordu. Boşsa nötr (0) say, panel ayakta kalsın.
+    _rs_val = data.get('rs_val')
+    if _rs_val is None or pd.isna(_rs_val):
+        _rs_val = 0.0
+    rs_width = min(max(int(_rs_val * 5 + 50), 0), 100)
+    rs_color = "#16a34a" if _rs_val > 0 else "#f87171"
     
     # 3. HTML KODU (HİSSE ADI EKLENDİ)
     html_content = f"""
@@ -6848,6 +7342,19 @@ def render_minervini_panel_v2(ticker):
 """
     
     st.markdown(html_content, unsafe_allow_html=True)
+
+# --- FORMASYON V2 — yalnız görünür Formasyon Grafiği (5 ana formasyon) ---
+@st.cache_data(ttl=900, show_spinner=False)
+def _get_formasyon_v2_view(symbol):
+    """V2 görünümünü hazırlar; tarama/AI/Canlı Sinyal akışına yazmaz."""
+    try:
+        _df_v2 = get_safe_historical_data(symbol, period="2y", interval="1d")
+        if _df_v2 is None or _df_v2.empty:
+            return {"available": False, "data_ok": False, "issues": ["Günlük fiyat verisi bulunamadı."]}
+        return formasyon_v2_app.build_v2_view(_df_v2, ticker=symbol, timeframe="1d")
+    except Exception as _v2_exc:
+        return {"available": False, "data_ok": False, "issues": [f"V2 görünümü hazırlanamadı: {_v2_exc}"]}
+
 
 # --- MİNİ FORMASYON GRAFİĞİ (tüm pattern tipleri) ---
 @st.cache_data(ttl=900, show_spinner=False)
@@ -7004,6 +7511,19 @@ def _mini_pattern_chart_b64(symbol, chart_data, dark_mode):
                     ax.plot([lows_x[0], lows_x[-1]], [lows_y[0], lows_y[-1]],
                             color="#38bdf8", lw=1, ls='--', alpha=0.5)
 
+        elif pat_type == "dtriangle":
+            _hline(chart_data['support'], "#ef4444", f"{chart_data['support']:.2f}", lw=1.8)
+            piv_dates  = chart_data.get('pivot_dates', [])
+            piv_prices = chart_data.get('pivot_prices', [])
+            piv_types  = chart_data.get('pivot_types', [])
+            if piv_dates:
+                highs_x = [d2x(d) for d, p, t in zip(piv_dates, piv_prices, piv_types) if t == 'H']
+                highs_y = [float(p) for d, p, t in zip(piv_dates, piv_prices, piv_types) if t == 'H']
+                if len(highs_x) >= 2:
+                    ax.plot(highs_x, highs_y, color="#fb923c", lw=1.8, marker='o', ms=4, zorder=5)
+                    ax.plot([highs_x[0], highs_x[-1]], [highs_y[0], highs_y[-1]],
+                            color="#fb923c", lw=1, ls='--', alpha=0.5)
+
         elif pat_type == "wedge":
             _x0 = d2x(chart_data['date_start']); _x1 = n - 1
             _us, _ls = chart_data['up_start'], chart_data['lo_start']
@@ -7056,6 +7576,31 @@ def _mini_pattern_chart_b64(symbol, chart_data, dark_mode):
             ax.axhspan(lvl * 0.992, lvl * 1.008, alpha=0.12, color=col)
             _hline(lvl, col, f"{lvl:.2f} ({lbl})", lw=2)
 
+        elif pat_type == "birlesik":
+            # BİRLEŞİK MOTOR (20 Tem 2026) — ana çizgi + temaslar + baş/omuz + durum.
+            # birlesik_png görselinin app içi karşılığı (kullanıcı onaylı).
+            _blvl = chart_data['level']
+            _hline(_blvl, "#f59e0b", f"{_blvl:.2f}", lw=2)
+            for _td, _tp in zip(chart_data.get('touch_dates', []), chart_data.get('touch_prices', [])):
+                _tx = d2x(_td)
+                if 0 <= _tx < n:
+                    ax.scatter([_tx], [_tp], color="#a78bfa", marker='^', s=55, zorder=6)
+            if 'res_now' in chart_data:  # alçalan üçgen direnci
+                _rx0 = d2x(chart_data.get('date_start', ''))
+                if 0 <= _rx0 < n:
+                    ax.plot([_rx0, n - 1],
+                            [chart_data['touch_prices'][0] if chart_data.get('touch_prices') else chart_data['res_now'],
+                             chart_data['res_now']], color="#fb923c", lw=1.3, ls='--', alpha=0.7, zorder=5)
+            if 'head_date' in chart_data:
+                _hx = d2x(chart_data['head_date'])
+                if 0 <= _hx < n:
+                    ax.scatter([_hx], [chart_data['head_price']], color="#f59e0b", marker='v', s=75, zorder=6)
+                    _lbl(_hx, chart_data['head_price'], "BAŞ", "#f59e0b", False)
+            if 'ls_date' in chart_data:
+                _sx = d2x(chart_data['ls_date'])
+                if 0 <= _sx < n:
+                    ax.scatter([_sx], [chart_data['ls_price']], color="#38bdf8", marker='v', s=55, zorder=6)
+
         # --- Tarih ekseni: 4 tick (sol uç, 2 ara, sağ uç) ---
         tick_pos = [0, n // 3, 2 * n // 3, n - 1]
         tick_lbl = []
@@ -7106,6 +7651,7 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
         "double_bottom": ("🔷", "İkili Dip (W)"),
         "flag":        ("🚩", "Boğa Bayrağı"),
         "triangle":    ("📈", "Yükselen Üçgen"),
+        "dtriangle":   ("📉", "Alçalan Üçgen"),
         "range":       ("↔️", "Range / Konsolidasyon"),
         "saucer":      ("🥣", "Çanak (Saucer)"),
         "qml":         ("🎯", "Quasimodo (QML)"),
@@ -7197,6 +7743,22 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
                  f"Direnç kırılırsa birikmiş enerji serbest kalır.")
         conclusion = (f"<b>{fp(res)}</b> üzerinde kapanış kırılım sayılır. Stop için <b>{fp(invalid)}</b> altı mantıklı. "
                       f"Kırılım ne kadar hacimli olursa formasyon o kadar güvenilirdir.")
+
+    elif pat_type == "dtriangle":
+        sup = chart_data['support']
+        res_now = chart_data.get('res_now', sup * 1.06)
+        target  = chart_data.get('target', max(sup - (res_now - sup), 0.01))
+        invalid = res_now * 1.02
+        levels  = [("Destek / Kırılım Noktası", sup, "#ef4444"),
+                   ("Alçalan Direnç", res_now, "#94a3b8")]
+        stage = 3 if curr_price < sup * 1.02 else 2
+        stage_label = "Desteğe Dayandı" if stage == 3 else "Tepeler Alçalıyor"
+        story = (f"Fiyat giderek alçalan tepeler yaparken <b>{fp(sup)}</b> desteğine yaslanmış durumda. "
+                 f"Bu sıkışma, satıcıların her seferinde daha ucuza satmaya razı olduğunu gösteriyor — "
+                 f"yükselen üçgenin <b>ayı (satış)</b> aynasıdır. Destek kırılırsa aşağı hareket hızlanır.")
+        conclusion = (f"<b>{fp(sup)}</b> altına kapanış aşağı kırılım sayılır (sat/kâr-al sinyali), "
+                      f"aşağı hedef <b>{fp(max(target, 0.01))}</b>. "
+                      f"<b>{fp(invalid)}</b> üzerine çıkış (alçalan direncin üstü) formasyonu geçersiz kılar.")
 
     elif pat_type == "wedge":
         _up = chart_data['up_line']; _lo = chart_data['lo_line']
@@ -7293,6 +7855,47 @@ def _build_pattern_analysis(chart_data, curr_price, ticker):
         conclusion = (f"{'Destek' if is_sup else 'Direnç'} bölgesi <b>{fp(lvl)}</b> tutunursa hedef <b>{fp(target)}</b> ({pct(target, curr_price)}). "
                       f"<b>{fp(invalid)}</b> {'altına' if is_sup else 'üstüne'} kapanış bölgenin kırıldığını gösterir. "
                       f"Ne kadar çok test edilmişse o kadar güçlüdür — ama çok kez test sonunda kırılma riski de artar.")
+
+    elif pat_type == "birlesik":
+        # BİRLEŞİK MOTOR analizi (20 Tem 2026) — şekil+durum'dan üretilir. Kullanıcı ilkesi:
+        # ana çizgi esas, altındaki şekil detay. Alçalan üçgen (dtri) = ayı, diğerleri = boğa.
+        _bshape = chart_data.get('shape', ''); _bstate = chart_data.get('state', '')
+        _lvl = chart_data['level']; _resn = chart_data.get('res_now')
+        _bear = (_bshape == 'dtri')
+        _SHN = {'tobo': 'Ters OBO (TOBO)', 'fincan': 'Fincan-Kulp', 'ucgen': 'Yükselen Üçgen',
+                'dtri': 'Alçalan Üçgen', 'taban': 'Taban Sıkışması'}
+        levels = [(("Destek (Kırılım)" if _bear else "Ana Çizgi (Kırılım)"), _lvl,
+                   "#ef4444" if _bear else "#f59e0b")]
+        if _resn: levels.append(("Alçalan Direnç", _resn, "#94a3b8"))
+        _STG = {'ERKEN': (2, "Oluşuyor (Erken)"), 'YAKIN': (3, "Çizgiye Yaklaşıyor"),
+                'KIRILDI': (4, "Kırılım Bölgesinde"), 'UZAMIS': (4, "Kırıldı, Uzadı"),
+                'FAIL': (2, "Yapı Bozuldu")}
+        stage, stage_label = _STG.get(_bstate, (2, "Gelişiyor"))
+        _tps = chart_data.get('touch_prices', [_lvl])
+        if _bear:
+            target = _lvl - ((_resn - _lvl) if _resn else _lvl * 0.08); invalid = (_resn or _lvl * 1.06) * 1.01
+        else:
+            target = _lvl + (_lvl - min(_tps)); invalid = _lvl * (1.0 if _bstate == 'FAIL' else 0.97)
+        story = (f"{_SHN.get(_bshape, _bshape)} yapısı tespit edildi. Ana çizgi (defalarca test edilen "
+                 f"{'destek' if _bear else 'direnç'}) <b>{fp(_lvl)}</b>. Şeklin altındaki yol detaydır — "
+                 f"kritik olan bu çizginin ne zaman ve nasıl kırılacağı.")
+        if _bstate == 'FAIL':
+            conclusion = (f"Formasyon <b>bozuldu</b> — "
+                          f"{'destek kırılıp geri alındı (ayı tuzağı)' if _bear else 'yapı kırıldı, dönüş tamamlanamadı'}. "
+                          f"Şimdilik geçerli bir kurulum yok; yeni yapı beklenmeli.")
+        elif _bstate in ('KIRILDI', 'UZAMIS'):
+            conclusion = ((f"Fiyat destek <b>{fp(_lvl)}</b>'i aşağı kırdı — ayı sinyali. "
+                           f"Aşağı hedef <b>{fp(max(target, 0.01))}</b>. <b>{fp(invalid)}</b> üstüne dönüş geçersiz kılar.")
+                          if _bear else
+                          (f"Fiyat çizgi <b>{fp(_lvl)}</b>'i yukarı kırdı — formasyon aktif. "
+                           f"Hedef <b>{fp(target)}</b> ({pct(target, curr_price)}). <b>{fp(invalid)}</b> altı bozulma."))
+        else:  # YAKIN / ERKEN
+            _yak = "yaklaşıyor" if _bstate == 'YAKIN' else "henüz uzak (erken)"
+            conclusion = ((f"Fiyat destek <b>{fp(_lvl)}</b>'e {_yak}. Aşağı kırılım ayı sinyali verir; "
+                           f"<b>{fp(_lvl)}</b> altına kapanış izlenmeli.")
+                          if _bear else
+                          (f"Fiyat çizgi <b>{fp(_lvl)}</b>'e {_yak}. <b>{fp(_lvl)}</b> üzerine hacimli kapanış "
+                           f"kırılım sinyali; hedef <b>{fp(target)}</b>."))
 
     # 12 — Kırılım sonrası aşama (cup/tobo/W): retest / kırıldı → Aşama 4
     if pat_type in ("cup", "tobo", "double_bottom"):
@@ -7580,6 +8183,339 @@ def _build_harmonic_analysis(harm_res, curr_price, ticker, df=None):
     }
 
 
+def _rsi_positive_divergence_chart_b64(view, signal):
+    """RSI pozitif uyumsuzluk popup'ı için fiyat + RSI iki katmanlı görsel."""
+    if not isinstance(view, dict) or not isinstance(signal, dict):
+        return None
+    fig = None
+    try:
+        x = np.arange(len(view["dates"]))
+        close = np.asarray(view["close"], dtype=float)
+        low = np.asarray(view["low"], dtype=float)
+        high = np.asarray(view["high"], dtype=float)
+        rsi = np.asarray(view["rsi"], dtype=float)
+        first = int(view["first_pos"])
+        second = int(view["second_pos"])
+        trigger = int(view["trigger_pos"])
+
+        fig, (ax_price, ax_rsi) = plt.subplots(
+            2, 1, figsize=(10.5, 6.1), sharex=True,
+            gridspec_kw={"height_ratios": [2.1, 1.0], "hspace": 0.08},
+        )
+        fig.patch.set_facecolor("#08111f")
+        for axis in (ax_price, ax_rsi):
+            axis.set_facecolor("#0d1829")
+            axis.grid(True, color="#334155", alpha=0.28, linewidth=0.7)
+            axis.tick_params(colors="#94a3b8", labelsize=8)
+            for spine in axis.spines.values():
+                spine.set_color("#334155")
+
+        ax_price.fill_between(x, low, high, color="#38bdf8", alpha=0.07)
+        ax_price.plot(x, close, color="#e2e8f0", linewidth=1.7, label="Kapanış")
+        ax_price.scatter(
+            [first, second],
+            [view["first_price"], view["second_price"]],
+            s=62, color="#f87171", edgecolors="#fee2e2", linewidths=1.0, zorder=5,
+        )
+        ax_price.plot(
+            [first, second],
+            [view["first_price"], view["second_price"]],
+            color="#f87171", linewidth=2.2, linestyle="--",
+        )
+        ax_price.annotate(
+            f"1. dip  {view['first_price']:.2f}",
+            (first, view["first_price"]), xytext=(-8, -24),
+            textcoords="offset points", color="#fecaca", fontsize=8, ha="center",
+        )
+        ax_price.annotate(
+            f"2. dip  {view['second_price']:.2f}",
+            (second, view["second_price"]), xytext=(8, -24),
+            textcoords="offset points", color="#fecaca", fontsize=8, ha="center",
+        )
+        ax_price.axvline(trigger, color="#fbbf24", linewidth=1.2, linestyle=":")
+        ax_price.scatter(
+            [trigger], [view["trigger_price"]],
+            marker="^", s=82, color="#fbbf24", edgecolors="#fef3c7", zorder=6,
+        )
+        ax_price.annotate(
+            "Dönüş tetiği",
+            (trigger, view["trigger_price"]), xytext=(0, 14),
+            textcoords="offset points", color="#fde68a", fontsize=8,
+            fontweight="bold", ha="center",
+        )
+
+        for level_key, color, label in (
+            ("Stop", "#ef4444", "Stop"),
+            ("Hedef", "#22c55e", "Hedef"),
+            ("Giris", "#38bdf8", "Tetik fiyatı"),
+        ):
+            try:
+                level = float(signal[level_key])
+                ax_price.axhline(level, color=color, linewidth=0.9, alpha=0.72, linestyle="--")
+                ax_price.text(
+                    len(x) - 0.5, level, f" {label} {level:.2f}",
+                    color=color, fontsize=7.5, va="bottom", ha="right",
+                    bbox=dict(facecolor="#08111f", edgecolor="none", alpha=0.72, pad=1.5),
+                )
+            except Exception:
+                pass
+
+        ax_price.set_ylabel("Fiyat", color="#cbd5e1", fontsize=9)
+        ax_price.set_title(
+            "Fiyat daha düşük dip yapıyor",
+            color="#f1f5f9", fontsize=10.5, fontweight="bold", loc="left",
+        )
+
+        ax_rsi.plot(x, rsi, color="#a78bfa", linewidth=1.8)
+        ax_rsi.axhspan(0, 30, color="#22c55e", alpha=0.05)
+        ax_rsi.axhline(30, color="#64748b", linewidth=0.8, linestyle="--")
+        ax_rsi.axhline(50, color="#475569", linewidth=0.7, linestyle=":")
+        ax_rsi.scatter(
+            [first, second],
+            [view["first_rsi"], view["second_rsi"]],
+            s=58, color="#22c55e", edgecolors="#dcfce7", linewidths=1.0, zorder=5,
+        )
+        ax_rsi.plot(
+            [first, second],
+            [view["first_rsi"], view["second_rsi"]],
+            color="#22c55e", linewidth=2.3, linestyle="--",
+        )
+        ax_rsi.annotate(
+            f"{view['first_rsi']:.1f}",
+            (first, view["first_rsi"]), xytext=(-7, -19),
+            textcoords="offset points", color="#bbf7d0", fontsize=8, ha="center",
+        )
+        ax_rsi.annotate(
+            f"{view['second_rsi']:.1f}",
+            (second, view["second_rsi"]), xytext=(7, 10),
+            textcoords="offset points", color="#bbf7d0", fontsize=8, ha="center",
+        )
+        ax_rsi.set_ylim(0, 100)
+        ax_rsi.set_yticks([0, 30, 50, 70, 100])
+        ax_rsi.set_ylabel("RSI", color="#cbd5e1", fontsize=9)
+        ax_rsi.set_title(
+            "RSI daha yüksek dip yapıyor — satış baskısı zayıflıyor",
+            color="#86efac", fontsize=9.5, fontweight="bold", loc="left",
+        )
+
+        tick_count = min(7, len(x))
+        if tick_count > 1:
+            ticks = np.unique(np.linspace(0, len(x) - 1, tick_count, dtype=int))
+            labels = [pd.Timestamp(view["dates"][idx]).strftime("%d.%m") for idx in ticks]
+            ax_rsi.set_xticks(ticks)
+            ax_rsi.set_xticklabels(labels, color="#94a3b8", fontsize=8)
+
+        fig.subplots_adjust(left=0.07, right=0.99, top=0.94, bottom=0.10, hspace=0.16)
+        buffer = io.BytesIO()
+        fig.savefig(
+            buffer, format="png", dpi=150, bbox_inches="tight",
+            facecolor=fig.get_facecolor(),
+        )
+        buffer.seek(0)
+        return base64.b64encode(buffer.read()).decode("ascii")
+    except Exception:
+        return None
+    finally:
+        if fig is not None:
+            plt.close(fig)
+
+
+@st.dialog("📈 RSI Pozitif Uyumsuzluk", width="large")
+def _rsi_positive_divergence_dialog(ticker, frame, signal, display_ticker):
+    """Seçili hissedeki pozitif uyumsuzluğu grafik ve işlem seviyeleriyle açıklar."""
+    view = build_positive_divergence_view(frame, signal)
+    if not view:
+        st.warning("Uyumsuzluk bulundu fakat görsel veri hazırlanamadı.")
+        return
+
+    def _fp(value):
+        try:
+            value = float(value)
+            return f"{value:,.2f}" if value < 1000 else f"{int(round(value)):,}"
+        except Exception:
+            return "—"
+
+    def _date(value):
+        try:
+            return pd.Timestamp(value).strftime("%d.%m.%Y")
+        except Exception:
+            return str(value or "—")
+
+    first_price = float(view["first_price"])
+    second_price = float(view["second_price"])
+    price_change = (second_price / first_price - 1) * 100 if first_price else 0.0
+    rsi_change = float(view["second_rsi"] - view["first_rsi"])
+    rr = float(signal.get("Risk_Odul", 0) or 0)
+    status_raw = str(signal.get("Durum", "İZLEME"))
+    confirmed = "ONAYLI" in status_raw
+    status = "ONAYLI" if confirmed else "İZLEME"
+    status_color = "#22c55e" if confirmed else "#f59e0b"
+    current = float(signal.get("Fiyat", view["current_price"]) or view["current_price"])
+    entry = float(signal.get("Giris", view["trigger_price"]) or view["trigger_price"])
+    stop = float(signal.get("Stop", 0) or 0)
+    target = float(signal.get("Hedef", 0) or 0)
+
+    st.markdown(
+        f"<div style='display:flex;justify-content:space-between;align-items:center;"
+        f"gap:12px;margin-bottom:12px;'>"
+        f"<div><div style='font-size:1.30rem;font-weight:900;color:#f1f5f9;'>"
+        f"📈 {display_ticker} — RSI Pozitif Uyumsuzluk</div>"
+        f"<div style='font-size:0.76rem;color:#94a3b8;margin-top:3px;'>"
+        f"İki dip karşılaştırması · günlük grafik · sinyal {_date(signal.get('Sinyal_Tarihi'))}</div></div>"
+        f"<div style='border:1px solid {status_color};background:{status_color}18;"
+        f"color:{status_color};border-radius:7px;padding:5px 12px;font-size:0.78rem;"
+        f"font-weight:900;'>{status}</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    chart_b64 = _rsi_positive_divergence_chart_b64(view, signal)
+    col_chart, col_info = st.columns([62, 38], gap="medium")
+    with col_chart:
+        if chart_b64:
+            st.markdown(
+                f"<img src='data:image/png;base64,{chart_b64}' "
+                f"style='width:100%;border-radius:8px;display:block;'/>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.warning("Uyumsuzluk grafiği oluşturulamadı.")
+
+    with col_info:
+        def _card(label, value, color):
+            return (
+                f"<div style='background:#0d1829;border-left:3px solid {color};"
+                f"border-radius:7px;padding:7px 9px;'>"
+                f"<div style='font-size:0.72rem;font-weight:700;color:{color};"
+                f"margin-bottom:3px;'>{label}</div>"
+                f"<div style='font-size:0.90rem;font-weight:800;color:#f1f5f9;"
+                f"line-height:1.35;'>{value}</div></div>"
+            )
+
+        cards = "<div style='display:grid;grid-template-columns:1fr 1fr;gap:6px;'>"
+        cards += _card(
+            "1. Fiyat Dibi",
+            f"{_fp(first_price)}<br><span style='font-size:0.68rem;color:#94a3b8;'>"
+            f"{_date(signal.get('Ilk_Dip'))}</span>",
+            "#f87171",
+        )
+        cards += _card(
+            "2. Fiyat Dibi",
+            f"{_fp(second_price)} <span style='font-size:0.70rem;color:#fca5a5;'>"
+            f"({price_change:+.1f}%)</span><br><span style='font-size:0.68rem;color:#94a3b8;'>"
+            f"{_date(signal.get('Ikinci_Dip'))}</span>",
+            "#f87171",
+        )
+        cards += _card(
+            "RSI Dönüşü",
+            f"{view['first_rsi']:.1f} → {view['second_rsi']:.1f} "
+            f"<span style='font-size:0.70rem;color:#86efac;'>(+{rsi_change:.1f})</span>",
+            "#22c55e",
+        )
+        cards += _card(
+            "Dönüş Tetiği",
+            f"{_fp(entry)}<br><span style='font-size:0.68rem;color:#94a3b8;'>"
+            f"{int(signal.get('Tetik_Yasi', 0))} işlem günü önce</span>",
+            "#fbbf24",
+        )
+        cards += _card("Stop / Geçersizlik", _fp(stop), "#ef4444")
+        cards += _card(
+            "Orta Vadeli Hedef",
+            f"{_fp(target)} <span style='font-size:0.70rem;color:#86efac;'>"
+            f"({((target / current - 1) * 100):+.1f}%)</span>" if current else _fp(target),
+            "#22c55e",
+        )
+        rr_color = "#22c55e" if rr >= 1.5 else "#f59e0b"
+        cards += _card("Risk / Ödül", f"1 : {rr:.2f}", rr_color)
+        cards += _card(
+            "20 Günlük Likidite",
+            f"{float(signal.get('ADV20_Mn_TL', 0) or 0):,.1f} Mn TL",
+            "#38bdf8",
+        )
+        _flow_label = str(signal.get("Para_Akisi_Kalite", "VERİ YETERSİZ"))
+        _flow_score = signal.get("Para_Akisi_Skor")
+        _flow_color = (
+            "#22c55e"
+            if _flow_label in ("GÜÇLÜ DESTEK", "DESTEKLEYİCİ")
+            else ("#ef4444" if _flow_label in ("ZAYIF AKIŞ", "DAĞITIM RİSKİ") else "#f59e0b")
+        )
+        cards += _card(
+            "Para Akışı Kalitesi",
+            f"{_flow_label}"
+            + (
+                f" <span style='font-size:0.70rem;color:{_flow_color};'>"
+                f"({_flow_score}/100)</span>"
+                if _flow_score is not None else ""
+            ),
+            _flow_color,
+        )
+        _journey_stage = str(signal.get("Yolculuk_Asamasi", "AKTİF") or "AKTİF")
+        _journey_parts = []
+        if signal.get("Bir_R_Gunu") is not None:
+            _journey_parts.append(f"1R: {int(signal['Bir_R_Gunu'])}. seans")
+        if signal.get("Iki_R_Gunu") is not None:
+            _journey_parts.append(f"2R: {int(signal['Iki_R_Gunu'])}. seans")
+        if signal.get("Stop_Gunu") is not None:
+            _journey_parts.append(f"Stop: {int(signal['Stop_Gunu'])}. seans")
+        if signal.get("Tepe_Gunu") is not None:
+            _journey_parts.append(f"Tepe: {int(signal['Tepe_Gunu'])}. seans")
+        cards += _card(
+            "Olay Yolculuğu",
+            f"{_journey_stage}<br><span style='font-size:0.68rem;color:#94a3b8;'>"
+            f"{' · '.join(_journey_parts) if _journey_parts else 'Henüz ileri seans oluşmadı'}</span>",
+            "#a78bfa",
+        )
+        cards += "</div>"
+        st.markdown(cards, unsafe_allow_html=True)
+
+    story = (
+        f"Fiyatın ilk dibi <b>{_fp(first_price)}</b> iken ikinci dip "
+        f"<b>{_fp(second_price)}</b> oldu; yani fiyat %{abs(price_change):.1f} daha aşağı indi. "
+        f"Aynı sırada RSI <b>{view['first_rsi']:.1f}</b>'den "
+        f"<b>{view['second_rsi']:.1f}</b>'ye yükseldi. Fiyat yeni dip yaparken satış gücü "
+        f"yeni dip yapamadı — pozitif uyumsuzluğun özü budur. Ardından fiyat önceki günün "
+        f"zirvesini ve 5 günlük ortalamayı aşarken RSI da yükseldi; dönüş tetiği böyle oluştu."
+    )
+    if confirmed:
+        conclusion = (
+            f"Kurulum <b>ONAYLI</b>: dipten fazla uzaklaşmamış ve risk/ödül "
+            f"<b>1:{rr:.2f}</b>. Referans giriş <b>{_fp(entry)}</b>, geçersizlik "
+            f"<b>{_fp(stop)}</b>, orta vadeli hedef <b>{_fp(target)}</b>. "
+            f"Stop altındaki kapanış kurulumun bozulduğu anlamına gelir."
+        )
+    else:
+        conclusion = (
+            f"Kurulum <b>İZLEME</b>: uyumsuzluk ve dönüş tetiği var ancak mevcut "
+            f"risk/ödül <b>1:{rr:.2f}</b> ile 1:1.50 onay eşiğinin altında. "
+            f"Fiyatı kovalamak yerine daha iyi giriş veya yeni yapı beklenmeli."
+        )
+    flow_explanation = str(
+        signal.get("Kalite_Detay")
+        or "Para akışı tarafında yeterli ek kanıt oluşmadı."
+    )
+
+    st.markdown(
+        f"<hr style='margin:14px 0 10px;border-color:#334155;'>"
+        f"<div style='background:#0d1829;border-radius:10px;padding:14px 18px;margin-bottom:10px;'>"
+        f"<div style='font-size:0.78rem;font-weight:800;color:#94a3b8;"
+        f"letter-spacing:.5px;margin-bottom:6px;'>🔍 NEDEN POZİTİF UYUMSUZLUK?</div>"
+        f"<div style='font-size:0.96rem;color:#f1f5f9;line-height:1.68;'>{story}</div></div>"
+        f"<div style='background:#0d1829;border-left:3px solid {_flow_color};"
+        f"border-radius:10px;padding:12px 16px;margin-bottom:10px;'>"
+        f"<div style='font-size:0.76rem;font-weight:800;color:{_flow_color};"
+        f"margin-bottom:5px;'>💧 PARA AKIŞI — ZORUNLU KAPI DEĞİL, KALİTE NOTU</div>"
+        f"<div style='font-size:0.88rem;color:#cbd5e1;line-height:1.55;'>"
+        f"{flow_explanation}</div></div>"
+        f"<div style='background:{status_color}10;border:1px solid {status_color}45;"
+        f"border-left:3px solid {status_color};border-radius:10px;padding:14px 18px;'>"
+        f"<div style='font-size:0.78rem;font-weight:800;color:{status_color};"
+        f"letter-spacing:.5px;margin-bottom:6px;'>⚡ SONUÇ — NE YAPILMALI?</div>"
+        f"<div style='font-size:0.96rem;color:#f1f5f9;line-height:1.68;'>{conclusion}</div></div>"
+        f"<div style='font-size:0.70rem;color:#64748b;margin-top:8px;'>"
+        f"Bu tarama olasılık üretir; tek başına alım önerisi değildir.</div>",
+        unsafe_allow_html=True,
+    )
+
+
 @st.dialog("🔮 Harmonik Formasyon", width="large")
 def _harmonik_dialog(ticker, harm_res, current_price, display_ticker, is_dark):
     """Harmonik formasyon popup: XABCD grafik + zengin analiz."""
@@ -7712,6 +8648,152 @@ def _harmonik_dialog(ticker, harm_res, current_price, display_ticker, is_dark):
         f'</div>',
         unsafe_allow_html=True
     )
+
+
+@st.dialog("📊 Formasyon Grafiği — V2", width="large")
+def _formasyon_v2_dialog(view, display_ticker):
+    """Beş ana formasyonu V2'nin kendi çizgi, seviye ve aşamalarıyla gösterir."""
+    if not isinstance(view, dict) or not view.get("available"):
+        st.warning("Yeni motor bu hissede doğrulanmış bir aktif formasyon bulamadı.")
+        return
+
+    def _fp(value):
+        try:
+            value = float(value)
+            return f"{value:,.2f}" if value < 1000 else f"{int(round(value)):,}"
+        except Exception:
+            return "—"
+
+    def _pct(level, price):
+        try:
+            return f"{((float(level) - float(price)) / float(price) * 100):+.1f}%"
+        except Exception:
+            return ""
+
+    _direction_bull = view.get("direction") == "bullish"
+    _direction_label = "YUKARI YÖNLÜ" if _direction_bull else "AŞAĞI YÖNLÜ"
+    _direction_color = "#10b981" if _direction_bull else "#ef4444"
+    _quality_color = view.get("quality_color", "#94a3b8")
+    _current = view.get("current_price")
+    _trigger = view.get("trigger")
+    _invalid = view.get("invalidation")
+    _target = view.get("target")
+    _rr = view.get("risk_reward")
+
+    st.markdown(
+        f"<div style='display:flex;justify-content:space-between;align-items:flex-end;"
+        f"gap:12px;margin-bottom:12px;'>"
+        f"<div><div style='font-size:1.35rem;font-weight:900;color:#e2e8f0;'>"
+        f"📊 {display_ticker} — {view.get('pattern_label', 'Formasyon')}</div>"
+        f"<div style='font-size:0.75rem;color:#64748b;margin-top:3px;'>"
+        f"Yeni Formasyon Motoru · günlük grafik · {view.get('engine_version', '')}</div></div>"
+        f"<div style='text-align:right;'>"
+        f"<div style='font-size:0.72rem;font-weight:800;color:{_quality_color};'>"
+        f"{view.get('quality_label', '')}</div>"
+        f"<div style='font-size:1.25rem;font-weight:900;color:{_quality_color};'>"
+        f"{float(view.get('quality_score', 0)):.1f}<span style='font-size:0.72rem;'>/100</span></div>"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    _col_chart, _col_info = st.columns([62, 38], gap="medium")
+    with _col_chart:
+        _chart_b64 = view.get("chart_b64", "")
+        if _chart_b64:
+            st.markdown(
+                f"<img src='data:image/png;base64,{_chart_b64}' "
+                f"style='width:100%;border-radius:8px;display:block;'/>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.warning("Formasyon bulundu fakat grafik üretilemedi.")
+
+    with _col_info:
+        _stage_level = int(view.get("stage_level", 2))
+        _stage_total = int(view.get("stage_total", 5))
+        _dots = "".join(
+            f'<span style="width:11px;height:11px;border-radius:50%;display:inline-block;'
+            f'margin-right:5px;background:{"#3b82f6" if _i <= _stage_level else "#334155"};"></span>'
+            for _i in range(1, _stage_total + 1)
+        )
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;">'
+            f'<div>{_dots}</div><div style="font-size:0.86rem;font-weight:800;color:#38bdf8;">'
+            f'Aşama {_stage_level}/{_stage_total} — {view.get("stage_label", "")}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+        def _v2_card(label, value_html, color):
+            return (
+                f'<div style="background:#0d1829;border-left:3px solid {color};'
+                f'border-radius:7px;padding:8px 10px;">'
+                f'<div style="font-size:0.74rem;font-weight:700;color:{color};margin-bottom:3px;">'
+                f'{label}</div><div style="font-size:0.94rem;font-weight:800;color:#f1f5f9;'
+                f'font-family:monospace;line-height:1.3;">{value_html}</div></div>'
+            )
+
+        _trigger_side = "üzerinde kapanış" if _direction_bull else "altında kapanış"
+        _invalid_side = "altına kapanış" if _direction_bull else "üzerine kapanış"
+        _cards = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">'
+        _cards += _v2_card(
+            "Kırılım / Teyit Çizgisi",
+            f'{_fp(_trigger)} <span style="font-size:0.70rem;color:#94a3b8;">{_trigger_side}</span>',
+            "#f59e0b",
+        )
+        _cards += _v2_card(
+            "Yön",
+            f'<span style="color:{_direction_color};">{_direction_label}</span>',
+            _direction_color,
+        )
+        _cards += _v2_card(
+            "Stop / Geçersizlik",
+            f'{_fp(_invalid)} <span style="font-size:0.70rem;color:#f87171;">{_invalid_side}</span>',
+            "#ef4444",
+        )
+        if _target is not None:
+            _cards += _v2_card(
+                "Ölçülü Hedef",
+                f'{_fp(_target)} <span style="font-size:0.72rem;color:#10b981;">'
+                f'{_pct(_target, _current)}</span>',
+                "#10b981",
+            )
+        else:
+            _cards += _v2_card(
+                "Ölçülü Hedef",
+                '<span style="font-size:0.76rem;color:#94a3b8;">Kırılım doğrulanmadan üretilmez</span>',
+                "#64748b",
+            )
+        if _rr is not None:
+            _cards += _v2_card("Risk / Ödül", f"1 : {float(_rr):.1f}", "#10b981")
+        _cards += _v2_card(
+            "Şekil Kalitesi",
+            f'<span style="color:{_quality_color};">{float(view.get("quality_score", 0)):.1f}/100</span>',
+            _quality_color,
+        )
+        _cards += "</div>"
+        st.markdown(_cards, unsafe_allow_html=True)
+
+    st.markdown("<hr style='margin:14px 0 10px;border-color:#334155;'>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="background:#0d1829;border-radius:10px;padding:14px 18px;margin-bottom:10px;">'
+        f'<div style="font-size:0.78rem;font-weight:800;color:#94a3b8;letter-spacing:.5px;'
+        f'margin-bottom:6px;">📖 ŞEKİL NE ANLATIYOR?</div>'
+        f'<div style="font-size:0.96rem;color:#f1f5f9;line-height:1.65;">'
+        f'{view.get("story", "")}</div></div>'
+        f'<div style="background:rgba(16,185,129,0.07);border:1px solid #10b98140;'
+        f'border-left:3px solid {_direction_color};border-radius:10px;padding:14px 18px;">'
+        f'<div style="font-size:0.78rem;font-weight:800;color:{_direction_color};'
+        f'letter-spacing:.5px;margin-bottom:6px;">⚡ SONUÇ — NE YAPILMALI?</div>'
+        f'<div style="font-size:0.96rem;color:#f1f5f9;line-height:1.65;">'
+        f'{view.get("conclusion", "")}</div></div>'
+        f'<div style="font-size:0.72rem;color:#64748b;margin-top:8px;">'
+        f'Kalite puanı şeklin kurallara uygunluğunu ölçer; kazanma olasılığı değildir.</div>',
+        unsafe_allow_html=True,
+    )
+
+    for _issue in view.get("issues", []):
+        if _issue:
+            st.caption(f"Veri notu: {_issue}")
 
 
 @st.dialog("📊 Formasyon Grafiği", width="large")
@@ -8377,26 +9459,21 @@ def render_roadmap_8_panel(ticker):
     _comp_color    = data.get('comp_color', '#d97706')
     _factor_scores = data.get('factor_scores', {})
 
-    def _bar_html(label, score):
-        sc = max(0, min(100, score))
-        if   sc >= 70: bcol = "#16a34a"
-        elif sc >= 50: bcol = "#ca8a04"
-        elif sc >= 30: bcol = "#d97706"
-        else:          bcol = "#f87171"
-        return (f'<div style="margin-bottom:2px;">'
-                f'<div style="display:flex;justify-content:space-between;font-size:0.62rem;'
-                f'font-weight:600;color:#64748b;line-height:1.1;">'
-                f'<span>{label}</span><span style="color:{bcol};">{sc:.0f}</span></div>'
-                f'<div style="height:3px;background:rgba(100,116,139,0.18);border-radius:2px;overflow:hidden;">'
-                f'<div style="height:100%;width:{sc}%;background:{bcol};"></div></div></div>')
-
-    _factor_bars = (
-        _bar_html("Trend",    _factor_scores.get('trend', 50))    +
-        _bar_html("Momentum", _factor_scores.get('momentum', 50)) +
-        _bar_html("Hacim",    _factor_scores.get('volume', 50))   +
-        _bar_html("Yapı",     _factor_scores.get('yapi', 50))     +
-        _bar_html("Senaryo",  _factor_scores.get('senaryo', 50))
-    )
+    # 3c REFORM (17 Tem 2026): 5 çıplak bar dökümü KALDIRILDI — kural: hemfikirse sus,
+    # çelişiyorsa TEK CÜMLE (terazi_core.dokum_ozeti). Sayılar tooltip'te yaşıyor.
+    # Sahte-nötr fix: eksik faktör artık 50 olarak ÇİZİLMEZ — None kalır, "ölçülemedi" ayrışır.
+    _fac3c = {'Trend': _factor_scores.get('trend'), 'Momentum': _factor_scores.get('momentum'),
+              'Hacim': _factor_scores.get('volume'), 'Yapı': _factor_scores.get('yapi'),
+              'Senaryo': _factor_scores.get('senaryo')}
+    _dok3c = terazi_core.dokum_ozeti(_fac3c, comp_score=_comp_score)
+    if _dok3c['mod'] == 'ayrisik':
+        _factor_bars = (f'<div style="font-size:0.66rem;color:#f59e0b;font-weight:600;'
+                        f'line-height:1.4;cursor:help;" title="{_dok3c["tooltip"]}">'
+                        f'{_dok3c["cumle"]}</div>')
+    else:
+        _lbl3c = "bileşenler uyumlu" if _dok3c['mod'] == 'uyumlu' else "bileşen verisi eksik"
+        _factor_bars = (f'<div style="font-size:0.62rem;color:#64748b;cursor:help;" '
+                        f'title="{_dok3c["tooltip"]}">{_lbl3c} — sayılar için üzerine gel</div>')
 
     composite_card_html = (
         f'<div style="background:rgba({"22,163,74" if _comp_score >= 70 else ("234,179,8" if _comp_score >= 55 else ("245,158,11" if _comp_score >= 40 else "239,68,68"))},0.08);'
@@ -8651,20 +9728,26 @@ def render_roadmap_8_panel(ticker):
     </div>
 </div>
 """
-    st.markdown(card_html.replace('\n', ''), unsafe_allow_html=True)
+    st.markdown(_endeks_dil(card_html.replace('\n', ''), ticker), unsafe_allow_html=True)
 
     # --- Formasyon mini grafiği — butonu fiyat paneli altında göster (col_right) ---
     _m2_chart = data.get('M2_chart_data')
     _type_labels = {
         "cup": "Fincan-Kulp", "tobo": "TOBO", "flag": "Boğa Bayrağı",
-        "triangle": "Yükselen Üçgen", "range": "Range", "saucer": "Çanak",
+        "triangle": "Yükselen Üçgen", "dtriangle": "Alçalan Üçgen",
+        "range": "Range", "saucer": "Çanak",
         "qml": "Quasimodo", "three_drive": "3 Drive", "sr_level": "Destek/Direnç",
         "double_bottom": "İkili Dip (W)", "double_top": "İkili Tepe (M)",
         "wedge": "Kama"
     }
+    _birlesik_lbl = {"tobo": "TOBO", "fincan": "Fincan-Kulp", "ucgen": "Yükselen Üçgen",
+                     "dtri": "Alçalan Üçgen", "taban": "Taban"}
     if _m2_chart and isinstance(_m2_chart, dict):
         st.session_state['_formasyon_chart_data']    = _m2_chart
-        st.session_state['_formasyon_pat_label']     = _type_labels.get(_m2_chart.get('type', ''), "Formasyon")
+        if _m2_chart.get('type') == 'birlesik':      # BİRLEŞİK MOTOR: etiket şekle göre
+            st.session_state['_formasyon_pat_label'] = _birlesik_lbl.get(_m2_chart.get('shape', ''), "Formasyon")
+        else:
+            st.session_state['_formasyon_pat_label'] = _type_labels.get(_m2_chart.get('type', ''), "Formasyon")
         # TEK KAYNAK FİYAT: seviyeleri üreten taramanın kendi fiyatı (aynı ölçek).
         # Yoksa detay paneli current_price'ına düş (geriye uyumlu).
         _m2_price = data.get('M2_scan_price')
@@ -8673,6 +9756,54 @@ def render_roadmap_8_panel(ticker):
         st.session_state['_formasyon_display']       = display_ticker
     else:
         st.session_state['_formasyon_chart_data'] = None
+
+def _compute_kisa_vade_warnings(ticker, df=None, pa=None):
+    """KISA VADE (1-15 gün) bozulma uyarıları — TEK KAYNAK (22 Tem 2026).
+    Hem CANLI SİNYALLER hem KANIT TERAZİSİ kartı buradan okur (drift olmasın).
+    Döner: kısa uyarı string listesi (STP ↓ / OBV Dağıtım|Zayıflıyor / Z=.. Tepe / Momentum ↓ / Climax)."""
+    w = []
+    try:
+        if df is None:
+            df = get_safe_historical_data(ticker)
+    except Exception:
+        df = None
+    try:
+        _stp = process_single_stock_stp(ticker, df)
+        if _stp and _stp.get('type') in ('cross_down', 'trend_down'):
+            w.append("STP ↓")
+    except Exception:
+        pass
+    try:
+        _obv_t, _, _ = get_obv_divergence_status(ticker)
+        _u = (_obv_t or "").upper()
+        if any(k in _u for k in ["DAĞITIM", "ÇIKIŞ", "NEGATİF", "DÜŞÜŞ", "ZAYIF SATIŞ"]):
+            w.append("OBV Dağıtım")
+        elif "KAFA ÇEVİRİYOR (ZAYIFLAMA)" in _u:
+            w.append("OBV Zayıflıyor")
+    except Exception:
+        pass
+    try:
+        _zd = _z_score_details(df)
+        if _zd and _zd["composite"] >= 1.5:
+            w.append(f"Z={_zd['composite']:.1f} Tepe")
+    except Exception:
+        pass
+    try:
+        if df is not None and len(df) >= 6:
+            _m5 = float(df['Close'].iloc[-1]) / float(df['Close'].iloc[-6]) - 1
+            if _m5 < -0.02:
+                w.append(f"Momentum ↓ %{_m5 * 100:.1f}")
+    except Exception:
+        pass
+    try:
+        if pa is None:
+            pa = calculate_price_action_dna(ticker)
+        if pa and pa.get('smart_volume', {}).get('climax', 'Yok') != 'Yok':
+            w.append("Climax Hacim")
+    except Exception:
+        pass
+    return w
+
 
 def render_unified_signals_panel(ticker):
     """
@@ -8707,35 +9838,8 @@ def render_unified_signals_panel(ticker):
 
         border_dim = f"#1e3a5f"
 
-        # ── Kısa Vade Uyarısı (AL iken bozulma var mı?) ─────────────
-        _kv_warnings = []   # liste: her uyarı için kısa string
-        try:
-            _stp_tmp = process_single_stock_stp(ticker, df)
-            if _stp_tmp and _stp_tmp['type'] in ('cross_down', 'trend_down'):
-                _kv_warnings.append("STP ↓")
-        except: pass
-        try:
-            _obv_t, _, _ = get_obv_divergence_status(ticker)
-            if any(k in _obv_t.upper() for k in ["DAĞITIM","ÇIKIŞ","NEGATİF","DÜŞÜŞ","ZAYIF SATIŞ"]):
-                _kv_warnings.append("OBV Dağıtım")
-            elif "KAFA ÇEVİRİYOR (ZAYIFLAMA)" in _obv_t.upper():
-                _kv_warnings.append("OBV Zayıflıyor")
-        except: pass
-        try:
-            _zd_kv = _z_score_details(df)
-            if _zd_kv and _zd_kv["composite"] >= 1.5:
-                _kv_warnings.append(f"Z={_zd_kv['composite']:.1f} Tepe")
-        except: pass
-        try:
-            if df is not None and len(df) >= 6:
-                _mom5 = float(df['Close'].iloc[-1]) / float(df['Close'].iloc[-6]) - 1
-                if _mom5 < -0.02:   # son 5 günde -%2 den fazla düşüş
-                    _kv_warnings.append(f"Momentum ↓ %{_mom5*100:.1f}")
-        except: pass
-        # NOT: "Climax Hacim" kontrolü pa hesaplandıktan SONRA çalışır (aşağıda, ~pa tanımı).
-
-        # Kısa vade — her zaman göster
-        _kv_show = True
+        # ── KISA VADE (1-15 gün) uyarıları KANIT TERAZİSİ kartına taşındı (22 Tem 2026) ──
+        # Hesap tek kaynak _compute_kisa_vade_warnings'a alındı; burada üretilmiyor.
 
         # signals: (icon, text, color, edu_note, is_positive, days_active)
         signals = []
@@ -8758,14 +9862,6 @@ def render_unified_signals_panel(ticker):
         except: pass
         try: pa = calculate_price_action_dna(ticker)
         except: pass
-
-        # ── Climax Hacim uyarısı (pa hazır olduktan sonra — sıralama fix) ──
-        try:
-            if pa:
-                _sv = pa.get('smart_volume', {})
-                if _sv.get('climax', 'Yok') != 'Yok':
-                    _kv_warnings.append("Climax Hacim")
-        except Exception: pass
 
         # ── Regime Engine + Conviction Score ────────────────────────
         _regime     = detect_market_regime(df, pa)
@@ -8904,31 +10000,8 @@ def render_unified_signals_panel(ticker):
                     signals.append(("📊", f"OBV: {obv_title}", obv_color, _obv_edu, is_obv_pos, _obv_days))
         except: pass
 
-        # ── 5. ICT Sniper ───────────────────────────────────────────
-        try:
-            ict_res = process_single_ict_setup(ticker, df)
-            if ict_res:
-                is_ict_pos = "YÜKSELİŞ" in ict_res.get('Yön','') or "AL" in ict_res.get('Yön','').upper()
-                _ict_yon   = ict_res.get('Yön','')
-                _ict_durum = ict_res.get('Durum','').split('|')[0].strip()
-                _ict_zone  = ict_data.get('zone','') if ict_data else ''
-                _ict_struct= ict_data.get('structure','') if ict_data else ''
-                if is_ict_pos:
-                    _ict_edu = (
-                        f"ICT set-up'ı aktif: {_ict_yon} yönünde {_ict_durum}. "
-                        f"{'DISCOUNT bölgesinde fiyat — kurumsal alım noktası.' if 'DISCOUNT' in _ict_zone else ''} "
-                        f"{'Yapı kırılımı (BOS/MSS) yukarı teyit edildi.' if any(x in _ict_struct for x in ['BOS','MSS']) else ''} "
-                        f"Order Block / FVG desteği geçerli."
-                    ).strip()
-                else:
-                    _ict_edu = (
-                        f"ICT set-up'ı aktif: {_ict_yon} yönünde {_ict_durum}. "
-                        f"{'PREMIUM bölgesinde fiyat — kurumsal dağıtım riski.' if 'PREMIUM' in _ict_zone else ''} "
-                        f"{'Yapı kırılımı aşağı — alıcı yapısı bozuldu.' if any(x in _ict_struct for x in ['BOS','MSS']) else ''} "
-                        f"Bearish Order Block / FVG baskısı var."
-                    ).strip()
-                signals.append((ict_res['İkon'],f"ICT Sniper: {_ict_yon} ({_ict_durum})",ict_res['Renk'],_ict_edu,is_ict_pos,1))
-        except: pass
+        # ICT Sniper araştırma/gözlem katmanında ayrı panelde gösterilir.
+        # CANLI SİNYALLER olumlu/olumsuz sayısına ve sırasına katkı vermez.
 
         # ── 6. Altın Set-up ─────────────────────────────────────────
         try:
@@ -8938,7 +10011,7 @@ def render_unified_signals_panel(ticker):
                 c2 = "DISCOUNT" in ict_data.get('zone','')
                 c3 = "Güçlü" in ict_data.get('displacement','') or "Hacim" in sent_data.get('vol','') or sent_data.get('raw_rsi',0)>55
                 if c1 and c2 and c3:
-                    signals.append(("🏆","Altın Set-up (Güç+Konum+Enerji)","#a16207","3 bağımsız koşul aynı anda: RS güçlü, fiyat DISCOUNT bölgesinde, hacim momentum destekliyor.",True,1))
+                    pass  # Altın, ayrı uygunluk rozetinde görünür; olumlu sinyal oyu vermez.
         except: pass
 
         # NOT: "Royal Flush Nadir Set-up (4/4)" sinyali kaldırıldı — Lorentzian (lor)
@@ -8966,16 +10039,11 @@ def render_unified_signals_panel(ticker):
                             f"RSI(14): {_rsi2:.0f} — aşırı alım sınırı (70) altında, hâlâ alan var. "
                             f"Altın kriterleri (RS güçlü + DISCOUNT + Enerji) + yapısal hizalama birlikte sağlandı."
                         )
-                        signals.append(("💎","Platin Fırsat (Elit): Yapısal Güç","#1d4ed8",_platin_edu,True,1))
+                        pass  # Platin, ayrı uygunluk rozetinde görünür; olumlu sinyal oyu vermez.
         except: pass
 
-        # ── 9. Harmonik Confluence ───────────────────────────────────
-        try:
-            hc = calculate_harmonic_confluence(ticker, df)
-            if hc:
-                is_hcp = hc.get('direction','') == 'Bullish'
-                signals.append(("⚡",f"Harmonik Confluence: {hc['pattern']} + ICT {hc['zone']} | PRZ:{hc['prz']:.2f}","#6d28d9","Fibonacci yapısı, ICT bölgesi ve RSI diverjansının aynı noktada çakışması. Üç metodoloji aynı dönüş seviyesini işaret ediyor.",is_hcp,1))
-        except: pass
+        # Harmonik Confluence araştırma/gözlem katmanında ayrı rozette gösterilir.
+        # CANLI SİNYALLER olumlu/olumsuz sayısına ve sırasına katkı vermez.
 
         # ── 10. Güçlü Dönüş Adayı ───────────────────────────────────
         try:
@@ -9026,7 +10094,7 @@ def render_unified_signals_panel(ticker):
             acc = process_single_accumulation(ticker, df, bench_s)
             if acc:
                 is_pp = acc.get('Pocket_Pivot', False)
-                signals.append(("⚡" if is_pp else "🤫","Akıllı Para: Pocket Pivot (Patlama)" if is_pp else "Akıllı Para: Sessiz Toplama","#7c3aed","Pocket Pivot: Büyük hacimle fiyat yükseldi — kurumsal alım izleri." if is_pp else "Fiyat yatay veya baskılı görünse de arka planda sinsi fon alımı var. Kırılım hazırlığı.",True,1))
+                signals.append(("⚡" if is_pp else "🤫","Akıllı Para: Pocket Pivot (Patlama)" if is_pp else "Akıllı Para: Sessiz Toplama","#7c3aed","Pocket Pivot: Büyük hacimle fiyat yükseldi — kurumsal alıma benzer hacim izi." if is_pp else "Fiyat yatay veya baskılı görünse de arka planda sessiz fon alımına benzer iz var. Kırılım hazırlığı olabilir.",True,1))
         except: pass
 
         # ── 13. Breakout ─────────────────────────────────────────────
@@ -9082,19 +10150,7 @@ def render_unified_signals_panel(ticker):
                 signals.append(("📐",f"Formasyon: {pn} (Puan: {ps})","#0f172a",_form_edu,True,1))
         except: pass
 
-        # ── 16. Radar 1 ──────────────────────────────────────────────
-        try:
-            r1 = process_single_radar1(ticker, df)
-            if r1 and r1['Skor'] >= 4:
-                _r1_detay = r1.get('Detay', '') or r1.get('detay', '') or r1.get('detail', '')
-                _r1_edu   = (
-                    f"7 momentum kriterinden {r1['Skor']}'i yeşil. "
-                    f"{'Aktif kriterler: ' + str(_r1_detay)[:100] + '. ' if _r1_detay else ''}"
-                    f"RSI yönü, MACD çaprazı, fiyat/EMA ilişkisi ve hacim akışı ölçülüyor. "
-                    f"{'Çok güçlü momentum — 6/7 veya üzeri nadir.' if r1['Skor']>=6 else ('İyi momentum — trend devam etme ihtimali yüksek.' if r1['Skor']>=5 else 'Yeterli momentum — ama onay için daha fazla kriter bekle.')}"
-                )
-                signals.append(("🧠",f"Radar 1: Momentum ({r1['Skor']}/7)","#0369a1",_r1_edu,True,1))
-        except: pass
+        # Radar 1 yalnız ön filtredir; tek başına canlı fırsat sinyali üretmez.
 
         # ── 17. Radar 2 ──────────────────────────────────────────────
         try:
@@ -9334,61 +10390,24 @@ def render_unified_signals_panel(ticker):
         )
 
         # ── Kısa Vade — Kanaat Skoru'nun hemen altına gömülü ────────
+        # ── KISA VADE bandı KANIT TERAZİSİ kartına TAŞINDI (22 Tem 2026) ──
+        # Kısa-vade (1-15 gün) uyarı bandı artık terazi kartında ORTA VADE hükmün altında
+        # çiziliyor (kullanıcı: "iki vadeyi alt alta görelim"). Hesap: _compute_kisa_vade_warnings.
         _kv_inner_html = ""
-        if _kv_show:
-            if karar_txt == "NEGATİF":
-                _kv_bg    = "rgba(239,68,68,0.10)"
-                _kv_bord  = "#ef4444"
-                _kv_lbl_c = "#f87171"
-                _kv_det_c = "#fca5a5"
-                _kv_icon  = "🔴"
-                _kv_label = "Kısa Vade: Zayıf"
-                _kv_str_disp = "Genel yapı baskı altında"
-            elif _kv_warnings:
-                _kv_bg    = "rgba(217,119,6,0.12)"
-                _kv_bord  = "#d97706"
-                _kv_lbl_c = "#fbbf24"
-                _kv_det_c = "#fde68a"
-                _kv_icon  = "⚠️"
-                _kv_label = "Kısa Vade: İzle"
-                _kv_str_disp = " · ".join(_kv_warnings)
-            else:
-                _kv_bg    = "rgba(16,185,129,0.10)"
-                _kv_bord  = "#10b981"
-                _kv_lbl_c = "#34d399"
-                _kv_det_c = "#a7f3d0"
-                _kv_icon  = "✅"
-                _kv_label = "Kısa Vade: Uyumlu"
-                _kv_str_disp = "Kısa vade sinyalleri uyumlu"
-            _kv_inner_html = (
-                f"<div style='display:flex;align-items:center;gap:8px;padding:5px 10px;"
-                f"background:{_kv_bg};"
-                f"border-top:1px solid {_kv_bord};border-bottom:1px solid {_kv_bord};'>"
-                f"<span style='font-size:0.9rem;flex-shrink:0;'>{_kv_icon}</span>"
-                f"<div style='display:flex;flex-direction:column;line-height:1.2;flex-shrink:0;'>"
-                f"<span style='font-size:0.74rem;font-weight:900;color:{_kv_lbl_c};"
-                f"text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;'>{_kv_label}</span>"
-                f"<span style='font-size:0.60rem;font-weight:700;color:{_kv_det_c};opacity:0.8;'>1-15 Gün</span>"
-                f"</div>"
-                f"<span style='font-size:0.69rem;color:{_kv_det_c};font-weight:700;"
-                f"flex:1;text-align:right;'>{_kv_str_disp}</span>"
-                f"</div>"
-            )
 
         # ── Ana panel ─────────────────────────────────────────────────
         st.markdown(
             "<style>.usp-row:hover .usp-edu{max-height:100px!important;opacity:1!important;}</style>"
-            f'<div style="background:{panel_bg};border:2px solid {panel_border};'
+            f'<div style="background:{panel_bg};border:2px solid {border_dim};'
             f'border-radius:8px;overflow:hidden;margin-bottom:8px;">'
             f'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-bottom:1px solid {border_dim};">'
             f'<span style="font-size:0.85rem;font-weight:800;color:{title_col};">🔔 CANLI SİNYALLER</span>'
-            # Chip kaynağı netleştirildi (9 Haz 2026): "Teknik 36 · NEGATİF" — kullanıcı
-            # rozetin altta listelenen sinyal sayısından değil Teknik Skor'dan geldiğini görür.
-            f'<span style="font-size:0.78rem;font-weight:900;color:{karar_color};background:{karar_color}20;padding:2px 8px;border-radius:6px;border:1px solid {karar_color};white-space:nowrap;" title="Teknik Skor üzerinden: ≥70 POZİTİF · 45-69 NÖTR · &lt;45 NEGATİF">{karar_icon} Teknik {int(master_score)} · {karar_txt}</span>'
+            # 3b REFORM Aşama 2 (17 Tem 2026, kullanıcı onaylı): "Teknik X · NEGATİF" chip'i
+            # ve POZİSYON EĞİLİMİ satırı KALDIRILDI — ikisi de SİNYAL ÖZETİ matrisinin
+            # (Genel Sağlık + Pozisyon Eğilimi lensleri) birebir kopyasıydı (sözde-teyit).
             f'</div>'
             f'{regime_html}'
             f'{_kv_inner_html}'
-            f'{conviction_html}'
             f'<div style="display:flex;align-items:center;gap:6px;padding:5px 10px 3px;font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#38bdf8;background:rgba(56,189,248,0.04);">'
             f'<span style="flex:1;">Olumlu</span>{pc}'
             f'</div>'
@@ -9406,8 +10425,8 @@ def render_unified_signals_panel(ticker):
 # Piyasa sağlığı göstergeleri ve makro sinyal özeti.
 # ==============================================================================
 def _render_genel_ozet_panel():
-    """GENEL ÖZET — 6 bağımsız sinyal (13 Tem 2026: V8 çift-onay backtest ile
-    CMF + MFI oyu eklendi), trend bağlamı, iptal koşulu, LONG RADAR skoru."""
+    """GENEL ÖZET — kısmen ilişkili 6 gösterge (13 Tem 2026: V8 çift-onay backtest ile
+    CMF + MFI oyu eklendi), trend bağlamı, iptal koşulu, ER kurulum kalitesi."""
     try:
         if not (st.session_state.get('ticker')):
             return
@@ -9661,8 +10680,13 @@ def _render_genel_ozet_panel():
 
                 # ── VERDICT BANDI ─────────────────────────────────────────────
                 _dom_n      = max(_gs_up, _gs_dn)
-                # LONG radar — mini progress bar + skor
+                # ER kurulum kalitesi — mini progress bar + skor
                 if _lr_score is not None:
+                    _lr_field_lbl = ("PİYASA RADARI" if
+                                     (_ticker.upper().startswith(("XU", "XB", "XT", "XY", "^"))
+                                      or _ticker.upper().endswith("=F")
+                                      or "-USD" in _ticker.upper())
+                                     else "ER KURULUM KALİTESİ")
                     _lr_bar_html = (
                         f"<span style='display:inline-block;width:42px;height:5px;background:#1e293b;"
                         f"border-radius:3px;position:relative;margin-right:5px;vertical-align:middle;'>"
@@ -9886,7 +10910,7 @@ def _render_genel_ozet_panel():
                 _verdict_sub_html = (
                     f"<div style='font-size:0.66rem;color:{_gs_expl_col};"
                     f"font-weight:500;margin-top:4px;line-height:1.45;'>"
-                    f"Aşağıdaki 6 bağımsız sinyalin oylaması <span style='opacity:0.7;'>"
+                    f"Aşağıdaki, birbiriyle kısmen ilişkili 6 göstergenin oylaması <span style='opacity:0.7;'>"
                     f"(en isabetli ikili RSI+CMF çift oy kullanır)</span>: {_oy_ozet}"
                     f"<span style='color:{_gs_neu};'> — yani </span>"
                     f"<span style='color:{_gs_net_clr};font-weight:700;'>{_verdict_sub}</span></div>"
@@ -9902,13 +10926,22 @@ def _render_genel_ozet_panel():
                         _ev_r = _vst.get('ret10'); _ev_h = _vst.get('hit10')
                         _ev_clr = (_gs_up_clr if (_ev_r or 0) > 1.0
                                    else (_gs_dn_clr if (_ev_r or 0) < 0 else _gs_neu))
+                        # 17 Tem 2026 REFORM 2a — karne EŞ-SEVİYEYE çıktı: 0.62rem italik
+                        # fısıltı → 0.76rem düz metin, tek şablon. Zayıf karne SAKLANMAZ.
+                        # 18 Tem 2026: eşik %52 → %55 (isabet %50-55 = yazı-tura bandı;
+                        # %52'ye yeşil güven vermek hak edilmemiş kesinlikti).
+                        _ev_zayif = ""
+                        if _ev_h is not None and float(_ev_h) < 55.0:
+                            _ev_zayif = (" <span style='color:#f59e0b;font-weight:600;'>"
+                                         "— geçmişte ayırt edici olmadı, tek başına karar verme</span>")
+                            _ev_clr = _gs_neu   # yazı-tura bandında getiri rengi de nötr
                         _verdict_ev_html = (
                             f"<div title='600 BIST hissesi, {_vst.get('n'):,} geçmiş örnek üzerinde ölçüldü' "
-                            f"style='font-size:0.62rem;color:{_gs_neu};"
-                            f"font-weight:500;margin-top:3px;font-style:italic;'>"
-                            f"📊 Bu etiketin geçmiş karnesi: 10 günde ortalama "
-                            f"<span style='color:{_ev_clr};font-weight:700;'>{_ev_r:+.1f}%</span>"
-                            f" · isabet %{_ev_h:.0f}</div>"
+                            f"style='font-size:0.76rem;color:#cbd5e1;"
+                            f"font-weight:600;margin-top:4px;'>"
+                            f"<span style='color:#38bdf8;font-size:0.64rem;'>◆</span> Geçmiş: 10 günde ort "
+                            f"<span style='color:{_ev_clr};font-weight:800;'>{_ev_r:+.1f}%</span>"
+                            f" · isabet %{_ev_h:.0f}{_ev_zayif}</div>"
                         )
                 except Exception:
                     pass
@@ -9923,7 +10956,7 @@ def _render_genel_ozet_panel():
                     + (
                         f"<span style='display:inline-flex;align-items:center;white-space:nowrap;margin-left:auto;'>"
                         f"<span style='color:{_gs_neu};padding:0 8px;font-weight:400;font-size:0.72rem;'>|</span>"
-                        f"<span style='color:{_gs_neu};font-size:0.62rem;font-weight:600;letter-spacing:0.04em;margin-right:3px;'>LONG</span>{_lr_vhtml}"
+                        f"<span style='color:{_gs_neu};font-size:0.62rem;font-weight:600;letter-spacing:0.04em;margin-right:3px;'>{_lr_field_lbl}</span>{_lr_vhtml}"
                         f"</span>"
                         if _lr_score is not None else ""
                     )
@@ -10667,7 +11700,7 @@ def _render_genel_ozet_panel():
                 elif _gs_dn >= 3:
                     _kv_expl = f"3/4 sinyal aşağı — güçlü konsensüs ({_gs_dn} aşağı, {_gs_up} yukarı)" + _conflict_suffix
                 else:
-                    _kv_expl = f"Bu hafta yön kararsız · 6 sinyal oylaması — {_dom_n}/6 aynı yönde" + _conflict_suffix
+                    _kv_expl = f"Bu hafta yön kararsız · kısmen ilişkili 6 gösterge oylaması — {_dom_n}/6 aynı yönde" + _conflict_suffix
                 _gs_items_html += _gs_row(
                     "Kısa Vade Görünüm",
                     f"<span style='color:{_gs_net_clr};'>{_gs_net_txt}</span>",
@@ -10865,9 +11898,12 @@ def _render_genel_ozet_panel():
                 # (Yahoo hacim verisi GC=F/SI=F/XU* için tutarsız). AI prompt zaten
                 # bu sembollere "hacim yorumu YAPMA" diyor; GENEL ÖZET PARA AKIŞI
                 # da hacim cümlesini "veri güvenilmez" notuyla geç.
-                _is_no_vol_t = (_ticker.startswith(("XU", "XB", "XT", "XY", "^"))
+                # 18 Tem akşam: XU100 yaklaşık piyasa katılımı göstergesine kavuştu → "hacim yok" susturması
+                # UYGULANMAZ (hisse gibi tam hacim cümlesi). Diğerleri hâlâ güvenilmez.
+                _is_no_vol_t = ((_ticker.startswith(("XU", "XB", "XT", "XY", "^"))
                                 or _ticker.endswith("=F")
                                 or "-USD" in _ticker)
+                                and not _index_has_tl_ciro(_ticker))
                 if _is_no_vol_t:
                     # 9 Haz 2026: sembol tipini açıkça yaz (parantez yığını yerine sebep)
                     if _ticker.startswith(("XU", "XB", "XT", "XY", "^")):
@@ -10900,12 +11936,12 @@ def _render_genel_ozet_panel():
 
                 # ── OBV cümlesi (sade Türkçe çeviri) ─────────────────────────────
                 _obv_sentence_map = {
-                    "🚀 GÜÇLÜ GİZLİ GİRİŞ":                        ("✓", _gs_up_clr, "Akıllı para alım yapıyor — fiyat düşerken kurumsal birikim"),
-                    "🔥 GÜÇLÜ GİZLİ GİRİŞ":                        ("✓", _gs_up_clr, "Akıllı para alım yapıyor — fiyat düşerken kurumsal birikim"),
+                    "🚀 GÜÇLÜ GİZLİ GİRİŞ":                        ("✓", _gs_up_clr, "Fiyat düşerken hacim izleri kurumsal birikime benziyor"),
+                    "🔥 GÜÇLÜ GİZLİ GİRİŞ":                        ("✓", _gs_up_clr, "Fiyat düşerken hacim izleri kurumsal birikime benziyor"),
                     "Hesaplanamadı":                                ("→", _gs_neu,    "OBV verisi yetersiz"),
                     "✅ SAĞLIKLI TREND (Hacim Onaylı)":             ("✓", _gs_up_clr, "Hacim yönü destekliyor — sağlıklı yükseliş"),
                     "✅ Hacim Destekli Trend":                       ("✓", _gs_up_clr, "Hacim yönü destekliyor — sağlıklı yükseliş"),
-                    "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)":          ("🛡", _gs_neu,    "Panik satışları kurumsal alımla karşılanıyor"),
+                    "🛡️ DÜŞÜŞE DİRENÇ (Kurumsal Emilim)":          ("🛡", _gs_neu,    "Panik satışları güçlü alım hacmiyle karşılanıyor — kurumsal emilime benzer iz"),
                     "👀 Olası Toplama (Zayıf)":                     ("→", _gs_neu,    "Erken toplama belirtisi — henüz teyit yok"),
                     "⚠️ ŞÜPHELİ GİRİŞ (Para Akışı Çelişkili)":     ("⚠", "#f59e0b", "OBV birikim görüyor ama bar içi alıcı zayıf — gün-içi şüpheli"),
                     "⚠️ SAHTE GÜÇ (OBV-Para Akışı Çelişkisi)":     ("⚠", "#f59e0b", "OBV güçlü ama mum içinde satıcı baskın — sahte güç"),
@@ -10949,7 +11985,10 @@ def _render_genel_ozet_panel():
                 _mfi_clr_b = _dwc['_mfi_clr_b']
 
                 # Pusula + sinyal listesi yan yana, altında 3 cümle (italic — panel açıklama stiliyle aynı)
+                # 18 Tem akşam: endekste (XU100) hacim cümleleri tek-aktör dilinden ("akıllı para/
+                # kurumsal") piyasa-geneli diline çevrilir — sayı doğru, kelime düzelir.
                 def _flow_sentence(icon, color, text):
+                    text = _endeks_dil(text, _ticker)
                     return (
                         f"<div style='display:flex;align-items:flex-start;gap:6px;padding:2px 0;"
                         f"font-size:0.72rem;color:{_gs_expl_col};line-height:1.4;"
@@ -11514,6 +12553,9 @@ def _render_health_signals_panel():
                 </div>
               </span>
             </div>
+              <div style="padding:2px 14px 6px 14px;font-size:0.64rem;line-height:1.45;color:#64748b;font-style:italic;text-align:center;">
+                Bu puan bir başarı olasılığı değil; bugünkü hisseler arasında göreceli güç sıralamasıdır.
+              </div>
               </div>
             </div>
             """, unsafe_allow_html=True)
@@ -11997,6 +13039,34 @@ with col_btn:
         progress_text = "Operasyon Başlıyor..."
         my_bar = st.progress(0, text=progress_text)
 
+        # ── 1.6 KRİTİK ENDEKS SAĞLIK KAPISI (#9, 27 Tem 2026) ──────────────────
+        # XU100 ORTAK TERAZİ: kapanışı 🔴 ise endekse-göre-güç / RS / beta TÜM
+        # hisseler için çöp olur (24 Tem XU100 boş kapanış → EREGL paneli çökmüştü).
+        # Bozuk teraziyle tarama yapmaktansa DURMAK finansal olarak daha doğru.
+        # Sadece BIST kategorilerinde çalışır (XU100 BIST benchmark'ı).
+        if "BIST" in str(_cat):
+            try:
+                _xu_durum, _xu_sebep = kritik_endeks_kapisi("XU100.IS")
+            except Exception as _xge:
+                _xu_durum, _xu_sebep = 'yellow', [f'kapı hatası: {_xge}']
+            if _xu_durum == 'red':
+                my_bar.empty()
+                st.session_state['_master_scan_running'] = False
+                st.error(
+                    "🛑 **Master Scan başlatılmadı: XU100 son kapanışı doğrulanamadı.**\n\n"
+                    + " · ".join(_xu_sebep)
+                    + "\n\nOrtak terazi bozukken tüm hisselerin endekse-göre gücü yanlış "
+                    "çıkar. Yanlış sonuç üretmemek için tarama durduruldu; veri düzeldiğinde "
+                    "tekrar deneyin."
+                )
+                st.stop()
+            elif _xu_durum == 'yellow':
+                st.warning(
+                    "🟡 **XU100 tek kaynak** (ikinci kaynak doğrulanamadı): "
+                    + " · ".join(_xu_sebep)
+                    + " — tarama sürüyor, sonuçları dikkatle yorumlayın."
+                )
+
         try:
             # 0. GEÇMİŞ SİNYAL GETİRİLERİNİ DOLDUR (Backtest altyapısı) - %5
             my_bar.progress(5, text="📊 Geçmiş sinyal getirileri güncelleniyor...%5")
@@ -12058,19 +13128,19 @@ with col_btn:
             # EN SONA alındı — Erken Radar en ağır adım, "%35'te takılı" görüntüsü veriyordu.
             # Diğer taramalar önce bitsin, kullanıcı ilerlemeyi görsün; ELİT en sonda çalışır.
             # (Gold Mine + frontend JSON bunları kullandığı için onlardan ÖNCE konumlandı.)
-            my_bar.progress(45, text="🤫 GÜVENİLİR (TIER_2) — Gizli Toplama (Smart Money)...%45")
+            my_bar.progress(45, text="🤫 ÖLÇÜM — Gizli Toplama (pozitif ama ayrıştırıcılığı sınırlı)...%45")
             st.session_state.accum_data = scan_hidden_accumulation(scan_list)
             log_scan_signal("gizli_birikim", st.session_state.accum_data, category=_cat)
 
-            my_bar.progress(55, text="🎯 GÜVENİLİR (TIER_2) — Radar 2 (Trend Takibi)...%55")
+            my_bar.progress(55, text="🎯 POZİTİF KARNE — Radar 2 (Trend Takibi)...%55")
             st.session_state.radar2_data = radar2_scan(scan_list)
             log_scan_signal("radar2", st.session_state.radar2_data, category=_cat)
 
-            my_bar.progress(65, text="⚡ GÜVENİLİR (TIER_2) — Harmonik Confluence (3'lü Teyit)...%65")
+            my_bar.progress(65, text="🔬 GÖZLEM — Harmonik Confluence (puan katkısı yok)...%65")
             st.session_state.harmonic_confluence_data = scan_harmonic_confluence_batch(scan_list)
             log_scan_signal("harmonik_confluence", st.session_state.harmonic_confluence_data, category=_cat)
 
-            my_bar.progress(72, text="🚀 GÜVENİLİR (TIER_2) — RS Momentum Liderleri (Alpha)...%72")
+            my_bar.progress(72, text="🔬 GÖZLEM — RS Momentum Liderleri (canlı karne zayıf)...%72")
             st.session_state.rs_leaders_data = scan_rs_momentum_leaders(scan_list)
 
             # ── KATMAN 3: ŞAMPİYONLAR (Golden Trio + VIP Formasyon) ──
@@ -12096,6 +13166,28 @@ with col_btn:
             st.session_state.golden_pattern_data = scan_golden_pattern_agent(scan_list, _cat)
             if isinstance(st.session_state.golden_pattern_data, dict):
                 log_scan_signal("vip_formasyon", st.session_state.golden_pattern_data.get('formations', pd.DataFrame()), category=_cat)
+
+            # BİRLEŞİK FORMASYON MOTORU → scan_signals (20 Tem 2026, Adım 3 — TEMİZ BACKTEST).
+            # Flag açıkken scan_chart_patterns birleşik satır döndürür. Aksiyon-alınabilir durumları
+            # (YAKIN/KIRILDI) ŞEKİL başına ayrı scan_type ile logla → signal_returns JOIN ile "birlesik_
+            # fincan/tobo/dtri gerçekten kazandırıyor mu" ilk kez ölçülür. dtri=bearish (bias). ERKEN/
+            # FAIL/UZAMIS loglanmaz (aksiyon sinyali değil). Detay: memory/project_formation_recalibration.md
+            try:
+                if getattr(scan_pipeline_mod, '_BIRLESIK_ON', False):
+                    _bir_all = scan_chart_patterns(scan_list)
+                    if _bir_all is not None and not _bir_all.empty and 'ChartData' in _bir_all.columns:
+                        _is_bir = _bir_all['ChartData'].apply(
+                            lambda d: isinstance(d, dict) and d.get('type') == 'birlesik'
+                                      and d.get('state') in ('YAKIN', 'KIRILDI'))
+                        _bir_act = _bir_all[_is_bir].copy()
+                        if not _bir_act.empty:
+                            _bir_act['_shape'] = _bir_act['ChartData'].apply(lambda d: d.get('shape'))
+                            for _shp in _bir_act['_shape'].dropna().unique():
+                                _sub = _bir_act[_bir_act['_shape'] == _shp].copy()
+                                _sub['bias'] = 'bearish' if _shp == 'dtri' else 'bullish'
+                                log_scan_signal(f"birlesik_{_shp}", _sub, category=_cat)
+            except Exception as _bir_exc:
+                log_error("master_scan_birlesik_log", _bir_exc, _cat)
 
             # ── KATMAN 4: BELİRSİZ (yetersiz örnek) ──
             my_bar.progress(88, text="🦁 Minervini Sepa (örnek az — gözlem) taranıyor...%88")
@@ -12128,9 +13220,12 @@ with col_btn:
                 st.session_state.nadir_firsat_scan_data = scan_nadir_firsat_batch(scan_list)
             log_scan_signal("ict_sniper", st.session_state.ict_scan_data, category=_cat)
 
-            my_bar.progress(95, text="⚠ ZAYIF — Radar 1 (Genel Market Intelligence)...%95")
+            my_bar.progress(95, text="🧠 ÖN FİLTRE — Radar 1 (fırsat listesi üretmez)...%95")
             st.session_state.scan_data = analyze_market_intelligence(scan_list, _cat)
             log_scan_signal("radar1", st.session_state.scan_data, category=_cat)
+
+            my_bar.progress(96, text="🧭 ÖLÇÜMDE — RSI Pozitif Uyumsuzluk...%96")
+            st.session_state.wilder_divergence_data = scan_wilder_positive_divergence_batch(scan_list)
 
             my_bar.progress(97, text="⚠ ZAYIF — Güçlü Dönüş Adayları...%97")
             st.session_state.guclu_donus_data = scan_guclu_donus_batch(scan_list)
@@ -12186,13 +13281,18 @@ with col_btn:
             # ── ELİT TIER_1 (Pre-Launch BOS + Erken Radar) — EN SON (24 Haz 2026) ──
             # En ağır adımlar burada; tüm diğer taramalar bittikten sonra çalışır.
             # Gold Mine + frontend JSON bunları kullandığı için onlardan ÖNCE.
-            my_bar.progress(99, text="🚀 ELİT (TIER_1) — Pre-Launch BOS taranıyor...%99")
+            my_bar.progress(99, text="🔬 ÖLÇÜM — Pre-Launch BOS taranıyor...%99")
             st.session_state.prelaunch_bos_data = scan_prelaunch_bos(scan_list)
 
-            my_bar.progress(99, text="⭐ ELİT (TIER_1) — Erken Radar Senaryoları (son adım)...%99")
+            my_bar.progress(99, text="⭐ SENARYO BAZLI KARNE — Erken Radar (son adım)...%99")
             _er_batch_df = scan_erken_radar_batch(scan_list)
             log_erken_radar_signals(_er_batch_df, category=_cat)
             st.session_state.erken_radar_data = _er_batch_df
+            st.session_state.liderlik_yolculugu_data = scan_leadership_lifecycle(
+                st.session_state.get("radar2_data"),
+                _er_batch_df,
+                category=_cat,
+            )
             save_scan_result("erken_radar_data", _er_batch_df, _cat)
 
             # 🏆 GOLD MINE META-BACKTEST LOG (19 Haz 2026 — Build 1) — tüm taramalar dolu,
@@ -12245,19 +13345,26 @@ with col_btn:
                                         (_er_batch_df['Stars'].apply(lambda v: isinstance(v, int) and v == 5))]
                     _all_primary = _er_batch_df[_er_batch_df['Role'] == 'primary']
                     _aging_pairs2 = [(str(_r['Sembol']), str(_r['ScenarioId'])) for _, _r in _er5.iterrows()]
-                    _aging_map2 = get_scenario_ages_batch(_aging_pairs2, max_lookback=30)
+                    _aging_map2 = get_scenario_ages_batch(
+                        _aging_pairs2, max_lookback=180, include_details=True
+                    )
                     _preview_items = []
                     for _, _r in _er5.iterrows():
                         _tk = str(_r.get('Sembol', '')).replace('.IS', '')
                         if not _tk:
                             continue
+                        _life = _aging_map2.get(
+                            (_r.get('Sembol', ''), _r.get('ScenarioId', '')), {}
+                        )
                         _preview_items.append({
                             'ticker':        _tk,
                             'scenario_id':   str(_r.get('ScenarioId', '')),
                             'scenario_name': str(_r.get('ScenarioName', '')),
                             'category':      str(_r.get('Category', '')),
                             'stars':         5,
-                            'aging_days':    _aging_map2.get((_r.get('Sembol', ''), _r.get('ScenarioId', '')), 1),
+                            'aging_days':    int(_life.get('event_day') or 1),
+                            'event_day':     int(_life.get('event_day') or 1),
+                            'first_seen':    _life.get('first_seen'),
                         })
                     # Aging'e göre sırala (uzun süredir aktif olanlar daha "sıkışmış" — öncelikli)
                     _preview_items.sort(key=lambda x: x['aging_days'], reverse=True)
@@ -12296,10 +13403,12 @@ with col_btn:
                 "accum_data":               st.session_state.accum_data,
                 "scan_data":                st.session_state.scan_data,
                 "radar2_data":              st.session_state.radar2_data,
+                "liderlik_yolculugu_data":  st.session_state.liderlik_yolculugu_data,
                 "harmonic_confluence_data": st.session_state.harmonic_confluence_data,
                 "minervini_data":           st.session_state.minervini_data,
                 "rs_leaders_data":          st.session_state.get('rs_leaders_data'),
                 "guclu_donus_data":         st.session_state.guclu_donus_data,
+                "wilder_divergence_data":   st.session_state.wilder_divergence_data,
                 "prelaunch_bos_data":       st.session_state.prelaunch_bos_data,
                 "top_20_summary":           st.session_state.top_20_summary,
                 "confluence_hits":          st.session_state.confluence_hits,
@@ -12640,9 +13749,9 @@ if st.session_state.generate_prompt:
     # C. SMART MONEY (Sessiz Toplama / Hacim Patlaması)
     if acc_res:
         if acc_res.get('Pocket_Pivot', False):
-            scan_box_txt.append("⚡ AKILLI PARA: Pocket Pivot (Hacimli Kurumsal Alım. Küçük yatırımcı uyurken tahtaya para girişi yapılmış gibi görünüyor.)")
+            scan_box_txt.append("⚡ AKILLI PARA: Pocket Pivot (Hacimli alım izi — kurumsal para girişine benziyor. Küçük yatırımcı uyurken tahtaya para girişi yapılmış gibi görünüyor.)")
         else:
-            scan_box_txt.append("🤫 AKILLI PARA: Sessiz Toplama (Fiyat yatay veya baskılı görünse de arka planda sinsi bir fon alımı var. Kırılım hazırlığı..)")
+            scan_box_txt.append("🤫 AKILLI PARA: Sessiz Toplama (Fiyat yatay veya baskılı görünse de arka planda sessiz bir fon alımına benzer iz var. Kırılım hazırlığı olabilir..)")
 
     # D. STP MOMENTUM (Kısa Vadeli İvme ve Duygu Durumu)
     if stp_res:
@@ -12673,6 +13782,27 @@ if st.session_state.generate_prompt:
                         f"Batch tarama sonucu: bu hisse en seçkin listede.)"
                     )
     except:
+        pass
+
+    # D2b. FORMASYON YAŞAM DÖNGÜSÜ (21 Tem 2026) — aşama + yaş AI'a; tamamlanmış/geçersizi UYAR
+    try:
+        _fdf_ai = scan_chart_patterns([t])
+        if _fdf_ai is not None and not _fdf_ai.empty:
+            _fcd   = _fdf_ai.iloc[0].get('ChartData') or {}
+            _fst   = _fcd.get('stage') if isinstance(_fcd, dict) else None
+            _fdays = _fcd.get('stage_days', 0) if isinstance(_fcd, dict) else 0
+            _fname = str(_fdf_ai.iloc[0].get('Formasyon', '')).split('—')[0].strip()
+            _sb    = formasyon_core.stage_badge(_fst)
+            if _sb:
+                _agetxt = f", {int(_fdays)} günlük" if _fdays else ""
+                if _fst in ('completed', 'failed'):
+                    scan_box_txt.append(
+                        f"⏹ FORMASYON AŞAMASI: {_fname} — {_sb[1]}{_agetxt}. Bu formasyon artık "
+                        f"FIRSAT DEĞİL (bitmiş/bozuk hareket) — kurulum/gerekçe olarak SUNMA, en fazla "
+                        f"'geçmişteki yükselişi açıklar' de.")
+                else:
+                    scan_box_txt.append(f"⏳ FORMASYON AŞAMASI: {_fname} — {_sb[1]}{_agetxt} (yaşam döngüsü).")
+    except Exception:
         pass
 
     # D3. DARVAS BOX (Swing-point bazlı kutu + kalite skoru)
@@ -13042,7 +14172,7 @@ if st.session_state.generate_prompt:
     try:
         _r1_live = process_single_radar1(t, df_hist)  # panel ~9102 ile aynı imza (bench'siz → /7)
         if _r1_live and _r1_live.get('Skor') is not None:
-            r1_txt = f"Skor: {_r1_live['Skor']}/7"
+            r1_txt = f"ÖN FİLTRE — fırsat sinyali değil | Skor: {_r1_live['Skor']}/7"
             if _r1_live.get('Nedenler'):
                 r1_txt += f" | Aktif: {_r1_live['Nedenler']}"
     except Exception:
@@ -13055,6 +14185,39 @@ if st.session_state.generate_prompt:
             if not _r2_setup_live or _r2_setup_live == '-':
                 _r2_setup_live = 'Trend Takibi'
             r2_txt = f"Skor: {r2_res['Skor']}/7 | Setup: {_r2_setup_live}"
+            _r2_age_live = int(r2_res.get("Liderlik_Yasi", 0) or 0)
+            _r2_late_live = str(r2_res.get("Gec_Kalma", "") or "")
+            _r2_c6_live = False
+            try:
+                _r2_bench_df = (
+                    pd.DataFrame({"Close": idx_data})
+                    if isinstance(idx_data, pd.Series) else idx_data
+                )
+                _r2_er_live = evaluate_erken_radar(t, df_hist, _r2_bench_df)
+                _r2_matches = []
+                if isinstance(_r2_er_live, dict):
+                    _r2_matches = (
+                        [_r2_er_live.get("primary")]
+                        + list(_r2_er_live.get("confirmations") or [])
+                    )
+                _r2_c6_live = any(
+                    isinstance(_item, dict) and _item.get("id") == "C6"
+                    for _item in _r2_matches
+                )
+            except Exception:
+                pass
+            if _r2_c6_live and (_r2_age_live > 10 or _r2_late_live == "GEÇ SİNYAL"):
+                _r2_stage_live = "GEÇ SİNYAL"
+            elif _r2_c6_live and _r2_age_live <= 3:
+                _r2_stage_live = "YENİ LİDER"
+            elif _r2_c6_live:
+                _r2_stage_live = "LİDERLİK TEYİTLİ"
+            else:
+                _r2_stage_live = "ADAY — C6 teyidi yok"
+            r2_txt += (
+                f" | Liderlik yolculuğu: {_r2_stage_live} "
+                f"({_r2_age_live}. seans)"
+            )
     except Exception:
         pass
 
@@ -13479,6 +14642,12 @@ if st.session_state.generate_prompt:
     try:
         if dna and "smart_volume" in dna:
             _ps_lines = []
+            # HACİM 4-PARÇA HÜKMÜ — panelin en üstündeki birleşik hüküm (ilk satır:
+            # AI dağınık metrikleri değil, önce tek dürüst hükmü görsün). Panel ile
+            # BİREBİR aynı kaynak (ict_core.hacim_dort_soru → sv['dort_soru']).
+            _ps_ds = sv.get('dort_soru')
+            if isinstance(_ps_ds, dict) and _ps_ds.get('satir'):
+                _ps_lines.append(f"    hacim_hukmu: {_ps_ds['satir']} -> {_ps_ds['hukum']}")
             _ps_desc = str(sv.get('desc') or '').strip()
             if _ps_desc:
                 _ps_lines.append(f"    akis_ozeti: {_ps_desc}")
@@ -13505,7 +14674,7 @@ if st.session_state.generate_prompt:
                 if (not _vol_missing_flag) and _ps_rv >= 0.05:
                     if _ps_rv >= 2.0:
                         _ps_rp = (_ps_rv - 1.0) * 100
-                        _ps_lines.append(f"    hacim_durumu: Yüksek Hacim — Bugünün hacmi 20G ortalamanın %{_ps_rp:.0f} üzerinde — kurumsal aktivite var.")
+                        _ps_lines.append(f"    hacim_durumu: Yüksek Hacim — Bugünün hacmi 20G ortalamanın %{_ps_rp:.0f} üzerinde — olağandışı piyasa katılımı.")
                     elif _ps_rv >= 0.8:
                         _ps_rp = (_ps_rv - 1.0) * 100
                         _ps_dir = "üzerinde" if _ps_rp >= 0 else "altında"
@@ -13630,21 +14799,28 @@ if st.session_state.generate_prompt:
                     _age_pairs = [(t, _prim['id'])]
                     for _cc in _confirms[:3]:
                         if _cc.get('id'): _age_pairs.append((t, _cc['id']))
-                    _age_map = get_scenario_ages_batch(_age_pairs, max_lookback=30)
-                    _prim_age = _age_map.get((t, _prim['id']), 0)
+                    _age_map = get_scenario_ages_batch(
+                        _age_pairs, max_lookback=180, include_details=True
+                    )
+                    _prim_life = _age_map.get((t, _prim['id']), {})
+                    _prim_age = int(_prim_life.get('event_day') or 0)
                     _age_lines = []
                     if _prim_age >= 1:
-                        _age_lines.append(f"⏳ Ana senaryo yaşı: {_prim_age} gündür aktif "
-                                          + ("(taze sinyal)" if _prim_age <= 2 else
-                                             "(orta yaş)" if _prim_age <= 7 else
-                                             "(eski — geçerlilik sorgulanır)"))
+                        _age_lines.append(
+                            f"⏳ Ana senaryo: olayın {_prim_age}. tarama seansı · "
+                            f"ilk oluşum {_prim_life.get('first_seen') or 'bilinmiyor'}"
+                        )
                     else:
-                        _age_lines.append("⏳ Ana senaryo yaşı: bugün tetiklendi (taze)")
+                        _age_lines.append("⏳ Ana senaryo: yeni bağımsız olay")
                     for _cc in _confirms[:3]:
                         if _cc.get('id'):
-                            _ca = _age_map.get((t, _cc['id']), 0)
+                            _cl = _age_map.get((t, _cc['id']), {})
+                            _ca = int(_cl.get('event_day') or 0)
                             if _ca >= 1:
-                                _age_lines.append(f"   • [{_cc['id']}] {_cc.get('name','')[:40]}: {_ca}g")
+                                _age_lines.append(
+                                    f"   • [{_cc['id']}] {_cc.get('name','')[:40]}: "
+                                    f"olay seansı {_ca}, ilk {_cl.get('first_seen') or '?'}"
+                                )
                     if _age_lines:
                         _sms_str = _sms_str + "\n\n" + "\n".join(_age_lines)
             except Exception:
@@ -14455,14 +15631,14 @@ if st.session_state.generate_prompt:
     except Exception:
         pass
 
-    # Bouquet özel emit — varsa anlamlı bir cümle yaz, anchor gibi
+    # Bouquet özel emit — yön bilgisi verir; ölçümü tamamlanana kadar anchor değildir.
     _em_rsi_mfi_bouquet = ""
     if _mfi_bouquet_active:
         _em_rsi_mfi_bouquet = _line(
             "rsi_mfi_bouquet",
-            "🎯 RSI ve MFI aynı yönde aşırı/dönüş veriyor — fiyat ve hacim momentumu ÇİFT TEYİTLİ "
-            "(Wyckoff effort-vs-result climax). Tek başına RSI veya tek başına MFI'dan çok daha güçlü "
-            "sinyal — ana hikayeye dahil et."
+            "RSI ve MFI aynı yönde aşırı/dönüş görünümü veriyor — fiyat ve hacim momentumu uyumlu. "
+            "Bu birleşimin ayrı katkısı henüz ölçülmedi ve skora ek puan vermiyor; tek başına ana hikaye "
+            "veya ELİT teyit sayma, yalnızca yönü bilinen RSI/MFI durumlarına destek olarak kullan."
         )
 
     # ── GENEL ÖZET 6-oy verdicti (13 Tem 2026) — panel ile TEK KAYNAK ──
@@ -14481,7 +15657,7 @@ if st.session_state.generate_prompt:
                     _gsv_karne = (f" · geçmiş karnesi: 10g ort {_gsv_st['ret10']:+.1f}%, "
                                   f"isabet %{_gsv_st['hit10']:.0f} (600 hisse backtest)")
                 _em_gs_verdict = (f"  genel_ozet_verdict: {_gsv_lbl} "
-                                  f"(6 sinyal oylaması, RSI+CMF çift ağırlıklı — hacim/OBV/yapı/RSI/CMF/MFI: "
+                                  f"(kısmen ilişkili 6 gösterge oylaması, RSI+CMF çift ağırlıklı — hacim/OBV/yapı/RSI/CMF/MFI: "
                                   f"{_gsv['_gs_up']}↑/{_gsv['_gs_dn']}↓{_gsv_karne})")
     except Exception:
         _em_gs_verdict = ""
@@ -14510,16 +15686,17 @@ if st.session_state.generate_prompt:
                         _em_rel_obv = _line(
                             "rel_obv_state",
                             f"🎯 ENDEKSTEN AYRIŞMA (outperform_strong): hisse OBV trendi +{_ss}%/g, "
-                            f"endeks OBV trendi {_bs}%/g, fark +{_df_v}%/g — endeks akışı negatifken "
-                            f"hisseye özellikle hacim akıyor. Akıllı para spesifik olarak bu hisseyi "
-                            f"seçti, ana hikayeye dahil et."
+                            f"endeks OBV trendi {_bs}%/g, fark +{_df_v}%/g — hissenin hacim akışı "
+                            f"endeksten güçlü ayrışıyor. Kurum kimliği kanıtlamaz; DESTEKLEYİCİ göreli "
+                            f"hacim göstergesi olarak kullan, tek başına ana hikaye yapma."
                         )
                     elif _rs == 'underperform_strong':
                         _em_rel_obv = _line(
                             "rel_obv_state",
                             f"⚠ ENDEKSTEN NEGATİF AYRIŞMA (underperform_strong): hisse OBV trendi {_ss}%/g, "
-                            f"endeks OBV trendi +{_bs}%/g, fark {_df_v}%/g — endeks akışı pozitifken "
-                            f"hisseden çıkış var. Yapısal zayıflık izi, olumlu teze karşı dikkat."
+                            f"endeks OBV trendi +{_bs}%/g, fark {_df_v}%/g — hissenin hacim akışı "
+                            f"endeksten zayıf ayrışıyor. Kurum çıkışı kanıtlamaz; olumlu teze karşı "
+                            f"DESTEKLEYİCİ zayıflık uyarısı olarak kullan."
                         )
                     elif _rs == 'outperform_mild':
                         _em_rel_obv = _line(
@@ -14538,8 +15715,8 @@ if st.session_state.generate_prompt:
 
     # Up/Down Volume Ratio (Wyckoff Effort-vs-Result) — 20g pencere
     # 10 Haz 2026 Oturum 20: hacim akışı yön analizi.
-    # Climax durumları öncelik (yapısal smart money tepe/dip teyit), strong durumlar
-    # tactical sinyal. Balanced state'te emit edilmez (gürültü).
+    # Climax durumları yönlü hacim bağlamı, strong durumlar kısa-pencere desteğidir.
+    # Ayrı katkıları kanıtlanana kadar ELİT/kurum kimliği sayılmaz. Balanced emit edilmez.
     _em_udvr = ""
     try:
         _vol_no_udvr_e = (
@@ -14558,16 +15735,16 @@ if st.session_state.generate_prompt:
                         "udvr_wyckoff",
                         f"⚠ Wyckoff CLIMAX_TOP: fiyat yeni high'larda (52H zirvesinin %98+ üstünde) AMA "
                         f"UDVR (Up/Down Volume Ratio) {_ur:.2f} (alıcı zayıf, satıcı hacmi yüksek) — "
-                        f"klasik Smart Money çekilme sinyali. Olumlu teze karşı KRİTİK uyarı, "
-                        f"distribütion ihtimali yüksek."
+                        f"tepe bölgesinde hacim uyumsuzluğu. Kurumsal çıkış kanıtı değildir; "
+                        f"olumlu teze karşı DESTEKLEYİCİ risk uyarısı olarak çapraz teyit ara."
                     )
                 elif _uc == 'climax_bottom':
                     _em_udvr = _line(
                         "udvr_wyckoff",
                         f"⚡ Wyckoff CLIMAX_BOTTOM: fiyat yeni low'larda (52H dibinin %98'inde) AMA "
                         f"UDVR (Up/Down Volume Ratio) {_ur:.2f} (alıcı güçlü, düşüş hacmi düşük) — "
-                        f"klasik Smart Money giriş sinyali. Dipte birikim ihtimali yüksek, "
-                        f"olumlu hipotez için anchor."
+                        f"dip bölgesinde hacim uyumu. Kurumsal giriş kanıtı değildir; "
+                        f"olumlu hipoteze DESTEKLEYİCİ veri olarak ek teyit ara."
                     )
                 elif _us == 'strong_buyer':
                     _em_udvr = _line(
@@ -14616,16 +15793,16 @@ if st.session_state.generate_prompt:
                         "force_index_divergence",
                         f"⚡ Force Index BULLISH DIVERGENCE: fiyat son 30g'de yeni dip yaptı AMA "
                         f"Force Index daha yüksek dip yaptı (FI(2)σ={_fsn}, FI(13)σ={_fln}) — "
-                        f"Elder klasik tepki sinyali. Smart Money dipte birikim ihtimali yüksek, "
-                        f"olumlu hipotez için anchor."
+                        f"Elder klasik tepki ihtimali. Kurumsal birikim kanıtı değildir; "
+                        f"olumlu hipoteze DESTEKLEYİCİ gösterge olarak ek teyit ara."
                     )
                 elif _fdv == 'bearish':
                     _em_force_index = _line(
                         "force_index_divergence",
                         f"⚠ Force Index BEARISH DIVERGENCE: fiyat son 30g'de yeni tepe yaptı AMA "
                         f"Force Index daha düşük tepe yaptı (FI(2)σ={_fsn}, FI(13)σ={_fln}) — "
-                        f"Elder klasik tepki sinyali. Smart Money tepede çekilme ihtimali yüksek, "
-                        f"olumlu teze karşı KRİTİK uyarı."
+                        f"Elder klasik yorgunluk ihtimali. Kurumsal çıkış kanıtı değildir; "
+                        f"olumlu teze karşı DESTEKLEYİCİ risk uyarısı olarak ek teyit ara."
                     )
                 elif _fst == 'strong_pos':
                     _em_force_index = _line(
@@ -14676,7 +15853,7 @@ if st.session_state.generate_prompt:
                 _tact_top = _smt_res_e['tactical_signals_pos'][:3]
                 _em_smart_split = _line(
                     "smart_money_split",
-                    f"YAPISAL:{_struct}/100 (haftalar-aylar) · TACTICAL:{_tact}/100 (saatler-günler). "
+                    f"YAPISAL:{_struct}/100 (haftalar-aylar) · TACTICAL:{_tact}/100 (birkaç gün-birkaç hafta; günlük veri). "
                     f"Yapısal pozitif sinyaller: {', '.join(_struct_top) if _struct_top else 'yok'}. "
                     f"Tactical pozitif sinyaller: {', '.join(_tact_top) if _tact_top else 'yok'}. "
                     f"YORUM: {_verdict_smt}"
@@ -14706,10 +15883,19 @@ if st.session_state.generate_prompt:
         _tier1_list = [_ti for _ti in _tiers if _ti.get('tier') == 'TIER_1_ELIT']
         _other_list = [_ti for _ti in _tiers if _ti.get('tier') != 'TIER_1_ELIT']
         _has_tier1_flag = len(_tier1_list) > 0
+        # İş 2 (27 Tem 2026): YETERSİZ ÖRNEKLİ tier'ın notu ham hit/ret ile başlıyor
+        # (örn. minervini N=12 → "hit %83 ret %+42.8"). AI rakama kapılmasın diye
+        # reliable=False ise notu SUSTURUP yerine sert az-örnek uyarısı emit ediyoruz.
+        def _tier_note(_ti):
+            if _ti.get('reliable', True):
+                return _ti['note']
+            _n = _ti.get('n_sample')
+            return (f"[⚠ AZ ÖRNEK (N={_n}) — bu tier'ın hit/ret rakamı istatistik DEĞİL, "
+                    f"yön kanıtı olarak KULLANMA; yalnızca 'geçmişte az örnekte iyiydi' bağlamı]")
         if _ELIT_VURGU_KISIK:
             # TIER_1 sırada önde ama havuz ORTAK — toplam max 4, vurgu yok
             for _ti in (_tier1_list + _other_list)[:4]:
-                _satir = f"    - {_ti['tier']} · {_ti['display']} → {_ti['note']}"
+                _satir = f"    - {_ti['tier']} · {_ti['display']} → {_tier_note(_ti)}"
                 if _ti.get('tier') == 'TIER_1_ELIT':
                     _satir += (" [⚠ NOT: bu etiketin rakamları ESKİ ölçümden; temiz backtest"
                                " (15 Tem 2026) şu an desteklemiyor — analiz merkezine TAŞIMA,"
@@ -14719,19 +15905,20 @@ if st.session_state.generate_prompt:
             # TIER_1'leri ayır — HEPSİ emit edilir (sınır yok)
             for _ti in _tier1_list:
                 _scanner_tier_lines.append(
-                    f"    - 🏆 {_ti['tier']} · {_ti['display']} → {_ti['note']}"
+                    f"    - 🏆 {_ti['tier']} · {_ti['display']} → {_tier_note(_ti)}"
                 )
             # TIER_2/3 — max 4 (gürültü kontrolü)
             for _ti in _other_list[:4]:
                 _scanner_tier_lines.append(
-                    f"    - {_ti['tier']} · {_ti['display']} → {_ti['note']}"
+                    f"    - {_ti['tier']} · {_ti['display']} → {_tier_note(_ti)}"
                 )
     except Exception:
         pass
     _em_scanner_tiers = ("\n  scanner_tiers_aktif:\n" + "\n".join(_scanner_tier_lines)) if _scanner_tier_lines else ""
 
-    # KURULUM GÜCÜ TEYİDİ (19 Haz 2026, 6-ay verisiyle düzeltildi) — güç-filtreli 3 tarama
-    # bu hissede ateşlediyse 52H/RSI gücünü AI'ya bildir. 6 aylık (Oca-Haz, 3 boğa + 2 ayı,
+    # KURULUM GÜCÜ TEYİDİ — yalnız karne katkısı açık kalan taramaların RSI konumunu
+    # AI'ya bildir. Harmonik/VIP gözlem katmanında olduğu için burada yer almaz.
+    # 6 aylık (Oca-Haz, 3 boğa + 2 ayı,
     # 16.800 örnek) bulgu: güçlü kurulum getiri olarak ÖNDE (20g +%5 vs +%2.5) ve DÜŞÜŞ
     # ortamında zayıfı net ezer; ama YÜKSELİŞTE dip alımı da iş görür → mutlak değil, varsayılan.
     # AI taramanın ADINA/yıldızına değil gücüne göre tartsın; zayıfı silmeyiz, teyit aratırız.
@@ -14742,8 +15929,7 @@ if st.session_state.generate_prompt:
             _ss_lines = []
             for _scn, _guc, _deger in _ss:
                 if '🟢' in _guc:
-                    _gn = ("konum güçlü (zirveye yakın). NOT (19 Haz audit): bazı kurulumlarda "
-                           "(örn. Harmonik) bu çok olumlu, AMA aşırı uzamış güçlü hisse kısa vadede "
+                    _gn = ("konum güçlü (zirveye yakın). Aşırı uzamış güçlü hisse kısa vadede "
                            "geri çekilebilir (mean-reversion). Tek başına kesin alım sayma — kurulumun "
                            "kendi kanıtıyla birlikte tart.")
                 elif '🔴' in _guc:
@@ -14758,19 +15944,52 @@ if st.session_state.generate_prompt:
     except Exception:
         pass
 
-    # KANIT SKORU + GÜVEN/ÇELİŞKİ (Build 2, 19 Haz 2026) — hissenin yakalandığı kanıtlı
-    # taramaların backtest-temelli özeti. Master 'görünüm', bu 'kanıt'. Çelişki varsa AI temkinli.
+    # GÜNCEL KARNE PUANI + GÜVEN/ÇELİŞKİ — hissenin yakalandığı pozitif karneli
+    # taramaların özeti. Master "görünüm", bu alan geçmiş ölçümdür.
     _em_kanit = ""
     try:
         _kz_ai = _compute_kanit_ozeti(t)
+        _ter_ai = _kz_ai.get('terazi') or {}
         if _kz_ai['skor'] is not None:
             _cl = ("ÇELİŞKİ VAR (boğa+ayı sinyalleri birlikte) — tek yön iddia etme, dengeli ver"
                    if _kz_ai['celiski'] else "sinyaller hemfikir")
+            # 17 Tem 2026 reform 1a: terazi yönü eklendi; güven artık KAZANAN tarafın payı
+            _yon_ai = {'yukari': 'YUKARI', 'asagi': 'AŞAĞI'}.get(_ter_ai.get('yon'), 'DENGEDE')
+            _gv_ai = f" (hükme güven %{_kz_ai['guven']})" if _kz_ai['guven'] is not None else ""
             _em_kanit = (f"\n  kanit_skoru: {_kz_ai['skor']}/100 (en güçlü: {_kz_ai['best']}, "
-                         f"{_kz_ai['n_scanner']} kanıtlı tarama) · güven %{_kz_ai['guven']} · {_cl}. "
-                         f"NOT: bu KANIT (geçmiş backtest), master_score AYRI bir GÖRÜNÜM ölçüsü.")
+                         f"{_kz_ai['n_scanner']} bağımsız pozitif tarama ailesi) · sinyal terazisi: {_yon_ai}{_gv_ai} · {_cl}. "
+                         f"NOT: bu güncel geçmiş karne; master_score ayrı bir görünüm ölçüsüdür.")
         elif _kz_ai['label'] == 'kanıt bekliyor':
-            _em_kanit = "\n  kanit_skoru: kanıt bekliyor (Platin/Altın gibi henüz backtest verisi olmayan sınıf)"
+            _em_kanit = "\n  kanit_skoru: ölçüm bekliyor (Platin/Altın gibi henüz yeterli backtest verisi olmayan sınıf)"
+        # AI EK 3 (17 Tem 2026, onaylı): terazinin en güçlü KARŞI sinyali — ekrandaki
+        # zorunlu karşı-sinyal satırının AI karşılığı. Skordan bağımsız emit edilir.
+        _karsi_ai = _ter_ai.get('karsi')
+        if _karsi_ai:
+            _em_kanit += (f"\n  en_guclu_karsi_sinyal: {str(_karsi_ai.get('neden', '')).replace('◆', '—')} "
+                          f"— hükme TERS yönde; görmezden gelme, en az bir cümleyle mutlaka işle")
+    except Exception:
+        pass
+
+    # AI EK 2 (17 Tem 2026, onaylı) — ŞOK GÜNÜ: ekranla aynı dil (sert_gun_backtest kanıtı).
+    # Koşullu emit — normal günde satır HİÇ görünmez ("veri yok" kirliliği olmasın).
+    _em_sok = ""
+    try:
+        _chr_ai = terazi_core.gun_karakteri(get_safe_historical_data(t, period="1y"))
+        _is_idx_ai = str(t).upper().startswith(('XU', 'XB', 'XT', 'XY', '^')) or str(t).upper().endswith('=F')
+        if _chr_ai:
+            _r_ai, _vm_ai = _chr_ai['ret1'], _chr_ai['vol_mult']
+            _th_ai = 2.0 if _is_idx_ai else 3.0
+            if _r_ai <= -_th_ai:
+                if (not _is_idx_ai) and _vm_ai >= 1.5:
+                    _em_sok = (f"\n  sok_gunu: HACİMLİ SERT DÜŞÜŞ ({_r_ai:+.1f}%, {_vm_ai:.1f}x hacim) — "
+                               f"ölçülmüş devam riski (benzer günler 10g ort -%1.8, isabet %40); "
+                               f"iyimser senaryo kuruyorsan bunu açıkça tartıp gerekçelendir")
+                else:
+                    _em_sok = (f"\n  sok_gunu: sert düşüş ({_r_ai:+.1f}%) ama hacim normal ({_vm_ai:.1f}x) — "
+                               f"ölçüm yön öngörmüyor; bu düşüşü tek başına trend kanıtı sayma")
+            elif _r_ai >= _th_ai:
+                _em_sok = (f"\n  sok_gunu: sert yükseliş ({_r_ai:+.1f}%) — yavaş göstergeler bugünü "
+                           f"henüz sindirmemiş olabilir; skorları temkinle oku")
     except Exception:
         pass
 
@@ -14792,6 +16011,25 @@ if st.session_state.generate_prompt:
     except Exception:
         pass
 
+    # KAPI — güvenlik kapısı (likidite + risk-ödül tek hüküm, 21 Tem 2026). Panelle
+    # AYNI kaynak (terazi_core.kapi_hukmu). Yalnız riskliyse emit (GEÇTİ sessiz).
+    _em_kapi = ""
+    try:
+        _kdf = get_safe_historical_data(t, period="1y")  # cache hit (yukarıda çekildi)
+        if _kdf is not None and len(_kdf) >= 20 and dna and 'smart_volume' in dna:
+            _klm = _liquidity_manip(_kdf)
+            _svk = dna['smart_volume']
+            _pk  = float(_kdf['Close'].iloc[-1])
+            _rok = terazi_core.risk_odul_kapisi(_pk, _svk.get('vah'), _svk.get('val'), _svk.get('va_pos'))
+            _kap = terazi_core.kapi_hukmu(_klm.get('tier'), _klm.get('manip'), _rok, adv_mn=_klm.get('adv_mn'))
+            if _kap:
+                _em_kapi = (f"\n  kapi_durumu: KAPI {_kap['etiket']} — {_kap['sebep']}. "
+                            f"Bu KALİTE KAPISI: yön doğru olsa bile giriş zemini "
+                            f"{'elverişsiz' if _kap['durum'] == 'zayif' else 'temkinli'} — "
+                            f"analizde AÇIKÇA belirt, peşinen 'girilir' sayma")
+    except Exception:
+        pass
+
     # RİSK PROFİLİ (Faz 2, 19 Haz 2026) — "risk nerede" fırsattan ÖNCE
     _em_risk = ""
     try:
@@ -14801,6 +16039,27 @@ if st.session_state.generate_prompt:
             _em_risk = (f"\n  risk_profili: GENEL RİSK {_rp['level'].upper()}"
                         + (" — DİKKAT: " + " · ".join(_highs) if _highs else " (belirgin risk yok)")
                         + ". Risk yüksekse fırsattan ÖNCE riski belirt, dengeli ver.")
+    except Exception:
+        pass
+
+    # ── İş #8 (28 Tem 2026): KURUMSAL İŞLEM UYARISI — sahte satış alarmı bastırma ──
+    # Son günlerde temettü/bölünme olduysa fiyat MEKANİK düştü (nakit kesintisi), gerçek
+    # satış baskısı DEĞİL. Ham fiyatla çalıştığımız için (AUTO_ADJUST=False) AI bu boşluğu
+    # "kırılım/zayıflık/satış" sanabilir → oran-yöntemi takviminden (cache-only, fetch YOK)
+    # uyarı emit et. Cache boşsa/olay yoksa sessiz (satır çıkmaz).
+    _em_kurumsal = ""
+    try:
+        from kurumsal_takvim import corporate_action_in_window as _ca_win
+        _ca_today = datetime.now(_TZ_ISTANBUL).date()
+        _ca_hit = _ca_win(t, (_ca_today - timedelta(days=4)).isoformat(),
+                          _ca_today.isoformat(), cache_only=True)
+        if _ca_hit:
+            _ca_tip = "TEMETTÜ" if _ca_hit.get("type") == "temettu" else "BÖLÜNME/BEDELSİZ"
+            _ca_pct = round((float(_ca_hit["factor"]) - 1.0) * 100, 1)
+            _em_kurumsal = (f"\n  kurumsal_islem_uyari: SON GÜNLERDE {_ca_tip} ({_ca_hit['date']}, ~%{_ca_pct}). "
+                            f"Son günlerdeki fiyat düşüşünün ~%{_ca_pct}'i MEKANİK ({_ca_tip.lower()} kesintisi) — "
+                            f"SATIŞ BASKISI DEĞİL. Bu düşüşü 'kırılım/zayıflık/satış/dağıtım' olarak YORUMLAMA; "
+                            f"kurumsal işlem ayarı olarak geç, gerçek satış varsa ayrı kanıt ara.")
     except Exception:
         pass
 
@@ -14909,7 +16168,7 @@ if st.session_state.generate_prompt:
             _pl_rsi  = float(100 - (100 / (1 + _pl_g / _pl_l)).iloc[-1])
             _platin_live = (_pl_cp > _pl_s200 and _pl_cp > _pl_s50 and _pl_rsi < 70)
         if _platin_live:
-            platin_txt = "✅ AKTİF (6/6) — NADİR: Altın Set-up (3/3) + SMA200 üstü + SMA50 üstü + RSI<70 (en güçlü kurulum sınıfı, master_score'dan önce vurgula)"
+            platin_txt = "🏷️ ROZET AKTİF (6/6): Altın uygunluğu + SMA200 üstü + SMA50 üstü + RSI<70. Bağımsız oy/puan veya alım teyidi sayma; yalnız uygunluk etiketi olarak belirt."
         else:
             platin_txt = "HAYIR — 6/6 kriter aynı anda sağlanmadı"
     except Exception:
@@ -15270,6 +16529,10 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
                     else:                           _vsa_p = f"Normal ({_rvol_p:.1f}x hacim, belirgin VSA yok)"
                 else:
                     _vsa_p = "Veri yetersiz"
+                # İş 4 (28 Tem 2026): son bar hacmi gün-içi TAHMİN ise VSA "onayı"
+                # projeksiyona dayanır — AI kesin teyit sanmasın, açık niteleyici ekle.
+                if is_last_bar_projected(_pdf)[0]:
+                    _vsa_p += " [⏳ hacim gün-içi TAHMİN — seans kapanınca kesinleşir, kesin teyit sayma]"
             except Exception:
                 _vsa_p = "Veri yetersiz"
             _panel_rows.append(f"- VSA (Hacim × Mum): {_vsa_p}")
@@ -15295,10 +16558,16 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
             except Exception:
                 _div_p = "Yok"
             _panel_rows.append(f"- RSI DIVERGENCE: {_div_p}")
-            _rsi_lvl = ('aşırı satım' if _rsi_n < 30
-                        else ('zayıf' if _rsi_n <= 45
-                              else ('nötr' if _rsi_n <= 55
-                                    else ('güçlü' if _rsi_n <= 70 else 'aşırı alım'))))
+            # AI EK 1 (17 Tem 2026): etiketler rsi_kova_backtest ölçümüne hizalandı —
+            # <25 ölçülmüş toparlanma bölgesi · 70-80 nötr (ayrışmıyor) · >80 momentum ucu
+            # ("aşırı alım → düzeltme" okuması BIST ölçümüne aykırı).
+            _rsi_lvl = ('uç aşırı satım — ölçülmüş toparlanma bölgesi' if _rsi_n < 25
+                        else ('aşırı satım' if _rsi_n < 30
+                              else ('zayıf' if _rsi_n <= 45
+                                    else ('nötr' if _rsi_n <= 55
+                                          else ('güçlü' if _rsi_n <= 70
+                                                else ('yüksek — 70-80 nötr bölge, sinyal üretme' if _rsi_n <= 80
+                                                      else 'momentum ucu — satış sinyali DEĞİL'))))))
             _panel_rows.append(f"- RSI SEVİYESİ: {_rsi_n:.0f} ({_rsi_lvl})")
 
             # ─── 6) MUM (Kapanış Konumu CP — 10 senaryo) ───
@@ -15381,25 +16650,17 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
         )
 
     # 12 Haz 2026 (Prompt v3) — Confluence sayacı
-    # Aynı yönde aktif ELIT/TIER-1 sinyalleri tek satırda say — AI G1 anchor
+    # Aynı yönde aktif ELIT/TIER-1 alanları tek satırda say — AI G1 anchor
     # seçimini netleştirir, 3 ayrı paragrafa bakıp kendisi çıkarmasın.
     _conf_active = []
     try:
         # (12 Haz Oturum 21) kurumsal_anchor (TEFAS+KAP) kaldırıldı — confluence'tan çıktı
-        if _mfi_bouquet_active:
-            _conf_active.append('rsi_mfi_bouquet')
-        # UDVR climax
-        if _em_udvr and ('climax_bottom' in _em_udvr or 'climax_top' in _em_udvr):
-            _conf_active.append('udvr_climax')
-        # rel_obv güçlü ayrışma
-        if _em_rel_obv and ('outperform_strong' in _em_rel_obv or 'underperform_strong' in _em_rel_obv):
-            _conf_active.append('rel_obv_strong')
+        # RSI/MFI bouquet, UDVR climax, Relative OBV ve Force Index divergence:
+        # ayrı katkıları ölçülmediği için ELIT confluence sayacına GİRMEZ; YAML'da
+        # destekleyici/uyarı olarak kalırlar.
         # Breakout state ≥ 2
         if _em_breakout_alert:
             _conf_active.append('breakout_state')
-        # Force Index divergence
-        if _em_force_index and ('bullish_divergence' in _em_force_index or 'bearish_divergence' in _em_force_index):
-            _conf_active.append('force_index_divergence')
         # POC mıknatıs (poc_magnet emit varsa)
         try:
             if any('poc_magnet' in _ln for _ln in _poc_avwap_lines):
@@ -15414,7 +16675,7 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
         pass
     _em_confluence = ""
     if len(_conf_active) >= 2:
-        _em_confluence = f"\nconfluence_count: {len(_conf_active)} aktif (G1 merkezi: {' + '.join(_conf_active)}) — 2+ bağımsız teyit · ana hikaye burada\n"
+        _em_confluence = f"\nconfluence_count: {len(_conf_active)} aktif (G1 merkezi: {' + '.join(_conf_active)}) — 2+ ayrı anchor alanı · ana hikaye burada\n"
 
     # ─── RISK PROFİLİ (18 Haz 2026) — Beta + Drawdown + HV (global banka 3'lüsü) ───
     # YAML'a önem sırasıyla emit edilir: Drawdown YÜKSEK · Beta ORTA · HV DÜŞÜK önem.
@@ -15602,9 +16863,8 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
             else:
                 _yorum = f"para akışında orta dilimde (üst %{_ust:.0f})"
             _ai_flow_note = (
-                f"\n📊 PARA AKIŞI SIRALAMASI (kanıt-temelli tek dayanıklı faktör): {_yorum}. "
-                f"Bunu DESTEKLEYİCİ bir kanıt olarak kullan (ana hikaye değil); CMF tüm-evren + rejim "
-                f"testinde tutan tek sinyaldi.\n"
+                f"\n📊 PARA AKIŞI SIRALAMASI (gözlem, canlı karne zayıf): {_yorum}. "
+                f"Bunu yön kanıtı veya ana hikâye olarak kullanma; yalnız hacim bağlamı olarak an.\n"
             )
     except Exception:
         _ai_flow_note = ""
@@ -15616,12 +16876,12 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
 Yazmaya başlamadan, YAML'ı şu 5 mercekle tara — sırasıyla cevapla:
 1) **YAPI** (yaml.ict_pa.structure + mss_yapi_kirilimi + GENEL ÖZET PANEL.YAPI): Trend bias ne? HH+HL mi LH+LL mi, BOS/CHoCH var mı? — Bu yönü söyler.
 2) **KONUM** (yaml.scenario.zone + yaml.smart_money.va_pos + yaml.asset.yillik_konum_52h): Fiyat ucuz mu pahalı mı? Discount/Premium, VA içinde/altında/üstünde, 52H konumu — Bu RR'ı söyler.
-3) **AKILLI PARA** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + mfi_dual_window + udvr_state/udvr_wyckoff + rel_obv_state + smart_money.cum_delta_5g + vp_sekil + smart_money_split): Topluyor mu, dağıtıyor mu, bekliyor mu? — Bu hikayenin merkezi. UDVR'nin climax durumlarına ayrıca dikkat: tepe/dip'te smart money'in girdiği/çıktığını gösterir.
+3) **HACİM VE KATILIM** (yaml.obv_cmf.durum + cmf_dual_window + omi_sigma + mfi_dual_window + udvr_state/udvr_wyckoff + rel_obv_state + smart_money.cum_delta_5g + vp_sekil + smart_money_split): Alıcı/satıcı katılımı nasıl, fiyatı destekliyor mu? — Kurum kimliği görülmez; bu alanlar olasılık ve bağlam üretir, tek başına "akıllı para girdi/çıktı" kanıtı değildir.
 
 **ALAN TIER ETİKETLERİ (KRİTİK — G1 merkez seçimi):** YAML alanları üç katmandadır.
-🏛 ELIT_ANCHOR (varsa G1 açılışını MUTLAKA bu alan merkez yap): `confluence_count` (varsa hep) · `rsi_mfi_bouquet` · `udvr.climax_bottom/top` · `rel_obv_state: outperform_strong/underperform_strong` · `breakout_alert` (BREAKAWAY GAP > BREAKOUT) · `force_index_divergence: bullish/bearish` · `naked_poc_yakin` (≤%2) · `poc_mtf_confluence` · `poc_magnet` (TIER_1 + Akümülasyon|Up|below) · `master_score_rejim` (🏛 prefixli, |delta|≥20 puan) · `vp_sekil_rejim_degisimi` (🏛 prefixli, rejim değişti).
+🏛 ELIT_ANCHOR (varsa G1 açılışını MUTLAKA bu alan merkez yap): `confluence_count` (varsa hep) · `breakout_alert` (BREAKAWAY GAP > BREAKOUT) · `naked_poc_yakin` (≤%2) · `poc_mtf_confluence` · `poc_magnet` (TIER_1 + Akümülasyon|Up|below) · `master_score_rejim` (🏛 prefixli, |delta|≥20 puan) · `vp_sekil_rejim_degisimi` (🏛 prefixli, rejim değişti).
 ⚠ UYARI (tezi sorgulayan negatif teyit — atlamak yanlış): `obv_cmf.durum` ŞÜPHELİ/SAHTE GÜÇ/ZAYIF TEYİT/YANILTICI ile başlıyorsa · `mum_kapanis_durumu: YANILTICI` · `[⚠ tek-mum ağırlıklı]` rozeti · `52H trajectory` "düşüyor" + RSI aşırı alım · CONS satırı dolu.
-💧 DESTEKLEYİCİ (varsayılan — diğer her şey): cmf_dual_window pos/neg, rsi/mfi tek-yönlü, omi_sigma, vp_sekil, fiyat_poc_konumu, vwap, rs_alpha, scanner_tiers_aktif TIER_2/3.
+💧 DESTEKLEYİCİ (varsayılan — diğer her şey): cmf_dual_window pos/neg, rsi/mfi tek-yönlü, `rsi_mfi_bouquet` (skorsuz, ölçüm bekliyor), `udvr.climax_bottom/top`, `rel_obv_state`, `force_index_divergence`, omi_sigma, vp_sekil, fiyat_poc_konumu, vwap, rs_alpha, scanner_tiers_aktif TIER_2/3. Bunları tek başına ELİT/ana hikaye yapma.
 G1 açılışı sırası: 🏛 ELIT_ANCHOR varsa → o · yoksa hâkim DESTEKLEYİCİ çoğunluk · UYARI hep G2'de yer almalı (atlanamaz).
 
 **ÇELİŞKİ KARAR TABLOSU (iki teyit ters yöne işaret ediyorsa):**
@@ -15633,23 +16893,25 @@ G1 açılışı sırası: 🏛 ELIT_ANCHOR varsa → o · yoksa hâkim DESTEKLEY
 - breakout_alert var AMA RVOL 5g ortalama düşük (≤0.9x) → kırılım hacimle desteklenmemiş; "düşük hacimli kırılım — geri test/fakeout ihtimali" diye yansıt.
 - Genel kural: 🏛 ELIT_ANCHOR vs ⚠ UYARI → UYARI'yı yok sayma, "X anchor güçlü AMA Y uyarısı var" şeklinde ikisini birden geç. Daha riskli ama daha dürüst sinyal.
 
+**RSI UÇ BÖLGE KURALI (17 Tem 2026 kova ölçümü — 604 hisse, 133K gün):** RSI>80'i tek başına "aşırı alım → düzeltme gelir" diye YORUMLAMA — BIST ölçümü tersini gösterdi (benzer günler 10 günde ort +%3.4 DEVAM etti; kazanç çarpık dağılımlı). Doğru dil: "momentum ucu". Satış/dönüş uyarısı ancak yanında ölçülmüş negatif teyit varsa kurulur (MFI dağıtım, force_index bearish divergence, ⚠ UYARI katmanı — yukarıdaki çelişki satırları geçerliliğini korur). 70-80 bandı NÖTR — bu banttan tek başına sinyal üretme. RSI<25 = ölçülmüş toparlanma bölgesi (benzer günlerin 10'da ~6'sı kazandırdı, 10g ort +%2) — ama düşen trendde tek başına AL cümlesi kurma, teyit iste; `sok_gunu` alanı varsa önce onu tart.
+
 **`[gelişim]` rozeti okuma:** YAML'da `[gelişim]` ile başlayan alanlar SADECE **bağlam rengi** — mevcut anchor'ı güçlendiren kısa mention için. Tek başına G1 merkez YAPMA, ana hikaye olarak yorumlama. Örnek: `[gelişim] fiyat_poc_yaklasma: 5g önce %+5 → bugün %+1 (POC'A YAKLAŞIYOR)` → ana hikaye POC mıknatısı (varsa anchor), bu satır sadece "5g'de hızla yaklaştı" şeklinde 1 yan-cümle olabilir. `[gelişim] master_score_egilim` (delta 15-19 puan) → master breakdown cümlesinde "skor son 3 haftada yükseliyor" gibi destek. **|delta| < 15 puan / |dist delta| < %3 / vp_sekil aynı** durumlarda emit ZATEN YOK — mikro drift'ten haber çıkarmaya çalışma.
 
 **🏛 prefixli rejim değişimleri (anchor seviyesi):** `master_score_rejim` |delta|≥20 puan veya `vp_sekil_rejim_degisimi` rejim değişti veya `breakout_alert` aktif olduğunda → G1 açılışında merkez yap. Bunların ötesi (trajectory benzeri sayısal hareket) anchor değil — `confluence_count` zaten net anchor sayısını söyler.
 
 **[⚠ tek-mum ağırlıklı] rozeti okuma (KRİTİK):** Bir dual-window state'in (cmf_dual_window / cum_delta_dual_window / rsi_dual_window / mfi_dual_window) ya da yaml.obv_cmf.durum'un başında `[⚠ tek-mum ağırlıklı]` rozeti varsa, o state'i "iki periyotta birikim teyitli" diye okuma. Bugünkü tek mum 5 günlük deltanın >%60'ını oluşturmuş — yani okuma tek günün şişirmesinden geliyor, gerçek path-tabanlı birikim/dağıtım değil. Bu durumda: (a) state'i DESTEKLEYİCİ değil "TEYİT BEKLENİYOR" olarak yansıt, (b) G2'de "tek mumla şişirilmiş okumayı 2-3 gün izlemek lazım, geri verirse sahte güç" tarzı somut uyarı yaz, (c) "iki pencerede birikim sürüyor", "kalıcı kurumsal", "akıllı para iki periyotta da" gibi yapısal cümleleri KULLANMA. AI yorumunda rozeti açıkça "tek mum ağırlıklı" ya da "bugünkü tek bar okumayı şişirmiş" olarak yansıt — yutma.
 
-**MFI vs RSI okuma:** RSI fiyat momentumu, MFI hacim-ağırlıklı momentum (Wyckoff effort-vs-result). Aynı yönde uyumlu (mfi_dual ve rsi_dual aynı state) = ÇİFT TEYİT, güçlü. Divergent (örn RSI overbought ama MFI nötr) → "fiyat yorgun ama hacim destek vermiyor / fiyat üzerine çıkmaya çalışıyor ama akıllı para girmiyor" = SAHTE RALLY uyarısı. `rsi_mfi_bouquet` varsa = climax noktası, G1 açılışında merkeze al.
+**MFI vs RSI okuma:** RSI fiyat momentumu, MFI hacim-ağırlıklı momentum (Wyckoff effort-vs-result). Aynı yönde uyum, ilişkili iki momentum ölçümünün aynı yöne baktığını gösterir; `rsi_mfi_bouquet` ayrı katkısı ölçülene kadar skorsuz bilgi ve DESTEKLEYİCİ bağlamdır, ELİT veya G1 merkezi değildir. Divergent durumda "fiyat momentumu ile hacim-ağırlıklı momentum uyuşmuyor, teyit bekleniyor" de; kurum girdi/çıkardı hükmü kurma.
 
 **VADE EŞLEŞTİRME (13 Tem 2026 — 600 hisse backtest bulgusu, KRİTİK):** Sinyalin tipi vadesini belirler, ikisini karıştırma. (a) DÖNÜŞ sinyalleri (RSI/MFI çift-pencere aşırı satım, erken aşırı satım darbesi, dip adayları) SADECE KISA VADEDE çalışır — geçmişte 5 günlük getirisi pozitif, 10. günde avantaj ERİYOR. Bunlara dayanan senaryoyu "birkaç günlük tepki/kısa vade dönüş" çerçevesinde yaz, 2-4 haftalık hedef bağlama. (b) DEVAM sinyalleri (CMF çift-pencere güçlü pozitif, RSI çift-pencere aşırı alım=güç devamı, kümülatif delta iki pencerede pozitif) 10-20 GÜNDE BÜYÜR — bunlar kısa vadelik değil, 2-4 haftalık ana senaryo malzemesidir. İkisi aynı anda varsa vade ayrımını açıkça yaz: "kısa vadede tepki, ana resim için teyit şart" gibi.
 
-**Force Index Dual (force_index_dual / force_index_divergence) okuma:** Alexander Elder'in Force Index — fiyat değişimi × hacim klasik formülü, dual-window (FI(2) anlık, FI(13) trend). `bullish_divergence` (fiyat LL + FI HL) = klasik Elder dipte tepki sinyali, Smart Money birikim ihtimali → olumlu anchor. `bearish_divergence` (fiyat HH + FI LH) = klasik Elder tepede çekilme sinyali → G2 KRİTİK UYARI. `strong_pos`/`strong_neg` = anlık+trend uyum, destekleyici teyit. `turning_up`/`turning_down` = pencereler çelişiyor, erken dönüş/yorgunluk sinyali. RSI/MFI divergence ile ÇAKIŞIRSA güç çift teyit olur.
+**Force Index Dual (force_index_dual / force_index_divergence) okuma:** Alexander Elder'in Force Index — fiyat değişimi × hacim klasik formülü, dual-window (FI(2) anlık, FI(13) trend). `bullish_divergence`/`bearish_divergence` klasik tepki veya yorgunluk ihtimalidir; ayrı katkısı henüz kanıtlanmadığı için DESTEKLEYİCİ/uyarı olarak kullan, tek başına anchor ya da kurumsal birikim/çıkış kanıtı sayma. `strong_pos`/`strong_neg` ve `turning_up`/`turning_down` da aynı şekilde çapraz teyit gerektirir.
 
-**UDVR (udvr_state/udvr_wyckoff) okuma:** Up/Down Volume Ratio — Wyckoff Effort-vs-Result. "Yükseliş günlerinin toplam hacmi düşüş günlerinin hacminden ne kadar fazla?" OBV (cumulative) ve CMF (bar-içi) yanında ham gerçek üçüncü hacim katmanı. `climax_top` (fiyat 52H tepede + UDVR<0.8) = klasik Smart Money çekilme sinyali, distribütion ihtimali → G2 UYARI cümlesi. `climax_bottom` (fiyat 52H dipte + UDVR>1.25) = klasik Smart Money giriş sinyali, akümülasyon ihtimali → olumlu tezi anchor olarak güçlendir. `strong_buyer` (UDVR≥2.0) ve `strong_seller` (UDVR<0.5) durumları destekleyici teyit. Balanced/buyer/seller orta seviyeler — diğer sinyallerle çapraz oku.
+**UDVR (udvr_state/udvr_wyckoff) okuma:** Up/Down Volume Ratio, yükseliş ve düşüş günlerindeki toplam hacmi karşılaştıran fiyat-hacim göstergesidir. `climax_top`/`climax_bottom` tepe veya dipte hacim uyumsuzluğu/uyumu ihtimalidir; kurum kimliği ve giriş-çıkış kanıtı değildir. Ayrı katkısı kanıtlanana kadar DESTEKLEYİCİ/uyarı olarak diğer sinyallerle çapraz oku. `strong_buyer`/`strong_seller` ve orta durumlar için de aynı temkin geçerlidir.
 
-**Relative OBV (rel_obv_state) okuma:** Hisse hacim akışı endeks hacim akışından ayrışıyor mu? Mansfield RS'in HACİM versiyonu. `outperform_strong` (hisse OBV↑ endeks OBV↓) = AKILLI PARA spesifik olarak bu hisseyi seçti, yapısal birikim — G1'de merkeze al. `underperform_strong` (hisse OBV↓ endeks OBV↑) = endeks akışı pozitif ama bu hisseden çıkış var, yapısal zayıflık — olumlu teze karşı dikkat uyarısı. Mild durumlar = destekleyici. Sadece OBV slope'una bakma yetmez, ENDEKSE GÖRE ayrışmasını da oku.
+**Relative OBV (rel_obv_state) okuma:** Hisse hacim akışının endeks hacim akışından göreli ayrışmasını gösterir. `outperform_strong`/`underperform_strong` güçlü göreli hacim farkıdır; hangi yatırımcı grubunun işlem yaptığını kanıtlamaz. Güçlü ve mild durumların tamamını DESTEKLEYİCİ/uyarı olarak kullan, G1 merkezi veya yapısal kurumsal birikim hükmü yapma.
 
-**YAPISAL vs TACTICAL Smart Money okuma (smart_money_split):** Akıllı para sinyalleri iki ölçeğe ayrılır: YAPISAL (haftalar-aylar, kurumsal pozisyon kurma — MKK yabancı, OBV 20g+, CMF 20g) ve TACTICAL (saatler-günler, algo/scalp — cum_delta_5g, MFI_5g, breakout, climax). Her ikisi 0-100 skor. "Akıllı para birikiyor" derken HANGİ ölçek kasdettiğini netleştir: (a) YAPISAL ≥65 + TACTICAL ≥65 → "her iki ölçek aynı yönde, güçlü ana hikaye" (b) YAPISAL ≥65 + TACTICAL ≤35 → "kurumsal birikim sürüyor ama bugün ek hareket yok, SABIRLI BEKLE" (c) YAPISAL ≤35 + TACTICAL ≥65 → "kısa vade hareket var ama yapısal değil, KISA VADE FIRSAT olabilir, uzun vade temkinli" (d) İkisi de zayıf → "net akıllı para izi yok, beklemede". G2 AKILLI PARA satırını bu çerçevede yaz.
+**YAPISAL vs TACTICAL hacim/katılım okuması (smart_money_split):** Veriler günlüktür. YAPISAL katman haftalar-aylar; TACTICAL katman birkaç gün-birkaç hafta içindeki kısa-pencere fiyat-hacim davranışıdır. Saatlik işlem, algo/scalp veya kurum kimliği ölçülmez. Her ikisi 0-100 bağlam skoru; yüksek değerleri tek başına alım emri değildir. İki katman uyumluysa "uzun ve kısa pencere aynı yönde", ayrışıyorsa "kısa pencere hareketi yapısal katmanla teyit edilmiyor" diye yaz.
 4) **TETİKLEYİCİ** (yaml.ict_pa.ob + fvg + sweep_silkeleme + yaml.targets): Hangi seviye kırılırsa ne olur? — Bu gözlenecek noktayı söyler.
 5) **YANLIŞLANMA** (yaml.targets + son swing low/high + yaml.asset.yillik_konum_52h): Tez hangi seviye altında çöker? — Bu risk noktası.
 
@@ -15697,7 +16959,7 @@ SORUN: Çok anti-kural eklendi ama AI hâlâ haber spikeri tonunda — "X gerçe
 *** TARZ ÖRNEKLERİ — bu sesi yakala (kopya değil, ritim ve geçiş) ***
 
 ÖRNEK 1 (bullish reversal — TIER_1 + Klasik Mum + RSI Div çakışması):
-"ASELS dipten kalkmak için bugün ilk somut adımı attı. Piercing Line geldi — gövde önceki kırmızı mumun yarısının üstüne kapandı, hacim de satıcı günleriyle eşit. Yani alıcılar dünün ağırlığını taşıdı. RSI 28'den dönüyor, fiyat 52H'nin %18'inde — istatistiksel olarak ucuz bölgenin dibinde. Bir de Erken Radar A8 tetiklendi (backtest hit %100). Üç bağımsız sinyal aynı yöne işaret ediyor. Tabii CMF hâlâ -0.21'de; kurumsal taraf henüz dönüş onayı vermedi. Yani sinyal güçlü ama kalıcılık için CMF'nin sıfır üstüne geçmesi beklenir."
+"ASELS dipten kalkmak için bugün ilk somut adımı attı. Piercing Line geldi — gövde önceki kırmızı mumun yarısının üstüne kapandı, hacim de satıcı günleriyle eşit. Yani alıcılar dünün ağırlığını taşıdı. RSI 28'den dönüyor, fiyat 52H'nin %18'inde — istatistiksel olarak ucuz bölgenin dibinde. Bir de Erken Radar A8 tetiklendi (backtest hit %100). Üç farklı teknik bulgu aynı yöne işaret ediyor. Tabii CMF hâlâ -0.21'de; hacim-akış tarafı henüz dönüş onayı vermedi. Yani sinyal güçlü ama kalıcılık için CMF'nin sıfır üstüne geçmesi beklenir."
 
 ÖRNEK 2 (bearish setup — tepede dağıtım):
 "SISE'de tablo şüpheli. Fiyat 28 günlük rallinin son ucunda, %4'lük yeşil mum geldi ama hacim son 3 satış gününün altında — alıcı sayısı azalmış, momentum yorgun gibi. OBV 'KAFA ÇEVİRİYOR' diyor: 14g eğim hâlâ yukarı ama 5g'de sızıntı belirgin. cum_delta 5g pozitif görünse de 20g -%8'de, yani ana akıllı para çıkışta. Üstüne RSI 76, klasik aşırı alım. Burada klasik 'son alıcıyı yakalama' kalıbı kuruluyor. 41.20 destek seviyesi günlük kapanışta kırılırsa ralli hikayesi biter."
@@ -15821,8 +17083,8 @@ Z-Score, VWAP, POC, RSI overbought TEK BAŞINA "düzeltme yakın / pahalı / mea
 *** KOŞULLU YAML ALANLARI — GÖRMÜYORSAN YORUM YAPMA ***
 Aşağıdaki alanlar YAML'a SADECE sinyal anlamlıysa yazılır. Yoksa "veri yok" deme, o boyutu atla:
 • institutional_ref alt: `poc_mtf_confluence` (3 POC çakışması), `avwap_52h_zirveden`/`avwap_52h_dipten` (|%|<3 test mesafesi), `naked_poc_yakin` (|%|<2 limit emir mesafesi), `poc_magnet_active` (Up trend + below POC + stretched), `vwap_minus_2sigma_zone` (SMC kurumsal — -2σ VWAP mean-reversion bölgesi; karne: gerçek edge, DESTEKLEYİCİ confluence, ANA HİKAYE YAPMA), `🏛 YABANCI KURUMSAL BİRİKİM` (MKK — yabancı net giriş VE 3+ gün süreklilik BİRLİKTE; karne bu birleşimi güçlü buldu → G1'de 'yabancı akıllı para destekliyor' vurgula), `yabanci_streak` (MKK — 3+ gün üst üste oran artışı = yapısal birikim; karne pozitif; DESTEKLEYİCİ), `yabanci_giris_tek_gun` (MKK — tek günlük top-3 giriş AMA süreklilik YOK; karne TERS [-%10, isabet %20] → bullish SAYMA, yorumun merkezine alma), `yabanci_cikis` (MKK — yabancı çıkış izi; karne negatif getiriyle uyumlu; riski vurgula).
-• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim teyitli aşırı/erken/yorgunluk state'i — RSI'nın hacim katmanı), `rsi_mfi_bouquet` (RSI ve MFI aynı yönde teyit — TIER_1 ELIT, G1'de mutlaka merkeze al), `rel_obv_state` (Relative OBV — hisse hacim akışı endeksten ayrışıyor mu; outperform_strong/underperform_strong = ELIT smart money izi, mild = destekleyici), `udvr_state`/`udvr_wyckoff` (Up/Down Volume Ratio — klasik Wyckoff Effort-vs-Result, climax_top/bottom durumları = TIER_1 ELIT smart money tepe/dip teyidi; strong_buyer/strong_seller = destekleyici), `force_index_dual`/`force_index_divergence` (Alexander Elder Force Index dual — anlık FI(2) ve trend FI(13); bullish/bearish divergence = TIER_1 ELIT klasik Elder sinyali, strong/turning durumlar = destekleyici).
-• trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir. `genel_ozet_verdict` (6 bağımsız sinyalin — hacim/OBV/yapı/RSI/CMF/MFI — oylanmış özeti): parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir (600 hisse backtest) — yorum güvenini bu karneye göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiketleri hikayenin merkezine alabilirsin; KARARSIZ/HAFİF etiketlerini büyük yön iddiasına ÇEVİRME. Alan adı çıktıda görünmez.
+• smart_money / obv_cmf alt: `omi_sigma` (|σ|≥0.5), `cmf_dual_window` (Nötr değil), `hvn_en_yakin` (|%|≤3), `fiyat_lvn_icinde` (sadece evet), `mum_kapanis_durumu` (sadece YANILTICI), `cum_delta_5g` (Dengede değil), `cum_delta_dual_window` (sadece güçlü/kafa-çev. state), `stopping_volume`/`climax_volume` (tetiklendiyse), `mfi_dual_window` (hacim-ağırlıklı momentum), `rsi_mfi_bouquet` (skorsuz bilgi, ölçüm bekliyor), `rel_obv_state` (göreli hacim akışı), `udvr_state`/`udvr_wyckoff` (yükseliş/düşüş günü hacim oranı), `force_index_dual`/`force_index_divergence` (fiyat×hacim kuvveti). Son dört alanın ayrı katkısı kanıtlanmadı: DESTEKLEYİCİ/uyarı olarak kullan; ELİT, G1 merkezi veya kurum giriş-çıkış kanıtı sayma.
+• trend_indicators alt: `rsi_dual_window` (sadece erken aşırı alım/satım, tepe yorgunluğu, dip dönüşü veya iki pencerede aşırı; klasik 30-70 arası → sus). Endekste de geçerlidir. `genel_ozet_verdict` (birbiriyle kısmen ilişkili 6 göstergenin — hacim/OBV/yapı/RSI/CMF/MFI — oylanmış özeti): parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir (600 hisse backtest) — yorum güvenini bu karneye göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiketleri hikayenin merkezine alabilirsin; KARARSIZ/HAFİF etiketlerini büyük yön iddiasına ÇEVİRME. Alan adı çıktıda görünmez.
 
 *** KALİBRASYON TABLOLARI — SADECE REFERANS, gördüğünde uygula ***
 POC RETEST (84.832 event, BIST 593 hisse, 1y; retest = POC'a %1 yakına ≤10g):
@@ -15836,6 +17098,11 @@ SCANNER TIER (11.797 sinyal backtest, 29 Nis-31 May 2026, 31 scan_type tier'lı)
   **TIER_1_ELIT** (er_D1, er_A2, er_A8, er_B8): 20g hit %64-76, ret %+4.9-7.0 → yukarıdaki sert kural geçerli
   **TIER_2_GUVENILIR** (er_B11/A5/C3/C2/D2/A7/prelaunch_bos/A3/A4): 20g hit %50-58, ret %+2.8-6.3 → destekleyici teyit, ana hikaye olabilir. prelaunch_bos (24 Haz: TIER_1→2, tazede hit %50). er_D2 iki-rejimde dayanıklı.
   **TIER_3_ORTA** (er_C8/C5/C9/B5/C11/D3/C7/A9/C6/A6/D4/A1): 20g hit %41-60 ama ret %+0.1-3.9 → zayıf, ana hikaye kurma; **diğer teyitler aranır** (POC, OBV, mum). er_C8/C5 ret iyi ama hit zayıf; er_A1 (4 Tem: 20g ret -%1.7 N=91 — 10g'de var olan avantaj 20g'de eriyor, kısa vadeli düşün).
+  **AİLE KURALI:** er_B11 + er_C5 + Zirve Sıkışma aynı sıkışma/birikim hikâyesidir; birlikte görünseler de tek bağımsız oy say.
+  **B11 PİLOT KURALI:** B11 ana sinyali korunur. Para akışı ve geç kalma ikinci kalite katmanıdır; para akışı zorunlu kapı değildir. "Kovalama riski" sinyali silmez, daha geniş ters hareket riskini belirtir.
+  **RSI POZİTİF UYUMSUZLUK:** Para akışı etiketi yalnız kalite notudur; yokluğu uyumsuzluğu iptal etmez. Olay yolculuğunda stop/1R/2R/tepe günü varsa sabit 5-10-20 gün ezberi yerine o aşamayı kullan.
+  **ZİRVE DEVAM:** "Sağlıklı devam / dikkat / dağıtım riski" ayrımını fiyat-hacim satış kümelenmesinden oku. Dağıtım riski ana yükseliş sinyalini gizlemez fakat giriş güvenini düşürür.
+  **RADAR2 + C6:** Radar2 aday bulur, C6 liderliği doğrular. "Yeni lider" en taze aşamadır; 10+ seanstır lider veya aşırı uzamış olan "geç sinyal"dir. Bu aşamalar aynı liderlik ailesinin tek oyudur.
   **TIER_ZAYIF / KALDIRILDI** (er_B1, er_D5, er_C1, guclu_donus, nadir_firsat, ict_sniper, radar1): 20g ret negatif/sıfır → AI context'inde YOK. er_B1 (24 Haz: TIER_1→kaldırıldı, iki vadede negatif). guclu_donus 20g %+4.2 ama "geç giriş riski" — listede yoksa anma.
   **TIER_VADE_UZUN** (nadir_firsat): 10g düşük (%29/%0.2) ama 20g hit %81 + ret %+17 → "20g vade, SABIR" notunu açıkça yaz, 5-10g beklenti kurma.
   Hisse listede yoksa sus, ekstrapolasyon yapma.
@@ -15941,7 +17208,7 @@ institutional_ref:
   fiyat_vwap_uzaklik_pct: {v_diff:.1f}
   vwap_etiket: {vwap_ai_txt}
   rs_piyasa_gucu: {rs_ai_txt}
-  alpha: {alpha_val:.1f}{_poc_avwap_block}{_em_scanner_tiers}{_em_setup_strength}{_em_kanit}{_em_liq}{_em_risk}{_em_breakout_alert}
+  alpha: {alpha_val:.1f}{_poc_avwap_block}{_em_scanner_tiers}{_em_setup_strength}{_em_kanit}{_em_sok}{_em_liq}{_em_kapi}{_em_risk}{_em_kurumsal}{_em_breakout_alert}
 
 targets:
   direnc_fib: {fib_res}
@@ -16015,7 +17282,7 @@ Hissenin son 1 aydaki günlük oynama büyüklüğü, son 3 ayın oynama büyük
 
 ⚠ KISALTMA/SİMGE YASAKLI: Çıktıda "β", "DD", "HV", "1y", "20g/60g", "drawdown", "recovery" kelimeleri AYNEN GEÇMEZ. Sayıları hikayeye göm: "%47" yerine "neredeyse yarı yarıya", "+%27" yerine "üçte birlik toparlanma", "0.62" yerine "yaklaşık yarısı".
 
-**SCENARIO + REGIME + CONVICTION:** Algoritmik başlık ön-tanıdır; grafik veya YAML 2+ bağımsız sinyalle çelişiyorsa "algoritma X diyor ama Y gösteriyor" şeklinde sun. Faz 3/4 + AL sinyali = karşı-trend (riski vurgula). Konviksiyon <45 + pozitif senaryo çiziyorsan "algoritmanın genel eğilimiyle çelişiyor" açıkça belirt.
+**SCENARIO + REGIME + CONVICTION:** Algoritmik başlık ön-tanıdır; grafik veya YAML 2+ farklı kanıt alanıyla çelişiyorsa "algoritma X diyor ama Y gösteriyor" şeklinde sun. Faz 3/4 + AL sinyali = karşı-trend (riski vurgula). Konviksiyon <45 + pozitif senaryo çiziyorsan "algoritmanın genel eğilimiyle çelişiyor" açıkça belirt.
 
 **ICT_PA:** structure (HH+HL / LH+LL / CHoCH) yön; mss_yapi_kirilimi varsa analiz başına koy; zone (Discount/Premium) RR'ı belirler; OB filtreli (>1.8×ATR gürültü atılır) — zone_ages 0-5g taze / 6-15g orta / 16g+ eski; harmonik + ICT çakışması varsa vurgula; sweep = stop temizleme magnet.
 
@@ -16041,8 +17308,8 @@ Bu iki sahne dışında HARSI'yı atlama hakkın var; YAML'daki harsi alanına "
 *** ERKEN RADAR — 36 SENARYOLU HAREKET ÖNCESİ MOTOR ***
 {_sms_str}
 
-REHBER: A=Geri Dönüş (risk yüksek, potansiyel büyük) · B=Sıkışma (kırılım hazırlığı) · C=Trend Devamı (sağlıklı pullback) · D=Uyarılar. 5★ öne çıkar · Çoklu teyit (3+) vurgula · Skor 75+ merkeze al · 50-75 destekleyici · <30 "henüz yeşil yakmadı". Senaryo yaşı: 0-2g "yeni tetiklendi" · 3-7g "ivme birikiyor" · 8g+ "geçerlilik sorgulanır".
-🚨 **Skor ≥ 65 ise:** G1 açılışında + G4 GENEL YORUM'da senaryo adı en az 1 kez ZORUNLU geçer; çoklu teyit varsa "birden fazla bağımsız sinyal aynı yöne işaret ediyor" vurgusu. Atlanırsa = ihlal.
+REHBER: A=Geri Dönüş (risk yüksek, potansiyel büyük) · B=Sıkışma (kırılım hazırlığı) · C=Trend Devamı (sağlıklı pullback) · D=Uyarılar. 5★ öne çıkar · Çoklu teyit (3+) vurgula · ER kurulum kalitesi 75+ merkeze al · 50-75 destekleyici · <30 "henüz yeşil yakmadı". Senaryo yaşı: 0-2g "yeni tetiklendi" · 3-7g "ivme birikiyor" · 8g+ "geçerlilik sorgulanır".
+🚨 **ER kurulum kalitesi ≥ 65 ise:** G1 açılışında + G4 GENEL YORUM'da senaryo adı en az 1 kez ZORUNLU geçer; çoklu teyit varsa "birden fazla farklı teknik bulgu aynı yöne işaret ediyor" vurgusu. Atlanırsa = ihlal.
 Bu sistemde Hidden divergence YOK. "Mansfield/VCP/Pocket Pivot" jargonu YASAK — senaryo adları Türkçe olduğu gibi kullanılır.
 
 *** CANLI TARAMA SONUÇLARI ***
@@ -16061,7 +17328,7 @@ Bu sistemde Hidden divergence YOK. "Mansfield/VCP/Pocket Pivot" jargonu YASAK �
 REHBER: YAPI = HH+HL/LH+LL trend, CHoCH dönüş; MOMENTUM SLOPE = RSI 5g hızı (Sert dönüş / Tepe geri çekilme en bilgi yoğun); RANGE = 20g konum + 5g önce (V-bottom/U-top sert hareket); VSA = Climax tepe, Alt rejekti dip; RSI DIV = Regular dönüş, Hidden trend devam; MUM CP = son 5g kapanış konumu. 7 satırın çakışması varsa öne çıkar, çelişki varsa "X diyor ama Y sorguluyor".
 
 *** HACİM ANOMALİLERİ ***
-{("VERİ EKSİK — RVOL hesaplanmamış, hacim yorumu yapma." if _vol_missing_flag else "RVOL: 1.0=normal · 2.0+=kurumsal aktivite · <0.5=ilgisiz. 2.0x + fiyat sabit = Churning (dağıtım); yüksek + kırılım = gerçek katılım; >1.5x + dar bant = Sessiz Birikim/Dağıtım; <0.8x + fiyat ↑ = Zayıf El.")}
+{("VERİ EKSİK — RVOL hesaplanmamış, hacim yorumu yapma." if _vol_missing_flag else "RVOL: 1.0=normal · 2.0+=olağandışı piyasa katılımı · <0.5=ilgisiz. 2.0x + fiyat sabit = Churning (dağıtım); yüksek + kırılım = gerçek katılım; >1.5x + dar bant = Sessiz Birikim/Dağıtım; <0.8x + fiyat ↑ = Zayıf El.")}
 
 🚨 **VOLUME_QUALITY OKUMA (yaml.smart_money.volume_quality):** RVOL'a yorum yapmadan önce bu etikete bak — hacim verisinin GÜVENİLİRLİK seviyesidir:
 • `FINAL_ISYATIRIM` → İsyatirim resmi BIST verisi, kapanış sonrası finalize. RVOL KESİN doğru, tam güven.
@@ -16072,7 +17339,7 @@ REHBER: YAPI = HH+HL/LH+LL trend, CHoCH dönüş; MOMENTUM SLOPE = RSI 5g hızı
 • `PRE_SESSION` → Seans öncesi, dünkü kapanış. RVOL geçerli ama "bugün için değil".
 • `DATA_MISSING` → Hacim verisi yok, yorum yapma.
 • `NON_BIST` → Kripto/ABD/endeks; ayrı rejim, BIST kuralları uygulanmaz.
-Bu etiket FINAL veya FINAL_ISYATIRIM değilse RVOL'u TEK BAŞINA "kurumsal aktivite kanıtı" olarak kullanma — diğer hacim göstergeleriyle (OBV, CMF, cum_delta) çapraz teyit ara.
+Bu etiket FINAL veya FINAL_ISYATIRIM değilse RVOL'u TEK BAŞINA "olağandışı piyasa katılımı kanıtı" olarak kullanma — diğer hacim göstergeleriyle (OBV, CMF, cum_delta) çapraz teyit ara.
 
 *** REFERANS ÜSLÜP (başka hisseden — sadece ton için) ***
 Aselsan'da tablo ilginç bir resim çiziyor. Fiyat sakin geri çekilirken para akışı sessizce yukarı sızıyor — bu kombinasyon genelde kurumsal toplama habercisidir.
@@ -16448,6 +17715,7 @@ borsadan HİÇ anlamayan birine anlatır gibi yeniden yaz.
 Bu bir ÇEVİRİDİR — YENİ analiz değil, üsttekinin sade dile aktarımı.
 
 KESİN KURALLAR:
+• Şu cümlelerden birisi ile başla: Özetle dostlar, Sonuç olarak, Uzun lafın kısası, Kısaca, Özetle, Sonuçta, Kısaca dostlar, Özetle arkadaşlar, Sonuç olarak dostlar, Uzun lafın kısası dostlar, Kısaca arkadaşlar, Özetle dostlar, Sonuçta arkadaşlar.
 • Hiçbir sayıyı, yönü, hedefi, sonucu, senaryoyu DEĞİŞTİRME. Sadece DİLİ sadeleştir.
   Üstte ne dediysen aynısını söyle, ama jargonsuz.
 • Her teknik terimi günlük Türkçeye çevir:
@@ -16467,6 +17735,7 @@ KESİN KURALLAR:
   sormak ZORUNDA kalırsa, o cümle BAŞARISIZ — yeniden yaz. Hiç soru sordurma.
 • Uzunluk: tweet'e sığacak kadar kısa, 3-5 kısa cümle yeter. Önce ne olmuş, sonra
   ne beklenir, sonra nerede yanılırız — sade ve net.
+• Şu cümle ile de bitir: Eğitim amaçlıdır. Yatırım tavsiyesi değildir. DİKKAT: GÖRSEL, YAPAY ZEKA ÇIKTISI DEĞİLDİR. ALGORİTMAMIN HESAPLAMALARIDIR.
 ═══════════════════════════════════════════════════════════════════════
 """
 
@@ -17338,6 +18607,12 @@ def _render_left_col():
         pass
     # ─────────────────────────────────────────────────────────────────────────
 
+    # 🧪 YENİ EKRAN DENEMESİ (23 Tem 2026) — en tepede KAPALI bar; mevcut ekran aynen altında.
+    # Sadece YER TUTUCU açılır: içeriği besleyen _compute_kanit_ozeti bu satırdan SONRA
+    # tanımlanıyor (sol kolon 19305'te, fonksiyon ~19500'de). Doldurma işi tanım biter
+    # bitmez modül seviyesinde yapılır — yer tutucu DOM'da burada, en tepede kalır.
+    st.session_state['_ekran_v2_slot'] = st.empty()
+
     # 1. GÖRSEL ANALİZ İNFOGRAFİĞİ (EN TEPE) — 22 Haz 2026
     with _Timer("INFOGRAFIK: _render_infografik_inapp"):
         _render_infografik_inapp(st.session_state.ticker)
@@ -17549,12 +18824,12 @@ def _render_left_col():
     else:
         _mm_elite_teaser("Teknik Yol Haritası")
 
-    # 3.--- ICT SMART MONEY ANALİZİ --- (ELITE)
+    # 3.--- ICT YAPI GÖZLEMİ ---
     if _MM_ELITE_OK:
         with _Timer("PANEL: render_ict_deep_panel"):
             render_ict_deep_panel(st.session_state.ticker)
     else:
-        _mm_elite_teaser("ICT Smart Money Analizi")
+        _mm_elite_teaser("ICT Yapı Gözlemi")
 
     # 4. Kritik Seviyeler
     with _Timer("PANEL: render_levels_card"):
@@ -17608,6 +18883,7 @@ def _render_left_col():
     
     # Session state başlatmaları
     for _k in ['ict_scan_data','nadir_firsat_scan_data','guclu_donus_data',
+                'wilder_divergence_data',
                 'harmonic_confluence_data','accum_data','minervini_data',
                 'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data',
                 'golden_pattern_data']:
@@ -17635,14 +18911,24 @@ def _render_left_col():
         r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
         return f"#{int(r*factor):02x}{int(g*factor):02x}{int(b*factor):02x}"
     
-    def _scan_card_header(icon, title, score, subtitle, color="#3b82f6", desc=""):
-        pct   = score
-        stars = "⭐" * (score // 20)
+    def _scan_card_header(icon, title, score, subtitle, color="#3b82f6", desc="", karne=""):
+        # 18 Tem 2026 (reform 3a) — score=None: uydurma güven çipi/bar/yıldız YOK (ilke 1:
+        # karnesi olmayan skor büyük gösterilemez); yerine ölçülmüş `karne` cümlesi (◆) yazılır.
         if desc:
             bottom = (f"<span style='color:#cbd5e1;font-weight:600;font-size:0.72rem;font-style:italic;'>{desc}</span> "
                       f"<span style='color:#cbd5e1;font-size:0.70rem;font-weight:500;opacity:0.8;'>({subtitle})</span>")
         else:
-            bottom = f"<span style='color:#cbd5e1;font-size:0.7rem;font-weight:500;font-style:italic;'>{stars} {subtitle}</span>"
+            stars0 = "⭐" * ((score or 0) // 20)
+            bottom = f"<span style='color:#cbd5e1;font-size:0.7rem;font-weight:500;font-style:italic;'>{stars0} {subtitle}</span>"
+        _karne_html = (f"<div style='margin-top:4px;font-size:0.68rem;color:#94a3b8;line-height:1.4;'>"
+                       f"<span style='color:#38bdf8;'>◆</span> {karne}</div>") if karne else ""
+        if score is None:
+            return (f"<div style='background:linear-gradient(135deg,{color}18,{color}06);"
+                    f"border:1px solid {color}50;border-radius:10px;padding:9px 13px;margin-bottom:7px;'>"
+                    f"<div style='font-weight:900;font-size:0.92rem;margin-bottom:5px;'>{icon} {title}</div>"
+                    f"<div style='margin-top:3px;'>{bottom}</div>{_karne_html}</div>")
+        pct   = score
+        stars = "⭐" * (score // 20)
         return (f"<div style='background:linear-gradient(135deg,{color}18,{color}06);"
                 f"border:1px solid {color}50;border-radius:10px;padding:9px 13px;margin-bottom:7px;'>"
                 f"<div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px;'>"
@@ -17651,20 +18937,23 @@ def _render_left_col():
                 f"</div>"
                 f"<div style='background:rgba(0,0,0,0.12);border-radius:3px;height:4px;margin-bottom:5px;'>"
                 f"<div style='background:{color};height:4px;border-radius:3px;width:{pct}%;'></div></div>"
-                f"<div style='margin-top:3px;'>{stars} {bottom}</div></div>")
+                f"<div style='margin-top:3px;'>{stars} {bottom}</div>{_karne_html}</div>")
     
     # ══════════════════════════════════════════════════════════
-    # ① CONFLUENCE & ELİTLER — Her Zaman Görünür
+    # ① TARAMA KESİŞİMLERİ — Her Zaman Görünür
     # ══════════════════════════════════════════════════════════
     st.markdown("<div style='border-left:4px solid #7c3aed;padding-left:10px;margin-top:22px;margin-bottom:8px;"
-                "font-weight:900;font-size:1.05rem;'>🎯 CONFLUENCE & ELİTLER</div>", unsafe_allow_html=True)
+                "font-weight:900;font-size:1.05rem;'>🎯 TARAMA KESİŞİMLERİ</div>", unsafe_allow_html=True)
     
     _c_left, _c_right = st.columns(2)
     
     with _c_left:
-        st.markdown(_scan_card_header("🔥", "CONFLUENCE", 95,
+        # 18 Tem 2026 (reform 3a): uydurma "95/100" çipi kaldırıldı — 29 Haz ölçümü (12.779 örnek)
+        # çakışmanın getiriyi TEK BAŞINA artırmadığını gösterdi; dürüst karne cümlesi yazılır.
+        st.markdown(_scan_card_header("🔥", "CONFLUENCE", None,
             "2-3 Metodoloji Kesişimi", "#1d4ed8",
-            desc="2-3 bağımsız metodoloji aynı hisseyi işaret ettiğinde — en güvenilir sinyal"
+            desc="2-3 bağımsız metodoloji aynı hisseyi işaret ediyor",
+            karne="Ölçüm: taramaların çakışması getiriyi tek başına artırmadı — güç, tek tek taramaların kendi karnesinden gelir."
         ), unsafe_allow_html=True)
         _hits  = st.session_state.get('confluence_hits')
         _hc_df = st.session_state.get('harmonic_confluence_data')
@@ -17714,7 +19003,7 @@ def _render_left_col():
             st.markdown(f"<div style='background:linear-gradient(135deg,#7c3aed18,#7c3aed06);"
                         f"border:1px solid #7c3aed50;border-radius:8px;padding:6px 10px;margin-bottom:5px;'>"
                         f"<span style='font-size:0.78rem;font-weight:900;color:#7c3aed;'>"
-                        f"⚡ HARMONİK CONF — {_hc_count} Hisse</span></div>", unsafe_allow_html=True)
+                        f"🔬 GÖZLEM: HARMONİK CONF — {_hc_count} Hisse</span></div>", unsafe_allow_html=True)
             if _hc_count > 0:
                 with st.container(height=320, border=False):
                     for _hci, _hcr in _hc_df.iterrows():
@@ -17777,14 +19066,17 @@ def _render_left_col():
     # ─────────────────────────────────────────────────────────────────────────
     
     with _c_right:
-        st.markdown(_scan_card_header("💎", "ELİTLER", 88,
-            "Güçlü Yapı + Uçmamış + Harekete Hazır",
+        # 18 Tem 2026 (reform 3a): uydurma "88/100" çipi kaldırıldı — temiz karne (10g):
+        # altin_setup %31/-3.0 (N=414) · tekli_altin %28/-3.0 (N=1448) = vitrin karnesi ZAYIF.
+        st.markdown(_scan_card_header("💎", "ALTIN + PLATİN ROZETLERİ", None,
+            "Uygunluk Etiketi · Bağımsız Oy Değil",
             "#1d4ed8",
-            desc="Güçlü trendde, henüz fırlamamış, 3 kapıdan 2'si açık hisseler"
+            desc="Koşullara uyan hisseleri etiketler; puan, alım sinyali veya bağımsız teyit üretmez",
+            karne="Geçmiş karne zayıf: benzer sinyallerin 10'da 3'ü kazandırdı (10 günde ort -%3) — liste fikir verir, tek başına karar verme."
         ), unsafe_allow_html=True)
-        if st.button("💎 ELİT TARAMA (Platin + Altın)", width='stretch', key="btn_elit_tara_main",
-                     help="Piyasanın en kaliteli hisselerini iki kategoride listeler.\n\n💎 Platin Fırsat: Fiyat hem 200 hem 50 günlük ortalamanın üstünde, RS endeksten güçlü, Discount bölgede ve hacim artıyor — tüm kriterler aynı anda sağlanmalı.\n\n🦁 Altın Set-up: Son 10 günde endeksi geçmiş, son 60 güne göre hâlâ ucuz, enerji/hacim yükseliyor. Büyük oyunculara yakın ama henüz fazla yükselmemiş hisseler."):
-            with st.spinner("Elit hisseler aranıyor..."):
+        if st.button("💎 ALTIN + PLATİN ROZETLERİNİ TARA", width='stretch', key="btn_elit_tara_main",
+                     help="Altın ve Platin koşullarına uyan hisseleri uygunluk rozetiyle listeler. Rozetler bağımsız oy, puan veya alım teyidi değildir.\n\n💎 Platin: Fiyat hem 200 hem 50 günlük ortalamanın üstünde, RS endeksten güçlü, Discount bölgede ve hacim artıyor.\n\n🦁 Altın: Son 10 günde endeksi geçmiş, son 60 güne göre iskontolu, enerji/hacim yükseliyor."):
+            with st.spinner("Altın ve Platin kriterleri taranıyor..."):
                 _scan_list = ASSET_GROUPS.get(st.session_state.category, [])
                 if _scan_list:
                     st.session_state.radar2_data = radar2_scan(_scan_list)
@@ -17957,7 +19249,7 @@ def _render_left_col():
             st.markdown(
                 "<div style='border:1px dashed #1d4ed850;border-radius:7px;"
                 "padding:14px 10px;text-align:center;color:#94a3b8;font-size:0.78rem;line-height:1.4;'>"
-                "💤 <b>Bu kategoride ELİT bulunamadı</b><br>"
+                "💤 <b>Altın/Platin kriterlerini geçen hisse bulunamadı</b><br>"
                 "<span style='font-size:0.7rem;opacity:0.85;'>Master Scan tamamlandı ancak Platin/Altın kriterlerini geçen hisse yok.</span>"
                 "</div>", unsafe_allow_html=True
             )
@@ -17972,22 +19264,121 @@ def _render_left_col():
     
     st.markdown("<hr style='margin:10px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
 
+    # ── RSI POZİTİF UYUMSUZLUK — ölçümde ───────────────────────────────────
+    _wd_df = st.session_state.get('wilder_divergence_data')
+    st.markdown(
+        "<div style='border-left:5px solid #f59e0b;padding-left:10px;margin-bottom:8px;"
+        "font-weight:900;font-size:1rem;color:#f59e0b;'>"
+        "🧭 RSI POZİTİF UYUMSUZLUK — ÖLÇÜMDE</div>",
+        unsafe_allow_html=True,
+    )
+    if _wd_df is not None and hasattr(_wd_df, 'empty') and not _wd_df.empty:
+        _wd_show = _wd_df.copy()
+        _wd_onayli = int(_wd_show['Durum'].astype(str).str.contains('ONAYLI').sum())
+        _wd_izleme = int(len(_wd_show) - _wd_onayli)
+        st.markdown(
+            f"<div style='font-size:0.76rem;color:#cbd5e1;margin:0 0 7px;'>"
+            f"<b style='color:#22c55e;'>{_wd_onayli} onaylı</b> · "
+            f"<b style='color:#f59e0b;'>{_wd_izleme} izleme</b> · "
+            "yalnızca son 3 işlem günündeki, geç kalmamış tetikler</div>",
+            unsafe_allow_html=True,
+        )
+        _wd_show['Sembol'] = _wd_show['Sembol'].astype(str).str.replace('.IS', '', regex=False)
+        _wd_show['Tetik'] = _wd_show['Tetik_Yasi'].apply(
+            lambda value: "Bugün" if int(value) == 0 else f"{int(value)} gün önce"
+        )
+        _wd_show['RSI Dönüş'] = _wd_show.apply(
+            lambda row: f"{float(row['RSI_1']):.1f} → {float(row['RSI_2']):.1f}",
+            axis=1,
+        )
+        _wd_show = _wd_show.rename(
+            columns={
+                'Risk_Odul': 'Risk/Ödül',
+                'ADV20_Mn_TL': 'Likidite (Mn TL)',
+            }
+        )
+        st.dataframe(
+            _wd_show[
+                [
+                    'Durum', 'Sembol', 'Tetik', 'RSI Dönüş', 'Fiyat',
+                    'Stop', 'Hedef', 'Risk/Ödül', 'Likidite (Mn TL)',
+                ]
+            ],
+            hide_index=True,
+            width='stretch',
+            height=min(420, 70 + len(_wd_show) * 35),
+        )
+    else:
+        st.markdown(
+            "<div style='border:1px dashed #f59e0b55;border-radius:7px;padding:12px 10px;"
+            "text-align:center;color:#94a3b8;font-size:0.78rem;'>"
+            "Son 3 işlem gününde kuralları geçen taze RSI pozitif uyumsuzluğu yok.</div>",
+            unsafe_allow_html=True,
+        )
+    _rsi_history_caption = (
+        "Geçmiş olay yolculuğu henüz hesaplanamadı. "
+        "Örnek yeterli olana kadar bu tarama ölçümde."
+    )
+    try:
+        _rsi_hist_conn = sqlite3.connect(
+            "file:patron.db?mode=ro", uri=True, timeout=2
+        )
+        _rsi_hist_rows = _rsi_hist_conn.execute(
+            """
+            SELECT resolution, peak_day
+            FROM rsi_journeys
+            WHERE peak_day IS NOT NULL
+            """
+        ).fetchall()
+        _rsi_hist_conn.close()
+        if _rsi_hist_rows:
+            _rsi_hist_total = len(_rsi_hist_rows)
+            _rsi_hist_two_r = sum(
+                1 for _resolution, _ in _rsi_hist_rows
+                if _resolution == "two_r"
+            )
+            _rsi_hist_stop = sum(
+                1 for _resolution, _ in _rsi_hist_rows
+                if _resolution in (
+                    "stop", "stop_after_one_r", "stop_first_ambiguous"
+                )
+            )
+            _rsi_hist_peak = float(np.median(
+                [_peak for _, _peak in _rsi_hist_rows]
+            ))
+            _rsi_history_caption = (
+                f"Geçmiş olay yolculuğu: {_rsi_hist_total} sinyal; "
+                f"{_rsi_hist_two_r} tanesi 2R gördü, "
+                f"{_rsi_hist_stop} tanesi stoplandı. "
+                f"Pozisyon açıkken oluşan medyan tepe "
+                f"{_rsi_hist_peak:.0f}. işlem gününde. "
+                "Stop sonrası fiyat hareketleri başarı sayılmadı. "
+                "Örnek küçük olduğu için bu tarama henüz ELİT değil, ölçümde."
+            )
+    except Exception:
+        pass
+    st.caption(_rsi_history_caption)
+    st.markdown("<hr style='margin:10px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
+
     # ══════════════════════════════════════════════════════════
-    # 🥇 ELİT TARAMALAR — Backtest Kanıtlı (15 Haz 2026 yeniden etiketlendi)
+    # 📊 KARNELİ TARAMALAR — güncel sonuçlarla
     # ══════════════════════════════════════════════════════════
     # Pre-Launch BOS: 66 sinyal · hit %45.5 · avg ret %+15.1 · PF 1.86 → ELİT
     # Erken Radar TIER_1 (A8/B1/A1) + TIER_2 (B8/C3/D3 vs.) → ELİT/GÜVENİLİR motor
     # Güçlü Dönüş şimdilik burada, sonraki adımda ZAYIF'a taşınacak.
     st.markdown("<div style='border-left:5px solid #16a34a;padding-left:10px;margin-bottom:8px;"
-                "font-weight:900;font-size:1rem;color:#16a34a;'>🥇 ELİT TARAMALAR — Backtest Kanıtlı</div>",
+                "font-weight:900;font-size:1rem;color:#16a34a;'>📊 KARNELİ TARAMALAR — Güncel Backtest</div>",
                 unsafe_allow_html=True)
     
     # 15 Haz 2026 — Güçlü Dönüş+ KALDIRILDI (backtest hit %42 PF 1.09 → ZAYIF), ZAYIF expander'a tasindi.
     _t2c1 = _t2c2 = st.container()  # Geriye dönük uyumluluk
     with _t2c2:
-        st.markdown(_scan_card_header("🎯", "HAREKETE HAZIR — HAREKETE BAŞLAYAN", 90,
+        # 18 Tem 2026: uydurma "90/100" çipi kaldırıldı — karışık sepete toplu güven puanı
+        # verilemez (senaryolar tek tek ölçülü, kimi artı kimi eksi; PL-BOS temizde negatif).
+        st.markdown(_scan_card_header("🎯", "ÖLÇÜLEN KURULUMLAR", None,
             "Erken Radar (36 senaryo) + Pre-Launch BOS", "#3b82f6",
-            desc="İki katmanlı pre-move radarı: senaryo bazlı erken tespit (hazır) + sıkışma sonrası kurumsal kırılım (başlayan)"
+            desc="Senaryo bazlı erken tespit ile sıkışma sonrası kırılım adayları birlikte izlenir.",
+            karne="Toplu güven puanı yok — yalnız güncel pozitif karneli senaryolar vitrinde puan alır."
         ), unsafe_allow_html=True)
 
         # 🏆 GOLD MINE VİTRİNİ — tüm taramalar tek listede, backtest puanına göre sıralı (19 Haz 2026)
@@ -18002,10 +19393,14 @@ def _render_left_col():
         # ============ SOL: HAREKETE HAZIR (Erken Radar) ============
         with _sub_er:
             _er_df = st.session_state.get('erken_radar_data')
-            # Unique hisse = primary rolündeki ≥3 yıldızlı satır sayısı (kalite filtresi)
+            _er_score_map = get_scanner_scores()
+            def _current_er_score(s):
+                _v = _er_score_map.get(f"er_{s}")
+                return int(_v['score']) if _v else -1
+            # Unique hisse = güncel pozitif karne eşiğini geçen primary satırlar
             if _er_df is not None and hasattr(_er_df, 'empty') and not _er_df.empty:
                 _er_count = int(_er_df[(_er_df['Role'] == 'primary') &
-                    (_er_df['ScenarioId'].apply(lambda s: ER_BACKTEST_SCORE.get(str(s), 0) >= ER_ELIT_SCORE_MIN))
+                    (_er_df['ScenarioId'].apply(lambda s: _current_er_score(s) >= ER_ELIT_SCORE_MIN))
                     ]['Sembol'].nunique())
             else:
                 _er_count = 0
@@ -18021,14 +19416,16 @@ def _render_left_col():
                     try: return int(v)
                     except: return 0
                 _er_clean['_stars_n'] = _er_clean['Stars'].apply(_stars_int)
-                # 19 Haz 2026 — KALİTE FİLTRESİ ARTIK BACKTEST PUANI (eski yıldız DEĞİL).
-                # İki-rejimde kanıtlanmış senaryolar (B8/D2/C2/C5...) öne çıkar; yıldızı yüksek
-                # ama vasat (er_C6 5★) veya düşük puanlılar ELİT panelden elenir. Gold mine = en üstte.
-                _er_clean['_bt_score'] = _er_clean['ScenarioId'].apply(lambda s: ER_BACKTEST_SCORE.get(str(s), 0))
+                # Yalnız güncel özetten gelen puan kullanılır; eski sabit puana geri dönüş yoktur.
+                _er_clean['_bt_score'] = _er_clean['ScenarioId'].apply(_current_er_score)
                 _er_clean = _er_clean[_er_clean['_bt_score'] >= ER_ELIT_SCORE_MIN]
                 _er_clean['_role_rank'] = _er_clean['Role'].map({'primary': 0, 'confirmation': 1})
-                # Hisse başına senaryo sayısı (çoklu teyit tespiti — primary + confirmation toplamı)
-                _scenario_counts = _er_clean.groupby('Sembol').size().to_dict()
+                # Hisse başına BAĞIMSIZ aile sayısı. B11+C5 aynı sıkışma/birikim
+                # hikâyesidir; iki ayrı teyit gibi sayılmaz.
+                _er_clean['_family'] = _er_clean['ScenarioId'].apply(
+                    lambda _sid: scanner_family(f"er_{_sid}")
+                )
+                _scenario_counts = _er_clean.groupby('Sembol')['_family'].nunique().to_dict()
                 _er_clean['_sc_count'] = _er_clean['Sembol'].map(_scenario_counts).fillna(1).astype(int)
                 # Hisse başına EN YÜKSEK backtest puanı → o puana göre sırala (en kazandıran en üstte)
                 _sym_best_score = _er_clean.groupby('Sembol')['_bt_score'].max().to_dict()
@@ -18039,7 +19436,9 @@ def _render_left_col():
                 )
                 # Aging: her (sym, scenario) için ardışık gün sayısı
                 _aging_pairs = [(str(_r['Sembol']), str(_r['ScenarioId'])) for _, _r in _er_clean.iterrows()]
-                _aging_map = get_scenario_ages_batch(_aging_pairs, max_lookback=30)
+                _aging_map = get_scenario_ages_batch(
+                    _aging_pairs, max_lookback=180, include_details=True
+                )
                 # Üst rozet: 3+ senaryo tetikleyen hisse sayısı (ÇOKLU TEYİT vurgusu)
                 _multi_n = sum(1 for _v in _scenario_counts.values() if _v >= 3)
                 _multi_2plus = sum(1 for _v in _scenario_counts.values() if _v >= 2)
@@ -18074,7 +19473,8 @@ def _render_left_col():
                     _ercat_icon = {'A': '🔄', 'B': '📐', 'C': '🚀', 'D': '⚠'}.get(_ercat, '•')
                     _cat_col    = {'A': '#f59e0b', 'B': '#a78bfa', 'C': '#4ade80', 'D': '#f87171'}.get(_ercat, '#94a3b8')
                     _sc_count  = _scenario_counts.get(_err.get('Sembol', ''), 1)
-                    _er_age    = _aging_map.get((_err.get('Sembol', ''), _erscid), 0)
+                    _er_life   = _aging_map.get((_err.get('Sembol', ''), _erscid), {})
+                    _er_age    = int(_er_life.get('event_day') or 0)
                     _er_in_elit = (_ersym in _elit_syms_clean) and (_erstars_n == 5)
                     _other_scns = _er_clean[(_er_clean['Sembol'] == _err.get('Sembol', '')) &
                                             (_er_clean['ScenarioId'] != _erscid)]['ScenarioId'].tolist()
@@ -18084,8 +19484,12 @@ def _render_left_col():
                         'cat_icon': _ercat_icon, 'cat_col': _cat_col,
                         'stars_n': _erstars_n, 'stars_s': _erstars_s,
                         'age': _er_age, 'sc_count': _sc_count,
+                        'first_seen': _er_life.get('first_seen'),
                         'in_elit': _er_in_elit, 'other_scns': _other_scns,
                         'desc': _er_kisa_aciklama(_erscid),   # sade açıklama (19 Haz 2026)
+                        'quality': _err.get('Kalite'),
+                        'quality_score': _err.get('Kalite_Skoru'),
+                        'quality_detail': _err.get('Kalite_Detay'),
                     })
 
                 # CSS — kart görünümlü butonlar (sol kenar rengi = kategori rengi)
@@ -18110,18 +19514,26 @@ def _render_left_col():
                         for _gc, _cd in zip([_gc1, _gc2], _er_cards_data[_ci:_ci+2]):
                             with _gc:
                                 # Rozetler
-                                _age_badge  = f" · {_cd['age']}g" if _cd['age'] >= 2 else ""
+                                _age_badge = (
+                                    f" · olay {_cd['age']}. seans · ilk {_cd['first_seen']}"
+                                    if _cd['age'] >= 1 and _cd.get('first_seen') else ""
+                                )
                                 _multi_badge = (f" +{_cd['sc_count']-1}✦" if _cd['sc_count'] >= 3
                                                 else (" +1✦" if _cd['sc_count'] == 2 else ""))
                                 _elit_badge  = " 💎🎯" if _cd['in_elit'] else (" 💎" if _cd['sym'] in _elit_syms_clean else "")
                                 _conf_badge  = f" +{','.join(_cd['other_scns'][:2])}" if _cd['other_scns'] else ""
+                                _quality_badge = (
+                                    f" · {_cd['quality']} ({int(_cd['quality_score'])})"
+                                    if _cd.get('quality') and pd.notna(_cd.get('quality_score'))
+                                    else ""
+                                )
                                 # 3 satır label: hisse+fiyat / senaryo adı+rozet / SADE AÇIKLAMA
                                 # (19 Haz 2026 — yıldız yerine herkesin anlayacağı açıklama öne çıkar)
                                 _desc_txt = _cd.get('desc', '') or _cd['name']
                                 if len(_desc_txt) > 88:
                                     _desc_txt = _desc_txt[:85].rstrip() + '…'
                                 _lbl = (f"{_cd['cat_icon']} {_cd['sym']}  {_cd['price']}{_elit_badge}\n"
-                                        f"⭐ {_cd['name']}{_age_badge}{_multi_badge}{_conf_badge}\n"
+                                        f"⭐ {_cd['name']}{_quality_badge}{_age_badge}{_multi_badge}{_conf_badge}\n"
                                         f"{_desc_txt}")
                                 _key = f"er_card_{_cd['sym']}_{_cd['eri']}"
                                 if st.button(_lbl, key=_key, width='stretch'):
@@ -18169,7 +19581,7 @@ def _render_left_col():
                             on_scan_result_click(sym); st.rerun()
                         if _pb_double:
                             st.markdown("<div style='font-size:0.68rem;color:#818cf8;font-weight:700;"
-                                        "margin:-6px 0 2px 4px;'>💎 ELİTLER'de de var</div>",
+                                        "margin:-6px 0 2px 4px;'>💎 Altın/Platin listesinde de var</div>",
                                         unsafe_allow_html=True)
                         _pb_ac = row.get('Aciklama', '')
                         if _pb_ac:
@@ -18186,9 +19598,12 @@ def _render_left_col():
     _t2c3, _t2c4 = st.columns(2)
     
     with _t2c3:
-        st.markdown(_scan_card_header("🦁", "Minervini SEPA", 76,
+        # 18 Tem 2026: uydurma "76" çipi kaldırıldı — gerçek karnesi bundan İYİ (temiz DB,
+        # 18 Tem harita revizyonu: sistemin tek her-rejimde-artı taraması, ama N küçük).
+        st.markdown(_scan_card_header("🦁", "Minervini SEPA", None,
             "VCP + SMA hizalama + RS güç", "#3b82f6",
-            desc="Dünya şampiyonunun metodolojisi: dar bant, güçlü trend, doğru an"
+            desc="Dünya şampiyonunun metodolojisi: dar bant, güçlü trend, doğru an",
+            karne="Güncel sonuç güçlü: 10 günde ort +%17,2, isabet %81 (N=37); 20 gün sonucu daha yüksek ama örnek küçük (N=20). Tek başına karar verme."
         ), unsafe_allow_html=True)
         if st.button(f"🦁 SEPA TARAMASI ({st.session_state.category})", type="secondary", width='stretch', key="btn_scan_sepa",
                      help="Mark Minervini'nin onlarca yıllık şampiyon hisse araştırmasına dayanan tarama yöntemi.\n\nKriterler: Fiyat 50, 150 ve 200 günlük ortalamalarının hepsinin üstünde ve bu ortalamalar doğru sırada hizalanmış olmalı. Hisse piyasadan güçlü (RS > 70) ve son 52 haftanın dibinden en az %25 yukarıda olmalı.\n\nEk bonus: VCP (Volatility Contraction Pattern) — hisse giderek daralan bir sıkışma içindeyse ve hacimli kırılım yaşandıysa 'Süper' etiketiyle çıkar."):
@@ -18211,12 +19626,15 @@ def _render_left_col():
                 st.warning("Bu zorlu kriterlere uyan hisse bulunamadı.")
     
     with _t2c4:
-        st.markdown(_scan_card_header("💎", "Altın Set-up & VIP Formasyon", 78,
-            "RS güçlü + Discount + Hacim + Formasyon", "#16a34a",
-            desc="Güçlü ama henüz pahalılaşmamış — büyük oyuncuya yakın erken konum"
+        # 18 Tem 2026: uydurma "78" çipi kaldırıldı — temiz karne (10g): altin_setup %31/-3.0
+        # (N=414) · tekli_altin %28/-3.0 (N=1448) · vip_formasyon %39/-0.4 (N=1110) = ZAYIF.
+        st.markdown(_scan_card_header("💎", "Altın & VIP Rozetleri", None,
+            "Uygunluk Etiketi · Bağımsız Oy Değil", "#16a34a",
+            desc="Koşulları ve formasyon uygunluğunu etiketler; puan veya alım teyidi üretmez",
+            karne="Geçmiş karne zayıf: benzer sinyallerin 10'da 3'ü kazandırdı (10 günde ort -%3) — liste fikir verir, tek başına karar verme."
         ), unsafe_allow_html=True)
-        if st.button(f"💎 ALTIN SET-UP & VIP FORMASYON TARA ({st.session_state.category})", type="secondary", width='stretch', key="btn_scan_golden_vip",
-                     help="İki aşamalı eleme: önce Altın Set-up kriterleri (RS güçlü + Discount + Hacim), sonra formasyon (Fincan-Kulp, TOBO, Üçgen, Range). Formasyon bulunamazsa Hazırlık listesine girer."):
+        if st.button(f"💎 ALTIN & VIP ROZETLERİNİ TARA ({st.session_state.category})", type="secondary", width='stretch', key="btn_scan_golden_vip",
+                     help="İki aşamalı uygunluk etiketi: önce Altın koşulları (RS güçlü + Discount + Hacim), sonra formasyon (Fincan-Kulp, TOBO, Üçgen, Range). Rozet bağımsız oy veya alım teyidi değildir."):
             with st.spinner("Fincan-Kulp, TOBO ve Üçgenlerde Altın Set-up aranıyor..."):
                 current_assets = ASSET_GROUPS.get(st.session_state.category, [])
                 st.session_state.golden_pattern_data = scan_golden_pattern_agent(current_assets, st.session_state.get('category', 'S&P 500'))
@@ -18255,9 +19673,12 @@ def _render_left_col():
     # 🎯 FIRSAT RADARI — Formasyon Avcısı (3 sütun) — 24 Haz 2026
     # radar_core.scan_universe → firsat_radari botu ile AYNI motor (tek kaynak, drift yok).
     # ══════════════════════════════════════════════════════════
-    st.markdown(_scan_card_header("🎯", "FIRSAT RADARI — Formasyon Avcısı", 90,
-        "Fincan-Kulp + TOBO + Çift Dip · boyun çizgisi kırılımı", "#a855f7",
-        desc="Büyük çıkışları başlamadan yakalar: hazırlanıyor → sıkıştı → kırdı (likit ≥500M TL)"), unsafe_allow_html=True)
+    # 18 Tem 2026: uydurma "90/100" çipi kaldırıldı — toplu karne henüz ölçülmedi
+    # (firsat_radar_log VPS'te birikiyor; firsat_backtest.py olgunlaşınca sayı bağlanır).
+    st.markdown(_scan_card_header("🎯", "FIRSAT RADARI — Formasyon Avcısı", None,
+        "Fincan-Kulp + TOBO + Üçgen + Taban · boyun çizgisi kırılımı", "#a855f7",
+        desc="Büyük çıkışları başlamadan yakalar: hazırlanıyor → sıkıştı → kırdı (likit ≥500M TL)",
+        karne="Karnesi henüz ölçülmedi — sinyaller tespit amaçlıdır, güven puanı değildir."), unsafe_allow_html=True)
     if st.button("🎯 FIRSAT RADARI TARA (likit BIST formasyonları)", type="secondary", width='stretch', key="btn_firsat_radar",
                  help="Formasyon-önce: fincan-kulp/TOBO/çift-dip + 5 kalite işareti. Bot ile aynı motor."):
         with st.spinner("Formasyonlar ve boyun kırılımları taranıyor..."):
@@ -18266,7 +19687,7 @@ def _render_left_col():
     _fr = st.session_state.get('firsat_radar_data')
     if _fr is not None:
         _frh, _frs, _frk, _frd = _fr
-        _TT = {'CUP': 'Fincan-Kulp', 'TOBO': 'TOBO', 'W': 'Çift Dip'}
+        _TT = {'CUP': 'Fincan-Kulp', 'TOBO': 'TOBO', 'UCGEN': 'Yükselen Üçgen', 'TABAN': 'Taban', 'W': 'Çift Dip'}
         _taze   = [r for r in _frk if r.get('durum') == 'taze' and r.get('Q', 0) >= 3 and r['fiyat'] >= r['neck'] and r.get('ext', 1) <= 1.20]
         _retest = [r for r in _frk if r.get('durum') == 'retest' and r.get('a200') == 1]
         _kirdi_show = _taze + _retest
@@ -18511,7 +19932,7 @@ def _render_left_col():
 
 def _render_flow_leaders_panel():
     """💧 PARA AKIŞI LİDERLERİ — CMF (para akışı) + momentum (trend), büyük-cap, manipülasyon/
-    tavan filtreli. 14 ay backtest + rejim testinde tutan combo. flow_leaders tablosundan
+    tavan filtreli araştırma listesi. Güncel canlı karne zayıf; flow_leaders tablosundan
     okur (universe_snapshot --publish + weekly_list --leaders nightly üretir)."""
     try:
         _flc = sqlite3.connect(DB_FILE, timeout=30)
@@ -18535,9 +19956,9 @@ def _render_flow_leaders_panel():
             💧 PARA AKIŞI LİDERLERİ
         </div>
         <div style="font-size:0.7rem; color:#94a3b8; font-style:italic; flex:1; min-width:120px;">
-            Akıllı para (CMF) + yükselen trend · büyük-cap · backtest-kanıtlı
+            Akıllı para (CMF) + yükselen trend · büyük-cap · tek faktör gözlemi
         </div>
-        <div style="font-size:0.68rem; color:#64748b; white-space:nowrap;">{_ds} · CMF+momentum · 14ay backtest-kanıtlı</div>
+        <div style="font-size:0.68rem; color:#64748b; white-space:nowrap;">{_ds} · canlı karne zayıf · puan katkısı yok</div>
     </div>
     """, unsafe_allow_html=True)
     if not _rows:
@@ -18692,9 +20113,44 @@ with col_left:
         _render_left_col()
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _piyasa_genisligi_bugun():
+    """1c PİYASA-ŞOKU (18 Tem 2026) — bugünkü piyasa genişliği: veriler/ parquet'lerinden
+    her hissenin son 2 kapanışı. Karar terazi_core.sistemik_gun'da (saf hesap); burası
+    SADECE veri toplar. Sunucu-geneli 30 dk cache. Döner: (neg_oran%, medyan%, n)."""
+    try:
+        import glob as _sg_glob
+        from collections import Counter as _sg_counter
+        rows = []
+        for _f in _sg_glob.glob(os.path.join(CACHE_DIR, "*_1d.parquet")):
+            _sym = os.path.basename(_f).replace("_1d.parquet", "")
+            if _sym.startswith(("XU", "^")) or "=" in _sym or "-" in _sym:
+                continue
+            try:
+                _c = pd.read_parquet(_f, columns=["Close"])["Close"].astype(float)
+                if len(_c) < 2:
+                    continue
+                _r = (_c.iloc[-1] / _c.iloc[-2] - 1.0) * 100.0
+                if abs(_r) > 11:   # bölünme/limit-dışı artefakt (ölçüm scriptiyle aynı filtre)
+                    continue
+                rows.append((_c.index[-1].date(), float(_r)))
+            except Exception:
+                continue
+        if len(rows) < 300:
+            return None, None, len(rows)
+        # Bayat parquet koruması: en yaygın "son bar günü" hangisiyse sadece o günü say.
+        _gun = _sg_counter(d for d, _ in rows).most_common(1)[0][0]
+        _gr = pd.Series([r for d, r in rows if d == _gun])
+        if len(_gr) < 300:
+            return None, None, int(len(_gr))
+        return float((_gr < 0).mean() * 100.0), float(_gr.median()), int(len(_gr))
+    except Exception:
+        return None, None, 0
+
+
 def _compute_kanit_ozeti(ticker, frs=None):
-    """Tek hisse KANIT SKORU (0-100) + GÜVEN/ÇELİŞKİ ölçer (19 Haz 2026, Build 2).
-    - Kanıt Skoru = hissenin yakalandığı EN GÜÇLÜ kanıtlı taramanın veri-temelli puanı.
+    """Tek hisse güncel KARNE PUANI (0-100) + GÜVEN/ÇELİŞKİ ölçer.
+    - Karne puanı = hissenin yakalandığı en güçlü pozitif karneli taramanın veri-temelli puanı.
       (29 Haz 2026: çakışma bonusu KALDIRILDI — ölçüm çakışmanın kazandırmadığını gösterdi.)
     - Güven = boğa-diyen vs ayı-diyen sinyal dengesi; ikisi de varsa 'çelişki'.
     4 Tem 2026 revizyon: (1) tek oydan %100 üretilmez → 'tek_sinyal' bayrağı,
@@ -18703,12 +20159,13 @@ def _compute_kanit_ozeti(ticker, frs=None):
     frs: panel zaten hesapladıysa _firsat_radar_single sonucu (çift hesap olmasın).
     Vitrin hesabını (_compute_goldmine_entries) yeniden kullanır — verimli."""
     out = {'skor': None, 'label': 'kanıt yok', 'n_scanner': 0, 'best': '',
-           'guven': None, 'celiski': False, 'boga': 0, 'ayi': 0, 'tek_sinyal': False}
+           'guven': None, 'celiski': False, 'boga': 0, 'ayi': 0, 'tek_sinyal': False,
+           'terazi': None}  # 17 Tem 2026 reform 1a — tam terazi çıktısı (kart bundan çizilir)
     try:
         _tc = str(ticker).upper().replace('.IS', '')
         ent = next((e for e in _compute_goldmine_entries() if e['sym'].upper() == _tc), None)
         if ent is not None:
-            out['n_scanner'] = ent.get('extra', 0) + 1
+            out['n_scanner'] = int(ent.get('family_count', ent.get('extra', 0) + 1))
             out['best'] = ent.get('scanner', '')
             if ent.get('unmeasured'):
                 out['label'] = 'kanıt bekliyor'
@@ -18717,54 +20174,506 @@ def _compute_kanit_ozeti(ticker, frs=None):
                 # getiriyi artırmıyor, hafif düşürüyor. Tek en güçlü kanıtın puanı kalır.
                 out['skor'] = min(int(ent.get('score', 0)), 100)
                 out['label'] = 'kanıtlı'
-        # Yön sayımı (boğa vs ayı) — 4 Tem 2026: ağırlıklı + oy sayaçlı
-        boga = 0.0; ayi = 0.0; n_votes = 0
-        if out['skor'] and out['n_scanner'] > 0:           # kanıtlı kurulumlar boğa lehine
-            boga += float(out['n_scanner']); n_votes += int(out['n_scanner'])
+        # ── 17 Tem 2026 REFORM 1a: oy sayımı terazi_core'a taşındı (iki sınıf oy:
+        # ölçülmüş tam / ölçülmemiş yarım ◐). İlke: HAM sinyal oy verir, türev skor VERMEZ.
+        _votes = []
+        if out['skor'] and out['n_scanner'] > 0:           # pozitif karneli kurulumlar boğa lehine
+            _votes.append(terazi_core.mk_vote(
+                "Pozitif karneli tarama ailesi", 'boga', float(out['n_scanner']), True,
+                f"{out['n_scanner']} bağımsız pozitif ailede (en güçlü: {out['best']}, puan {out['skor']})", prio=7))
+        # 18 Tem 2026 (1b ŞEMSİYE) — kırmızı bayraklar artık senaryo-özel ölçülmüş oy:
+        # D4/D5 karneli şemsiye (terazi_core.semsiye_votes), bilinmeyen id jenerik oy.
+        # Kaynak: önce Master Scan batch df'i, yoksa _er_single_cache (restart dayanıklı).
+        _rf_ids = []
         _er = st.session_state.get('erken_radar_data')
         if _er is not None and hasattr(_er, 'empty') and not _er.empty and {'Sembol', 'Role'} <= set(_er.columns):
             _ser = _er['Sembol'].astype(str).str.upper()
-            _rf = len(_er[((_ser == str(ticker).upper()) | (_ser == _tc)) & (_er['Role'] == 'red_flag')])
-            if _rf: ayi += _rf; n_votes += _rf
-        _hc = st.session_state.get('harmonic_confluence_data')
-        if _hc is not None and hasattr(_hc, 'empty') and not _hc.empty and 'Sembol' in _hc.columns:
-            _ser = _hc['Sembol'].astype(str).str.upper()
-            for _, r in _hc[(_ser == str(ticker).upper()) | (_ser == _tc)].iterrows():
-                if 'Bearish' in str(r.get('Yön', '')):
-                    ayi += 1; n_votes += 1
-        # 2 — Ayı tarafına simetrik kaynaklar (terazi boğaya eğikti):
+            _rf_rows = _er[((_ser == str(ticker).upper()) | (_ser == _tc)) & (_er['Role'] == 'red_flag')]
+            if 'ScenarioId' in _rf_rows.columns:
+                _rf_ids = [str(x) for x in _rf_rows['ScenarioId'].tolist()]
+            else:
+                _rf_ids = ['?'] * len(_rf_rows)
+        if not _rf_ids:
+            _erc = st.session_state.get('_er_single_cache', {}).get(ticker) \
+                or st.session_state.get('_er_single_cache', {}).get(_tc)
+            if _erc:
+                _rf_ids = [str((x or {}).get('id', '?')) for x in (_erc.get('red_flags') or [])]
+        if _rf_ids:
+            _sems = terazi_core.semsiye_votes(_rf_ids)
+            _votes.extend(_sems)
+            _diger_rf = len(_rf_ids) - len(_sems)
+            if _diger_rf > 0:
+                _votes.append(terazi_core.mk_vote(
+                    "Erken Radar kırmızı bayrak", 'ayi', float(_diger_rf), True,
+                    f"{_diger_rf} kırmızı-bayrak senaryosu aktif", prio=7))
+        # Harmonik Confluence araştırma/gözlem katmanındadır; boğa veya ayı oyu vermez.
         # (a) Fırsat Radarı başarısız kırılım = ayı oyu (panel frs geçirir)
         if isinstance(frs, dict) and frs.get('kutu') == 'kirdi' and frs.get('durum') == 'fail':
-            ayi += 1; n_votes += 1
+            _votes.append(terazi_core.mk_vote(
+                "Başarısız kırılım", 'ayi', 1.0, True,
+                "Fırsat Radarı: boyun çizgisi kırıldı ama fiyat geri alındı. Kırılıp "
+                "tutunamayan seviye, alıcıların tuzağa düştüğü görüntüdür", prio=7))
         # (b) Oturumda tespit edilmiş AYI formasyonu (İkili Tepe M / Yükselen Kama)
         try:
             _fp = st.session_state.get('_formasyon_chart_data')
             _fptk = str(st.session_state.get('_formasyon_ticker', '')).upper().replace('.IS', '')
-            if _fp and _fptk == _tc:
-                if _fp.get('type') == 'double_top' or (_fp.get('type') == 'wedge' and _fp.get('kind') == 'rising'):
-                    ayi += 1; n_votes += 1
+            # BİRLEŞİK MOTOR: alçalan üçgen (dtri) = ayı formasyonu (eski dtriangle ile aynı oy)
+            _fp_bear = (_fp and (_fp.get('type') in ('double_top', 'dtriangle')
+                                 or (_fp.get('type') == 'wedge' and _fp.get('kind') == 'rising')
+                                 or (_fp.get('type') == 'birlesik' and _fp.get('shape') == 'dtri')))
+            if _fp and _fptk == _tc and _fp_bear:
+                    _ftyp = {"double_top": "İkili Tepe (M)", "dtriangle": "Alçalan Üçgen"}.get(
+                        _fp.get('type'), "Alçalan Üçgen" if _fp.get('shape') == 'dtri' else "Yükselen Kama")
+                    _votes.append(terazi_core.mk_vote(
+                        "Ayı formasyonu", 'ayi', 1.0, True,
+                        f"Grafikte {_ftyp} oluşuyor — ayı formasyonu. Boyun çizgisi "
+                        f"kırılırsa görüntü teyide döner; şimdilik izlenen risk", prio=8))
         except Exception:
             pass
-        # 3 — ICT bias YARIM oy: ölçülmemiş sinyal, kanıtlı taramayla eşit sayılmaz.
-        # Eylül 2026 f_ict_model karnesi çıkınca ağırlık kanıta bağlanacak.
+        # ICT araştırma/gözlem katmanındadır; sinyal terazisine yarım oy dâhil vermez.
+        # HAM gösterge oyları (RSI uç / CMF dual / SFP / yabancı streak) —
+        # tek kaynak _compute_signal_features; karne metinleri terazi_core'da.
+        _is_idx = str(ticker).upper().startswith(('XU', 'XB', 'XT', 'XY', '^')) or str(ticker).upper().endswith('=F')
         try:
-            _bias = str((calculate_ict_deep_analysis(ticker) or {}).get('bias', '')).lower()
-            if any(k in _bias for k in ('bear', 'düşüş', 'ayı', 'short')):
-                ayi += 0.5; n_votes += 1
-            elif any(k in _bias for k in ('bull', 'yükseliş', 'boğa', 'long')):
-                boga += 0.5; n_votes += 1
+            _feat_kz = _compute_signal_features(ticker) or {}
+            _votes.extend(terazi_core.votes_from_features(_feat_kz, is_index=_is_idx))
         except Exception:
             pass
-        out['boga'], out['ayi'] = round(boga, 1), round(ayi, 1)
-        # 1 — Tek oydan yüzde üretilmez ("Kanıt yok · güven %100" saçmalığı biter)
-        if n_votes >= 2 and (boga + ayi) > 0:
-            out['guven'] = int(boga / (boga + ayi) * 100)
-            out['celiski'] = (boga > 0 and ayi > 0)
-        elif n_votes == 1:
-            out['tek_sinyal'] = True
+        # 3b AŞAMA 3 (17 Tem 2026, onaylı) — 6-oy sisteminin kalan üyeleri
+        # (hacim/OBV/yapı/MFI) teraziye bağlandı. RSI+CMF alınmaz (zaten terazide —
+        # tekilleştirme, ilke 2). Pack cache'li (ttl 600); yoksa sessiz geç.
+        try:
+            _pack_kz = compute_genel_ozet_pack(ticker, st.session_state.get("bist_market_status", {}))
+            if _pack_kz:
+                _votes.extend(terazi_core.votes_from_genel_ozet({
+                    'hacim': _pack_kz.get('_sig_hacim'), 'obv': _pack_kz.get('_sig_obv'),
+                    'yapi': _pack_kz.get('_sig_yapi'), 'mfi': _pack_kz.get('_sig_mfi')}))
+        except Exception:
+            pass
+        # 23 Tem 2026 — ÇELİŞKİ FİX: terazi "Güçlü Alıcı"yı ve "Endeksten Sıyrılıyor"u
+        # görmüyordu (kullanıcı yakaladı). GENEL ÖZET panelinin GÖRDÜĞÜ bu iki akıllı-para
+        # sinyali AYNI fonksiyonlarla hesaplanıp teraziye bağlanır (tek kaynak). Endeks/
+        # emtia/kripto atlanır (rel-OBV/UDVR hacme dayanır). df cache hit.
+        try:
+            _tc_up = str(ticker).upper()
+            _flow_ok = not (_tc_up.startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                            or _tc_up.endswith('=F') or '-USD' in _tc_up)
+            if _flow_ok:
+                _df_flow = get_safe_historical_data(ticker, period="1y")
+                if _df_flow is not None and len(_df_flow) >= 25 and 'Volume' in _df_flow.columns:
+                    _rel_st = _udvr_st = None
+                    try:
+                        _bench_flow = get_safe_historical_data("XU100.IS", period="3mo")
+                        if _bench_flow is not None and len(_bench_flow) >= 25:
+                            _rr = compute_relative_obv_state(_df_flow, _bench_flow, lookback=20)
+                            _rel_st = _rr.get('state') if _rr else None
+                    except Exception:
+                        pass
+                    try:
+                        _ur = compute_updown_volume_ratio(_df_flow, period=20)
+                        if _ur:
+                            _udvr_st = _ur.get('climax') or _ur.get('state')
+                    except Exception:
+                        pass
+                    _votes.extend(terazi_core.votes_from_smart_flow(
+                        rel_state=_rel_st, udvr_state=_udvr_st))
+        except Exception:
+            pass
+        # ŞOK PAKETİ (17 Tem 2026 akşam, onaylı) — sert-gün karakteri:
+        # hacimli şok = ölçülmüş ayı oyu · hacimsiz/yukarı/endeks şok = sadece şerit.
+        _serit_kz = None
+        try:
+            _df_kz = get_safe_historical_data(ticker, period="1y")
+            _sv_kz, _serit_kz = terazi_core.sok_degerlendir(
+                terazi_core.gun_karakteri(_df_kz), is_index=_is_idx)
+            _votes.extend(_sv_kz)
+        except Exception:
+            pass
+        _ter = terazi_core.build_terazi(_votes, is_index=_is_idx)
+        if _serit_kz:
+            _ter['sok_serit'] = _serit_kz
+        # 1c PİYASA-ŞOKU MODU (18 Tem 2026) — sistemik günde hisse hükmü ASKIYA alınır.
+        # Eşikler ölçümden (terazi_core.sistemik_gun); UI seviyesi, AI prompt'a GİRMEZ.
+        # Endekste uygulanmaz — endeksin kendi şok şeridi zaten var.
+        if not _is_idx:
+            try:
+                _no_kz, _md_kz, _ = _piyasa_genisligi_bugun()
+                _sis_kz = terazi_core.sistemik_gun(_no_kz, _md_kz)
+                if _sis_kz['aktif']:
+                    _ter['sistemik'] = _sis_kz['serit']
+            except Exception:
+                pass
+        out['terazi'] = _ter
+        out['boga'], out['ayi'] = _ter['boga_w'], _ter['ayi_w']
+        # ⚠ guven SEMANTİĞİ DEĞİŞTİ (17 Tem 2026): eskiden "boğa payı" idi,
+        # artık "KAZANAN tarafın payı" (hükme güven). analysis_log serisinde kırılma noktası.
+        out['guven'] = _ter['guven']
+        out['celiski'] = _ter['celiski']
+        out['tek_sinyal'] = _ter['tek_sinyal']
     except Exception:
         pass
     return out
+
+
+def _render_ekran_v2_deneme(ticker):
+    """🧪 YENİ EKRAN DENEMESİ (23 Tem 2026) — sol kolonun tepesinde KAPALI açılır bar.
+
+    Mevcut ekran hiç değişmez; bu blok yalnızca önerilen 3 katlı yerleşimi
+    (şimdi ne oluyor → bugün ne değişti → ne zaman geçersiz) canlı veriyle
+    gösterir. Hesap ekran_v2.py'de (saf), burası sadece veriyi toplayıp çizer.
+    Beğenilmezse bu fonksiyon + çağrısı + import silinerek geri alınır."""
+    try:
+        kz  = _compute_kanit_ozeti(ticker) or {}
+        ter = kz.get('terazi') or {}
+        if not (ter.get('votes') or []):
+            return  # oy yoksa deneme kartı da çizilmez (kalabalık yasağı)
+
+        _df = get_safe_historical_data(ticker, period="1y")
+        _px = _chg = None
+        if _df is not None and len(_df) >= 2 and 'Close' in _df.columns:
+            _px = float(_df['Close'].iloc[-1])
+            _prev = float(_df['Close'].iloc[-2])
+            if _prev:
+                _chg = (_px - _prev) / _prev * 100.0
+
+        # Değer Alanı sınırları (PA-DNA cache'inden — 24sa TTL, ek maliyet yok)
+        _vah = _val = None
+        try:
+            _dna_v2 = calculate_price_action_dna(ticker) or {}
+            _sv_v2 = _dna_v2.get('smart_volume') or {}
+            _vah, _val = _sv_v2.get('vah'), _sv_v2.get('val')
+        except Exception:
+            pass
+
+        # Geçmiş karne + ölçüm şeridi ham sayıları — GENEL ÖZET pack'inden (cache hit)
+        _karne = None
+        _olc = {}
+        try:
+            _pack_v2 = compute_genel_ozet_pack(ticker, st.session_state.get("bist_market_status", {}))
+            if _pack_v2:
+                _karne = get_genel_ozet_verdict_stats().get(_pack_v2.get('_gs_net_txt'))
+                _olc['rsi'] = _pack_v2.get('_gs_rsi_val')
+                _olc['rvol'] = _pack_v2.get('_gs_rvol')
+        except Exception:
+            pass
+
+        # 52H konum + teknik skor: sinyal feature snapshot'ı (10dk cache — Master Scan'le aynı kaynak)
+        try:
+            _feat_v2 = _compute_signal_features(ticker) or {}
+            _olc['poz52'] = _feat_v2.get('f_52h_pos')
+            _olc['master'] = _feat_v2.get('f_master_score')
+        except Exception:
+            pass
+
+        # SMA50'ye uzaklık + Değer Alanı konumu
+        try:
+            if _df is not None and len(_df) >= 50 and _px:
+                _sma50_v2 = float(_df['Close'].rolling(50).mean().iloc[-1])
+                if _sma50_v2:
+                    _olc['sma50_pct'] = (_px - _sma50_v2) / _sma50_v2 * 100.0
+        except Exception:
+            pass
+        try:
+            _olc['va_pos'] = (_sv_v2 or {}).get('va_pos')
+        except Exception:
+            pass
+
+        # Hangi taramalarda + güvenlik kapısı (likidite / manipülasyon / risk-ödül)
+        _taramalar = {'n': kz.get('n_scanner'), 'best': kz.get('best'),
+                      'label': (kz.get('label') if kz.get('label') != 'kanıt yok' else '')}
+        _kapi_v2 = None
+        try:
+            if _df is not None and len(_df) >= 20 and _px:
+                _klm_v2 = _liquidity_manip(_df)
+                _rok_v2 = terazi_core.risk_odul_kapisi(_px, _vah, _val, _olc.get('va_pos'))
+                _kapi_v2 = terazi_core.kapi_hukmu(_klm_v2.get('tier'), _klm_v2.get('manip'),
+                                                  _rok_v2, adv_mn=_klm_v2.get('adv_mn'))
+        except Exception:
+            pass
+
+        # Dünkü snapshot (analysis_log) — "bugün ne değişti" bunun farkından çıkar
+        _onceki = None
+        try:
+            _tc_v2 = str(ticker).replace('.IS', '')
+            _today_v2 = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
+            _cn = sqlite3.connect(DB_FILE, timeout=10)
+            _rw = _cn.execute(
+                "SELECT scan_date, guven, kanit_skoru, master_score FROM analysis_log "
+                "WHERE symbol=? AND scan_date<? ORDER BY scan_date DESC LIMIT 1",
+                (_tc_v2, _today_v2)).fetchone()
+            _cn.close()
+            if _rw:
+                _onceki = {'tarih': _rw[0], 'guven': _rw[1],
+                           'kanit_skoru': _rw[2], 'master_score': _rw[3]}
+        except Exception:
+            pass
+
+        _kv_v2 = []
+        try:
+            _kv_v2 = _compute_kisa_vade_warnings(ticker, _df) or []
+        except Exception:
+            pass
+
+        # master_score artık ölçüm şeridiyle AYNI kaynaktan (drift olmasın)
+        _degisimler = ekran_v2.ne_degisti(
+            {'guven': ter.get('guven'), 'kanit_skoru': kz.get('skor'),
+             'master_score': _olc.get('master')},
+            _onceki, kisa_vade=_kv_v2, sok_serit=(ter.get('serit') or None))
+        _gec = ekran_v2.gecersizlik_cizgisi(_df, ter.get('yon'), vah=_vah, val=_val)
+
+        # GENEL ÖZET'in kısmen ilişkili 6 göstergesinden kaçı kararsız (yön belirtmedi)
+        _sessiz_v2 = 0
+        try:
+            if _pack_v2:
+                _sessiz_v2 = max(0, 6 - int(_pack_v2.get('_gs_up') or 0)
+                                 - int(_pack_v2.get('_gs_dn') or 0))
+        except Exception:
+            pass
+
+        # 23 Tem 2026 (akşam) — ANA KART KUTUSU KALDIRILDI. Artık sol kolonda ayrı
+        # kutu ÇİZİLMİYOR; terazi verisi Görsel Analiz infografiğine ENJEKTE edilmek
+        # üzere session_state'e konur (parçaları _render_infografik_inapp basar).
+        # Gerekçeler yine sağ karttaki açılır bölümde (bu fonksiyon onu çizmez).
+        st.session_state['_ekran_v2_paketi'] = {
+            'ticker': ticker,
+            'terazi': ter,
+            'degisimler': _degisimler,
+            'gecersizlik': _gec,
+        }
+    except Exception:
+        # Deneme bloğu asıl ekranı ASLA düşürmez — ama sessizce kaybolmasın diye
+        # sebebi loga yazılır (logs/ekran_v2.log). Beğenilirse bu log kaldırılır.
+        try:
+            import traceback as _tb_v2
+            os.makedirs("logs", exist_ok=True)
+            with open(os.path.join("logs", "ekran_v2.log"), "a", encoding="utf-8") as _lf:
+                _lf.write(f"--- {datetime.now()} {ticker}\n{_tb_v2.format_exc()}\n")
+        except Exception:
+            pass
+
+
+# Tanım bitti → sol kolonun tepesindeki yer tutucuyu ŞİMDİ doldur (sıra zorunlu).
+try:
+    if st.session_state.get('_ekran_v2_slot') is not None:
+        _render_ekran_v2_deneme(st.session_state.ticker)
+except Exception:
+    pass
+
+
+def _render_kanit_terazisi_card(ticker):
+    """⚖ KANIT TERAZİSİ kartı (17 Tem 2026, EKRAN REFORMU 1a) — ekranın TEK sentez hükmü.
+    Sağ kolon tepesinde (FİYAT kartı altı) çizilir. Oylar _compute_kanit_ozeti → terazi_core.
+    Ölçülmüş oy dolgun ●, ölçülmemiş oy soluk ◐. 2c kararı: zorunlu karşı-sinyal satırı."""
+    try:
+        kz = _compute_kanit_ozeti(ticker)
+        ter = kz.get('terazi') or {}
+        votes = ter.get('votes') or []
+        if not votes:
+            return  # oy yoksa kart çizilmez (kalabalık yasağı)
+        _lbl, _col = terazi_core.yon_label(ter.get('yon'))
+        # 1c (18 Tem 2026) — sistemik günde manşet hüküm yerine ASKI etiketi (mor).
+        _sistemik = ter.get('sistemik')
+        if _sistemik:
+            _lbl, _col = "SİSTEMİK GÜN — HÜKÜM ASKIDA", "#a78bfa"
+        # Güven dili (17 Tem akşam düzeltmesi): yüzde SADECE çelişki varken anlamlı.
+        # Tek yönlü 2 oyla "güven %100" basmak sahte kesinlik — "oybirliği (+az kanıt)" denir.
+        _top_w = ter.get('boga_w', 0) + ter.get('ayi_w', 0)
+        if ter.get('celiski') and ter.get('guven') is not None:
+            _gv_txt = f"güven %{ter['guven']} · <span style='color:#f87171;'>çelişkili</span>"
+        elif ter.get('tek_sinyal'):
+            _gv_txt = "tek sinyal — güven için yetersiz"
+        elif ter.get('n_votes', 0) >= 2:
+            _gv_txt = "oybirliği" + (" · az kanıt" if _top_w < 2.5 else "")
+        else:
+            _gv_txt = ""
+        if _sistemik:
+            _gv_txt = ""   # askıdaki hükme güven yüzdesi yazılmaz
+        # ── 18 Tem 2026 RENDER SADELEŞTİRME ──────────────────────────────────
+        # Başlık: hüküm KISA ROZET (pill) + ⓘ dipnot tooltip'i (eski okunmayan italik
+        # alt notlar buraya taşındı). Karşı sinyal yoksa rozette minik ✓ (tam satır kalktı).
+        _n_ayi = sum(1 for v in votes if v['yon'] == 'ayi')
+        _n_boga = sum(1 for v in votes if v['yon'] == 'boga')
+        _lbl_kisa = "ASKIDA" if _sistemik else {'yukari': 'YUKARI', 'asagi': 'AŞAĞI'}.get(ter.get('yon'), 'DENGEDE')
+        _pill_txt = _lbl_kisa
+        _pill_col = _col        # pill rengi: hükme güven yoksa nötr'e düşer
+        # 18 Tem 2026 akşam FIX — TEK ZAYIF OY sahte-kesinlik göçüğü (endeks modu sonrası
+        # XU100'de hacim oyları düşünce geriye tek 0.5 ölçülmemiş oy kaldı → "AŞAĞI ✓"
+        # kendinden emin görünüyordu). Tek sinyalde: nötr renk + "tek sinyal" görünür etiket
+        # + ✓ YOK (✓ = "karşı sinyal yok, temiz hüküm" iması, tek oyda yanıltıcı).
+        _tek = bool(ter.get('tek_sinyal')) and not _sistemik
+        if _tek:
+            _pill_txt = f"{_lbl_kisa} · tek sinyal"
+            _pill_col = "#94a3b8"
+        elif ter.get('celiski') and ter.get('guven') is not None and not _sistemik:
+            _pill_txt += f" %{ter['guven']} · çelişkili"
+        _karsi_var = ter.get('karsi') if ter.get('yon') in ('yukari', 'asagi') else None
+        _karsi_yok = ter.get('yon') in ('yukari', 'asagi') and not _karsi_var and not _tek
+        if _karsi_yok:
+            _pill_txt += " ✓"
+        _gv_duz = _gv_txt.replace("<span style='color:#f87171;'>çelişkili</span>", "çelişkili")
+        _pill_tip = _lbl + ((" · " + _gv_duz) if _gv_duz else "")
+        if _karsi_yok:
+            _pill_tip += " · karşı yönde güçlü sinyal yok — hüküm temiz"
+        _pill_tip = _pill_tip.replace('"', '')
+        _dipnot = []
+        if ter.get('celiski'):
+            _dipnot.append("Bu çelişki tipinin toplu karnesi henüz ölçülmedi (Eylül 2026 randevusu).")
+        if ter.get('endeks_notu'):
+            _dipnot.append(ter['endeks_notu'])
+        _dip_tip = " — ".join(_dipnot).replace('"', '')
+        _info_html = (f'<span title="{_dip_tip}" style="color:#94a3b8;font-size:0.72rem;'
+                      f'cursor:help;margin-left:6px;font-weight:600;">ⓘ</span>') if _dipnot else ""
+        # ✓/✗ oy-sayısı özet rozetleri (21 Tem 2026 — GENEL SAĞLIK kartından ödünç):
+        # bir bakışta "kaç lehte / kaç aleyhte". Detay dots + bar aşağıda; bu sadece özet.
+        _cnt_badges = (
+            f"<span style='background:#22c55e1f;color:#22c55e;border:1px solid #22c55e55;border-radius:8px;"
+            f"padding:1px 7px;font-size:0.68rem;font-weight:800;white-space:nowrap;'>&#10003; {_n_boga}</span>"
+            f"<span style='background:#f871711f;color:#f87171;border:1px solid #f8717155;border-radius:8px;"
+            f"padding:1px 7px;font-size:0.68rem;font-weight:800;white-space:nowrap;'>&#10007; {_n_ayi}</span>")
+        _hdr = (f"<div style='background:linear-gradient(90deg,#1e293b,#0f172a);border-bottom:1px solid #334155;"
+                f"padding:6px 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;'>"
+                f"<span style='display:inline-flex;flex-direction:column;line-height:1.12;'>"
+                f"<span style='font-size:0.8rem;font-weight:800;color:#e2e8f0;letter-spacing:0.04em;'>KANIT TERAZİSİ{_info_html}</span>"
+                f"<span style='font-size:0.55rem;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;'>ORTA VADE · 10-20 GÜN</span>"
+                f"</span>"
+                f"<span style='display:inline-flex;gap:5px;align-items:center;'>{_cnt_badges}"
+                f'<span title="{_pill_tip}" style="background:{_pill_col}22;color:{_pill_col};border:1px solid {_pill_col}55;'
+                f'border-radius:10px;padding:1px 9px;font-size:0.7rem;font-weight:800;cursor:help;'
+                f'white-space:nowrap;">{_pill_txt}</span></span></div>')
+        # 1c SİSTEMİK GÜN BANDI (18 Tem 2026) — piyasa-şoku modunda mor askı şeridi.
+        _sis_html = ""
+        if _sistemik:
+            _sis_html = (f"<div style='padding:6px 11px;background:rgba(167,139,250,0.13);"
+                         f"border-bottom:1px solid rgba(167,139,250,0.4);font-size:0.7rem;"
+                         f"color:#c4b5fd;line-height:1.45;font-weight:600;'>{_sistemik}</div>")
+        # 🌂 ŞEMSİYE BANDI (18 Tem 2026, reform 1b) — er_D4/er_D5 ölçülmüş düşüş uyarısı
+        # yanıyorsa başlığın altında rozet. Karne cümlesi oy listesinde; band kısa hüküm taşır.
+        _sems_html = ""
+        _sems_votes = [v for v in votes if v.get('semsiye')]
+        if _sems_votes:
+            _sems_adlar = " + ".join(v['ad'].replace("Şemsiye: ", "") for v in _sems_votes)
+            _sems_html = (f"<div style='padding:6px 11px;background:rgba(239,68,68,0.14);"
+                          f"border-bottom:1px solid rgba(239,68,68,0.4);font-size:0.72rem;"
+                          f"color:#fca5a5;line-height:1.45;font-weight:700;'>🌂 ŞEMSİYE AÇIK — "
+                          f"{_sems_adlar}. Ölçülmüş düşüş uyarısı: alım için uygun gün değil.</div>")
+        # ŞOK ŞERİDİ (17 Tem 2026 akşam) — yön iddiasız tazelik/karne notu, başlığın hemen altı
+        _serit_html = ""
+        if ter.get('sok_serit'):
+            _serit_html = (f"<div style='padding:6px 11px;background:rgba(245,158,11,0.12);"
+                           f"border-bottom:1px solid rgba(245,158,11,0.35);font-size:0.7rem;"
+                           f"color:#fbbf24;line-height:1.45;font-weight:600;'>{ter['sok_serit']}</div>")
+
+        # A+B TASARIM (18 Tem gece, kullanıcı seçimi) — NOKTA TERAZİSİ + kompakt satırlar;
+        # 2 cümlelik gerekçeler kartın ALTINDAKİ katlanır bölümde (tooltip mobilde çalışmaz,
+        # kalıcı okunur yer şart). Beğenilmezse geri düşüş: A (noktaları kaldır, gerisi kalır).
+        _aw, _bw = ter.get('ayi_w', 0), ter.get('boga_w', 0)
+        _tw = _aw + _bw
+        _pct_ayi = (_aw / _tw * 100.0) if _tw > 0 else 50.0
+
+        # Nokta terazisi: her oy bir nokta — tam oy büyük (11px), yarım oy küçük (8px);
+        # ölçülmemiş oy soluk. Ortada denge çizgisi; altında ince oran çubuğu.
+        def _kt_dot(v):
+            _sz = 11 if v['agirlik'] >= 1 else 8
+            _renk_d = '#f87171' if v['yon'] == 'ayi' else '#22c55e'
+            _op_d = '1' if v['olculmus'] else '0.45'
+            _t_d = str(v['ad']).replace('"', '')
+            return (f'<span title="{_t_d}" style="width:{_sz}px;height:{_sz}px;border-radius:50%;'
+                    f'background:{_renk_d};opacity:{_op_d};display:inline-block;flex:none;cursor:help;"></span>')
+        _ayi_dots = ''.join(_kt_dot(v) for v in votes if v['yon'] == 'ayi')
+        _boga_dots = ''.join(_kt_dot(v) for v in votes if v['yon'] == 'boga')
+        _dots_html = (f'<div style="display:flex;align-items:center;gap:8px;padding:9px 10px 5px;">'
+                      f'<div style="flex:1;display:flex;justify-content:flex-end;align-items:center;gap:4px;">{_ayi_dots}</div>'
+                      f'<div style="width:1px;height:15px;background:#475569;flex:none;"></div>'
+                      f'<div style="flex:1;display:flex;justify-content:flex-start;align-items:center;gap:4px;">{_boga_dots}</div></div>')
+        _bar_tip = f"AŞAĞI {_aw:g} oy ({_n_ayi} sinyal) · YUKARI {_bw:g} oy ({_n_boga} sinyal)"
+        _bar_html = (f'<div title="{_bar_tip}" style="display:flex;height:4px;margin:0 10px 6px;'
+                     f'border-radius:3px;overflow:hidden;cursor:help;background:#1e293b;">'
+                     f'<div style="width:{_pct_ayi:.0f}%;background:#f87171;"></div>'
+                     f'<div style="flex:1;background:#22c55e;"></div></div>')
+
+        # Kompakt oy satırları: kısa etiket (v['ad']); tam gerekçe alttaki katlanır bölümde.
+        _kazanan = 'ayi' if _aw >= _bw else 'boga'
+        _sorted_votes = sorted(votes, key=lambda x: (0 if x['yon'] == _kazanan else 1, -x['prio'], -x['agirlik']))
+        _rows_html = []
+        for v in _sorted_votes:
+            _renk = '#f87171' if v['yon'] == 'ayi' else '#22c55e'
+            _pre = "●" if v['olculmus'] else "◐"
+            _op = '1' if v['olculmus'] else '0.6'
+            _ad = str(v['ad'])
+            _tip = str(v['neden']).replace('◆', '').replace('"', '').strip() + f" ({v['agirlik']:g} oy)"
+            _rows_html.append(
+                f'<div title="{_tip}" style="font-size:0.72rem;color:#cbd5e1;line-height:1.4;'
+                f'margin-bottom:2px;cursor:help;opacity:{_op};white-space:nowrap;overflow:hidden;'
+                f'text-overflow:ellipsis;"><span style="color:{_renk};">{_pre}</span> {_ad}</div>')
+        _body = f"<div style='padding:2px 10px 6px;'>{''.join(_rows_html)}</div>"
+        # 2c kararı — karşı-sinyal: VARSA amber satır (etiket + tooltip'te gerekçe);
+        # YOKSA satır yok, başlık rozetindeki ✓ taşıyor. İtalik alt notlar ⓘ'ye taşındı.
+        _karsi_html = ""
+        if _karsi_var:
+            _k_ad = str(_karsi_var.get('ad', ''))
+            _k_tip = str(_karsi_var.get('neden', '')).replace('◆', '').replace('"', '').strip()
+            _karsi_html = (f'<div title="{_k_tip}" style="padding:5px 10px;border-top:1px dashed '
+                           f'rgba(100,116,139,0.3);font-size:0.7rem;color:#fbbf24;font-weight:700;'
+                           f'cursor:help;">Karşı sinyal: <span style="font-weight:600;color:#fcd34d;">{_k_ad}</span></div>')
+        # 18 Tem 2026 akşam — TEK SİNYAL notu: kart seyrek görünüyorsa neden'i açıkla
+        # (endekste hacim oyları düşünce beklenen durum). "göçmüş" izlenimini engeller.
+        _tek_not_html = ""
+        if _tek:
+            _tek_neden = "Şu an tek sinyal var — hüküm için yetersiz, farklı bir kanıt alanından teyit iste."
+            _tek_not_html = (f"<div style='padding:5px 10px;border-top:1px dashed rgba(100,116,139,0.3);"
+                             f"font-size:0.66rem;color:#94a3b8;font-style:italic;line-height:1.4;'>{_tek_neden}</div>")
+        # A+B (21 Tem 2026) — GEREKÇELER artık kartın PARÇASI: elle tasarlanmış <details>
+        # (eski st.expander'ın mavi kutusu karta yamalı duruyordu). Katlanır davranış korunur,
+        # görünüm karta uyar. <details> Streamlit'te çalışıyor (GENEL ÖZET ~11606 aynı kalıp).
+        # Kapalı başlar → tarayıcının açılır üçgeni görsel ipucu (list-style bırakıldı).
+        _grk = []
+        for v in _sorted_votes:
+            _renk_g = '#f87171' if v['yon'] == 'ayi' else '#22c55e'
+            _pre_g = "●" if v['olculmus'] else "◐"
+            _ndn_g = str(v['neden']).replace('◆', "<span style='color:#38bdf8;font-size:0.62rem;'>◆</span>").strip()
+            _grk.append(
+                f"<div style='font-size:0.72rem;line-height:1.5;margin-bottom:7px;'>"
+                f"<span style='color:{_renk_g};'>{_pre_g}</span> "
+                f"<b style='color:#e2e8f0;'>{v['ad']}</b> "
+                f"<span style='color:#64748b;font-size:0.64rem;'>({v['agirlik']:g} oy)</span><br>"
+                f"<span style='color:#94a3b8;'>{_ndn_g}</span></div>")
+        # Gerekçeler bu kartta (açılır) — 23 Tem akşam geri getirildi. ANA KART
+        # kutusu Görsel Analiz'e taşındığı için gerekçeler yine burada, eski yerinde.
+        _gerekce_html = (
+            "<details style='border-top:1px solid #334155;'>"
+            "<summary style='cursor:pointer;padding:7px 10px;font-size:0.7rem;font-weight:700;"
+            "color:#94a3b8;letter-spacing:0.03em;'>Gerekçeler — oyların nedeni</summary>"
+            f"<div style='padding:2px 10px 8px;'>{''.join(_grk)}</div>"
+            "</details>")
+        # ── KISA VADE (1-15 gün) bandı — CANLI SİNYALLER'den buraya taşındı (22 Tem 2026):
+        # ORTA VADE terazi hükmü + KISA VADE bozulma uyarıları TEK kartta alt alta (kullanıcı).
+        # Tek kaynak helper. Şiddet objektif: güçlü ayı sinyali (Dağıtım/Climax/Z-Tepe)→Zayıf; uyarı→İzle.
+        _kv_w = _compute_kisa_vade_warnings(ticker)
+        _kv_strong = any(("Dağıtım" in x or "Climax" in x or "Tepe" in x) for x in _kv_w)
+        if _kv_strong:
+            _kvb_ic, _kvb_col, _kvb_bg, _kvb_lbl = "🔴", "#f87171", "rgba(239,68,68,0.10)", "ZAYIF"
+        elif _kv_w:
+            _kvb_ic, _kvb_col, _kvb_bg, _kvb_lbl = "⚠️", "#fbbf24", "rgba(217,119,6,0.12)", "İZLE"
+        else:
+            _kvb_ic, _kvb_col, _kvb_bg, _kvb_lbl = "✅", "#34d399", "rgba(16,185,129,0.10)", "UYUMLU"
+        _kvb_str = " · ".join(_kv_w) if _kv_w else "Kısa vade sinyalleri uyumlu"
+        _kv_band_html = (
+            f"<div style='display:flex;align-items:center;gap:8px;padding:6px 10px;"
+            f"background:{_kvb_bg};border-bottom:1px solid {_kvb_col}66;'>"
+            f"<span style='font-size:0.85rem;flex:none;'>{_kvb_ic}</span>"
+            f"<div style='display:flex;flex-direction:column;line-height:1.12;flex:none;'>"
+            f"<span style='font-size:0.68rem;font-weight:900;color:{_kvb_col};text-transform:uppercase;"
+            f"letter-spacing:0.04em;white-space:nowrap;'>KISA VADE · {_kvb_lbl}</span>"
+            f"<span style='font-size:0.55rem;font-weight:700;color:#64748b;letter-spacing:0.06em;'>1-15 GÜN</span>"
+            f"</div>"
+            f"<span style='font-size:0.66rem;color:{_kvb_col};font-weight:700;flex:1;text-align:right;"
+            f"line-height:1.3;'>{_kvb_str}</span>"
+            f"</div>")
+        st.markdown(f"<div style='margin:2px 0 4px;border:1px solid #334155;border-radius:8px;"
+                    f"overflow:hidden;background:#0b1220;'>{_kv_band_html}{_hdr}{_sis_html}{_sems_html}{_serit_html}{_dots_html}{_bar_html}{_body}{_karsi_html}{_tek_not_html}{_gerekce_html}</div>",
+                    unsafe_allow_html=True)
+    except Exception:
+        pass
 
 
 def render_risk_profile_card(ticker):
@@ -18805,11 +20714,11 @@ def _firsat_radar_single(ticker):
         if df is None or len(df) < 200:
             return None
         df = df[~df.index.duplicated()].sort_index()
-        close = df['Close'].values; high = df['High'].values; low = df['Low'].values; open_ = df['Open'].values
+        close = df['Close'].values; high = df['High'].values
         i = len(df) - 1
-        # 4 Tem 2026 senkron: fitil pivotlari + adaptif budama (radar_core = ana motor)
-        sw_h, sw_l = radar_core.find_swings_hl(high, low, close, 8)
-        r = radar_core.detect_formation(close, high, low, open_, i, sw_h, sw_l)
+        # 22 Tem 2026: BİRLEŞİK MOTOR köprüsü (radar_core.formation_row → formasyon_core.analyze).
+        # Ekrandaki formasyon kartıyla TEK KAYNAK; dtri (ayı) + formasyonsuz otomatik None döner.
+        r = radar_core.formation_row(df, ticker)
         if r is None:
             return None
         _xu = get_safe_historical_data('XU100.IS', period="1y")
@@ -18872,7 +20781,10 @@ def _live_scanner_hits(ticker, category):
             if _has(scan_guclu_donus_batch(lst)): hits.append(("🔄", "Güçlü Dönüş", "Düşüşten güçlü dönüş sinyali"))
         except Exception: pass
         try:
-            if _has(scan_harmonic_confluence_batch(lst)): hits.append(("⚡", "Harmonik Confluence", PD.get('harmonik', '')))
+            if _has(scan_wilder_positive_divergence_batch(lst)): hits.append(("🧭", "RSI Pozitif Uyumsuzluk", "Geç kalmamış pozitif uyumsuzluk ve fiyat dönüş tetiği"))
+        except Exception: pass
+        try:
+            if _has(scan_harmonic_confluence_batch(lst)): hits.append(("🔬", "Gözlem: Harmonik Confluence", PD.get('harmonik', '') + " Canlı puan ve kanıt katkısı yok."))
         except Exception: pass
     finally:
         _SCAN_LOG_SKIP.discard(_tc)
@@ -18907,21 +20819,25 @@ def render_scanner_membership_panel(ticker):
         # rows: (icon, label, sade_açıklama, guc_or_None)
         PD = SCANNER_PLAIN_DESC
         rows = []
-        if _in('platin_results'):              rows.append(("♛", "Platin Fırsat", PD['platin'], None))
-        if _in('golden_results'):              rows.append(("💎", "Altın Set-up", PD['altin'], None))
+        if _in('platin_results'):              rows.append(("♛", "Rozet: Platin Fırsat", "Uygunluk etiketi; bağımsız oy veya puan değildir. " + PD['platin'], None))
+        if _in('golden_results'):              rows.append(("💎", "Rozet: Altın Set-up", "Uygunluk etiketi; bağımsız oy veya puan değildir. " + PD['altin'], None))
         if 'prelaunch_bos' in _strength:       rows.append(("🚀", "Pre-Launch BOS", PD['prelaunch'], _strength['prelaunch_bos']))
-        if 'harmonik_confluence' in _strength: rows.append(("⚡", "Harmonik Confluence", PD['harmonik'], _strength['harmonik_confluence']))
-        if 'vip_formasyon' in _strength:       rows.append(("📐", "VIP Formasyon", PD['vip'], _strength['vip_formasyon']))
-        elif _in('golden_pattern_data', sub='formations'): rows.append(("📐", "VIP Formasyon", PD['vip'], None))
+        if _in('harmonic_confluence_data'):    rows.append(("🔬", "Gözlem: Harmonik Confluence", PD['harmonik'] + " Canlı puan ve kanıt katkısı yok.", None))
+        if 'vip_formasyon' in _strength:       rows.append(("📐", "Rozet: VIP Formasyon", "Uygunluk etiketi; bağımsız oy veya puan değildir. " + PD['vip'], None))
+        elif _in('golden_pattern_data', sub='formations'): rows.append(("📐", "Rozet: VIP Formasyon", "Uygunluk etiketi; bağımsız oy veya puan değildir. " + PD['vip'], None))
         if 'erken_radar' in _strength:         rows.append(("🎯", "Erken Radar", PD['erken'], _strength['erken_radar']))
         if _in('accum_data'):                  rows.append(("🔍", "Gizli Birikim", PD['gizli'], None))
         if _in('minervini_data'):              rows.append(("🏆", "Minervini SEPA", PD['minervini'], None))
         if _in('rs_leaders_data'):             rows.append(("📊", "RS Momentum Lideri", PD['rs'], None))
+        _rsi_auto = st.session_state.get('_rsi_positive_divergence')
+        _rsi_auto_ticker = str(st.session_state.get('_rsi_positive_divergence_ticker', '')).upper()
+        if (_rsi_auto and _rsi_auto_ticker == _tu) or _in('wilder_divergence_data'):
+            rows.append(("🧭", "RSI Pozitif Uyumsuzluk", "Geç kalmamış pozitif uyumsuzluk ve fiyat dönüş tetiği", None))
 
         # 🎯 FIRSAT RADARI — canlı tek-hisse formasyon durumu (Master Scan gerekmez, 24 Haz 2026)
         _frs = _firsat_radar_single(ticker)
         if _frs is not None:
-            _TTm = {'CUP': 'Fincan-Kulp', 'TOBO': 'TOBO', 'W': 'Çift Dip'}
+            _TTm = {'CUP': 'Fincan-Kulp', 'TOBO': 'TOBO', 'UCGEN': 'Yükselen Üçgen', 'TABAN': 'Taban', 'W': 'Çift Dip'}
             _ftm = _TTm.get(_frs['type'], _frs['type'])
             if _frs['kutu'] == 'kirdi':
                 _dr = _frs['durum']
@@ -18956,6 +20872,27 @@ def render_scanner_membership_panel(ticker):
             if isinstance(_erp, dict):
                 _erlbl = f"Erken Radar {_erp.get('id', '')} ({_erp.get('name', '')})".replace("( )", "").strip()
                 rows.append(("🎯", _erlbl, PD.get('erken', 'Erken hareket sinyali (canlı)'), None))
+            _erd = _erc.get("deepening", {}) if isinstance(_erc, dict) else {}
+            _b11d = _erd.get("B11") if isinstance(_erd, dict) else None
+            if isinstance(_b11d, dict):
+                rows.append((
+                    "💧",
+                    f"B11 Pilot: {_b11d.get('quality_label', 'TEYİT BEKLİYOR')}",
+                    f"Para akışı {_b11d.get('flow', {}).get('label', 'nötr')} · "
+                    f"zamanlama {_b11d.get('late', {}).get('state', 'belirsiz')}. "
+                    f"Ana B11 sinyali korunur; bu satır kalite notudur.",
+                    None,
+                ))
+            _c6d = _erd.get("C6") if isinstance(_erd, dict) else None
+            if isinstance(_c6d, dict):
+                _c6_age = int(_c6d.get("leader_age", 0) or 0)
+                _c6_late = str(_c6d.get("late_state", ""))
+                rows.append((
+                    "🏁",
+                    "C6 Liderlik Teyidi" if _c6_late != "GEÇ SİNYAL" else "C6: Geç Sinyal",
+                    f"Endekse karşı liderlik {_c6_age}. seansta · {_c6_late}.",
+                    None,
+                ))
 
         # 🔬 DİĞER TÜM TARAMALAR (canlı) — OTOMATİK DEĞİL: bellek/Master Scan yükü olmasın diye
         # sadece kullanıcı bu hisse için "kontrol et" deyince çalışır (_lsh_for == _tc).
@@ -18975,18 +20912,24 @@ def render_scanner_membership_panel(ticker):
             return 0 if '🟢' in _g else (2 if '🔴' in _g else 1)
         rows.sort(key=_row_rank)
 
-        # KANIT SKORU + GÜVEN/ÇELİŞKİ (Build 2, 19 Haz 2026) — başlıkta özetle
+        # GÜNCEL KARNE PUANI + GÜVEN/ÇELİŞKİ — başlıkta özetle
         # 4 Tem: _frs geçirilir → Fırsat Radarı 'fail' durumu ayı oyu sayılır (çift hesap yok)
         _kz = _compute_kanit_ozeti(ticker, frs=_frs)
         if _kz['skor'] is not None:
             _ks_col = "#22c55e" if _kz['skor'] >= 60 else ("#f59e0b" if _kz['skor'] >= 35 else "#94a3b8")
-            _ks_chip = f"<span style='color:{_ks_col};font-weight:800;'>Kanıt {_kz['skor']}/100</span>"
+            _ks_chip = f"<span style='color:{_ks_col};font-weight:800;'>Karne {_kz['skor']}/100</span>"
         elif _kz['label'] == 'kanıt bekliyor':
-            _ks_chip = "<span style='color:#a8a29e;font-weight:700;'>Kanıt: bekliyor</span>"
+            _ks_chip = "<span style='color:#a8a29e;font-weight:700;'>Karne: ölçüm bekliyor</span>"
         else:
-            _ks_chip = "<span style='color:#64748b;font-weight:700;'>Kanıt yok</span>"
+            # 17 Tem 2026 reform 1a dil düzeltmesi: endekste "kanıt yok" değil,
+            # "yapısal olarak olmaz" — okuyucuya eksiklik gibi görünmesin.
+            _is_idx_kz = (str(ticker).upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                          or str(ticker).upper().endswith('=F'))
+            _ks_chip = ("<span style='color:#64748b;font-weight:700;'>Endeks — tarama karnesi olmaz</span>"
+                        if _is_idx_kz else
+                        "<span style='color:#64748b;font-weight:700;'>Pozitif tarama karnesi yok</span>")
         if _kz['celiski']:
-            _gv_chip = f" · <span style='color:#f87171;font-weight:800;'>⚠ çelişkili (güven %{_kz['guven']})</span>"
+            _gv_chip = f" · <span style='color:#f87171;font-weight:800;'>çelişkili (güven %{_kz['guven']})</span>"
         elif _kz['guven'] is not None:
             _gv_chip = f" · <span style='color:#22c55e;font-weight:700;'>güven %{_kz['guven']}</span>"
         elif _kz.get('tek_sinyal'):
@@ -19026,15 +20969,23 @@ def render_scanner_membership_panel(ticker):
         try:
             _lmdf2 = get_safe_historical_data(ticker, period="1y")
             _lm2 = _liquidity_manip(_lmdf2) if _lmdf2 is not None else {}
-            _warn = []
-            if _lm2.get('tier') == 'düşük':
-                _warn.append(f"🔻 Düşük likidite (~{_lm2.get('adv_mn')}mn TL/gün) — ince tahta, dikkat")
-            if _lm2.get('manip') in ('orta', 'yüksek'):
-                _warn.append(f"⚠ Pompa riski ({_lm2.get('manip')}) — sürdürülemez olabilir")
-            if _warn:
-                _wbar = ("<div style='background:#7f1d1d33;border-bottom:1px solid #ef444455;"
-                         "padding:5px 11px;font-size:0.72rem;color:#fca5a5;font-weight:700;'>"
-                         + " · ".join(_warn) + "</div>")
+            # KAPI birleşik hükmü (21 Tem 2026, Codex) — likidite + risk-ödül TEK sonuç.
+            _ro = None
+            try:
+                _pa_rk = calculate_price_action_dna(ticker)
+                _sv_rk = _pa_rk.get('smart_volume', {}) if _pa_rk else {}
+                _price_rk = float(_lmdf2['Close'].iloc[-1]) if (_lmdf2 is not None and len(_lmdf2)) else None
+                _ro = terazi_core.risk_odul_kapisi(_price_rk, _sv_rk.get('vah'),
+                                                   _sv_rk.get('val'), _sv_rk.get('va_pos'))
+            except Exception:
+                pass
+            _kapi = terazi_core.kapi_hukmu(_lm2.get('tier'), _lm2.get('manip'), _ro,
+                                           adv_mn=_lm2.get('adv_mn'))
+            if _kapi:
+                _kc = _kapi['renk']
+                _wbar = (f"<div style='background:{_kc}22;border-bottom:1px solid {_kc}55;"
+                         f"padding:5px 11px;font-size:0.72rem;color:{_kc};font-weight:700;'>"
+                         f"🚧 KAPI: {_kapi['etiket']} — {_kapi['sebep']}</div>")
                 _body = _wbar + _body
         except Exception:
             pass
@@ -19052,6 +21003,20 @@ def render_scanner_membership_panel(ticker):
 
 
 def _render_right_col():
+    # Seçili hisse değiştiği anda RSI pozitif uyumsuzluğu otomatik kontrol et.
+    # Saf hesap ayrı modülde; burada yalnız sonuç oturuma bağlanır ve UI tarafından kullanılır.
+    _rsi_div_df = None
+    _rsi_div_hit = None
+    try:
+        _rsi_div_ticker = st.session_state.ticker
+        _rsi_div_df = get_safe_historical_data(_rsi_div_ticker, period="1y")
+        if _rsi_div_df is not None and not _rsi_div_df.empty:
+            _rsi_div_hit = detect_wilder_positive_divergence(_rsi_div_ticker, _rsi_div_df)
+    except Exception:
+        _rsi_div_hit = None
+    st.session_state['_rsi_positive_divergence'] = _rsi_div_hit
+    st.session_state['_rsi_positive_divergence_ticker'] = str(st.session_state.ticker).upper()
+
     info = fetch_stock_info(st.session_state.ticker)
 
     # 1. Fiyat Kartı — 2 sütun hero tasarım
@@ -19090,10 +21055,12 @@ def _render_right_col():
         _mom_str    = _m.get('mom_str',    '—');  _mom_col    = _m.get('mom_col',    '#94a3b8')
         _mom_bars   = _m.get('mom_bars',   [])
 
-        # ── MOMENTUM ivme-değişimi mini çizgisi (13 Tem 2026 v2) ─────────
+        # ── MOMENTUM ivme-değişimi mini barları (22 Tem 2026 v3) ─────────
         # GENEL ÖZET Momentum satırıyla aynı konsept: Para Akış İvmesi
-        # değerlerinin GÜNLÜK FARKI çizgi olarak. Sıfırın üstü mavi
-        # (güçleniyor), altı kırmızı (zayıflıyor), son nokta parlak.
+        # değerlerinin GÜNLÜK FARKI dikey bar olarak (kaynak panel de bar →
+        # aynı dil). Sıfır çizgisinin üstü mavi (güçleniyor), altı kırmızı
+        # (zayıflıyor), son bar tam parlak (bugün). Önceki sürüm çizgiydi
+        # (v2) — minik kutuda zikzak okunmuyordu.
         def _build_mom_svg(levels, w, h):
             try:
                 if not levels or len(levels) < 6:
@@ -19102,25 +21069,55 @@ def _render_right_col():
                 n = len(dels)
                 mid = h / 2
                 lim = max(5.0, max(abs(v) for v in dels) * 1.1)
-                def _xy(i, v):
-                    return i * (w / (n - 1)), mid - (v / lim) * (mid - 3)
+                bw = w / n
+                bar_w = max(1.2, bw * 0.66)
                 parts = [f"<line x1='0' y1='{mid}' x2='{w}' y2='{mid}' "
                          f"stroke='#475569' stroke-width='1' stroke-dasharray='2,2'/>"]
-                for i in range(1, n):
-                    x1, y1 = _xy(i - 1, dels[i - 1]); x2, y2 = _xy(i, dels[i])
-                    clr = "#5B84C4" if dels[i] > 0 else "#ef4444"
-                    parts.append(f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' "
-                                 f"y2='{y2:.1f}' stroke='{clr}' stroke-width='1.6' "
-                                 f"stroke-linecap='round'/>")
-                lx, ly = _xy(n - 1, dels[-1])
-                lc = "#5B84C4" if dels[-1] > 0 else "#ef4444"
-                parts.append(f"<circle cx='{lx:.1f}' cy='{ly:.1f}' r='2.2' fill='{lc}'/>")
+                for i, v in enumerate(dels):
+                    bh = abs(v) / lim * (mid - 2)
+                    bh = max(bh, 0.6)
+                    bx = i * bw + (bw - bar_w) / 2
+                    by = (mid - bh) if v > 0 else mid
+                    clr = "#5B84C4" if v > 0 else "#ef4444"
+                    op = "1" if i == n - 1 else "0.72"
+                    parts.append(f"<rect x='{bx:.1f}' y='{by:.1f}' width='{bar_w:.1f}' "
+                                 f"height='{bh:.1f}' fill='{clr}' opacity='{op}' rx='0.6'/>")
                 return (f"<svg width='{w}' height='{h}' viewBox='0 0 {w} {h}' "
                         f"style='display:block;'>" + "".join(parts) + "</svg>")
             except Exception:
                 return ""
-        _mom_svg    = _build_mom_svg(_mom_bars[-21:], 120, 30)   # orta şerit (BIST)
-        _mom_svg_sm = _build_mom_svg(_mom_bars[-13:], 70, 20)    # alt chip (endeks)
+        _mom_svg    = _build_mom_svg(_mom_bars[-11:], 120, 30)   # orta şerit (BIST) — 10 bar
+        _mom_svg_sm = _build_mom_svg(_mom_bars[-11:], 70, 20)    # alt chip (endeks) — 10 bar
+
+        # ── MOMENTUM rakamını barlarla AYNI kaynaktan üret (22 Tem 2026) ──
+        # Eskiden yanındaki değer 5 GÜNLÜK FİYAT GETİRİSİ idi → barlar (para
+        # akışı ivmesi) kırmızıyken "+%3,5" yazıp kartı çelişik gösteriyordu.
+        # Artık değer, barların NET YÖNÜ: son günlere ağırlık verir, bu yüzden
+        # sağdaki parlak barlarla asla çelişemez. Yüzde DEĞİL (MF ölçeği soyut)
+        # → yön kelimesi.
+        def _mom_net_label(levels):
+            try:
+                lv = [x for x in levels if x is not None]
+                if len(lv) < 6:
+                    return None, None
+                dels = [lv[i] - lv[i - 1] for i in range(1, len(lv))]
+                avg_mag = (sum(abs(d) for d in dels) / len(dels)) or 1.0
+                # 22 Tem 2026 — etiket 10 GÜNLÜK gidişat (bugün/son-3 değil): pencerenin
+                # ilk 3 gün ort. vs son 3 gün ort. → tek günün gürültüsüyle yanıp sönmez,
+                # RSI (14g) ile aynı "gidişat" mantığı. (kullanıcı kararı)
+                _early = sum(lv[:3]) / 3.0
+                _late  = sum(lv[-3:]) / 3.0
+                net = _late - _early
+                if net > 1.0 * avg_mag:
+                    return "▲ güçleniyor", "#5B84C4"
+                if net < -1.0 * avg_mag:
+                    return "▼ zayıflıyor", "#ef4444"
+                return "▬ yatay", "#f59e0b"
+            except Exception:
+                return None, None
+        _mn_lbl, _mn_col = _mom_net_label(_mom_bars[-11:])
+        if _mn_lbl:
+            _mom_str, _mom_col = _mn_lbl, _mn_col
         _rsi_val    = _m.get('rsi_val',    50);   _rsi_col    = _m.get('rsi_col',    '#94a3b8')
         _vol_str    = _m.get('vol_str',    '—');  _vol_col    = _m.get('vol_col',    '#94a3b8')
         _beta_str   = _m.get('beta_str',   '—');  _beta_col   = _m.get('beta_col',   '#94a3b8')
@@ -19175,9 +21172,13 @@ def _render_right_col():
         # 5 skoru topla — hepsi @st.cache_data ile cache'li, ek hesap maliyeti minimal
         _so_master = None; _so_pos = None; _so_road = None; _so_er = None; _so_ict = None
         _so_ict_lbl = None; _so_ict_bias = ""
+        _so_m_pros = []; _so_m_cons = []; _so_conv = None; _so_er_data = None
         try:
-            _so_master, _, _ = calculate_master_score(_tk)
-        except Exception: pass
+            # 3b Aşama 3 (18 Tem 2026) — LENS GEREKÇESİ: breakdown ile pros/cons al (driver için).
+            _so_master, _so_m_pros, _so_m_cons, _ = calculate_master_score(_tk, return_breakdown=True)
+        except Exception:
+            try: _so_master, _, _ = calculate_master_score(_tk)
+            except Exception: pass
         try:
             _so_road_data = calculate_8_point_roadmap(_tk, st.session_state.get('category', 'BIST'))
             if _so_road_data:
@@ -19209,10 +21210,67 @@ def _render_right_col():
                 except Exception: pass
         except Exception: pass
 
+        # ── LENS GEREKÇELERİ (3b Aşama 3, 18 Tem 2026) — her lensin GERÇEK driver'ı,
+        # kendi motorunun çıktısından (uydurma ölçüm YASAK). Endekste veri-türevi
+        # gerekçeler susar (endeks modu). Kısa; İlke 4: skor tooltip'te, gerekçe önde.
+        _drv_master = _drv_pos = _drv_road = _drv_er = _drv_ict = None
+        _so_is_idx = str(_tk).upper().startswith(("XU", "XB", "XT", "XY", "^")) or str(_tk).upper().endswith("=F")
+        def _clean_drv(s):
+            s = str(s or "").strip()
+            for _ch in ("✓", "✗", "🟢", "🔴", "🟡", "⚠️", "⚠", "📈", "📉"):
+                s = s.replace(_ch, "")
+            return " ".join(s.split())[:52]
+        try:
+            # Genel Sağlık (master): skor düşükse en güçlü con, yüksekse en güçlü pro
+            if _so_master is not None:
+                _pick = (_so_m_cons or _so_m_pros) if _so_master < 50 else (_so_m_pros or _so_m_cons)
+                if _pick:
+                    _drv_master = _clean_drv(_pick[0])
+        except Exception: pass
+        try:
+            # Pozisyon Eğilimi (conviction): en ağırlıklı faktör (|puan| max)
+            if _so_conv and _so_conv.get('factors'):
+                _top = max(_so_conv['factors'], key=lambda x: abs(x[1]) if isinstance(x, (list, tuple)) and len(x) > 1 else 0)
+                _drv_pos = _clean_drv(_top[0] if isinstance(_top, (list, tuple)) else _top)
+        except Exception: pass
+        try:
+            # Yol Haritası (roadmap): dokum_ozeti — ayrışıksa zayıf/güçlü bileşen
+            if _so_road_data and _so_road_data.get('factor_scores'):
+                _fs = _so_road_data['factor_scores']
+                _fmap = {'trend': 'Trend', 'momentum': 'Momentum', 'volume': 'Hacim', 'yapi': 'Yapı', 'senaryo': 'Senaryo'}
+                _do = terazi_core.dokum_ozeti({_fmap.get(k, k): v for k, v in _fs.items()}, comp_score=_so_road)
+                if _do.get('mod') == 'ayrisik':
+                    _valid = {k: v for k, v in _fs.items() if v is not None}
+                    _wk = _fmap.get(min(_valid, key=_valid.get), '') if _valid else ''
+                    _st = _fmap.get(max(_valid, key=_valid.get), '') if _valid else ''
+                    _drv_road = f"{_st} güçlü · {_wk} zayıf" if _wk and _st else None
+                elif _do.get('mod') == 'uyumlu':
+                    _drv_road = "bileşenler uyumlu"
+        except Exception: pass
+        try:
+            # Erken Radar: eşleşen ana senaryonun ADI (gerekçe = senaryonun kendisi)
+            if _so_er_data:
+                _prim = _so_er_data.get('primary') or {}
+                _drv_er = _clean_drv(_prim.get('name') or _so_er_data.get('verdict') or "")
+        except Exception: pass
+        try:
+            # Smart Money (ICT): bias yönü + bölge (setup'ın gerçek sürücüsü)
+            if _so_ict_data:
+                _bz = str(_so_ict_data.get('zone', '') or '').strip()
+                _bi = str(_so_ict_data.get('bias', '') or '').strip()
+                if _bi or _bz:
+                    _drv_ict = _clean_drv((_bi + (f" · {_bz}" if _bz else "")))
+        except Exception: pass
+        # Endeks/futures/kripto: veri-türevi lens gerekçeleri güvenilmez → sustur.
+        # XU100 yaklaşık piyasa katılımı göstergesine kavuştu → HİSSE gibi gerekçeler gösterilir (susturma yok).
+        if _so_is_idx and not _index_has_tl_ciro(_tk):
+            _drv_master = _drv_pos = None
+
         # Satır rendere: icon + tam label + bar + skor (full width, kırpılma yok)
-        def _so_row(icon, label, score_val, score_max, score_color, score_text, anchor_hint=None, border=True):
+        def _so_row(icon, label, score_val, score_max, score_color, score_text, anchor_hint=None, border=True, driver=None):
             # YOL HARİTASI SKORU stili (1 Tem 2026): üstte icon+label solda / skor sağda (renkli),
             # altında ince çubuk (skora göre renkli). Hesaplama AYNI — sadece gösterim değişti.
+            # 18 Tem 2026 — driver: etiketin altında lensin GERÇEK gerekçesi (küçük, soluk).
             brd = f"border-bottom:1px solid {_CLR_DIVIDER};" if border else ""
             _ttl = f"title='{anchor_hint}'" if anchor_hint else ""
             if score_val is None or score_max == 0:
@@ -19221,6 +21279,10 @@ def _render_right_col():
             else:
                 _pct = max(0, min(100, (score_val / score_max) * 100))
                 _col = score_color
+            _drv_html = ""
+            if driver:
+                _drv_html = (f"<div style='font-size:0.63rem;color:rgba(148,163,184,0.85);"
+                             f"line-height:1.25;margin:1px 0 3px;'>{driver}</div>")
             return (
                 f"<div {_ttl} style='padding:5px 11px;{brd}'>"
                 # Üst satır: icon + label solda, skor sağda (renkli) — yol haritası gibi
@@ -19232,6 +21294,7 @@ def _render_right_col():
                 f"<span style='color:{_col};font-weight:900;"
                 f"font-family:\"JetBrains Mono\",monospace;'>{score_text}</span>"
                 f"</div>"
+                + _drv_html +
                 # İnce çubuk (track + fill) — yol haritası bar stili
                 f"<div style='height:4px;background:rgba(100,116,139,0.20);border-radius:2px;overflow:hidden;'>"
                 f"<div style='height:100%;width:{_pct:.0f}%;background:{_col};border-radius:2px;'></div>"
@@ -19243,28 +21306,46 @@ def _render_right_col():
         # beyaz sayı (güçlü gölgeyle) okuyor. Disko efekti yok.
         _SO_BAR_GRAY = "#94a3b8"   # slate-400 (nötr orta-açık gri)
 
+        # 3b REFORM Aşama 1 (17 Tem 2026): LENS DİLİ — sağda çıplak skor sayısı ("35/100")
+        # yerine ETİKET; sayı tooltip'e indi. Test: "sayıyı başka trader'a söylesen anlamlı mı?"
+        # Bar kalır (görsel büyüklük). Gerekçe-ölçümü satırları Aşama 3'te (terazi verisiyle).
+        def _so_lens_lbl(score, kind="genel"):
+            if score is None:
+                return "—"
+            if kind == "egilim":
+                if score >= 60: return "long eğilimli"
+                if score <= 40: return "short eğilimli"
+                return "kararsız"
+            if score >= 65: return "güçlü"
+            if score >= 45: return "orta"
+            return "zayıf"
+        _so_road_lbl = None
+        try:
+            _so_road_lbl = str((_so_road_data or {}).get('comp_decision', '') or '').strip().lower() or None
+        except Exception:
+            pass
+
         _sinyal_rows = (
               _so_row("🎯", "Genel Sağlık",     _so_master, 100, _so_color_100(_so_master),
-                     f"{int(_so_master)}/100" if _so_master is not None else "—",
-                     "Teknik Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)")
+                     _so_lens_lbl(_so_master),
+                     ("Teknik Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)"
+                      + (f" · skor: {int(_so_master)}/100" if _so_master is not None else "")),
+                     driver=_drv_master)
             + _so_row("🧭", "Pozisyon Eğilimi", _so_pos,    100, _so_color_100(_so_pos),
-                     f"{int(_so_pos)}/100" if _so_pos is not None else "—",
-                     "Conviction — SMA50/200 + OBV + Z-Score (5-15g LONG/SHORT bias)")
+                     _so_lens_lbl(_so_pos, "egilim"),
+                     ("Conviction — SMA50/200 + OBV + Z-Score (5-15g LONG/SHORT bias)"
+                      + (f" · skor: {int(_so_pos)}/100" if _so_pos is not None else "")),
+                     driver=_drv_pos)
             + _so_row("🗺",  "Tek. Yol Haritası",    _so_road,   100, _so_color_100(_so_road),
-                     f"{int(_so_road)}/100" if _so_road is not None else "—",
-                     "Roadmap — Trend/Mom/Hacim/Yapı/Senaryo eşit ağırlıkla sentez")
+                     (_so_road_lbl or _so_lens_lbl(_so_road)),
+                     ("Roadmap — Trend/Mom/Hacim/Yapı/Senaryo eşit ağırlıkla sentez"
+                      + (f" · skor: {int(_so_road)}/100" if _so_road is not None else "")),
+                     driver=_drv_road)
             + _so_row("🌟", "Erken Radar",      _so_er,     100, _so_color_100(_so_er),
-                     f"{int(_so_er)}/100" if _so_er is not None else "—",
-                     "27 senaryo paterni — kalite skoru (5g-20g)")
-            + _so_row("🏛",  "Smart Money",     _so_ict,    5,   _so_color_5_directional(_so_ict, _so_ict_bias),
-                     (f"{int(_so_ict)}/5 "
-                      + ("↑" if "bull" in _so_ict_bias and "retrace" not in _so_ict_bias
-                         else ("↓" if "bear" in _so_ict_bias and "retrace" not in _so_ict_bias
-                               else "↔"))
-                      + f" {_so_ict_lbl}") if _so_ict is not None else "—",
-                     (f"ICT Model — {_so_ict_lbl or '—'} · bias: {_so_ict_bias or '—'} · "
-                      "yön + güç birleşik (bearish 5/5 = güçlü SHORT setup, LONG için kırmızı)"),
-                     border=False)
+                     _so_lens_lbl(_so_er),
+                     ("27 senaryo paterni — ER kurulum kalitesi (5g-20g)"
+                      + (f" · skor: {int(_so_er)}/100" if _so_er is not None else "")),
+                     border=False, driver=_drv_er)
         )
 
         # Bağımsız panel — fiyat kartının ALTINDA, kendi border + arka planı ile
@@ -19323,7 +21404,7 @@ def _render_right_col():
                         f"<div style='flex:1;padding:6px 10px;{_sep_mid}'>"
                         f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
                         f"letter-spacing:0.5px;font-weight:700;'>{_lbl} <span style='font-size:0.6rem;"
-                        f"font-weight:600;text-transform:none;opacity:0.75;'>ivme değişimi · 20g</span></div>"
+                        f"font-weight:600;text-transform:none;opacity:0.75;'>ivme değişimi · 10 günlük</span></div>"
                         f"<div style='display:flex;align-items:center;gap:8px;'>"
                         f"{_mom_svg}"
                         f"<span style='font-size:1.0rem;font-weight:800;color:{_col};"
@@ -19350,7 +21431,11 @@ def _render_right_col():
                 f"<span style='display:inline-flex;align-items:center;gap:5px;'>"
                 f"{_mom_svg_sm}{_mom_str}</span>"
             ) if _mom_svg_sm else _mom_str
-            _chips_list.append(("MOMENTUM", _mom_chip_val, _mom_col))
+            # 22 Tem 2026 — "10 günlük" alt etiketi MOMENTUM'un hemen altına (endeks alt
+            # şeridinde pencere belirsizdi; etiket artık 10g gidişat). BIST orta şeritte zaten var.
+            _mom_chip_lbl = ("MOMENTUM<br><span style='font-size:0.52rem;opacity:0.72;"
+                             "text-transform:none;font-weight:600;letter-spacing:0;'>10 günlük</span>")
+            _chips_list.append((_mom_chip_lbl, _mom_chip_val, _mom_col))
         if _show_hacim and _vol_str and _vol_str != "—":
             _chips_list.append(("HACİM", _vol_str, _vol_col))
         if _show_beta and _beta_str and _beta_str != "—":
@@ -19364,6 +21449,28 @@ def _render_right_col():
 
         # Fiyat formatı (endeks için binlik ayırıcı)
         _px_fmt = (f"{int(price_val):,}".replace(",", ".") if _is_idx else f"{price_val:.2f}")
+
+        # ── 2b REFORM (17 Tem 2026): RSI uç rozeti — normal modda (25-80) görünmez,
+        # uçta alt şeridin altında yerinde büyür. Eşik + karne: rsi_kova_backtest.
+        _rsi_alert_html = ""
+        try:
+            _rzdf = get_safe_historical_data(st.session_state.ticker, period="1y")
+            _rz = terazi_core.rsi_uc_rozeti(
+                _rzdf['Close'] if _rzdf is not None else None, is_index=_is_idx)
+            if _rz:
+                # Kart zemini dinamik (yeşil/kırmızı gradient) — bant KENDİ koyu zeminini
+                # taşır, yoksa saydam renk kartın içinde eriyor (TUPRS yeşil kart vakası).
+                _rsi_alert_html = (
+                    f"<div style='padding:7px 12px;background:rgba(2,6,17,0.55);"
+                    f"border-top:2px solid {_rz['renk']};'>"
+                    f"<div style='font-size:0.78rem;font-weight:800;color:{_rz['renk']};"
+                    f"line-height:1.3;'>{_rz['label']}</div>"
+                    f"<div style='font-size:0.68rem;color:rgba(255,255,255,0.78);margin-top:2px;"
+                    f"line-height:1.35;'>"
+                    + str(_rz['karne']).replace("◆", "<span style='color:#7dd3fc;font-size:0.6rem;'>◆</span>")
+                    + "</div></div>")
+        except Exception:
+            pass
 
         # ── DİKEY STACK (9 Haz 2026): FİYAT üstte kompakt, matris ortada
         # tam genişlikte (kırpılma yok), alt şerit aynı kalır.
@@ -19400,6 +21507,7 @@ def _render_right_col():
   <div style="display:flex;">
     {_bottom_html}
   </div>
+  {_rsi_alert_html}
 </div>""", unsafe_allow_html=True)
         st.session_state['_so_ozet_html'] = _sinyal_block_standalone  # 📊 SİNYAL ÖZETİ → CANLI SİNYALLER altına taşındı (24 Haz)
 
@@ -19407,25 +21515,55 @@ def _render_right_col():
         st.warning("Fiyat verisi alınamadı.")
         st.session_state['_so_ozet_html'] = ''
 
+    # ⚖ KANIT TERAZİSİ (17 Tem 2026 REFORM 1a) — ekranın TEK sentez hükmü, FİYAT kartı altı
+    _render_kanit_terazisi_card(st.session_state.ticker)
+
     # --- FORMASYON BUTONU — fiyat paneli hemen altında ---
     _fcd = st.session_state.get('_formasyon_chart_data')
-    if _fcd and isinstance(_fcd, dict):
-        _fpl  = st.session_state.get('_formasyon_pat_label', 'Formasyon')
-        _fpr  = st.session_state.get('_formasyon_current_price', 0)
-        _ftk  = st.session_state.get('_formasyon_ticker', st.session_state.ticker)
-        _fdsp = st.session_state.get('_formasyon_display', get_display_name(st.session_state.ticker))
+    # 25 Tem 2026 — Beş ana yapı görünümünde V2 yetkilidir. Eski motorun target türlerinden
+    # biri V2 tarafından doğrulanmadıysa eski/çelişkili çizim kullanıcıya gösterilmez.
+    # Eski motor diğer formasyonlarda ve tüm tarama/AI/Canlı Sinyal akışlarında aynen kalır.
+    _fv2 = _get_formasyon_v2_view(st.session_state.ticker)
+    _fv2_active = isinstance(_fv2, dict) and bool(_fv2.get('available'))
+    _old_form_allowed = (
+        _fcd and isinstance(_fcd, dict)
+        and not formasyon_v2_app.old_chart_is_v2_scope(_fcd)
+    )
+    if _fv2_active or _old_form_allowed:
+        if _fv2_active:
+            _fv2_is_candidate = float(_fv2.get('quality_score', 0)) < 90
+            _fpl = _fv2.get('pattern_label', 'Formasyon') + (" · Aday" if _fv2_is_candidate else "")
+            _fpr = _fv2.get('current_price', 0)
+            _ftk = st.session_state.ticker
+            _fdsp = get_display_name(st.session_state.ticker)
+            _f_bear = _fv2.get('direction') == 'bearish'
+        else:
+            _fpl  = st.session_state.get('_formasyon_pat_label', 'Formasyon')
+            _fpr  = st.session_state.get('_formasyon_current_price', 0)
+            _ftk  = st.session_state.get('_formasyon_ticker', st.session_state.ticker)
+            _fdsp = st.session_state.get('_formasyon_display', get_display_name(st.session_state.ticker))
+            # 18 Tem 2026 RENK FİX: İkili Tepe (M) + Yükselen Kama AYI formasyonudur — eskiden
+            # sadece direnç-seviyesi ayı sayılıp bunlar YEŞİL boyanıyordu (yanlış ima).
+            # Terazi ayı-formasyon oyu ile aynı sınıflama (double_top / wedge-rising / direnç).
+            _f_bear = (_fcd.get('type') in ('double_top', 'dtriangle')
+                       or (_fcd.get('type') == 'wedge' and _fcd.get('kind') == 'rising')
+                       or (_fcd.get('type') == 'sr_level' and not _fcd.get('is_support', True))
+                       or (_fcd.get('type') == 'birlesik' and
+                           (_fcd.get('shape') == 'dtri' or _fcd.get('state') == 'FAIL')))
         _fdrk = False
-        # Yön: sr_level'de is_support=False → Short, diğer tüm formasyon tipleri → Long
-        _f_bull = not (_fcd.get('type') == 'sr_level' and not _fcd.get('is_support', True))
+        _f_bull = not _f_bear
         _fbtn_bg  = "#81bb96" if _f_bull else "#9B7C99"
         _fbtn_brd = "#3d8c5a" if _f_bull else "#6b3a5c"
         _fbtn_hov = "#6aaa82" if _f_bull else "#876a85"
         st.markdown(f"""<style>
             div.st-key-btn_formasyon_dialog button {{
                 background:{_fbtn_bg} !important;
-                border:2px solid {_fbtn_brd} !important;
+                border:1px solid {_fbtn_brd} !important;
                 color:white !important;
                 font-weight:700 !important;
+                min-height:1.9rem !important;
+                padding:2px 10px !important;
+                font-size:0.8rem !important;
             }}
             div.st-key-btn_formasyon_dialog button:hover {{
                 background:{_fbtn_hov} !important;
@@ -19433,7 +21571,10 @@ def _render_right_col():
             }}
         </style>""", unsafe_allow_html=True)
         if st.button(f"📊 {_fdsp}-{_fpl}", width='stretch', key="btn_formasyon_dialog"):
-            _formasyon_dialog(_ftk, _fcd, _fpr, _fdsp, _fpl, _fdrk)
+            if _fv2_active:
+                _formasyon_v2_dialog(_fv2, _fdsp)
+            else:
+                _formasyon_dialog(_ftk, _fcd, _fpr, _fdsp, _fpl, _fdrk)
     
     # --- HARMONİK FORMASYON BUTONU — formasyon butonunun hemen altında ---
     try:
@@ -19453,9 +21594,12 @@ def _render_right_col():
         st.markdown(f"""<style>
             div.st-key-btn_harmonik_dialog button {{
                 background:{_hbtn_bg} !important;
-                border:2px solid {_hbtn_brd} !important;
+                border:1px solid {_hbtn_brd} !important;
                 color:white !important;
                 font-weight:700 !important;
+                min-height:1.9rem !important;
+                padding:2px 10px !important;
+                font-size:0.8rem !important;
             }}
             div.st-key-btn_harmonik_dialog button:hover {{
                 background:{_hbtn_hov} !important;
@@ -19464,6 +21608,40 @@ def _render_right_col():
         </style>""", unsafe_allow_html=True)
         if st.button(f"🔮 {_hdsp}-{_hpat}", width='stretch', key="btn_harmonik_dialog"):
             _harmonik_dialog(st.session_state.ticker, _hres, _hprice, _hdsp, _hdrk)
+
+    # --- RSI POZİTİF UYUMSUZLUK BUTONU — harmonik/formasyon düğmelerinin yanında ---
+    if _rsi_div_hit and _rsi_div_df is not None:
+        _rdsp = get_display_name(st.session_state.ticker)
+        _rconfirmed = "ONAYLI" in str(_rsi_div_hit.get("Durum", ""))
+        _rbtn_bg = "#4f9d78" if _rconfirmed else "#b7843d"
+        _rbtn_brd = "#2f7655" if _rconfirmed else "#8a6129"
+        _rbtn_hov = "#438a69" if _rconfirmed else "#a27334"
+        st.markdown(f"""<style>
+            div.st-key-btn_rsi_positive_divergence button {{
+                background:{_rbtn_bg} !important;
+                border:1px solid {_rbtn_brd} !important;
+                color:white !important;
+                font-weight:700 !important;
+                min-height:1.9rem !important;
+                padding:2px 10px !important;
+                font-size:0.8rem !important;
+            }}
+            div.st-key-btn_rsi_positive_divergence button:hover {{
+                background:{_rbtn_hov} !important;
+                border-color:{_rbtn_brd} !important;
+            }}
+        </style>""", unsafe_allow_html=True)
+        if st.button(
+            f"📈 {_rdsp}-RSI Pozitif Uyumsuzluk",
+            width='stretch',
+            key="btn_rsi_positive_divergence",
+        ):
+            _rsi_positive_divergence_dialog(
+                st.session_state.ticker,
+                _rsi_div_df,
+                _rsi_div_hit,
+                _rdsp,
+            )
     
     # --- 🏆 ELİT TARAMA MİNİ PANELİ (16 Haz 2026) ---
     # TIER_1_ELIT scanner flag varsa (er_D1 / er_A2 / er_A8 / er_B8 — 24 Haz kalibrasyon)
@@ -19504,8 +21682,11 @@ def _render_right_col():
                 unsafe_allow_html=True
             )
         elif _et_t2:
-            # TIER_2 GÜVENİLİR — sarı varyant (TIER_1 yoksa)
+            # Küçük örnekli güçlü sonuç "kanıtlandı/güvenilir" diye sunulmaz.
             _et_main2 = _et_t2[0]
+            _et_t2_title = ("GÜÇLÜ SONUÇ · ÖRNEK AZ"
+                            if not _et_main2.get('reliable', True)
+                            else "GÜVENİLİR TARAMA")
             st.markdown(
                 f"<div style='margin-bottom:8px;border-radius:10px;overflow:hidden;"
                 f"border:1px solid #fbbf24;box-shadow:0 3px 10px rgba(251,191,36,0.2);'>"
@@ -19513,7 +21694,7 @@ def _render_right_col():
                 f"display:flex;align-items:center;gap:7px;font-size:0.78rem;font-weight:900;"
                 f"color:#fef9c3;letter-spacing:0.05em;border-bottom:1px solid #fbbf24;'>"
                 f"<span style='font-size:1rem;line-height:1;'>🥈</span>"
-                f"GÜVENİLİR TARAMA"
+                f"{_et_t2_title}"
                 f"</div>"
                 f"<div style='background:linear-gradient(135deg,#451a03,#78350f);padding:8px 11px;'>"
                 f"<div style='font-size:0.82rem;font-weight:800;color:#fef9c3;line-height:1.3;"
@@ -19707,65 +21888,70 @@ def _render_right_col():
     # SEKME: 📡 RADARLAR VE KESİŞİMLER (R1 + R2)
     # ---------------------------------------------------------
     with tab_radar:
-        if st.button("🔄 Radar 1 & 2'yi Tara", width='stretch', key="btn_r1_r2_scan"):
-            with st.spinner("Momentum ve Trend verileri taranıyor..."):
+        if st.button("🔄 Radar 2'yi Tara (Radar 1 ön filtre)", width='stretch', key="btn_r1_r2_scan"):
+            with st.spinner("Ön filtre ve trend kurulumu taranıyor..."):
                 curr_assets = ASSET_GROUPS.get(st.session_state.category, [])
                 st.session_state.scan_data = analyze_market_intelligence(curr_assets, st.session_state.get('category', 'S&P 500'))
                 st.session_state.radar2_data = radar2_scan(curr_assets)
+                _r2_er = scan_erken_radar_batch(curr_assets)
+                st.session_state.erken_radar_data = _r2_er
+                st.session_state.liderlik_yolculugu_data = scan_leadership_lifecycle(
+                    st.session_state.radar2_data,
+                    _r2_er,
+                    category=st.session_state.get("category", ""),
+                )
                 st.rerun()
     
         df1 = st.session_state.get('scan_data')
         df2 = st.session_state.get('radar2_data')
-    
-        # ORTAK FIRSATLAR KISMI
-        st.markdown(f"<div style='font-size:0.9rem;font-weight:bold; margin-bottom:8px; color:#38bdf8; background-color:rgba(30, 64, 175, 0.05); padding:5px; border-radius:5px; border:1px solid #1e40af; text-align:center;'>🎯 Ortak Set-Up'lar (R1 + R2 Kesişim)</div>", unsafe_allow_html=True)
+
+        st.info("Radar 1 yalnızca ön filtredir; ayrı fırsat üretmez ve puan toplamaz. Aşağıda yalnız bu kapıyı geçen Radar 2 kurulumları gösterilir.")
         if df1 is not None and df2 is not None and not df1.empty and not df2.empty:
-            commons = []
-            symbols = set(df1["Sembol"]).intersection(set(df2["Sembol"]))
-            for sym in symbols:
-                r1_s = float(df1[df1["Sembol"]==sym].iloc[0]["Skor"])
-                r2_s = float(df2[df2["Sembol"]==sym].iloc[0]["Skor"])
-                if r1_s + r2_s >= 11: commons.append({"sym": sym, "r1": r1_s, "r2": r2_s, "tot": r1_s+r2_s})
-            
-            if commons:
-                sorted_commons = sorted(commons, key=lambda x: x["tot"], reverse=True)
-                cols_c = st.columns(2) 
-                for i, item in enumerate(sorted_commons):
-                    temiz_sembol_ortak = item['sym'].replace('.IS', '').replace('-USD', '')
-                    if cols_c[i % 2].button(f"🎯 {temiz_sembol_ortak}\nSkor: {int(item['tot'])}", key=f"com_tab_{item['sym']}", width='stretch', help=f"R1: {int(item['r1'])} | R2: {int(item['r2'])}"):
-                        on_scan_result_click(item['sym']); st.rerun()
-            else:
-                st.caption("Kesişim bulunamadı.")
+            symbols = set(df1[df1["Skor"] >= 4]["Sembol"]).intersection(set(df2["Sembol"]))
+            df2_visible = df2[df2["Sembol"].isin(symbols)].copy()
         else:
-            st.caption("Tarama yapıldığında burada kesişen hisseler görünür.")
+            df2_visible = pd.DataFrame()
     
         st.markdown("<hr style='margin:10px 0; border-color: rgba(150,150,150,0.1);'>", unsafe_allow_html=True)
         
-        # RADAR 1 LİSTESİ
-        st.markdown("<div style='font-size:0.8rem; font-weight:bold; color:#38bdf8; margin-bottom:5px;'>🧠 Radar 1 (Momentum)</div>", unsafe_allow_html=True)
+        # RADAR 2 LİSTESİ — Radar 1 yalnız kapı görevi görür, skorlar toplanmaz.
+        st.markdown("<div style='font-size:0.8rem; font-weight:bold; color:#4ade80; margin-bottom:5px;'>🚀 Radar 2 (Radar 1 ön filtresini geçen)</div>", unsafe_allow_html=True)
+        _liderlik_df = st.session_state.get("liderlik_yolculugu_data")
+        _liderlik_map = {}
+        if (
+            _liderlik_df is not None
+            and hasattr(_liderlik_df, "empty")
+            and not _liderlik_df.empty
+        ):
+            _liderlik_map = {
+                str(_lr.get("Sembol", "")).upper().replace(".IS", ""): _lr
+                for _, _lr in _liderlik_df.iterrows()
+            }
         with st.container(height=150, border=False):
-            if df1 is not None and not df1.empty:
-                cols_r1 = st.columns(3)
-                for i, row in df1.head(15).iterrows():
-                    sym = row["Sembol"]
-                    if cols_r1[i % 3].button(f"🔥 {int(row['Skor'])}/7\n{sym.replace('.IS','')}", key=f"r1_tab_{sym}_{i}", width='stretch'):
-                        on_scan_result_click(sym); st.rerun()
-            else: st.caption("Veri yok.")
-    
-        st.markdown("<hr style='margin:10px 0; border-color: rgba(150,150,150,0.1);'>", unsafe_allow_html=True)
-        
-        # RADAR 2 LİSTESİ
-        st.markdown("<div style='font-size:0.8rem; font-weight:bold; color:#4ade80; margin-bottom:5px;'>🚀 Radar 2 (Trend Setup)</div>", unsafe_allow_html=True)
-        with st.container(height=150, border=False):
-            if df2 is not None and not df2.empty:
+            if not df2_visible.empty:
                 cols_r2 = st.columns(3)
-                for i, row in df2.head(15).iterrows():
+                for i, row in df2_visible.head(15).iterrows():
                     sym   = row["Sembol"]
                     setup = row['Setup'] if row['Setup'] != "-" else "Trend"
                     _dq   = row['Darvas_Quality'] if 'Darvas_Quality' in row.index and row['Darvas_Quality'] is not None else None
                     _ds   = row['Darvas_Status']  if 'Darvas_Status'  in row.index else None
                     _dc   = row['Darvas_Class']   if 'Darvas_Class'   in row.index else None
                     _da   = row['Darvas_Age']      if 'Darvas_Age'     in row.index else None
+                    _life = _liderlik_map.get(str(sym).upper().replace(".IS", ""))
+                    _life_stage = (
+                        str(_life.get("Liderlik_Asamasi", "ADAY"))
+                        if _life is not None else "ADAY"
+                    )
+                    _life_age = (
+                        int(_life.get("Liderlik_Yasi", 0) or 0)
+                        if _life is not None else int(row.get("Liderlik_Yasi", 0) or 0)
+                    )
+                    _life_icon = {
+                        "YENİ LİDER": "🟢",
+                        "LİDERLİK TEYİTLİ": "✅",
+                        "ADAY": "🔎",
+                        "GEÇ SİNYAL": "⏳",
+                    }.get(_life_stage, "🔎")
                     # Darvas badge — sadece kalite ≥ 75 ise göster
                     _dbadge = ""
                     _dtip   = ""
@@ -19779,10 +21965,19 @@ def _render_right_col():
                         else:
                             _dbadge = " 🟦"
                             _dtip   = f" · 🟦 Darvas Kutu Oluşuyor: {_da}g (Kalite:{_dq}/100)"
-                    _help = f"Setup: {setup}{_dtip}"
-                    if cols_r2[i % 3].button(f"🚀 {int(row['Skor'])}/7\n{sym.replace('.IS','')}{_dbadge}", key=f"r2_tab_{sym}_{i}", width='stretch', help=_help):
+                    _help = (
+                        f"Setup: {setup} · Liderlik: {_life_stage} "
+                        f"({_life_age}. seans){_dtip}"
+                    )
+                    if cols_r2[i % 3].button(
+                        f"🚀 {int(row['Skor'])}/7 · {_life_icon} {_life_stage}\n"
+                        f"{sym.replace('.IS','')}{_dbadge}",
+                        key=f"r2_tab_{sym}_{i}",
+                        width='stretch',
+                        help=_help,
+                    ):
                         on_scan_result_click(sym); st.rerun()
-            else: st.caption("Veri yok.")
+            else: st.caption("Ön filtreden geçen Radar 2 kurulumu yok.")
     
     # ---------------------------------------------------------
     # SEKME: 👑 TOP 20 MASTER LİSTE
@@ -19793,8 +21988,8 @@ def _render_right_col():
             # --- Kaynak → okunabilir açıklama haritası ---
             _SRC_DESC = {
                 '🔄 Güçlü Dönüş Adayları':            "RSI dip yaparken fiyat diplemiyor — akıllı para sessizce alım yapıyor",
-                '🦅 ICT Sniper':                        "Kurumsal order block veya FVG bölgesinde, yapısal bias yukarı yönlü",
-                '♠️ Royal Flush Nadir Set-up':          "Yapısal kırılım + RS endeks liderliği + hacim canlanması: 4/4 kriter tam",
+                '🦅 ICT Sniper':                        "Gözlem/kayıt taraması — geçmiş beklentisi zayıf, canlı puan ve onay katkısı 0",
+                '♠️ Royal Flush Nadir Set-up':          "Gözlem/kayıt taraması — geçmiş beklentisi zayıf, canlı puan ve onay katkısı 0",
                 '🦁 Minervini':                         "52 hafta zirvesine yakın, hacim destekli yükselen trend — kurumsal ilgi var",
                 '💎 Platin Set-up':                     "SMA200 + SMA50 üstünde, iskontolu bölgede ve hacim artışı görülüyor",
                 '🚀 Pre-Launch BOS':                    "Kırılım öncesi sıkışma (squeeze) tamamlandı, enerji birikmiş, fitil hazır",

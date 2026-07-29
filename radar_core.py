@@ -9,8 +9,37 @@ detect_formation(close, high, low, open_, i, sw_h, sw_l) -> dict|None
 import numpy as np, pandas as pd, glob, os
 
 import pattern_core  # 4 Tem 2026 — formasyon paketi senkronu (ana motor ile AYNI kurallar)
+import formasyon_core  # 22 Tem 2026 — BİRLEŞİK MOTOR (Fırsat Radarı artık bununla; eski detektörler emekli)
 
 ENDEKS = {'XU100', 'XU030', 'XU050', 'XBANK', 'XUSIN', 'XUMAL', 'XU100D', 'XGIDA', 'XBANA'}
+
+# BİRLEŞİK MOTOR şekil → Fırsat Radarı tip kodu. dtri (alçalan üçgen = AYI) BİLEREK yok:
+# radar boğa-kırılım avcısı, ayı formasyonu göndermez (memory: dtri radar'a girmez).
+_SHAPE_TYPE = {'fincan': 'CUP', 'tobo': 'TOBO', 'ucgen': 'UCGEN', 'taban': 'TABAN'}
+
+
+def formation_row(df, ticker=None):
+    """BİRLEŞİK MOTOR köprüsü (22 Tem 2026) — formasyon_core.analyze çıktısını Fırsat Radarı'nın
+    beklediği r-dict'ine çevirir. dtri (ayı) + tanınmayan şekil → None (radar boğa kapsamı dışı).
+    Döner: dict(type, neck, state, dist, depth, ustate) | None. ustate = birleşik motor durumu
+    (ERKEN/YAKIN/KIRILDI/UZAMIS/FAIL) — classify_state bunu doğrudan kutuya çevirir."""
+    if df is None or len(df) < 60:
+        return None
+    try:
+        fr = formasyon_core.analyze(df, ticker)
+    except Exception:
+        return None
+    if not fr:
+        return None
+    typ = _SHAPE_TYPE.get(fr.get('shape'))
+    if not typ:
+        return None
+    level = float(fr['level']); curr = float(df['Close'].values[-1])
+    dist = max(0.0, (level - curr) / level * 100) if level > 0 else 0.0
+    ustate = fr.get('state')
+    return dict(type=typ, neck=level, dist=dist, depth=0,
+                state='break' if ustate in ('KIRILDI', 'UZAMIS', 'FAIL') else 'form',
+                ustate=ustate)
 
 
 def find_swings(arr, lookback=8):
@@ -32,12 +61,13 @@ def find_swings_hl(high, low, close, lookback=8):
     return pattern_core.prune_pivots(sw_h, sw_l, thr)
 
 
-def _val_cup(cup_arr, left_i, dip_i, right_i, r2, min_r2=0.78):
+def _val_cup(cup_arr, left_i, dip_i, right_i, r2, min_r2=0.71, cent_hi=0.77):
+    # 18 Tem kalibrasyon (scanners._validate_cup_shape ile senkron): R² 0.78→0.71, cent_hi 0.70→0.77
     if r2 < min_r2: return False
     span = right_i - left_i
     if span <= 0: return False
     cent = (dip_i - left_i) / span
-    if not (0.30 <= cent <= 0.70): return False
+    if not (0.30 <= cent <= cent_hi): return False
     rel = dip_i - left_i; lh = cup_arr[:max(2, rel + 1)]; rh = cup_arr[rel:]
     if len(lh) >= 3 and len(rh) >= 3:
         ls = np.polyfit(np.arange(len(lh)), lh, 1)[0]; rs = np.polyfit(np.arange(len(rh)), rh, 1)[0]
@@ -99,7 +129,7 @@ def detect_formation(close, high, low, open_, i, sw_h, sw_l):
     if len(sw_h_y) >= 2 and len(sw_l_y) >= 1:
         for ri in range(len(sw_h_y) - 1, 0, -1):
             sh2_i, sh2_v = sw_h_y[ri]
-            if bar_total - sh2_i > 60: continue
+            # 18 Tem: sağ-rim tazelik kapısı KALDIRILDI (batch=actionable-only, extended/failed R/R'de düşer)
             for li in range(ri - 1, max(ri - 12, -1), -1):
                 sh1_i, sh1_v = sw_h_y[li]; cd = sh2_i - sh1_i
                 if not (40 <= cd <= 252): continue
@@ -109,7 +139,7 @@ def detect_formation(close, high, low, open_, i, sw_h, sw_l):
                 if not cl: continue
                 sl_i, sl_v = min(cl, key=lambda x: x[1]); depth = (sh1_v - sl_v) / sh1_v
                 if not (0.12 <= depth <= 0.55): continue
-                if abs(sh1_v - sh2_v) / sh1_v > 0.06: continue
+                if abs(sh1_v - sh2_v) / sh1_v > pattern_core.PC['cup_rim']: continue
                 try:
                     ca = close[sh1_i:sh2_i + 1].astype(float)
                     if len(ca) < 10: continue
@@ -127,15 +157,15 @@ def detect_formation(close, high, low, open_, i, sw_h, sw_l):
                     if len(aft) < 3: continue
                     rel = int(np.argmin(aft)); hl_v = float(aft[rel])
                 if not (hl_v > sl_v + (sh2_v - sl_v) * 0.35): continue
-                if not (hl_v > sh2_v * 0.82): continue
+                if not (hl_v > sh2_v * pattern_core.PC['cup_handle_lo']): continue  # senkron 0.82→0.81
                 # 4 Tem senkron: kulp suresi — kupaya oranla kisa olmali
                 if not pattern_core.handle_dur_ok(sh2_i, bar_total, cd): continue
                 tgt = sh2_v + (sh2_v - sl_v); risk = max(curr - hl_v * 0.98, 0.01)
                 if (tgt - curr) / risk < 1.0: continue
                 dist = ((sh2_v - curr) / sh2_v * 100) if curr < sh2_v else 0
                 brk = sh2_v * 0.97 <= curr <= sh2_v * 1.10
-                # 4 Tem senkron: OLUSAN icin boyuna max %12 uzaklik
-                frm = curr >= hl_v * 0.98 and not brk and dist <= pattern_core.PC['form_max_dist']
+                # 4 Tem senkron: OLUSAN icin boyuna max %12 uzaklik (18 Tem: curr<neck*0.97 guard)
+                frm = curr < sh2_v * 0.97 and curr >= hl_v * 0.98 and not brk and dist <= pattern_core.PC['form_max_dist']
                 if not (brk or frm): continue
                 return dict(type='CUP', neck=float(sh2_v), state='break' if brk else 'form', dist=dist, depth=depth)
 
@@ -202,7 +232,20 @@ def quality_signals(d, i, xuc):
 def classify_state(r, q, close, high, i):
     """Bir formasyon sonucunu kutuya ayirir (scan_universe + tek-hisse ortak).
     Doner: (kutu, durum). kutu: 'kirdi'/'sikis'/'hazir'.
-    durum (sadece kirdi): taze/retest/extended/fail/retest_wait, digerlerinde ''."""
+    durum (sadece kirdi): taze/extended/fail, digerlerinde ''.
+
+    22 Tem 2026: BİRLEŞİK MOTOR yolu — r'de 'ustate' varsa formasyon_core'un kalibre durumu
+    doğrudan kutuya çevrilir (eski neck-bandı yeniden-türetmesi atlanır; motorun kalibrasyonu
+    korunur). YAKIN, botun muhafazakâr 'kırılma yakın' anlamı için ≤%6 + kalite kapısından geçer."""
+    us = r.get('ustate')
+    if us:
+        if us == 'KIRILDI': return 'kirdi', 'taze'
+        if us == 'UZAMIS':  return 'kirdi', 'extended'
+        if us == 'FAIL':    return 'kirdi', 'fail'
+        if us == 'YAKIN' and r['dist'] <= 6 and q.get('sqd', 0) >= 2 and q.get('a200') == 1:
+            return 'sikis', ''            # boyna yakın + sıkışma + trend yukarı
+        return 'hazir', ''                # YAKIN-uzak / ERKEN → sessiz hazırlık
+    # ── LEGACY (eski detect_formation çıktısı için — artık canlıda çağrılmıyor) ──
     if r['state'] == 'break':
         neck = r['neck']; rh = float(np.nanmax(high[max(0, i - 10):i + 1]))
         ran = rh >= neck * 1.05
@@ -249,11 +292,11 @@ def scan_universe(veriler_dir, lik_taban=500_000_000):
                 continue
             if float((d['Close'] * d['Volume']).tail(20).median()) < lik_taban:
                 continue
-            close = d['Close'].values; high = d['High'].values; low = d['Low'].values; open_ = d['Open'].values
+            close = d['Close'].values; high = d['High'].values
             i = len(d) - 1
-            # 4 Tem senkron: fitil pivotlari + adaptif budama (ana motor ile ayni)
-            sw_h, sw_l = find_swings_hl(high, low, close, 8)
-            r = detect_formation(close, high, low, open_, i, sw_h, sw_l)
+            # 22 Tem 2026: BİRLEŞİK MOTOR (formasyon_core) — eski detect_formation emekli.
+            # Ekran (scan_chart_patterns) ile TEK KAYNAK; dtri/None otomatik elenir.
+            r = formation_row(d, tk)
             if r is None:
                 continue
             target_date = d.index[-1]

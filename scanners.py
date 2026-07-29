@@ -18,8 +18,9 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 from indicators import check_lazybear_squeeze, compute_cmf, detect_darvas_box
+from deepening_policy import b11_pilot_profile, leadership_profile
 
-def _validate_cup_shape(cup_arr, left_i, dip_i, right_i, r2, min_r2=0.78):
+def _validate_cup_shape(cup_arr, left_i, dip_i, right_i, r2, min_r2=0.71, cent_hi=0.77):
     """Fincan-kulp gövde (fincan) şekil doğrulaması — Dengeli profil (30 May 2026).
 
     Gerçek bir fincan: (1) dip yaklaşık ORTADA, (2) sol yarı inişli + sağ yarı
@@ -30,6 +31,11 @@ def _validate_cup_shape(cup_arr, left_i, dip_i, right_i, r2, min_r2=0.78):
     left_i/dip_i/right_i : mutlak bar indeksleri (sol rim / dip / sağ rim)
     r2        : çağıran tarafça hesaplanmış polinom U-fit R²
     Döndürür  : True = geçerli fincan gövdesi.
+
+    ⚙️ KALİBRASYON (18 Tem 2026 devamı, insan-etiketli 8 fincan): min_r2 0.78→0.71
+    (POLHO/ALARK R²0.73 gerçek fincanlar eleniyordu), cent_hi 0.70→0.77 (POLHO dip
+    0.76'da — sağa kaymış ama gerçek). Diğer şartlar (slope) AYNI. Detay:
+    memory/project_formation_recalibration.md.
     """
     if r2 < min_r2:
         return False
@@ -38,7 +44,7 @@ def _validate_cup_shape(cup_arr, left_i, dip_i, right_i, r2, min_r2=0.78):
         return False
     # 1) Dip merkeziyeti — kenardaki dip fincan değildir
     cent = (dip_i - left_i) / span
-    if not (0.30 <= cent <= 0.70):
+    if not (0.30 <= cent <= cent_hi):
         return False
     # 2) Sol yarı inişli + sağ yarı çıkışlı (V/sürüklenme eler)
     rel = dip_i - left_i
@@ -92,9 +98,17 @@ def _validate_tobo_shape(sl1_i, sl1_v, sl2_i, sl2_v, sl3_i, sl3_v,
     return True, neck_now
 
 
+def _is_index_symbol(sym):
+    """Endeks sembolü mü? '^GSPC' aileleri + BIST endeksleri ('XU100.IS' vb.).
+    X-prefix TEK BAŞINA yetmez — ABD'de XOM gibi X'le başlayan HİSSE var;
+    o yüzden X'liler sadece .IS uzantısıyla endeks sayılır."""
+    s = str(sym).upper()
+    return s.startswith('^') or (s.endswith('.IS') and s.startswith(('XU', 'XB', 'XT', 'XY')))
+
+
 def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
                           eq_tol=0.04, min_depth=0.12, max_depth=0.40,
-                          min_dur=25, max_dur=180, max_form_dist=12.0):
+                          min_dur=25, max_dur=180, max_form_dist=12.0, is_index=False):
     """Çift Dip (W) tespiti — swing tabanlı (30 May 2026).
 
     W formasyonu: Dip1 → Orta Tepe (boyun) → Dip2 (≈Dip1). İki ~eşit dip ve
@@ -113,6 +127,11 @@ def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
     Döndürür: dict(d1_i,d1_v,neck_i,neck_v,d2_i,d2_v,target,state,dist,dur)
               veya None.  state: 'break' (boyun kırılımı) / 'form' (oluşuyor).
     """
+    # 18 Tem 2026 — ENDEKS SIKI TOLERANS (yön simetrisi: double_top ile aynı kural).
+    # ±%4 hisse oynaklığı için; endeks bileşenlerin ortalaması olduğundan yapısal
+    # olarak az oynar → endekste eşitlik eşiği %2'ye iner.
+    if is_index:
+        eq_tol = min(eq_tol, 0.02)
     if len(sw_l_y) < 2 or len(sw_h_y) < 1:
         return None
     for j in range(len(sw_l_y) - 1, 0, -1):
@@ -134,6 +153,12 @@ def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
             depth = (neck_v - base) / base
             if not (min_depth <= depth <= max_depth):  # orta tepe belirgin ama aşırı değil
                 continue
+            # 18 Tem: iki dip arasında MATERYAL daha derin swing low varsa bu bir TOBO
+            # başıdır (2 omuz + baş), W değil. W'nin TOBO omuzlarını "2 eşit dip" sanıp
+            # ateşlemesini (aday havuzunda TOBO'yu çalmasını) + genel aşırı-tespiti keser.
+            _mid_lows = [v for i, v in sw_l_y if d1_i < i < d2_i]
+            if _mid_lows and min(_mid_lows) < base * 0.97:
+                continue
             if curr_price < d2_v * 0.98:            # fiyat ikinci dibin altında değil
                 continue
             target = neck_v + (neck_v - base)
@@ -154,7 +179,7 @@ def _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
 
 def _detect_double_top(sw_h_y, sw_l_y, curr_price, bar_total,
                        eq_tol=0.04, min_depth=0.12, max_depth=0.40,
-                       min_dur=25, max_dur=180, max_form_dist=12.0):
+                       min_dur=25, max_dur=180, max_form_dist=12.0, is_index=False):
     """İkili Tepe (M) tespiti — Çift Dip'in (W) AYI simetriği (30 May 2026).
 
     M formasyonu: Tepe1 → Orta Vadi (boyun) → Tepe2 (≈Tepe1). İki ~eşit tepe ve
@@ -171,6 +196,11 @@ def _detect_double_top(sw_h_y, sw_l_y, curr_price, bar_total,
     Döndürür: dict(t1_i,t1_v,neck_i,neck_v,t2_i,t2_v,target,state,dist,dur)
               veya None.  state: 'break' (boyun aşağı kırıldı) / 'form' (oluşuyor).
     """
+    # 18 Tem 2026 — ENDEKS SIKI TOLERANS: ±%4 hisse oynaklığına göre; endeks bileşen
+    # ortalaması olduğundan yapısal olarak az oynar → %3 fark endekste "eşit tepe" değil
+    # ALÇALAN TEPEDİR (XU100 15.204-vs-14.725 vakası). Endekste eşitlik eşiği %2.
+    if is_index:
+        eq_tol = min(eq_tol, 0.02)
     if len(sw_h_y) < 2 or len(sw_l_y) < 1:
         return None
     for j in range(len(sw_h_y) - 1, 0, -1):
@@ -191,6 +221,11 @@ def _detect_double_top(sw_h_y, sw_l_y, curr_price, bar_total,
             top = max(t1_v, t2_v)
             depth = (top - neck_v) / top
             if not (min_depth <= depth <= max_depth):  # orta vadi belirgin ama aşırı değil
+                continue
+            # 18 Tem: iki tepe arasında MATERYAL daha yüksek swing high varsa bu M değil
+            # (OBO başı / üçlü tepe). W ile simetrik kural; genel aşırı-tespiti keser.
+            _mid_highs = [v for i, v in sw_h_y if t1_i < i < t2_i]
+            if _mid_highs and max(_mid_highs) > top * 1.03:
                 continue
             if curr_price > t2_v * 1.02:            # fiyat ikinci tepenin üstünde değil
                 continue
@@ -742,6 +777,7 @@ def process_single_radar2(symbol, df, idx, min_price, max_price, min_avg_vol_m):
         _d_bottom  = _dbox['box_bottom']     if _dbox else None
         _d_age     = _dbox['box_age']        if _dbox else None
         _d_class   = _dbox['breakout_class'] if _dbox else None
+        _leader_profile = leadership_profile(df, idx)
 
         return {
             "Sembol": symbol, "Fiyat": round(curr_c, 2), "Trend": trend,
@@ -750,6 +786,10 @@ def process_single_radar2(symbol, df, idx, min_price, max_price, min_avg_vol_m):
             "Darvas_Quality": _d_quality, "Darvas_Status": _d_status,
             "Darvas_Top": _d_top, "Darvas_Bottom": _d_bottom,
             "Darvas_Age": _d_age, "Darvas_Class": _d_class,
+            "Liderlik_Yasi": _leader_profile.get("leader_age", 0),
+            "Liderlik_RS20": _leader_profile.get("rs20_pct", 0.0),
+            "Gec_Kalma": _leader_profile.get("late_state", "VERİ YETERSİZ"),
+            "Liderlik_Detay": _leader_profile.get("detail", ""),
         }
     except: return None
 
@@ -2138,6 +2178,12 @@ def evaluate_erken_radar(ticker, df, bench_df=None):
         quality += min(len(confirmations) * 4, 15)
     if red_flags:
         quality = max(0, quality - 30)
+    deepening = {}
+    matched_ids = {item["id"] for item in matched}
+    if "B11" in matched_ids:
+        deepening["B11"] = b11_pilot_profile(df)
+    if "C6" in matched_ids:
+        deepening["C6"] = leadership_profile(df, bench_df)
     return {
         'primary': primary,
         'confirmations': confirmations,
@@ -2147,4 +2193,5 @@ def evaluate_erken_radar(ticker, df, bench_df=None):
         'context': ctx,
         'matched_count': len(matched),
         'red_flag_count': len(red_flags),
+        'deepening': deepening,
     }

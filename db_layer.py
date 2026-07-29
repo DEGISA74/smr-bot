@@ -23,6 +23,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import pytz
+from signal_policy import ensure_event_schema
+from deepening_policy import ensure_deepening_schema
 
 _TZ_ISTANBUL = pytz.timezone("Europe/Istanbul")
 
@@ -66,6 +68,9 @@ def init_db():
         category    TEXT,
         UNIQUE(scan_date, symbol, scan_type)
     )''')
+    # 29 Tem 2026 — aynı kurulumun günlük tekrarlarını yeni sinyal sanmayan olay yaşam döngüsü.
+    ensure_event_schema(conn)
+    ensure_deepening_schema(conn)
     # 19 Haz 2026 — GOLD MINE VİTRİN LOG (meta-backtest): her Master Scan'de vitrinin gösterdiği
     # top hisseler rank+puanla kaydedilir. Sonra signal_results JOIN ile "vitrin sıralaması
     # gerçekten kazandırdı mı, rank1 > rank10 mu" ölçülür. confluence_count = kaç tarama çakıştı.
@@ -221,6 +226,12 @@ def init_db():
         # Bugünkü mumun ilgili dual-window deltasının >%60'ını oluşturduğu durumlar
         # set edilir. AI prompt ve OBV panelinde "teyit bekleniyor" rozetine bağlanır.
         'ALTER TABLE scan_signals ADD COLUMN f_spike_dominance INTEGER',
+        # 17 Tem 2026 EKRAN REFORMU 2c — SFP (Swing Failure Pattern / tuzak) flag'leri.
+        # PA panelinde gösteriliyordu ama hiç loglanmıyordu. Eylül 2026 karnesi:
+        # signal_returns JOIN → "BIST'te tuzak sinyali dönüş öngörüyor mu?" ölçülecek.
+        # Tek kaynak: ict_core.compute_sfp_flags (PA-DNA da aynı fonksiyonu kullanır).
+        'ALTER TABLE scan_signals ADD COLUMN f_sfp_bull INTEGER',   # dip süpürüldü + üstünde kapanış
+        'ALTER TABLE scan_signals ADD COLUMN f_sfp_bear INTEGER',   # tepe süpürüldü + altında kapanış
     ]:
         try:
             c.execute(_alter_col)
@@ -457,12 +468,23 @@ def _compute_mkk_yabanci_signals(ticker: str) -> dict:
 
 
 def load_watchlist_db():
-    conn = sqlite3.connect(DB_FILE, timeout=30)
-    c = conn.cursor()
-    c.execute('SELECT symbol FROM watchlist')
-    data = c.fetchall()
-    conn.close()
-    return [x[0] for x in data]
+    # 20 Tem 2026 — AÇILIŞ ÇÖKME FİX: gece backtest'i (backtest_runner) patron.db'yi uzun süre
+    # kilitleyince bu ÇIPLAK okuma "database is locked" ile TÜM uygulamayı açılışta çökertiyordu
+    # (init_db "atla, devam" derken watchlist okuması sert patlıyordu). Artık kilitliyse birkaç kez
+    # dener, olmazsa BOŞ döner → uygulama kayıtlı-liste-yok gibi normal açılır. WAL bilinçli KAPALI
+    # (scp sync yan-dosya riski, bkz init_db notu), o yüzden çözüm dayanıklı-okuma.
+    import time
+    for _attempt in range(3):
+        try:
+            conn = sqlite3.connect(DB_FILE, timeout=30)
+            try:
+                data = conn.execute('SELECT symbol FROM watchlist').fetchall()
+            finally:
+                conn.close()
+            return [x[0] for x in data]
+        except sqlite3.OperationalError:
+            time.sleep(1)
+    return []   # kilit sürüyor → boş liste, uygulama açılır (çökme yok)
 
 
 def add_watchlist_db(symbol):
@@ -558,54 +580,69 @@ def get_scanner_optimal_windows():
     return results
 
 
-def get_scenario_ages_batch(pairs, max_lookback=30):
-    """
-    Toplu senaryo aging hesabı.
-    pairs: [(symbol, scenario_id), ...]
-    Döner: {(symbol, scenario_id): consecutive_days_int}
-    scan_signals tablosunda er_<id> scan_type altında ardışık günleri sayar.
-    """
+def get_scenario_lifecycle_batch(pairs, max_lookback=180):
+    """Erken Radar senaryolarının olay başlangıcını ve olay gününü toplu döndürür."""
     if not pairs:
         return {}
-    from datetime import timedelta as _td
     result = {}
+    conn = None
     try:
         conn = sqlite3.connect(DB_FILE, timeout=30)
-        c = conn.cursor()
-        today = datetime.now(_TZ_ISTANBUL).date()
+        ensure_event_schema(conn)
         for sym, sid in pairs:
-            try:
-                sym_clean = (sym or '').replace('.IS', '')
-                if not sym_clean or not sid:
-                    result[(sym, sid)] = 0
-                    continue
-                scan_type = f"er_{sid}"
-                rows = c.execute(
-                    "SELECT DISTINCT scan_date FROM scan_signals "
-                    "WHERE symbol=? AND scan_type=? "
-                    "AND scan_date >= date('now', ?) "
-                    "ORDER BY scan_date DESC",
-                    (sym_clean, scan_type, f'-{max_lookback} days')
-                ).fetchall()
-                if not rows:
-                    result[(sym, sid)] = 0
-                    continue
-                days = 0
-                expected = today
-                for r in rows:
-                    try:
-                        d = datetime.strptime(r[0], '%Y-%m-%d').date()
-                    except Exception:
-                        continue
-                    if d == expected:
-                        days += 1
-                        expected = expected - _td(days=1)
-                    elif d < expected:
-                        break  # Ardışıklık bozuldu
-                result[(sym, sid)] = days
-            except Exception:
-                result[(sym, sid)] = 0
-        conn.close()
+            sym_clean = str(sym or '').replace('.IS', '')
+            if not sym_clean or not sid:
+                result[(sym, sid)] = {
+                    'event_id': None, 'first_seen': None, 'last_seen': None,
+                    'event_day': 0, 'is_new': False,
+                }
+                continue
+            row = conn.execute(
+                """
+                SELECT event_id, event_start_date, scan_date, event_day, is_event_start
+                FROM scan_signals
+                WHERE symbol=? AND scan_type=?
+                  AND scan_date >= date('now', ?)
+                ORDER BY scan_date DESC, id DESC
+                LIMIT 1
+                """,
+                (sym_clean, f"er_{sid}", f"-{int(max_lookback)} days"),
+            ).fetchone()
+            if row:
+                result[(sym, sid)] = {
+                    'event_id': row[0],
+                    'first_seen': row[1] or row[2],
+                    'last_seen': row[2],
+                    'event_day': int(row[3] or 1),
+                    'is_new': bool(row[4]),
+                }
+            else:
+                result[(sym, sid)] = {
+                    'event_id': None, 'first_seen': None, 'last_seen': None,
+                    'event_day': 0, 'is_new': False,
+                }
     except Exception:
-        pass
+        for pair in pairs:
+            result.setdefault(pair, {
+                'event_id': None, 'first_seen': None, 'last_seen': None,
+                'event_day': 0, 'is_new': False,
+            })
+    finally:
+        if conn is not None:
+            conn.close()
     return result
+
+
+def get_scenario_ages_batch(pairs, max_lookback=180, include_details=False):
+    """
+    Toplu senaryo yaşam döngüsü hesabı.
+    Varsayılan dönüş: {(symbol, scenario_id): event_day_int}
+    include_details=True: ilk oluşum tarihi dahil ayrıntılı yaşam döngüsü.
+
+    event_day takvim günü değildir; taramanın çalıştığı ardışık seanslarda aynı
+    kurulumun kaçıncı kez görüldüğüdür. Hafta sonu ve tatiller sayacı bozmaz.
+    """
+    details = get_scenario_lifecycle_batch(pairs, max_lookback=max_lookback)
+    if include_details:
+        return details
+    return {pair: int(info.get('event_day') or 0) for pair, info in details.items()}

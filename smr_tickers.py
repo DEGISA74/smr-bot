@@ -66,7 +66,46 @@ BIST = {
     "VESTL","VKFYO","VKGYO","VKING","VRGYO","YAPRK","YATAS","YAYLA","YBTAS","YEOTK",
     "YESIL","YGGYO","YGYO","YKSLN","YONGA","YUNSA","YYAPI","YYLGD","ZEDUR","ZOREN",
     "ZRGYO","GIPTA","TEHOL","PAHOL","MARMR","BIGEN","GLRMK","TRHOL","AAGYO",
+    # ─── 6 Tem 2026 — app.py raw_bist_stocks ile senkron (80 eksik hisse; MCARD dahil) ───
+    "AHSGY","AKFIS","AKFYE","AKHAN","ALKLC","ARFYE","ARMGD","ATATR","BAHKM","BALSU",
+    "BESLR","BESTE","BETAE","BIGTK","BLUME","BORSK","BULGS","CEMZY","CGCAM","DCTTR",
+    "DMRGD","DOFRB","DSTKF","DUNYH","DURKN","ECOGR","EGEGY","EKDMR","EKIM","EKOS",
+    "EMPAE","ENDAE","ENERY","ENPRA","FRMPL","GATEG","GENKM","GOLDA","GRTHO","GUNDG",
+    "HOROZ","IHLAS","ISVEA","KARTN","KBORU","KLSYN","KLYPV","LRSHO","LXGYO","LYDHO",
+    "LYDYE","MCARD","MEYSU","MHRGY","MOPAS","NETCD","NTHOL","ORZAX","OZYSR","PNSUT",
+    "QNBFK","QNBTR","RUZYE","SEGMN","SERNT","SKYLP","SMRVA","SOHOE","SSAAT","SVGYO",
+    "TARKM","TCKRC","TRENJ","TRMET","UCAYM","VAKFA","VSNMD","YIGIT","ZERGY","ZGYO",
 }
+
+
+# ─── OTOMATİK SENKRON: app.py evreni TEK KAYNAK (6 Tem 2026) ─────────────────
+# Bu liste eskiden elle güncelleniyordu → app.py'ye hisse eklenince bota işlenmiyor,
+# bot "listede yok" diyordu (örn. #MCARD). Artık app.py'nin raw_bist_stocks +
+# priority_bist_indices'ini parse edip (fetcher.load_bist_tickers ile aynı mantık)
+# yukarıdaki base ile BİRLEŞTİRİYORUZ. app.py'ye eklenen her hisse otomatik gelir;
+# parse başarısızsa (app.py yok/bozuk) base korunur → bot asla listesiz kalmaz.
+def _bist_from_apppy() -> set:
+    try:
+        import re, pathlib
+        content = (pathlib.Path(__file__).parent / "app.py").read_text(encoding="utf-8")
+        out = set()
+        for block in ("raw_bist_stocks", "priority_bist_indices"):
+            m = re.search(rf'{block}\s*=\s*\[', content)
+            if not m:
+                continue
+            start = m.end(); depth = 1; i = start
+            while depth and i < len(content):
+                if content[i] == '[':   depth += 1
+                elif content[i] == ']': depth -= 1
+                i += 1
+            for t in re.findall(r'"([A-Z0-9]+)\.IS"', content[start:i - 1]):
+                out.add(t)
+        return out
+    except Exception:
+        return set()
+
+BIST = BIST | _bist_from_apppy()
+
 
 # ─── ABD HİSSELERİ (S&P 500 + NASDAQ) ───────────────────────────────────────
 US = {

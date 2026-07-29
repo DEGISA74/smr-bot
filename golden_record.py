@@ -197,12 +197,16 @@ def _restore_fetch(saved):
             d.pop("get_safe_historical_data", None)
 
 def _strip_net(r):
-    """PA-DNA'nın network-canlılığına bağlı alanlarını çıkar (golden determinizmi).
+    """PA-DNA'nın network-canlılığına + SEANS-SAATİNE bağlı alanlarını çıkar (golden determinizmi).
     vol_data_missing: canlı hacim-tazeleme fetch'i (GLDN.IS için fast_info/yf.download)
-    başarılı mı diye bakar → network durumuna göre False/True oynar, hesap değil."""
+    başarılı mı diye bakar → network durumuna göre False/True oynar, hesap değil.
+    vol_projected/vol_progress (İş 4, 28 Tem 2026): son barın gün-içi TAHMİN mi olduğu
+    — seans açık/kapalıya göre değişir (wall-clock), hesap değil → golden'dan çıkar."""
     try:
         if isinstance(r, dict) and isinstance(r.get("smart_volume"), dict):
             r["smart_volume"].pop("vol_data_missing", None)
+            r["smart_volume"].pop("vol_projected", None)
+            r["smart_volume"].pop("vol_progress", None)
     except Exception:
         pass
     return r
@@ -420,24 +424,15 @@ def _ser(v, depth=0):
 
 
 # Modül-düzeyi tablolar/sabitler — taşıma (bölme) sırasında birebir korunmalı.
-# Adım 3 (evidence.py) kapsamı: tier + puan tabloları.
+# Eski elle girilmiş ER/Güç puan tabloları 29 Tem 2026'da kaldırıldı.
 GLOBAL_TARGETS = [
-    "SCANNER_TIER_MAP", "ER_BACKTEST_SCORE", "ER_ELIT_SCORE_MIN",
-    "SCANNER_PLAIN_DESC", "GUC_SCORE",
+    "SCANNER_TIER_MAP", "ER_ELIT_SCORE_MIN", "SCANNER_PLAIN_DESC",
     "ERKEN_RADAR_SCENARIOS",   # Adım 6b — senaryo sözlüğü birebir korunmalı
 ]
 
 def _globals_snapshot(ns):
     rec = {g: _ser(ns.get(g, "__MISSING__")) for g in GLOBAL_TARGETS}
     # saf yardımcılar — sabit girdilerle davranış fotoğrafı
-    try:
-        rec["_guc_score_probe"] = {
-            f"{s}|{g}": _ser(ns["_guc_score"](s, g))
-            for s in ("harmonik_confluence", "vip_formasyon", "prelaunch_bos", "bilinmeyen")
-            for g in ("🟢", "🟡", "🔴")
-        }
-    except Exception as e:
-        rec["_guc_score_probe"] = f"__ERROR__ {e}"
     try:
         rec["_guc_plain_probe"] = {g: _ser(ns["_guc_plain"](g)) for g in ("🟢", "🟡", "🔴")}
     except Exception as e:

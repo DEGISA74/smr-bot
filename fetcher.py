@@ -276,6 +276,15 @@ def process_one(symbol: str, source: str):
                             df.loc[_koru, 'Volume'] = old.loc[_koru, 'Volume']
                             log.warning(f"[hacim-koruma] {symbol}: {use_src} {len(_koru)} barda "
                                         f"V=0 döndü → eski gerçek hacim korundu")
+                # ── FİYAT KORUMASI (27 Tem 2026) — boş kapanış eskiyi ezemez ──
+                # keep='last' yeni barı kazandırıyor; kaynak bir günün kapanışını
+                # boş/0 gönderirse (XU100 24 Tem olayı) eski sağlam değer korunur,
+                # son bar hâlâ kapanışsızsa düşürülür. Kural tek kaynak: data_layer.
+                try:
+                    from data_layer import _protect_good_bars
+                    df = _protect_good_bars(df, old, symbol)
+                except Exception as _pg:
+                    log.warning(f"[fiyat-koruma] {symbol}: guard atlandı: {_pg}")
             except Exception as e:
                 log.warning(f"[merge] {symbol}: eski parquet okunamadı, sadece yeni veri yazılıyor: {e}")
         df.to_parquet(tmp, compression='snappy')
@@ -287,6 +296,56 @@ def process_one(symbol: str, source: str):
             try: tmp.unlink()
             except: pass
         return symbol, 'write_fail', 0, use_src
+
+
+# --------------------------------------------------------------------
+# ENDEKS TL CİRO OVERRIDE (18 Tem 2026)
+# Yahoo/borsapy endeks "Volume"u ADETTİR (XU100 ~7,5 mlr lot), TL ciro DEĞİL.
+# İş Yatırım endeks endpoint'i hiç hacim vermiyor. Çözüm: endeks bileşenlerinin
+# TL cirosunu (Σ Volume×Close, parquet'ten) toplayıp endeks parquet'inin Volume
+# kolonunu bununla EZ. Böylece aşağıdaki tüm tüketiciler (OBV/CMF/paneller)
+# otomatik gerçek TL ciroyu kullanır. Fetch turu SONUNDA çalışır (idempotent:
+# her tur Yahoo adedini çeker, sonra biz TL ciroyla üzerine yazarız).
+# --------------------------------------------------------------------
+# Endeks TL ciro çekirdeği data_layer'da (TEK KAYNAK — app da oradan kullanır, drift yok).
+# fetcher burada parquet'e YAZAR (at-rest); app apply_volume_projection'da canlı uygular.
+from data_layer import (INDEX_CIRO_TARGETS, compute_index_tl_ciro_series,
+                        load_index_components)
+
+
+def override_index_ciro():
+    """Hedef endekslerin parquet Volume kolonunu bileşen-toplamı TL ciroyla EZER.
+    Fetch turu sonunda çağrılır (bileşenler bu turda tazelendi). borsapy'ye izinli
+    (haftalık bileşen listesi tazelemesi fetcher'ın işi)."""
+    for ix in INDEX_CIRO_TARGETS:
+        try:
+            # Memo'yu atla: fetcher taze parquet'ten yeniden hesaplasın
+            from data_layer import _index_ciro_memo
+            _index_ciro_memo.pop(ix, None)
+            load_index_components(ix, allow_network=True)   # haftalık cache tazele
+            ser = compute_index_tl_ciro_series(ix, allow_network=True)
+            if ser is None or ser.empty:
+                log.warning(f"[ciro] {ix}: hesaplanamadı (bileşen/parquet eksik)")
+                continue
+            target = VERILER / f"{ix}.IS_1d.parquet"
+            if not target.exists():
+                log.warning(f"[ciro] {ix} parquet yok, override atlandı")
+                continue
+            idx_df = pd.read_parquet(target)
+            _ort = idx_df.index.intersection(ser.index)
+            if len(_ort) == 0:
+                log.warning(f"[ciro] {ix} tarih kesişimi boş, override atlandı")
+                continue
+            # int64 Volume'e float TL atamadan önce cast (dtype uyumsuzluk uyarısı önlenir).
+            idx_df['Volume'] = idx_df['Volume'].astype('float64')
+            idx_df.loc[_ort, 'Volume'] = ser.reindex(_ort).values
+            tmp = target.with_suffix(".parquet.tmp")
+            idx_df.to_parquet(tmp, compression='snappy')
+            tmp.replace(target)
+            log.info(f"[ciro] {ix}: son gün TL ciro {float(ser.reindex(_ort).iloc[-1]):,.0f} "
+                     f"(~{ser.reindex(_ort).iloc[-1]/1e9:.0f} mlr) parquet Volume'e yazıldı")
+        except Exception as e:
+            log.warning(f"[ciro] {ix} override hatası: {e}")
 
 
 # --------------------------------------------------------------------
@@ -320,6 +379,10 @@ def run():
 
     dur = time.time() - start
     save_source(source)
+
+    # ENDEKS TL CİRO OVERRIDE (18 Tem 2026) — bileşenler bu turda tazelendi,
+    # şimdi endeks parquet'inin adet-Volume'ünü TL ciroyla ez (idempotent).
+    override_index_ciro()
 
     # Fail rate hesabı (delisted hisseleri hariç tutmak için %5 baseline kabul ediyoruz)
     total      = len(tickers)

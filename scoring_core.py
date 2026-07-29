@@ -374,7 +374,7 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
     Sorun: 'Akıllı para birikiyor' demek iki farklı zaman ölçeği:
       - YAPISAL: haftalar/aylar boyunca kurumsal pozisyon kurma
         (MKK yabancı, OBV 20g+, CMF 20g, POC multi-TF) — TEFAS/KAP kaldırıldı (endpoint bloklu)
-      - TACTICAL: saatler/günler içinde algo/scalp aktivitesi
+      - TACTICAL: günlük veride birkaç gün/birkaç haftalık kısa-pencere davranışı
         (cum_delta 5g, MFI 5g, RVOL spike, climax, pocket pivot)
 
     Bu fonksiyon her sinyali sınıflandırır ve iki ayrı 0-100 skor üretir.
@@ -402,7 +402,7 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
         struct_pos = []; struct_neg = []
 
         # (12 Haz Oturum 21) TEFAS + KAP + f_kurumsal_anchor skor katkıları KALDIRILDI
-        # (TEFAS makro-rejim yasağı, KAP endpoint bloklu). Yabancı + rel_obv korundu.
+        # (TEFAS makro-rejim yasağı, KAP endpoint bloklu). Yabancı katkısı korundu.
         # MKK Yabancı
         # (4 Tem 2026 karne) tek-gün f_yabanci_giris TERS çalışıyor (giris=1 → 10g ret
         # -%9.05, n=102) → +6 katkısı KALDIRILDI. Puan sadece süreklilik (streak) veya
@@ -413,16 +413,8 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
             struct_score += 4; struct_pos.append('Yabancı 3+ gün üst üste artış')
         if f.get('f_yabanci_cikis') == 1:
             struct_score -= 8; struct_neg.append('Yabancı top-3 net satış listesinde')
-        # Relative OBV (orta-uzun vade akış)
-        _rel = f.get('f_rel_obv_state')
-        if _rel == 'outperform_strong':
-            struct_score += 12; struct_pos.append('Endeksten güçlü ayrışma (OBV)')
-        elif _rel == 'outperform_mild':
-            struct_score += 5; struct_pos.append('Endeksten hızlı (OBV)')
-        elif _rel == 'underperform_strong':
-            struct_score -= 12; struct_neg.append('Endeksten negatif ayrışma')
-        elif _rel == 'underperform_mild':
-            struct_score -= 5; struct_neg.append('Endeksten yavaş')
+        # Relative OBV hesaplanır ve ayrı alanda raporlanır; bağımsız katkısı henüz
+        # ölçülmediği için yapısal canlı skora ve pozitif/negatif oy listesine girmez.
         # POC mıknatıs / confluence (multi-TF = yapısal)
         if f.get('f_poc_magnet') == 1:
             struct_score += 5; struct_pos.append('POC mıknatıs aktif')
@@ -437,13 +429,26 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
 
         struct_score = max(0, min(100, struct_score))
 
-        # ─── TACTICAL puanlama (saatler/günler) ────────────────────────
+        # ─── TACTICAL puanlama (birkaç gün/birkaç hafta; günlük veri) ──
         tact_score = 50.0
         tact_pos = []; tact_neg = []
 
-        # RSI/MFI Bouquet (climax = tactical extreme)
+        # RSI/MFI Bouquet — RSI ve MFI aynı yönde ekstrem (climax).
+        # 27 Tem 2026 (borsacı geri bildirimi, rec 5): YÖNSÜZ +15 ödülü KALDIRILDI.
+        # Sebep: bouquet 4 farklı durumu tek bayrağa topluyordu — "ikisi de tepe
+        # yorgunluğu" (RİSK) ile "ikisi de dipten dönüş" (FIRSAT) aynı +15'i alıyor,
+        # bu da bearish climax'ın doğru negatif skorunu (aşağıdaki mfi/rsi_dual) iptal
+        # ediyordu. Yön zaten f_mfi_dual + f_rsi_dual üzerinden ayrı puanlanıyor →
+        # bouquet artık SADECE yön-farkında bilgi etiketi (skora katkı 0). 4 durumun
+        # 5/10/20g katkısı ölçülene kadar ağırlık verilmez. Flag scan_signals'a yazılır.
         if f.get('f_rsi_mfi_bouquet') == 1:
-            tact_score += 15; tact_pos.append('RSI/MFI ÇİFT TEYİT (climax)')
+            _bq_mfi = f.get('f_mfi_dual')
+            if _bq_mfi in ('oversold_both', 'smart_money_recovery'):
+                tact_pos.append('RSI/MFI çift ekstrem: dipte climax (bilgi — ölçüm bekliyor, skorsuz)')
+            elif _bq_mfi in ('overbought_both', 'cooling_smart_exit'):
+                tact_neg.append('RSI/MFI çift ekstrem: tepede yorgunluk (bilgi — ölçüm bekliyor, skorsuz)')
+            else:
+                tact_pos.append('RSI/MFI çift ekstrem (bilgi — ölçüm bekliyor, skorsuz)')
         # MFI dual (kısa pencere = tactical)
         _mfi = f.get('f_mfi_dual')
         if _mfi == 'oversold_both':
@@ -499,39 +504,8 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
         # VWAP -2σ (mean reversion tactical fırsat)
         if f.get('f_at_vwap_minus_2sigma') == 1:
             tact_score += 7; tact_pos.append('VWAP -2σ bölgesi (institutional buy zone)')
-        # UDVR (Up/Down Volume Ratio — Wyckoff Effort-vs-Result)
-        # Strong durumlar tactical sinyal, climax ELIT
-        _udvr_st = f.get('f_udvr_state')
-        _udvr_cx = f.get('f_udvr_climax')
-        if _udvr_cx == 'climax_bottom':
-            tact_score += 12; tact_pos.append('Wyckoff climax_bottom (fiyat dipte + UDVR güçlü)')
-        elif _udvr_cx == 'climax_top':
-            tact_score -= 14; tact_neg.append('Wyckoff climax_top (fiyat tepede + UDVR zayıf)')
-        elif _udvr_st == 'strong_buyer':
-            tact_score += 7; tact_pos.append('UDVR strong_buyer (alıcı 2×+ hakim)')
-        elif _udvr_st == 'buyer':
-            tact_score += 3; tact_pos.append('UDVR buyer (alıcı egemen)')
-        elif _udvr_st == 'strong_seller':
-            tact_score -= 8; tact_neg.append('UDVR strong_seller (satıcı 2×+ hakim)')
-        elif _udvr_st == 'seller':
-            tact_score -= 3; tact_neg.append('UDVR seller (satıcı egemen)')
-
-        # Force Index Dual (Elder Triple Screen)
-        # Divergence climax-level sinyal, state'ler destekleyici
-        _fi_st = f.get('f_force_index_dual')
-        _fi_dv = f.get('f_force_index_divergence')
-        if _fi_dv == 'bullish':
-            tact_score += 12; tact_pos.append('Force Index bullish divergence (fiyat LL + FI HL)')
-        elif _fi_dv == 'bearish':
-            tact_score -= 14; tact_neg.append('Force Index bearish divergence (fiyat HH + FI LH)')
-        if _fi_st == 'strong_pos':
-            tact_score += 8; tact_pos.append('Force Index güçlü pozitif (Elder alıcı egemen)')
-        elif _fi_st == 'strong_neg':
-            tact_score -= 8; tact_neg.append('Force Index güçlü negatif (Elder satıcı egemen)')
-        elif _fi_st == 'turning_up':
-            tact_score += 6; tact_pos.append('Force Index kafa çeviriyor yukarı (erken dönüş)')
-        elif _fi_st == 'turning_down':
-            tact_score -= 6; tact_neg.append('Force Index kafa çeviriyor aşağı (yorgunluk)')
+        # UDVR ve Force Index hesaplanır ve ayrı alanlarda raporlanır; bağımsız
+        # katkıları ölçülene kadar taktik canlı skora veya oy listesine girmez.
 
         tact_score = max(0, min(100, tact_score))
 
@@ -542,23 +516,23 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
         _tact_weak     = tact_score <= 35
 
         if _struct_strong and _tact_strong:
-            _verdict = "Çift onay: yapısal birikim + tactical patlama aynı yönde — güçlü ana hikaye"
+            _verdict = "Uzun ve kısa pencere aynı yönde güçlü — hacim/katılım görünümü uyumlu"
         elif _struct_strong and _tact_weak:
-            _verdict = "Yapısal güçlü, tactical zayıf — kurumsal birikim sürüyor ama bugün ek hareket yok; sabırlı bekleyin"
+            _verdict = "Uzun pencere güçlü, kısa pencere zayıf — yakın vadede teyit eksik"
         elif _struct_weak and _tact_strong:
-            _verdict = "Tactical güçlü, yapısal zayıf — kısa vade fırsat olabilir; uzun vade yatırım için temkinli"
+            _verdict = "Kısa pencere güçlü, uzun pencere zayıf — hareket yapısal katmanla teyit edilmiyor"
         elif _struct_weak and _tact_weak:
-            _verdict = "Hem yapısal hem tactical zayıf — net akıllı para izi yok, beklemede"
+            _verdict = "Uzun ve kısa pencere zayıf — hacim/katılım desteği yok"
         elif _struct_strong:
-            _verdict = "Yapısal güçlü, tactical nötr — kurumsal birikim ön planda"
+            _verdict = "Uzun pencere güçlü, kısa pencere nötr — yakın vade teyidi bekleniyor"
         elif _tact_strong:
-            _verdict = "Tactical güçlü, yapısal nötr — kısa vade hareket var"
+            _verdict = "Kısa pencere güçlü, uzun pencere nötr — birkaç günlük hareket desteği var"
         elif _struct_weak:
-            _verdict = "Yapısal zayıf, tactical nötr — kurumsal çıkış izi"
+            _verdict = "Uzun pencere zayıf, kısa pencere nötr — göreli hacim/katılım desteği eksik"
         elif _tact_weak:
-            _verdict = "Tactical zayıf, yapısal nötr — kısa vade satıcı baskın"
+            _verdict = "Kısa pencere zayıf, uzun pencere nötr — birkaç günlük satıcı baskısı"
         else:
-            _verdict = "Yapısal ve tactical her ikisi de nötr"
+            _verdict = "Uzun ve kısa pencere nötr"
 
         return {
             'structural_score': round(struct_score, 1),
@@ -1328,10 +1302,10 @@ def calculate_master_score(ticker, return_breakdown=False):
     """
     MASTER SKOR V2:
     - Temel analiz kaldırıldı (BIST için güvenilir veri yok)
-    - ICT: sadece bias (en değerli kriter) — tek şart, tam puan
+    - ICT hesaplanır ve raporlanır; geçmiş karne nedeniyle canlı ağırlığı %0
     - Radar2: session_state yerine anlık hesaplama
     - Momentum eşiği 60 → 50'ye indirildi
-    - Yeni ağırlıklar: Trend %40, Momentum %30, ICT %15, Radar2 %15
+    - ICT dışındaki mevcut ağırlıklar oransal normalize edilerek 0-100 ölçeği korunur
 
     return_breakdown=True → (final, pros, cons, breakdown_dict) — alt skorları döndürür
     """
@@ -1362,11 +1336,13 @@ def calculate_master_score(ticker, return_breakdown=False):
 
     is_index = ticker.startswith("^") or "XU" in ticker or "-USD" in ticker
 
-    # AĞIRLIKLAR (temel analiz çıktı, ağırlıklar yeniden dağıtıldı)
-    w_trend = 0.50 if is_index else 0.40
-    w_mom   = 0.35 if is_index else 0.30
-    w_ict   = 0.15 if is_index else 0.15
-    w_r2    = 0.00 if is_index else 0.15
+    # AĞIRLIKLAR: ICT hesaplanmaya devam eder ama canlı katkısı sıfırdır.
+    # Kalan eski ağırlıkları 0-100 ölçeğini bozmadan oransal olarak normalize et.
+    _active_weight_total = 0.85
+    w_trend = (0.50 if is_index else 0.40) / _active_weight_total
+    w_mom   = (0.35 if is_index else 0.30) / _active_weight_total
+    w_ict   = 0.00
+    w_r2    = (0.00 if is_index else 0.15) / _active_weight_total
 
     pros = []; cons = []
 
@@ -1445,7 +1421,7 @@ def calculate_master_score(ticker, return_breakdown=False):
         cons.append(f"RSI Zayıf: Satış baskısı devam ediyor (0 Puan)")
 
     # ---------------------------------------------------
-    # C. ICT — SADECE BIAS (En Değerli Kriter)
+    # C. ICT — GÖZLEM/KAYIT (CANLI PUAN KATKISI YOK)
     # Bias = piyasa yapısının genel yönü (bullish/bearish).
     # Displacement ve zone tek başına anlamsız; bias olmadan
     # ikisi de güvenilir değil.
@@ -1455,15 +1431,12 @@ def calculate_master_score(ticker, return_breakdown=False):
         bias = ict_data.get('bias', '')
         if "bullish" in bias:
             s_ict = 100
-            pros.append(f"✅ Smart Money Yönü: Piyasa yapısı Bullish ({format_pt(100 * w_ict)} Puan)")
         elif "bearish" in bias:
             s_ict = 0
-            cons.append(f"Smart Money Yönü: Piyasa yapısı Bearish (0 Puan)")
         else:
             s_ict = 40
-            pros.append(f"⚖️ Smart Money Yönü: Nötr / Konsolidasyon ({format_pt(40 * w_ict)} Puan)")
-    else:
-        cons.append(f"ICT Verisi Yok (0 Puan)")
+    # ICT ham alt değeri breakdown/kayıt için korunur; ağırlığı sıfır olduğu için
+    # pros/cons anlatısına da girmez ve canlı hükmü dolaylı biçimde eğemez.
 
     # ---------------------------------------------------
     # D. RADAR 2

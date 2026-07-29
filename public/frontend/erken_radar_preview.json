@@ -1,31 +1,37 @@
 {
-  "generated_at": "2026-06-01 19:41",
+  "generated_at": "2026-07-29 19:27",
   "category": "BIST 500 ",
   "public_items": [
     {
-      "ticker": "TTRAK",
-      "scenario_id": "B1",
-      "scenario_name": "Mükemmel Sıkışma",
-      "category": "B",
+      "ticker": "DUNYH",
+      "scenario_id": "C3",
+      "scenario_name": "Pullback + Hacimli Alım",
+      "category": "C",
       "stars": 5,
-      "aging_days": 2
+      "aging_days": 2,
+      "event_day": 2,
+      "first_seen": "2026-06-24"
     },
     {
-      "ticker": "BURVA",
-      "scenario_id": "B1",
-      "scenario_name": "Mükemmel Sıkışma",
-      "category": "B",
+      "ticker": "KUVVA",
+      "scenario_id": "C3",
+      "scenario_name": "Pullback + Hacimli Alım",
+      "category": "C",
       "stars": 5,
-      "aging_days": 2
+      "aging_days": 2,
+      "event_day": 2,
+      "first_seen": "2026-07-27"
     },
     {
-      "ticker": "DERIM",
-      "scenario_id": "A1",
-      "scenario_name": "Dipte Sessizlik",
-      "category": "A",
+      "ticker": "TUPRS",
+      "scenario_id": "C6",
+      "scenario_name": "Piyasa Lideri",
+      "category": "C",
       "stars": 5,
-      "aging_days": 2
+      "aging_days": 1,
+      "event_day": 1,
+      "first_seen": null
     }
   ],
-  "locked_count": 445
+  "locked_count": 248
 }

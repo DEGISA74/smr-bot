@@ -31,15 +31,27 @@ from indicators import (_harmonik_52h_strength, _spike_dom_ratio, calculate_anch
                         compute_mfi, compute_relative_obv_state, compute_updown_volume_ratio,
                         detect_darvas_box, find_smart_sr_levels)
 from scanners import (_detect_double_bottom, _detect_double_top, _detect_wedge,
+                      _is_index_symbol, ERKEN_RADAR_SCENARIOS,
                       _nadir_firsat_single_fast, _validate_cup_shape, _validate_tobo_shape,
                       calculate_guclu_donus_adaylari, calculate_prelaunch_bos,
                       evaluate_erken_radar, process_single_accumulation,
                       process_single_ict_setup, process_single_radar1, process_single_radar2)
+from rsi_divergence_scanner import (detect_wilder_positive_divergence,
+                                    empty_result_frame as _empty_wilder_result_frame)
+from deepening_policy import (
+    b11_pilot_profile,
+    build_leadership_lifecycle,
+    ensure_deepening_schema,
+    leadership_profile,
+    upsert_rsi_journey,
+)
 from ict_core import (calculate_harmonic_confluence, calculate_ict_deep_analysis,
-                      calculate_minervini_sepa)
+                      calculate_minervini_sepa, compute_sfp_flags)
 from scoring_core import (_compute_risk_profile, _compute_smc_elements, _detect_breakout_state,
                           _liquidity_manip, calculate_master_score, calculate_sentiment_score,
                           calculate_smart_money_score, compute_smart_money_split_scores)
+from signal_policy import (assign_event_metadata_for_date, ensure_event_schema,
+                           register_scan_run, resolve_next_open_entry)
 
 _TZ_ISTANBUL = pytz.timezone("Europe/Istanbul")
 
@@ -133,6 +145,10 @@ def _compute_signal_features(ticker: str) -> dict:
         'f_skew_60g': None,
         # 29 Haz 2026 — Kurumsal-tarz faktörler (kesitsel; sıralama READ-time panelde)
         'f_mom_12_1': None, 'f_vol_60g': None, 'f_sharpe_mom': None, 'f_trend_persist': None,
+        # 17 Tem 2026 EKRAN REFORMU 2c — SFP tuzak flag'leri (PA panelinde gösteriliyordu
+        # ama HİÇ loglanmıyordu → Eylül 2026 karnesi "BIST'te tuzak sinyali dönüş öngörüyor mu"
+        # sorusunu bununla ölçecek. Tek kaynak: ict_core.compute_sfp_flags.
+        'f_sfp_bull': None, 'f_sfp_bear': None,
     }
     try:
         df = get_safe_historical_data(ticker, period="1y")
@@ -262,6 +278,11 @@ def _compute_signal_features(ticker: str) -> dict:
             _smq = calculate_smart_money_score(ticker)
             if isinstance(_smq, dict) and _smq.get('score') is not None:
                 out['f_smart_money_score'] = round(float(_smq['score']), 1)
+        except Exception: pass
+
+        # 7d) 17 Tem 2026 REFORM 2c — SFP tuzak flag'leri (aynı df, ~0 maliyet)
+        try:
+            out['f_sfp_bull'], out['f_sfp_bear'] = compute_sfp_flags(df)
         except Exception: pass
 
         # 7c) Faz 1 (19 Haz 2026) — Likidite + manipülasyon kalkanı
@@ -609,6 +630,7 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
     """
     if _SCAN_LOG_DISABLED:
         return   # tek-hisse canlı tarama → DB log'u atla
+    today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
     if _SCAN_LOG_SKIP and df_result is not None and hasattr(df_result, 'columns'):
         # sadece atlama setindeki ticker satırlarını süz — diğer semboller loglanır
         try:
@@ -620,8 +642,15 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
         except Exception:
             return
     if df_result is None or (hasattr(df_result, 'empty') and df_result.empty):
+        try:
+            conn = sqlite3.connect(DB_FILE, timeout=30)
+            previous_run = register_scan_run(conn, scan_type, today, 0, category)
+            assign_event_metadata_for_date(conn, scan_type, today, previous_run)
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
         return
-    today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
     # B4-2: df'te feature kolonu yoksa toplu hesapla (cache'li, ticker başı tek hesap)
     _has_feat_cols = any(str(_col).lower().startswith('f_') or str(_col).startswith('F_')
                          for _col in df_result.columns)
@@ -638,6 +667,9 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
             pass
     try:
         conn = sqlite3.connect(DB_FILE, timeout=30)
+        ensure_event_schema(conn)
+        ensure_deepening_schema(conn)
+        previous_run = register_scan_run(conn, scan_type, today, len(df_result), category)
         c = conn.cursor()
         for _, row in df_result.iterrows():
             symbol = row.get('Sembol', '') or row.get('Hisse', '') or row.get('Ticker', '') or row.get('symbol', '')
@@ -752,6 +784,7 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
             f_mom_12_1_v = f_vol_60g_v = f_sharpe_mom_v = f_trend_persist_v = None
             f_sentiment_v = f_ict_model_v = f_smart_money_v = None  # 19 Haz audit — kör skorlar (sadece _feat'ten)
             f_adv_tl_v = f_liq_tier_v = f_manip_v = None            # 19 Haz Faz 1 — likidite/manip (sadece _feat'ten)
+            f_sfp_bull_v = f_sfp_bear_v = None                      # 17 Tem reform 2c — SFP tuzak (sadece _feat'ten)
             # B4-2 FALLBACK: scanner df feature üretmiyorsa _feat_cache'ten al
             _feat = _feat_cache.get(str(symbol), {}) if _feat_cache else {}
             if _feat:
@@ -814,7 +847,26 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
                 if f_adv_tl_v      is None: f_adv_tl_v      = _feat.get('f_adv_tl')
                 if f_liq_tier_v    is None: f_liq_tier_v    = _feat.get('f_liquidity_tier')
                 if f_manip_v       is None: f_manip_v       = _feat.get('f_manip_risk')
+                if f_sfp_bull_v    is None: f_sfp_bull_v    = _feat.get('f_sfp_bull')
+                if f_sfp_bear_v    is None: f_sfp_bear_v    = _feat.get('f_sfp_bear')
             symbol_db = str(symbol).replace('.IS', '')  # 19 Haz audit — .IS tutarlılığı (er ile aynı biçim)
+            # 29 Tem 2026 — seçili derinleştirme paketi. Ana tarama formüllerini
+            # değiştirmez; kalite, geç kalma ve olay aşamasını aynı sinyal satırına bağlar.
+            _quality_score_v = _ff('Kalite_Skoru', 'quality_score')
+            _quality_label_v = _ff('Kalite', 'quality_label', cast=str)
+            _quality_detail_v = _ff('Kalite_Detay', 'quality_detail', cast=str)
+            _journey_stage_v = _ff(
+                'Yolculuk_Asamasi', 'Liderlik_Asamasi', 'journey_stage', cast=str
+            )
+            _journey_age_v = _ff(
+                'Yolculuk_Gunu', 'Liderlik_Yasi', 'journey_age', cast=int
+            )
+            _journey_key_v = _ff(
+                'Yolculuk_Anahtari', 'journey_key', cast=str
+            )
+            # 20 Tem 2026: df 'bias' kolonu taşıyorsa oku (birleşik dtri=bearish). Yoksa eskisi gibi
+            # 'bullish' (geriye uyumlu — mevcut çağıranlar bias kolonu geçirmez, davranış değişmez).
+            _row_bias = str(row.get('bias', row.get('Bias', 'bullish')) or 'bullish')
             c.execute(
                 '''INSERT OR IGNORE INTO scan_signals
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category, obv_status,
@@ -837,9 +889,10 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
                     f_beta_xu100, f_dd_zirveden, f_hv_oran, f_skew_60g,
                     f_sentiment_score, f_ict_model, f_smart_money_score,
                     f_adv_tl, f_liquidity_tier, f_manip_risk,
-                    f_mom_12_1, f_vol_60g, f_sharpe_mom, f_trend_persist)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (today, symbol_db, scan_type, score, 'bullish', entry_price, stop_level, category, obv_status,
+                    f_mom_12_1, f_vol_60g, f_sharpe_mom, f_trend_persist,
+                    f_sfp_bull, f_sfp_bear)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (today, symbol_db, scan_type, score, _row_bias, entry_price, stop_level, category, obv_status,
                  f_52h_pos, f_rsi, f_cmf_dual, f_omi_sigma, f_squeeze_days_v, f_vp_shape, f_master_score,
                  f_poc_magnet_v, f_poc_confluence_v, f_avwap_test_v,
                  f_ms_trend_v, f_ms_momentum_v, f_ms_ict_v, f_ms_radar2_v,
@@ -859,8 +912,57 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
                  f_beta_xu100_v, f_dd_zirveden_v, f_hv_oran_v, f_skew_60g_v,
                  f_sentiment_v, f_ict_model_v, f_smart_money_v,
                  f_adv_tl_v, f_liq_tier_v, f_manip_v,
-                 f_mom_12_1_v, f_vol_60g_v, f_sharpe_mom_v, f_trend_persist_v)
+                 f_mom_12_1_v, f_vol_60g_v, f_sharpe_mom_v, f_trend_persist_v,
+                 f_sfp_bull_v, f_sfp_bear_v)
             )
+            if any(
+                value is not None
+                for value in (
+                    _quality_score_v,
+                    _quality_label_v,
+                    _quality_detail_v,
+                    _journey_stage_v,
+                    _journey_age_v,
+                    _journey_key_v,
+                )
+            ):
+                c.execute(
+                    """
+                    UPDATE scan_signals
+                    SET quality_score=?, quality_label=?, quality_detail=?,
+                        journey_stage=?, journey_age=?, journey_key=?
+                    WHERE scan_date=? AND symbol=? AND scan_type=?
+                    """,
+                    (
+                        _quality_score_v,
+                        _quality_label_v,
+                        _quality_detail_v,
+                        _journey_stage_v,
+                        _journey_age_v,
+                        _journey_key_v,
+                        today,
+                        symbol_db,
+                        scan_type,
+                    ),
+                )
+            _journey_payload = row.get('_journey')
+            if isinstance(_journey_payload, dict) and scan_type == "rsi_pozitif_uyumsuzluk":
+                _signal_row = c.execute(
+                    """
+                    SELECT id FROM scan_signals
+                    WHERE scan_date=? AND symbol=? AND scan_type=?
+                    """,
+                    (today, symbol_db, scan_type),
+                ).fetchone()
+                if _signal_row:
+                    upsert_rsi_journey(
+                        conn,
+                        int(_signal_row[0]),
+                        symbol_db,
+                        str(row.get("Sinyal_Tarihi") or today),
+                        _journey_payload,
+                    )
+        assign_event_metadata_for_date(conn, scan_type, today, previous_run)
         conn.commit()
         conn.close()
     except sqlite3.OperationalError as e:
@@ -897,10 +999,11 @@ def backfill_signal_returns():
         # signal_returns'te hiç satırı olmayan scan_signals satırlarını bul
         pending = pd.read_sql('''
             SELECT ss.id, ss.symbol, ss.scan_type, ss.scan_date,
-                   ss.entry_price, ss.category
+                   ss.entry_price, ss.category, ss.bias
             FROM scan_signals ss
             LEFT JOIN signal_returns sr ON ss.id = sr.signal_id
             WHERE sr.signal_id IS NULL
+              AND COALESCE(ss.is_event_start, 1) = 1
               AND date(ss.scan_date) <= date('now', '-1 day')
             ORDER BY ss.scan_date DESC
             LIMIT ?
@@ -963,15 +1066,24 @@ def backfill_signal_returns():
                     skipped += 1
                     continue
 
-                ep_raw = sig['entry_price']
-                entry  = float(ep_raw) if (ep_raw is not None and not pd.isna(ep_raw) and float(ep_raw) > 0) \
-                         else float(df_h['Close'].iloc[idx_pos])
-                if entry == 0:
+                _entry_info = resolve_next_open_entry(
+                    df_h, sig['scan_date'], bias=sig.get('bias', 'bullish'),
+                    apply_bist_limit=(
+                        not str(sig.get('category', '') or '').strip()
+                        or 'BIST' in str(sig.get('category', '') or '').upper()
+                        or str(sig['symbol']).upper().endswith('.IS')
+                    ),
+                    max_locked_sessions=3,
+                )
+                if not str(_entry_info.get('status', '')).startswith('filled'):
                     skipped += 1
                     continue
+                entry = float(_entry_info['entry_price'])
+                entry_pos = int(_entry_info['entry_pos'])
 
                 for day_offset in range(1, 21):
-                    fwd_idx = idx_pos + day_offset
+                    # Gün 1 = gerçekten girilebilen açılış seansının kapanışı.
+                    fwd_idx = entry_pos + day_offset - 1
                     if fwd_idx >= len(df_h):
                         break
                     fwd_price = float(df_h['Close'].iloc[fwd_idx])
@@ -993,6 +1105,163 @@ def backfill_signal_returns():
         conn.close()
 
     return (filled, skipped)
+
+
+# ── BİRLEŞİK FORMASYON MOTORU köprüsü (20 Tem 2026) ────────────────────────────
+# scan_chart_patterns HEM tek-hisse panelini (5 çağrı yeri) HEM Master Scan'i besler → TEK KAYNAK.
+# Flag AÇIK: her hisse için formasyon_core.analyze çalışır, eski dağınık detektörler ATLANIR (bunlar
+# insan-etiketinde 5/19'du, kalibre birleşik motor yerine geçer). Flag KAPALI: hiçbir şey değişmez.
+# ⚠️ Birleşik motor ŞEKİL-kalibre; return-backtest'i yok → scan_signals'a yazılıp temiz backtest
+# birikecek. Detay: memory/project_formation_recalibration.md.
+# 20 Tem 2026 Adım 4: varsayılan AÇIK (birleşik motor canlı). GERİ DÖNÜŞ tek satır:
+# ya bu varsayılanı '0' yap, ya da ortam değişkeni BIRLESIK_ENGINE=0 ver (env her zaman kazanır).
+_BIRLESIK_ON = os.environ.get('BIRLESIK_ENGINE', '1') == '1'
+
+_BIR_SHAPE = {'tobo': ('🧛', 'TOBO'), 'fincan': ('☕', 'FİNCAN-KULP'),
+              'ucgen': ('📐', 'YÜKSELEN ÜÇGEN'), 'dtri': ('📉', 'ALÇALAN ÜÇGEN'),
+              'taban': ('🧱', 'TABAN')}
+_BIR_STATE = {'YAKIN': 'Yaklaşıyor', 'KIRILDI': 'Kırılım Bölgesinde', 'UZAMIS': 'Kırıldı, Uzadı',
+              'ERKEN': 'Oluşuyor (Erken)', 'FAIL': 'Bozuldu'}
+_BIR_SCORE = {'KIRILDI': 90, 'YAKIN': 82, 'UZAMIS': 60, 'FAIL': 45, 'ERKEN': 70}
+
+
+def _birlesik_pattern_row(symbol, df, close, volume, curr_price, sma200):
+    """formasyon_core sonucunu scan_chart_patterns satır+ChartData formatına çevirir (tek kaynak
+    adaptörü). ChartData type='birlesik' → app.py tek jenerik çizim dalıyla render eder (çizgi +
+    temaslar + baş/omuz + durum). Bar indeksleri df.tail(500) çerçevesine göre tarihe çevrilir."""
+    import formasyon_core
+    r = formasyon_core.analyze(df, symbol)
+    if not r:
+        return None
+    idx = df.tail(500).index
+    def _d(i):
+        i = max(0, min(int(i), len(idx) - 1)); return str(idx[i].date())
+    shape, state = r['shape'], r['state']
+    emoji, shname = _BIR_SHAPE.get(shape, ('🔺', shape.upper()))
+    lvl = float(r.get('display_level', r['level']))
+    name = f"{emoji} {shname} — {_BIR_STATE.get(state, state)}"
+    info = r.get('info', {})
+    chart_d = {
+        "type": "birlesik", "shape": shape, "state": state, "level": lvl,
+        "date_start": _d(r['fs']),
+        "touch_dates":  [_d(i) for i, _ in r['touches']],
+        "touch_prices": [float(v) for _, v in r['touches']],
+        # pivot_dates: app.py'nin formasyon-yaşı/hacim kodu bunu okur (uyumluluk)
+        "pivot_dates":  [_d(r['fs'])] + [_d(i) for i, _ in r['touches']],
+    }
+    if 'hd_i' in info:
+        chart_d["head_date"] = _d(info['hd_i']); chart_d["head_price"] = float(info['head'])
+    if 'ls_i' in info:
+        chart_d["ls_date"] = _d(info['ls_i']);   chart_d["ls_price"] = float(info['ls'])
+    if 'res_now' in info:
+        chart_d["res_now"] = float(info['res_now'])
+    desc = f"Ana çizgi (destek/direnç): {lvl:.2f}"
+    if 'res_now' in info:
+        desc += f" | Alçalan direnç: {info['res_now']:.2f}"
+    desc += f" | Durum: {_BIR_STATE.get(state, state)}"
+    score = _BIR_SCORE.get(state, 70)
+    avg_vol = float(volume.iloc[-20:].mean())
+    if avg_vol < 5_000_000:
+        name += " (⚠️ SIĞ TAHTA)"; score -= 5
+    if not np.isnan(sma200) and curr_price < sma200:
+        name += " (⚠️ SMA200 Altında)"; score -= 10
+    return {"Sembol": symbol, "Fiyat": curr_price, "Formasyon": name, "Detay": desc,
+            "Skor": int(score), "Hacim": float(volume.iloc[-1]), "ChartData": chart_d}
+
+
+# ── FORMASYON MOTORU BİRLEŞTİRME (27 Tem 2026) ───────────────────────────────
+# formasyon_v2'nin PatternCandidate'ini _birlesik_pattern_row ile AYNI satır+ChartData
+# formatına çevirir → app.py render / terazi / AI koduna DOKUNMADAN v2'ye geçilir.
+# Motor seçimi FORMASYON_ENGINE bayrağı (varsayılan 'v2'). Rollback: env FORMASYON_ENGINE=core.
+# formasyon_core + eski V6 zigzag EMEKLİ (silinmedi — bayrakla geri dönülebilir).
+_FORMASYON_ENGINE = os.environ.get('FORMASYON_ENGINE', 'v2').lower()
+
+_V2_SHAPE = {"TOBO": "tobo", "FİNCAN_KULP": "fincan", "FİNCAN_ADAYI": "fincan",
+             "YÜKSELEN_ÜÇGEN": "ucgen", "ALÇALAN_ÜÇGEN": "dtri"}
+_V2_STATE = {"OLUŞUYOR": "ERKEN", "YAKIN": "YAKIN",
+             "KIRILIM_ADAYI": "KIRILDI", "KIRILIM_DOĞRULANDI": "KIRILDI",
+             "YENİDEN_TEST": "KIRILDI", "UZAMIŞ": "UZAMIS",
+             "SÜRESİ_DOLDU": "UZAMIS", "TAMAMLANDI": "UZAMIS", "GEÇERSİZ": "FAIL"}
+# Yaşam döngüsü (lifecycle) — app.py rozeti (~5871) + AI prompt (~13390) chart_d['stage']
+# okur; formasyon_core hiç set etmiyordu (özellik 20 Tem'den beri ölü). v2'nin zengin aşamaları
+# düzgün doldurur. Aktif aşamalar: form/break/retest (inactive olanlar zaten gösterilmez).
+_V2_LIFECYCLE = {"OLUŞUYOR": "form", "YAKIN": "form",
+                 "KIRILIM_ADAYI": "break", "KIRILIM_DOĞRULANDI": "break",
+                 "YENİDEN_TEST": "retest", "UZAMIŞ": "extended",
+                 "SÜRESİ_DOLDU": "extended", "TAMAMLANDI": "completed", "GEÇERSİZ": "failed"}
+
+
+def _v2_pattern_row(symbol, df, close, volume, curr_price, sma200):
+    """formasyon_v2 sonucunu _birlesik_pattern_row ile AYNI satır+ChartData formatına çevirir.
+    Şekil çizim anahtarları (touch_/head_/ls_/res_now) app.py 'birlesik' render'ının okuduğu
+    formatla birebir. v2 bir şey bulamazsa None (çekirdeğe düşmez — tek motor v2)."""
+    try:
+        import formasyon_v2 as _fv2
+        rep = _fv2.analyze_formations(df.tail(500), ticker=symbol, timeframe="1d")
+    except Exception:
+        return None
+    if not rep or not getattr(rep, "patterns", None):
+        return None
+    # Haritalanabilir ilk (en yüksek kaliteli) formasyon — patterns[0] haritada değilse atlama.
+    cand = next((c for c in rep.patterns if c.pattern in _V2_SHAPE), None)
+    if cand is None:
+        return None
+    shape = _V2_SHAPE[cand.pattern]
+    state = _V2_STATE.get(cand.stage, "ERKEN")
+    lns = {ln.role: ln for ln in cand.lines}
+    first, multi = {}, {}
+    for p in cand.points:
+        first.setdefault(p.role, p)
+        multi.setdefault(p.role, []).append(p)
+
+    def _d(ts):
+        return str(pd.Timestamp(ts).date())
+
+    # LEVEL = ana çizgi (anlam şekle göre: ucgen üst direnç, dtri alt destek)
+    line = {"tobo": "boyun_çizgisi", "fincan": "fincan_ağzı",
+            "ucgen": "üst_sınır", "dtri": "alt_sınır"}.get(shape)
+    _ln = lns.get(line)
+    level = float(_ln.end_price) if _ln else float(cand.trigger)
+
+    chart_d = {"type": "birlesik", "shape": shape, "state": state,
+               "level": round(level, 2), "date_start": _d(cand.start_time)}
+    _lc = _V2_LIFECYCLE.get(cand.stage)                      # yaşam döngüsü rozeti + AI uyarısı
+    if _lc:
+        chart_d["stage"] = _lc
+        chart_d["stage_days"] = int(cand.metrics.get("breakout_age_bars", 0) or 0)
+    if shape == "tobo":
+        tp = [first[r] for r in ("boyun_1", "boyun_2") if r in first]
+    elif shape == "fincan":
+        tp = [first[r] for r in ("sol_dudak", "sağ_dudak") if r in first]
+    elif shape == "ucgen":
+        tp = multi.get("üst_temas", [])
+    else:                                                    # dtri
+        tp = multi.get("alt_temas", [])
+    chart_d["touch_dates"] = [_d(p.time) for p in tp]
+    chart_d["touch_prices"] = [float(p.price) for p in tp]
+    chart_d["pivot_dates"] = [_d(cand.start_time)] + chart_d["touch_dates"]
+    if shape == "tobo":
+        if "baş" in first:
+            chart_d["head_date"] = _d(first["baş"].time); chart_d["head_price"] = float(first["baş"].price)
+        if "sol_omuz" in first:
+            chart_d["ls_date"] = _d(first["sol_omuz"].time); chart_d["ls_price"] = float(first["sol_omuz"].price)
+    if shape == "dtri" and lns.get("üst_sınır"):
+        chart_d["res_now"] = float(lns["üst_sınır"].end_price)
+
+    emoji, shname = _BIR_SHAPE.get(shape, ('🔺', shape.upper()))
+    name = f"{emoji} {shname} — {_BIR_STATE.get(state, state)}"
+    desc = f"Ana çizgi: {level:.2f} · v2 kalite {cand.quality_score:.0f}/100 · durum {_BIR_STATE.get(state, state)}"
+    if shape == "dtri" and "res_now" in chart_d:
+        desc += f" · inen direnç {chart_d['res_now']:.2f}"
+    score = _BIR_SCORE.get(state, 70)
+    avg_vol = float(volume.iloc[-20:].mean())
+    if avg_vol < 5_000_000:
+        name += " (⚠️ SIĞ TAHTA)"; score -= 5
+    if not np.isnan(sma200) and curr_price < sma200:
+        name += " (⚠️ SMA200 Altında)"; score -= 10
+    return {"Sembol": symbol, "Fiyat": curr_price, "Formasyon": name, "Detay": desc,
+            "Skor": int(score), "Hacim": float(volume.iloc[-1]), "ChartData": chart_d}
+
 
 def scan_chart_patterns(asset_list):
     """
@@ -1078,6 +1347,13 @@ def scan_chart_patterns(asset_list):
             # Ani dump filtresi
             prev_close = float(close.iloc[-2])
             if (curr_price - prev_close) / prev_close <= -0.025: return None
+
+            # BİRLEŞİK MOTOR (flag'li) — açıksa eski detektör kaskadı ATLANIR, tek kaynak burası.
+            # 27 Tem 2026: motor seçimi FORMASYON_ENGINE. Varsayılan v2 (birleştirme); core rollback.
+            if _BIRLESIK_ON:
+                if _FORMASYON_ENGINE == 'v2':
+                    return _v2_pattern_row(symbol, df, close, volume, curr_price, sma200)
+                return _birlesik_pattern_row(symbol, df, close, volume, curr_price, sma200)
 
             pattern_found = False
             pattern_name  = ""
@@ -1190,7 +1466,8 @@ def scan_chart_patterns(asset_list):
                 for ri in range(len(sw_h_y) - 1, 0, -1):
                     if pattern_found: break
                     sh2_i, sh2_v = sw_h_y[ri]           # Sağ rim
-                    if bar_total - sh2_i > 60: continue  # Son pivot 60 günden eski
+                    # 18 Tem: sağ-rim ≤60bar tazelik kapısı KALDIRILDI (tespit tazelikten AYRI;
+                    # gerçek fincanların sağ rimi kulp/kırılım nedeniyle doğal olarak eskir).
                     for li in range(ri - 1, max(ri - 12, -1), -1):
                         sh1_i, sh1_v = sw_h_y[li]       # Sol rim
                         cup_dur = sh2_i - sh1_i
@@ -1205,8 +1482,8 @@ def scan_chart_patterns(asset_list):
                         # Derinlik ve rim hizası
                         depth = (sh1_v - sl_v) / sh1_v
                         if not (0.12 <= depth <= 0.55): continue
-                        # FIX 2: Rim hizalaması daraltıldı (12% → 6%) — asimetrik fincanları eler
-                        if abs(sh1_v - sh2_v) / sh1_v > 0.06: continue
+                        # Rim hizalaması (18 Tem kalibrasyon: 6%→8.5%, AKSEN %8.3 gerçek fincandı)
+                        if abs(sh1_v - sh2_v) / sh1_v > pattern_core.PC['cup_rim']: continue
                         # U-şekil: polinom fit (R² > 0.72, konkav yukarı)
                         try:
                             cup_arr = close.iloc[sh1_i:sh2_i + 1].values.astype(float)
@@ -1240,35 +1517,53 @@ def scan_chart_patterns(asset_list):
                             hl_i = sh2_i + rel
                             hl_v = float(after.iloc[rel])
                         if not (hl_v > sl_v + (sh2_v - sl_v) * 0.35): continue  # Kulp üst %65'te
-                        if not (hl_v > sh2_v * 0.82): continue                  # Fazla derin değil
-                        # 8 — Kulp süresi: kupaya oranla kısa olmalı (3 bar –
-                        # max(25, kupa/3)); uzun sürüklenme kulp değil yeni yapı.
-                        if not pattern_core.handle_dur_ok(sh2_i, bar_total, cup_dur): continue
-                        # R/R filtresi
+                        if not (hl_v > sh2_v * pattern_core.PC['cup_handle_lo']): continue  # kulp fazla derin değil (0.82→0.81)
+                        # ---- İSKELET TAM. Durumu tazelik/actionability'den AYRI sınıflandır (18 Tem).
+                        # scan_chart_patterns TEK-HİSSE panel → TÜM durumlar (extended/failed dahil).
+                        # handle_dur + R/R yalnız actionable (form/break/retest) durumlara uygulanır.
                         target = sh2_v + (sh2_v - sl_v)
-                        risk   = max(curr_price - hl_v * 0.98, 0.01)
-                        rr     = (target - curr_price) / risk
-                        if rr < 1.0: continue
-                        # Durum tespiti — 12: retest / sahte kırılım katmanı
                         _pb = pattern_core.detect_post_breakout(close_np, vol_np, sh2_v)
-                        if _pb['failed']: continue   # sahte kırılım — formasyon bozuldu
                         dist = ((sh2_v - curr_price) / sh2_v * 100) if curr_price < sh2_v else 0
-                        retesting = _pb['retest']
-                        breaking  = (not retesting) and sh2_v * 0.97 <= curr_price <= sh2_v * 1.10
-                        # 3 — OLUŞAN için boyuna max %12 uzaklık (Çift Dip kuralıyla aynı)
-                        forming   = (not retesting) and (not breaking) and curr_price >= hl_v * 0.98 \
-                                    and dist <= pattern_core.PC['form_max_dist']
-                        if not (retesting or breaking or forming): continue
-                        dur_months = max(1, round(cup_dur / 21))
-                        if retesting:
-                            p_name     = f"🎯 FİNCAN KULP RETEST ({dur_months} Ay) — Boyun Destek Testi"
-                            base_score = 94
-                        elif breaking:
-                            p_name     = f"☕ FİNCAN KULP ({dur_months} Ay) — Kırılım Bölgesinde"
-                            base_score = 92
+                        retesting = False
+                        _cup_state = None
+                        if _pb['failed']:
+                            _cup_state = 'failed'                       # kırılım bozuldu
+                        elif curr_price >= target:
+                            # HEDEFE ULAŞTI — hareket tamamlandı, artık fırsat değil (geçmişi açıklar).
+                            # "extended"ten AYRILDI (21 Tem 2026): önceden ikisi tek 'uzadı'ydı.
+                            # Yalnız kırılım YAKINSA göster (yoksa bayat) — extended ile aynı guard.
+                            _above = np.where(close_np[sh2_i + 1:] > sh2_v * 1.01)[0]
+                            if len(_above) and (bar_total - 1 - (sh2_i + 1 + int(_above[0]))) <= pattern_core.PC['cup_ext_recent']:
+                                _cup_state = 'completed'
+                        elif curr_price > sh2_v * 1.10:
+                            # UZAMIŞ — kırılım son cup_ext_recent barda ise göster (yoksa bayat, geç)
+                            _above = np.where(close_np[sh2_i + 1:] > sh2_v * 1.01)[0]
+                            if len(_above) and (bar_total - 1 - (sh2_i + 1 + int(_above[0]))) <= pattern_core.PC['cup_ext_recent']:
+                                _cup_state = 'extended'
                         else:
-                            p_name     = f"⏳ OLUŞAN FİNCAN KULP ({dur_months} Ay) — %{dist:.1f} kaldı"
-                            base_score = 75
+                            retesting = _pb['retest']
+                            breaking  = (not retesting) and sh2_v * 0.97 <= curr_price <= sh2_v * 1.10
+                            forming   = (not retesting) and (not breaking) and curr_price < sh2_v * 0.97 \
+                                        and curr_price >= hl_v * 0.98 and dist <= pattern_core.PC['form_max_dist']
+                            if retesting or breaking or forming:
+                                # ACTIONABLE → kulp süresi + R/R burada
+                                if pattern_core.handle_dur_ok(sh2_i, bar_total, cup_dur) \
+                                        and (target - curr_price) / max(curr_price - hl_v * 0.98, 0.01) >= 1.0:
+                                    _cup_state = 'retest' if retesting else 'break' if breaking else 'form'
+                        if _cup_state is None: continue
+                        dur_months = max(1, round(cup_dur / 21))
+                        if _cup_state == 'retest':
+                            p_name = f"🎯 FİNCAN KULP RETEST ({dur_months} Ay) — Boyun Destek Testi"; base_score = 94
+                        elif _cup_state == 'break':
+                            p_name = f"☕ FİNCAN KULP ({dur_months} Ay) — Kırılım Bölgesinde"; base_score = 92
+                        elif _cup_state == 'form':
+                            p_name = f"⏳ OLUŞAN FİNCAN KULP ({dur_months} Ay) — %{dist:.1f} kaldı"; base_score = 75
+                        elif _cup_state == 'completed':
+                            p_name = f"🏁 FİNCAN KULP ({dur_months} Ay) — Hedefe Ulaştı, Tamamlandı (geçmişi açıklar)"; base_score = 42
+                        elif _cup_state == 'extended':
+                            p_name = f"☕ FİNCAN KULP ({dur_months} Ay) — Kırıldı, Uzadı (fiyat %{(curr_price/sh2_v-1)*100:.0f} boyun üstünde)"; base_score = 55
+                        else:  # failed
+                            p_name = f"⚠️ FİNCAN KULP ({dur_months} Ay) — Kırılım Başarısız (Bozuldu)"; base_score = 45
                         p_desc  = (f"Sol Rim: {sh1_v:.2f} | Dip: {sl_v:.2f} | Sağ Rim: {sh2_v:.2f} | "
                                    f"Kulp: {hl_v:.2f} | Hedef: {target:.2f} | R²: {r2:.2f}")
                         chart_d = {
@@ -1280,6 +1575,8 @@ def scan_chart_patterns(asset_list):
                             "pivot_types":  ["H", "L", "H", "L"],
                             "neck": float(sh2_v),
                             "type": "cup",
+                            "stage": _cup_state,   # yaşam döngüsü (21 Tem 2026) — rozet bunu okur
+                            "stage_days": int(_pb.get('days_since', 0)),  # aşama yaşı (kaç gün oldu)
                         }
                         # 4 — Kırılım durumu artık fincanda da ölçülüyor (TOBO/W'de vardı)
                         _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(sh2_v))
@@ -1378,6 +1675,8 @@ def scan_chart_patterns(asset_list):
                                 "pivot_types":  ["L", "H", "L", "H", "L"],
                                 "neck": float(neck),
                                 "type": "tobo",
+                                "stage": ('retest' if retesting else 'break' if breaking else 'form'),  # 21 Tem — rozet
+                                "stage_days": int(_pb.get('days_since', 0)),
                             }
                             _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(neck))
                             chart_d["breakout_state"]     = int(_bk_st)
@@ -1401,7 +1700,8 @@ def scan_chart_patterns(asset_list):
             # 3.5 ÇİFT DİP (W) — İki ~eşit dip + orta tepe (boyun) kırılımı
             # ---------------------------------------------------------------
             if not pattern_found:
-                _db = _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total)
+                _db = _detect_double_bottom(sw_l_y, sw_h_y, curr_price, bar_total,
+                                            is_index=_is_index_symbol(symbol))
                 # Wick temizliği SADECE iki dip çevresinde (±6 bar) — uzun W span'i
                 # doğal gürültü içerir; tam-span filtresi gerçek W'leri eler.
                 _db_clean = bool(_db) and is_clean_zone(_db["d1_i"] - 6, _db["d1_i"] + 6) \
@@ -1435,6 +1735,8 @@ def scan_chart_patterns(asset_list):
                         "pivot_types":  ["L", "H", "L"],
                         "neck": float(_db['neck_v']),
                         "type": "double_bottom",
+                        "stage": ('retest' if _db_retest else 'break' if _db.get('state') == 'break' else 'form'),  # 21 Tem — rozet
+                        "stage_days": int(_pb.get('days_since', 0)) if _db_retest or _db.get('state') == 'break' else 0,
                     }
                     _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(_db['neck_v']))
                     chart_d["breakout_state"]     = int(_bk_st)
@@ -1501,7 +1803,8 @@ def scan_chart_patterns(asset_list):
             # 3.8 İKİLİ TEPE (M) — İki ~eşit tepe + orta vadi (boyun) aşağı kırılım (AYI)
             # ---------------------------------------------------------------
             if not pattern_found:
-                _dt = _detect_double_top(sw_h_y, sw_l_y, curr_price, bar_total)
+                _dt = _detect_double_top(sw_h_y, sw_l_y, curr_price, bar_total,
+                                         is_index=_is_index_symbol(symbol))
                 _dt_clean = bool(_dt) and is_clean_zone(_dt["t1_i"] - 6, _dt["t1_i"] + 6) \
                                        and is_clean_zone(_dt["t2_i"] - 6, _dt["t2_i"] + 6)
                 if _dt and _dt_clean:
@@ -1536,15 +1839,25 @@ def scan_chart_patterns(asset_list):
             if not pattern_found and len(sw_h_y) >= 2 and len(sw_l_y) >= 2:
                 top_v   = max(v for _, v in sw_h_y)
                 flat_sh = [(i, v) for i, v in sw_h_y if abs(v - top_v) / top_v < 0.04]
+                # 18 Tem: direnç temasları TAZE olmalı (ilk temas ≤160 bar) — 289 günlük bayat
+                # temasın üçgeni geriye germesini önler (POLHO sahte-üçgen vakası)
+                flat_sh = [(i, v) for i, v in flat_sh if bar_total - i <= 160]
                 if len(flat_sh) >= 2:
                     first_sh_i = min(i for i, _ in flat_sh)
                     tri_lows   = [(i, v) for i, v in sw_l_y if i >= first_sh_i]
                     if len(tri_lows) >= 2:
                         tri_lows_s = sorted(tri_lows, key=lambda x: x[0])
+                        # 18 Tem: MONOTON higher-low = yükselen üçgenin TANIMI (regresyon eğimi>0
+                        # yetmiyordu; dağınık dipler POLHO'yu sahte üçgen yapıyordu). + son dip ilk
+                        # dipten ≥%3 yüksek + destek R²≥0.75. Evren over-detection %5→%1.
+                        _mono_ok = all(tri_lows_s[m][1] < tri_lows_s[m + 1][1] for m in range(len(tri_lows_s) - 1))
+                        _rise_ok = tri_lows_s[-1][1] > tri_lows_s[0][1] * 1.03
                         x_l = np.array([i for i, _ in tri_lows_s], dtype=float)
                         y_l = np.array([v for _, v in tri_lows_s], dtype=float)
                         sl_coef = np.polyfit(x_l, y_l, 1)
-                        if sl_coef[0] > 0:   # Yükselen destek
+                        _yp = np.polyval(sl_coef, x_l); _sst = np.sum((y_l - y_l.mean()) ** 2)
+                        _r2_sup = 1 - np.sum((y_l - _yp) ** 2) / _sst if _sst > 0 else 0
+                        if sl_coef[0] > 0 and _mono_ok and _rise_ok and _r2_sup >= 0.75:   # Yükselen destek (kalibre)
                             avg_res = sum(v for _, v in flat_sh) / len(flat_sh)
                             first_i = min(first_sh_i, tri_lows_s[0][0])
                             last_i  = max(max(i for i, _ in flat_sh), tri_lows_s[-1][0])
@@ -1582,6 +1895,68 @@ def scan_chart_patterns(asset_list):
                                         pattern_found = True
                                         pattern_name  = p_name; desc = p_desc
                                         base_score    = 88 if breaking else 68
+            if pattern_found:   # 11 — aday havuzuna
+                _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
+                pattern_found = False; chart_d = None
+
+            # ---------------------------------------------------------------
+            # 4.1 ALÇALAN ÜÇGEN — Düz destek + alçalan direnç (AYI)
+            # Yükselen üçgenin aynası (20 Tem 2026 kalibrasyon: ARCLK ✓, evren %1).
+            # Direnç katı-monoton DEĞİL — gerçek alçalan üçgende küçük sıçramalar
+            # olur (ARCLK 117→121→117); aşağı eğim + son tepe ≥%3 düşük + R²≥0.70.
+            # Sadece panel görünürlüğü (bu fonksiyon) — batch tarayıcılara girmez.
+            # ---------------------------------------------------------------
+            if not pattern_found and len(sw_h_y) >= 2 and len(sw_l_y) >= 2:
+                _dtr_bot  = min(v for _, v in sw_l_y)
+                _dtr_flat = [(i, v) for i, v in sw_l_y
+                             if abs(v - _dtr_bot) / _dtr_bot < 0.04 and bar_total - i <= 160]
+                if len(_dtr_flat) >= 2:
+                    _dtr_fs   = min(i for i, _ in _dtr_flat)
+                    _dtr_tops = sorted([(i, v) for i, v in sw_h_y if i >= _dtr_fs],
+                                       key=lambda x: x[0])
+                    if len(_dtr_tops) >= 2 and _dtr_tops[-1][1] < _dtr_tops[0][1] * 0.97:
+                        _dtr_x  = np.array([i for i, _ in _dtr_tops], dtype=float)
+                        _dtr_y  = np.array([v for _, v in _dtr_tops], dtype=float)
+                        _dtr_cf = np.polyfit(_dtr_x, _dtr_y, 1)
+                        _dtr_yp = np.polyval(_dtr_cf, _dtr_x)
+                        _dtr_sst = np.sum((_dtr_y - _dtr_y.mean()) ** 2)
+                        _dtr_r2  = 1 - np.sum((_dtr_y - _dtr_yp) ** 2) / _dtr_sst if _dtr_sst > 0 else 0
+                        if _dtr_cf[0] < 0 and _dtr_r2 >= 0.70:
+                            _dtr_sup   = sum(v for _, v in _dtr_flat) / len(_dtr_flat)
+                            _dtr_first = min(_dtr_fs, _dtr_tops[0][0])
+                            _dtr_last  = max(max(i for i, _ in _dtr_flat), _dtr_tops[-1][0])
+                            _dtr_dur   = _dtr_last - _dtr_first
+                            if 20 <= _dtr_dur <= 252 and (bar_total - _dtr_last) <= 60:
+                                _dtr_res  = float(np.polyval(_dtr_cf, bar_total - 1))
+                                _dtr_brk  = _dtr_sup * 0.94 <= curr_price <= _dtr_sup * 1.02
+                                _dtr_appr = _dtr_sup * 1.02 < curr_price <= _dtr_res * 1.01
+                                if _dtr_brk or _dtr_appr:
+                                    _dtr_tgt = max(_dtr_sup - (_dtr_tops[0][1] - _dtr_sup), 0.01)
+                                    dur_months = max(1, round(_dtr_dur / 21))
+                                    if _dtr_brk:
+                                        pattern_name = f"📐 ALÇALAN ÜÇGEN ({dur_months} Ay) — Aşağı Kırılım (AYI)"
+                                        base_score   = 71
+                                    else:
+                                        _dtr_dist = (curr_price - _dtr_sup) / _dtr_sup * 100
+                                        pattern_name = (f"⏳ OLUŞAN ALÇALAN ÜÇGEN ({dur_months} Ay) — "
+                                                        f"Desteğe İniyor %{_dtr_dist:.1f}")
+                                        base_score   = 55
+                                    desc = (f"Destek: {_dtr_sup:.2f} | Direnç: {_dtr_res:.2f} | "
+                                            f"Aşağı Hedef: {_dtr_tgt:.2f} | {len(_dtr_flat)} destek teması")
+                                    chart_d = {
+                                        "type":       "dtriangle",
+                                        "date_start": str(close.index[max(0, _dtr_first)].date()),
+                                        "support":    float(_dtr_sup),
+                                        "res_now":    float(_dtr_res),
+                                        "target":     float(_dtr_tgt),
+                                        "pivot_dates":  ([str(close.index[i].date()) for i, _ in _dtr_tops] +
+                                                         [str(close.index[i].date()) for i, _ in _dtr_flat]),
+                                        "pivot_prices": ([v for _, v in _dtr_tops] +
+                                                         [v for _, v in _dtr_flat]),
+                                        "pivot_types":  (["H"] * len(_dtr_tops) +
+                                                         ["L"] * len(_dtr_flat)),
+                                    }
+                                    pattern_found = True
             if pattern_found:   # 11 — aday havuzuna
                 _cands.append((base_score, len(_cands), pattern_name, desc, chart_d))
                 pattern_found = False; chart_d = None
@@ -1974,7 +2349,8 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                 for ri in range(len(_swh_y) - 1, 0, -1):
                     if pattern_found: break
                     sh2_i, sh2_v = _swh_y[ri]
-                    if _bt - sh2_i > 60: continue
+                    # 18 Tem: sağ-rim tazelik kapısı KALDIRILDI (batch=actionable-only; extended/failed
+                    # zaten handle_dur+R/R'de doğal olarak düşer, tarayıcı temiz kalır).
                     for li in range(ri - 1, max(ri - 12, -1), -1):
                         sh1_i, sh1_v = _swh_y[li]
                         cup_dur = sh2_i - sh1_i
@@ -1986,8 +2362,8 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         sl_i, sl_v = min(cup_lows, key=lambda x: x[1])
                         depth = (sh1_v - sl_v) / sh1_v
                         if not (0.12 <= depth <= 0.55): continue
-                        # FIX (30 May 2026): Rim hizalaması scan_chart_patterns ile eşitlendi (0.12 → 0.06)
-                        if abs(sh1_v - sh2_v) / sh1_v > 0.06: continue
+                        # Rim hizalaması scan_chart_patterns ile senkron (18 Tem: PC['cup_rim']=0.085)
+                        if abs(sh1_v - sh2_v) / sh1_v > pattern_core.PC['cup_rim']: continue
                         try:
                             cup_arr = close.iloc[sh1_i:sh2_i + 1].values.astype(float)
                             if len(cup_arr) < 10: continue
@@ -2020,7 +2396,7 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                             rel = int(after.values.argmin())
                             hl_i, hl_v = sh2_i + rel, float(after.iloc[rel])
                         if not (hl_v > sl_v + (sh2_v - sl_v) * 0.35): continue
-                        if not (hl_v > sh2_v * 0.82): continue
+                        if not (hl_v > sh2_v * pattern_core.PC['cup_handle_lo']): continue  # senkron (0.82→0.81)
                         # 8 — Kulp süresi: kupaya oranla kısa olmalı
                         if not pattern_core.handle_dur_ok(sh2_i, _bt, cup_dur): continue
                         target = sh2_v + (sh2_v - sl_v)
@@ -2032,9 +2408,10 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                         dist = ((sh2_v - curr_price) / sh2_v * 100) if curr_price < sh2_v else 0
                         retesting = _pb['retest']
                         breaking  = (not retesting) and sh2_v * 0.97 <= curr_price <= sh2_v * 1.10
-                        # 3 — OLUŞAN için boyuna max %12 uzaklık
-                        forming   = (not retesting) and (not breaking) and curr_price >= hl_v * 0.98 \
-                                    and dist <= pattern_core.PC['form_max_dist']
+                        # 3 — OLUŞAN için boyuna max %12 uzaklık (18 Tem: curr<neck*0.97 guard —
+                        # yoksa neck üstünde dist=0 sahte-form; extended/failed batch'te gösterilmez)
+                        forming   = (not retesting) and (not breaking) and curr_price < sh2_v * 0.97 \
+                                    and curr_price >= hl_v * 0.98 and dist <= pattern_core.PC['form_max_dist']
                         if not (retesting or breaking or forming): continue
                         dur_months = max(1, round(cup_dur / 21))
                         if retesting:
@@ -2128,7 +2505,8 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
 
             # B.5) ÇİFT DİP (W) — İki ~eşit dip + orta tepe (boyun) kırılımı
             if not pattern_found:
-                _db = _detect_double_bottom(_swl_y, _swh_y, curr_price, _bt)
+                _db = _detect_double_bottom(_swl_y, _swh_y, curr_price, _bt,
+                                            is_index=_is_index_symbol(symbol))
                 if _db:
                     # Wick/Body filtresi SADECE iki dip cevresinde (±6 bar) —
                     # uzun W span'inde tum bar filtresi gercek W'leri eler.
@@ -2191,7 +2569,8 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
 
             # B.8) İKİLİ TEPE (M) — iki ~eşit tepe + orta vadi aşağı kırılım (AYI)
             if not pattern_found:
-                _dt = _detect_double_top(_swh_y, _swl_y, curr_price, _bt)
+                _dt = _detect_double_top(_swh_y, _swl_y, curr_price, _bt,
+                                         is_index=_is_index_symbol(symbol))
                 if _dt:
                     dur_months = max(1, round(_dt["dur"] / 21))
                     if _dt["state"] == "break":
@@ -2209,15 +2588,21 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
             if not pattern_found and len(_swh_y) >= 2 and len(_swl_y) >= 2:
                 top_v_gp   = max(v for _, v in _swh_y)
                 flat_sh_gp = [(i, v) for i, v in _swh_y if abs(v - top_v_gp) / top_v_gp < 0.04]
+                # 18 Tem: scan_chart_patterns ile senkron — taze direnç + monoton higher-low + R²
+                flat_sh_gp = [(i, v) for i, v in flat_sh_gp if _bt - i <= 160]
                 if len(flat_sh_gp) >= 2:
                     first_sh_i_gp = min(i for i, _ in flat_sh_gp)
                     tri_lows_gp   = [(i, v) for i, v in _swl_y if i >= first_sh_i_gp]
                     if len(tri_lows_gp) >= 2:
                         tri_lows_s_gp = sorted(tri_lows_gp, key=lambda x: x[0])
+                        _mono_gp = all(tri_lows_s_gp[m][1] < tri_lows_s_gp[m + 1][1] for m in range(len(tri_lows_s_gp) - 1))
+                        _rise_gp = tri_lows_s_gp[-1][1] > tri_lows_s_gp[0][1] * 1.03
                         x_l_gp = np.array([i for i, _ in tri_lows_s_gp], dtype=float)
                         y_l_gp = np.array([v for _, v in tri_lows_s_gp], dtype=float)
                         sl_coef_gp = np.polyfit(x_l_gp, y_l_gp, 1)
-                        if sl_coef_gp[0] > 0:
+                        _yp_gp = np.polyval(sl_coef_gp, x_l_gp); _sst_gp = np.sum((y_l_gp - y_l_gp.mean()) ** 2)
+                        _r2_gp = 1 - np.sum((y_l_gp - _yp_gp) ** 2) / _sst_gp if _sst_gp > 0 else 0
+                        if sl_coef_gp[0] > 0 and _mono_gp and _rise_gp and _r2_gp >= 0.75:
                             avg_res_gp  = sum(v for _, v in flat_sh_gp) / len(flat_sh_gp)
                             first_i_gp  = min(first_sh_i_gp, tri_lows_s_gp[0][0])
                             last_i_gp   = max(max(i for i, _ in flat_sh_gp), tri_lows_s_gp[-1][0])
@@ -2521,6 +2906,75 @@ def scan_guclu_donus_batch(asset_list):
         ascending=[False, False, False, False]
     ).reset_index(drop=True)
     log_scan_signal("guclu_donus", df_out, category=st.session_state.get('category', ''))
+    return df_out
+
+def scan_wilder_positive_divergence_batch(asset_list):
+    """Wilder RSI pozitif uyumsuzluk — taze, geç kalmamış BIST dönüşleri."""
+    bist_assets = [
+        str(symbol).upper()
+        for symbol in asset_list
+        if str(symbol).upper().endswith(".IS")
+        and not str(symbol).upper().startswith("XU")
+    ]
+    if not bist_assets:
+        return _empty_wilder_result_frame()
+
+    data = get_batch_data_cached(bist_assets, period="1y")
+    if data is None or data.empty:
+        return _empty_wilder_result_frame()
+
+    results = []
+    for symbol in bist_assets:
+        try:
+            if isinstance(data.columns, pd.MultiIndex):
+                if symbol not in data.columns.get_level_values(0):
+                    continue
+                stock_df = data[symbol].dropna(how="all")
+            else:
+                if len(bist_assets) != 1:
+                    continue
+                stock_df = data.dropna(how="all")
+            result = detect_wilder_positive_divergence(symbol, stock_df)
+            if result:
+                results.append(result)
+        except Exception as exc:
+            log_error("scan_wilder_positive_divergence", exc, symbol)
+
+    if not results:
+        return _empty_wilder_result_frame()
+
+    df_out = pd.DataFrame(results)
+    df_out["_onayli"] = df_out["Durum"].astype(str).str.contains("ONAYLI").astype(int)
+    df_out = (
+        df_out.sort_values(
+            by=["_onayli", "Tetik_Yasi", "Risk_Odul", "RSI_Farki"],
+            ascending=[False, True, False, False],
+        )
+        .drop(columns=["_onayli"])
+        .reset_index(drop=True)
+    )
+
+    # Ortak olay kimliği: izleme/onay ayrımı değişse bile aynı RSI yolculuğu
+    # devam eder. Para akışı burada kapı değil, kalite notudur.
+    log_scan_signal(
+        "rsi_pozitif_uyumsuzluk",
+        df_out,
+        category=st.session_state.get("category", ""),
+    )
+
+    fresh = df_out[df_out["Tetik_Yasi"] == 0]
+    if not fresh.empty:
+        is_confirmed = fresh["Durum"].astype(str).str.contains("ONAYLI")
+        log_scan_signal(
+            "wilder_pozitif_onayli",
+            fresh[is_confirmed],
+            category=st.session_state.get("category", ""),
+        )
+        log_scan_signal(
+            "wilder_pozitif_izleme",
+            fresh[~is_confirmed],
+            category=st.session_state.get("category", ""),
+        )
     return df_out
 
 def scan_prelaunch_bos(asset_list):
@@ -2987,6 +3441,63 @@ def scan_erken_radar_batch(asset_list):
             else:
                 _guc_e = '🟡 ORTA'
             _guc_fields = {'Guc': _guc_e, 'Guc_rsi': round(_rsi_er, 1) if _rsi_er is not None else None}
+
+            # 29 Tem 2026 — yalnız B11 ve C6 için seçili derinleştirme katmanı.
+            # Ana senaryo kapısı değişmez; ek alanlar kalite/zamanlama notudur.
+            _matched_ids = {
+                str(item.get("id"))
+                for item in (
+                    [er.get("primary")] + list(er.get("confirmations") or [])
+                )
+                if isinstance(item, dict)
+            }
+            _b11_fields = {}
+            if "B11" in _matched_ids:
+                _b11 = (er.get("deepening") or {}).get("B11") or b11_pilot_profile(df_hist)
+                _b11_fields = {
+                    "Kalite_Skoru": _b11["quality_score"],
+                    "Kalite": _b11["quality_label"],
+                    "Kalite_Detay": _b11["detail"],
+                    "Para_Akisi_Skor": _b11["flow"]["score"],
+                    "Para_Akisi_Kalite": _b11["flow"]["label"],
+                    "Gec_Kalma": _b11["late"]["state"],
+                    "Gec_Kalma_Detay": _b11["late"]["detail"],
+                    "Yolculuk_Asamasi": _b11["quality_label"],
+                    "Yolculuk_Gunu": 1,
+                    "Yolculuk_Anahtari": "b11_pilot",
+                }
+            _c6_fields = {}
+            if "C6" in _matched_ids:
+                _leader = (er.get("deepening") or {}).get("C6") or leadership_profile(
+                    df_hist, bench_df
+                )
+                _leader_quality = (
+                    25
+                    if _leader["late_state"] == "GEÇ SİNYAL"
+                    else (90 if _leader["leader_age"] <= 3 else 75)
+                )
+                _c6_fields = {
+                    "Kalite_Skoru": _leader_quality,
+                    "Kalite": (
+                        "GEÇ SİNYAL"
+                        if _leader["late_state"] == "GEÇ SİNYAL"
+                        else "LİDERLİK TEYİDİ"
+                    ),
+                    "Kalite_Detay": _leader["detail"],
+                    "Liderlik_Yasi": _leader["leader_age"],
+                    "Gec_Kalma": _leader["late_state"],
+                    "Yolculuk_Asamasi": "C6 TEYİTLİ",
+                    "Yolculuk_Gunu": _leader["leader_age"],
+                    "Yolculuk_Anahtari": "radar2_c6_liderlik",
+                }
+
+            def _deep_fields(scenario_id):
+                if str(scenario_id) == "B11":
+                    return _b11_fields
+                if str(scenario_id) == "C6":
+                    return _c6_fields
+                return {}
+
             # Primary
             primary = er.get('primary')
             if primary:
@@ -3000,6 +3511,7 @@ def scan_erken_radar_batch(asset_list):
                     'Stars':        primary['stars'],
                     'Role':         'primary',
                     **_guc_fields,
+                    **_deep_fields(primary['id']),
                 })
             # Confirmations
             for c in (er.get('confirmations') or []):
@@ -3013,6 +3525,7 @@ def scan_erken_radar_batch(asset_list):
                     'Stars':        c['stars'],
                     'Role':         'confirmation',
                     **_guc_fields,
+                    **_deep_fields(c['id']),
                 })
             # Red flags
             for rf in (er.get('red_flags') or []):
@@ -3026,10 +3539,49 @@ def scan_erken_radar_batch(asset_list):
                     'Stars':        rf['stars'],
                     'Role':         'red_flag',
                     **_guc_fields,
+                    **_deep_fields(rf['id']),
                 })
         except Exception:
             continue
     return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+def scan_leadership_lifecycle(radar2_df, erken_radar_df, category=""):
+    """Radar2 adayını C6 teyidiyle tek liderlik yaşam döngüsüne bağlar."""
+    lifecycle = build_leadership_lifecycle(radar2_df, erken_radar_df)
+    if lifecycle.empty:
+        for scan_type in (
+            "liderlik_aday",
+            "liderlik_yeni",
+            "liderlik_teyitli",
+            "liderlik_gec",
+        ):
+            log_scan_signal(scan_type, pd.DataFrame(), category=category)
+        return lifecycle
+    for scan_type in (
+        "liderlik_aday",
+        "liderlik_yeni",
+        "liderlik_teyitli",
+        "liderlik_gec",
+    ):
+        subset = lifecycle[lifecycle["Liderlik_Tarama"] == scan_type]
+        log_scan_signal(scan_type, subset, category=category)
+    stage_order = {
+        "YENİ LİDER": 0,
+        "LİDERLİK TEYİTLİ": 1,
+        "ADAY": 2,
+        "GEÇ SİNYAL": 3,
+    }
+    lifecycle["_stage_order"] = lifecycle["Liderlik_Asamasi"].map(stage_order).fillna(9)
+    return (
+        lifecycle.sort_values(
+            ["_stage_order", "Kalite_Skoru", "Liderlik_Yasi"],
+            ascending=[True, False, True],
+        )
+        .drop(columns=["_stage_order"])
+        .reset_index(drop=True)
+    )
+
 
 def log_erken_radar_signals(df_batch, category=""):
     """
@@ -3037,8 +3589,8 @@ def log_erken_radar_signals(df_batch, category=""):
     Her senaryo ayrı scan_type ile: 'er_A1', 'er_B4', vb.
     Aynı gün + aynı senaryo + aynı sembol kombinasyonu INSERT OR IGNORE ile atlanır.
     """
-    if df_batch is None or df_batch.empty:
-        return
+    if df_batch is None:
+        df_batch = pd.DataFrame()
     today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
     # 20 Haz 2026 — ER FEATURE SNAPSHOT: eskiden ER doğrudan INSERT ediyordu (feature BAYPAS) →
     # 14.446 sinyalin 0'ında f_rsi vardı → RSI güç filtresi DENETLENEMİYORDU. Artık her sembol için
@@ -3053,7 +3605,21 @@ def log_erken_radar_signals(df_batch, category=""):
         pass
     try:
         conn = sqlite3.connect(DB_FILE, timeout=30)
+        ensure_event_schema(conn)
+        ensure_deepening_schema(conn)
         c = conn.cursor()
+        _counts = {}
+        if not df_batch.empty and 'ScenarioId' in df_batch.columns:
+            _counts = df_batch['ScenarioId'].astype(str).value_counts().to_dict()
+        _previous_runs = {}
+        # Erken Radar motoru her çalıştığında bütün senaryolar sınanır. Sonuç sıfır olsa
+        # bile çalışma kaydı tutulur; böylece "devam ediyor" ile "ara verip yeniden doğdu"
+        # birbirinden ayrılır.
+        for _sid in ERKEN_RADAR_SCENARIOS:
+            _stype = f"er_{_sid}"
+            _previous_runs[_stype] = register_scan_run(
+                conn, _stype, today, int(_counts.get(str(_sid), 0)), category
+            )
         for _, row in df_batch.iterrows():
             sym = row.get('Sembol', '')
             if not sym:
@@ -3062,6 +3628,7 @@ def log_erken_radar_signals(df_batch, category=""):
             if not scid:
                 continue
             scan_type = f"er_{scid}"
+            sym_db = str(sym).replace('.IS', '')
             try:
                 price = float(row.get('Fiyat', 0))
             except Exception:
@@ -3078,9 +3645,40 @@ def log_erken_radar_signals(df_batch, category=""):
                    (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category,
                     f_rsi, f_52h_pos, f_master_score)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (today, sym, scan_type, score, bias, price, None, category,
+                (today, sym_db, scan_type, score, bias, price, None, category,
                  _ft.get('f_rsi'), _ft.get('f_52h_pos'), _ft.get('f_master_score'))
             )
+            _q_score = row.get("Kalite_Skoru")
+            _q_label = row.get("Kalite")
+            _q_detail = row.get("Kalite_Detay")
+            _j_stage = row.get("Yolculuk_Asamasi")
+            _j_age = row.get("Yolculuk_Gunu")
+            _j_key = row.get("Yolculuk_Anahtari")
+            if any(
+                value is not None
+                for value in (_q_score, _q_label, _q_detail, _j_stage, _j_age, _j_key)
+            ):
+                c.execute(
+                    """
+                    UPDATE scan_signals
+                    SET quality_score=?, quality_label=?, quality_detail=?,
+                        journey_stage=?, journey_age=?, journey_key=?
+                    WHERE scan_date=? AND symbol=? AND scan_type=?
+                    """,
+                    (
+                        float(_q_score) if _q_score is not None else None,
+                        str(_q_label) if _q_label is not None else None,
+                        str(_q_detail) if _q_detail is not None else None,
+                        str(_j_stage) if _j_stage is not None else None,
+                        int(_j_age) if _j_age is not None else None,
+                        str(_j_key) if _j_key is not None else None,
+                        today,
+                        sym_db,
+                        scan_type,
+                    ),
+                )
+        for _stype, _previous in _previous_runs.items():
+            assign_event_metadata_for_date(conn, _stype, today, _previous)
         conn.commit()
         conn.close()
     except Exception as e:

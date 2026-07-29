@@ -44,6 +44,12 @@ HACIM_SON_N    = 5     # hacim çökmesi kontrolü son N bar
 HACIM_MIN_IHLAL = 1    # "fiyat değişmiş ama hacim 0" tek bar bile hatadır
 HACIM_GECMIS_N = 60    # normalde işlem gören hisse mi? son N barın medyanı
 
+# ── 3-DURUM GÜVEN DAMGASI eşikleri (27 Tem 2026, #10) ────────────────────────
+TOL_GUVEN_YESIL = 1.005  # iki kaynağın son kapanışı ≤%0.5 ayrışıyorsa DOĞRULANDI
+                         # (endeks resmî kapanışı iki kaynakta neredeyse aynı olmalı)
+# Kritik endeksler: ortak terazi → yalnızca 🟢 (iki-kaynak) kabul edilir.
+KRITIK_ENDEKSLER = ("XU100", "XU030", "XBANK", "XTUMY", "XUSIN")
+
 # Son sorunlar kaydı — UI kırmızı şerit basmak için okur.
 # {ticker: (datetime, [sorun metinleri])}
 SORUNLAR = {}
@@ -72,7 +78,28 @@ def dogrula(df, ticker, ref_fiyatlar=None, ref_mumlar=None):
         son = df.tail(OHLC_SON_N)
         o = son['Open'].astype(float);  h = son['High'].astype(float)
         l = son['Low'].astype(float);   c = son['Close'].astype(float)
-        son_kapanis = float(df['Close'].dropna().iloc[-1])
+
+        # 8) SON BAR EKSİK — son barın herhangi bir fiyat alanı boş/≤0 (27 Tem 2026).
+        #    XU100 24 Tem olayının kör noktası: aşağıdaki `son_kapanis` NaN'ı ATIP
+        #    son DOLU kapanışı alıyor → "sorun yok" diyordu. Son bar bütünlüğünü
+        #    AYRI kontrol et: boş kapanış SMA/RS/beta hesaplarını çökertir.
+        try:
+            _sonbar = df.iloc[-1]
+            _eksik = [k for k in ('Open', 'High', 'Low', 'Close')
+                      if k in df.columns and (pd.isna(_sonbar[k]) or float(_sonbar[k]) <= 0)]
+            if _eksik:
+                _sd = pd.Timestamp(df.index[-1]).date()
+                sorunlar.append(
+                    f"SON BAR EKSİK: {_sd} barında {', '.join(_eksik)} boş/≤0 "
+                    f"(SMA/RS/endekse-göre-güç hesapları çöker)")
+        except Exception:
+            pass
+
+        _cc = df['Close'].dropna()
+        if len(_cc) == 0:
+            sorunlar.append("KAPANIŞ TAMAMEN BOŞ: hiç geçerli kapanış yok")
+            return False, sorunlar
+        son_kapanis = float(_cc.iloc[-1])
 
         # 1) REFERANS AYRIŞMASI — grafiğin fiyatı gerçek dünyayla uyuşuyor mu?
         #    Sadece TÜM referanslardan aynı anda ayrışıyorsa bozuk sayılır
@@ -163,8 +190,9 @@ def dogrula(df, ticker, ref_fiyatlar=None, ref_mumlar=None):
         #    Ayırt edici: fiyat oynadıysa hisse İŞLEM GÖRMÜŞTÜR, hacmi 0 olamaz.
         #    Fiyatı değişmeyen V=0 barlar (tatil/askı/hayalet bar) MEŞRU → sayılmaz.
         #    Endeks/kripto/vadeli muaf: hacimleri tanım gereği 0 veya yok.
+        #    BIST'te X öneki endekslere ayrılmıştır (XU100/XBANK/XTUMY/XYLDZ...)
         _hacimsiz = ("Volume" not in df.columns
-                     or ticker.startswith(("XU", "^"))
+                     or ticker.upper().startswith(("XU", "XB", "XT", "XY", "^"))
                      or "-USD" in ticker or "=F" in ticker)
         if not _hacimsiz and len(df) >= HACIM_SON_N:
             try:
@@ -206,6 +234,63 @@ def dogrula(df, ticker, ref_fiyatlar=None, ref_mumlar=None):
         return (len(sorunlar) == 0), sorunlar
     except Exception:
         return True, []  # bekçi çökerse veri akışını kesme
+
+
+def kritik_endeks_mi(ticker):
+    """Ticker ortak-terazi kritik endeks mi? (yalnızca 🟢 kabul edilir)."""
+    try:
+        return str(ticker).upper().replace(".IS", "") in KRITIK_ENDEKSLER
+    except Exception:
+        return False
+
+
+def guven_damgasi(df, ticker, ikinci_kaynak_close=None):
+    """3-DURUM GÜVEN DAMGASI (27 Tem 2026, #10).
+
+    🟢 'green'  : yapı sağlam + son kapanış ikinci kaynakla (≤%0.5) uyumlu.
+    🟡 'yellow' : yapı sağlam ama ikinci kaynak yok/cevap vermedi (tek kaynak).
+    🔴 'red'    : dogrula bir sorun buldu VEYA son kapanış boş/≤0 VEYA ikinci
+                  kaynakla ciddi çelişki (≥1.25x = ölçek/typo hatası).
+
+    Kullanım kuralı: kritik endeks (XU100 vb.) için YALNIZCA 🟢 kabul edilir;
+    hisselerde 🟡 'tek kaynak' notuyla gösterilebilir; 🔴 hiçbir yere girmez.
+    Döner: (durum:str, sebepler:list[str]).
+    """
+    try:
+        if df is None or len(df) == 0:
+            return 'red', ['veri yok']
+        # 1) Gerçek son kapanış boş mu? (dropna'sız — asıl son bar)
+        try:
+            _lc = df['Close'].iloc[-1]
+            _lc_bos = pd.isna(_lc) or float(_lc) <= 0
+        except Exception:
+            _lc_bos = True
+        # 2) Yapısal kontrol (8 kontrol)
+        ok, sorunlar = dogrula(df, ticker)
+        if _lc_bos:
+            return 'red', ['son kapanış boş/≤0'] + sorunlar
+        if not ok:
+            return 'red', sorunlar
+        _cc = df['Close'].dropna()
+        if len(_cc) == 0:
+            return 'red', ['geçerli kapanış yok']
+        son_kapanis = float(_cc.iloc[-1])
+        # 3) İkinci kaynak uyumu
+        if ikinci_kaynak_close is not None and float(ikinci_kaynak_close) > 0:
+            _ref = float(ikinci_kaynak_close)
+            oran = max(son_kapanis, _ref) / min(son_kapanis, _ref)
+            if oran > TOL_REF_ORAN:
+                return 'red', [f'ikinci kaynak çelişkisi: seri={son_kapanis:.2f} '
+                               f'vs kaynak={_ref:.2f} ({oran:.2f}x — ölçek hatası)']
+            if oran <= TOL_GUVEN_YESIL:
+                return 'green', [f'iki kaynak uyumlu ({son_kapanis:.2f} ≈ {_ref:.2f})']
+            # hafif ayrışma (%0.5–%25): kesin değil ama bozuk da değil → sarı
+            return 'yellow', [f'iki kaynak hafif ayrışıyor '
+                              f'({son_kapanis:.2f} vs {_ref:.2f}, {(oran-1)*100:.1f}%)']
+        # ikinci kaynak yok → tek kaynak
+        return 'yellow', ['tek kaynak (ikinci kaynak doğrulaması yok)']
+    except Exception as e:
+        return 'yellow', [f'damga hatası: {str(e)[:40]}']
 
 
 @lru_cache(maxsize=4096)

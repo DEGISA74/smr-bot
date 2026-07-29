@@ -14,6 +14,7 @@ Fonksiyonlar:
 from __future__ import annotations
 
 import io
+import json
 import os
 import time
 import random
@@ -23,6 +24,8 @@ import pathlib
 
 import ict_core  # 5 Tem 2026 — ICT paketi ORTAK modül (app paneli ile aynı kurallar)
 from data_policy import AUTO_ADJUST, drop_adj_close  # 6 Tem 2026 — veri politikası TEK KAYNAK (app.py/fetcher ile aynı HAM fiyat)
+from signal_policy import (assign_event_metadata_for_date, ensure_event_schema,
+                           register_scan_run)
 
 _SIGNALS_DB = pathlib.Path(__file__).parent / "signals.db"
 _CACHE_DIR   = pathlib.Path(os.environ.get("SMR_CACHE_DIR",
@@ -79,6 +82,7 @@ def _init_db():
             UNIQUE(scan_date, symbol, scan_type)
         )
     """)
+    ensure_event_schema(con)
     con.execute("""
         CREATE TABLE IF NOT EXISTS subscribers (
             user_id     INTEGER PRIMARY KEY,
@@ -408,6 +412,8 @@ def log_scan_signal(symbol: str, scan_type: str, ict: dict, category: str = ""):
         entry      = float(ict.get("entry", 0) or 0)
         stop       = float(ict.get("stop",  0) or 0)
         con = sqlite3.connect(_SIGNALS_DB)
+        ensure_event_schema(con)
+        previous_run = register_scan_run(con, scan_type, today, 1, category)
         con.execute("""
             INSERT INTO scan_signals
                 (scan_date, symbol, scan_type, score, bias, entry_price, stop_level, category)
@@ -416,6 +422,7 @@ def log_scan_signal(symbol: str, scan_type: str, ict: dict, category: str = ""):
                 score=excluded.score, bias=excluded.bias,
                 entry_price=excluded.entry_price, stop_level=excluded.stop_level
         """, (today, symbol, scan_type, score, bias, entry, stop, category))
+        assign_event_metadata_for_date(con, scan_type, today, previous_run)
         con.commit(); con.close()
     except Exception as e:
         logging.getLogger(__name__).warning(f"log_scan_signal hatası [{symbol}]: {e}")
@@ -648,6 +655,32 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
 
 
 # ─── HİSSE BİLGİSİ ───────────────────────────────────────────────────────────
+def _fast_info_guarded(yf_sym: str, timeout: int = 8):
+    """
+    yf fast_info CANLI çağrısını SERT zaman tavanıyla sarar.
+    yfinance kendi timeout'unu güvenilir uygulamıyor (bağlantı kurulumunda
+    süresiz asılabiliyor) → 28 Tem 2026: 19:00 bülteni fast_info'da 120sn asıldı,
+    veri gelmeyince grafik+AI üretilemedi, abonelere "Görsel alınamadı" stub'ı gitti.
+    Artık ayrı thread'de çağrılır; süre aşılırsa çağrı BIRAKILIR (asılı thread daemon
+    olarak sızar ama SÜREÇ bloklanmaz). Böylece analiz/bülten yfinance donsa da akar;
+    fiyat/değişim get_stock_info içinde taze parquet cache'inden türetilir.
+    """
+    import concurrent.futures as _cf
+
+    def _call():
+        fi = yf.Ticker(yf_sym).fast_info
+        _ = getattr(fi, "last_price", None)   # fast_info tembel — erişince ağ isteği tetiklenir
+        return fi
+
+    ex = _cf.ThreadPoolExecutor(max_workers=1)
+    try:
+        return ex.submit(_call).result(timeout=timeout)
+    except Exception:
+        return None
+    finally:
+        ex.shutdown(wait=False)
+
+
 def get_stock_info(ticker: str) -> dict:
     """
     Temel hisse bilgisi: fiyat, günlük değişim yüzdesi, şirket adı.
@@ -663,12 +696,13 @@ def get_stock_info(ticker: str) -> dict:
         "market_cap": 0,
     }
     try:
-        info = yf.Ticker(yf_sym).fast_info
-        result["curr_price"] = float(getattr(info, "last_price", 0) or 0)
-        result["market_cap"] = int(getattr(info, "market_cap", 0) or 0)
-        prev = float(getattr(info, "previous_close", 0) or 0)
-        if prev and result["curr_price"]:
-            result["day_change_pct"] = (result["curr_price"] - prev) / prev * 100
+        info = _fast_info_guarded(yf_sym, timeout=8)   # canlı fast_info — 8sn sert tavan
+        if info is not None:
+            result["curr_price"] = float(getattr(info, "last_price", 0) or 0)
+            result["market_cap"] = int(getattr(info, "market_cap", 0) or 0)
+            prev = float(getattr(info, "previous_close", 0) or 0)
+            if prev and result["curr_price"]:
+                result["day_change_pct"] = (result["curr_price"] - prev) / prev * 100
     except Exception as e:
         log.warning(f"get_stock_info [{yf_sym}]: {e}")
 
@@ -686,14 +720,14 @@ def get_stock_info(ticker: str) -> dict:
                 _is_bist and _BIST_CAL_OK and _bist_is_closed(_now_tr.date()))
         except Exception:
             _closed_now = False
-        if abs(result["day_change_pct"]) < 1e-6 or _closed_now:
+        if result["curr_price"] <= 0 or abs(result["day_change_pct"]) < 1e-6 or _closed_now:
             _hist = get_data(ticker, period="3mo")
             if _hist is not None and len(_hist) >= 2:
                 _rc = _hist["Close"].dropna()
                 if len(_rc) >= 2 and float(_rc.iloc[-2]) > 0:
                     _last = float(_rc.iloc[-1]); _prev = float(_rc.iloc[-2])
                     result["day_change_pct"] = (_last - _prev) / _prev * 100
-                    if _closed_now and _last > 0:
+                    if _last > 0 and (result["curr_price"] <= 0 or _closed_now):
                         result["curr_price"] = _last
     except Exception as e:
         log.warning(f"get_stock_info change-fix [{yf_sym}]: {e}")
@@ -1641,8 +1675,8 @@ _LEAN_SAFE_RULES = """
 2) 🏛 ENDEKS İSTİSNASI — XU100 / XU030 / XBANK / XHOLD / XUSIN / XGIDA vb. analiz ediyorsan:
    × MİKRO-YAPI YORUMU YASAK: "akıllı para topluyor / kurumsal alım / mal topluyor /
      akümülasyon / kurumsal birikim / arz-talep bölgesi" — endeks tek bir kurumun alıp
-     sattığı şey değil, yüzlerce hissenin ortalamasıdır. Yerine "genel piyasa katılımı" dili.
-   × BAĞIL HACİM YORUMU YASAK: endeks hacmi bileşen hisselerin toplamıdır; "hacim
+     sattığı şey değil, yüzlerce hissenin ortalamasıdır. Yerine "yaklaşık piyasa katılımı" dili.
+   × BAĞIL HACİM YORUMU YASAK: endeksteki değer bileşenlerden türetilen yaklaşık katılım göstergesidir; "hacim
      ortalamanın X katı / hacim düşük" çıkarımı endekste anlamlı değildir.
    × Endeksi "hisse" diye ANMA. Endeksi ENDEKSLE KIYASLAMA — "endekse göre daha iyi/kötü
      performans" cümlesi endeksin KENDİSİ için anlamsızdır; o kıyas verisi sana zaten
@@ -1665,6 +1699,14 @@ _LEAN_SAFE_RULES = """
    ("izlenmeli / beklenmeli / görülmeli / dikkat edilmeli / takip edilmeli"). Bunlar okuyucuya
    verilmiş emirdir. Seviyeyi söyle, koşulu kur, orada bırak: "X üzerinde kapanış olursa
    tepki güçlenebilir." Ne yapılması gerektiğini İMA ETME; ne olabileceğini söyle.
+
+6) 📈 RSI UÇ BÖLGE KURALI (BIST kova ölçümü — 604 hisse, 133 bin gün): RSI 80 üstünü tek
+   başına "aşırı alım → düzeltme gelir" diye YORUMLAMA — ölçüm tersini gösterdi (benzer
+   günler 10 günde ortalama +%3.4 DEVAM etti). Doğru dil: "momentum ucu". Satış/soğuma
+   uyarısı ancak yanında ölçülmüş negatif teyit varsa kurulur (MFI dağıtım, uyumsuzluk,
+   hacimli dağıtım günü). 70-80 bandı NÖTRDÜR — bu banttan tek başına sinyal üretme.
+   RSI 25 altı = ölçülmüş toparlanma bölgesi — ama düşen trendde tek başına iyimser
+   senaryo kurma, teyit iste; veri bloğunda "ŞOK GÜNÜ" satırı varsa önce onu tart.
 """
 
 
@@ -1690,7 +1732,7 @@ def _apply_lean_prompt(p):
 def _genel_ozet_verdict_sc(df, detail=False):
     """GENEL ÖZET 6-oy verdicti — app.py senkronu (13 Tem 2026, V10 karne-ağırlıklı).
 
-    600 hisse × 56K örnek backtest'in kazanan sistemi: 6 bağımsız sinyal
+    600 hisse × 56K örnek backtest'in kazanan sistemi: 6 oy sinyali (hacim/OBV/MFI/CMF akraba fiyat-hacim ailesi — "bağımsız" değil)
     (hacim delta / OBV yönü / yapı / RSI çift-pencere / CMF çift-pencere /
     MFI çift-pencere) oylanır; karne şampiyonları RSI+CMF ÇİFT oy kullanır
     (toplam ağırlık 8). Kanıtlı yönler: RSI iki pencerede aşırı alım = GÜÇ
@@ -1856,7 +1898,20 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
         loss = (-d.where(d < 0, 0)).rolling(14).mean()
         rsi  = float((100 - 100 / (1 + gain / loss)).iloc[-1])
     except: pass
-    rsi_tag = "(⚠️ Aşırı Alım)" if rsi > 70 else "(⚠️ Aşırı Satım)" if rsi < 30 else "(Normal Bölge)"
+    # 18 Tem 2026 EKRAN SENKRONU — rsi_kova_backtest etiketleri (604 hisse, 133K gün):
+    # >80 momentum ucu (satış sinyali DEĞİL — benzer günler 10g ort +%3.4 devam etti) ·
+    # 70-80 nötr bant (referanstan ayrışmıyor) · <25 ölçülmüş toparlanma bölgesi.
+    # Eski "(⚠️ Aşırı Alım) if rsi > 70" etiketi ekranla ÇELİŞİYORDU.
+    if rsi > 80:
+        rsi_tag = "(Momentum Ucu — ölçüm: satış sinyali DEĞİL, devam eğilimi)"
+    elif rsi > 70:
+        rsi_tag = "(Yüksek — 70-80 nötr bant, tek başına sinyal üretme)"
+    elif rsi < 25:
+        rsi_tag = "(Uç Aşırı Satım — ölçülmüş toparlanma bölgesi)"
+    elif rsi < 30:
+        rsi_tag = "(Aşırı Satım)"
+    else:
+        rsi_tag = "(Normal Bölge)"
 
     # ── HARSI — Heikin Ashi RSI (14) ──────────────────────────────────────────
     harsi_val = 0.0; harsi_txt = "-"
@@ -2279,6 +2334,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     bugunku_baski_txt = ""
     hacim_okuma_txt = ""
     akis_sureklilik_txt = ""
+    hacim_hukmu_txt = ""
     try:
         if "Volume" in df.columns and n >= 20:
             from indicators import (calculate_volume_delta, calculate_full_volume_profile,
@@ -2288,8 +2344,27 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
             _sm_poc = float(_vp_sm['poc']); _sm_vah = float(_vp_sm['vah']); _sm_val = float(_vp_sm['val'])
             _sm_cum5 = float(_svd['Volume_Delta'].iloc[-5:].sum())
             _sm_vapos = "ÜSTÜNDE" if curr > _sm_vah else ("ALTINDA" if curr < _sm_val else "İÇİNDE")
-            _sm_title, _sm_desc = ict_core.smart_volume_title_desc(_sm_vapos, _sm_cum5, _sm_val, _sm_vah)
+            _sm_title, _sm_desc = ict_core.smart_volume_title_desc(_sm_vapos, _sm_cum5, _sm_val, _sm_vah, rvol=rvol)
             sm_ozet_txt = f"{_sm_title} — {_sm_desc}"
+            # HACİM 4-PARÇA HÜKMÜ — app panel + AI prompt ile TEK KAYNAK (ict_core.hacim_dort_soru)
+            try:
+                _sm_karsi = None
+                try:
+                    from indicators import compute_force_index_dual as _cfid
+                    _fi_sm = _cfid(df, span_short=2, span_long=13)
+                    if _fi_sm:
+                        _sm_karsi = _fi_sm.get('divergence')
+                except Exception:
+                    pass
+                _sm_ds = ict_core.hacim_dort_soru(
+                    _sm_cum5, rvol,
+                    _svd['Volume_Delta'].iloc[-5:].tolist(),
+                    df['Close'].iloc[-6:].tolist(),
+                    vol_missing=False, karsi=_sm_karsi)
+                if isinstance(_sm_ds, dict) and _sm_ds.get('satir'):
+                    hacim_hukmu_txt = f"{_sm_ds['satir']} -> {_sm_ds['hukum']}"
+            except Exception:
+                pass
             # Panel Tile 1 — Değer bölgesi cümlesi
             if _sm_vapos == "ÜSTÜNDE":
                 deger_bolgesi_txt = "Kurumların yoğun işlem yaptığı bölgenin üstündeyiz. Güçlü pozitif sinyal."
@@ -2314,7 +2389,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
             # Panel Tile 4 — Hacim cümlesi (rvol yukarıda arefe-normalize hesaplandı)
             if rvol >= 2.0:
                 _sm_rp = (rvol - 1.0) * 100
-                hacim_okuma_txt = f"Yüksek Hacim — hacim 20G ortalamanın %{_sm_rp:.0f} üzerinde — kurumsal aktivite var."
+                hacim_okuma_txt = f"Yüksek Hacim — hacim 20G ortalamanın %{_sm_rp:.0f} üzerinde — olağandışı piyasa katılımı."
             elif rvol >= 0.8:
                 _sm_rp = (rvol - 1.0) * 100
                 _sm_dir = "üzerinde" if _sm_rp >= 0 else "altında"
@@ -2332,6 +2407,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
         pass
 
     _hc_lines = []
+    if hacim_hukmu_txt:     _hc_lines.append(f"• Hacim Hükmü: {hacim_hukmu_txt}")
     if sm_ozet_txt:         _hc_lines.append(f"• Smart Money Özeti: {sm_ozet_txt}")
     if deger_bolgesi_txt:   _hc_lines.append(f"• Değer Bölgesi: {deger_bolgesi_txt}")
     if bugunku_baski_txt:   _hc_lines.append(f"• Son Seans Baskısı: {bugunku_baski_txt}")
@@ -2489,8 +2565,8 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     _clean_ix = ticker.replace(".IS", "").upper()
     _is_index = _clean_ix.startswith("X")
 
-    # Endekse ham hacim KALIR (kullanıcı kararı): endeks hacmi gerçektir ve "genel
-    # piyasa katılımı" olarak anlamlıdır — düşen sadece BAĞIL hacim (RVOL) ve akıllı
+    # Endekse yaklaşık piyasa katılımı göstergesi KALIR: bileşenlerin kapanış×işlem adedi
+    # toplamından türetilir; resmi endeks cirosu değildir. Düşen sadece BAĞIL hacim (RVOL) ve akıllı
     # para metrikleri, çünkü onlar "kurumlar mal topluyor" anlatısına zemin veriyor.
     _ix_vol_line = ""
     if _is_index:
@@ -2504,11 +2580,12 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
                 if x >= 1e9:  return f"{x/1e9:.2f} milyar"
                 if x >= 1e6:  return f"{x/1e6:.0f} milyon"
                 return f"{x:,.0f}"
-            _ix_vol_line = (f"\n📦 HACİM\n• İşlem Hacmi (genel piyasa katılımı): {_hf_ix(_v_last)}"
-                            f" — 20 günlük ortalama {_hf_ix(_v_avg)}"
-                            f"\n  NOT: endeks hacmi bileşen hisselerin TOPLAMIDIR — tek bir kurumun"
+            _ix_vol_line = (f"\n📦 HACİM\n• Yaklaşık piyasa katılımı: {_hf_ix(_v_last)} TL"
+                            f" — 20 günlük yaklaşık ortalama {_hf_ix(_v_avg)} TL"
+                            f"\n  NOT: bu değer, eldeki bileşenlerin kapanış fiyatı × işlem adedi toplamından"
+                            f" türetilir; resmi endeks cirosu DEĞİLDİR. Tek bir kurumun"
                             f" alım/satımı DEĞİLDİR. 'Kurumsal alım/mal toplama' göstergesi olarak"
-                            f" yorumlama; sadece genel piyasa katılımının ölçüsüdür."
+                            f" yorumlama; yalnızca yaklaşık piyasa katılımı göstergesidir."
                             f"\n• GENEL ÖZET Verdicti: {genel_verdict_txt}")
         except Exception:
             _ix_vol_line = f"\n📦 HACİM\n• GENEL ÖZET Verdicti: {genel_verdict_txt}"
@@ -2521,8 +2598,37 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • EQH/EQL     : {ict.get('eqh_eql_txt', 'Yok')}
 • Sweep       : {ict.get('sweep_txt', 'Yok')}"""
 
-    # Bağıl hacim (RVOL) — endekste anlamsız (endeks hacmi bileşenlerin toplamı)
+    # Bağıl hacim (RVOL) — endekste anlamsız (değer yaklaşık bileşen katılımı)
     _rvol_line = "" if _is_index else f"\n• RVOL    : {rvol:.2f}x — {rvol_tag}"
+
+    # ŞOK GÜNÜ satırı (18 Tem 2026 ekran senkronu — sert_gun_backtest kanıtı, app.py
+    # sok_gunu alanıyla aynı dil). Normal günde satır HİÇ görünmez. Hisse eşiği ±%3,
+    # endeks ±%2. Ölçüm: hacimli şok = devam riski; hacimsiz şok yön öngörmüyor;
+    # endeks şok N=70 yetersiz → yön iddiasız tazelik notu. Tek kaynak: terazi_core.
+    _sok_line = ""
+    try:
+        import terazi_core as _tc_sok
+        _chr_s = _tc_sok.gun_karakteri(df)
+        if _chr_s:
+            _r_s, _vm_s = _chr_s['ret1'], _chr_s['vol_mult']
+            _th_s = 2.0 if _is_index else 3.0
+            if _r_s <= -_th_s:
+                if _is_index:
+                    _sok_line = (f"\n• ŞOK GÜNÜ : endekste sert düşüş ({_r_s:+.1f}%) — buradaki "
+                                 f"göstergeler yavaş sinyaller, bugünü henüz sindirmemiş olabilir; "
+                                 f"aşırı yorumlama")
+                elif _vm_s >= 1.5:
+                    _sok_line = (f"\n• ŞOK GÜNÜ : HACİMLİ SERT DÜŞÜŞ ({_r_s:+.1f}%, {_vm_s:.1f}x hacim) — "
+                                 f"ölçülmüş devam riski (benzer günler 10 günde ort -%1.8, isabet %40); "
+                                 f"iyimser senaryo kuruyorsan bunu açıkça tartıp gerekçelendir")
+                else:
+                    _sok_line = (f"\n• ŞOK GÜNÜ : sert düşüş ({_r_s:+.1f}%) ama hacim normal ({_vm_s:.1f}x) — "
+                                 f"ölçüm yön öngörmüyor; bu düşüşü tek başına trend kanıtı sayma")
+            elif _r_s >= _th_s:
+                _sok_line = (f"\n• ŞOK GÜNÜ : sert yükseliş ({_r_s:+.1f}%) — yavaş göstergeler bugünü "
+                             f"henüz sindirmemiş olabilir; skorları temkinle oku")
+    except Exception:
+        _sok_line = ""
 
     # Akıllı para bloğu — endekste komple DÜŞER (yerine yukarıdaki ham hacim satırı)
     _akilli_para_block = _ix_vol_line if _is_index else f"""
@@ -2556,7 +2662,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • {ema_stack}
 • RSI(14) : {rsi:.1f} {rsi_tag}
 • HARSI(14): {harsi_txt}
-• ATR(14) : {atr_txt}{_rvol_line}
+• ATR(14) : {atr_txt}{_rvol_line}{_sok_line}
 🌍 MAKRO KONUM
 • 52H Menzil : {range_52h_txt}
 • BB-Keltner Sıkışma : {squeeze_txt}
@@ -3017,8 +3123,10 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
             trigger_desc = (f"Bugün kırılım{_rr_txt} | RSI {rsi_val:.0f}"
                             if trigger_days_ago == 1
                             else f"{trigger_days_ago}g önce kırılım{_rr_txt} | RSI {rsi_val:.0f}")
-        elif rsi_val > 73:
-            trigger_desc = f"RSI {rsi_val:.0f} — aşırı alım, giriş riskli"
+        elif rsi_val > 80:
+            # 18 Tem 2026 — kova ölçümü hizası: >80 "momentum ucu" (satış sinyali değil);
+            # 73-80 eski "aşırı alım" damgası kalktı (nötr bant).
+            trigger_desc = f"RSI {rsi_val:.0f} — momentum ucu, geç giriş riski"
         elif rsi_val < 35:
             trigger_desc = f"RSI {rsi_val:.0f} — aşırı satım, dönüş sinyalleri gözlemleniyor"
         else:
@@ -3621,7 +3729,7 @@ NOT: VWAP "kurumların ortalama alım fiyatı" DEĞİL — istatistiksel hacim-a
 
 H) ENDEKS ANALİZ İSTİSNASI (XU100, XU030, XBANK, XHOLD, XUSIN, XGIDA vb.):
 × RVOL endekste anlamlı değildir — "RVOL 0.00x" veya "düşük RVOL" yazma; endeks için bu metrik atlanır.
-× Bireysel hisseye özgü jargon (kurumsal alım, mal topluyor, akıllı para emiyor) endeks için aşırı — "endeks-genel piyasa katılımı" tonu kullan.
+× Bireysel hisseye özgü jargon (kurumsal alım, mal topluyor, akıllı para emiyor) endeks için aşırı — "yaklaşık piyasa katılımı" tonu kullan.
 × 52H konumu, MA dizilimi, VWAP, RSI, Z-Score endekste geçerli — bunları kullanmaya devam et.
 × Endekste "smart money OB" veya "kurumsal akümülasyon" gibi mikro-yapı yorumu YASAK — endeks toplam piyasanın aynası, bireysel kurum davranışı değil.
 
@@ -3738,7 +3846,7 @@ Veri bloğunda "🗣 HAZIR ALGORİTMA CÜMLELERİ" bölümü varsa: o satırlard
 4. Güçlü kurumsal alımların olduğu yerlerde yüksek Z-Score, tehlike değil "güçlü momentumun" kanıtıdır. Z-Score'a sadece risk yönetimi paragrafında "kısa bir kâr al/izleyen stop uyarısı" olarak kısaca değin ve geç. Hikayeni bu istatistik üzerine kurma.
 
 *** GENEL ÖZET VERDİCTİ + VADE EŞLEŞTİRME (13 Tem 2026 — 600 hisse backtest) ***
-• "GENEL ÖZET Verdicti" satırı 6 bağımsız sinyalin (hacim/OBV/yapı/RSI/CMF/MFI) oylanmış özetidir; en isabetli ikili RSI+CMF çift oy kullanır. Parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir — yorum güvenini buna göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiket hikayenin merkezine alınabilir; KARARSIZ/HAFİF etiketi büyük yön iddiasına ÇEVRİLMEZ.
+• "GENEL ÖZET Verdicti" satırı 6 oy sinyalinin (hacim/OBV/yapı/RSI/CMF/MFI) oylanmış özetidir — hacim/OBV/MFI/CMF akraba fiyat-hacim ailesindendir ("bağımsız" değil), yapı ve RSI ayrı eksenlerdir; backtest'te en isabetli ikili RSI+CMF çift ağırlıklıdır. Parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir — yorum güvenini buna göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiket hikayenin merkezine alınabilir; KARARSIZ/HAFİF etiketi büyük yön iddiasına ÇEVRİLMEZ.
 • VADE EŞLEŞTİRME (kritik): DÖNÜŞ sinyalleri (aşırı satım, dip görüntüsü, panik tepkisi) SADECE KISA VADEDE (~5 iş günü) çalışır — 10. günde avantaj erir; bunları "birkaç günlük tepki" çerçevesinde yaz, 2-4 haftalık hedefe bağlama. DEVAM sinyalleri (iki pencerede pozitif para akışı, güç teyitli aşırı alım, kalıcı alıcı baskısı) 10-20 günde büyür — 2-4 haftalık ana senaryo malzemesidir. İkisini aynı vadeye koyma; ikisi birden varsa vade ayrımını açıkça yaz.
 
 *** BREAKOUT ALERT REHBERİ (data_block'ta "🚀 BREAKOUT ALERT" satırı varsa) ***
@@ -3760,7 +3868,7 @@ Aksi durumda: uzaklık → SEVİYE bilgisi (destek/direnç, izleyen stop noktas�
 ÖZEL DURUMLAR:
 - PRE-LAUNCH / "BİRİKİM TAMAMLANDI" → bu analizin birincil hikayesi olmalı; Z-Score arka plana atılır.
 ⚠️ TARAMA ETİKETLERİ KURALI (güncelleme 15 Tem 2026): Tarama işaretleri (Pre-Launch BOS, Erken Radar senaryoları vb.) DESTEKLEYİCİ sinyaldir, ana hikaye değil. Eski "elit" backtest rakamları veri temizliği sonrası DOĞRULANAMADI — hiçbir taramayı tek başına analizin merkezine alma ve geçmiş hit/getiri RAKAMI YAZMA (eski rakamlar geçersiz). Tarama tetiklenmişse mevcut fiyat yapısı + hacim kanıtıyla birlikte, sıradan bir teyit unsuru olarak tart; çelişiyorsa fiyat yapısı kazanır.
-- ALTIN SET-UP (Golden Trio) + yüksek Z-Score → "güçlü momentum + uzama"; ton olumlu, Z-Score "stop yukarı taşı" notu, panik dili YASAK.
+- ALTIN/PLATİN/VIP yalnız uygunluk rozetidir; bağımsız kanıt, oy veya alım teyidi sayma. Başka fiyat/hacim kanıtı varsa yalnız bağlam olarak an.
 
 🚫 5 KESİN YASAK CÜMLE KATEGORİSİ (Bağımsız kanıt yoksa yazma — analiz reddedilir):
 1) VWAP/POC uzaklığı TEK BAŞINA: × "VWAP'tan %X uzaklaştı → düzeltme/yapısal zayıflık" · ✓ "VWAP üzerinde, geri çekilmede destek olabilir" · ✓ (çelişki varsa) "VWAP %X uzakta + OBV divergence → yorgunluk emaresi olabilir"
@@ -3921,15 +4029,51 @@ Hashtag yanıtının SON satırıdır — sonrasında HİÇBİR ŞEY YAZMA.
 """
 
 
-# ── KANIT KATMANI — app.py'den port (19 Haz 2026, sadece ELITE/Görev 1) ──
-# #1 güç tag tek-hisse canlı; #3 DB köprüsü patron.db scan_signals'tan okur (tazelik kapılı).
-# _ER_GOOD: app.py ER_BACKTEST_SCORE'da puanı ≥45 olan senaryolar (iki-rejim kanıtlı). DRIFT
-# uyarısı: app.py ER_BACKTEST_SCORE değişirse burayı da güncelle.
-# ⚠️ 15 Tem 2026 — bu beyaz liste ESKİ (8 Haz) ölçümden. Bölünme-zehiri temizlenmiş
-# backtest'te A1 (-1.27) / D1 (-1.93) / C5 (-0.44) EKSİ, A2/B8/D2 nötr; sağlam kalanlar
-# C2/C6/B5/A7. Liste 28 Tem harita revizyonunda güncellenecek (şimdi tek-rejim veriyle
-# yeniden etiketlemek ters yönde aynı hata olur) — o güne dek aşağıdaki metin İDDİASIZ.
-_ER_GOOD = {'B8', 'D2', 'C2', 'C5', 'C6', 'A2', 'B5', 'A1', 'A7', 'D1'}
+# ── KANIT KATMANI — yalnız güncel, pozitif ve yeterli örnekli karne ──────────
+def _load_positive_scanner_types():
+    """app.py vitriniyle aynı kapıyı kullan; eski elle girilmiş beyaz listeye düşme."""
+    min_n = 30
+    try:
+        path = pathlib.Path(__file__).parent / "backtest_results.json"
+        rows = json.loads(path.read_text(encoding="utf-8")).get("summary", [])
+    except Exception:
+        return set()
+    out = set()
+    for row in rows:
+        scan_type = row.get("scan_type")
+        bias = str(row.get("bias", "") or "").lower()
+        if not scan_type or "bear" in bias or scan_type in ("er_D4", "er_D5"):
+            continue
+        ideal_day = row.get("ideal_day")
+        ideal_ret = row.get("ideal_ret")
+        ideal_n = row.get("ideal_n") or 0
+        if ideal_day is not None and ideal_ret is not None:
+            if not ideal_day or ideal_n < min_n or row.get("has_edge") is not True:
+                continue
+            exp = float(ideal_ret)
+            per_day = exp / int(ideal_day)
+        else:
+            best = None
+            for window in (5, 10, 20):
+                exp_w = row.get(f"expectancy_{window}g")
+                n_w = row.get(f"eval_{window}g") or 0
+                if exp_w is None or n_w < min_n:
+                    continue
+                per_day_w = float(exp_w) / window
+                if best is None or per_day_w > best[1]:
+                    best = (float(exp_w), per_day_w)
+            if best is None:
+                continue
+            exp, per_day = best
+        score = max(0, min(100, round(40 + per_day * 150)))
+        if exp > 0 and score >= 45:
+            out.add(str(scan_type))
+    return out
+
+
+_POSITIVE_SCANNER_TYPES = _load_positive_scanner_types()
+_ER_GOOD = {scan_type[3:] for scan_type in _POSITIVE_SCANNER_TYPES
+            if scan_type.startswith("er_")}
 
 # ER senaryo kodu → (gerçek ad, tek cümle sade açıklama, tip)
 # Kaynak: scanners.py ERKEN_RADAR senaryo tablosu (17 Tem 2026) — birebir kopya, uydurma YOK.
@@ -3953,10 +4097,11 @@ _SCANNER_NAMES_EV = {
     'harmonik_confluence': 'Harmonik Confluence (geometrik dönüş bölgesi)',
     'prelaunch_bos':       'Pre-Launch BOS (kurumsal kırılım başlangıcı)',
     'minervini':           'Minervini SEPA (güçlü uzun-vade trend şablonu)',
-    'platin_setup':        'Platin Set-up (en güçlü kurulum sınıfı)',
-    'altin_setup':         'Altın Set-up (güçlü ama henüz pahalılaşmamış)',
+    'platin_setup':        'Rozet: Platin Set-up (uygunluk etiketi; bağımsız oy değil)',
+    'altin_setup':         'Rozet: Altın Set-up (uygunluk etiketi; bağımsız oy değil)',
     'gizli_birikim':       'Gizli Birikim (sessiz kurumsal toplama)',
-    'vip_formasyon':       'VIP Formasyon (güçlü hisse + teknik formasyon)',
+    'vip_formasyon':       'Rozet: VIP Formasyon (uygunluk etiketi; bağımsız oy değil)',
+    'radar2':               'Radar 2 (pozitif karneli trend kurulumu)',
 }
 
 
@@ -4030,7 +4175,7 @@ def _db_evidence_hits(ticker: str):
                 code = str(t)[3:]
                 if code in _ER_GOOD:
                     hits.append(f"Erken Radar {code} (izlenen senaryo)")
-            elif t in _SCANNER_NAMES_EV:
+            elif t in _SCANNER_NAMES_EV and t in _POSITIVE_SCANNER_TYPES:
                 hits.append(_SCANNER_NAMES_EV[t])
         if not hits:
             return None, None, None
@@ -4276,7 +4421,7 @@ def _pro_algo_notes(ticker: str, df: pd.DataFrame) -> str:
             up, dn, lbl = v.get("up", 0), v.get("dn", 0), v["lbl"]
             if lbl == "KARARSIZ":
                 notes.append(
-                    f"6 bağımsız sinyal bölünmüş ({up} yukarı / {dn} aşağı) — net yön yok. "
+                    f"6 oy sinyali bölünmüş ({up} yukarı / {dn} aşağı) — net yön yok. "
                     f"Kartta tek yöne kesin bağlanma, iki tarafı da göster."
                 )
             else:
@@ -4286,7 +4431,7 @@ def _pro_algo_notes(ticker: str, df: pd.DataFrame) -> str:
                 # hisseye mal etti → abone yanılır. Karne data_block'ta duruyor
                 # (AI bağlam olarak görür), karta çıkmaz.
                 notes.append(
-                    f"6 bağımsız sinyalin {up} tanesi yukarı, {dn} tanesi aşağı diyor → genel görüntü "
+                    f"6 oy sinyalinin {up} tanesi yukarı, {dn} tanesi aşağı diyor → genel görüntü "
                     f"{lbl}. Kartın açılışı bu yönü yansıtsın."
                 )
     except Exception:
@@ -4529,7 +4674,7 @@ NOT: VWAP "kurumların ortalama alım fiyatı" DEĞİL — istatistiksel hacim-a
 
 H) ENDEKS ANALİZ İSTİSNASI (XU100, XU030, XBANK, XHOLD, XUSIN, XGIDA vb.):
 × RVOL endekste anlamlı değildir — "RVOL 0.00x" veya "düşük RVOL" yazma; endeks için bu metrik atlanır.
-× Bireysel hisseye özgü jargon (kurumsal alım, mal topluyor, akıllı para emiyor) endeks için aşırı — "endeks-genel piyasa katılımı" tonu kullan.
+× Bireysel hisseye özgü jargon (kurumsal alım, mal topluyor, akıllı para emiyor) endeks için aşırı — "yaklaşık piyasa katılımı" tonu kullan.
 × 52H konumu, MA dizilimi, VWAP, RSI, Z-Score endekste geçerli — bunları kullanmaya devam et.
 × Endekste "smart money OB" veya "kurumsal akümülasyon" gibi mikro-yapı yorumu YASAK — endeks toplam piyasanın aynası, bireysel kurum davranışı değil.
 
@@ -4718,7 +4863,7 @@ YASAKLI CÜMLE KALIPLARI — Aşağıdaki kalıpları ASLA kullanma, bunları ku
 Aşırıya kaçmadan, basit bir dilde yaz. Yatırımcıyı korkutmadan, umutlandırmadan, sadece mevcut durumun ne olduğunu ve hangi risklerin nerede olduğunu anlat.
 
 *** GENEL ÖZET VERDİCTİ + VADE EŞLEŞTİRME (13 Tem 2026 — 600 hisse backtest) ***
-• "GENEL ÖZET Verdicti" satırı 6 bağımsız sinyalin (hacim/OBV/yapı/RSI/CMF/MFI) oylanmış özetidir; en isabetli ikili RSI+CMF çift oy kullanır. Parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir — yorum güvenini buna göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiket hikayenin merkezine alınabilir; KARARSIZ/HAFİF etiketi büyük yön iddiasına ÇEVRİLMEZ.
+• "GENEL ÖZET Verdicti" satırı 6 oy sinyalinin (hacim/OBV/yapı/RSI/CMF/MFI) oylanmış özetidir — hacim/OBV/MFI/CMF akraba fiyat-hacim ailesindendir ("bağımsız" değil), yapı ve RSI ayrı eksenlerdir; backtest'te en isabetli ikili RSI+CMF çift ağırlıklıdır. Parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir — yorum güvenini buna göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiket hikayenin merkezine alınabilir; KARARSIZ/HAFİF etiketi büyük yön iddiasına ÇEVRİLMEZ.
 • VADE EŞLEŞTİRME (kritik): DÖNÜŞ sinyalleri (aşırı satım, dip görüntüsü, panik tepkisi) SADECE KISA VADEDE (~5 iş günü) çalışır — 10. günde avantaj erir; bunları "birkaç günlük tepki" çerçevesinde yaz, 2-4 haftalık hedefe bağlama. DEVAM sinyalleri (iki pencerede pozitif para akışı, güç teyitli aşırı alım, kalıcı alıcı baskısı) 10-20 günde büyür — 2-4 haftalık ana senaryo malzemesidir. İkisini aynı vadeye koyma; ikisi birden varsa vade ayrımını açıkça yaz.
 
 *** BREAKOUT ALERT REHBERİ (data_block'ta "🚀 BREAKOUT ALERT" satırı varsa) ***
@@ -4740,7 +4885,7 @@ Aksi durumda: uzaklık → SEVİYE bilgisi (destek/direnç, izleyen stop noktas�
 ÖZEL DURUMLAR:
 - PRE-LAUNCH / "BİRİKİM TAMAMLANDI" → bu analizin birincil hikayesi olmalı; Z-Score arka plana atılır.
 ⚠️ TARAMA ETİKETLERİ KURALI (güncelleme 15 Tem 2026): Tarama işaretleri (Pre-Launch BOS, Erken Radar senaryoları vb.) DESTEKLEYİCİ sinyaldir, ana hikaye değil. Eski "elit" backtest rakamları veri temizliği sonrası DOĞRULANAMADI — hiçbir taramayı tek başına analizin merkezine alma ve geçmiş hit/getiri RAKAMI YAZMA (eski rakamlar geçersiz). Tarama tetiklenmişse mevcut fiyat yapısı + hacim kanıtıyla birlikte, sıradan bir teyit unsuru olarak tart; çelişiyorsa fiyat yapısı kazanır.
-- ALTIN SET-UP (Golden Trio) + yüksek Z-Score → "güçlü momentum + uzama"; ton olumlu, Z-Score "stop yukarı taşı" notu, panik dili YASAK.
+- ALTIN/PLATİN/VIP yalnız uygunluk rozetidir; bağımsız kanıt, oy veya alım teyidi sayma. Başka fiyat/hacim kanıtı varsa yalnız bağlam olarak an.
 
 🚫 5 KESİN YASAK CÜMLE KATEGORİSİ (Bağımsız kanıt yoksa yazma — analiz reddedilir):
 1) VWAP/POC uzaklığı TEK BAŞINA: × "VWAP'tan %X uzaklaştı → düzeltme/yapısal zayıflık" · ✓ "VWAP üzerinde, geri çekilmede destek olabilir" · ✓ (çelişki varsa) "VWAP %X uzakta + OBV divergence → yorgunluk emaresi olabilir"
@@ -4859,7 +5004,7 @@ Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu e
         - CP (Kapanış Konumu): V-bottom ⤴ (dipten dönüş), Sert çöküş ⤵ (üstten ani çöküş), Alıcı çekiliyor ↘ (dağıtım sinyali)
         - RANGE: V-bottom (discount→premium geçişi), Tepede tıkalı ⚠ (dağıtım riski), Premium tutunma ★ (sağlıklı yükseliş)
         NOT: "RSI 65 güçlü" gibi sıradan veriye 8+/10 verme. Yüksek puan ancak yukarıdaki KATEGORİK sinyaller veya bunların ÇAKIŞMASI varsa hak edilir (örn: Regular Bull Div + V-bottom çakışırsa 9/10).
-        - Eğer ALTIN SET-UP durumu ‘EVET’ ise, bu hissenin piyasadan pozitif ayrıştığını (RS Gücü), istatistiksel ucuz bölgede olduğunu (ICT) ve ivme kazandığını vurgula. Analizinde bu 3/3 onayın teknik kriterleri eş zamanlı karşıladığını ve tarihsel olarak düşük frekanslı bir yapı olduğunu belirt.
+        - Eğer ALTIN/PLATİN/VIP durumu ‘EVET’ ise yalnız "uygunluk rozeti aktif" de. Bunu bağımsız kanıt, oy, puan veya alım teyidi sayma; 3/3 ya da 6/6 ifadesini başarı olasılığı gibi yorumlama.
         - Eğer ROYAL FLUSH NADİR SET-UP durumu ‘EVET’ ise, bu nadir görülen 4/4’lük onayı analizin en başında vurgula ve bu kurulumun dört kriterin kesişimi nedeniyle algoritmik olarak nadir görüldüğünü ve olası senaryoları dengeli biçimde değerlendir.
      b) Listenin devamına; trendi destekleyen ama daha zayıf olan yan sinyalleri (örneğin: "Hareketli ortalama üzerinde", "RSI 50 üstü" vb.) ekle. Ancak bunlara DÜRÜSTÇE (1/10) ile (7/10) arasında puan ver.
    - NOT: Listeyi 5 maddeye tamamlamak için zayıf sinyallere asla yapay olarak yüksek puan (8+) verme! Sinyal gücü neyse onu yaz.
@@ -4890,7 +5035,7 @@ Somut fiyat seviyeleri, HARSI rengi, 5 günlük delta ve RS vs XU100 bulgusunu e
 **KATMAN 2 — "1 ADET" + ROBOT DİLİ:** "1 adet X" → "bir X" / çıplak isim. "-mektedir / -maktadır / -dır" → "...yor / ...olabilir". "1 analist gözüyle daha net görebilmek..." → SİL, direkt ilk maddeye geç.
 **KATMAN 3 — TAVSİYE SIZMASI:** "alın / satın / bekleyin / izleyin / dikkat edin / düşünün / değerlendirin / portföyünüze / en rasyonel / 3 hafta beklemek / defansif siperde beklemek / X almaya zorluyor / iki kez düşünmek gerek". Hepsini KOŞULLU dile çevir veya sil.
 **KATMAN 4 — VERİ SADAKAT:** Yazdığın HER sayı/seviye için YAML'a dön ve doğrula. HARSI değeri, SMA seviyeleri, Delta yüzdesi, mum formasyonu adı, CMF değeri, OMI sigma, 52H konumu — hepsi YAML ile BİREBİR uymalı. Hafıza/tahmin/yuvarlama YASAK. YAML'da olmayan sayı yazdıysan o cümleyi DÜZELT.
-**KATMAN 5 — ERKEN RADAR İHLAL TESTİ:** YAML'daki Erken Radar Kalite Skoru ≥ 65 mi? EVET ise: G1 açılış paragrafında ana senaryo adı geçti mi? HAYIR cevabı varsa: G1 açılışını yeniden yaz, senaryoyu enjekte et.
+**KATMAN 5 — ERKEN RADAR İHLAL TESTİ:** YAML'daki ER Kurulum Kalitesi ≥ 65 mi? EVET ise: G1 açılış paragrafında ana senaryo adı geçti mi? HAYIR cevabı varsa: G1 açılışını yeniden yaz, senaryoyu enjekte et.
 **KATMAN 6 — PERSONA ANTİ-BIAS:** YAML'da persona yönüne TERS düşen sinyaller var mı (defansif iken cum_delta + / momentum iken Climax)? Var ise: en az 1 paragrafta dipnot zorunlu — "tek yönlü hikaye" hata.
 ⚠️ 6 katmanı geçemeyen analiz REDDEDİLİR — tekrar yaz, sonra gönder.
 ═══════════════════════════════════════════════════════════════════════

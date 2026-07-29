@@ -196,41 +196,89 @@ def _fetch_bist_ohlcv_isyatirim(symbol, start_date, end_date):
         return None
 
 
-_FUT_CONTRACT_CANDIDATES = {
-    # =F sembolü → aday CME kontrat sembolleri (yfinance formatında)
-    # Ay kodları: F=Oca G=Sub H=Mar J=Nis K=May M=Haz N=Tem Q=Agu U=Eyl V=Eki X=Kas Z=Ara
-    # Cari + bir sonraki + bir ileri ayı kapsa; max-hacim kuralı doğruyu seçer.
-    # Bu liste yılda 1-2 kez (12 ay rollover'a yaklaşırken) güncellenebilir.
-    "GC=F": ["GCM26.CMX", "GCQ26.CMX", "GCZ26.CMX", "GCG27.CMX"],   # Gold
-    "SI=F": ["SIN26.CMX", "SIU26.CMX", "SIZ26.CMX", "SIH27.CMX"],   # Silver
-    "CL=F": ["CLN26.NYM", "CLQ26.NYM", "CLU26.NYM", "CLZ26.NYM"],   # Crude
-    "NG=F": ["NGN26.NYM", "NGQ26.NYM", "NGU26.NYM", "NGZ26.NYM"],   # NatGas
-    "HG=F": ["HGN26.CMX", "HGU26.CMX", "HGZ26.CMX"],                # Copper
-    "PL=F": ["PLN26.NYM", "PLV26.NYM", "PLF27.NYM"],                # Platinum
-    "PA=F": ["PAM26.NYM", "PAU26.NYM", "PAZ26.NYM"],                # Palladium
+# ── EMTIA FUTURES TAM-BAR OVERRIDE (16 Tem 2026) ────────────────────────────
+# Yahoo'nun =F "continuous" günlük serisi ÜÇ hastalıklı (GC=F teşhisi):
+#   1) Kontrat devir günlerinde O=H=L=C sahte "çizgi mum" basıyor (252 barda 8),
+#   2) Barın %36'sında Open günün tepesine/dibine birebir eşit — fitiller kırpık
+#      (gerçek kontratla kıyas: 13 Tem gerçek tepe 4111.6, =F 4081 diyordu),
+#   3) Volume gerçeğin binde biri (medyan 657 vs gerçek CME ~120-170K).
+# Çözüm: her gün için EN YÜKSEK hacimli aktif CME kontratının barını KOMPLE
+# (OHLCV birlikte) kullan — bar içi kaynak karışımı YOK (İsyatirim Frankenstein
+# dersi). Eski _apply_futures_volume_override (15 Haz, sadece hacim) bunun
+# alt kümesiydi ve yalnız tekli-indirme yolundaydı; Master Scan toplu yolu
+# parquet'i ham çöple yeniden yazıp düzeltmeyi eziyordu → artık her iki yol da
+# _apply_futures_bar_override'dan geçer.
+
+# Emtia kök sembolü → (borsa uzantısı, aktif ay kodları)
+# Ay kodları: F=Oca G=Şub H=Mar J=Nis K=May M=Haz N=Tem Q=Ağu U=Eyl V=Eki X=Kas Z=Ara
+_FUT_ROOT_SPEC = {
+    "GC": (".CMX", "GJMQVZ"),       # Gold
+    "SI": (".CMX", "FHKNUZ"),       # Silver
+    "HG": (".CMX", "FHKNUZ"),       # Copper
+    "CL": (".NYM", "FGHJKMNQUVXZ"),  # Crude — her ay
+    "BZ": (".NYM", "FGHJKMNQUVXZ"),  # Brent — her ay
+    "NG": (".NYM", "FGHJKMNQUVXZ"),  # NatGas — her ay
+    "PL": (".NYM", "FJNV"),         # Platinum
+    "PA": (".NYM", "HMUZ"),         # Palladium
 }
+_FUT_MONTH_CODE = {1: "F", 2: "G", 3: "H", 4: "J", 5: "K", 6: "M",
+                   7: "N", 8: "Q", 9: "U", 10: "V", 11: "X", 12: "Z"}
 
 
-def _fetch_futures_volume_yahoo_active(symbol, period="6mo"):
+def _futures_contract_candidates(symbol):
+    """=F sembolü için aday kontrat listesini AY DÖNGÜSÜNDEN otomatik üretir
+    (16 Tem 2026 — elle liste bayatlıyordu: GCM26 süresi doldu, yenisi
+    eklenmeyince hacim yine çöpe dönüyordu). Pencere: 8 ay geri / 6 ay ileri —
+    6mo override periyodunu marjla kapsar. Var olmayan/expired kontratlar
+    Yahoo'dan boş döner ve sessizce atlanır."""
+    _root = symbol.replace("=F", "").upper()
+    _spec = _FUT_ROOT_SPEC.get(_root)
+    if not _spec:
+        return []
+    _exch, _cycle = _spec
+    import datetime as _dt
+    _today = _dt.date.today()
+    out = []
+    for _off in range(-8, 7):
+        _y = _today.year + (_today.month - 1 + _off) // 12
+        _m = (_today.month - 1 + _off) % 12 + 1
+        _code = _FUT_MONTH_CODE[_m]
+        if _code in _cycle:
+            _sym = f"{_root}{_code}{_y % 100:02d}{_exch}"
+            if _sym not in out:
+                out.append(_sym)
+    return out
+
+
+# 30 dk'lık süreç-içi memo — aynı render/tarama turunda aday kontratlar
+# tekrar tekrar indirilmesin (tekli yol + toplu yol + bekçi retry'ı hepsi çağırır)
+_FUT_OHLCV_MEMO = {}
+_FUT_OHLCV_MEMO_TTL = 1800
+
+
+def _fetch_futures_ohlcv_yahoo_active(symbol, period="6mo"):
     """
     Emtia futures (=F) için Yahoo'nun aktif CME kontratlarından birleştirilmiş
-    gerçek hacim serisi döndürür. Her gün için en yüksek hacimli aday kontrat
-    seçilir → kontrat rollover'ı otomatik handle edilir.
-    Returns: pd.Series (DatetimeIndex, Volume) veya None
+    GERÇEK günlük bar (OHLCV) tablosu döndürür. Her gün için en yüksek hacimli
+    aday kontratın barı KOMPLE seçilir → rollover otomatik, bar içi karışım yok.
+    Returns: pd.DataFrame [Open,High,Low,Close,Volume] veya None
     """
-    candidates = _FUT_CONTRACT_CANDIDATES.get(symbol)
+    import time as _tm
+    _memo = _FUT_OHLCV_MEMO.get((symbol, period))
+    if _memo and (_tm.time() - _memo[0]) < _FUT_OHLCV_MEMO_TTL:
+        return _memo[1]
+    candidates = _futures_contract_candidates(symbol)
     if not candidates:
         return None
     try:
         import yfinance as _yf
         import logging as _lg0
-        # 2 Tem 2026 — Aday kontratların bir kısmı TASARIM GEREĞİ expired (GCM26 Haziran
-        # geçince boş döner). Fonksiyon bunu zaten `continue` ile atlıyor ama yfinance'in
-        # KENDİ logger'ı her expired probe'ta ERROR basıyordu (log spam). Probe boyunca sustur.
+        # Aday kontratların bir kısmı TASARIM GEREĞİ expired/boş döner; yfinance'in
+        # kendi logger'ı her boş probe'ta ERROR basıyordu (log spam). Probe boyunca sustur.
         _yf_log = _lg0.getLogger("yfinance")
         _yf_prev = _yf_log.level
         _yf_log.setLevel(_lg0.CRITICAL)
-        frames = []
+        frames = {}
         try:
             for _c in candidates:
                 try:
@@ -239,61 +287,101 @@ def _fetch_futures_volume_yahoo_active(symbol, period="6mo"):
                         continue
                     if isinstance(_df.columns, pd.MultiIndex):
                         _df.columns = _df.columns.get_level_values(0)
-                    if "Volume" not in _df.columns:
+                    if not {"Open", "High", "Low", "Close", "Volume"}.issubset(_df.columns):
                         continue
-                    _v = pd.to_numeric(_df["Volume"], errors="coerce").fillna(0)
-                    _v.name = _c
-                    frames.append(_v)
+                    _df = _df[["Open", "High", "Low", "Close", "Volume"]].copy()
+                    if _df.index.tz is not None:
+                        _df.index = _df.index.tz_localize(None)
+                    _df.index = pd.to_datetime(_df.index).normalize()
+                    _df = _df[~_df.index.duplicated(keep="last")]
+                    frames[_c] = _df
                 except Exception:
                     continue
         finally:
             _yf_log.setLevel(_yf_prev)      # yfinance logger seviyesini geri yükle
         if not frames:
+            _FUT_OHLCV_MEMO[(symbol, period)] = (_tm.time(), None)
             return None
-        merged = pd.concat(frames, axis=1).fillna(0)
-        # Her gün için adaylar arasında max-hacim → o günkü aktif kontrat
-        active_volume = merged.max(axis=1)
-        # tz-naive normalize (parquet cache + Yahoo OHLCV ile eşleşsin)
-        if active_volume.index.tz is not None:
-            active_volume.index = active_volume.index.tz_localize(None)
-        return active_volume[active_volume > 0]
+        # Her gün → en yüksek hacimli kontratın TÜM barı
+        _vols = pd.concat(
+            {c: pd.to_numeric(f["Volume"], errors="coerce").fillna(0) for c, f in frames.items()},
+            axis=1,
+        ).fillna(0)
+        _best = _vols.idxmax(axis=1)          # gün → kontrat adı
+        _rows = []
+        for _day, _c in _best.items():
+            if _vols.at[_day, _c] <= 0:
+                continue                      # o gün hiçbir adayda hacim yok → atla
+            _rows.append(frames[_c].loc[_day])
+        if not _rows:
+            _FUT_OHLCV_MEMO[(symbol, period)] = (_tm.time(), None)
+            return None
+        _out = pd.DataFrame(_rows)
+        _out = _out[~_out.index.duplicated(keep="last")].sort_index()
+        _FUT_OHLCV_MEMO[(symbol, period)] = (_tm.time(), _out)
+        return _out
     except Exception as _e:
         import logging as _lg
-        _lg.warning(f"[_fetch_futures_volume_yahoo_active] {symbol} hata: {_e}")
+        _lg.warning(f"[_fetch_futures_ohlcv_yahoo_active] {symbol} hata: {_e}")
         return None
 
 
-def _apply_futures_volume_override(df, symbol):
+def _apply_futures_bar_override(df, symbol):
     """
-    =F sembolünde df'in Volume kolonunu aktif kontrat hacmiyle override eder.
-    Tarih-eşleşmeli (df.index ile kontrat tarihi). Eşleşmeyen günler (eski tarih)
-    NaN'la doldurulmaz; orijinal =F değeri korunur (geri uyumluluk).
+    =F sembolünde df'in barlarını (O,H,L,C,V KOMPLE) aktif kontrat barıyla
+    değiştirir. Tarih-eşleşmeli; eşleşmeyen eski tarihler =F olarak kalır.
+    Emniyet: kontrat kapanışı =F kapanışından %15+ sapıyorsa o gün DOKUNULMAZ
+    (yanlış kontrat / veri kazası panele sızmasın). Son adım: override sonrası
+    hâlâ kalan O=H=L=C "çizgi mum"lar (devir artığı) silinir.
     """
-    if df is None or df.empty or "Volume" not in df.columns:
+    if df is None or df.empty or "Close" not in df.columns:
         return df
     if not symbol or not symbol.endswith("=F"):
         return df
-    if symbol not in _FUT_CONTRACT_CANDIDATES:
-        return df
-    vol_series = _fetch_futures_volume_yahoo_active(symbol)
-    if vol_series is None or vol_series.empty:
-        return df
+    bars = _fetch_futures_ohlcv_yahoo_active(symbol)
     df = df.copy()
-    # tz-naive normalize (df tarafı)
     _idx = df.index
     if hasattr(_idx, "tz") and _idx.tz is not None:
         df.index = _idx.tz_localize(None)
-    # Tarih-eşleşmeli override (date'e göre, saat farklarını ignore et)
-    _df_dates = pd.to_datetime(df.index).normalize()
-    _vol_dates = pd.to_datetime(vol_series.index).normalize()
-    _vol_map = pd.Series(vol_series.values, index=_vol_dates)
-    _vol_map = _vol_map[~_vol_map.index.duplicated(keep="last")]
-    _new_vol = pd.Series(_df_dates.map(_vol_map), index=df.index)
-    # Sadece eşleşme bulunduğu yerde override; bulunamayan eski tarihler =F kalır
-    _mask = _new_vol.notna()
-    if _mask.any():
-        df.loc[_mask, "Volume"] = _new_vol[_mask].astype(float).values
+    if bars is not None and not bars.empty:
+        _df_dates = pd.to_datetime(df.index).normalize()
+        for _col in ("Open", "High", "Low", "Close", "Volume"):
+            if _col not in df.columns:
+                df[_col] = np.nan
+            if df[_col].dtype != "float64":
+                df[_col] = df[_col].astype("float64")
+        _pos = {d: i for i, d in enumerate(_df_dates)}
+        _n_fix = 0
+        for _day, _row in bars.iterrows():
+            _i = _pos.get(_day)
+            if _i is None:
+                continue
+            _c_new = float(_row["Close"])
+            _c_old = float(df["Close"].iloc[_i])
+            if _c_old > 0 and _c_new > 0 and abs(_c_new / _c_old - 1) > 0.15:
+                continue                      # emniyet: aşırı sapma → dokunma
+            df.iloc[_i, [df.columns.get_loc(c) for c in ("Open", "High", "Low", "Close", "Volume")]] = [
+                float(_row["Open"]), float(_row["High"]), float(_row["Low"]),
+                _c_new, float(_row["Volume"]),
+            ]
+            _n_fix += 1
+        if _n_fix:
+            import logging as _lgf
+            _lgf.info(f"[futures_bar_override] {symbol}: {_n_fix} bar aktif kontrattan yazıldı")
+    # Devir artığı çizgi mumlar (O=H=L=C) — kontrat kapsamı dışında kalanlar silinir
+    try:
+        _o, _h, _l, _c = df["Open"], df["High"], df["Low"], df["Close"]
+        _flat = ((_o - _c).abs() < 1e-9) & ((_h - _c).abs() < 1e-9) & ((_l - _c).abs() < 1e-9)
+        if _flat.any() and (~_flat).sum() >= 30:
+            df = df[~_flat]
+    except Exception:
+        pass
     return df
+
+
+def _apply_futures_volume_override(df, symbol):
+    """Geriye uyumluluk sarmalayıcısı — 16 Tem 2026'dan beri tam-bar override."""
+    return _apply_futures_bar_override(df, symbol)
 
 
 _DEAD_SYMBOLS = frozenset({
@@ -401,6 +489,26 @@ def _fix_stale_volume(df_base, clean_ticker, interval):
         return df_base
 
 
+def _expected_last_trading_close(now):
+    """Şu an itibarıyla KAPANMIŞ en son BIST seansının tarihi (27 Tem 2026, #8).
+    'Dün' DEĞİL son işlem günü: Pazartesi sabahı Cuma'yı bekler, hafta sonu/bayram
+    sonrası son açık seansı bulur. Eski kod takvimdeki 'dün'e bakıyordu → Pazartesi
+    08:51'de Cuma'yı 'eski' sayıp yeniden çekiyor, Yahoo boş kapanış gönderince
+    XU100 zehirleniyordu. Tazelik kararı artık TAKVİME bağlı."""
+    d = now.date()
+    hour_min = now.hour * 100 + now.minute
+    # Bugün işlem günü VE kapanış oturmuşsa (18:30 sonrası) bugün son kapanıştır
+    if _bist_is_trading_day(d) and hour_min > 1830:
+        return d
+    # Aksi halde en yakın önceki işlem gününe geri yürü (bayram serisi için güvenli sınır)
+    prev = d - timedelta(days=1)
+    for _ in range(15):
+        if _bist_is_trading_day(prev):
+            return prev
+        prev -= timedelta(days=1)
+    return prev
+
+
 def is_yahoo_update_needed(ticker, local_last_date):
     now = datetime.now(_TZ_ISTANBUL)
     weekday = now.weekday()
@@ -408,13 +516,13 @@ def is_yahoo_update_needed(ticker, local_last_date):
     local_date = local_last_date.date()
 
     if ".IS" in ticker or ticker.startswith("XU"):
-        if weekday >= 5:
-            return local_date < (now - timedelta(days=(weekday - 4))).date()
-        if hour_min < 1000:
-            return local_date < (now - timedelta(days=1)).date()
-        if hour_min > 1830:
-            return local_date < now.date()
-        return True
+        # 27 Tem 2026 (#8) — TAKVİM TABANLI TAZELİK. Seans içinde (açık günde 10:00-18:30)
+        # taze intraday için her zaman güncelle; dışında yalnızca yerel veri BEKLENEN son
+        # kapanıştan eskiyse güncelle. Böylece Pazartesi sabahı Cuma verisi bayat sayılmaz.
+        expected = _expected_last_trading_close(now)
+        if _bist_is_trading_day(now.date()) and 1000 <= hour_min <= 1830:
+            return True
+        return local_date < expected
 
     elif "-USD" not in ticker and "=F" not in ticker:
         if weekday >= 5:
@@ -496,9 +604,133 @@ def _normalize_bist_ticker(ticker: str) -> str:
     return ticker
 
 
+# --------------------------------------------------------------------
+# ENDEKS YAKLAŞIK PİYASA KATILIMI — bileşen-toplamı (18 Tem 2026) — TEK KAYNAK
+# Endeks "Volume"u adettir (Yahoo/borsapy ~7,5 mlr), resmi TL cirosu değil; İş Yatırım
+# endeks endpoint'i hiç hacim vermiyor. Yaklaşım: eldeki bileşenlerin kapanış×işlem adedi
+# topla. fetcher bunu parquet'e YAZAR (at-rest), app apply_volume_projection'da CANLI
+# uygular (Yahoo re-fetch adedi ezilir). İkisi de buradan çağırır → drift yok.
+# --------------------------------------------------------------------
+INDEX_CIRO_TARGETS = {"XU100"}                 # şimdilik sadece XU100
+_INDEX_COMPONENTS_CACHE = os.path.join(CACHE_DIR, ".index_components.json")
+_INDEX_COMPONENTS_TTL_DAYS = 7
+_index_ciro_memo = {}                          # {sym: (epoch, Series)} — 300s canlı memo
+
+
+def _index_base_symbol(ticker: str) -> str:
+    """'XU100.IS'/'XU100' → 'XU100' (endeks değilse '')."""
+    s = str(ticker).upper().replace(".IS", "")
+    return s if s in INDEX_CIRO_TARGETS else ""
+
+
+def load_index_components(index_sym: str, allow_network: bool = True) -> list:
+    """Endeks bileşenleri — `.index_components.json` haftalık cache; bayatsa borsapy.
+    allow_network=False (app tarafı) → sadece cache; ağ çağrısı YAPMAZ (yavaşlatmaz)."""
+    import json as _json
+    cache = {}
+    if os.path.exists(_INDEX_COMPONENTS_CACHE):
+        try:
+            with open(_INDEX_COMPONENTS_CACHE, encoding='utf-8') as _f:
+                cache = _json.load(_f)
+        except Exception:
+            cache = {}
+    rec = cache.get(index_sym)
+    if rec and rec.get('members'):
+        try:
+            _age = (datetime.now() - datetime.fromisoformat(rec['ts'])).days
+            if _age < _INDEX_COMPONENTS_TTL_DAYS or not allow_network:
+                return list(rec['members'])
+        except Exception:
+            if not allow_network:
+                return list(rec['members'])
+    if not allow_network:
+        return list(rec['members']) if rec and rec.get('members') else []
+    try:
+        import borsapy
+        members = list(borsapy.Index(index_sym).component_symbols)
+        if members:
+            cache[index_sym] = {'ts': datetime.now().isoformat(timespec='seconds'),
+                                'members': members}
+            try:
+                with open(_INDEX_COMPONENTS_CACHE, 'w', encoding='utf-8') as _f:
+                    _json.dump(cache, _f, ensure_ascii=False, indent=1)
+            except Exception:
+                pass
+            return members
+    except Exception:
+        pass
+    return list(rec['members']) if rec and rec.get('members') else []
+
+
+def compute_index_tl_ciro_series(index_sym: str, allow_network: bool = True):
+    """Yaklaşık piyasa katılımını (Σ kapanış×işlem adedi) parquet'lerden toplar.
+    300s memo (100 parquet okumasını tekrarlamaz). Döner: pd.Series (tarih→TL) veya None."""
+    import time as _t
+    _now = _t.time()
+    _m = _index_ciro_memo.get(index_sym)
+    if _m and (_now - _m[0]) < 300:
+        return _m[1]
+    members = load_index_components(index_sym, allow_network=allow_network)
+    if not members:
+        return None
+    parts = []
+    for _mb in members:
+        _p = os.path.join(CACHE_DIR, f"{_mb}.IS_1d.parquet")
+        if not os.path.exists(_p):
+            continue
+        try:
+            _d = pd.read_parquet(_p, columns=['Close', 'Volume'])
+            _c = pd.to_numeric(_d['Close'], errors='coerce')
+            _v = pd.to_numeric(_d['Volume'], errors='coerce')
+            _tl = (_c * _v).dropna()
+            _tl = _tl[_tl > 0]
+            if len(_tl):
+                parts.append(_tl)
+        except Exception:
+            continue
+    if not parts:
+        return None
+    ser = pd.concat(parts, axis=1).sum(axis=1, min_count=1).dropna()
+    ser = ser[ser > 0]
+    if ser.empty:
+        return None
+    _index_ciro_memo[index_sym] = (_now, ser)
+    return ser
+
+
+def _apply_index_tl_ciro(df, ticker):
+    """Endeks df'inin Volume kolonuna bileşenlerden türetilen yaklaşık katılımı yazar (adet→TL yaklaşımı).
+    App tarafı: allow_network=False (cache-only, hızlı). Endeks değilse df aynen döner."""
+    _bs = _index_base_symbol(ticker)
+    if not _bs or df is None or df.empty or 'Volume' not in df.columns:
+        return df
+    try:
+        ser = compute_index_tl_ciro_series(_bs, allow_network=False)
+        if ser is None or ser.empty:
+            return df
+        _ser = ser.copy()
+        _ser.index = pd.to_datetime(_ser.index).tz_localize(None)
+        _didx = pd.to_datetime(df.index).tz_localize(None)
+        _aligned = _ser.reindex(_didx)
+        _mask = _aligned.notna().values
+        if _mask.any():
+            df = df.copy()
+            # Volume int64 olabilir (adet) → float TL atamadan ÖNCE cast (dtype FutureWarning
+            # sel'i Master Scan'i boğuyordu — 15 Haz dersi). .values ile tip kontrolü atlanır.
+            df['Volume'] = df['Volume'].astype('float64')
+            df.loc[_mask, 'Volume'] = _aligned.values[_mask]
+    except Exception:
+        pass
+    return df
+
+
 def apply_volume_projection(df, ticker=""):
     if df is None or df.empty or 'Volume' not in df.columns:
         return df
+    # 18 Tem 2026 — ENDEKS YAKLAŞIK KATILIMI: adet-Volume'ü bileşen-toplamı yaklaşımla ez.
+    # Tek choke point: cache + Yahoo re-download + get_safe_historical_data'nın 9 return'ü
+    # hepsi buradan geçer → app her durumda TL görür (Yahoo adet re-fetch'i geçersiz kılınır).
+    df = _apply_index_tl_ciro(df, ticker)
 
     # FIX (30 May 2026): Merkezi tatil 'hayalet bar' temizliği — TÜM okuma yolları
     # (get_safe_historical_data + get_batch_data_cached) buradan geçer. Sondaki
@@ -517,6 +749,15 @@ def apply_volume_projection(df, ticker=""):
     try:
         if (".IS" in ticker) and not ticker.startswith(("XU", "XB", "XT", "XY")):
             df = _apply_split_adjustments(df)
+    except Exception:
+        pass
+
+    # İş 4 (28 Tem 2026, borsacı geri bildirimi): son barın hacmi GÜN-İÇİ TAHMİN mi,
+    # KESİNLEŞMİŞ kapanış mı — aşağı akış (panel/AI) ayırt edebilsin diye df'e damga.
+    # Varsayılan False; sadece aşağıda gerçekten projeksiyon uygulanırsa True olur.
+    try:
+        df.attrs['vol_projected'] = False
+        df.attrs['vol_progress'] = 1.0
     except Exception:
         pass
 
@@ -618,8 +859,30 @@ def apply_volume_projection(df, ticker=""):
     if 'Volume' in df_proj.columns and df_proj['Volume'].dtype != 'float64':
         df_proj['Volume'] = df_proj['Volume'].astype('float64')
     df_proj.loc[df_proj.index[-1], 'Volume'] = projected_volume
+    # İş 4: son bar artık gün-içi TAHMİN — damgayı işaretle (progress = seansın ne
+    # kadarı geçti; düşükse tahmin o kadar spekülatif). Tüketiciler is_last_bar_projected
+    # ile okur → "hacim spike" kesin gerçek gibi sunulmaz.
+    try:
+        df_proj.attrs['vol_projected'] = True
+        df_proj.attrs['vol_progress'] = round(float(progress), 3)
+    except Exception:
+        pass
 
     return df_proj
+
+
+def is_last_bar_projected(df):
+    """İş 4 (28 Tem 2026): verilen df'in SON barının Volume'ü gün-içi TAHMİN mi?
+    apply_volume_projection'ın bıraktığı damgayı okur (attrs pandas dilimlemede
+    çoğunlukla korunur). Damga yoksa KESİN varsayar (yanlış 'tahmini' etiketi =
+    yeni yanlış alarm; onu üretmeyiz). Returns: (projected: bool, progress: float)
+    — progress seansın geçen oranı (0.4 = %40 geçti, tahmin o kadar spekülatif; 1.0=kesin)."""
+    try:
+        if df is not None and bool(df.attrs.get('vol_projected', False)):
+            return True, float(df.attrs.get('vol_progress', 1.0))
+    except Exception:
+        pass
+    return False, 1.0
 
 
 @st.cache_data(ttl=3600)
@@ -836,6 +1099,12 @@ def get_batch_data_cached(asset_list, period="1y"):
                                         _CACHE_STATS.get('vol_zero_guard', 0) + 1
                 except Exception:
                     pass
+                # ── EMTIA FUTURES TAM-BAR OVERRIDE (16 Tem 2026) ──
+                # Bu yol daha önce düzeltmesiz yazıyordu → Master Scan her turda
+                # GC=F parquet'ini ham Yahoo çöpüyle ezip tekli yoldaki düzeltmeyi
+                # geri alıyordu (hacim medyanı 148K → 657'ye gerilemişti).
+                if sym.endswith("=F"):
+                    df_sym_new = _apply_futures_bar_override(df_sym_new, sym)
                 df_sym_new.to_parquet(file_path)
                 df_ready = df_sym_new.tail(500).copy()
                 combined_dict[sym] = apply_volume_projection(df_ready, sym)
@@ -1089,6 +1358,93 @@ def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd
 
 
 @st.cache_data(ttl=300)
+def _protect_good_bars(df_new, df_cached, ticker=""):
+    """BOŞ VERİ SAĞLAM VERİYİ EZEMEZ (27 Tem 2026 — XU100 24 Tem kapanışı boş geldi
+    olayı sonrası kalıcı kural).
+
+    Yahoo bazen mevcut/yeni bir günün fiyat alanını NaN veya 0 gönderir. Eski akışta
+    bu boş bar dosyaya olduğu gibi yazılıyordu → o günün kapanışı boş kalıyor →
+    SMA50/100/200 çöküyor, endekse-göre-güç NaN oluyor, panel `int(NaN)` ile patlıyordu.
+
+    İki katman:
+      1) Ortak tarih: df_new'daki bir fiyat alanı (Open/High/Low/Close) NaN/≤0 ise ve
+         df_cached'te aynı gün için SAĞLAM değer varsa, eski sağlam değer KORUNUR.
+         (Yeni boş, eskiyi ASLA ezemez.)
+      2) Son bar hâlâ kapanışsız (cache'te de yok) ise, o eksik SON bar DÜŞÜRÜLÜR →
+         dosyanın son barı bir önceki sağlam gün olur; zehirli yarım bar yazılmaz.
+
+    Hacim ayrı korunuyor (çağıran yerdeki hacim-koruma bloğu). Burada sadece fiyat.
+    """
+    try:
+        if df_new is None or len(df_new) == 0:
+            return df_new
+        price_cols = [c for c in ('Open', 'High', 'Low', 'Close') if c in df_new.columns]
+        if not price_cols:
+            return df_new
+        # 1) Ortak tarihlerde boş yeni değeri sağlam eski değerle geri doldur
+        if df_cached is not None and len(df_cached):
+            common = df_new.index.intersection(df_cached.index)
+            if len(common):
+                for col in price_cols:
+                    if col not in df_cached.columns:
+                        continue
+                    new_col = df_new.loc[common, col]
+                    bad = new_col.isna() | (new_col <= 0)
+                    if not bad.any():
+                        continue
+                    bad_idx = common[bad.values]
+                    old_vals = df_cached.loc[bad_idx, col]
+                    good = old_vals.notna() & (old_vals > 0)
+                    take = bad_idx[good.values]
+                    if len(take):
+                        df_new.loc[take, col] = df_cached.loc[take, col].values
+                        import logging
+                        logging.warning(
+                            f"[boş-veri-koruma] {ticker}: {col} — {len(take)} günde "
+                            f"Yahoo boş/0 gönderdi, eski sağlam kapanış korundu "
+                            f"({[d.strftime('%Y-%m-%d') for d in take[-3:]]})")
+        # 2) Son bar hâlâ kapanışsızsa eksik trailing barı düşür
+        if 'Close' in df_new.columns:
+            dropped = []
+            while len(df_new) and (pd.isna(df_new['Close'].iloc[-1]) or df_new['Close'].iloc[-1] <= 0):
+                dropped.append(df_new.index[-1])
+                df_new = df_new.iloc[:-1]
+            if dropped:
+                import logging
+                logging.warning(
+                    f"[boş-veri-koruma] {ticker}: son bar(lar) kapanışsız → "
+                    f"düşürüldü, son sağlam gün korunuyor "
+                    f"({[d.strftime('%Y-%m-%d') for d in dropped]})")
+    except Exception as _pg_ex:
+        import logging
+        logging.warning(f"[boş-veri-koruma] {ticker}: guard hata (atlandı): {_pg_ex}")
+    return df_new
+
+
+def _period_to_days(period):
+    """ZAMAN DİLİMİ FIX (28 Tem 2026, borsacı denetimi): period etiketini fetch
+    derinliğine (takvim günü) çevir. FLOOR 380 — kısa periyotlar ESKİ davranışı
+    korur (SMA200 vb. ekstra-veri isteyenler kırılmaz), uzun periyotlar GERÇEKTEN
+    derinleşir (2y istenince 2y iner, sessizce 380'e sabitlenmez). Bilinmeyen → 380."""
+    p = str(period).lower().strip()
+    _map = {'1d': 7, '2d': 7, '3d': 10, '5d': 12, '7d': 14, '1mo': 45, '2mo': 75,
+            '3mo': 120, '6mo': 210, '1y': 400, '2y': 760, '3y': 1120, '5y': 1850,
+            '10y': 3700, '730d': 760}
+    if p in _map:
+        return max(380, _map[p])
+    if p.endswith('d'):
+        try:
+            return max(380, int(p[:-1]) + 7)
+        except Exception:
+            return 380
+    if p.endswith('y'):
+        try:
+            return max(380, int(float(p[:-1]) * 365) + 30)
+        except Exception:
+            return 380
+    return 380
+
+
 def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
     try:
         # ── KRİPTO YÖNLENDİRMESİ: -USD tickerları Binance'den çek ──
@@ -1130,7 +1486,9 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
             return df
 
         import datetime as _dt
-        _start = str(_dt.date.today() - _dt.timedelta(days=380))
+        # ZAMAN DİLİMİ FIX (28 Tem 2026): _start artık period'e bağlı (eskiden hep 380
+        # sabitti → "2y" istenince ~1y geliyordu). Floor 380 → kısa periyot değişmez.
+        _start = str(_dt.date.today() - _dt.timedelta(days=_period_to_days(period)))
         _end   = str(_dt.date.today() + _dt.timedelta(days=1))
 
         if os.path.exists(file_path):
@@ -1186,10 +1544,10 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 if _is_bist_stock and interval == "1d":
                     df_new = _apply_split_adjustments(df_new)
 
-                # ── EMTIA FUTURES HACIM OVERRIDE (15 Haz 2026) ──
-                # Yahoo =F continuous Volume bozuk → aktif CME kontratından override
+                # ── EMTIA FUTURES TAM-BAR OVERRIDE (15 Haz hacim → 16 Tem OHLCV) ──
+                # Yahoo =F continuous barları bozuk → aktif CME kontratından komple bar
                 if ticker.endswith("=F") and interval == "1d":
-                    df_new = _apply_futures_volume_override(df_new, ticker)
+                    df_new = _apply_futures_bar_override(df_new, ticker)
 
                 # ── TARİHÇE KORUMASI (9 Tem 2026) ──
                 # Yahoo bazen sembolün TÜM geçmişini vermeyi keser (örn. XTUMY
@@ -1239,6 +1597,26 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                     except Exception as _gf_ex:
                         import logging
                         logging.warning(f"[borsapy gap-fill] {ticker} hata: {_gf_ex}")
+
+                # ── BOŞ VERİ SAĞLAMI EZEMEZ (27 Tem 2026) ──
+                # Yazmadan hemen önce son kapı: Yahoo boş/0 fiyat gönderdiyse
+                # eski sağlam değeri koru, son bar hâlâ kapanışsızsa düşür.
+                df_new = _protect_good_bars(df_new, df_cached, ticker)
+
+                # ZAMAN DİLİMİ FIX (28 Tem 2026): eski cache barlarını KORU (union).
+                # Eskiden df_new (fetch derinliği) parquet'i EZİYORDU → geçmiş asla
+                # ~380 günü aşamıyordu (2y/10y sessizce ~1y). Artık df_new'da OLMAYAN
+                # eski barlar eklenir → geçmiş zamanla birikir; kısa-periyot bir fetch
+                # uzun geçmişi silmez. Çakışmada taze (df_new) kazanır. Bölünme ölçek
+                # karışması riski YOK: apply_volume_projection okuma yolunda
+                # _apply_split_adjustments'i idempotent yeniden uygular.
+                try:
+                    _older = df_cached.index.difference(df_new.index)
+                    if len(_older) > 0:
+                        df_new = pd.concat([df_cached.loc[_older], df_new]).sort_index()
+                        df_new = df_new[~df_new.index.duplicated(keep='last')]
+                except Exception:
+                    pass
 
                 df_new.to_parquet(file_path)
                 return apply_volume_projection(df_new.tail(500).copy(), ticker)
@@ -1305,9 +1683,9 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 if _is_bist_stock and interval == "1d":
                     df_full = _apply_split_adjustments(df_full)
 
-                # ── EMTIA FUTURES HACIM OVERRIDE (15 Haz 2026) — fresh download path ──
+                # ── EMTIA FUTURES TAM-BAR OVERRIDE (16 Tem 2026) — fresh download path ──
                 if ticker.endswith("=F") and interval == "1d":
-                    df_full = _apply_futures_volume_override(df_full, ticker)
+                    df_full = _apply_futures_bar_override(df_full, ticker)
 
                 # ── BORSAPY GAP-FILL (10 Haz 2026) — fresh download path ──
                 # Aynı bar atlama tespiti, parquet ilk oluşturulduğunda da uygula
@@ -1374,12 +1752,15 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
         return None
 
 
-def _ensure_parquet_on_disk(ticker: str, interval: str = "1d") -> None:
+def _ensure_parquet_on_disk(ticker: str, interval: str = "1d", period: str = "1y") -> None:
     """
     @st.cache_data YAN ETKİ SORUNU İÇİN GÜVENLİK NETI:
     Cached fonksiyon bellekten döndüğünde parquet yazılmayabilir.
     Bu fonksiyon cache DIŞINDA çalışır — her çağrıda parquet var mı kontrol eder,
     yoksa indirir ve kaydeder. Crypto ve intraday atlanır.
+    ZAMAN DİLİMİ FIX (28 Tem 2026): period parametresi eklendi. Eskiden fresh ticker
+    parquet'ini HEP 380 günle önden yaratıyordu → ana fonksiyonun derin fetch'i
+    devreye giremiyordu (2y istense bile ~1y kalıyordu). Artık period'e bağlı iner.
     """
     # Sadece günlük ve kripto olmayan tickerlar için
     if interval != "1d" or "-USD" in ticker:
@@ -1395,12 +1776,12 @@ def _ensure_parquet_on_disk(ticker: str, interval: str = "1d") -> None:
             return  # Zaten var → işlem yok
 
         import datetime as _dt2
-        _s = str(_dt2.date.today() - _dt2.timedelta(days=380))
+        _s = str(_dt2.date.today() - _dt2.timedelta(days=_period_to_days(period)))
         _e = str(_dt2.date.today() + _dt2.timedelta(days=1))
 
         _df = _yf_download_with_retry(_ct, start=_s, end=_e, interval=interval)
         if _df.empty:
-            _df = _yf_download_with_retry(_ct, period="1y", interval=interval)
+            _df = _yf_download_with_retry(_ct, period="2y", interval=interval)
         if _df.empty:
             return
 
@@ -1508,14 +1889,44 @@ def _gapfill_index_isyatirim(df, ticker):
                 _exp.append(_d.normalize())
             _d += pd.Timedelta(days=1)
         _miss = [d for d in _exp if d not in _have]
-        if not _miss:
+        # 27 Tem 2026 (#4) — TARİH VAR AMA KAPANIŞ BOŞ olan mevcut barlar da eksik sayılır.
+        # Eski kod yalnızca 'hiç yok' günleri dolduruyordu → XU100 24 Tem satırı (kapanış NaN,
+        # tarih mevcut) atlanıyordu. Artık boş-kapanışlı mevcut bar da İsyatirim VALUE ile onarılır.
+        _broken = [d for d in df.index
+                   if pd.isna(df.at[d, 'Close']) or float(df.at[d, 'Close']) <= 0]
+        if not _miss and not _broken:
             return df
         _imap = _fetch_index_isyatirim_cached(ticker)
         if not _imap:
             return df
         # DOĞRULAMA KAPISI: her aday değeri komşu gerçek barlarla sına; şüpheliyi enjekte etme.
         _close = df['Close']
-        _rows = []; _rejects = []
+        _rows = []; _rejects = []; _changed = False
+
+        # (a) BOŞ-KAPANIŞ ONARIMI — mevcut barın close'unu İsyatirim VALUE ile yerinde doldur.
+        for d in _broken:
+            dn = pd.Timestamp(d).normalize()
+            if dn not in _imap:
+                continue
+            v = _imap[dn]
+            _valid = _close[_close.notna() & (_close > 0)]
+            _pv = _valid[_valid.index < d]; _nx = _valid[_valid.index > d]
+            pc = float(_pv.iloc[-1]) if len(_pv) else None
+            nc = float(_nx.iloc[0]) if len(_nx) else None
+            ok, reason = _validate_index_fill(v, pc, nc)
+            if ok:
+                df.at[d, 'Close'] = v
+                for _c, _m in (('Open', 1.0), ('High', 1.0001), ('Low', 0.9999)):
+                    if _c in df.columns and (pd.isna(df.at[d, _c]) or float(df.at[d, _c]) <= 0):
+                        df.at[d, _c] = round(v * _m, 4)
+                _changed = True
+                import logging
+                logging.warning(f"[endeks-close-onar] {ticker}: {pd.Timestamp(d).date()} "
+                                f"boş kapanış İsyatirim VALUE={v:.2f} ile dolduruldu")
+            else:
+                _rejects.append((dn, v, pc, nc, reason))
+
+        # (b) EKSİK GÜN EKLE — hiç olmayan işlem günlerini ekle.
         for d in _miss:
             if d not in _imap:
                 continue
@@ -1532,7 +1943,8 @@ def _gapfill_index_isyatirim(df, ticker):
         if _rejects:
             _log_gapfill_rejects(ticker, _rejects)
         if not _rows:
-            return df
+            # Sadece close onarımı yapıldıysa df yerinde değişti → kopya döndür ki caller parquet'e yazsın.
+            return df.copy() if _changed else df
         # OHLC: İsyatirim sadece kapanış (VALUE) verir → O=C=kapanış. H/L'ye MİNİK spread (±%0.01)
         # ekliyoruz ki "düz bar" (O=H=L=C) sayılıp HAYALET-BAR temizliğine TAKILMASIN. Endeks V=0 +
         # düz = tatil hayaleti sanılıp siliniyordu → grafik 18 Haz'ı göstermiyordu (kapanış-tabanlı
@@ -1672,7 +2084,7 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
         except Exception:
             pass
         return pd.DataFrame()
-    _ensure_parquet_on_disk(ticker, interval)
+    _ensure_parquet_on_disk(ticker, interval, period)
 
     # ── BÖLÜNME / TEMETTÜ TESPİTİ ────────────────────────────────────────────
     # Parquet'teki son kapanış ile canlı fiyat arasında 2x'ten fazla fark varsa
@@ -1705,7 +2117,9 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
         if _df_gf is not df:   # delik dolduruldu → parquet'e de yaz (karne/backfill/data_integrity için)
             try:
                 _ct_gf = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
-                _df_gf.to_parquet(os.path.join(CACHE_DIR, f"{_ct_gf}_1d.parquet"))
+                _fp_gf = os.path.join(CACHE_DIR, f"{_ct_gf}_1d.parquet")
+                _rollback_snapshot(_fp_gf, ticker)   # #11 — yazmadan önce son sağlamı .prev'e al
+                _df_gf.to_parquet(_fp_gf)
             except Exception:
                 pass
         df = _df_gf
@@ -1714,6 +2128,51 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
     if interval == "1d":
         df = _bekci_kapisi(df, ticker, period, interval)
     return df
+
+
+def _rollback_snapshot(path, ticker):
+    """#11 (27 Tem 2026) — kritik endeks için son SAĞLAM sürümü `.prev` sakla.
+    Yalnızca diskteki MEVCUT dosya sağlamsa (son kapanış dolu + yapısal ok)
+    snapshot alınır → bozuk sürüm asla rollback noktası olmaz. Yeni yazım bozuk
+    çıkarsa `.prev`'ten manuel/otomatik geri dönülebilir. Ortak-terazi endeksler
+    (XU100 vb.) için; hisseleri `_protect_good_bars` guard'ı zaten koruyor."""
+    try:
+        import veri_bekcisi as _vb
+        if not _vb.kritik_endeks_mi(ticker) or not path or not os.path.exists(path):
+            return
+        _cur = pd.read_parquet(path)
+        if _cur is None or len(_cur) == 0:
+            return
+        _lc = _cur['Close'].iloc[-1]
+        if pd.isna(_lc) or float(_lc) <= 0:
+            return  # mevcut dosya zaten bozuk → rollback noktası yapma
+        _ok, _ = _vb.dogrula(_cur, ticker)
+        if not _ok:
+            return
+        import shutil
+        shutil.copy2(path, path + ".prev")
+    except Exception:
+        pass
+
+
+def kritik_endeks_kapisi(ticker="XU100.IS"):
+    """#9 (27 Tem 2026) — Master Scan öncesi KRİTİK ENDEKS SAĞLIK KAPISI.
+    XU100 vb. ortak terazi kapanışını iki kaynakla (Yahoo serisi + İsyatirim VALUE)
+    doğrular. Master Scan bu 🔴 dönerse BAŞLAMAMALI — yanlış sonuç üretmektense
+    durmak finansal olarak daha doğru. Döner: (durum, sebepler)."""
+    try:
+        import veri_bekcisi as _vb
+        df = get_safe_historical_data(ticker, period="1y")
+        _ikinci = None
+        try:
+            _imap = _fetch_index_isyatirim_cached(ticker)
+            if _imap and df is not None and len(df):
+                _ikinci = _imap.get(pd.Timestamp(df.index[-1]).normalize())
+        except Exception:
+            pass
+        return _vb.guven_damgasi(df, ticker, ikinci_kaynak_close=_ikinci)
+    except Exception as e:
+        return 'yellow', [f'kapı hatası: {str(e)[:40]}']
 
 
 @st.cache_data(ttl=60)

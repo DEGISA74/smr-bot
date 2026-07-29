@@ -30,6 +30,10 @@ PC = dict(
     adapt_hi=0.08,       # eşik üst sınırı (%8)
     # OLUŞAN formasyonda boyuna max uzaklık (Çift Dip ile aynı kural)
     form_max_dist=12.0,  # yüzde
+    # Fincan kalibrasyonu (18 Tem 2026, insan-etiketli 8 fincan — ölçülmüş)
+    cup_rim=0.085,       # rim hizası ≤ (0.06 idi; AKSEN %8.3 gerçek fincan eleniyordu)
+    cup_handle_lo=0.81,  # kulp > rim × bu (0.82 idi; EREGL 0.818 kıl payı eleniyordu)
+    cup_ext_recent=120,  # "uzamış" durum: kırılım son bu kadar barda ise göster (yoksa bayat)
     # Ön-trend şartları
     pretrend_min_hist=40,    # bundan az geçmiş varsa eleme YAPMA (yeni veri)
     pretrend_cup_win=90,     # fincan: sol rim öncesi pencere
@@ -49,7 +53,10 @@ PC = dict(
     vol_break_ratio=1.5,     # kırılım günü hacim ≥ 20g ort × bu
     # Retest
     retest_lookback=20,      # kırılımı geriye kaç bar içinde ara
-    retest_band=0.03,        # boynun ±%3 bandı = retest bölgesi
+    retest_band=0.03,        # boynun üstünde +%3'e kadar = retest bölgesi
+    retest_hold=0.995,       # retest için fiyat boynun EN AZ bu katında (≈üstünde)
+                             #   tutunmalı — boynun altına düşen = kırılım geri
+                             #   alındı, destek testi DEĞİL (THYAO 326<333 vakası)
     retest_min_age=2,        # kırılımdan en az bu kadar gün geçmiş olmalı
     retest_fail=0.97,        # boyun × bu altında kapanış = sahte kırılım
     retest_vol_ratio=1.3,    # kırılım barında min hacim oranı
@@ -247,8 +254,11 @@ def detect_post_breakout(close_s, vol_s, boundary):
         if cur < b * PC['retest_fail']:
             out['failed'] = True
             return out
+        # Retest = kırılım sonrası fiyat boyna GERİ DÖNÜP boynu DESTEK olarak
+        # test ediyor → fiyat boynun üstünde (ya da ≈üzerinde) tutunmalı.
+        # Boynun altına düşmüş fiyat "destek testi" değil, kaybedilmiş kırılımdır.
         if (out['days_since'] >= PC['retest_min_age']
-                and cur <= b * (1 + PC['retest_band'])):
+                and b * PC['retest_hold'] <= cur <= b * (1 + PC['retest_band'])):
             out['retest'] = True
     except Exception:
         pass

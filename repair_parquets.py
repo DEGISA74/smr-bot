@@ -33,6 +33,14 @@ def is_corrupt(df):
     """Düzeltme-bazı bozulması imzası (tüm geçmiş)."""
     if df is None or len(df) < 10:
         return False
+    # 6 Tem 2026 — OHLC BÜTÜNLÜK: Open/Close, [Low,High] dışına çıkarsa HAM+DÜZELTİLMİŞ
+    # karışması ("Frankenstein" bar — ham Open + düzeltilmiş HLC). Eski %40 oran eşiği
+    # bu ~%7-10'luk temettü karışmasını KAÇIRIYORDU; bu kontrol tek bar bile yakalar.
+    if {"Open", "High", "Low", "Close"}.issubset(df.columns):
+        _o, _h, _l, _c = df["Open"], df["High"], df["Low"], df["Close"]
+        if int(((_o > _h * 1.001) | (_o < _l * 0.999) |
+                (_c > _h * 1.001) | (_c < _l * 0.999)).sum()) >= 1:
+            return True
     r = (df["Open"] / df["Close"]).replace([float("inf")], 0).dropna()
     if ((r < 0.7) | (r > 1.4)).sum() >= 3:       # Open, Close'dan farklı bazda
         return True

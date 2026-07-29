@@ -1847,6 +1847,17 @@ async def send_daily_bulletin(context: ContextTypes.DEFAULT_TYPE):
     await _send_bulletin_to_channel(context, PRO_ID,   tier="pro",   now_str=now_str, is_sunday=is_sunday, market_note=market_note)
     await _send_bulletin_to_channel(context, ELITE_ID, tier="elite", now_str=now_str, is_sunday=is_sunday, market_note=market_note)
 
+    # GÖREV BEKÇİSİ başarı-izi — bülten job'ı sonuna kadar çalıştıysa işaret bırak.
+    # Bekçi (gorev_bekcisi.py) bu dosyanın tazeliğine bakar; job misfire ile hiç
+    # çalışmazsa işaret yazılmaz → bekçi 19:40'ta uyarır.
+    try:
+        _hd = os.path.join(BASE_DIR, "health")
+        os.makedirs(_hd, exist_ok=True)
+        with open(os.path.join(_hd, "bulten.done"), "w") as _mf:
+            _mf.write(datetime.now().isoformat())
+    except Exception as _e:
+        log.warning(f"[bulletin] bekci isareti yazilamadi: {_e}")
+
 
 # ─── RENEWAL HATIRLATMA (T-3, T-1, T-0) ──────────────────────────────────────
 async def send_renewal_reminders(context: ContextTypes.DEFAULT_TYPE):
@@ -2431,11 +2442,19 @@ def main():
 
     tz_istanbul = pytz.timezone("Europe/Istanbul")
 
+    # APScheduler varsayılan misfire_grace_time'ı ~1sn — tam saatte ağır bir cron
+    # (örn. 19:00'da produce_light_stock) CPU'yu doldurup async döngüyü birkaç saniye
+    # bloklarsa günlük iş "kaçırıldı" sayılıp SESSİZCE atlanıyordu (27 Tem: 19:00 bülteni
+    # 3.6sn misfire ile düştü). 1 saatlik tolerans → süreç ayaktaysa iş gecikse de çalışır.
+    # (Süreç TAMAMEN kapalıysa in-memory jobstore sıfırlanır; onu misfire kurtaramaz.)
+    _daily_kw = {"misfire_grace_time": 3600, "coalesce": True}
+
     # 00:00 — günlük limit sıfırlama
     app.job_queue.run_daily(
         reset_daily_limits,
         time=datetime.strptime("00:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
-        name="reset_daily"
+        name="reset_daily",
+        job_kwargs=_daily_kw
     )
 
     # 19:00 — Pzt-Cuma günlük bülten (Cmt + Paz hariç)
@@ -2444,7 +2463,8 @@ def main():
         send_daily_bulletin,
         time=datetime.strptime("19:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
         days=(1, 2, 3, 4, 5),  # Pzt-Cuma (APScheduler: 0=sun, 1=mon, ..., 5=fri)
-        name="daily_bulletin"
+        name="daily_bulletin",
+        job_kwargs=_daily_kw
     )
 
     # 21:00 — Pazar Hatırlatması (sadece Paz)
@@ -2452,21 +2472,24 @@ def main():
         send_daily_bulletin,
         time=datetime.strptime("21:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
         days=(0,),  # Sadece Pazar (APScheduler: 0=sun)
-        name="sunday_bulletin"
+        name="sunday_bulletin",
+        job_kwargs=_daily_kw
     )
 
     # 00:05 — Süresi dolan aboneleri kanaldan çıkar
     app.job_queue.run_daily(
         kick_expired_users,
         time=datetime.strptime("00:05", "%H:%M").time().replace(tzinfo=tz_istanbul),
-        name="kick_expired"
+        name="kick_expired",
+        job_kwargs=_daily_kw
     )
 
     # 10:00 — Renewal hatırlatma (T-3 / T-1 / T-0)
     app.job_queue.run_daily(
         send_renewal_reminders,
         time=datetime.strptime("10:00", "%H:%M").time().replace(tzinfo=tz_istanbul),
-        name="renewal_reminders"
+        name="renewal_reminders",
+        job_kwargs=_daily_kw
     )
 
     # Her 5 dakikada Shopier sipariş kontrolü
