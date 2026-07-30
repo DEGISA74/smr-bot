@@ -30,7 +30,8 @@ from ict_core import (calculate_ict_deep_analysis, calculate_price_action_dna,
 from scoring_core import (calculate_smart_money_score, calculate_sentiment_score,
                           calculate_master_score, compute_smart_money_split_scores,
                           _compute_risk_profile, _liquidity_manip, get_tech_card_data)  # Adım 7b
-from scan_pipeline import (_compute_signal_features, log_scan_signal, log_erken_radar_signals,
+from scan_pipeline import (_compute_signal_features, _compute_terazi_signal_features,
+                           log_scan_signal, log_erken_radar_signals,
                            backfill_signal_returns, scan_chart_patterns, scan_golden_pattern_agent,
                            scan_hidden_accumulation, analyze_market_intelligence, radar2_scan,
                            scan_guclu_donus_batch, scan_wilder_positive_divergence_batch,
@@ -85,7 +86,7 @@ from scanners import (ERKEN_RADAR_SCENARIOS, evaluate_erken_radar, _er_kisa_acik
 from data_layer import (
     CACHE_DIR, _apply_split_adjustments, _data_integrity_check, fetch_stock_info,
     final_bist100_list, get_batch_data_cached, get_benchmark_data, get_safe_historical_data,
-    is_last_bar_projected, kritik_endeks_kapisi)
+    is_last_bar_projected, kritik_endeks_kapisi, use_historical_data_snapshot)
 import concurrent.futures
 import re
 import altair as alt
@@ -1365,6 +1366,483 @@ def render_gold_mine_showcase():
         return False
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _piyasa_genisligi_bugun():
+    """Bugünkü piyasa genişliğini günlük parquet fotoğrafından toplar."""
+    try:
+        import glob as _sg_glob
+        from collections import Counter as _sg_counter
+        rows = []
+        for _f in _sg_glob.glob(os.path.join(CACHE_DIR, "*_1d.parquet")):
+            _sym = os.path.basename(_f).replace("_1d.parquet", "")
+            if _sym.startswith(("XU", "^")) or "=" in _sym or "-" in _sym:
+                continue
+            try:
+                _c = pd.read_parquet(_f, columns=["Close"])["Close"].astype(float)
+                if len(_c) < 2:
+                    continue
+                _r = (_c.iloc[-1] / _c.iloc[-2] - 1.0) * 100.0
+                if abs(_r) > 11:
+                    continue
+                rows.append((_c.index[-1].date(), float(_r)))
+            except Exception:
+                continue
+        if len(rows) < 300:
+            return None, None, len(rows)
+        _gun = _sg_counter(d for d, _ in rows).most_common(1)[0][0]
+        _gr = pd.Series([r for d, r in rows if d == _gun])
+        if len(_gr) < 300:
+            return None, None, int(len(_gr))
+        return float((_gr < 0).mean() * 100.0), float(_gr.median()), int(len(_gr))
+    except Exception:
+        return None, None, 0
+
+
+def _empty_kanit_ozeti():
+    """Kanıt özeti için tek, davranış-koruyan boş başlangıç sözlüğü."""
+    return {'skor': None, 'label': 'kanıt yok', 'n_scanner': 0, 'best': '',
+            'guven': None, 'celiski': False, 'boga': 0, 'ayi': 0,
+            'tek_sinyal': False, 'terazi': None}
+
+
+def _collect_kanit_context(
+        ticker, frs=None, *, formasyon=...,
+        breadth=..., snapshot_key=None):
+    """Tek hisse kanıtlarını toplar; hazır fotoğraf verilirse canlı veriye kaçmaz."""
+    out = _empty_kanit_ozeti()
+    try:
+        _tc = str(ticker).upper().replace('.IS', '')
+        ent = next(
+            (e for e in _compute_goldmine_entries()
+             if e['sym'].upper() == _tc),
+            None)
+        if ent is not None:
+            out['n_scanner'] = int(
+                ent.get('family_count', ent.get('extra', 0) + 1))
+            out['best'] = ent.get('scanner', '')
+            if ent.get('unmeasured'):
+                out['label'] = 'kanıt bekliyor'
+            else:
+                out['skor'] = min(int(ent.get('score', 0)), 100)
+                out['label'] = 'kanıtlı'
+
+        _votes = []
+        if out['skor'] and out['n_scanner'] > 0:
+            _votes.append(terazi_core.mk_vote(
+                "Pozitif karneli tarama ailesi", 'boga',
+                float(out['n_scanner']), True,
+                f"{out['n_scanner']} bağımsız pozitif ailede "
+                f"(en güçlüsü: {out['best']}, puan {out['skor']})",
+                prio=7))
+
+        _rf_ids = []
+        _er = st.session_state.get('erken_radar_data')
+        if (_er is not None and hasattr(_er, 'empty') and not _er.empty
+                and {'Sembol', 'Role'} <= set(_er.columns)):
+            _ser = _er['Sembol'].astype(str).str.upper()
+            _rf_rows = _er[
+                ((_ser == str(ticker).upper()) | (_ser == _tc))
+                & (_er['Role'] == 'red_flag')]
+            if 'ScenarioId' in _rf_rows.columns:
+                _rf_ids = [str(x) for x in _rf_rows['ScenarioId'].tolist()]
+            else:
+                _rf_ids = ['?'] * len(_rf_rows)
+        if not _rf_ids:
+            _erc = (
+                st.session_state.get('_er_single_cache', {}).get(ticker)
+                or st.session_state.get('_er_single_cache', {}).get(_tc)
+            )
+            if _erc:
+                _rf_ids = [
+                    str((x or {}).get('id', '?'))
+                    for x in (_erc.get('red_flags') or [])
+                ]
+        if _rf_ids:
+            _sems = terazi_core.semsiye_votes(_rf_ids)
+            _votes.extend(_sems)
+            _diger_rf = len(_rf_ids) - len(_sems)
+            if _diger_rf > 0:
+                _votes.append(terazi_core.mk_vote(
+                    "Erken Radar kırmızı bayrak", 'ayi',
+                    float(_diger_rf), True,
+                    f"{_diger_rf} kırmızı-bayrak senaryosu aktif",
+                    prio=7))
+
+        if (isinstance(frs, dict) and frs.get('kutu') == 'kirdi'
+                and frs.get('durum') == 'fail'):
+            _votes.append(terazi_core.mk_vote(
+                "Başarısız kırılım", 'ayi', 1.0, True,
+                "Fırsat Radarı: boyun çizgisi kırıldı ama fiyat geri alındı. "
+                "Kırılıp tutunamayan seviye, alıcıların tuzağa düştüğü "
+                "görüntüdür",
+                prio=7))
+
+        try:
+            if formasyon is Ellipsis:
+                _fp = st.session_state.get('_formasyon_chart_data')
+                _fptk = str(
+                    st.session_state.get('_formasyon_ticker', '')
+                ).upper().replace('.IS', '')
+            else:
+                _fp = formasyon
+                _fptk = _tc
+            _fp_bear = (
+                _fp and (
+                    _fp.get('type') in ('double_top', 'dtriangle')
+                    or (_fp.get('type') == 'wedge'
+                        and _fp.get('kind') == 'rising')
+                    or (_fp.get('type') == 'birlesik'
+                        and _fp.get('shape') == 'dtri')
+                )
+            )
+            if _fp and _fptk == _tc and _fp_bear:
+                _ftyp = {
+                    "double_top": "İkili Tepe (M)",
+                    "dtriangle": "Alçalan Üçgen",
+                }.get(
+                    _fp.get('type'),
+                    "Alçalan Üçgen"
+                    if _fp.get('shape') == 'dtri'
+                    else "Yükselen Kama")
+                _votes.append(terazi_core.mk_vote(
+                    "Ayı formasyonu", 'ayi', 1.0, True,
+                    f"Grafikte {_ftyp} oluşuyor — ayı formasyonu. "
+                    "Boyun çizgisi kırılırsa görüntü teyide döner; "
+                    "şimdilik izlenen risk",
+                    prio=8))
+        except Exception:
+            pass
+
+        _is_idx = (
+            str(ticker).upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
+            or str(ticker).upper().endswith('=F')
+        )
+        try:
+            _feat_kz = (
+                _compute_terazi_signal_features(ticker)
+                if snapshot_key is not None
+                else _compute_signal_features(ticker)
+            ) or {}
+            _votes.extend(
+                terazi_core.votes_from_features(
+                    _feat_kz, is_index=_is_idx))
+        except Exception:
+            pass
+
+        try:
+            if snapshot_key is None:
+                _pack_kz = compute_genel_ozet_pack(
+                    ticker,
+                    st.session_state.get("bist_market_status", {}))
+            else:
+                _pack_kz = compute_genel_ozet_pack(
+                    ticker,
+                    st.session_state.get("bist_market_status", {}),
+                    snapshot_key=snapshot_key)
+            if _pack_kz:
+                _votes.extend(terazi_core.votes_from_genel_ozet({
+                    'hacim': _pack_kz.get('_sig_hacim'),
+                    'obv': _pack_kz.get('_sig_obv'),
+                    'yapi': _pack_kz.get('_sig_yapi'),
+                    'mfi': _pack_kz.get('_sig_mfi'),
+                }))
+        except Exception:
+            pass
+
+        try:
+            _tc_up = str(ticker).upper()
+            _flow_ok = not (
+                _tc_up.startswith(('XU', 'XB', 'XT', 'XY', '^'))
+                or _tc_up.endswith('=F') or '-USD' in _tc_up
+            )
+            if _flow_ok:
+                _df_flow = get_safe_historical_data(ticker, period="1y")
+                if (_df_flow is not None and len(_df_flow) >= 25
+                        and 'Volume' in _df_flow.columns):
+                    _rel_st = _udvr_st = None
+                    try:
+                        _bench_flow = get_safe_historical_data(
+                            "XU100.IS", period="3mo")
+                        if _bench_flow is not None and len(_bench_flow) >= 25:
+                            _rr = compute_relative_obv_state(
+                                _df_flow, _bench_flow, lookback=20)
+                            _rel_st = _rr.get('state') if _rr else None
+                    except Exception:
+                        pass
+                    try:
+                        _ur = compute_updown_volume_ratio(
+                            _df_flow, period=20)
+                        if _ur:
+                            _udvr_st = _ur.get('climax') or _ur.get('state')
+                    except Exception:
+                        pass
+                    _votes.extend(terazi_core.votes_from_smart_flow(
+                        rel_state=_rel_st, udvr_state=_udvr_st))
+        except Exception:
+            pass
+
+        _serit_kz = None
+        try:
+            _df_kz = get_safe_historical_data(ticker, period="1y")
+            _sv_kz, _serit_kz = terazi_core.sok_degerlendir(
+                terazi_core.gun_karakteri(_df_kz),
+                is_index=_is_idx)
+            _votes.extend(_sv_kz)
+        except Exception:
+            pass
+
+        if breadth is Ellipsis:
+            _breadth_kz = None
+            if not _is_idx:
+                try:
+                    _breadth_kz = _piyasa_genisligi_bugun()
+                except Exception:
+                    pass
+        else:
+            _breadth_kz = breadth
+
+        return {
+            'ready': True,
+            'base': out,
+            'votes': _votes,
+            'is_index': _is_idx,
+            'sok_serit': _serit_kz,
+            'breadth': _breadth_kz,
+        }
+    except Exception:
+        return {'ready': False, 'base': out}
+
+
+def _build_kanit_ozeti(context):
+    """Hazır kanıt bağlamından hüküm üretir; oturum/dosya/veri erişimi yapmaz."""
+    context = context if isinstance(context, dict) else {}
+    out = dict(context.get('base') or _empty_kanit_ozeti())
+    if not context.get('ready'):
+        return out
+    try:
+        _is_idx = bool(context.get('is_index'))
+        _ter = terazi_core.build_terazi(
+            list(context.get('votes') or []), is_index=_is_idx)
+        _serit_kz = context.get('sok_serit')
+        if _serit_kz:
+            _ter['sok_serit'] = _serit_kz
+        if not _is_idx:
+            try:
+                _breadth_kz = context.get('breadth')
+                if _breadth_kz is not None:
+                    _no_kz, _md_kz, _ = _breadth_kz
+                    _sis_kz = terazi_core.sistemik_gun(_no_kz, _md_kz)
+                    if _sis_kz['aktif']:
+                        _ter['sistemik'] = _sis_kz['serit']
+            except Exception:
+                pass
+        out['terazi'] = _ter
+        out['boga'], out['ayi'] = _ter['boga_w'], _ter['ayi_w']
+        out['guven'] = _ter['guven']
+        out['celiski'] = _ter['celiski']
+        out['tek_sinyal'] = _ter['tek_sinyal']
+    except Exception:
+        pass
+    return out
+
+
+def _compute_kanit_ozeti(ticker, frs=None):
+    """Mevcut tek-hisse API'si; canlı davranışı aynen korunur."""
+    return _build_kanit_ozeti(
+        _collect_kanit_context(ticker, frs=frs))
+
+
+TOPLU_TERAZI_SCHEMA_VERSION = 1
+
+
+def _toplu_terazi_candidate_pool():
+    """Yalnız dar ve ürünce onaylı aday havuzunu kurar; Radar1/Radar2 girmez."""
+    candidates = {}
+
+    def _add(symbol, source):
+        _sym = str(symbol or '').strip()
+        if not _sym:
+            return
+        if ('.IS' not in _sym and not _sym.startswith(
+                ('XU', 'XB', 'XT', 'XY', '^'))
+                and not _sym.endswith('=F') and '-USD' not in _sym):
+            _sym = f"{_sym}.IS"
+        _clean = _sym.upper().replace('.IS', '')
+        _entry = candidates.setdefault(
+            _clean, {'ticker': _sym, 'sources': []})
+        if source not in _entry['sources']:
+            _entry['sources'].append(source)
+
+    for _entry in _compute_goldmine_entries():
+        _add(_entry.get('sembol', _entry.get('sym')), 'goldmine')
+
+    for _state_key, _source in (
+            ('guclu_donus_data', 'guclu_donus'),
+            ('wilder_divergence_data', 'rsi_pozitif_uyumsuzluk'),
+            ('minervini_data', 'minervini')):
+        _df = st.session_state.get(_state_key)
+        if _df is None or not hasattr(_df, 'empty') or _df.empty:
+            continue
+        for _, _row in _df.iterrows():
+            _add(
+                _row.get('Sembol',
+                         _row.get('Hisse', _row.get('Sembol_Raw'))),
+                _source)
+    return list(candidates.values())
+
+
+def _batch_symbol_snapshot(batch_data, ticker):
+    """Master Scan MultiIndex tablosundan tek hissenin günlük fotoğrafını çıkarır."""
+    if batch_data is None or not hasattr(batch_data, 'empty') or batch_data.empty:
+        return pd.DataFrame()
+    try:
+        if isinstance(batch_data.columns, pd.MultiIndex):
+            for _candidate in (
+                    str(ticker),
+                    str(ticker).replace('.IS', ''),
+                    f"{str(ticker).replace('.IS', '')}.IS"):
+                if _candidate in batch_data.columns.get_level_values(0):
+                    return batch_data[_candidate].dropna(how='all').copy()
+            return pd.DataFrame()
+        return batch_data.dropna(how='all').copy()
+    except Exception:
+        return pd.DataFrame()
+
+
+def _toplu_formasyon_map(formasyon_df):
+    """Master Scan'in aynı-v2-motor ChartData çıktısını hisseye bağlar."""
+    out = {}
+    if (formasyon_df is None or not hasattr(formasyon_df, 'empty')
+            or formasyon_df.empty):
+        return out
+    for _, _row in formasyon_df.iterrows():
+        _sym = str(
+            _row.get('Sembol', _row.get('Hisse', ''))
+        ).upper().replace('.IS', '')
+        _chart = _row.get('ChartData')
+        if _sym and isinstance(_chart, dict) and _sym not in out:
+            out[_sym] = _chart
+    return out
+
+
+def _validate_toplu_terazi_payload(payload):
+    """Eski/eksik cache'in yanlış hüküm gibi gösterilmesini engeller."""
+    if not isinstance(payload, dict):
+        return False, "Toplu Terazi verisi yok; Master Scan'i yeniden çalıştırın."
+    if payload.get('schema_version') != TOPLU_TERAZI_SCHEMA_VERSION:
+        return False, "Toplu Terazi önbelleği eski; Master Scan'i yeniden çalıştırın."
+    if payload.get('status') not in ('ready', 'partial'):
+        return False, str(
+            payload.get('message')
+            or "Toplu Terazi hazır değil; Master Scan'i yeniden çalıştırın.")
+    if not isinstance(payload.get('items'), dict):
+        return False, "Toplu Terazi aday tablosu eksik; Master Scan'i yeniden çalıştırın."
+    if not payload.get('as_of'):
+        return False, "Toplu Terazi zaman damgası eksik; Master Scan'i yeniden çalıştırın."
+    return True, ""
+
+
+def _compute_toplu_terazi_snapshot(
+        batch_data, benchmark_df, formasyon_df, category,
+        *, as_of=None, candidates=None, formation_ready=True,
+        breadth=None):
+    """Dar aday havuzuna aynı OHLCV fotoğrafıyla Terazi hükmü üretir."""
+    import time as _tt_time
+    _started = _tt_time.perf_counter()
+    _as_of = as_of or datetime.now(_TZ_ISTANBUL).isoformat()
+    _base = {
+        'schema_version': TOPLU_TERAZI_SCHEMA_VERSION,
+        'status': 'not_ready',
+        'message': '',
+        'as_of': _as_of,
+        'category': str(category or ''),
+        'candidate_policy': [
+            'goldmine', 'guclu_donus',
+            'rsi_pozitif_uyumsuzluk', 'minervini',
+        ],
+        'items': {},
+        'errors': [],
+    }
+    if batch_data is None or not hasattr(batch_data, 'empty') or batch_data.empty:
+        _base['message'] = "Master Scan veri fotoğrafı boş."
+        return _base
+    if benchmark_df is None or not hasattr(benchmark_df, 'empty') or benchmark_df.empty:
+        _base['message'] = "Ortak endeks veri fotoğrafı boş."
+        return _base
+    if not formation_ready:
+        _base['message'] = "Master Scan formasyon fotoğrafı hazır değil."
+        return _base
+
+    _pool = list(candidates) if candidates is not None else _toplu_terazi_candidate_pool()
+    _forms = _toplu_formasyon_map(formasyon_df)
+    _breadth = _piyasa_genisligi_bugun() if breadth is None else breadth
+    _base['candidate_count'] = len(_pool)
+    try:
+        _base['batch_last_bar'] = str(
+            pd.Timestamp(batch_data.index[-1]).isoformat())
+    except Exception:
+        _base['batch_last_bar'] = None
+    try:
+        _base['benchmark_last_bar'] = str(
+            pd.Timestamp(benchmark_df.index[-1]).isoformat())
+    except Exception:
+        _base['benchmark_last_bar'] = None
+
+    for _candidate in _pool:
+        _ticker = str(_candidate.get('ticker', ''))
+        _clean = _ticker.upper().replace('.IS', '')
+        _df = _batch_symbol_snapshot(batch_data, _ticker)
+        if _df is None or _df.empty or len(_df) < 60:
+            _base['errors'].append({
+                'ticker': _ticker, 'reason': 'hisse veri fotoğrafı yetersiz'})
+            continue
+        _snapshot_key = f"{_as_of}:{_clean}"
+        _data_map = {_ticker: _df, "XU100.IS": benchmark_df}
+        try:
+            with use_historical_data_snapshot(
+                    _data_map, strict=True) as _snapshot_audit:
+                _ctx = _collect_kanit_context(
+                    _ticker,
+                    formasyon=_forms.get(_clean),
+                    breadth=_breadth,
+                    snapshot_key=_snapshot_key)
+            if _snapshot_audit['missing']:
+                _missing = sorted(
+                    f"{t}:{i}" for t, i in _snapshot_audit['missing'])
+                _base['errors'].append({
+                    'ticker': _ticker,
+                    'reason': f"fotoğrafta eksik veri: {', '.join(_missing)}"})
+                continue
+            _result = _build_kanit_ozeti(_ctx)
+            if not _ctx.get('ready') or _result.get('terazi') is None:
+                _base['errors'].append({
+                    'ticker': _ticker, 'reason': 'Terazi hükmü üretilemedi'})
+                continue
+            _base['items'][_clean] = {
+                'ticker': _ticker,
+                'sources': list(_candidate.get('sources') or []),
+                'data_as_of': str(pd.Timestamp(_df.index[-1]).isoformat()),
+                'formasyon_snapshot': _forms.get(_clean),
+                'snapshot_reads': sorted({
+                    f"{t}:{i}" for t, i in _snapshot_audit['reads']
+                }),
+                'result': _result,
+            }
+        except Exception as _exc:
+            _base['errors'].append({
+                'ticker': _ticker, 'reason': str(_exc)})
+
+    _base['ready_count'] = len(_base['items'])
+    _base['error_count'] = len(_base['errors'])
+    _base['status'] = 'ready' if not _base['errors'] else 'partial'
+    _base['message'] = (
+        '' if not _base['errors']
+        else f"{len(_base['errors'])} aday eksik kanıt nedeniyle yayımlanmadı.")
+    _base['elapsed_seconds'] = round(
+        _tt_time.perf_counter() - _started, 3)
+    return _base
+
+
 
 
 
@@ -2223,6 +2701,7 @@ if 'liderlik_yolculugu_data' not in st.session_state: st.session_state.liderlik_
 if 'watchlist' not in st.session_state: st.session_state.watchlist = load_watchlist_db()
 if 'accum_data' not in st.session_state: st.session_state.accum_data = None
 if 'minervini_data' not in st.session_state: st.session_state.minervini_data = None
+if 'toplu_terazi_data' not in st.session_state: st.session_state.toplu_terazi_data = None
 if 'sorgu_gecmisi' not in st.session_state: st.session_state.sorgu_gecmisi = []
 if 'son10_reset' not in st.session_state: st.session_state.son10_reset = 0
 
@@ -2258,6 +2737,7 @@ def on_category_change():
         st.session_state.scan_data = None
         st.session_state.radar2_data = None
         st.session_state.liderlik_yolculugu_data = None
+        st.session_state.toplu_terazi_data = None
         st.session_state.accum_data = None
 
 def on_asset_change():
@@ -13100,7 +13580,14 @@ with col_btn:
             my_bar.progress(10, text="📡 Veriler İndiriliyor (Batch Download)...%10")
             # st.cache_data TTL'ini atla — master scan her zaman taze veri çekmeli
             get_batch_data_cached.clear()
-            get_batch_data_cached(scan_list, period="1y")
+            _master_batch_snapshot = get_batch_data_cached(
+                scan_list, period="1y")
+            _master_snapshot_as_of = datetime.now(
+                _TZ_ISTANBUL).isoformat()
+            _master_benchmark_snapshot = get_safe_historical_data(
+                "XU100.IS", period="1y")
+            _master_formasyon_snapshot = pd.DataFrame()
+            _master_formasyon_ready = False
 
             # 1.5 VERİ SANİTY MONITOR (T1 — 8 Haz 2026)
             # 591ad72 doji bug'ı gibi sessiz veri zehirlenmelerini erken yakalar.
@@ -13179,6 +13666,11 @@ with col_btn:
             try:
                 if getattr(scan_pipeline_mod, '_BIRLESIK_ON', False):
                     _bir_all = scan_chart_patterns(scan_list)
+                    _master_formasyon_snapshot = (
+                        _bir_all.copy()
+                        if _bir_all is not None else pd.DataFrame()
+                    )
+                    _master_formasyon_ready = True
                     if _bir_all is not None and not _bir_all.empty and 'ChartData' in _bir_all.columns:
                         _is_bir = _bir_all['ChartData'].apply(
                             lambda d: isinstance(d, dict) and d.get('type') == 'birlesik'
@@ -13307,6 +13799,34 @@ with col_btn:
             except Exception as _gm_e:
                 log_error("master_scan_goldmine_log", _gm_e, _cat)
 
+            # ⚖️ TOPLU TERAZİ (30 Tem 2026) — yalnız dar aday havuzu.
+            # Aynı Master Scan OHLCV + XU100 + v2 formasyon fotoğrafı bütün oy
+            # motorlarına zorunlu verilir; eksik kanıtlı aday yayımlanmaz.
+            my_bar.progress(
+                99, text="⚖️ Dar aday havuzu için Toplu Terazi hazırlanıyor...%99")
+            try:
+                st.session_state.toplu_terazi_data = (
+                    _compute_toplu_terazi_snapshot(
+                        _master_batch_snapshot,
+                        _master_benchmark_snapshot,
+                        _master_formasyon_snapshot,
+                        _cat,
+                        as_of=_master_snapshot_as_of,
+                        formation_ready=_master_formasyon_ready,
+                    )
+                )
+            except Exception as _tt_exc:
+                st.session_state.toplu_terazi_data = {
+                    'schema_version': TOPLU_TERAZI_SCHEMA_VERSION,
+                    'status': 'not_ready',
+                    'message': f"Toplu Terazi üretilemedi: {_tt_exc}",
+                    'as_of': _master_snapshot_as_of,
+                    'category': str(_cat),
+                    'items': {},
+                    'errors': [],
+                }
+                log_error("master_scan_toplu_terazi", _tt_exc, _cat)
+
             # 🔄 patron.db → VPS SYNC (19 Haz 2026 · 1 Tem 2026 GÜVENLİ-SNAPSHOT fix) — bot DB
             # köprüsü (smr_core kanıt katmanı) taze kalsın. SADECE lokal Windows admin (os.name=='nt').
             # ⚠️ ESKİ: ham `scp patron.db` CANLI dosyayı kopyalıyordu → SQLite yarım-tutarsız imaj
@@ -13418,6 +13938,7 @@ with col_btn:
                 "confluence_hits":          st.session_state.confluence_hits,
                 "golden_pattern_data":      st.session_state.golden_pattern_data,
                 "erken_radar_data":         st.session_state.get('erken_radar_data'),
+                "toplu_terazi_data":         st.session_state.get('toplu_terazi_data'),
             }
             # Önce tüm snapshot'ı bir arada dene
             _save_ok = False
@@ -18890,7 +19411,7 @@ def _render_left_col():
                 'wilder_divergence_data',
                 'harmonic_confluence_data','accum_data','minervini_data',
                 'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data',
-                'golden_pattern_data']:
+                'golden_pattern_data','toplu_terazi_data']:
         if _k not in st.session_state: st.session_state[_k] = None
     
     # ── STARTUP CACHE RESTORE (piyasa dışı saatlerde otomatik yükle) ─────────
@@ -20115,252 +20636,6 @@ def _render_tavan_adaylari_panel():
 with col_left:
     with st.container(height=2500, border=False):
         _render_left_col()
-
-
-@st.cache_data(ttl=1800, show_spinner=False)
-def _piyasa_genisligi_bugun():
-    """1c PİYASA-ŞOKU (18 Tem 2026) — bugünkü piyasa genişliği: veriler/ parquet'lerinden
-    her hissenin son 2 kapanışı. Karar terazi_core.sistemik_gun'da (saf hesap); burası
-    SADECE veri toplar. Sunucu-geneli 30 dk cache. Döner: (neg_oran%, medyan%, n)."""
-    try:
-        import glob as _sg_glob
-        from collections import Counter as _sg_counter
-        rows = []
-        for _f in _sg_glob.glob(os.path.join(CACHE_DIR, "*_1d.parquet")):
-            _sym = os.path.basename(_f).replace("_1d.parquet", "")
-            if _sym.startswith(("XU", "^")) or "=" in _sym or "-" in _sym:
-                continue
-            try:
-                _c = pd.read_parquet(_f, columns=["Close"])["Close"].astype(float)
-                if len(_c) < 2:
-                    continue
-                _r = (_c.iloc[-1] / _c.iloc[-2] - 1.0) * 100.0
-                if abs(_r) > 11:   # bölünme/limit-dışı artefakt (ölçüm scriptiyle aynı filtre)
-                    continue
-                rows.append((_c.index[-1].date(), float(_r)))
-            except Exception:
-                continue
-        if len(rows) < 300:
-            return None, None, len(rows)
-        # Bayat parquet koruması: en yaygın "son bar günü" hangisiyse sadece o günü say.
-        _gun = _sg_counter(d for d, _ in rows).most_common(1)[0][0]
-        _gr = pd.Series([r for d, r in rows if d == _gun])
-        if len(_gr) < 300:
-            return None, None, int(len(_gr))
-        return float((_gr < 0).mean() * 100.0), float(_gr.median()), int(len(_gr))
-    except Exception:
-        return None, None, 0
-
-
-def _empty_kanit_ozeti():
-    """Kanıt özeti için tek, davranış-koruyan boş başlangıç sözlüğü."""
-    return {'skor': None, 'label': 'kanıt yok', 'n_scanner': 0, 'best': '',
-            'guven': None, 'celiski': False, 'boga': 0, 'ayi': 0,
-            'tek_sinyal': False, 'terazi': None}
-
-
-def _collect_kanit_context(ticker, frs=None):
-    """Tek hisse güncel KARNE PUANI (0-100) + GÜVEN/ÇELİŞKİ ölçer.
-    - Karne puanı = hissenin yakalandığı en güçlü pozitif karneli taramanın veri-temelli puanı.
-      (29 Haz 2026: çakışma bonusu KALDIRILDI — ölçüm çakışmanın kazandırmadığını gösterdi.)
-    - Güven = boğa-diyen vs ayı-diyen sinyal dengesi; ikisi de varsa 'çelişki'.
-    4 Tem 2026 revizyon: (1) tek oydan %100 üretilmez → 'tek_sinyal' bayrağı,
-    (2) ayı tarafına simetrik kaynaklar (Fırsat Radarı fail + ayı formasyonu),
-    (3) ICT bias YARIM oy (ölçülmemiş sinyal — Eylül karnesine kadar).
-    frs: panel zaten hesapladıysa _firsat_radar_single sonucu (çift hesap olmasın).
-    Vitrin hesabını (_compute_goldmine_entries) yeniden kullanır — verimli."""
-    out = _empty_kanit_ozeti()
-    try:
-        _tc = str(ticker).upper().replace('.IS', '')
-        ent = next((e for e in _compute_goldmine_entries() if e['sym'].upper() == _tc), None)
-        if ent is not None:
-            out['n_scanner'] = int(ent.get('family_count', ent.get('extra', 0) + 1))
-            out['best'] = ent.get('scanner', '')
-            if ent.get('unmeasured'):
-                out['label'] = 'kanıt bekliyor'
-            else:
-                # Çakışma bonusu KALDIRILDI (29 Haz 2026): 12.779 örnekli ölçüm → çakışma
-                # getiriyi artırmıyor, hafif düşürüyor. Tek en güçlü kanıtın puanı kalır.
-                out['skor'] = min(int(ent.get('score', 0)), 100)
-                out['label'] = 'kanıtlı'
-        # ── 17 Tem 2026 REFORM 1a: oy sayımı terazi_core'a taşındı (iki sınıf oy:
-        # ölçülmüş tam / ölçülmemiş yarım ◐). İlke: HAM sinyal oy verir, türev skor VERMEZ.
-        _votes = []
-        if out['skor'] and out['n_scanner'] > 0:           # pozitif karneli kurulumlar boğa lehine
-            _votes.append(terazi_core.mk_vote(
-                "Pozitif karneli tarama ailesi", 'boga', float(out['n_scanner']), True,
-                f"{out['n_scanner']} bağımsız pozitif ailede (en güçlü: {out['best']}, puan {out['skor']})", prio=7))
-        # 18 Tem 2026 (1b ŞEMSİYE) — kırmızı bayraklar artık senaryo-özel ölçülmüş oy:
-        # D4/D5 karneli şemsiye (terazi_core.semsiye_votes), bilinmeyen id jenerik oy.
-        # Kaynak: önce Master Scan batch df'i, yoksa _er_single_cache (restart dayanıklı).
-        _rf_ids = []
-        _er = st.session_state.get('erken_radar_data')
-        if _er is not None and hasattr(_er, 'empty') and not _er.empty and {'Sembol', 'Role'} <= set(_er.columns):
-            _ser = _er['Sembol'].astype(str).str.upper()
-            _rf_rows = _er[((_ser == str(ticker).upper()) | (_ser == _tc)) & (_er['Role'] == 'red_flag')]
-            if 'ScenarioId' in _rf_rows.columns:
-                _rf_ids = [str(x) for x in _rf_rows['ScenarioId'].tolist()]
-            else:
-                _rf_ids = ['?'] * len(_rf_rows)
-        if not _rf_ids:
-            _erc = st.session_state.get('_er_single_cache', {}).get(ticker) \
-                or st.session_state.get('_er_single_cache', {}).get(_tc)
-            if _erc:
-                _rf_ids = [str((x or {}).get('id', '?')) for x in (_erc.get('red_flags') or [])]
-        if _rf_ids:
-            _sems = terazi_core.semsiye_votes(_rf_ids)
-            _votes.extend(_sems)
-            _diger_rf = len(_rf_ids) - len(_sems)
-            if _diger_rf > 0:
-                _votes.append(terazi_core.mk_vote(
-                    "Erken Radar kırmızı bayrak", 'ayi', float(_diger_rf), True,
-                    f"{_diger_rf} kırmızı-bayrak senaryosu aktif", prio=7))
-        # Harmonik Confluence araştırma/gözlem katmanındadır; boğa veya ayı oyu vermez.
-        # (a) Fırsat Radarı başarısız kırılım = ayı oyu (panel frs geçirir)
-        if isinstance(frs, dict) and frs.get('kutu') == 'kirdi' and frs.get('durum') == 'fail':
-            _votes.append(terazi_core.mk_vote(
-                "Başarısız kırılım", 'ayi', 1.0, True,
-                "Fırsat Radarı: boyun çizgisi kırıldı ama fiyat geri alındı. Kırılıp "
-                "tutunamayan seviye, alıcıların tuzağa düştüğü görüntüdür", prio=7))
-        # (b) Oturumda tespit edilmiş AYI formasyonu (İkili Tepe M / Yükselen Kama)
-        try:
-            _fp = st.session_state.get('_formasyon_chart_data')
-            _fptk = str(st.session_state.get('_formasyon_ticker', '')).upper().replace('.IS', '')
-            # BİRLEŞİK MOTOR: alçalan üçgen (dtri) = ayı formasyonu (eski dtriangle ile aynı oy)
-            _fp_bear = (_fp and (_fp.get('type') in ('double_top', 'dtriangle')
-                                 or (_fp.get('type') == 'wedge' and _fp.get('kind') == 'rising')
-                                 or (_fp.get('type') == 'birlesik' and _fp.get('shape') == 'dtri')))
-            if _fp and _fptk == _tc and _fp_bear:
-                    _ftyp = {"double_top": "İkili Tepe (M)", "dtriangle": "Alçalan Üçgen"}.get(
-                        _fp.get('type'), "Alçalan Üçgen" if _fp.get('shape') == 'dtri' else "Yükselen Kama")
-                    _votes.append(terazi_core.mk_vote(
-                        "Ayı formasyonu", 'ayi', 1.0, True,
-                        f"Grafikte {_ftyp} oluşuyor — ayı formasyonu. Boyun çizgisi "
-                        f"kırılırsa görüntü teyide döner; şimdilik izlenen risk", prio=8))
-        except Exception:
-            pass
-        # ICT araştırma/gözlem katmanındadır; sinyal terazisine yarım oy dâhil vermez.
-        # HAM gösterge oyları (RSI uç / CMF dual / SFP / yabancı streak) —
-        # tek kaynak _compute_signal_features; karne metinleri terazi_core'da.
-        _is_idx = str(ticker).upper().startswith(('XU', 'XB', 'XT', 'XY', '^')) or str(ticker).upper().endswith('=F')
-        try:
-            _feat_kz = _compute_signal_features(ticker) or {}
-            _votes.extend(terazi_core.votes_from_features(_feat_kz, is_index=_is_idx))
-        except Exception:
-            pass
-        # 3b AŞAMA 3 (17 Tem 2026, onaylı) — 6-oy sisteminin kalan üyeleri
-        # (hacim/OBV/yapı/MFI) teraziye bağlandı. RSI+CMF alınmaz (zaten terazide —
-        # tekilleştirme, ilke 2). Pack cache'li (ttl 600); yoksa sessiz geç.
-        try:
-            _pack_kz = compute_genel_ozet_pack(ticker, st.session_state.get("bist_market_status", {}))
-            if _pack_kz:
-                _votes.extend(terazi_core.votes_from_genel_ozet({
-                    'hacim': _pack_kz.get('_sig_hacim'), 'obv': _pack_kz.get('_sig_obv'),
-                    'yapi': _pack_kz.get('_sig_yapi'), 'mfi': _pack_kz.get('_sig_mfi')}))
-        except Exception:
-            pass
-        # 23 Tem 2026 — ÇELİŞKİ FİX: terazi "Güçlü Alıcı"yı ve "Endeksten Sıyrılıyor"u
-        # görmüyordu (kullanıcı yakaladı). GENEL ÖZET panelinin GÖRDÜĞÜ bu iki akıllı-para
-        # sinyali AYNI fonksiyonlarla hesaplanıp teraziye bağlanır (tek kaynak). Endeks/
-        # emtia/kripto atlanır (rel-OBV/UDVR hacme dayanır). df cache hit.
-        try:
-            _tc_up = str(ticker).upper()
-            _flow_ok = not (_tc_up.startswith(('XU', 'XB', 'XT', 'XY', '^'))
-                            or _tc_up.endswith('=F') or '-USD' in _tc_up)
-            if _flow_ok:
-                _df_flow = get_safe_historical_data(ticker, period="1y")
-                if _df_flow is not None and len(_df_flow) >= 25 and 'Volume' in _df_flow.columns:
-                    _rel_st = _udvr_st = None
-                    try:
-                        _bench_flow = get_safe_historical_data("XU100.IS", period="3mo")
-                        if _bench_flow is not None and len(_bench_flow) >= 25:
-                            _rr = compute_relative_obv_state(_df_flow, _bench_flow, lookback=20)
-                            _rel_st = _rr.get('state') if _rr else None
-                    except Exception:
-                        pass
-                    try:
-                        _ur = compute_updown_volume_ratio(_df_flow, period=20)
-                        if _ur:
-                            _udvr_st = _ur.get('climax') or _ur.get('state')
-                    except Exception:
-                        pass
-                    _votes.extend(terazi_core.votes_from_smart_flow(
-                        rel_state=_rel_st, udvr_state=_udvr_st))
-        except Exception:
-            pass
-        # ŞOK PAKETİ (17 Tem 2026 akşam, onaylı) — sert-gün karakteri:
-        # hacimli şok = ölçülmüş ayı oyu · hacimsiz/yukarı/endeks şok = sadece şerit.
-        _serit_kz = None
-        try:
-            _df_kz = get_safe_historical_data(ticker, period="1y")
-            _sv_kz, _serit_kz = terazi_core.sok_degerlendir(
-                terazi_core.gun_karakteri(_df_kz), is_index=_is_idx)
-            _votes.extend(_sv_kz)
-        except Exception:
-            pass
-        # 1c PİYASA-ŞOKU girdisi de burada toplanır; karar saf kurucuda verilir.
-        _breadth_kz = None
-        if not _is_idx:
-            try:
-                _breadth_kz = _piyasa_genisligi_bugun()
-            except Exception:
-                pass
-
-        return {
-            'ready': True,
-            'base': out,
-            'votes': _votes,
-            'is_index': _is_idx,
-            'sok_serit': _serit_kz,
-            'breadth': _breadth_kz,
-        }
-    except Exception:
-        return {'ready': False, 'base': out}
-
-
-def _build_kanit_ozeti(context):
-    """Hazır kanıt bağlamından hüküm üretir; oturum/dosya/veri erişimi yapmaz."""
-    context = context if isinstance(context, dict) else {}
-    out = dict(context.get('base') or _empty_kanit_ozeti())
-    if not context.get('ready'):
-        return out
-    try:
-        _is_idx = bool(context.get('is_index'))
-        _ter = terazi_core.build_terazi(
-            list(context.get('votes') or []), is_index=_is_idx)
-        _serit_kz = context.get('sok_serit')
-        if _serit_kz:
-            _ter['sok_serit'] = _serit_kz
-
-        # 1c PİYASA-ŞOKU MODU (18 Tem 2026) — sistemik günde hisse hükmü ASKIYA alınır.
-        # Eşikler ölçümden (terazi_core.sistemik_gun); UI seviyesi, AI prompt'a GİRMEZ.
-        # Endekste uygulanmaz — endeksin kendi şok şeridi zaten var.
-        if not _is_idx:
-            try:
-                _breadth_kz = context.get('breadth')
-                if _breadth_kz is not None:
-                    _no_kz, _md_kz, _ = _breadth_kz
-                    _sis_kz = terazi_core.sistemik_gun(_no_kz, _md_kz)
-                    if _sis_kz['aktif']:
-                        _ter['sistemik'] = _sis_kz['serit']
-            except Exception:
-                pass
-
-        out['terazi'] = _ter
-        out['boga'], out['ayi'] = _ter['boga_w'], _ter['ayi_w']
-        # ⚠ guven SEMANTİĞİ DEĞİŞTİ (17 Tem 2026): eskiden "boğa payı" idi,
-        # artık "KAZANAN tarafın payı" (hükme güven). analysis_log serisinde kırılma noktası.
-        out['guven'] = _ter['guven']
-        out['celiski'] = _ter['celiski']
-        out['tek_sinyal'] = _ter['tek_sinyal']
-    except Exception:
-        pass
-    return out
-
-
-def _compute_kanit_ozeti(ticker, frs=None):
-    """Mevcut tek-hisse API'si: aynı toplayıcı + saf kurucu, aynı dönüş sözlüğü."""
-    return _build_kanit_ozeti(_collect_kanit_context(ticker, frs=frs))
 
 
 def _render_ekran_v2_deneme(ticker):

@@ -890,6 +890,181 @@ def _terazi_probe(ns, stock_df, bench_df):
     return rec
 
 
+def _toplu_terazi_probe(ns, stock_df, bench_df):
+    """Faz 3: tek fotoğraf, formasyon paritesi ve eski-cache koruması."""
+    import importlib
+    import pandas as pd
+
+    primary = {
+        "Sembol": "GLDN.IS", "ScenarioId": "A1",
+        "Role": "primary", "Guc": "güçlü",
+    }
+    strict_state = _StrictSessionState(_terazi_session([primary]))
+    st_mod = ns["st"]
+    had_session = "session_state" in st_mod.__dict__
+    old_session = st_mod.__dict__.get("session_state")
+    st_mod.session_state = strict_state
+
+    had_schema = "TOPLU_TERAZI_SCHEMA_VERSION" in ns
+    old_schema = ns.get("TOPLU_TERAZI_SCHEMA_VERSION")
+    ns["TOPLU_TERAZI_SCHEMA_VERSION"] = 1
+    fixed_features = {
+        "f_rsi": 20.0, "f_cmf_dual": "strong_pos",
+        "f_yabanci_streak": None,
+        "f_sfp_bull": None, "f_sfp_bear": None,
+    }
+    mapping = {
+        "get_scanner_scores": lambda: {"er_A1": {"score": 90}},
+        "_compute_signal_features": lambda _t: dict(fixed_features),
+        "_compute_terazi_signal_features": lambda _t: dict(fixed_features),
+        "compute_genel_ozet_pack": lambda *a, **k: {
+            "_sig_hacim": 1, "_sig_obv": 1,
+            "_sig_yapi": 1, "_sig_mfi": 1,
+        },
+    }
+    saved = _install_patches(ns, mapping)
+    try:
+        batch = pd.concat({"GLDN.IS": stock_df.copy()}, axis=1)
+        formasyon = pd.DataFrame([{
+            "Sembol": "GLDN.IS",
+            "ChartData": {
+                "type": "birlesik", "shape": "dtri",
+                "state": "YAKIN", "level": 100.0,
+            },
+        }])
+        fixed_as_of = "2026-07-30T18:20:00+03:00"
+        candidates = [{
+            "ticker": "GLDN.IS",
+            "sources": ["goldmine", "rsi_pozitif_uyumsuzluk"],
+        }]
+        breadth = (45.0, -0.2, 500)
+        payload = ns["_compute_toplu_terazi_snapshot"](
+            batch, bench_df.copy(), formasyon, "BIST 500 ",
+            as_of=fixed_as_of, candidates=candidates,
+            formation_ready=True, breadth=breadth)
+
+        no_formation_payload = ns["_compute_toplu_terazi_snapshot"](
+            batch, bench_df.copy(), pd.DataFrame(), "BIST 500 ",
+            as_of=fixed_as_of, candidates=candidates,
+            formation_ready=False, breadth=breadth)
+        if no_formation_payload.get("status") != "not_ready":
+            raise AssertionError(
+                "Formasyon fotoğrafı olmadan Toplu Terazi yayımlandı")
+
+        partial_payload = ns["_compute_toplu_terazi_snapshot"](
+            batch, bench_df.copy(), formasyon, "BIST 500 ",
+            as_of=fixed_as_of,
+            candidates=candidates + [{
+                "ticker": "MISS.IS", "sources": ["guclu_donus"],
+            }],
+            formation_ready=True, breadth=breadth)
+        if (partial_payload.get("status") != "partial"
+                or "MISS" in partial_payload.get("items", {})
+                or partial_payload.get("error_count") != 1):
+            raise AssertionError(
+                "Eksik fotoğraflı aday Toplu Terazi'den güvenle ayrılmadı")
+
+        ok, reason = ns["_validate_toplu_terazi_payload"](payload)
+        if not ok:
+            raise AssertionError(f"Toplu Terazi geçerli payload reddedildi: {reason}")
+        old_ok, old_reason = ns["_validate_toplu_terazi_payload"]({})
+        if old_ok or "yeniden" not in old_reason.lower():
+            raise AssertionError("Eski/eksik Toplu Terazi cache'i durdurulmadı")
+        bad_schema = dict(payload)
+        bad_schema["schema_version"] = 0
+        schema_ok, _ = ns["_validate_toplu_terazi_payload"](bad_schema)
+        if schema_ok:
+            raise AssertionError("Eski Toplu Terazi şeması kabul edildi")
+
+        item = payload.get("items", {}).get("GLDN")
+        if not item:
+            raise AssertionError(
+                f"Toplu Terazi adayı yayımlanmadı: {payload.get('errors')}")
+
+        snapshot_map = {
+            "GLDN.IS": stock_df.copy(),
+            "XU100.IS": bench_df.copy(),
+        }
+        with ns["use_historical_data_snapshot"](
+                snapshot_map, strict=True) as direct_audit:
+            direct_context = ns["_collect_kanit_context"](
+                "GLDN.IS",
+                formasyon=formasyon.iloc[0]["ChartData"],
+                breadth=breadth,
+                snapshot_key=f"{fixed_as_of}:GLDN")
+        direct_result = ns["_build_kanit_ozeti"](direct_context)
+        item_fp = _terazi_fingerprint(item["result"])
+        direct_fp = _terazi_fingerprint(direct_result)
+        if item_fp != direct_fp:
+            raise AssertionError(
+                "Aynı veri fotoğrafı Toplu ve tek-hisse yolunda farklı Terazi üretti")
+
+        vote_names = {
+            v.get("ad") for v in item_fp.get("terazi", {}).get("votes", [])
+        }
+        if "Ayı formasyonu" not in vote_names:
+            raise AssertionError("Master Scan v2 formasyon oyu Toplu Terazi'ye girmedi")
+        if direct_audit["missing"]:
+            raise AssertionError(
+                f"Doğrudan paritede fotoğraf girdisi eksik: {direct_audit['missing']}")
+
+        module_closes = {}
+        data_layer_mod = importlib.import_module("data_layer")
+        module_refs = {
+            "data_layer": data_layer_mod,
+            "scan_pipeline": importlib.import_module("scan_pipeline"),
+            "analysis_core": importlib.import_module("analysis_core"),
+            "ict_core": importlib.import_module("ict_core"),
+        }
+        with data_layer_mod.use_historical_data_snapshot(
+                snapshot_map, strict=True) as module_audit:
+            for module_name, module in module_refs.items():
+                got = module.get_safe_historical_data(
+                    "GLDN.IS", period="1y")
+                module_closes[module_name] = round(
+                    float(got["Close"].iloc[-1]), 6)
+            missing_guard = False
+            try:
+                data_layer_mod.get_safe_historical_data(
+                    "__GOLDEN_MISSING__.IS", period="1y")
+            except KeyError:
+                missing_guard = True
+        if not missing_guard or not module_audit["missing"]:
+            raise AssertionError(
+                "Donmuş fotoğrafta olmayan sembol canlı veriye kaçtı")
+        if len(set(module_closes.values())) != 1:
+            raise AssertionError(
+                f"Modüller aynı fotoğrafı okumadı: {module_closes}")
+
+        return {
+            "schema_version": payload.get("schema_version"),
+            "status": payload.get("status"),
+            "as_of": payload.get("as_of"),
+            "candidate_count": payload.get("candidate_count"),
+            "ready_count": payload.get("ready_count"),
+            "error_count": payload.get("error_count"),
+            "data_as_of": item.get("data_as_of"),
+            "sources": item.get("sources"),
+            "snapshot_reads": item.get("snapshot_reads"),
+            "result": item_fp,
+            "same_data_parity": True,
+            "formation_vote": True,
+            "old_cache_guard": True,
+            "missing_data_guard": missing_guard,
+            "module_closes": module_closes,
+        }
+    finally:
+        _restore_patches(saved)
+        if had_session:
+            st_mod.session_state = old_session
+        else:
+            st_mod.__dict__.pop("session_state", None)
+        if had_schema:
+            ns["TOPLU_TERAZI_SCHEMA_VERSION"] = old_schema
+        else:
+            ns.pop("TOPLU_TERAZI_SCHEMA_VERSION", None)
+
+
 def snapshot(ns):
     import pandas as pd
     bench = pd.read_parquet(os.path.join(FIX_DIR, f"{BENCH}_frozen.parquet"))
@@ -904,10 +1079,12 @@ def snapshot(ns):
             except Exception as e:
                 rec[name] = f"__ERROR__ {type(e).__name__}: {str(e)[:160]}"
         out[t] = rec
-    # 0a/0b (30 Tem 2026): değiştirilmemiş üretim Terazisi; dış dünya donmuş,
-    # session_state katı, oy motorları gerçektir. Cap-5 mevcut kusur olarak korunur.
+    # 0a/0b + Faz 1/2: üretim Terazisi; dış dünya donmuş, session_state katı,
+    # oy motorları gerçek, karar ham aday listesini görür.
     stock = pd.read_parquet(os.path.join(FIX_DIR, f"{TICKERS[0]}_frozen.parquet"))
     out["__TERAZI__"] = _terazi_probe(ns, stock, bench)
+    out["__TOPLU_TERAZI__"] = _toplu_terazi_probe(
+        ns, stock.copy(), bench.copy())
     return out
 
 
@@ -950,10 +1127,16 @@ def main():
                   f"ayı={ter['ayi_w']} · oy={ter['n_votes']} · "
                   f"çelişki={ter['celiski']}")
         print("✅ TERAZİ-ONLY: 5/5 senaryo sözleşmesi geçti.")
+        batch_rec = _toplu_terazi_probe(ns, stock.copy(), bench.copy())
+        print(
+            "  ✅ Toplu Terazi: "
+            f"durum={batch_rec['status']} · aday={batch_rec['ready_count']} · "
+            f"parite={batch_rec['same_data_parity']} · "
+            f"formasyon={batch_rec['formation_vote']}")
         return 0
     n_funcs = sum(1 for _, f in TARGETS)
     print(f"Fotoğraf çekiliyor: {len(TICKERS)} hisse × {n_funcs} fonksiyon "
-          f"+ 5 Terazi senaryosu...")
+          f"+ 5 Terazi senaryosu + 1 Toplu Terazi sözleşmesi...")
     now = snapshot(ns)
 
     n_err = sum(1 for t in now.values() for v in t.values()
@@ -984,7 +1167,8 @@ def main():
             print(f"  ... +{len(diffs)-40} fark daha")
         print("\nBu fark BİLEREK mi yapıldı? Evet ise açıkla ve 'python golden_record.py --init' ile güncelle.")
         return 1
-    print(f"✅ BİREBİR AYNI — {len(TICKERS)}×{n_funcs} ölçüm + 5 Terazi senaryosu, "
+    print(f"✅ BİREBİR AYNI — {len(TICKERS)}×{n_funcs} ölçüm + 5 Terazi senaryosu "
+          f"+ 1 Toplu Terazi sözleşmesi, "
           f"sıfır fark. (hata kaydı: {n_err})")
     return 0
 

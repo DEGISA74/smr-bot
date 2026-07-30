@@ -19,6 +19,8 @@ import io
 import json
 import time
 import math
+from contextlib import contextmanager
+from contextvars import ContextVar
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -602,6 +604,36 @@ def _normalize_bist_ticker(ticker: str) -> str:
     if ticker in _BIST_TICKER_SET:
         return f"{ticker}.IS"
     return ticker
+
+
+_HISTORICAL_DATA_SNAPSHOT = ContextVar(
+    "historical_data_snapshot", default=None)
+
+
+@contextmanager
+def use_historical_data_snapshot(data_by_ticker, strict=True):
+    """Toplu karar sırasında tüm modüllere aynı donmuş günlük veriyi verir.
+
+    Bağlam dışında veri katmanı aynen eski canlı/cache yolunda çalışır. ``strict``
+    açıkken fotoğrafta olmayan bir sembol sessizce canlı veriye düşmez; eksik
+    sembol ``missing`` kümesine yazılır ve çağrı hata verir.
+    """
+    normalized = {}
+    for ticker, df in (data_by_ticker or {}).items():
+        if df is None:
+            continue
+        normalized[(_normalize_bist_ticker(ticker), "1d")] = df
+    state = {
+        "data": normalized,
+        "strict": bool(strict),
+        "reads": [],
+        "missing": set(),
+    }
+    token = _HISTORICAL_DATA_SNAPSHOT.set(state)
+    try:
+        yield state
+    finally:
+        _HISTORICAL_DATA_SNAPSHOT.reset(token)
 
 
 # --------------------------------------------------------------------
@@ -2073,6 +2105,17 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
     # 16 Haz 2026 — bare BIST ticker (örn. "BERA") gelirse `.IS` ekle.
     # Yoksa cache yanlış isimle yazılır (BERA_1d.parquet) + İsyatirim/borsapy bypass olur.
     ticker = _normalize_bist_ticker(ticker)
+    _snapshot_ctx = _HISTORICAL_DATA_SNAPSHOT.get()
+    if _snapshot_ctx is not None:
+        _snapshot_key = (ticker, interval)
+        _snapshot_ctx["reads"].append(_snapshot_key)
+        if _snapshot_key in _snapshot_ctx["data"]:
+            _snapshot_df = _snapshot_ctx["data"][_snapshot_key]
+            return _snapshot_df.copy(deep=True) if hasattr(_snapshot_df, "copy") else _snapshot_df
+        _snapshot_ctx["missing"].add(_snapshot_key)
+        if _snapshot_ctx["strict"]:
+            raise KeyError(
+                f"Donmuş veri fotoğrafında sembol yok: {ticker} ({interval})")
     # 2 Tem 2026 — ÖLÜ/DELISTED sembol → ağ denemesi YOK, diskteki son bilinen veriyi döndür.
     if ticker.replace(".IS", "") in _DEAD_SYMBOLS:
         try:

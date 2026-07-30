@@ -1514,10 +1514,14 @@ def compute_weekly_frame(ticker):
     }
 
 
-def compute_genel_ozet_pack(_ticker, _gs_bms):
+def compute_genel_ozet_pack(_ticker, _gs_bms, snapshot_key=None):
     """Sarmalayıcı — veri parmak izini cache anahtarına ekler (13 Tem 2026,
-    cache tutarlılığı; imza değişmedi). Gövde: _compute_genel_ozet_pack_cached."""
-    return _compute_genel_ozet_pack_cached(_ticker, _gs_bms, _data_token(_ticker))
+    cache tutarlılığı; mevcut çağrı biçimi değişmedi). Gövde: _compute_genel_ozet_pack_cached."""
+    _token = (
+        f"toplu_terazi:{snapshot_key}"
+        if snapshot_key is not None else _data_token(_ticker)
+    )
+    return _compute_genel_ozet_pack_cached(_ticker, _gs_bms, _token)
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -1537,7 +1541,11 @@ def _compute_genel_ozet_pack_cached(ticker, gs_bms, dtok):
     Alt cizgisiz adlar anahtara girer; govde ici adlar asagida aliaslanir."""
     _ticker, _gs_bms, _dtok = ticker, gs_bms, dtok
     try:
-        _gs_dna = calculate_price_action_dna(_ticker)
+        _snapshot_key = (
+            _dtok if str(_dtok).startswith("toplu_terazi:") else None
+        )
+        _gs_dna = calculate_price_action_dna(
+            _ticker, snapshot_key=_snapshot_key)
 
         # Ardışık mum sayısı
         _gs_consec_label = ""

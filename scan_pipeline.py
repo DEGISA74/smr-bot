@@ -80,6 +80,71 @@ _SCAN_LOG_SKIP = set()
 HARMONIK_HIDE_WEAK = False
 
 
+def _terazi_rsi14_value(df):
+    """Terazi ve tam feature yolu için tek RSI-14 formülü."""
+    try:
+        c = df['Close']
+        delta = c.diff()
+        gain = delta.where(delta > 0, 0).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return round(float(rsi.iloc[-1]), 1)
+    except Exception:
+        return None
+
+
+def _terazi_cmf_dual_state(df):
+    """Terazi ve tam feature yolu için tek CMF çift-pencere durumu."""
+    try:
+        cmf5 = float(compute_cmf(df, period=5))
+        cmf20 = float(compute_cmf(df, period=20))
+        if cmf5 > 0.05 and cmf20 > 0.05:
+            return 'strong_pos'
+        if cmf5 < -0.05 and cmf20 < -0.05:
+            return 'strong_neg'
+        if cmf5 > 0 and cmf20 < 0:
+            return 'turning_up'
+        if cmf5 < 0 and cmf20 > 0:
+            return 'turning_down'
+        if cmf20 > 0.05:
+            return 'pos'
+        if cmf20 < -0.05:
+            return 'neg'
+        return 'neutral'
+    except Exception:
+        return None
+
+
+def _compute_terazi_signal_features(ticker: str) -> dict:
+    """Terazi'nin gerçekten tükettiği dört ham girdiyi tek fotoğraftan üretir."""
+    ticker = _normalize_bist_ticker(ticker)
+    out = {
+        'f_rsi': None, 'f_cmf_dual': None,
+        'f_yabanci_streak': None,
+        'f_sfp_bull': None, 'f_sfp_bear': None,
+    }
+    try:
+        df = get_safe_historical_data(ticker, period="1y")
+        if df is None or len(df) < 60:
+            return out
+        out['f_rsi'] = _terazi_rsi14_value(df)
+        out['f_cmf_dual'] = _terazi_cmf_dual_state(df)
+        try:
+            out['f_sfp_bull'], out['f_sfp_bear'] = compute_sfp_flags(df)
+        except Exception:
+            pass
+        try:
+            _mkk_y = _compute_mkk_yabanci_signals(ticker)
+            if _mkk_y.get('f_yabanci_streak') is not None:
+                out['f_yabanci_streak'] = _mkk_y['f_yabanci_streak']
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return out
+
+
 def _compute_signal_features(ticker: str) -> dict:
     """Sinyal anında hisseye özel 7 feature snapshot. Cache 10dk."""
     ticker = _normalize_bist_ticker(ticker)   # 24 Haz: çıplak sembol (EREGL→EREGL.IS) — Yahoo 404 selini/donmayı önler
@@ -162,26 +227,11 @@ def _compute_signal_features(ticker: str) -> dict:
             if h52 > l52:
                 out['f_52h_pos'] = round((cv - l52) / (h52 - l52) * 100, 1)
         except Exception: pass
-        # 2) f_rsi — 14g
-        try:
-            delta = c.diff()
-            gain = delta.where(delta > 0, 0).rolling(14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs))
-            out['f_rsi'] = round(float(rsi.iloc[-1]), 1)
-        except Exception: pass
+        # 2) f_rsi — Terazi ile aynı tek kaynak
+        out['f_rsi'] = _terazi_rsi14_value(df)
         # 3) f_cmf_dual — 5g + 20g state machine (7 state)
         try:
-            cmf5  = float(compute_cmf(df, period=5))    # compute_cmf float döner, .iloc[-1] YOK (12 Haz fix)
-            cmf20 = float(compute_cmf(df, period=20))
-            if cmf5 > 0.05 and cmf20 > 0.05:    out['f_cmf_dual'] = 'strong_pos'
-            elif cmf5 < -0.05 and cmf20 < -0.05: out['f_cmf_dual'] = 'strong_neg'
-            elif cmf5 > 0 and cmf20 < 0:         out['f_cmf_dual'] = 'turning_up'
-            elif cmf5 < 0 and cmf20 > 0:         out['f_cmf_dual'] = 'turning_down'
-            elif cmf20 > 0.05:                    out['f_cmf_dual'] = 'pos'
-            elif cmf20 < -0.05:                   out['f_cmf_dual'] = 'neg'
-            else:                                 out['f_cmf_dual'] = 'neutral'
+            out['f_cmf_dual'] = _terazi_cmf_dual_state(df)
             # Spike dominance bit 2 — bugünkü money flow vol / 5g toplam money flow vol
             try:
                 _rng_cmf = (df['High'] - df['Low']).replace(0, np.nan)

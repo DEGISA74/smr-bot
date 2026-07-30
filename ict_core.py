@@ -1175,12 +1175,14 @@ def _pa_dna_cache_key(ticker, now=None):
     return f"{_day}:session:{_bucket:02d}"
 
 
-def calculate_price_action_dna(ticker):
+def calculate_price_action_dna(ticker, snapshot_key=None):
     # 28 Tem 2026: BIST seansı içinde 15 dakikalık fotoğraf; seans öncesi,
     # kapanış sonrası ve kapalı günlerde dönem boyunca tek fotoğraf.
     # Böylece sabahki eksik günlük bar akşama taşınmaz, aynı 15 dakikada Yahoo
     # tekrar tekrar çağrılmaz. BIST dışı sembollerde eski günlük davranış korunur.
     _cache_key = _pa_dna_cache_key(ticker)
+    if snapshot_key is not None:
+        _cache_key = f"{_cache_key}|snapshot:{snapshot_key}"
     out = _calculate_price_action_dna_cached(ticker, _cache_key)
     return _bos_sonuc_rafa_konmasin(
         _calculate_price_action_dna_cached, ticker, out, not out, _cache_key)
