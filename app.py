@@ -46,6 +46,7 @@ from rsi_divergence_scanner import (build_positive_divergence_view,
 from charts import _main_price_chart_plotly  # Adim 8 grafik goc
 from data_layer import get_display_name  # Adim 8 — varlik alanina tasindi
 import terazi_core  # 17 Tem 2026 EKRAN REFORMU 1a — Kanıt Terazisi saf hesap çekirdeği
+import tarama_merkezi  # 30 Tem 2026 EKRAN REFORMU 4 — toplu tarama KARAR MASASI (bayrak-korumalı, kapalı)
 import ekran_v2     # 23 Tem 2026 — 🧪 YENİ EKRAN DENEMESİ (kapalı bar; mevcut ekran değişmez)
 import formasyon_core  # 21 Tem 2026 — yaşam döngüsü rozeti (stage_badge tek kaynak)
 import formasyon_v2_app  # 25 Tem 2026 — yalnız Formasyon Grafiği için V2 uyum katmanı
@@ -19884,6 +19885,20 @@ def _render_left_col():
         pass
     st.caption(_rsi_history_caption)
     st.markdown("<hr style='margin:10px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
+
+    # 30 Tem 2026 EKRAN REFORMU 4 — TARAMA MERKEZİ (bayrak-korumalı · VARSAYILAN KAPALI).
+    # TARAMA_MERKEZI_V2=1 iken toplu tarama KARAR MASASI bu bölümün ÜSTÜNDE çıkar;
+    # kapalıyken (varsayılan) mevcut render HİÇ değişmez. Tek-hisse ekranına dokunmaz.
+    if str(os.getenv("TARAMA_MERKEZI_V2", "")).lower() in ("1", "true", "on"):
+        try:
+            tarama_merkezi.render_tarama_merkezi(
+                st.session_state.get, _validate_toplu_terazi_payload,
+                on_scan_result_click)
+            st.markdown(
+                "<div style='height:1px;background:#1e293b;margin:12px 0;'></div>",
+                unsafe_allow_html=True)
+        except Exception as _tm_exc:
+            log_error("render_tarama_merkezi", _tm_exc, "")
 
     # ══════════════════════════════════════════════════════════
     # 📊 KARNELİ TARAMALAR — güncel sonuçlarla
