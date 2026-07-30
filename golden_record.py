@@ -61,6 +61,34 @@ class _Stub:
     def __repr__(self): return f"<Stub {self._name}>"
 
 
+class _StrictSessionState(dict):
+    """Terazi karakterizasyonunda sessiz eksik-kanıtı engelleyen katı oturum.
+
+    Normal _Stub bilinmeyen her anahtarı falsy döndürür; bu davranış bir Terazi
+    girdisi tohumlanmayı unutulduğunda oyun sessizce kaybolmasına yol açar.
+    Burada her anahtar (kasıtlı boş olanlar dahil) fixture'da açıkça tanımlanmak
+    zorundadır. Hedef fonksiyon hatayı kendi içinde yutsa bile unknown_reads
+    koşu sonunda testi kırar.
+    """
+    def __init__(self, seed):
+        super().__init__(seed)
+        self.read_keys = []
+        self.unknown_reads = []
+
+    def _read(self, key):
+        self.read_keys.append(key)
+        if key not in self:
+            self.unknown_reads.append(key)
+            raise KeyError(f"Terazi fixture'ında session_state anahtarı tanımsız: {key}")
+        return dict.__getitem__(self, key)
+
+    def get(self, key, default=None):
+        return self._read(key)
+
+    def __getitem__(self, key):
+        return self._read(key)
+
+
 def _install_stubs():
     st_mod = types.ModuleType("streamlit")
     _s = _Stub("st")
@@ -532,6 +560,305 @@ def _pipeline_probe(ns):
     return rec
 
 
+def _terazi_fingerprint(out):
+    """Render metinlerinden bağımsız, karar davranışını tam yakalayan özet."""
+    out = out if isinstance(out, dict) else {}
+    ter = out.get("terazi") if isinstance(out.get("terazi"), dict) else {}
+
+    def _vote(v):
+        if not isinstance(v, dict):
+            return {"__hata__": str(v)[:120]}
+        return {
+            "ad": v.get("ad"),
+            "yon": v.get("yon"),
+            "agirlik": _ser(v.get("agirlik")),
+            "olculmus": bool(v.get("olculmus")),
+            "prio": _ser(v.get("prio")),
+            "family": v.get("family"),
+            "semsiye": bool(v.get("semsiye", False)),
+        }
+
+    return {
+        "skor": _ser(out.get("skor")),
+        "label": out.get("label"),
+        "n_scanner": _ser(out.get("n_scanner")),
+        "best": out.get("best"),
+        "guven": _ser(out.get("guven")),
+        "celiski": bool(out.get("celiski")),
+        "boga": _ser(out.get("boga")),
+        "ayi": _ser(out.get("ayi")),
+        "tek_sinyal": bool(out.get("tek_sinyal")),
+        "terazi": {
+            "yon": ter.get("yon"),
+            "guven": _ser(ter.get("guven")),
+            "celiski": bool(ter.get("celiski")),
+            "tek_sinyal": bool(ter.get("tek_sinyal")),
+            "boga_w": _ser(ter.get("boga_w")),
+            "ayi_w": _ser(ter.get("ayi_w")),
+            "n_votes": _ser(ter.get("n_votes")),
+            "endeks_notu": ter.get("endeks_notu"),
+            "sistemik": ter.get("sistemik"),
+            "sok_serit": ter.get("sok_serit"),
+            "karsi": _vote(ter.get("karsi")) if ter.get("karsi") else None,
+            "votes": [_vote(v) for v in (ter.get("votes") or [])],
+        },
+    }
+
+
+def _terazi_session(er_rows=None, formasyon=None, formasyon_ticker=""):
+    """Her senaryo için taze ve eksiksiz session_state tohumu."""
+    import pandas as _pd
+    er_cols = ["Sembol", "ScenarioId", "Role", "Guc"]
+    er = _pd.DataFrame(er_rows or [], columns=er_cols)
+    return {
+        "erken_radar_data": er,
+        "prelaunch_bos_data": _pd.DataFrame(columns=["Sembol"]),
+        "accum_data": _pd.DataFrame(columns=["Sembol"]),
+        "_er_single_cache": {},
+        "_formasyon_chart_data": formasyon,
+        "_formasyon_ticker": formasyon_ticker,
+        "bist_market_status": {},
+    }
+
+
+def _terazi_cases():
+    """0a sözleşmesi: dış dünya sabit, Terazi çekirdeği ve oy motorları gerçektir."""
+    primary = {"Sembol": "GLDN.IS", "ScenarioId": "A1",
+               "Role": "primary", "Guc": "güçlü"}
+    red_d4 = {"Sembol": "GLDN.IS", "ScenarioId": "D4",
+              "Role": "red_flag", "Guc": "zayıf"}
+    red_d5 = {"Sembol": "GLDN.IS", "ScenarioId": "D5",
+              "Role": "red_flag", "Guc": "zayıf"}
+    cap_rows = [
+        {"Sembol": f"{sym}.IS", "ScenarioId": "A1",
+         "Role": "primary", "Guc": "güçlü"}
+        for sym in ("AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "ZZZZ")
+    ]
+    normal_breadth = (45.0, -0.2, 500)
+
+    return {
+        "guclu_boga": {
+            "ticker": "GLDN.IS",
+            "session": _terazi_session([primary]),
+            "scanner_scores": {"er_A1": {"score": 90}},
+            "features": {
+                "f_rsi": 20.0, "f_cmf_dual": "strong_pos",
+                "f_yabanci_streak": 3, "f_sfp_bull": 1,
+            },
+            "pack": {
+                "_sig_hacim": 1, "_sig_obv": 1,
+                "_sig_yapi": 1, "_sig_mfi": 1,
+            },
+            "breadth": normal_breadth,
+            "frs": None,
+            "expect": {
+                "yon": "yukari",
+                "required_votes": {
+                    "Pozitif karneli tarama ailesi",
+                    "RSI uç aşırı satım",
+                    "Para akışı güçlü pozitif",
+                    "Yabancı 3+ gün alıcı",
+                    "Bullish SFP (ayı tuzağı)",
+                    "Yapı yükseliyor",
+                },
+            },
+        },
+        "celiski": {
+            "ticker": "GLDN.IS",
+            "session": _terazi_session(
+                [primary, red_d4],
+                formasyon={"type": "double_top"},
+                formasyon_ticker="GLDN.IS",
+            ),
+            "scanner_scores": {"er_A1": {"score": 90}},
+            "features": {
+                "f_rsi": 22.0, "f_cmf_dual": "strong_pos",
+                "f_sfp_bear": 1,
+            },
+            "pack": {
+                "_sig_hacim": 0, "_sig_obv": 0,
+                "_sig_yapi": 1, "_sig_mfi": 0,
+            },
+            "breadth": normal_breadth,
+            "frs": {"kutu": "kirdi", "durum": "fail"},
+            "expect": {
+                "celiski": True,
+                "required_votes": {
+                    "Pozitif karneli tarama ailesi",
+                    "Şemsiye: kurumsal satış izi",
+                    "Ayı formasyonu",
+                    "Başarısız kırılım",
+                    "Bearish SFP (boğa tuzağı)",
+                },
+            },
+        },
+        "ayi_formasyonu_ve_bayrak": {
+            "ticker": "GLDN.IS",
+            "session": _terazi_session(
+                [red_d4, red_d5],
+                formasyon={"type": "double_top"},
+                formasyon_ticker="GLDN.IS",
+            ),
+            "scanner_scores": {},
+            "features": {
+                "f_rsi": 50.0, "f_cmf_dual": "strong_neg",
+                "f_sfp_bear": 1,
+            },
+            "pack": {
+                "_sig_hacim": -1, "_sig_obv": -1,
+                "_sig_yapi": -1, "_sig_mfi": -1,
+            },
+            "breadth": normal_breadth,
+            "frs": None,
+            "expect": {
+                "yon": "asagi",
+                "required_votes": {
+                    "Şemsiye: kurumsal satış izi",
+                    "Şemsiye: trend bozuldu",
+                    "Ayı formasyonu",
+                    "Para akışı güçlü negatif",
+                    "Bearish SFP (boğa tuzağı)",
+                    "Yapı bozuluyor",
+                },
+            },
+        },
+        "sistemik_gun": {
+            "ticker": "GLDN.IS",
+            "session": _terazi_session([primary]),
+            "scanner_scores": {"er_A1": {"score": 90}},
+            "features": {"f_rsi": 20.0},
+            "pack": {
+                "_sig_hacim": 0, "_sig_obv": 0,
+                "_sig_yapi": 0, "_sig_mfi": 0,
+            },
+            "breadth": (92.0, -4.1, 500),
+            "frs": None,
+            "expect": {
+                "yon": "yukari",
+                "sistemik": True,
+                "required_votes": {
+                    "Pozitif karneli tarama ailesi",
+                    "RSI uç aşırı satım",
+                },
+            },
+        },
+        "cap5_bilinen_kusur_6_aday": {
+            "ticker": "ZZZZ.IS",
+            "session": _terazi_session(cap_rows),
+            "scanner_scores": {"er_A1": {"score": 90}},
+            "features": {},
+            "pack": {
+                "_sig_hacim": 0, "_sig_obv": 0,
+                "_sig_yapi": 0, "_sig_mfi": 0,
+            },
+            "breadth": normal_breadth,
+            "frs": None,
+            "known_defect": (
+                "Tarama başına ilk 5 sınırı karar listesine de uygulanıyor; "
+                "6. aday pozitif karne oyunu kaybediyor."
+            ),
+            "expect": {
+                "skor": None,
+                "n_scanner": 0,
+                "forbidden_votes": {"Pozitif karneli tarama ailesi"},
+            },
+        },
+    }
+
+
+def _run_terazi_case(ns, case_name, spec, stock_df, bench_df):
+    """Değiştirilmemiş üretim toplayıcısını katı, donmuş girdilerle çalıştır."""
+    st_mod = ns["st"]
+    had_session = "session_state" in st_mod.__dict__
+    old_session = st_mod.__dict__.get("session_state")
+    strict_state = _StrictSessionState(spec["session"])
+    st_mod.session_state = strict_state
+
+    def _frozen(t, period=None, *a, **k):
+        tu = str(t).upper()
+        if tu.startswith(("XU100", "^")) or "GSPC" in tu:
+            return bench_df.copy()
+        return stock_df.copy()
+
+    mapping = {
+        "get_safe_historical_data": _frozen,
+        "get_scanner_scores": lambda: dict(spec.get("scanner_scores") or {}),
+        "_compute_signal_features": lambda _t: dict(spec.get("features") or {}),
+        "compute_genel_ozet_pack": lambda _t, _status=None: dict(spec.get("pack") or {}),
+        "_piyasa_genisligi_bugun": lambda: tuple(spec.get("breadth") or (None, None, 0)),
+    }
+    saved = _install_patches(ns, mapping)
+    try:
+        result = ns["_compute_kanit_ozeti"](
+            spec["ticker"], frs=spec.get("frs"))
+    finally:
+        _restore_patches(saved)
+        if had_session:
+            st_mod.session_state = old_session
+        else:
+            st_mod.__dict__.pop("session_state", None)
+
+    if strict_state.unknown_reads:
+        raise AssertionError(
+            f"{case_name}: tohumlanmamış session_state erişimi: "
+            f"{sorted(set(strict_state.unknown_reads))}")
+
+    fp = _terazi_fingerprint(result)
+    ter = fp["terazi"]
+    votes = {v.get("ad") for v in ter.get("votes", [])}
+    exp = spec.get("expect") or {}
+    missing = set(exp.get("required_votes") or set()) - votes
+    forbidden = set(exp.get("forbidden_votes") or set()) & votes
+    if missing:
+        raise AssertionError(f"{case_name}: beklenen oylar yok: {sorted(missing)}")
+    if forbidden:
+        raise AssertionError(f"{case_name}: yasak oylar oluştu: {sorted(forbidden)}")
+    if "yon" in exp and ter.get("yon") != exp["yon"]:
+        raise AssertionError(
+            f"{case_name}: yön {ter.get('yon')!r}, beklenen {exp['yon']!r}")
+    if "celiski" in exp and ter.get("celiski") is not exp["celiski"]:
+        raise AssertionError(
+            f"{case_name}: çelişki {ter.get('celiski')!r}, "
+            f"beklenen {exp['celiski']!r}")
+    if exp.get("sistemik") and not ter.get("sistemik"):
+        raise AssertionError(f"{case_name}: sistemik gün şeridi oluşmadı")
+    if "skor" in exp and fp.get("skor") != exp["skor"]:
+        raise AssertionError(
+            f"{case_name}: skor {fp.get('skor')!r}, beklenen {exp['skor']!r}")
+    if "n_scanner" in exp and fp.get("n_scanner") != exp["n_scanner"]:
+        raise AssertionError(
+            f"{case_name}: tarama ailesi {fp.get('n_scanner')!r}, "
+            f"beklenen {exp['n_scanner']!r}")
+
+    rec = {
+        "result": fp,
+        "session_reads": sorted(set(strict_state.read_keys)),
+    }
+    if spec.get("known_defect"):
+        rec["known_defect"] = spec["known_defect"]
+    return rec
+
+
+def _terazi_probe(ns, stock_df, bench_df):
+    """0a/0b: 5 sözleşmeli senaryo ile mevcut Terazi davranış fotoğrafı."""
+    # Korumanın kendisini de sına: bilinmeyen anahtar sessiz falsy olmamalı.
+    guard = _StrictSessionState({})
+    try:
+        guard.get("__golden_missing_seed_probe__")
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("Katı session_state bilinmeyen anahtarı durdurmadı")
+    if guard.unknown_reads != ["__golden_missing_seed_probe__"]:
+        raise AssertionError("Katı session_state bilinmeyen erişimi kaydetmedi")
+
+    rec = {}
+    for name, spec in _terazi_cases().items():
+        rec[name] = _run_terazi_case(
+            ns, name, spec, stock_df.copy(), bench_df.copy())
+    return rec
+
+
 def snapshot(ns):
     import pandas as pd
     bench = pd.read_parquet(os.path.join(FIX_DIR, f"{BENCH}_frozen.parquet"))
@@ -546,6 +873,10 @@ def snapshot(ns):
             except Exception as e:
                 rec[name] = f"__ERROR__ {type(e).__name__}: {str(e)[:160]}"
         out[t] = rec
+    # 0a/0b (30 Tem 2026): değiştirilmemiş üretim Terazisi; dış dünya donmuş,
+    # session_state katı, oy motorları gerçektir. Cap-5 mevcut kusur olarak korunur.
+    stock = pd.read_parquet(os.path.join(FIX_DIR, f"{TICKERS[0]}_frozen.parquet"))
+    out["__TERAZI__"] = _terazi_probe(ns, stock, bench)
     return out
 
 
@@ -572,10 +903,26 @@ def _diff(a, b, path, out):
 
 def main():
     init_mode = "--init" in sys.argv
+    terazi_only = "--terazi-only" in sys.argv
     print("app.py tanımları yükleniyor (ekransız)...")
     ns = load_app_defs(verbose=True)
+    if terazi_only:
+        import pandas as pd
+        bench = pd.read_parquet(os.path.join(FIX_DIR, f"{BENCH}_frozen.parquet"))
+        stock = pd.read_parquet(os.path.join(FIX_DIR, f"{TICKERS[0]}_frozen.parquet"))
+        print("Terazi karakterizasyonu: 5 katı senaryo...")
+        rec = _terazi_probe(ns, stock, bench)
+        for name, item in rec.items():
+            result = item["result"]
+            ter = result["terazi"]
+            print(f"  ✅ {name}: yön={ter['yon']} · boğa={ter['boga_w']} · "
+                  f"ayı={ter['ayi_w']} · oy={ter['n_votes']} · "
+                  f"çelişki={ter['celiski']}")
+        print("✅ TERAZİ-ONLY: 5/5 senaryo sözleşmesi geçti.")
+        return 0
     n_funcs = sum(1 for _, f in TARGETS)
-    print(f"Fotoğraf çekiliyor: {len(TICKERS)} hisse × {n_funcs} fonksiyon...")
+    print(f"Fotoğraf çekiliyor: {len(TICKERS)} hisse × {n_funcs} fonksiyon "
+          f"+ 5 Terazi senaryosu...")
     now = snapshot(ns)
 
     n_err = sum(1 for t in now.values() for v in t.values()
@@ -606,7 +953,8 @@ def main():
             print(f"  ... +{len(diffs)-40} fark daha")
         print("\nBu fark BİLEREK mi yapıldı? Evet ise açıkla ve 'python golden_record.py --init' ile güncelle.")
         return 1
-    print(f"✅ BİREBİR AYNI — {len(TICKERS)}×{n_funcs} ölçüm, sıfır fark. (hata kaydı: {n_err})")
+    print(f"✅ BİREBİR AYNI — {len(TICKERS)}×{n_funcs} ölçüm + 5 Terazi senaryosu, "
+          f"sıfır fark. (hata kaydı: {n_err})")
     return 0
 
 
