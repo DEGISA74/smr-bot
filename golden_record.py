@@ -753,14 +753,16 @@ def _terazi_cases():
             },
             "breadth": normal_breadth,
             "frs": None,
-            "known_defect": (
-                "Tarama başına ilk 5 sınırı karar listesine de uygulanıyor; "
-                "6. aday pozitif karne oyunu kaybediyor."
-            ),
             "expect": {
-                "skor": None,
-                "n_scanner": 0,
-                "forbidden_votes": {"Pozitif karneli tarama ailesi"},
+                "skor": 90,
+                "n_scanner": 1,
+                "required_votes": {"Pozitif karneli tarama ailesi"},
+                "goldmine_raw_symbols": [
+                    "AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "ZZZZ",
+                ],
+                "goldmine_capped_symbols": [
+                    "AAAA", "BBBB", "CCCC", "DDDD", "EEEE",
+                ],
             },
         },
     }
@@ -789,6 +791,13 @@ def _run_terazi_case(ns, case_name, spec, stock_df, bench_df):
     }
     saved = _install_patches(ns, mapping)
     try:
+        exp = spec.get("expect") or {}
+        goldmine_raw = None
+        goldmine_capped = None
+        if ("goldmine_raw_symbols" in exp
+                or "goldmine_capped_symbols" in exp):
+            goldmine_raw = ns["_compute_goldmine_entries"]()
+            goldmine_capped = ns["_cap_goldmine_entries"](goldmine_raw)
         result = ns["_compute_kanit_ozeti"](
             spec["ticker"], frs=spec.get("frs"))
         split_context = ns["_collect_kanit_context"](
@@ -817,7 +826,6 @@ def _run_terazi_case(ns, case_name, spec, stock_df, bench_df):
             f"{case_name}: uçtan-uca sonuç ile ayrıştırılmış yol farklı")
     ter = fp["terazi"]
     votes = {v.get("ad") for v in ter.get("votes", [])}
-    exp = spec.get("expect") or {}
     missing = set(exp.get("required_votes") or set()) - votes
     forbidden = set(exp.get("forbidden_votes") or set()) & votes
     if missing:
@@ -840,6 +848,18 @@ def _run_terazi_case(ns, case_name, spec, stock_df, bench_df):
         raise AssertionError(
             f"{case_name}: tarama ailesi {fp.get('n_scanner')!r}, "
             f"beklenen {exp['n_scanner']!r}")
+    if "goldmine_raw_symbols" in exp:
+        raw_symbols = [str(e.get("sym")) for e in (goldmine_raw or [])]
+        if raw_symbols != exp["goldmine_raw_symbols"]:
+            raise AssertionError(
+                f"{case_name}: ham Gold Mine sırası {raw_symbols!r}, "
+                f"beklenen {exp['goldmine_raw_symbols']!r}")
+    if "goldmine_capped_symbols" in exp:
+        capped_symbols = [str(e.get("sym")) for e in (goldmine_capped or [])]
+        if capped_symbols != exp["goldmine_capped_symbols"]:
+            raise AssertionError(
+                f"{case_name}: vitrin/log sırası {capped_symbols!r}, "
+                f"beklenen {exp['goldmine_capped_symbols']!r}")
 
     rec = {
         "result": fp,

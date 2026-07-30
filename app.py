@@ -1253,16 +1253,20 @@ def _compute_goldmine_entries():
             g = str(g or '')
             return 0 if '🟢' in g else (2 if '🔴' in g else 1)
         _ranked = sorted(entries.values(), key=lambda e: (-e.get('score', 0), _grank(e.get('guc')), e['sym']))
-        # Tarama çeşitliliği: tek senaryo (örn. B8) tüm vitrini doldurmasın — tarama başına max 5
-        _capped = []; _seen = {}
-        for e in _ranked:
-            k = e.get('scanner', '')
-            _seen[k] = _seen.get(k, 0) + 1
-            if _seen[k] <= 5:
-                _capped.append(e)
-        return _capped
+        return _ranked
     except Exception:
         return []
+
+
+def _cap_goldmine_entries(ranked):
+    """Vitrin/log çeşitliliğini korur; karar motorunun ham aday listesine uygulanmaz."""
+    _capped = []; _seen = {}
+    for e in (ranked or []):
+        k = e.get('scanner', '')
+        _seen[k] = _seen.get(k, 0) + 1
+        if _seen[k] <= 5:
+            _capped.append(e)
+    return _capped
 
 
 def log_goldmine_selection(category="", top_n=20):
@@ -1270,7 +1274,7 @@ def log_goldmine_selection(category="", top_n=20):
     Master Scan sonunda çağrılır. Idempotent (INSERT OR IGNORE: aynı gün+sembol bir kez).
     Sonra signal_results JOIN ile vitrin sıralamasının gerçek getirisi ölçülür."""
     try:
-        ranked = _compute_goldmine_entries()
+        ranked = _cap_goldmine_entries(_compute_goldmine_entries())
         if not ranked:
             return
         today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
@@ -1303,7 +1307,7 @@ def render_gold_mine_showcase():
     Sol = pozitif karne + güçlü/orta konum · Sağ = pozitif karne + zayıf konum.
     Dönüş: True (içerik gösterildi) / False (boş)."""
     try:
-        _ranked = _compute_goldmine_entries()
+        _ranked = _cap_goldmine_entries(_compute_goldmine_entries())
         if not _ranked:
             return False
 
