@@ -20148,7 +20148,14 @@ def _piyasa_genisligi_bugun():
         return None, None, 0
 
 
-def _compute_kanit_ozeti(ticker, frs=None):
+def _empty_kanit_ozeti():
+    """Kanıt özeti için tek, davranış-koruyan boş başlangıç sözlüğü."""
+    return {'skor': None, 'label': 'kanıt yok', 'n_scanner': 0, 'best': '',
+            'guven': None, 'celiski': False, 'boga': 0, 'ayi': 0,
+            'tek_sinyal': False, 'terazi': None}
+
+
+def _collect_kanit_context(ticker, frs=None):
     """Tek hisse güncel KARNE PUANI (0-100) + GÜVEN/ÇELİŞKİ ölçer.
     - Karne puanı = hissenin yakalandığı en güçlü pozitif karneli taramanın veri-temelli puanı.
       (29 Haz 2026: çakışma bonusu KALDIRILDI — ölçüm çakışmanın kazandırmadığını gösterdi.)
@@ -20158,9 +20165,7 @@ def _compute_kanit_ozeti(ticker, frs=None):
     (3) ICT bias YARIM oy (ölçülmemiş sinyal — Eylül karnesine kadar).
     frs: panel zaten hesapladıysa _firsat_radar_single sonucu (çift hesap olmasın).
     Vitrin hesabını (_compute_goldmine_entries) yeniden kullanır — verimli."""
-    out = {'skor': None, 'label': 'kanıt yok', 'n_scanner': 0, 'best': '',
-           'guven': None, 'celiski': False, 'boga': 0, 'ayi': 0, 'tek_sinyal': False,
-           'terazi': None}  # 17 Tem 2026 reform 1a — tam terazi çıktısı (kart bundan çizilir)
+    out = _empty_kanit_ozeti()
     try:
         _tc = str(ticker).upper().replace('.IS', '')
         ent = next((e for e in _compute_goldmine_entries() if e['sym'].upper() == _tc), None)
@@ -20289,20 +20294,54 @@ def _compute_kanit_ozeti(ticker, frs=None):
             _votes.extend(_sv_kz)
         except Exception:
             pass
-        _ter = terazi_core.build_terazi(_votes, is_index=_is_idx)
+        # 1c PİYASA-ŞOKU girdisi de burada toplanır; karar saf kurucuda verilir.
+        _breadth_kz = None
+        if not _is_idx:
+            try:
+                _breadth_kz = _piyasa_genisligi_bugun()
+            except Exception:
+                pass
+
+        return {
+            'ready': True,
+            'base': out,
+            'votes': _votes,
+            'is_index': _is_idx,
+            'sok_serit': _serit_kz,
+            'breadth': _breadth_kz,
+        }
+    except Exception:
+        return {'ready': False, 'base': out}
+
+
+def _build_kanit_ozeti(context):
+    """Hazır kanıt bağlamından hüküm üretir; oturum/dosya/veri erişimi yapmaz."""
+    context = context if isinstance(context, dict) else {}
+    out = dict(context.get('base') or _empty_kanit_ozeti())
+    if not context.get('ready'):
+        return out
+    try:
+        _is_idx = bool(context.get('is_index'))
+        _ter = terazi_core.build_terazi(
+            list(context.get('votes') or []), is_index=_is_idx)
+        _serit_kz = context.get('sok_serit')
         if _serit_kz:
             _ter['sok_serit'] = _serit_kz
+
         # 1c PİYASA-ŞOKU MODU (18 Tem 2026) — sistemik günde hisse hükmü ASKIYA alınır.
         # Eşikler ölçümden (terazi_core.sistemik_gun); UI seviyesi, AI prompt'a GİRMEZ.
         # Endekste uygulanmaz — endeksin kendi şok şeridi zaten var.
         if not _is_idx:
             try:
-                _no_kz, _md_kz, _ = _piyasa_genisligi_bugun()
-                _sis_kz = terazi_core.sistemik_gun(_no_kz, _md_kz)
-                if _sis_kz['aktif']:
-                    _ter['sistemik'] = _sis_kz['serit']
+                _breadth_kz = context.get('breadth')
+                if _breadth_kz is not None:
+                    _no_kz, _md_kz, _ = _breadth_kz
+                    _sis_kz = terazi_core.sistemik_gun(_no_kz, _md_kz)
+                    if _sis_kz['aktif']:
+                        _ter['sistemik'] = _sis_kz['serit']
             except Exception:
                 pass
+
         out['terazi'] = _ter
         out['boga'], out['ayi'] = _ter['boga_w'], _ter['ayi_w']
         # ⚠ guven SEMANTİĞİ DEĞİŞTİ (17 Tem 2026): eskiden "boğa payı" idi,
@@ -20313,6 +20352,11 @@ def _compute_kanit_ozeti(ticker, frs=None):
     except Exception:
         pass
     return out
+
+
+def _compute_kanit_ozeti(ticker, frs=None):
+    """Mevcut tek-hisse API'si: aynı toplayıcı + saf kurucu, aynı dönüş sözlüğü."""
+    return _build_kanit_ozeti(_collect_kanit_context(ticker, frs=frs))
 
 
 def _render_ekran_v2_deneme(ticker):

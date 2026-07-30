@@ -791,6 +791,13 @@ def _run_terazi_case(ns, case_name, spec, stock_df, bench_df):
     try:
         result = ns["_compute_kanit_ozeti"](
             spec["ticker"], frs=spec.get("frs"))
+        split_context = ns["_collect_kanit_context"](
+            spec["ticker"], frs=spec.get("frs"))
+        reads_before_build = len(strict_state.read_keys)
+        split_result = ns["_build_kanit_ozeti"](split_context)
+        if len(strict_state.read_keys) != reads_before_build:
+            raise AssertionError(
+                f"{case_name}: saf hüküm kurucu session_state okudu")
     finally:
         _restore_patches(saved)
         if had_session:
@@ -804,6 +811,10 @@ def _run_terazi_case(ns, case_name, spec, stock_df, bench_df):
             f"{sorted(set(strict_state.unknown_reads))}")
 
     fp = _terazi_fingerprint(result)
+    split_fp = _terazi_fingerprint(split_result)
+    if fp != split_fp:
+        raise AssertionError(
+            f"{case_name}: uçtan-uca sonuç ile ayrıştırılmış yol farklı")
     ter = fp["terazi"]
     votes = {v.get("ad") for v in ter.get("votes", [])}
     exp = spec.get("expect") or {}
