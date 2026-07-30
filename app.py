@@ -19889,7 +19889,7 @@ def _render_left_col():
     # 30 Tem 2026 EKRAN REFORMU 4 — TARAMA MERKEZİ (bayrak-korumalı · VARSAYILAN KAPALI).
     # TARAMA_MERKEZI_V2=1 iken toplu tarama KARAR MASASI bu bölümün ÜSTÜNDE çıkar;
     # kapalıyken (varsayılan) mevcut render HİÇ değişmez. Tek-hisse ekranına dokunmaz.
-    if str(os.getenv("TARAMA_MERKEZI_V2", "")).lower() in ("1", "true", "on"):
+    if str(os.getenv("TARAMA_MERKEZI_V2", "1")).lower() in ("1", "true", "on"):
         try:
             tarama_merkezi.render_tarama_merkezi(
                 st.session_state.get, _validate_toplu_terazi_payload,
