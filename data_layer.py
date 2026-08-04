@@ -1606,7 +1606,14 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
             _hm = _now_hm.hour * 100 + _now_hm.minute
             _in_session = _bist_is_trading_day(_dt.date.today()) and 1000 <= _hm <= 1830
             _fresh_limit_h = 6.0 if _in_session else 24.0
-            if os.environ.get("LIVE_ON_READ", "0") != "1" and _data_age_h <= _fresh_limit_h and not _vol_stale:
+            # 4 Ağu 2026 — DOSYA-YAŞI KISAYOLU SADECE BIST İÇİN. BIST'te fetcher (cron)
+            # dosyayı 10dk'da bir yeniden yazar → "dosya taze" = "veri taze". US/kripto/
+            # emtia'yı kimse arka planda yazmaz → dosya-yaşı yanıltır (AAPL: dosya 29 gün
+            # eski kalıp app hiç çekmiyordu). US için bu kısayolu ATLA → aşağıdaki
+            # is_yahoo_update_needed (VERİ TARİHİNE bakar) karar versin, gerekirse çeker.
+            _is_bist_fresh = (".IS" in ticker or "BIST" in ticker
+                              or ticker.upper().startswith(("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS")))
+            if _is_bist_fresh and os.environ.get("LIVE_ON_READ", "0") != "1" and _data_age_h <= _fresh_limit_h and not _vol_stale:
                 return apply_volume_projection(df_cached.tail(500).copy(), ticker)
 
             if not is_yahoo_update_needed(ticker, df_cached.index[-1]) and not _vol_stale:
