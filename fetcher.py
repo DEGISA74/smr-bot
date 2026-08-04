@@ -253,9 +253,11 @@ def process_one(symbol: str, source: str):
     if df is None or df.empty:
         return symbol, 'fail', 0, use_src
     try:
+        _old_len = 0  # 4 Ağu 2026 — gerileme koruması için mevcut bar sayısı
         if target.exists():
             try:
                 old = pd.read_parquet(target)
+                _old_len = len(old)
                 old = old[~old.index.duplicated(keep='last')]
                 df = pd.concat([old, df])
                 df = df[~df.index.duplicated(keep='last')].sort_index()
@@ -286,7 +288,18 @@ def process_one(symbol: str, source: str):
                 except Exception as _pg:
                     log.warning(f"[fiyat-koruma] {symbol}: guard atlandı: {_pg}")
             except Exception as e:
-                log.warning(f"[merge] {symbol}: eski parquet okunamadı, sadece yeni veri yazılıyor: {e}")
+                # KRİTİK (4 Ağu 2026): eski parquet okunamazsa ARTIK "sadece yeni yaz" YOK.
+                # Eskiden buraya düşünce kısa incremental (~15g) TÜM geçmişi eziyordu
+                # (TTKOM 4 Ağu: Cuma+Pazartesi barları silindi, dün sağlamdı). Şimdi:
+                # yazma, mevcut sağlam dosya olduğu gibi korunur. Bozuk dosyayı
+                # repair_parquets.py onarır; fetcher geçmişi ASLA kısaltmaz.
+                log.warning(f"[merge] {symbol}: eski parquet okunamadı → YAZILMADI (geçmiş korundu): {e}")
+                return symbol, 'merge_skip', 0, use_src
+        # GERİLEME KORUMASI (4 Ağu 2026): birleşmiş veri mevcut dosyadan AZ barlıysa
+        # yazma. Bir işlem günü sonradan yok olmaz; az bar = kaynak/merge hatası.
+        if _old_len and len(df) < _old_len:
+            log.warning(f"[merge] {symbol}: yeni {len(df)} < mevcut {_old_len} bar (gerileme) → YAZILMADI")
+            return symbol, 'regress_skip', _old_len, use_src
         df.to_parquet(tmp, compression='snappy')
         tmp.replace(target)  # atomic rename
         return symbol, 'ok', len(df), use_src
@@ -357,7 +370,7 @@ def run():
     log.info(f"=== FETCHER START ===  Kaynak: {source}  |  {len(tickers)} ticker")
 
     start   = time.time()
-    results = {'ok': 0, 'fail': 0, 'write_fail': 0, 'rows': 0}
+    results = {'ok': 0, 'fail': 0, 'write_fail': 0, 'merge_skip': 0, 'regress_skip': 0, 'rows': 0}
     failed  = []
     src_breakdown = {'yfinance': 0, 'isyatirim': 0}
 
@@ -368,7 +381,7 @@ def run():
         futs = {ex.submit(process_one, t, source): t for t in tickers}
         for i, f in enumerate(as_completed(futs), 1):
             sym, status, rows, used_src = f.result()
-            results[status] += 1
+            results[status] = results.get(status, 0) + 1
             src_breakdown[used_src] = src_breakdown.get(used_src, 0) + 1
             if status == 'ok':
                 results['rows'] += rows
