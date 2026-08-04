@@ -161,7 +161,20 @@ def _fetch_bist_ohlcv_isyatirim(symbol, start_date, end_date):
         from datetime import datetime as _dtime
         _s = _dtime.strptime(start_date, "%Y-%m-%d").strftime("%d-%m-%Y")
         _e = _dtime.strptime(end_date,   "%Y-%m-%d").strftime("%d-%m-%Y")
-        df_isy = fetch_stock_data(symbols=_sym, start_date=_s, end_date=_e)
+        # 3 Ağu 2026 — SERT TIMEOUT: İsyatirim asılırsa (turlar bitmiyor) tek-hisse açılışı
+        # sonsuza kadar beklemesin. 8sn'de yanıt yoksa None dön → caller Yahoo/parquet hacmine düşer.
+        import concurrent.futures as _cf
+        _to = float(os.environ.get("ISY_FETCH_TIMEOUT", "8"))
+        _ex = _cf.ThreadPoolExecutor(max_workers=1)
+        _fut = _ex.submit(fetch_stock_data, symbols=_sym, start_date=_s, end_date=_e)
+        try:
+            df_isy = _fut.result(timeout=_to)
+        except _cf.TimeoutError:
+            _ex.shutdown(wait=False)  # asılan thread arka planda kalsın, açılışı BEKLETME
+            import logging as _lg
+            _lg.warning(f"[_fetch_bist_ohlcv_isyatirim] {symbol}: İsyatirim {_to:.0f}sn'de yanıt vermedi — atlandı (Yahoo hacmi kullanılacak)")
+            return None
+        _ex.shutdown(wait=False)
         if df_isy is None or df_isy.empty:
             return None
         # 4 Haz 2026 — İsyatirim API'sinde HGDG_ACILIS sütunu artık YOK.
@@ -1390,6 +1403,40 @@ def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd
 
 
 @st.cache_data(ttl=300)
+def _safe_write_parquet(df, file_path, ticker=""):
+    """GÜVENLİ PARQUET YAZ (4 Ağu 2026) — diskteki HİÇBİR tarih kaybolmaz.
+
+    Neden: app'in canlı okuma yolu bazen Yahoo-only taze veri çekip parquet'i
+    EZİYORDU. Yahoo'da OLMAYAN ama İsyatirim'in verdiği günler (TTKOM 07-31/08-03)
+    bu ezmede sessizce düşüyordu → günlük % yanlış hesaplanıyordu (dün diye 4 gün
+    önceyi alıyordu). Bu, fetcher.py'deki merge-guard'ın data_layer karşılığı.
+
+    Kural: diskte olup df'de olmayan barlar geri eklenir (union, çakışmada taze kazanır).
+    Sonuç mevcuttan AZ barlıysa YAZMA (gerileme koruması). Eski okunamazsa YAZMA
+    (mevcut korunur; sync/repair düzeltir). Dönüş: yazıldı mı (bool)."""
+    try:
+        if df is None or getattr(df, "empty", True):
+            return False
+        if os.path.exists(file_path):
+            try:
+                _old = pd.read_parquet(file_path)
+            except Exception:
+                return False  # eski okunamadı → mevcut dosyayı KORU, yazma
+            try:
+                _lost = _old.index.difference(df.index)
+                if len(_lost):
+                    df = pd.concat([_old.loc[_lost], df]).sort_index()
+                    df = df[~df.index.duplicated(keep="last")]
+                if len(df) < len(_old):
+                    return False  # gerileme → yazma (bir gün sonradan yok olmaz)
+            except Exception:
+                pass  # union kurulamazsa yine de yaz (yeni veri > hiç)
+        df.to_parquet(file_path)
+        return True
+    except Exception:
+        return False
+
+
 def _protect_good_bars(df_new, df_cached, ticker=""):
     """BOŞ VERİ SAĞLAM VERİYİ EZEMEZ (27 Tem 2026 — XU100 24 Tem kapanışı boş geldi
     olayı sonrası kalıcı kural).
@@ -1530,8 +1577,37 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
             if df_cached.index.tz is not None:
                 df_cached.index = df_cached.index.tz_convert(None)
 
+            # ── AYNA MODU (4 Ağu 2026) — APP ASLA CANLIYA GİTMEZ/YAZMAZ ──────────
+            # Mimari: YAZICI = fetcher (10dk cron, 3 kaynak, geçmiş-korumalı). OKUYUCU
+            # = app, SADECE parquet'i gösterir. Böylece app'in Yahoo-only taze çekişi
+            # İsyatirim-only günleri (TTKOM 07-31/08-03 gibi) bir daha DÜŞÜREMEZ.
+            # parquet varsa → aynen dön (bayat/stale olsa bile).
+            # SADECE BIST (hisse .IS + endeks X*): bunları fetcher taze tutuyor. US/kripto/
+            # emtia fetcher kapsamında DEĞİL → onlar eski canlı-çekiş yolunda kalır (donmasın).
+            # Kapatma: SMR_MIRROR_READONLY=0 → eski canlı-çekiş davranışı (dev/test).
+            _mirror_bist = (".IS" in ticker or "BIST" in ticker
+                            or ticker.upper().startswith(("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS")))
+            if _mirror_bist and os.environ.get("SMR_MIRROR_READONLY", "1") == "1":
+                return apply_volume_projection(df_cached.tail(500).copy(), ticker)
+
             # Hacim bozukluğu kontrolü: son non-zero hacim 5+ gün eskiyse yenile
             _vol_stale = _volume_is_stale(df_cached, ticker)
+
+            # 3 Ağu 2026 — PARQUET-FIRST OKUMA: hisseye tıklayınca CANLIYA (Yahoo/İsyatirim)
+            # GİTME. Fetcher (10dk, 3 kaynak, BAN riski yok) parquet'i taze tutuyor → parquet
+            # doğrudan dönsün, açılış ANINDA olsun. Tazelik eşiği SEANS-DUYARLI:
+            #   • Seans içinde (işlem günü 10:00–18:30): parquet son 6 SAAT içinde yazıldıysa taze.
+            #   • Seans dışında / hafta sonu: son 1 GÜN içinde yazıldıysa taze.
+            # Eski/ölü fetcher durumunda (eşik aşılırsa) VEYA hacim ciddi bayatsa canlıya düşer.
+            # Geri alma: LIVE_ON_READ=1 → her tıklamada canlı (eski davranış).
+            import time as _time
+            _data_age_h = (_time.time() - os.path.getmtime(file_path)) / 3600.0
+            _now_hm = _dt.datetime.now()
+            _hm = _now_hm.hour * 100 + _now_hm.minute
+            _in_session = _bist_is_trading_day(_dt.date.today()) and 1000 <= _hm <= 1830
+            _fresh_limit_h = 6.0 if _in_session else 24.0
+            if os.environ.get("LIVE_ON_READ", "0") != "1" and _data_age_h <= _fresh_limit_h and not _vol_stale:
+                return apply_volume_projection(df_cached.tail(500).copy(), ticker)
 
             if not is_yahoo_update_needed(ticker, df_cached.index[-1]) and not _vol_stale:
                 return apply_volume_projection(df_cached.tail(500).copy(), ticker)
@@ -1650,7 +1726,7 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 except Exception:
                     pass
 
-                df_new.to_parquet(file_path)
+                _safe_write_parquet(df_new, file_path, ticker)   # 4 Ağu — tarih düşürme koruması
                 return apply_volume_projection(df_new.tail(500).copy(), ticker)
 
             # ── KATMAN 2 FALLBACK: borsapy (TradingView) ──
@@ -1662,7 +1738,7 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 _bp_df = _fetch_bist_ohlcv_borsapy(ticker, period="1y", interval=interval)
                 if _bp_df is not None and len(_bp_df) > 5:
                     _bp_df = _apply_split_adjustments(_bp_df)
-                    try: _bp_df.to_parquet(file_path)
+                    try: _safe_write_parquet(_bp_df, file_path, ticker)   # 4 Ağu — tarih düşürme koruması
                     except Exception: pass
                     import logging
                     logging.info(f"[borsapy] {ticker} cache update fallback — {len(_bp_df)} bar")
@@ -1750,7 +1826,7 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                                 df_full = df_full[~df_full.index.duplicated(keep='first')]
                     except Exception: pass
 
-                df_full.to_parquet(file_path)
+                _safe_write_parquet(df_full, file_path, ticker)   # 4 Ağu — tarih düşürme koruması
                 return apply_volume_projection(df_full.tail(500).copy(), ticker)
             else:
                 # ── KATMAN 2 FALLBACK: borsapy (TradingView WebSocket) ──
@@ -2133,7 +2209,12 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
     # Parquet'teki son kapanış ile canlı fiyat arasında 2x'ten fazla fark varsa
     # bölünme/büyük temettü sonrası düzeltme yapılmamış demektir.
     # Parquet + Streamlit in-memory cache temizlenerek taze veri çekilir.
-    if interval == "1d":
+    # AYNA MODU (4 Ağu): BIST'te app canlı fiyat çekip parquet SİLMESİN — bölünmeyi fetcher
+    # (yazıcı) + 2x bekçisi zaten hallediyor. US/kripto'da bölünme tespiti çalışmaya devam eder.
+    _split_skip = (os.environ.get("SMR_MIRROR_READONLY", "1") == "1"
+                   and (".IS" in ticker or "BIST" in ticker
+                        or ticker.upper().startswith(("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS"))))
+    if interval == "1d" and not _split_skip:
         try:
             _ct_s = ticker.replace(".IS", "")
             if ".IS" in ticker or ticker.startswith("XU"):
