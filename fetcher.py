@@ -21,10 +21,13 @@ import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yfinance as yf
 from data_policy import AUTO_ADJUST  # 3 Tem 2026 — veri politikası TEK KAYNAK (app.py ile aynı)
+from bist_data_store import promote_batch
+from isyatirim_gateway import robust_isyatirim
 
 # --------------------------------------------------------------------
 # Paths & config
@@ -50,9 +53,9 @@ MAX_WORKERS_BORSAPY   = 5      # 10 Tem 2026 test: 20 sembol / 5 thread / 11.8sn
 # kaynak rotasyonu yfinance → isyatirim → borsapy. Ölçülen hızlar:
 # yf tam tur ~27sn · borsapy ~6dk · isyatirim ~11dk → her tur SÜRE KUTULU
 # (sonraki 5dk işaretinde kesilir), eksikler sonraki turda en-bayat-önce telafi.
-KAPANIS_END      = (18, 45)    # son tur başlangıcı
-KAPANIS_SKIP     = (18, 35)    # SMR_Finalize_Volume (İsyatirim hacim) slotu — çakışma yasak
+KAPANIS_END      = (18, 40)    # kesinleşen kapanış için İstanbul saatiyle son tur başlangıcı
 KAPANIS_INTERVAL = 300         # 5 dk
+ISTANBUL_TZ      = ZoneInfo("Europe/Istanbul")
 
 # Monitoring eşikleri
 FAIL_RATE_WARN = 0.05          # %5 üstü fail → WARN
@@ -141,58 +144,38 @@ def save_source(source: str) -> None:
 # --------------------------------------------------------------------
 def fetch_yfinance(symbol: str, period_days: int = PERIOD_DAYS):
     try:
+        from provider_traffic import acquire_slot, record_success, record_failure
+        acquire_slot("yahoo", priority="regular_fetch", max_wait=120.0)
         t  = yf.Ticker(symbol)
         df = t.history(period=f"{period_days}d", auto_adjust=AUTO_ADJUST)
         if df is None or df.empty:
+            record_failure("yahoo", kind="empty", error="empty")
             return None
         df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
         df.index.name = 'Date'
         if df.index.tz is not None:
             df.index = df.index.tz_localize(None)
+        record_success("yahoo")
         return df if len(df) > 0 else None
     except Exception as e:
+        try:
+            from provider_traffic import record_failure
+            record_failure("yahoo", kind="error", error=str(e))
+        except Exception:
+            pass
         log.debug(f"[yf]  {symbol}: {e}")
         return None
 
 
 def fetch_isyatirim(symbol: str, period_days: int = PERIOD_DAYS):
-    """Sadece .IS hisseleri için (endeks vermiyor)."""
+    """Sadece .IS hisseleri için ortak bütçeli İş Yatırım hacim adayı."""
     if not symbol.endswith('.IS') or symbol.startswith('X'):
         return None
     try:
-        from isyatirimhisse import fetch_stock_data
-        sym = symbol.replace('.IS', '')
-        end_dt   = datetime.now()
-        start_dt = end_dt - timedelta(days=period_days)
-        s = start_dt.strftime("%d-%m-%Y")
-        e = end_dt.strftime("%d-%m-%Y")
-        df_isy = fetch_stock_data(symbols=sym, start_date=s, end_date=e)
-        if df_isy is None or df_isy.empty:
-            return None
-        # isyatirim API'si HGDG_ACILIS dönmüyor — Open için AOF (ağırlıklı ort.) kullan
-        required = {'HGDG_TARIH', 'HGDG_MAX', 'HGDG_MIN',
-                    'HGDG_KAPANIS', 'HGDG_AOF', 'HGDG_HACIM'}
-        if not required.issubset(df_isy.columns):
-            return None
-        df_isy = df_isy[df_isy['HGDG_AOF'] > 0].copy()
-        idx = pd.to_datetime(df_isy['HGDG_TARIH'])
-        if idx.dt.tz is not None:
-            idx = idx.dt.tz_localize(None)
-        # Open: HGDG_ACILIS varsa onu, yoksa AOF kullan
-        if 'HGDG_ACILIS' in df_isy.columns:
-            open_vals = df_isy['HGDG_ACILIS'].values
-        else:
-            open_vals = df_isy['HGDG_AOF'].values
-        df_out = pd.DataFrame({
-            'Open':   open_vals,
-            'High':   df_isy['HGDG_MAX'].values,
-            'Low':    df_isy['HGDG_MIN'].values,
-            'Close':  df_isy['HGDG_KAPANIS'].values,
-            'Volume': (df_isy['HGDG_HACIM'] / df_isy['HGDG_AOF']).values,
-        }, index=idx)
-        df_out.index.name = 'Date'
-        df_out = df_out[df_out['Close'] > 0].dropna()
-        return df_out if not df_out.empty else None
+        df_out, source = robust_isyatirim(
+            symbol, period_days=period_days, tries=1, allow_stale=False,
+            priority="regular_fetch", max_wait=120.0)
+        return df_out if source == "canli" and df_out is not None else None
     except Exception as ex:
         log.debug(f"[isy] {symbol}: {ex}")
         return None
@@ -203,10 +186,13 @@ def fetch_borsapy(symbol: str, period_days: int = PERIOD_DAYS):
     if not symbol.endswith('.IS') or symbol.startswith('X'):
         return None
     try:
+        from provider_traffic import acquire_slot, record_success, record_failure
+        acquire_slot("borsapy", priority="repair", max_wait=120)
         import borsapy
         period = '1mo' if period_days <= 31 else '1y'
         df = borsapy.Ticker(symbol.replace('.IS', '')).history(period=period)
         if df is None or df.empty:
+            record_failure("borsapy", kind="empty", error=f"{symbol} empty")
             return None
         df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
         df.index.name = 'Date'
@@ -214,8 +200,13 @@ def fetch_borsapy(symbol: str, period_days: int = PERIOD_DAYS):
             df.index = df.index.tz_localize(None)
         df.index = df.index.normalize()  # 09:00 damgasını güne indir (yf/isy ile hizalı)
         df = df[df['Close'] > 0].dropna()
+        record_success("borsapy")
         return df if not df.empty else None
     except Exception as e:
+        try:
+            record_failure("borsapy", kind="error", error=str(e))
+        except Exception:
+            pass
         log.debug(f"[bp]  {symbol}: {e}")
         return None
 
@@ -231,84 +222,45 @@ FETCHERS = {
 # Tek hisse işlemi (atomic write)
 # --------------------------------------------------------------------
 def process_one(symbol: str, source: str):
-    """Çek + atomic write. Başarısızsa eski parquet'e dokunma.
-    Yeni veri her zaman MEVCUT parquet ile birleştirilir (overwrite değil) —
-    iki kaynak (yfinance/isyatirim) farklı tarihlerde güncellendiği için
-    biri eksik dönerse diğerinin yazdığı en taze bar asla silinmez."""
+    """Sağlayıcıdan veri çeker; ana dosyaya değil, sürüm kapısına aday üretir."""
     is_index = symbol.startswith('X')
-    use_src  = "yfinance" if (source != "yfinance" and is_index) else source
-    fetcher  = FETCHERS[use_src]
+    use_src = "yfinance" if (source != "yfinance" and is_index) else source
+    fetcher = FETCHERS[use_src]
     target = VERILER / f"{symbol}_1d.parquet"
-    tmp    = target.with_suffix(".parquet.tmp")
-    # INCREMENTAL: parquet zaten dolu (≥200 bar) ise sadece son ~INCREMENTAL_DAYS günü çek
-    # (hızlı → tur tamamlanır). Merge aşağıda eski geçmişi korur. Yok/kısa ise tam PERIOD_DAYS.
-    _days = PERIOD_DAYS
+    days = PERIOD_DAYS
     if target.exists():
         try:
             if len(pd.read_parquet(target, columns=['Close'])) >= 200:
-                _days = INCREMENTAL_DAYS
+                days = INCREMENTAL_DAYS
         except Exception:
             pass
-    df = fetcher(symbol, period_days=_days)
+    df = fetcher(symbol, period_days=days)
     if df is None or df.empty:
-        return symbol, 'fail', 0, use_src
+        return symbol, 'fail', 0, use_src, None
     try:
-        _old_len = 0  # 4 Ağu 2026 — gerileme koruması için mevcut bar sayısı
-        if target.exists():
-            try:
-                old = pd.read_parquet(target)
-                _old_len = len(old)
-                old = old[~old.index.duplicated(keep='last')]
-                df = pd.concat([old, df])
-                df = df[~df.index.duplicated(keep='last')].sort_index()
-                # ── HACİM KORUMASI (15 Tem 2026) ──────────────────────────────
-                # Kaynak rotasyonu birbirini eziyordu: Yahoo bazı hisselerde V=0
-                # döner (SASA 7-14 Tem: gerçek hacim ~4.7 milyar, Yahoo 0), aynı
-                # tarihi İsyatirim/borsapy doğru verir. keep='last' sıfırı gerçek
-                # hacmin üstüne yazıyordu → veri her turda (~10 dk) gidip geliyordu.
-                # Bir işlem gününün hacmi sonradan 0'a dönmez; 0 = kaynak hatası.
-                # Endeksler etkilenmez (eski de yeni de 0 → koşul tutmaz).
-                if 'Volume' in df.columns and 'Volume' in old.columns:
-                    _ort = old.index.intersection(df.index)
-                    if len(_ort):
-                        _yeni_bozuk = ~(pd.to_numeric(df.loc[_ort, 'Volume'], errors='coerce') > 0)
-                        _eski_saglam = pd.to_numeric(old.loc[_ort, 'Volume'], errors='coerce') > 0
-                        _koru = _ort[(_yeni_bozuk & _eski_saglam).values]
-                        if len(_koru):
-                            df.loc[_koru, 'Volume'] = old.loc[_koru, 'Volume']
-                            log.warning(f"[hacim-koruma] {symbol}: {use_src} {len(_koru)} barda "
-                                        f"V=0 döndü → eski gerçek hacim korundu")
-                # ── FİYAT KORUMASI (27 Tem 2026) — boş kapanış eskiyi ezemez ──
-                # keep='last' yeni barı kazandırıyor; kaynak bir günün kapanışını
-                # boş/0 gönderirse (XU100 24 Tem olayı) eski sağlam değer korunur,
-                # son bar hâlâ kapanışsızsa düşürülür. Kural tek kaynak: data_layer.
-                try:
-                    from data_layer import _protect_good_bars
-                    df = _protect_good_bars(df, old, symbol)
-                except Exception as _pg:
-                    log.warning(f"[fiyat-koruma] {symbol}: guard atlandı: {_pg}")
-            except Exception as e:
-                # KRİTİK (4 Ağu 2026): eski parquet okunamazsa ARTIK "sadece yeni yaz" YOK.
-                # Eskiden buraya düşünce kısa incremental (~15g) TÜM geçmişi eziyordu
-                # (TTKOM 4 Ağu: Cuma+Pazartesi barları silindi, dün sağlamdı). Şimdi:
-                # yazma, mevcut sağlam dosya olduğu gibi korunur. Bozuk dosyayı
-                # repair_parquets.py onarır; fetcher geçmişi ASLA kısaltmaz.
-                log.warning(f"[merge] {symbol}: eski parquet okunamadı → YAZILMADI (geçmiş korundu): {e}")
-                return symbol, 'merge_skip', 0, use_src
-        # GERİLEME KORUMASI (4 Ağu 2026): birleşmiş veri mevcut dosyadan AZ barlıysa
-        # yazma. Bir işlem günü sonradan yok olmaz; az bar = kaynak/merge hatası.
-        if _old_len and len(df) < _old_len:
-            log.warning(f"[merge] {symbol}: yeni {len(df)} < mevcut {_old_len} bar (gerileme) → YAZILMADI")
-            return symbol, 'regress_skip', _old_len, use_src
-        df.to_parquet(tmp, compression='snappy')
-        tmp.replace(target)  # atomic rename
-        return symbol, 'ok', len(df), use_src
-    except Exception as e:
-        log.warning(f"[write] {symbol}: {e}")
-        if tmp.exists():
-            try: tmp.unlink()
-            except: pass
-        return symbol, 'write_fail', 0, use_src
+        df = df[~df.index.duplicated(keep='last')].sort_index()
+        if use_src == "yfinance":
+            # Yahoo yalnız fiyatın patronudur. Bugünkü Yahoo hacmi sadece İş
+            # Yatırım gelene kadar geçici katmanda kullanılabilir.
+            spec = {
+                "price_df": df[['Open', 'High', 'Low', 'Close']].copy(),
+                "price_source": "yahoo",
+            }
+            if 'Volume' in df.columns:
+                spec["volume_df"] = df[['Volume']].tail(1).copy()
+                spec["volume_source"] = "yahoo_provisional"
+        elif use_src == "isyatirim":
+            # İş Yatırım fiyat alanlarına dokunamaz; yalnız hacim teklif eder.
+            spec = {"volume_df": df[['Volume']].copy(),
+                    "volume_source": "isyatirim"}
+        else:
+            # borsapy normal tur kaynağı değildir; yalnız açıkça kanıtlı gapfill
+            # ve kapanış referansı süreçleri kullanır.
+            return symbol, 'fail', 0, use_src, None
+        return symbol, 'ok', len(df), use_src, spec
+    except Exception as exc:
+        log.warning(f"[candidate] {symbol}: {exc}")
+        return symbol, 'write_fail', 0, use_src, None
 
 
 # --------------------------------------------------------------------
@@ -330,6 +282,7 @@ def override_index_ciro():
     """Hedef endekslerin parquet Volume kolonunu bileşen-toplamı TL ciroyla EZER.
     Fetch turu sonunda çağrılır (bileşenler bu turda tazelendi). borsapy'ye izinli
     (haftalık bileşen listesi tazelemesi fetcher'ın işi)."""
+    candidates = {}
     for ix in INDEX_CIRO_TARGETS:
         try:
             # Memo'yu atla: fetcher taze parquet'ten yeniden hesaplasın
@@ -349,29 +302,36 @@ def override_index_ciro():
             if len(_ort) == 0:
                 log.warning(f"[ciro] {ix} tarih kesişimi boş, override atlandı")
                 continue
-            # int64 Volume'e float TL atamadan önce cast (dtype uyumsuzluk uyarısı önlenir).
-            idx_df['Volume'] = idx_df['Volume'].astype('float64')
-            idx_df.loc[_ort, 'Volume'] = ser.reindex(_ort).values
-            tmp = target.with_suffix(".parquet.tmp")
-            idx_df.to_parquet(tmp, compression='snappy')
-            tmp.replace(target)
+            vol = pd.DataFrame({'Volume': ser.reindex(_ort).astype(float)}, index=_ort).tail(4)
+            candidates[f"{ix}.IS"] = {
+                "volume_df": vol,
+                "volume_source": "index_ciro",
+                "evidence": {"component_sum": True},
+            }
             log.info(f"[ciro] {ix}: son gün TL ciro {float(ser.reindex(_ort).iloc[-1]):,.0f} "
-                     f"(~{ser.reindex(_ort).iloc[-1]/1e9:.0f} mlr) parquet Volume'e yazıldı")
+                     f"(~{ser.reindex(_ort).iloc[-1]/1e9:.0f} mlr) sürüm adayı hazır")
         except Exception as e:
             log.warning(f"[ciro] {ix} override hatası: {e}")
+    if candidates:
+        result = promote_batch(candidates, reason="index_component_turnover",
+                               source_run={"source": "component_parquets"},
+                               max_reject_ratio=0.50)
+        if not result.get("ok"):
+            log.warning("[ciro] endeks ciro sürümü reddedildi; önceki sağlam veri korundu")
 
 
 # --------------------------------------------------------------------
 # Ana akış
 # --------------------------------------------------------------------
-def run():
-    source  = get_next_source()
+def run(source_override: str | None = None):
+    source  = source_override or get_next_source()
     tickers = load_bist_tickers()
     log.info(f"=== FETCHER START ===  Kaynak: {source}  |  {len(tickers)} ticker")
 
     start   = time.time()
     results = {'ok': 0, 'fail': 0, 'write_fail': 0, 'merge_skip': 0, 'regress_skip': 0, 'rows': 0}
     failed  = []
+    candidates = {}
     src_breakdown = {'yfinance': 0, 'isyatirim': 0}
 
     workers = MAX_WORKERS_ISYATIRIM if source == "isyatirim" else MAX_WORKERS_YFINANCE
@@ -380,18 +340,31 @@ def run():
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futs = {ex.submit(process_one, t, source): t for t in tickers}
         for i, f in enumerate(as_completed(futs), 1):
-            sym, status, rows, used_src = f.result()
+            sym, status, rows, used_src, spec = f.result()
             results[status] = results.get(status, 0) + 1
             src_breakdown[used_src] = src_breakdown.get(used_src, 0) + 1
             if status == 'ok':
                 results['rows'] += rows
+                candidates[sym] = spec
             else:
                 failed.append(sym)
+                # Kaynak genel olarak çöktüyse sürüm kapısı oranı görüp turu durdursun.
+                candidates[sym] = {}
             if i % 100 == 0:
                 log.info(f"  Progress: {i}/{len(tickers)}  ok={results['ok']} fail={results['fail']}")
 
     dur = time.time() - start
-    save_source(source)
+    promotion = promote_batch(
+        candidates, reason=f"fetcher_{source}",
+        source_run={"source": source, "total": len(tickers),
+                    "fetch_ok": results['ok'], "fetch_fail": results['fail'],
+                    "duration_sec": round(dur, 1)},
+        max_reject_ratio=0.20)
+    if promotion.get("ok"):
+        save_source(source)
+        log.info(f"  Sürüm         : {promotion.get('version_id')} · değişen={promotion.get('changed')}")
+    else:
+        log.error(f"  SÜRÜM REDDEDİLDİ — aktif veri korundu: {promotion.get('active_version')}")
 
     # ENDEKS TL CİRO OVERRIDE (18 Tem 2026) — bileşenler bu turda tazelendi,
     # şimdi endeks parquet'inin adet-Volume'ünü TL ciroyla ez (idempotent).
@@ -433,6 +406,8 @@ def run():
         'rate_level':   rate_level,
         'rows':         results['rows'],
         'fail_samples': failed[:30],
+        'promotion_ok': bool(promotion.get('ok')),
+        'version_id': promotion.get('version_id'),
     }
     try:
         with HISTORY_FILE.open('a', encoding='utf-8') as f:
@@ -465,20 +440,29 @@ def _round_timeboxed(source: str, tickers: list[str], deadline: float):
                'borsapy': MAX_WORKERS_BORSAPY}[source]
     tickers = _stalest_first(tickers)
     done = ok = 0
+    candidates = {}
     t0 = time.time()
     ex = ThreadPoolExecutor(max_workers=workers)
     try:
         futs = [ex.submit(process_one, t, source) for t in tickers]
         for f in as_completed(futs, timeout=max(1.0, deadline - time.time())):
-            _, status, _, _ = f.result()
+            sym, status, _, _, spec = f.result()
             done += 1
             ok += (status == 'ok')
+            candidates[sym] = spec if status == 'ok' else {}
             if time.time() >= deadline:
                 break
     except TimeoutError:
         pass
     finally:
         ex.shutdown(wait=False, cancel_futures=True)
+    if candidates:
+        result = promote_batch(candidates, reason=f"closing_{source}",
+                               source_run={"source": source, "timeboxed": True,
+                                           "processed": done, "universe": len(tickers)},
+                               max_reject_ratio=0.25)
+        if not result.get("ok"):
+            log.warning(f"  [KAPANIS] {source} adayları reddedildi; aktif sürüm korundu")
     log.info(f"  [KAPANIS] {source:9s} tur bitti: {done}/{len(tickers)} işlendi, ok={ok} ({time.time()-t0:.0f}sn)")
     return done, ok
 
@@ -490,8 +474,10 @@ def run_kapanis():
     Pencere dışında elle çalıştırılırsa test modu: 3 kaynak art arda 1'er tur."""
     from itertools import cycle
     tickers = load_bist_tickers()
-    sources = cycle(['yfinance', 'isyatirim', 'borsapy'])
-    now = datetime.now()
+    # Bu pencerede fiyat güncelliği önceliklidir: her 5 dakikada Yahoo fiyat
+    # turu. İş Yatırım hacim kesinleştirmesi ayrı kapanış işinde kalır.
+    sources = cycle(['yfinance'])
+    now = datetime.now(ISTANBUL_TZ)
     end = now.replace(hour=KAPANIS_END[0], minute=KAPANIS_END[1], second=0, microsecond=0)
 
     if now > end:
@@ -503,13 +489,9 @@ def run_kapanis():
 
     log.info(f"=== KAPANIS PENCERESİ === {now:%H:%M} → {end:%H:%M} | {len(tickers)} ticker")
     while True:
-        now = datetime.now()
-        if now > end + timedelta(minutes=2):   # 18:45 turu dahil (saniye kayması pencereyi yemesin)
+        now = datetime.now(ISTANBUL_TZ)
+        if now > end + timedelta(minutes=2):   # son tur dahil (saniye kayması pencereyi yemesin)
             break
-        if (now.hour, now.minute) >= KAPANIS_SKIP and (now.hour, now.minute) < (KAPANIS_SKIP[0], KAPANIS_SKIP[1] + 5):
-            log.info("  [KAPANIS] 18:35 slotu finalize_volume'a bırakıldı, bekleniyor")
-            time.sleep(60)
-            continue
         # Bu turun süre kutusu: bir sonraki 5 dk duvar-saati işareti
         next_mark = (int(time.time()) // KAPANIS_INTERVAL + 1) * KAPANIS_INTERVAL
         _round_timeboxed(next(sources), tickers, float(next_mark))
@@ -523,5 +505,9 @@ def run_kapanis():
 if __name__ == "__main__":
     if 'kapanis' in sys.argv[1:]:
         run_kapanis()
+    elif 'isyatirim' in sys.argv[1:]:
+        run("isyatirim")
+    elif 'yahoo' in sys.argv[1:]:
+        run("yfinance")
     else:
         run()

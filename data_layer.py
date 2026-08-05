@@ -33,6 +33,8 @@ _TZ_ISTANBUL = pytz.timezone("Europe/Istanbul")
 
 from data_policy import AUTO_ADJUST, drop_adj_close
 from db_layer import log_error
+from bist_data_store import active_version_id as _bist_active_version_id
+from bist_data_store import resolve_active_path as _bist_resolve_active_path
 
 # ── BIST Takvim Modülü (app.py ile AYNI blok) ────────────────────────────────
 try:
@@ -155,6 +157,18 @@ def _fetch_bist_ohlcv_isyatirim(symbol, start_date, end_date):
     Volume = HGDG_HACIM (TL) / HGDG_AOF (ağırlıklı ort. fiyat) → hisse adedi
     Returns: DataFrame (Open, High, Low, Close, Volume, DatetimeIndex) veya None
     """
+    # Tüm İş Yatırım trafiği tek merkezden geçer. Böylece uygulama, bot ve
+    # fetcher aynı anda ayrı ayrı sağlayıcıyı dövemez; gerçek HTTP zaman aşımı
+    # arka planda asılı iş bırakmaz.
+    try:
+        from isyatirim_gateway import robust_isyatirim
+        _df, _src = robust_isyatirim(
+            symbol, start_date=start_date, end_date=end_date,
+            allow_stale=True, tries=1)
+        return _df if _df is not None and not _df.empty else None
+    except Exception:
+        return None
+
     try:
         from isyatirimhisse import fetch_stock_data
         _sym = symbol.replace(".IS", "").replace(".is", "").upper()
@@ -691,9 +705,12 @@ def load_index_components(index_sym: str, allow_network: bool = True) -> list:
     if not allow_network:
         return list(rec['members']) if rec and rec.get('members') else []
     try:
+        from provider_traffic import acquire_slot, record_success, record_failure
+        acquire_slot("borsapy", priority="weekly_components", max_wait=60)
         import borsapy
         members = list(borsapy.Index(index_sym).component_symbols)
         if members:
+            record_success("borsapy")
             cache[index_sym] = {'ts': datetime.now().isoformat(timespec='seconds'),
                                 'members': members}
             try:
@@ -702,7 +719,12 @@ def load_index_components(index_sym: str, allow_network: bool = True) -> list:
             except Exception:
                 pass
             return members
-    except Exception:
+        record_failure("borsapy", kind="empty", error=f"{index_sym} components empty")
+    except Exception as _component_exc:
+        try:
+            record_failure("borsapy", kind="error", error=str(_component_exc))
+        except Exception:
+            pass
         pass
     return list(rec['members']) if rec and rec.get('members') else []
 
@@ -951,7 +973,7 @@ def get_benchmark_data(category):
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def get_batch_data_cached(asset_list, period="1y"):
+def _get_batch_data_cached_versioned(asset_list, period="1y", _bist_version="legacy"):
     """
     GATEKEEPER DESTEKLİ TOPLU TARAMA MOTORU - MULTIINDEX HATASI GİDERİLDİ
     """
@@ -968,13 +990,23 @@ def get_batch_data_cached(asset_list, period="1y"):
         clean_sym = sym.replace(".IS", "")
         if "BIST" in sym or ".IS" in sym or sym.startswith("XU"):
             clean_sym = sym if sym.endswith(".IS") else f"{sym}.IS"
-        file_path = os.path.join(CACHE_DIR, f"{clean_sym}_1d.parquet")
+        _is_bist_ro = (sym.endswith(".IS") or sym.upper().startswith(
+            ("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS")))
+        file_path = (str(_bist_resolve_active_path(sym, _bist_version))
+                     if _is_bist_ro else os.path.join(CACHE_DIR, f"{clean_sym}_1d.parquet"))
 
         needs_download = True
         if os.path.exists(file_path):
             try:
                 df_cached = pd.read_parquet(file_path)
                 if not df_cached.empty:
+                    # BIST okuyucusu yalnız aktif sürümü okur; ağ, silme ve yazma yok.
+                    if _is_bist_ro:
+                        df_ready = df_cached.tail(500).copy()
+                        combined_dict[sym] = apply_volume_projection(df_ready, sym)
+                        needs_download = False
+                        _CACHE_STATS['hit'] += 1
+                        continue
                     if not is_yahoo_update_needed(sym, df_cached.index[-1]):
                         # Bölünme tespiti: son kapanıştaki ani sıçrama (>35% tek günde)
                         # → cache stale, yeniden indir
@@ -992,6 +1024,10 @@ def get_batch_data_cached(asset_list, period="1y"):
                             needs_download = False
                             _CACHE_STATS['hit'] += 1
             except: pass
+        if needs_download and _is_bist_ro:
+            # Eksik BIST dosyasını da uygulama yaratmaz; tek yazıcı fetcher'dır.
+            needs_download = False
+            _CACHE_STATS['miss'] += 1
         if needs_download and clean_sym.replace(".IS", "") in _DEAD_SYMBOLS:
             # ölü/delisted → ağ denemesi YOK (cache varsa yukarıda zaten sunuldu)
             needs_download = False
@@ -1159,6 +1195,16 @@ def get_batch_data_cached(asset_list, period="1y"):
     if combined_dict:
         return pd.concat(combined_dict.values(), axis=1, keys=combined_dict.keys())
     return pd.DataFrame()
+
+
+def get_batch_data_cached(asset_list, period="1y"):
+    """Aktif BIST sürümünü cache anahtarına sabitleyen hızlı toplu okuyucu."""
+    return _get_batch_data_cached_versioned(
+        asset_list, period=period, _bist_version=_bist_active_version_id())
+
+
+# Mevcut app.py çağrılarının `.clear()` sözleşmesini koru.
+get_batch_data_cached.clear = _get_batch_data_cached_versioned.clear
 
 
 def _fetch_from_binance(ticker, limit=730):
@@ -1878,6 +1924,10 @@ def _ensure_parquet_on_disk(ticker: str, interval: str = "1d", period: str = "1y
     devreye giremiyordu (2y istense bile ~1y kalıyordu). Artık period'e bağlı iner.
     """
     # Sadece günlük ve kripto olmayan tickerlar için
+    _bist_ro = (ticker.endswith(".IS") or ticker.upper().startswith(
+        ("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS")))
+    if interval == "1d" and _bist_ro:
+        return
     if interval != "1d" or "-USD" in ticker:
         return
     try:
@@ -2173,6 +2223,32 @@ def _bekci_kapisi(df, ticker, period, interval):
         return df
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _read_bist_approved_version(ticker: str, period: str, version_id: str):
+    """Aktif BIST sürümünü ağ erişimi ve disk yazımı olmadan okur."""
+    try:
+        path = _bist_resolve_active_path(ticker, version_id)
+        if not path or not os.path.exists(path):
+            return pd.DataFrame()
+        df = pd.read_parquet(path)
+        if df is None or df.empty:
+            return pd.DataFrame()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        df = df.loc[:, ~df.columns.duplicated()].copy()
+        df.columns = [str(c).capitalize() for c in df.columns]
+        df.index = pd.to_datetime(df.index)
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+        days = _period_to_days(period)
+        if days and len(df):
+            cutoff = pd.Timestamp.now().normalize() - pd.Timedelta(days=days)
+            df = df[df.index >= cutoff]
+        return apply_volume_projection(df.copy(), ticker)
+    except Exception:
+        return pd.DataFrame()
+
+
 def get_safe_historical_data(ticker, period="1y", interval="1d"):
     """
     Public wrapper — önce cache'li OHLCV'yi alır, sonra
@@ -2200,6 +2276,25 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
             raise KeyError(
                 f"Donmuş veri fotoğrafında sembol yok: {ticker} ({interval})")
     # 2 Tem 2026 — ÖLÜ/DELISTED sembol → ağ denemesi YOK, diskteki son bilinen veriyi döndür.
+    # BIST günlük verisi için kısa ve kesin yol: aktif sürüm kimliği cache
+    # anahtarıdır. Uygulama, bot ve taramalar sağlayıcıya gitmez ve yazmaz.
+    _bist_ro = (ticker.endswith(".IS") or ticker.upper().startswith(
+        ("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS")))
+    if interval == "1d" and _bist_ro:
+        _version = _bist_active_version_id() or "bootstrap"
+        _df_ro = _read_bist_approved_version(ticker, period, _version)
+        if _df_ro is None or _df_ro.empty:
+            return pd.DataFrame()
+        try:
+            import veri_bekcisi as _vb_ro
+            _ok_ro, _issues_ro = _vb_ro.dogrula(_df_ro, ticker)
+            if not _ok_ro:
+                _vb_ro.kaydet(ticker, _issues_ro)
+                return pd.DataFrame()
+        except Exception:
+            pass
+        return _df_ro
+
     if ticker.replace(".IS", "") in _DEAD_SYMBOLS:
         try:
             _dc = ticker if ticker.endswith(".IS") else (

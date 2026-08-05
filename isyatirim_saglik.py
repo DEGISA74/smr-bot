@@ -106,7 +106,13 @@ def robust_isyatirim(symbol: str, period_days: int = 20, want_dates=None,
 
     Dönüş: (df, kaynak)  → kaynak ∈ {"canli", "cache", "yok"}
     """
-    from fetcher import fetch_isyatirim  # ağır import: sadece çağrılınca
+    # 5 Ağu 2026: bütün üretim çağrıları süreçler-arası ortak trafik kapısında.
+    # Eski imza korunuyor; mevcut tüketiciler değişmeden merkezi bütçeye bağlanır.
+    from isyatirim_gateway import robust_isyatirim as _gateway
+    return _gateway(symbol, period_days=period_days, want_dates=want_dates,
+                    tries=tries, allow_stale=allow_stale)
+
+    from fetcher import fetch_isyatirim  # eski uygulama — geri dönüş referansı
 
     st = _load_breaker()
 
@@ -154,6 +160,9 @@ def robust_isyatirim(symbol: str, period_days: int = 20, want_dates=None,
 
 
 def breaker_status() -> str:
+    from isyatirim_gateway import breaker_status as _gateway_status
+    return _gateway_status()
+
     st = _load_breaker()
     if _in_cooldown(st):
         return f"SİGORTA AÇIK (cooldown: {st.get('cooldown_until')})"

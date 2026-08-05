@@ -24,6 +24,9 @@ veriler/
 *.parquet
 *.csv
 
+# BIST sürüm kasası + sağlayıcı çalışma-zamanı durumu (her tarafta yerel üretilir)
+health/
+
 # Log dosyaları
 *.log
 logs/

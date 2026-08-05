@@ -142,20 +142,51 @@ def incele(sym: str, gun: str, yaz: bool) -> str:
         return "hata"
     if gun in cur.index.astype(str).str.slice(0, 10).values:
         return "zaten_var"
-    df, _ = robust_isyatirim(f"{sym}.IS", period_days=20, want_dates=[gun])
+    df, kaynak = robust_isyatirim(f"{sym}.IS", period_days=20,
+                                  want_dates=[gun], allow_stale=True, tries=1)
     if df is None or df.empty:
-        return "gercek_tatil"
+        # Sağlayıcı kapalıyken "tatil" demek veri kaybını saklıyordu.
+        return "kaynak_yok"
     add = df.loc[df.index.astype(str).str.slice(0, 10) == gun]
     if add.empty:
-        return "gercek_tatil"
+        return "kaynak_yok" if kaynak in {"yok", "cooldown"} else "gercek_tatil"
     if not yaz:
         return "gercek_delik"     # doğrulandı ama yazılmadı (sadece alarm)
-    merged = pd.concat([cur, add])
-    merged = merged[~merged.index.duplicated(keep="last")].sort_index()
-    if len(merged) < len(cur):    # gerileme koruması
+
+    # Eski tarih otomatik yazılmaz: fiyatı Yahoo'dan ayrıca doğrula; İş Yatırım
+    # yalnız hacim kaynağıdır. İki kapanış %3'ten fazla ayrışırsa karantinaya bırak.
+    try:
+        import yfinance as yf
+        from provider_traffic import acquire_slot, record_success, record_failure
+        start = pd.Timestamp(gun)
+        acquire_slot("yahoo", priority="repair", max_wait=60)
+        ydf = yf.download(f"{sym}.IS", start=start.strftime("%Y-%m-%d"),
+                          end=(start + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+                          auto_adjust=False, progress=False, timeout=15)
+        if ydf is None or ydf.empty:
+            record_failure("yahoo", kind="empty", error="gap_repair_empty")
+            return "hata"
+        record_success("yahoo")
+        if isinstance(ydf.columns, pd.MultiIndex):
+            ydf.columns = ydf.columns.get_level_values(0)
+        ydf.index = pd.DatetimeIndex([start.normalize()])
+        price = ydf[["Open", "High", "Low", "Close"]].tail(1).copy()
+        isy_close = float(add["Close"].iloc[-1])
+        yahoo_close = float(price["Close"].iloc[-1])
+        if min(isy_close, yahoo_close) <= 0 or abs(isy_close / yahoo_close - 1) > 0.03:
+            return "hata"
+        volume = add[["Volume"]].tail(1).copy()
+        volume.index = pd.DatetimeIndex([start.normalize()])
+        from bist_data_store import promote_batch
+        result = promote_batch({f"{sym}.IS": {
+            "price_df": price, "price_source": "repair_yahoo",
+            "volume_df": volume, "volume_source": "repair_isyatirim",
+            "reference_df": add[["Close"]].tail(1),
+        }}, reason=f"verified_gap_repair:{gun}", repair=True,
+            max_reject_ratio=0.50)
+        return "dolduruldu" if result.get("ok") else "hata"
+    except Exception:
         return "hata"
-    merged.to_parquet(f, compression="snappy")
-    return "dolduruldu"
 
 
 # ---- Ana akış ----------------------------------------------------------------
@@ -195,14 +226,15 @@ def main():
             continue
 
         # DOĞRULA: her şüpheliyi İsyatirim'e sor (gerçek delik ↔ gerçek tatil)
-        delik, dolduruldu, tatil, hata = [], [], [], []
+        delik, dolduruldu, tatil, hata, belirsiz = [], [], [], [], []
         for sym in supheli:
             sonuc = incele(sym, g, yaz=fix)
             if sonuc == "dolduruldu":   dolduruldu.append(sym)
             elif sonuc == "gercek_delik": delik.append(sym)
             elif sonuc == "gercek_tatil": tatil.append(sym)
             elif sonuc == "hata":       hata.append(sym)
-        gercek = len(delik) + len(dolduruldu) + len(hata)
+            elif sonuc == "kaynak_yok": belirsiz.append(sym)
+        gercek = len(delik) + len(dolduruldu) + len(hata) + len(belirsiz)
         gercek_delik_toplam += gercek
         if gercek == 0:
             satirlar.append(f"• {g}: ✅ {len(tatil)} şüpheli vardı ama hepsi gerçek tatil (o gün işlem görmemiş)")
@@ -211,6 +243,7 @@ def main():
         if delik:      parts.append(f"⚠ {len(delik)} GERÇEK DELİK ({', '.join(delik[:8])})")
         if dolduruldu: parts.append(f"🔧 {len(dolduruldu)} dolduruldu ({', '.join(dolduruldu[:8])})")
         if hata:       parts.append(f"⛔ {len(hata)} HATA ({', '.join(hata[:8])})")
+        if belirsiz:   parts.append(f"🟠 {len(belirsiz)} KAYNAK YOK — tatil sayılmadı ({', '.join(belirsiz[:8])})")
         if tatil:      parts.append(f"⚪ {len(tatil)} gerçek tatil (sessiz)")
         satirlar.append("  ".join(parts))
 
