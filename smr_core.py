@@ -466,7 +466,19 @@ def _yf_ticker(ticker: str) -> str:
 # ─── PARQUET CACHE ────────────────────────────────────────────────────────────
 def _read_parquet_cache(yf_sym: str) -> "pd.DataFrame | None":
     """VPS parquet cache'den okur. Dosya yoksa veya 48 saatten eskiyse None döner."""
-    p = _CACHE_DIR / f"{yf_sym}_1d.parquet"   # 6 Tem 2026 — dosya adı '_1d' ekiyle (fetcher/app ile aynı); eksik ek yüzünden cache HİÇ bulunamıyordu → her seferinde taze indirme
+    _is_bist = (yf_sym.endswith(".IS") or yf_sym.upper().startswith(
+        ("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS")))
+    if _is_bist:
+        try:
+            from bist_data_store import active_version_id, resolve_active_path
+            p = resolve_active_path(yf_sym, active_version_id())
+            if not p or not p.exists():
+                return None
+            df = pd.read_parquet(p)
+            return df if df is not None and not df.empty else None
+        except Exception:
+            return None
+    p = _CACHE_DIR / f"{yf_sym}_1d.parquet"   # BIST dışı eski cache yolu
     if not p.exists():
         return None
     if (time.time() - p.stat().st_mtime) > 172_800:   # 48 saat
@@ -549,6 +561,12 @@ def get_data(ticker: str, period: str = "1y") -> pd.DataFrame | None:
         # FIX (30 May 2026): cache-hit yolu da tatil hayalet-barlarından temizlensin
         # (eskiden ham dönüyordu → kapalı günlerde donmuş veri).
         return _fix_last_bar_volume(_strip_holiday_bars(_cached, yf_sym))
+
+    # BIST'te bot da salt okuyucudur. Aktif sürümde sembol yoksa sağlayıcıya
+    # düşmez; yazıcı fetcher eksikliği onarıp yeni sürüm yayınlayana kadar bekler.
+    if (yf_sym.endswith(".IS") or yf_sym.upper().startswith(
+            ("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS"))):
+        return None
 
     # ── Fallback: yfinance (cache yok veya çok eski)
     try:
