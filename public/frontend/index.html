@@ -50,11 +50,19 @@
     </div>
   </div>
 
+  <!-- DUYURU BARI -->
+  <div onclick="smrOpenPlans()" style="cursor:pointer;text-align:center;padding:7px 12px;background:linear-gradient(90deg,#0d9488,#0891b2);color:#fff;font-size:12.5px;font-weight:700;line-height:1.4;">
+    🎉 Açılışa özel: şu an her şey ÜCRETSİZ · üyelik çok yakında <span style="text-decoration:underline">%20 indirimle</span> →
+  </div>
+
   <!-- HEADER -->
   <header class="header">
     <div class="header-logo">
       <div class="logo-icon">📡</div>
-      <div class="logo-text">SMART MONEY RADAR</div>
+      <div>
+        <div class="logo-text">SMART MONEY RADAR</div>
+        <div class="hero-sub" style="font-size:10.5px;color:#94a3b8;font-weight:500;line-height:1.2;margin-top:1px;">BIST için kurumsal/akıllı para analizi · web + Telegram</div>
+      </div>
     </div>
     <div class="header-center">
       <div class="update-badge">
@@ -62,12 +70,55 @@
         Son güncelleme: <span id="update-time">—</span>
       </div>
     </div>
-    <div class="header-right">
+    <div class="header-right" style="display:flex;align-items:center;gap:8px;">
+      <button onclick="smrLogin()" style="background:transparent;color:#e2e8f0;border:1px solid #334155;border-radius:7px;padding:6px 14px;font-size:0.72rem;font-weight:600;cursor:pointer;">Giriş</button>
+      <button onclick="smrOpenPlans()" style="background:#1d9e75;color:#fff;border:none;border-radius:7px;padding:6px 16px;font-size:0.72rem;font-weight:700;cursor:pointer;">Üye Ol</button>
       <a href="https://x.com/SMRadar_2026" target="_blank" class="btn-twitter" style="font-size:0.65rem;padding:4px 11px;">
         𝕏 Takip Et
       </a>
     </div>
   </header>
+
+  <script>
+    // Üye aracı URL'si — VPS'te üye instance (örn https://smartmoneyradar.app/tool). Lokal test: localhost:8501
+    var TOOL_URL = "http://localhost:8501";
+    // SERBEST TANITIM DÖNEMİ: üyelik/ödeme henüz açık değil. Açılınca → true.
+    var MEMBERSHIP_LIVE = false;
+    // Shopier ödeme linkleri — TODO: gerçek ürün linkleriyle değiştir
+    var SHOPIER_PRO_URL   = "https://www.shopier.com/SENIN_PRO_URUN_LINKIN";
+    var SHOPIER_ELITE_URL = "https://www.shopier.com/SENIN_ELITE_URUN_LINKIN";
+    function smrBuy(tier){
+      window.open(tier === 'ELITE' ? SHOPIER_ELITE_URL : SHOPIER_PRO_URL, '_blank');
+    }
+    function smrLogin(){
+      if(!MEMBERSHIP_LIVE){ smrOpenPlans(); return; }   // üyelik henüz açılmadı → "çok yakında" modalı
+      // Email-login: araca git, orada ödeme e-postanı gir.
+      window.location.href = TOOL_URL + "/";
+    }
+    function smrOpenPlans(){
+      var m = document.getElementById('plans-modal');
+      if(m){ m.style.display='block'; document.body.style.overflow='hidden'; }
+      else { alert('Üyelik planları yakında — PRO ve ELITE.'); }
+    }
+    // E-posta bekleme listesi — API_URL: lokalde :8090, canlıda "" (aynı origin, nginx /api/)
+    var API_URL = (location.hostname === "localhost" || location.hostname === "127.0.0.1") ? "http://localhost:8090" : "";
+    function smrWaitlist(){
+      var inp = document.getElementById('waitlist-email');
+      var msg = document.getElementById('waitlist-msg');
+      var email = (inp.value || '').trim();
+      if(!email || email.indexOf('@') < 1){ msg.textContent = 'Geçerli bir e-posta gir.'; msg.style.color = '#f59e0b'; return; }
+      msg.textContent = 'Gönderiliyor…'; msg.style.color = '#94a3b8';
+      fetch(API_URL + "/api/subscribe?email=" + encodeURIComponent(email), {credentials:'include'})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if(j.ok){ msg.innerHTML = '✅ Teşekkürler! Üyelik açılınca ilk sen haber alacaksın.'; msg.style.color = '#4ade80'; inp.value=''; }
+          else { msg.textContent = 'Bir sorun oldu, tekrar dene.'; msg.style.color = '#f59e0b'; }
+        })
+        .catch(function(){ msg.textContent = 'Bağlantı hatası, birazdan tekrar dene.'; msg.style.color = '#f59e0b'; });
+    }
+    function smrOpenKvkk(){ var m=document.getElementById('kvkk-modal'); if(m){ m.style.display='block'; document.body.style.overflow='hidden'; } }
+    function closeKvkk(){ var m=document.getElementById('kvkk-modal'); if(m){ m.style.display='none'; document.body.style.overflow=''; } }
+  </script>
 
   <!-- DISCLAIMER -->
   <div class="disclaimer-bar">
@@ -86,6 +137,127 @@
   <div class="page-container">
 
     <!-- TOP BANNER kaldırıldı — ELITE strip counter-bar pozisyonuna taşındı -->
+
+    <!-- ── CANLI ARAÇ CTA (zengin app.py showcase /app/) ──────────────── -->
+    <!-- CTA şimdilik GİZLİ (RT kampanyası — link /test ile dağıtılıyor). Geri açmak: display:none → flex -->
+    <div style="display:none;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;text-align:center;padding:8px 12px;margin-bottom:10px;background:rgba(13,148,136,0.08);border:1px solid #155e63;border-radius:8px">
+      <span style="font-size:12px;color:#94a3b8">Canlı smart money analiz aracı — şu an ücretsiz.</span>
+      <a href="/test/" style="display:inline-block;background:#1d9e75;color:#fff;text-decoration:none;font-size:12px;font-weight:700;padding:6px 14px;border-radius:6px">🚀 Aracı Aç</a>
+    </div>
+
+    <!-- ── HİSSE SEÇİCİ BAR (light app — Oturum 22) ──────────────────── -->
+    <div id="stock-selector-bar" style="position:sticky;top:0;z-index:50;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+         padding:10px 12px;margin-bottom:12px;background:#0b1020;border:1px solid #1e2742;border-radius:10px;">
+      <div style="display:flex;flex-direction:column;gap:2px;min-width:120px;">
+        <label style="font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:#64748b;">Kategori</label>
+        <select id="sel-category" style="background:#0f1729;color:#e2e8f0;border:1px solid #243049;border-radius:7px;padding:8px 10px;font-size:13px;">
+          <option value="BIST">BIST</option>
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px;">
+        <label style="font-size:9px;letter-spacing:.5px;color:#64748b;text-transform:uppercase;">Hisse</label>
+        <input id="sel-stock-input" list="stock-datalist" value="XU100" placeholder="Hisse ara veya seç…" autocomplete="off"
+               style="background:#0f1729;color:#e2e8f0;border:1px solid #243049;border-radius:7px;padding:8px 10px;font-size:13px;width:100%;">
+        <datalist id="stock-datalist"></datalist>
+      </div>
+      <button id="sel-stock-go" style="background:#1d9e75;color:#fff;border:none;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;align-self:flex-end;">
+        Analiz Et
+      </button>
+      <div id="sel-status" style="font-size:12px;color:#94a3b8;align-self:flex-end;padding-bottom:8px;"></div>
+    </div>
+
+    <script>
+    (function(){
+      // İlk sürüm hisse listesi — sonraki adımda backend'den tam liste gelecek
+      var STOCKS = ["XU100","ASELS","THYAO","GARAN","AKBNK","ISCTR","SAHOL","KCHOL","EREGL","TCELL","SISE",
+        "TUPRS","BIMAS","FROTO","TOASO","HALKB","VAKBN","YKBNK","ENKAI","TKFEN","PGSUS",
+        "PETKM","CCOLA","EKGYO","ARCLK","GUBRF","KRDMD","SASA","TTKOM","TTRAK","KOZAL",
+        "ASTOR","ALFAS","ALTNY","BVSAN","EGGUB","CWENE","AEFES","ANHYT","BAGFS","MPARK",
+        "OTKAR","DOAS","LOGO","AGHOL","BRISA","AKSEN","ALKIM","ARSAN","KONTR","SMRTG"];
+      window.SELECTED_TICKER = window.SELECTED_TICKER || null;
+
+      function buildList(){
+        var dl = document.getElementById('stock-datalist');
+        if (!dl) return;
+        dl.innerHTML = STOCKS.slice().sort().map(function(t){ return '<option value="'+t+'">'; }).join('');
+      }
+      async function applyTicker(t){
+        t = (t||'').trim().toUpperCase();
+        if (!t) return;
+        var status = document.getElementById('sel-status');
+        if (STOCKS.indexOf(t) === -1){
+          status.textContent = '"'+t+'" listede yok';
+          return;
+        }
+        window.SELECTED_TICKER = t;
+        document.querySelectorAll('.sel-ticker').forEach(function(el){ el.textContent = t; });
+        status.innerHTML = '<span style="color:#94a3b8;">'+t+' yükleniyor…</span>';
+        if (typeof window.loadTicker === 'function'){
+          var ok = await window.loadTicker(t);
+          if (ok){
+            status.innerHTML = '<span style="color:#1d9e75;font-weight:600;">'+t+'</span> yüklendi';
+          } else {
+            status.innerHTML = '<span style="color:#f59e0b;">'+t+' verisi henüz yok</span> · backend adımı';
+          }
+        } else {
+          status.innerHTML = '<span style="color:#1d9e75;font-weight:600;">'+t+'</span> seçildi';
+        }
+      }
+
+      function init(){
+        buildList();
+        var btn = document.getElementById('sel-stock-go');
+        var inp = document.getElementById('sel-stock-input');
+        if (btn) btn.addEventListener('click', function(){ applyTicker(inp.value); });
+        if (inp){
+          inp.addEventListener('change', function(){ applyTicker(inp.value); });
+          inp.addEventListener('keydown', function(e){ if(e.key==='Enter'){ applyTicker(inp.value); } });
+        }
+      }
+      if (document.readyState === 'loading'){ document.addEventListener('DOMContentLoaded', init); }
+      else { init(); }
+    })();
+    </script>
+
+    <!-- (a) LIGHT ANALİZ GÖRÜNÜMÜ — pazarlama/landing blokları gizlendi, temiz 3-sütun araç.
+         Geri almak için bu <style> bloğunu sil. -->
+    <style id="light-a-layout">
+      #cta-section, #user-counter-strip, #top3-sinyaller-panel,
+      #one-cikanlar-panel, #hisse-arama-section, #kurumsal-panel, #teknik-yol-panel,
+      #radar-panel, .twitter-strip,
+      #mobile-plans, .mob-tw-strip, #tg-ad-panel,
+      #erken-radar-panel, #hisse-detay-panel { display: none !important; }
+
+      /* Masaüstü: 3 sütun BAĞIMSIZ scroll (app.py'deki gibi) */
+      @media (min-width: 961px) {
+        #stock-selector-bar { z-index: 60; }
+        .main-layout { align-items: flex-start; }
+        .sidebar-left, .main-content, .sidebar-right {
+          height: calc(100vh - 96px);
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
+        /* KRİTİK: bu sütunlar flex-column → sabit yükseklikte çocukları EZMESİN (h=2 bug).
+           flex-shrink:0 → paneller doğal yüksekliğini korur, sığmayınca scroll olur. */
+        .sidebar-left > *, .main-content > *, .sidebar-right > * { flex-shrink: 0; }
+        /* ince scroll çubuğu */
+        .sidebar-left::-webkit-scrollbar,
+        .main-content::-webkit-scrollbar,
+        .sidebar-right::-webkit-scrollbar { width: 7px; }
+        .sidebar-left::-webkit-scrollbar-thumb,
+        .main-content::-webkit-scrollbar-thumb,
+        .sidebar-right::-webkit-scrollbar-thumb { background: #1e2742; border-radius: 4px; }
+      }
+
+      /* Mobil: üst kısım sıkışmasın/çakışmasın */
+      @media (max-width: 600px) {
+        .header { position: static !important; flex-wrap: wrap; gap: 6px; height: auto; padding: 8px 10px; }
+        .header-center { display: none !important; }   /* "Son güncelleme" mobilde gizli */
+        .hero-sub { display: none !important; }          /* logo altı açıklama mobilde gizli */
+        .header-right { flex-wrap: wrap; justify-content: flex-end; }
+        #stock-selector-bar { position: static !important; }
+      }
+    </style>
 
     <!-- APP LAYOUT: 3-kolon içerik + sağda TG reklam -->
     <div class="app-layout">
@@ -142,26 +314,32 @@
         <!-- CTA BÖLÜMÜ (üste taşındı) -->
         <div class="cta-section" id="cta-section"><!-- app.js --></div>
 
-        <!-- NASIL ÇALIŞIR -->
+        <!-- NASIL ABONE OLUNUR — TEK SÜREÇ (site + Telegram) -->
         <div class="hiw-wrap">
-          <div class="hiw-title">⚡ NASIL ÇALIŞIR?</div>
+          <div class="hiw-title">⚡ NASIL ABONE OLUNUR? <span style="font-weight:500;color:#94a3b8;font-size:0.8em;">— Tek üyelik, hem site hem Telegram</span></div>
           <div class="hiw-steps">
             <div class="hiw-step">
               <div class="hiw-num">1</div>
-              <div class="hiw-step-title">Siteyi Takip Et</div>
-              <div class="hiw-step-desc">Her gün piyasa özetini, günün öne çıkan hisselerini ve özet analizlerini gör.</div>
+              <div class="hiw-step-title">Üye Ol</div>
+              <div class="hiw-step-desc">Üstteki <strong>Üye Ol</strong> butonuna tıkla, <strong>PRO</strong> (349₺) veya <strong>ELITE</strong> (599₺) planını seç.</div>
             </div>
             <div class="hiw-arrow">→</div>
             <div class="hiw-step">
               <div class="hiw-num">2</div>
-              <div class="hiw-step-title">Bot'a Yaz</div>
-              <div class="hiw-step-desc">Telegram PRO sohbetinde <code class="hiw-code">#THYAO</code> gibi bir hisse kodu yaz.</div>
+              <div class="hiw-step-title">Shopier'da Öde</div>
+              <div class="hiw-step-desc"><strong>E-postanla</strong> öde. Telegram'dan da kullanmak istersen <strong>"Not"</strong> alanına Telegram kullanıcı adını ekle <em>(opsiyonel)</em>.</div>
             </div>
             <div class="hiw-arrow">→</div>
             <div class="hiw-step">
               <div class="hiw-num">3</div>
-              <div class="hiw-step-title">Analiz Gelsin</div>
-              <div class="hiw-step-desc">Grafik + <strong>Algoritmik Teknik Analiz Özeti</strong> saniyeler içinde DM'ine gelir.</div>
+              <div class="hiw-step-title">~10 Dakika Bekle</div>
+              <div class="hiw-step-desc">Aboneliğin otomatik aktifleşir — <strong>hem site hem Telegram</strong> erişimi açılır.</div>
+            </div>
+            <div class="hiw-arrow">→</div>
+            <div class="hiw-step">
+              <div class="hiw-num">4</div>
+              <div class="hiw-step-title">Kullanmaya Başla</div>
+              <div class="hiw-step-desc">🌐 Site: <strong>Giriş</strong>'e e-postanı gir. &nbsp;📱 Telegram: @SMRBorsaBot'a START bas. İstediğin hisseyi analiz et.</div>
             </div>
           </div>
         </div>
@@ -260,78 +438,65 @@
 
         <!-- MOBİL INLINE CTA (sadece mobilde görünür) -->
         <div class="mob-inline-cta">
-          <a href="#planlar" class="mob-inline-cta-btn">📊 PRO veya ELITE'e Abone Ol</a>
+          <a href="#" onclick="smrOpenPlans();return false;" class="mob-inline-cta-btn">📊 PRO veya ELITE'e Abone Ol</a>
         </div>
 
         <!-- SSS / FAQ -->
         <div class="faq-wrap">
-          <div class="faq-title">❓ PRO ve ELITE Abonelikleri için Sıkça Sorulan Sorular</div>
+          <div class="faq-title">❓ Sıkça Sorulan Sorular</div>
+          <div style="font-size:12.5px;color:#94a3b8;line-height:1.6;margin-bottom:14px;">
+            <strong style="color:#22d3ee;">Tek üyelik (PRO veya ELITE) hem siteyi hem Telegram'ı açar.</strong>
+            🌐 <strong>Site:</strong> web aracında 3 sütunlu detaylı analiz — istediğin hisseyi seç, incele.
+            📱 <strong>Telegram:</strong> bot'a hisse kodu yaz, analizi DM al. İkisi de aynı üyeliğe dahildir.
+          </div>
+
           <details class="faq-item">
-            <summary class="faq-q">PRO veya ELITE'e nasıl abone olurum?</summary>
-            <div class="faq-a">
-              <strong>1. Planı seç</strong><br>
-              Bu sayfada PRO (349 ₺/ay) veya ELITE (599 ₺/ay) planını seç ve ödeme butonuna tıkla.<br><br>
-              <strong>2. Shopier'da öde</strong><br>
-              Ödeme sayfasına yönlendirilirsin. Kart bilgilerini girdikten sonra <strong>"Not"</strong> alanına Telegram kullanıcı adını yaz. <em>(örn: @ahmet2001 — @ işareti ile)</em><br><br>
-              <strong>3. @SMRBorsaBot'a START bas</strong><br>
-              Ödemeyi tamamlar tamamlamaz Telegram'da @SMRBorsaBot'u aç ve <strong>START</strong> tuşuna bas. Bu adım zorunlu — bot sana ancak bu şekilde ulaşabilir.<br><br>
-              <strong>4. Davet linkini bekle</strong><br>
-              Bot Shopier siparişlerini her 5 dakikada kontrol eder. Kullanıcı adını eşleştirince gruba davet linkini <strong>DM olarak</strong> atar. Genellikle <strong>5–15 dakika</strong> içinde gelir.<br><br>
-              <strong>5. Gruba gir, kullanmaya başla</strong><br>
-              Linke tıkla, gruba gir. Artık #THYAO, #GARAN, #BTC gibi bir varlık kodu yazman yeterli — analiz sadece sana özel DM olarak gelir.
-            </div>
+            <summary class="faq-q">Üyelik bana ne veriyor?</summary>
+            <div class="faq-a">Tek ödeme ile <strong>iki erişim birden</strong> açılır: <strong>🌐 Site</strong> — web analiz aracına giriş; istediğin hisseyi seçer, fiyat/sinyal/grafik/seviye ve pakete göre derin panelleri ekranda görürsün. <strong>📱 Telegram</strong> — bot'a <code class="hiw-code">#THYAO</code> gibi kod yazınca grafik + analiz DM'ine gelir. İkisi de aynı üyelikte.</div>
           </details>
           <details class="faq-item">
-            <summary class="faq-q">Analiz ne zaman gelir?</summary>
-            <div class="faq-a">Hisse adını gönderdiğinde saniyeler içinde DM'ine gelir. Hisse analizi yapılıyor, grafik oluşturuluyor ve sana özel iletiliyor.</div>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-q">Hangi varlıklar analiz edilebilir?</summary>
-            <div class="faq-a">631 adet BIST hissesi (5 endeks dahil), 84 adet kripto (BTC, ETH, SOL, PEPE vb.) ve 6 adet emtia (Altın, Gümüş, Bakır, Petrol, Brent, Doğalgaz) analiz edilebilir.</div>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-q">Günlük limit ne zaman sıfırlanır?</summary>
-            <div class="faq-a">Her gece 00:00 İstanbul saatiyle otomatik sıfırlanır. PRO: 3 sorgu/gün · ELITE: 8 sorgu/gün.</div>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-q">Aboneliği nasıl iptal ederim?</summary>
-            <div class="faq-a">Shopier üzerinden yeni dönem ödemesi yapmazsan abonelik otomatik sona erer. Erken iptal için @SmartMoneyRadar26'ya yaz.</div>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-q">Site ile bot arasındaki fark nedir?</summary>
-            <div class="faq-a">Site ücretsiz — günlük piyasa özeti, öne çıkan hisseler ve Erken Radar tadımlık sunar. Bot ise abone olduğun tier'a göre istediğin hissenin kişisel analizini DM olarak gönderir.</div>
+            <summary class="faq-q">Nasıl abone olurum?</summary>
+            <div class="faq-a"><strong>1.</strong> Üstteki <strong>Üye Ol</strong>'a tıkla, <strong>PRO</strong> (349₺/ay) veya <strong>ELITE</strong> (599₺/ay) seç.<br><strong>2.</strong> Shopier'da <strong>e-postanla</strong> öde. Telegram'dan da kullanmak istiyorsan ödeme <strong>"Not"</strong> alanına Telegram kullanıcı adını ekle <em>(örn. @ahmet — opsiyonel)</em>.<br><strong>3.</strong> ~10 dakika içinde aboneliğin otomatik aktifleşir.<br><strong>4.</strong> Site için <strong>Giriş</strong>'e ödeme e-postanı gir; Telegram için @SMRBorsaBot'a START bas.</div>
           </details>
           <details class="faq-item">
             <summary class="faq-q">PRO ile ELITE arasındaki fark ne?</summary>
-            <div class="faq-a">PRO'da günde 3 sorgu hakkın olur; her analiz grafik + Algoritmik Teknik Analiz Özeti + her akşam 19:00 BIST100 bülteni içerir. ELITE'de günde 8 sorgu hakkın olur; buna ek olarak Uzman AI Raporu (daha derin senaryo analizi) ve haftalık tarama raporu da gelir.</div>
+            <div class="faq-a"><strong>PRO</strong> — günde <strong>3 hisse</strong> (hem sitede hem Telegram'da). Sitede: fiyat kartı, sinyal özeti, genel sağlık, para akışı grafiği, teknik seviyeler. Telegram'da: grafik + teknik analiz özeti + her akşam 19:00 BIST bülteni.<br><br><strong>ELITE</strong> — günde <strong>8 hisse</strong>. PRO'daki her şey + sitede derin paneller (Smart Money Hacim, ICT analizi, Teknik Yol Haritası, Price Action, Kurumsal İlgi, yazılı sonuç yorumu); Telegram'da Uzman AI Raporu + haftalık tarama.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Siteye nasıl giriş yaparım?</summary>
+            <div class="faq-a">Üstteki <strong>Giriş</strong> butonuna tıkla, <strong>ödeme yaptığın e-postayı</strong> gir. Şifre yok — e-postan yeterli. Her cihazdan aynı e-postayla girebilirsin.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Telegram'ı nasıl kullanırım?</summary>
+            <div class="faq-a">Ödeme "Not" alanına Telegram kullanıcı adını yazdıysan: @SMRBorsaBot'u aç, <strong>START</strong>'a bas. Bot ~5–15 dk içinde davet linkini DM atar. Sonra <code class="hiw-code">#THYAO</code>, <code class="hiw-code">#GARAN</code>, <code class="hiw-code">#BTC</code> gibi bir kod yaz — analiz sana özel DM gelir.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Telegram zorunlu mu? Sadece siteyi kullanabilir miyim?</summary>
+            <div class="faq-a">Telegram <strong>opsiyonel</strong>. Sadece siteyi istiyorsan e-postanla ödemen yeterli — Telegram kullanıcı adı eklemene gerek yok. İstersen sonradan da ekleyebilirsin (@SmartMoneyRadar26'ya yaz).</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Ödedim ama erişemiyorum, ne yapmalıyım?</summary>
+            <div class="faq-a">🕐 Sistem ödemeleri birkaç dakikada bir kontrol eder; aboneliğin genellikle <strong>~10 dakika</strong> içinde aktifleşir. Biraz bekleyip siteye tekrar <strong>Giriş</strong> yap (veya Telegram'da START'a tekrar bas). 15 dakikadan uzun sürerse @SmartMoneyRadar26'ya Shopier sipariş numaranla yaz, elle aktifleştirilir.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Günlük hak ne zaman sıfırlanır?</summary>
+            <div class="faq-a">Her gece otomatik sıfırlanır. PRO: günde 3, ELITE: günde 8. Sitede aynı hisseyi tekrar açmak hak yemez ve endeks (XU100) ücretsizdir. Site ve Telegram hakları ayrı sayılır.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Hangi varlıkları analiz edebilirim?</summary>
+            <div class="faq-a">📱 Telegram: 631 BIST hissesi (5 endeks dahil), 84 kripto (BTC, ETH, SOL, PEPE…) ve 6 emtia (Altın, Gümüş, Bakır, Petrol, Brent, Doğalgaz). 🌐 Site: BIST hisseleri ve endeks. Kripto/emtia için Telegram'ı kullan.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Aboneliğimi nasıl yeniler / iptal ederim?</summary>
+            <div class="faq-a">Şu an yenileme <strong>aylık elle</strong>: her ay Shopier'dan tekrar ödersen süren uzar (aynı e-posta/kullanıcı adıyla). Ödemezsen abonelik dönem sonunda kendiliğinden biter — ekstra iptal işlemi gerekmez. Erken iptal/iade için @SmartMoneyRadar26.</div>
           </details>
           <details class="faq-item">
             <summary class="faq-q">Ödeme güvenli mi?</summary>
-            <div class="faq-a">Ödeme altyapısı Shopier üzerinden çalışır — Türkiye'nin yaygın kullanılan e-ticaret ödeme sistemi. Kart bilgilerin bota veya bize iletilmez, doğrudan Shopier'ın güvenli altyapısında işlenir.</div>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-q">Ödeme yaptım ama bot hâlâ yanıt vermiyor, ne yapmalıyım?</summary>
-            <div class="faq-a">Ödeme sonrası bot 5–15 dakika içinde otomatik olarak sana Telegram davet linki gönderir. Bunun için @SMRBorsaBot'a bir kez /start yazmış olman gerekir. 15 dakika geçtiyse @SmartMoneyRadar26'ya Shopier sipariş numaranla yaz, manuel aktif edilir.</div>
+            <div class="faq-a">Ödeme <strong>Shopier</strong> üzerinden işlenir — Türkiye'nin yaygın e-ticaret ödeme altyapısı. Kart bilgilerin bize veya bota iletilmez, doğrudan Shopier'ın güvenli sisteminde işlenir.</div>
           </details>
           <details class="faq-item">
             <summary class="faq-q">Analizler yatırım tavsiyesi mi?</summary>
-            <div class="faq-a">Hayır. Tüm içerikler algoritmik teknik analiz çıktısıdır ve yalnızca eğitim amaçlıdır. Yatırım kararlarından doğan sonuçların sorumluluğu tamamen kullanıcıya aittir.</div>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-q">Grafik ne gösteriyor?</summary>
-            <div class="faq-a">Mum grafik üzerinde hareketli ortalamalar (SMA/EMA), destek ve direnç seviyeleri, hacim çubukları ve algoritmik olarak tespit edilen önemli bölgeler işaretli olarak gelir. Ek olarak kısa bir teknik özet metni de eklenir.</div>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-q">Kripto için de çalışıyor mu?</summary>
-            <div class="faq-a">Evet. BTC, ETH, SOL, AVAX gibi popüler kriptoları #BTC, #ETH şeklinde yazarak analiz isteyebilirsin. Analiz 7/24 çalışır, piyasa saatiyle sınırlı değildir.</div>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-q">Mobilde kullanılabiliyor mu?</summary>
-            <div class="faq-a">Evet, Telegram zaten mobil öncelikli bir uygulama. Bot tamamen mobil uyumludur. Sitesi de (smartmoneyradar.app) mobil cihazlarda düzgün görüntülenir.</div>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-q">Birden fazla cihazdan kullanabilir miyim?</summary>
-            <div class="faq-a">Evet. Abonelik Telegram hesabınla bağlıdır, cihazla değil. Telefondan, tabletten veya bilgisayardan aynı Telegram hesabıyla giriş yaptığın sürece bota erişebilirsin.</div>
+            <div class="faq-a">Hayır. Tüm içerik algoritmik teknik analiz çıktısıdır ve yalnızca eğitim/bilgi amaçlıdır. Yatırım kararlarının sorumluluğu tamamen kullanıcıya aittir.</div>
           </details>
         </div>
 
@@ -425,7 +590,7 @@
 
   <!-- MOBİL STICKY BAR -->
   <div id="mobile-cta-bar">
-    <a href="#planlar">📊 PRO / ELITE'e Abone Ol →</a>
+    <a href="#" onclick="smrOpenPlans();return false;">📊 PRO / ELITE'e Abone Ol →</a>
   </div>
 
   <!-- FOOTER -->
@@ -439,13 +604,14 @@
     </p>
     <div class="footer-links">
       <a href="https://x.com/SMRadar_2026" target="_blank" class="footer-link btn-twitter" style="padding:3px 10px;font-size:10px;">𝕏 Twitter</a>
-      <a href="#planlar"   target="_blank" class="footer-link">Telegram PRO</a>
-      <a href="#planlar" target="_blank" class="footer-link">Telegram ELITE</a>
+      <a href="#planlar" onclick="smrOpenPlans();return false;" class="footer-link">PRO Üyelik</a>
+      <a href="#planlar" onclick="smrOpenPlans();return false;" class="footer-link">ELITE Üyelik</a>
+      <a href="#" onclick="smrOpenKvkk();return false;" class="footer-link">KVKK / Gizlilik</a>
       <span class="footer-link">© 2026 Smart Money Radar</span>
     </div>
   </footer>
 
-  <script src="app.js?v=41"></script>
+  <script src="app.js?v=47"></script>
 
 <!-- PLANS MODAL -->
 <div id="plans-modal" onclick="if(event.target===this)closePlansModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;overflow-y:auto;padding:20px">
@@ -455,25 +621,31 @@
     </div>
     <div style="padding:24px">
     <div style="text-align:center;margin-bottom:20px">
-      <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">TELEGRAM KANALI</div>
-      <div style="font-size:17px;font-weight:800;color:#f1f5f9">Hisse adını yaz,<br>analiz önüne gelsin.</div>
-      <div style="margin-top:10px;display:flex;gap:6px;">
-        <input id="stock-search-input" type="text" placeholder="BIMAS, THYAO..."
-          maxlength="10"
-          onkeydown="if(event.key==='Enter')handleStockSearch()"
-          style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:6px;
-                 color:#e2e8f0;padding:7px 10px;font-size:12px;outline:none;width:0;" />
-        <button onclick="handleStockSearch()"
-          style="background:#06b6d4;color:#080c18;border:none;border-radius:6px;
-                 padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Ara</button>
+      <div style="font-size:10px;font-weight:700;color:#22d3ee;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">TEK ÜYELİK</div>
+      <div style="font-size:17px;font-weight:800;color:#f1f5f9">Bir öde, her yerden eriş.</div>
+      <div style="margin-top:8px;font-size:12px;color:#94a3b8;line-height:1.6">
+        Üyeliğin <strong style="color:#e2e8f0">🌐 web aracını</strong> (detaylı 3 sütunlu analiz) ve
+        <strong style="color:#e2e8f0">📱 Telegram'ı</strong> (hisse kodu yaz, DM al) birlikte açar.
       </div>
-      <div id="stock-search-result" style="margin-top:8px;font-size:11.5px;color:#94a3b8;min-height:16px;line-height:1.4;"></div>
+    </div>
+    <div style="background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.35);border-radius:8px;padding:10px 12px;margin-bottom:14px;text-align:center;font-size:12.5px;color:#4ade80;font-weight:700">
+      🎉 Şu an her şey ÜCRETSİZ — üyelik çok yakında. <strong>Açılışa özel kısa süre %20 indirim!</strong>
+    </div>
+    <div style="background:#0a1628;border:1px solid #22d3ee;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:800;color:#22d3ee;margin-bottom:6px">🔔 Üyelik açılınca ilk sen haber al</div>
+      <div style="display:flex;gap:6px">
+        <input id="waitlist-email" type="email" placeholder="e-posta adresin" autocomplete="email"
+               style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 10px;font-size:12px;outline:none;width:0">
+        <button onclick="smrWaitlist()" style="background:#22d3ee;color:#062a30;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">Haber Ver</button>
+      </div>
+      <div id="waitlist-msg" style="margin-top:6px;font-size:11px;color:#94a3b8;min-height:14px"></div>
+      <div style="margin-top:4px;font-size:9.5px;color:#64748b;line-height:1.5">E-postanı bırakarak <a href="#" onclick="smrOpenKvkk();return false;" style="color:#64748b;text-decoration:underline">KVKK Aydınlatma Metni</a> kapsamında bilgilendirme almayı kabul edersin.</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px">
       <!-- ELITE -->
       <div style="background:#0a1628;border:1px solid #7c3aed;border-radius:10px;padding:14px 16px">
         <div style="font-size:9px;font-weight:700;color:#8b5cf6;letter-spacing:1px;text-transform:uppercase">ELİTE</div>
-        <div style="font-size:18px;font-weight:900;color:#8b5cf6;margin:2px 0 8px">₺599 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span></div>
+        <div style="font-size:18px;font-weight:900;color:#8b5cf6;margin:2px 0 8px"><span style="font-size:12px;color:#64748b;text-decoration:line-through;font-weight:600">₺749</span> ₺599 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span> <span style="display:inline-block;margin-left:2px;background:rgba(0,200,83,0.15);color:#4ade80;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;vertical-align:middle">AÇILIŞA ÖZEL %20</span></div>
         <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 8 · Aylık 240 rapor (~2.50₺ / rapor)<br>• Momentum-Para Akışı &amp; Sentiment Grafikleri<br>• <strong style="color:#f1f5f9">Tam sayfa Derinlemesine AI uzman analizi</strong><br>• <strong style="color:#f1f5f9">Kapsamlı SMR yapı-anatomi-kurumsal ayak izi değerlendirmesi</strong><br>• Her işlem günü 19:00 bülteni (XU100)<br>• Hafta sonu özel tarama özetleri<br>• 631 BIST · 84 kripto · 6 emtia</div>
         <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-top:8px;background:#7c3aed;border:none;border-radius:6px;padding:8px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div style="display:flex;flex-direction:column;gap:3px;margin:8px 0">
@@ -481,15 +653,15 @@
           <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#8b5cf6;font-weight:700">✦ ELİTE SET-UP'LAR</div>
           <div style="background:rgba(255,100,50,0.08);border:1px solid rgba(255,100,50,0.2);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#ff8c5a;font-weight:700">🎯 ICT SNIPER TARAMA</div>
         </div>
-        <div style="display:block;margin-top:6px;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
+        <div style="display:block;width:100%;margin-top:6px;text-align:center;background:rgba(124,58,237,0.15);border:1px solid #7c3aed;border-radius:7px;padding:9px;color:#a78bfa;font-size:12px;font-weight:800;letter-spacing:0.3px">🕐 Üyelik Çok Yakında</div>
       </div>
       <!-- PRO -->
       <div style="background:#0a1628;border:1px solid #2563eb;border-radius:10px;padding:14px 16px">
         <div style="font-size:9px;font-weight:700;color:#3b82f6;letter-spacing:1px;text-transform:uppercase">PRO</div>
-        <div style="font-size:18px;font-weight:900;color:#3b82f6;margin:2px 0 8px">₺349 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span></div>
+        <div style="font-size:18px;font-weight:900;color:#3b82f6;margin:2px 0 8px"><span style="font-size:12px;color:#64748b;text-decoration:line-through;font-weight:600">₺439</span> ₺349 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span> <span style="display:inline-block;margin-left:2px;background:rgba(0,200,83,0.15);color:#4ade80;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;vertical-align:middle">AÇILIŞA ÖZEL %20</span></div>
         <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 3 · Aylık 90 rapor (~3.88₺ / rapor)<br>• Momentum-Para Akışı &amp; Sentiment Grafikleri<br>• <strong style="color:#e2e8f0">Algoritmik Teknik Analiz Özeti</strong><br>• <strong style="color:#f1f5f9">Tam sayfa 7 maddelik Detaylı Teknik Analiz (PA + ICT) Kart</strong><br>• Her işlem günü 19:00 bülteni (XU100)<br>• 631 BIST · 84 kripto · 6 emtia</div>
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-top:8px;background:#2563eb;border:none;border-radius:6px;padding:8px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
-        <div style="display:block;margin-top:6px;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
+        <div style="display:block;width:100%;margin-top:6px;text-align:center;background:rgba(37,99,235,0.15);border:1px solid #2563eb;border-radius:7px;padding:9px;color:#60a5fa;font-size:12px;font-weight:800;letter-spacing:0.3px">🕐 Üyelik Çok Yakında</div>
       </div>
       <!-- FREE -->
       <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:10px;padding:14px 16px">
@@ -497,12 +669,32 @@
         <div style="font-size:18px;font-weight:900;color:#f1f5f9;margin:2px 0 8px">FREE <span style="font-size:12px;color:#64748b;font-weight:400">₺0 /ay</span></div>
         <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 1 hisse kartı (aylık 30)<br>• Momentum-Para Akışı &amp; Sentiment Grafikleri<br>• <strong style="color:#e2e8f0">Algoritmik Teknik Analiz Özeti</strong></div>
         <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-top:8px;background:#00c853;border:none;border-radius:6px;padding:8px;color:#000;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
-        <div style="display:block;margin-top:6px;text-align:center;background:rgba(100,116,139,0.1);border:1px solid #334155;border-radius:7px;padding:8px;color:#64748b;font-size:12px;font-weight:700;cursor:default">🕐 ÇOK YAKINDA</div>
+        <button onclick="closePlansModal()" style="display:block;width:100%;margin-top:6px;text-align:center;background:#00c853;border:none;border-radius:7px;padding:9px;color:#000;font-size:12px;font-weight:800;cursor:pointer;letter-spacing:0.3px">Hemen Ücretsiz Dene</button>
       </div>
     </div>
     </div><!-- /padding:24px -->
   </div>
 </div>
+<!-- KVKK AYDINLATMA MODALI -->
+<div id="kvkk-modal" onclick="if(event.target===this)closeKvkk()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10001;overflow-y:auto;padding:20px">
+  <div style="max-width:580px;margin:30px auto;background:#0d1829;border:1px solid #1e3a5f;border-radius:14px;padding:22px 24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:15px;font-weight:800;color:#f1f5f9">KVKK Aydınlatma Metni & Gizlilik</div>
+      <button onclick="closeKvkk()" style="background:rgba(100,116,139,0.15);border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:13px;font-weight:700;cursor:pointer;padding:5px 12px">✕ Kapat</button>
+    </div>
+    <div style="font-size:12px;color:#cbd5e1;line-height:1.75">
+      <p>6698 sayılı Kişisel Verilerin Korunması Kanunu (KVKK) kapsamında, Smart Money Radar olarak kişisel verilerinizin işlenmesine ilişkin aydınlatma yükümlülüğümüzü aşağıdaki şekilde yerine getiririz.</p>
+      <p><strong style="color:#e2e8f0">Toplanan veriler:</strong> e-posta adresi (bekleme listesi / üyelik için), IP adresi ve tarayıcı bilgisi (güvenlik, kötüye kullanım önleme ve istatistik için), site kullanım verileri (ziyaret sayısı vb.).</p>
+      <p><strong style="color:#e2e8f0">İşleme amaçları:</strong> üyelik açıldığında bilgilendirme yapmak, hizmeti sunmak ve iyileştirmek, yasal yükümlülükleri yerine getirmek, güvenliği sağlamak.</p>
+      <p><strong style="color:#e2e8f0">Hukuki sebep:</strong> açık rızanız (e-posta bırakma) ve meşru menfaat (güvenlik/istatistik).</p>
+      <p><strong style="color:#e2e8f0">Saklama:</strong> veriler yalnızca amaç için gerekli süre boyunca saklanır; talep üzerine silinir.</p>
+      <p><strong style="color:#e2e8f0">Aktarım:</strong> veriler üçüncü kişilerle pazarlama amacıyla paylaşılmaz. Yalnızca hizmetin çalışması için kullanılan altyapı sağlayıcıları (ödeme: Shopier; analitik: Google/Microsoft) işleyebilir.</p>
+      <p><strong style="color:#e2e8f0">Haklarınız (KVKK md. 11):</strong> verilerinize erişme, düzeltme, silme, işlemeye itiraz etme haklarına sahipsiniz. Talepleriniz için <a href="https://t.me/SmartMoneyRadar26" target="_blank" style="color:#22d3ee">@SmartMoneyRadar26</a> üzerinden bize ulaşabilirsiniz.</p>
+      <p style="color:#64748b;font-size:11px">Not: Bu metin standart bir bilgilendirmedir; nihai hukuki uygunluk için bir uzmana danışılması önerilir. İçerikler yatırım tavsiyesi değildir.</p>
+    </div>
+  </div>
+</div>
+
 <!-- ÖRNEK ÇIKTI MODAL -->
 <div id="example-modal" onclick="if(event.target===this)closeExampleModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;overflow-y:auto;padding:20px">
   <div style="max-width:480px;margin:30px auto;background:#0d1117;border-radius:14px;overflow:hidden;position:relative">
