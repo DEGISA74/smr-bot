@@ -69,3 +69,17 @@ Bunlar sicile **girmez** çünkü doğrulandı:
 **En kırılgan nokta V-13.** Hacim senaryolarının isimleri yazarın, koşulları tamamen bizim.
 Bu, "aynı sistemi kurduk" diyemeyeceğimiz alandır. Görev D'de bu modülün sonuçları
 **ayrı bir başlık altında** ve "koşullar bizim tanımımızdır" uyarısıyla raporlanacak.
+
+---
+
+## EK — Prototipten gelen ilk ölçümler (23 Ağu 2026)
+
+Aşağıdakiler **sentetik veriyle** (rastgele yürüyüş + sıçramalar) yapılan ilk kontrollerdir.
+Gerçek BIST verisiyle tekrarlanmadan kesin sayılmazlar, ama bazı varsayımlara ilk kanıtı verdiler.
+
+| Varsayım | Ölçüm | Sonuç |
+|---|---|---|
+| **V-18** (√n normalizasyonu ölçekleri eşitler mi?) | Ölçek başına "oy verme" oranı: n=3 → %69.0, n=7 → %73.1, n=13 → %68.6, n=19 → %69.0, n=29 → %70.9, n=47 → %73.4 | ✅ **Destekleniyor.** Altı ölçek birbirine çok yakın oranda oy veriyor. Uzun pencerelerin susması sorunu görülmedi — normalizasyon iddiası tutuyor |
+| **V-03** (ölü bölge eşiği θ) | %25 ölü bölge hedefiyle kalibrasyon → **θ = 0.273** | ✅ Spec'te "teorik değer 0.32 olurdu, kalın kuyruk yüzünden daha küçük çıkar" yazmıştık. Ölçüm **0.273** verdi — tahmin doğru yönde çıktı. Varsayılan 0.30 olarak duruyor; gerçek BIST kalibrasyonu yapılınca dondurulacak |
+| **V-13** (19 hacim senaryosu) | 600 barlık sentetik seride S1, S7, S8, S9, S13, S14, S17, S18 **hiç tetiklenmedi** | ⚠ **Uyarı doğrulandı.** Senaryoların yarısına yakını nadir. Nadir olması kötü değil ama **test edilemez** olmaları sorun: örneklem yoksa "işe yarıyor mu" sorusu cevapsız kalır. Gerçek veride frekans ölçümü şart |
+| **Modül E (MEM)** | MEM, `baski_ens_100` ile **sayısal olarak aynı** çıktı | ❌ **Gereksiz.** Eşit ağırlıkta MEM = ensemble baskı skorunun birebir aynısı. Tek özgün çıktısı altındaki osilatör. Görev B'deki "MEM eklenmesin" yargısını doğruluyor |
