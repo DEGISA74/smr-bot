@@ -1,0 +1,5 @@
+# Kabuk betikleri DAİMA LF satır sonuyla saklanır ve öyle checkout edilir.
+# Neden: core.autocrlf=true bu depoda açık; .sh dosyaları checkout'ta CRLF'e
+# dönerse Git Bash "bad interpreter: /bin/bash^M" verir ve deploy.sh çalışmaz.
+# 24 Ağu 2026'da deploy.sh git'e alınırken bu tehlike fark edildi.
+*.sh text eol=lf
