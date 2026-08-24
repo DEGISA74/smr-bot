@@ -83,7 +83,8 @@ from indicators import (
     calculate_z_score_live, _z_score_details, detect_market_regime,
     compute_flow_persistence, detect_absorption_days,  # 10 Tem 2026 — Smart Money panel: süreklilik + absorpsiyon
     compute_obv_series, compute_obv_divergence_duration,  # 10 Tem 2026 — OBV sparkline + uyumsuzluk rozeti
-    compute_panel_consensus_history, find_volume_gap_levels)  # 10 Tem 2026 — skor geçmişi + LVN boşlukları
+    compute_panel_consensus_history, find_volume_gap_levels,  # 10 Tem 2026 — skor geçmişi + LVN boşlukları
+    detect_vpa_anomaly, compute_volume_breadth)
 # 4 Tem 2026 — BÖLME ADIM 5: DB çekirdeği db_layer.py içinde
 from db_layer import (DB_FILE, log_error, init_db, _fetch_mkk_yabanci_rss,
                       _compute_mkk_yabanci_signals, load_watchlist_db,
@@ -5851,37 +5852,40 @@ def render_smart_volume_panel(ticker):
                                 # çelişiyormuş gibi okunuyordu (bugün -%0,12 iken şerit
                                 # "Yukarı" diyor). Yön SON 5 GÜNÜN yönü — açıkça yazılır.
                                 _v_yon_txt = "Son 5 gün yukarı" if _yon_up else "Son 5 gün aşağı"
-                                if _v_state == "basabas":
-                                    _v_baslik = f"{_v_yon_txt} · akıllı para fiyatla başa baş"
+                                if _yon_up:
+                                    if _v_state == "onde":
+                                        _v_baslik = f"{_v_yon_txt} · Para girişi yükselişi destekliyor"
+                                    elif _v_state == "geride":
+                                        _v_baslik = f"{_v_yon_txt} · Para girişi zayıf (Fiyat paranın önünde)"
+                                    else:
+                                        _v_baslik = f"{_v_yon_txt} · Fiyat ve para akışı uyumlu"
                                 else:
-                                    _v_ad = "önde" if _v_state == "onde" else "geride"
-                                    _v_baslik = (f"{_v_yon_txt} · akıllı para "
-                                                 f"{abs(_gap_pt):.0f} puan {_v_ad}")
+                                    if _v_state == "onde":
+                                        _v_baslik = f"{_v_yon_txt} · Para çıkışı sınırlı (Panik satışı yok)"
+                                    elif _v_state == "geride":
+                                        _v_baslik = f"{_v_yon_txt} · Satış baskısı yüksek (Para çıkışı teyitli)"
+                                    else:
+                                        _v_baslik = f"{_v_yon_txt} · Fiyat ve para akışı paralel geriliyor"
                                 # 2. cümle = NEYE BAKILACAK. Tahmin/tavsiye değil; hükmün
                                 # neyle doğrulanıp neyle çürüyeceğini söyler (14 Ağu 2026).
                                 _v_alt = {
                                     ("Yukarı", "onde"):
-                                        "Yükselişin arkasında alım var — hacim fiyatı doğruluyor. "
-                                        "İzlenecek şey bu üstünlüğün korunması; para geri düşerse "
-                                        "yükseliş desteksiz kalır.",
+                                        "Fiyat yükselirken para girişi de güçlü şekilde eşlik ediyor — yükseliş hacimle teyitli. "
+                                        "Bu para desteği korunduğu sürece ana yön güçlü kalır.",
                                     ("Yukarı", "geride"):
-                                        "Fiyat paranın önüne geçmiş — yükseliş hacimle tam "
-                                        "desteklenmiyor. Aradaki açık kapanırsa yükseliş sağlamlaşır; "
-                                        "açılmaya devam ederse fiyat tek başına koşuyor demektir.",
+                                        "Fiyat yükseliyor ancak para girişi bu hıza henüz yetişemedi. Yükselişin sağlamlaşması "
+                                        "için taze para girişi şart; aksi halde hareket desteksiz kalabilir.",
                                     ("Yukarı", "basabas"):
-                                        "Para fiyata ayak uyduruyor — ne öne geçmiş ne geride kalmış. "
-                                        "İkisi birlikte yürüdüğü sürece görünüm sağlıklı; ilk ipucu "
-                                        "ayrışma başladığında hangisinin öne geçtiğinden gelir.",
+                                        "Fiyat ve para akışı birbirine tam ayak uyduruyor. "
+                                        "Hareket dengeli ve sağlıklı ilerliyor.",
                                     ("Aşağı", "onde"):
-                                        "Fiyat düşerken para daha az geriledi — satışta panik yok. "
-                                        "Bu fark korunursa zemin arıyor olabilir; kapanırsa düşüş "
-                                        "hız kazanır.",
+                                        "Fiyat gerilerken para çıkışı sınırlı kaldı — piyasada panik satışı yok. "
+                                        "Para çıkışı durulursa bu bölge zemin oluşturabilir.",
                                     ("Aşağı", "geride"):
-                                        "Para fiyattan hızlı çıkıyor — düşüş hacimle teyitli. "
-                                        "Para gerilemeyi bırakmadan zeminin oturduğunu söylemek zor.",
+                                        "Fiyat düşerken para çıkışı da belirgin şekilde hızlanıyor. "
+                                        "Para çıkışı kesilmeden düşüşün bittiğini söylemek için henüz erken.",
                                     ("Aşağı", "basabas"):
-                                        "Para da fiyatla aynı tempoda geriliyor — düşüş düzenli, "
-                                        "panik yok. Yön hakkında ilk ipucu ayrışma çıktığında gelir.",
+                                        "Fiyat ve para çıkışı aynı tempoda geriliyor. Sert bir panik yok ancak henüz alıcı üstünlüğü de oluşmuş değil.",
                                 }.get((_v_yon, _v_state), "")
                                 # Seans açıkken okuyucu bunun YARIM bir gün olduğunu
                                 # bilmeli: rakam kapanışta değişecek. Rozet yerine açık cümle.
@@ -6113,12 +6117,12 @@ def render_smart_volume_panel(ticker):
                     else:               _pd_clr, _pd_tag = "#94a3b8", "karışık akış"
                     _flow_persist_html = (
                         f'<div style="margin-top:3px;font-size:0.68rem;color:{_pd_clr};font-weight:700;">'
-                        f'&#128197; Son {_pd_n} günün {_pd_pos}&#39;inde para girişi — {_pd_tag}</div>'
+                        f'&#128197; Son {_pd_n} günün {_pd_pos} gününde para girişi — {_pd_tag}</div>'
                     )
                     # Aynı bilgi lejant satırının sağ ucuna sığsın diye kutusuz sürüm.
                     _flow_persist_txt = (
                         f'<span style="color:{_pd_clr};font-weight:700;">Son {_pd_n} günün '
-                        f'{_pd_pos}&#39;inde para girişi</span>'
+                        f'{_pd_pos} gününde para girişi</span>'
                     )
                 # 6) Absorpsiyon: dev hacim + yerinde sayan fiyat (son 5 seans, en yenisi)
                 _abs_days = detect_absorption_days(_df_ctx, lookback=5)
@@ -6659,6 +6663,26 @@ def render_smart_volume_panel(ticker):
         f'{_chg_str}</span>'
     ) if _chg_str else ""
 
+    # ── YENİ: Birleşik İbre ve Seviye Göstergesi Helper'ı ──
+    # Kullanıcı kuralı: Çizgi rengi ürün o gün pozitifse YEŞİL (#10b981), negatifse KIRMIZI (#f87171).
+    # Yön oku: eksiye/sola gidiyorsa solunda minik kırmızı ok (←), artıya/sağa gidiyorsa sağında minik yeşil ok (→).
+    _prod_is_green = (_chg_pct > 0) if ('_chg_pct' in locals() and _chg_pct is not None) else (delta_val > 0)
+    _unified_marker_clr = "#10b981" if _prod_is_green else "#f87171"
+
+    def _gauge_marker_html(pos_pct, direction):
+        if direction > 0:
+            _arrow = '<span style="position:absolute;left:7px;top:50%;transform:translateY(-50%);font-size:0.75rem;color:#34d399;text-shadow:0 0 3px #000, 0 0 8px #10b981;font-weight:900;line-height:1;pointer-events:none;">&#8594;</span>'
+        elif direction < 0:
+            _arrow = '<span style="position:absolute;right:7px;top:50%;transform:translateY(-50%);font-size:0.75rem;color:#f87171;text-shadow:0 0 3px #000, 0 0 8px #ef4444;font-weight:900;line-height:1;pointer-events:none;">&#8592;</span>'
+        else:
+            _arrow = ''
+        return (
+            f'<div style="position:absolute;left:{pos_pct:.1f}%;top:-4px;bottom:-4px;width:4px;'
+            f'background:#ffffff;border-radius:3px;border:1px solid #0f172a;'
+            f'transform:translateX(-50%);box-shadow:0 0 8px {_unified_marker_clr}, 0 0 2px #ffffff, 0 1px 3px rgba(0,0,0,0.9);z-index:2;">'
+            f'{_arrow}</div>'
+        )
+
     # ── YENİ: Birleşik Değer Bölgesi (POC + VA + Fiyat Konumu) HTML ──
     # POC, VAL, VAH ortak ölçek: ±15% bant. Fiyat noktası gerçek konumda; POC merkez; VAL/VAH mavi şeritle.
     _zone_bar_html = ""
@@ -6679,16 +6703,16 @@ def render_smart_volume_panel(ticker):
                 f'top:1px;bottom:1px;background:rgba(96,165,250,0.22);border-left:1px dashed #60a5fa;'
                 f'border-right:1px dashed #60a5fa;"></div>'
             )
+        _dir_px = 1 if _prod_is_green else -1
+        _zone_marker = _gauge_marker_html(_cp_p, _dir_px)
         _zone_bar_html = (
             f'<div style="position:relative;height:12px;background:{track_bg};border-radius:3px;margin:4px 0 2px;">'
             f'{_va_band}'
             # POC merkez işareti (sarı dikey çizgi)
             f'<div style="position:absolute;left:{_poc_p:.1f}%;top:-2px;bottom:-2px;width:2px;'
             f'background:#fbbf24;transform:translateX(-50%);"></div>'
-            # Fiyat noktası (renk: konuma göre)
-            f'<div style="position:absolute;left:{_cp_p:.1f}%;top:-3px;width:9px;height:18px;'
-            f'background:{t1_ic};border-radius:3px;border:1.5px solid #0f172a;'
-            f'transform:translateX(-50%);box-shadow:0 0 4px {t1_ic}aa;"></div>'
+            # Fiyat noktası (standart dikey çizgi + yön oku)
+            f'{_zone_marker}'
             f'</div>'
             # Alt etiket satırı
             f'<div style="display:flex;justify-content:space-between;font-size:0.62rem;'
@@ -6704,10 +6728,11 @@ def render_smart_volume_panel(ticker):
     _hacim_kind = "Endeks Hacmi" if is_index else "Hisse Hacmi"
     _t4_short_lbl = f"{_hacim_kind} (20G ort.)"
 
-    # ── MFI quick chip (10 Haz 2026 Oturum 20) ──
+    # ── MFI quick chip (10 Haz 2026 Oturum 20 & Netleştirme) ──
     # Verdict stripine ekstra hacim teyit kanalı: Money Flow Index.
     # Sadece hacim güvenilir sembollerde gösterilir (endeks/emtia/kripto → atla).
     _mfi_icon = "○"; _mfi_clr = "#94a3b8"; _mfi_lbl_v = "—"
+    _mfi_badge_text = "VERİ YOK"; _mfi_val_text = "—"; _mfi_note_text = "Destekleyici gösterge"
     try:
         _vol_safe_mfi = not (is_index or '=F' in ticker.upper() or '-USD' in ticker.upper())
         # df_hist var mı kontrolü — sv parent scope'ta yüklenmiş olmalı
@@ -6719,13 +6744,54 @@ def render_smart_volume_panel(ticker):
             _mfi_v = compute_mfi(_df_for_mfi, period=14)
             if len(_mfi_v) > 0:
                 _mfi_now = float(_mfi_v.iloc[-1])
-                if   _mfi_now >= 80: _mfi_icon, _mfi_clr, _mfi_lbl_v = "⚠", "#f87171",   f"Aşırı {_mfi_now:.0f}"
-                elif _mfi_now <= 20: _mfi_icon, _mfi_clr, _mfi_lbl_v = "⚡", "#4ade80",   f"Aşırı {_mfi_now:.0f}"
-                elif _mfi_now >= 65: _mfi_icon, _mfi_clr, _mfi_lbl_v = "↑", "#86efac",   f"Güçlü {_mfi_now:.0f}"
-                elif _mfi_now <= 35: _mfi_icon, _mfi_clr, _mfi_lbl_v = "↓", "#fca5a5",   f"Zayıf {_mfi_now:.0f}"
-                else:                 _mfi_icon, _mfi_clr, _mfi_lbl_v = "→", "#fbbf24",   f"Nötr {_mfi_now:.0f}"
+                _mfi_val_text = f"%{_mfi_now:.0f}"
+                if _mfi_now >= 80:
+                    _mfi_icon, _mfi_clr, _mfi_lbl_v = "⚠", "#f87171", f"Aşırı {_mfi_now:.0f}"
+                    _mfi_badge_text = "AŞIRI ALIM"
+                    _mfi_note_text = "Para girişi çok yoğun (Zirve/Doyum bölgesi)"
+                elif _mfi_now <= 20:
+                    _mfi_icon, _mfi_clr, _mfi_lbl_v = "⚡", "#4ade80", f"Aşırı {_mfi_now:.0f}"
+                    _mfi_badge_text = "AŞIRI SATIŞ"
+                    _mfi_note_text = "Satışlar tükenme aşamasında (Dip/Tepki potansiyeli)"
+                elif _mfi_now >= 65:
+                    _mfi_icon, _mfi_clr, _mfi_lbl_v = "↑", "#86efac", f"Güçlü {_mfi_now:.0f}"
+                    _mfi_badge_text = "GÜÇLÜ ALIM"
+                    _mfi_note_text = "Sağlıklı ve güçlü para girişi sürüyor"
+                elif _mfi_now <= 35:
+                    _mfi_icon, _mfi_clr, _mfi_lbl_v = "↓", "#fca5a5", f"Zayıf {_mfi_now:.0f}"
+                    _mfi_badge_text = "ZAYIF AKIŞ"
+                    _mfi_note_text = "Para çıkışı baskın, alıcılar isteksiz"
+                else:
+                    _mfi_icon, _mfi_clr, _mfi_lbl_v = "→", "#fbbf24", f"Nötr {_mfi_now:.0f}"
+                    _mfi_badge_text = "DENGELİ"
+                    _mfi_note_text = "Para girişi ve çıkışı dengeli seviyede"
     except Exception:
         pass
+
+    # ── Mum-Hacim Anomalisi (Wyckoff / VPA) & Piyasa Genişliği / Hacim Konsantrasyonu ──
+    _vpa_data = None
+    _breadth_data = None
+    try:
+        _df_for_vpa = _df_for_mfi if _df_for_mfi is not None else get_safe_historical_data(ticker, period="3mo")
+        _vpa_data = detect_vpa_anomaly(_df_for_vpa)
+        _breadth_data = compute_volume_breadth(ticker, _df_for_vpa)
+    except Exception:
+        pass
+
+    _vpa_badge = _vpa_data.get('badge', 'MUM & HACİM DENGELİ') if _vpa_data else 'MUM & HACİM DENGELİ'
+    _vpa_title = _vpa_data.get('title', 'VPA: Fiyat & Hacim Uyumu') if _vpa_data else 'VPA: Fiyat & Hacim Uyumu'
+    _vpa_clr = _vpa_data.get('color', '#94a3b8') if _vpa_data else '#94a3b8'
+    _vpa_desc = _vpa_data.get('desc', 'Mum gövdesi ile işlem hacmi dengeli.') if _vpa_data else 'Mum gövdesi ile işlem hacmi dengeli.'
+    _vpa_card_html = (
+        f'<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(15,23,42,0.50);'
+        f'border:1px solid {divider};border-left:3px solid {_vpa_clr};">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">'
+        f'<span style="font-size:0.54rem;color:{text_muted};font-weight:900;letter-spacing:0.5px;">MUM-HACİM ANATOMİSİ (VPA)</span>'
+        f'<span style="font-size:0.64rem;color:{_vpa_clr};font-weight:900;">{_vpa_badge}</span></div>'
+        f'<div style="font-size:0.72rem;color:{_vpa_clr};font-weight:900;margin-top:2px;">{_vpa_title}</div>'
+        f'<div style="font-size:0.63rem;color:{text_sub};line-height:1.30;margin-top:2px;">{_vpa_desc}</div>'
+        f'</div>'
+    )
 
     # ── Yabancı takas rozeti (MKK — İş Yatırım feed, 10 Tem 2026) ──
     # Feature karnesi: TEK GÜN yabancı girişi TERS çalışıyor → asla gösterme.
@@ -7123,30 +7189,50 @@ def render_smart_volume_panel(ticker):
                          .replace("TOPARLANIYOR", "toparlanıyor")
                          .replace("NÖTR", "nötr"))
 
-    _last_sentence = ("Son seansta alıcılar tepki verdi." if delta_val > 0 else
-                      "Son seansta satıcı baskısı görüldü." if delta_val < 0 else
-                      "Son seansta alıcı ve satıcılar dengedeydi.")
-    _five_sentence = ("Son 5 seansta alıcılar baskın kaldı." if cum5 > 0 else
-                      "Son 5 seansta satıcılar baskın kaldı." if cum5 < 0 else
-                      "Son 5 seansta alım-satım dengede kaldı.")
-    _volume_sentence = ("Hacim desteği düşük." if _volume_status == "DÜŞÜK" else
-                        "Hacim desteği güçlü." if _volume_status == "YÜKSEK" else
-                        "Hacim desteği normal." if _volume_status == "NORMAL" else
-                        "Hacim desteği için veri yok.")
-    # GENEL OKUMA — cümle-cümle (dikey ortalı tam-boy panel için blok blok render edilir)
-    # Baskının süresi + fiyat-akıllı para uyumu cümleleri VERİDEN türer (uydurma yok).
-    _duration_sentence = {
-        "israrli": "Bu baskı tek seansa değil, birkaç seanstır sürüyor.",
-        "birkac":  "Bu baskı tek seansa değil, birkaç seansa yayılıyor.",
-        "yeni":    "Bu baskı yeni başlamış görünüyor.",
-    }.get(_duration_level, "")
+    _five_sentence = ("Ana Yön: Son 5 işlem gününde alıcılar üstünlüğü elinde tuttu." if cum5 > 0 else
+                      ("Ana Yön: Son 5 işlem gününde satıcılar piyasaya hakim oldu." if cum5 < 0 else
+                       "Ana Yön: Son 5 günde alım-satım dengeli seyretti."))
+
+    if cum5 > 0 and delta_val < 0:
+        _last_sentence = "Kısa Vade: Son seansta ise kısa vadeli kâr satışı / satıcı baskısı görüldü."
+    elif cum5 > 0 and delta_val > 0:
+        _last_sentence = "Kısa Vade: Son seansta da alıcılar güçlü duruşunu sürdürdü."
+    elif cum5 < 0 and delta_val > 0:
+        _last_sentence = "Kısa Vade: Son seansta alıcılardan yukarı tepki geldi."
+    elif cum5 < 0 and delta_val < 0:
+        _last_sentence = "Kısa Vade: Son seansta satıcı baskısı devam etti."
+    elif delta_val > 0:
+        _last_sentence = "Kısa Vade: Son seansta alıcılar öne çıktı."
+    elif delta_val < 0:
+        _last_sentence = "Kısa Vade: Son seansta satıcılar öne çıktı."
+    else:
+        _last_sentence = "Kısa Vade: Son seansta alıcı ve satıcılar dengede kapandı."
+
+    _volume_sentence = ("Hacim desteği normal (20G ortalamasına yakın)." if _volume_status == "NORMAL" else
+                        ("Hacim desteği yüksek (20G ortalamasının üstünde)." if _volume_status == "YÜKSEK" else
+                         ("Hacim desteği düşük (20G ortalamasının altında)." if _volume_status == "DÜŞÜK" else "Hacim desteği için veri yok.")))
+
+
+    _duration_sentence = ""
+    if _duration_level == "israrli":
+        _duration_sentence = "Para akışı kararlı ve birkaç seanstır aralıksız devam ediyor."
+    elif _duration_level == "birkac":
+        _duration_sentence = "Bu hareket tek seansa ait değil, birkaç seanstır güç topluyor."
+    elif _duration_level == "yeni":
+        if delta_val < 0 and cum5 > 0:
+            _duration_sentence = "Son seanstaki satıcı hareketi henüz yeni / erken aşamada."
+        elif delta_val > 0 and cum5 < 0:
+            _duration_sentence = "Son seanstaki alıcı tepkisi henüz yeni / erken aşamada."
+        else:
+            _duration_sentence = "Mevcut yön eğilimi henüz yeni başlamış görünüyor."
+
     _alignment_sentence = {
-        "var":      "Fiyat hareketi akıllı parayı doğruluyor.",
-        "kismi":    "Fiyat hareketi akıllı parayı kısmen doğruluyor.",
-        "eksik":    "Fiyat hareketi akıllı parayı henüz doğrulamıyor.",
-        "iraksama": "Fiyat ile akıllı para ters yönde hareket ediyor.",
+        "var":      "Fiyat hareketi para akışını tam doğruluyor.",
+        "kismi":    "Fiyat hareketi para akışını kısmen destekliyor.",
+        "eksik":    "Fiyat hareketi para akışını henüz desteklemiyor.",
+        "iraksama": "Fiyat ile para akışı zıt yönde hareket ediyor.",
     }.get(_alignment_state, "")
-    _reading_parts = [f"{_last_sentence} {_five_sentence}"]
+    _reading_parts = [f"{_five_sentence} {_last_sentence}"]
     if _duration_sentence:
         _reading_parts.append(_duration_sentence)
     _reading_parts.append(
@@ -7305,8 +7391,8 @@ def render_smart_volume_panel(ticker):
             f'<span style="font-size:0.52rem;color:{text_muted};font-weight:900;letter-spacing:0.60px;text-transform:uppercase;">{label}</span>'
             f'<span style="font:800 0.74rem JetBrains Mono;color:{_gauge_clr};white-space:nowrap;">{value}</span></div>'
             f'<div style="font-size:0.60rem;color:{text_main};font-weight:800;margin:5px 0 4px;">HANGİ TARAF DAHA GÜÇLÜ?</div>'
-            f'<div style="position:relative;height:13px;border-radius:99px;background:linear-gradient(90deg,#f87171 0%,#f87171 46%,#fbbf24 46%,#fbbf24 54%,#10b981 54%,#10b981 100%);">'
-            f'<span style="position:absolute;left:{_gauge_pos:.1f}%;top:-5px;bottom:-5px;width:3px;background:#f8fafc;border-radius:3px;transform:translateX(-50%);box-shadow:0 0 0 2px rgba(15,23,42,0.55);"></span></div>'
+            f'<div style="position:relative;height:13px;border-radius:99px;background:linear-gradient(90deg,rgba(248,113,113,0.30) 0%,rgba(248,113,113,0.30) 46%,rgba(251,191,36,0.30) 46%,rgba(251,191,36,0.30) 54%,rgba(16,185,129,0.30) 54%,rgba(16,185,129,0.30) 100%);background-color:rgba(15,23,42,0.85);border:1px solid rgba(255,255,255,0.06);">'
+            f'{_gauge_marker_html(_gauge_pos, direction)}</div>'
             f'<div style="display:flex;justify-content:space-between;gap:3px;margin-top:4px;font-size:0.52rem;color:{text_muted};font-weight:700;">'
             f'<span>Satış</span><span>Denge</span><span>Alış</span></div></div>'
         )
@@ -7361,12 +7447,16 @@ def render_smart_volume_panel(ticker):
             f'<div style="font-size:0.74rem;color:{color};font-weight:900;'
             f'line-height:1.2;margin-top:1px;">{value}</div></div>'
         )
+    _br_label = _breadth_data.get('label', 'PİYASA HACİM PAYI') if _breadth_data else ('HACİM DAĞILIMI' if is_index else 'PİYASA HACİM PAYI')
+    _br_val   = _breadth_data.get('value', 'GENİŞ KATILIM' if is_index else 'STANDART') if _breadth_data else 'STANDART'
+    _br_clr   = _breadth_data.get('color', '#10b981' if is_index else '#38bdf8') if _breadth_data else '#38bdf8'
+
     _obv_read_rows = (
         f'<div style="display:flex;flex-direction:column;gap:6px;min-width:0;">'
         f'{_obv_chip("OBV YAPISI", _obv_structure, _obv_structure_clr)}'
         f'{_obv_chip("OBV İVMESİ", _obv_momentum, _obv_momentum_clr)}'
-        # FİYAT–AKILLI PARA UYUMU çıkarıldı: hüküm şeridi aynı şeyi söylüyordu.
         f'{_obv_chip("BASKININ SÜRESİ", _duration_label, _duration_clr)}'
+        f'{_obv_chip(_br_label, _br_val, _br_clr)}'
         f'</div>'
     )
     # Lejant + "son 20 günün X'inde para girişi" AYNI satırda (sağ-sol) — ikisi de
@@ -7444,8 +7534,8 @@ def render_smart_volume_panel(ticker):
         # 14 Ağu 2026 — BASKININ SÜRESİ + FİYAT–AKILLI PARA UYUMU sağdaki
         # "AKILLI PARA OKUMASI · OBV" kutusuna taşındı (ikisi de OBV grafiğinin okuması).
         # Kalan MFI tek başına kutuyu boş bırakıyordu → 10 seans şeridiyle YAN YANA.
-        f'<div style="display:grid;grid-template-columns:0.8fr 1.2fr;gap:6px;align-items:stretch;">'
-        f'{_sv_stat_card("MFI", _mfi_display, "", _mfi_clr, "Destekleyici gösterge")}'
+        f'<div style="display:grid;grid-template-columns:0.85fr 1.15fr;gap:6px;align-items:stretch;">'
+        f'{_sv_stat_card("MFI (PARA GİRİŞ GÜCÜ)", _mfi_badge_text, _mfi_val_text, _mfi_clr, _mfi_note_text)}'
         f'<div style="min-width:0;display:flex;flex-direction:column;justify-content:center;'
         f'padding:6px 8px;border-radius:6px;border:1px solid {divider};background:rgba(15,23,42,0.50);">'
         f'<div style="font-size:0.52rem;color:{text_muted};font-weight:900;letter-spacing:0.60px;margin-bottom:3px;">AKILLI PARANIN SON 10 SEANSI</div>'
@@ -7467,14 +7557,16 @@ def render_smart_volume_panel(ticker):
         f'<span style="font-size:0.60rem;color:{text_muted};font-weight:900;letter-spacing:0.55px;">SEVİYE HARİTASI</span>'
         f'<span style="font-size:0.66rem;color:{t1_ic};font-weight:900;">FİYAT {_cp_str}</span></div>'
         f'<div style="font-size:0.82rem;color:{t1_ic};font-weight:900;margin-top:3px;">{t1_icon} {t1_label}</div>'
-        f'{_zone_bar_html}<div style="font-size:0.70rem;color:{text_sub};line-height:1.35;margin-top:4px;">{t1_sub}</div>{_vp_gap_html}</div>'
+        f'{_zone_bar_html}<div style="font-size:0.70rem;color:{text_sub};line-height:1.35;margin-top:4px;">{t1_sub}</div>{_vp_gap_html}{_vpa_card_html}</div>'
 
         f'<div style="display:grid;grid-template-columns:1fr 0.82fr;border-right:1px solid {divider};">'
         f'<div style="padding:6px 8px;border-right:1px solid {divider};background:{t5_bb};">'
         f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">'
         f'<span style="font-size:0.60rem;color:{text_muted};font-weight:900;">SON 5 SEANSTA AKILLI PARA</span>'
         f'<span style="font-size:0.84rem;color:{t5_ic};font-weight:900;">{t5_pct}</span></div>'
-        f'{bidir_bar(cum_fill, t5_ic, t5_pos, track_bg)}'
+        f'<div style="position:relative;height:12px;border-radius:99px;background:linear-gradient(90deg,rgba(248,113,113,0.30) 0%,rgba(248,113,113,0.30) 50%,rgba(16,185,129,0.30) 50%,rgba(16,185,129,0.30) 100%);background-color:rgba(15,23,42,0.85);border:1px solid rgba(255,255,255,0.06);margin:4px 0 3px;">'
+        f'{_gauge_marker_html(max(18.0, min(82.0, 50.0 + ((1 if cum5 > 0 else -1 if cum5 < 0 else 0) * min(max(float(abs(cum5_pct or 0)), 0.0), 100.0) * 0.32))), 1 if cum5 > 0 else (-1 if cum5 < 0 else 0))}'
+        f'</div>'
         f'<div style="font-size:0.73rem;color:{text_main};font-weight:800;">{t5_lbl}</div>'
         f'<div style="font-size:0.66rem;color:{text_sub};line-height:1.3;margin-top:2px;">{t5_sub}</div>{_delta_5d_dots_html}</div>'
         f'<div style="padding:6px 7px;background:{t4_bb};display:flex;flex-direction:column;min-width:0;">'
@@ -17552,6 +17644,28 @@ if st.session_state.generate_prompt:
     # Mum kapanış durumu — sadece YANILTICI etiketi (gap-grind koruması). Sağlıklı/Nötr → sus
     _em_mum = _line("mum_kapanis_durumu", mum_kapanis_durumu_txt) if mum_kapanis_durumu_txt.startswith("YANILTICI") else ""
 
+    # ── VPA Mum-Hacim Anatomisi (Wyckoff) Emisyonu ──
+    _em_vpa = ""
+    try:
+        _vpa_prompt_data = detect_vpa_anomaly(df_hist)
+        if _vpa_prompt_data and _vpa_prompt_data.get('status') == 'anomalous':
+            _v_title = _vpa_prompt_data.get('title', '')
+            _v_desc = _vpa_prompt_data.get('desc', '')
+            _em_vpa = _line("vpa_mum_hacim_anomalisi", f"{_v_title} — {_v_desc}")
+    except Exception:
+        pass
+
+    # ── Piyasa Genişliği & Hacim Payı Emisyonu ──
+    _em_breadth = ""
+    try:
+        _breadth_prompt_data = compute_volume_breadth(t, df_hist)
+        if _breadth_prompt_data:
+            _b_lbl = "endeks_hacim_genisligi" if _breadth_prompt_data.get('is_index') else "piyasa_hacim_payi"
+            _b_val = f"{_breadth_prompt_data.get('value', '')} — {_breadth_prompt_data.get('desc', '')}"
+            _em_breadth = _line(_b_lbl, _b_val)
+    except Exception:
+        pass
+
     # cum_delta_5g — "Dengede" anlamsız, sadece pozitif/negatif baskı emit
     _em_cum5 = _line("cum_delta_5g", cum5_txt) if (cum5_txt and "Dengede" not in cum5_txt and "Veri Yok" not in cum5_txt) else ""
 
@@ -19539,7 +19653,7 @@ ict_pa:
 
 {("obv_cmf: (ENDEKS/EMTİA — OBV/CMF/OMI hacim verisine dayanır, atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "obv_cmf:" + chr(10) + f"  obv_fiyat_yapisi: {_obv_div_prompt_txt}" + (chr(10) + _em_omi if _em_omi else "") + (chr(10) + _em_cmf if _em_cmf else "") + (chr(10) + _em_mfi_dual if _em_mfi_dual else "") + (chr(10) + _em_rsi_mfi_bouquet if _em_rsi_mfi_bouquet else "") + (chr(10) + _em_rel_obv if _em_rel_obv else "") + (chr(10) + _em_udvr if _em_udvr else "") + (chr(10) + _em_force_index if _em_force_index else "") + (chr(10) + _em_smart_split if _em_smart_split else ""))}
 
-{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" if _is_index_t else "smart_money:" + chr(10) + _em_horizon_context + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + (chr(10) + "  " + _poc_velocity_txt if _poc_velocity_txt else "") + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + "  " + _vp_sekil_trajectory_txt if _vp_sekil_trajectory_txt else "") + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + f"  volume_quality: {_volume_quality}" + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else ""))}
+{("smart_money: (ENDEKS/EMTİA — Yahoo Finance bu sembol için güvenilir hacim sağlamaz; delta/POC/RVOL/HVN/LVN/VSA verileri atlandı. Bu blok hakkında YORUM YAPMA.)" + (chr(10) + "  " + _em_breadth if _em_breadth and _is_index_t else "") if _is_index_t else "smart_money:" + chr(10) + _em_horizon_context + chr(10) + f"  poc_20g: {poc_price}" + chr(10) + f"  va_pos: {va_pos_txt}" + chr(10) + f"  vah: {vah_txt}" + chr(10) + f"  val: {val_txt}" + chr(10) + f"  hvn_lvn: {hvn_lvn_txt}" + (chr(10) + _em_hvn if _em_hvn else "") + (chr(10) + _em_lvn if _em_lvn else "") + chr(10) + f"  fiyat_poc_konumu: {fiyat_poc_konumu_txt}" + (chr(10) + "  " + _poc_velocity_txt if _poc_velocity_txt else "") + chr(10) + f"  vp_sekil: {vp_sekil_txt}" + (chr(10) + "  " + _vp_sekil_trajectory_txt if _vp_sekil_trajectory_txt else "") + (chr(10) + _em_mum if _em_mum else "") + (chr(10) + _em_cum5 if _em_cum5 else "") + (chr(10) + _em_cum_delta_dual if _em_cum_delta_dual else "") + chr(10) + f"  guncel_fiyat: {guncel_fiyat}" + chr(10) + f"  volume_quality: {_volume_quality}" + (chr(10) + _em_stop if _em_stop else "") + (chr(10) + _em_climax if _em_climax else "") + (chr(10) + _em_sv_rev if _em_sv_rev else "") + (chr(10) + _em_vpa if _em_vpa else "") + (chr(10) + _em_breadth if _em_breadth else ""))}
 
 institutional_ref:
   vwap: {v_val:.2f}
@@ -19924,7 +20038,7 @@ KURAL: 1-8'den biri varsa onunla aç. 9'daki strüktürel veriler ikinci paragra
 
 **Teknik Görünüm:** Fiyat nerede, hangi seviyeyle boğuşuyor, momentum ne diyor — 2-3 cümle, somut seviye. Rallide iyi görünüyorsa öyle yaz, zorla "ama" ekleme. GENEL YORUM'daki lean'i çelmiyor, onu somut seviyeyle pekiştiriyor.
 
-**Smart Money İzi:** Önce tek seanslık tepkiyi ve 5/20 seanslık alıcı-satıcı baskısını ayır; sonra OBV-fiyat yapısı, göreli OBV ve Force Index'i ayrı kontrol et. En sonda 1-2 cümlelik ortak sonuç yaz. Vadeler ayrışıyorsa bunu tek yöne zorlayıp eritme: "günlük tepkide alım var, orta vadeli satış baskısı henüz dönmedi" gibi açık söyle. Günlük tepkiyi anlatırken üstteki zorunlu takvim ifadesini kullan. Yatırımcı veya kurum kimliği uydurma.
+**Smart Money İzi:** Önce tek seanslık tepkiyi ve 5/20 seanslık alıcı-satıcı baskısını ayır; sonra OBV-fiyat yapısı, göreli OBV ve Force Index'i ayrı kontrol et. En sonda 1-2 cümlelik ortak sonuç yaz. Vadeler ayrışıyorsa bunu tek yöne zorlayıp eritme: "günlük tepkide alım var, orta vadeli satış baskısı henüz dönmedi" gibi açık söyle. VPA anomalisi (absorpsiyon / boğa tuzağı vb.) varsa bunu mutlaka açıkla; hissenin piyasa hacim payı veya likidite derinliğini göz önünde bulundur. Günlük tepkiyi anlatırken üstteki zorunlu takvim ifadesini kullan. Yatırımcı veya kurum kimliği uydurma.
 🚨 BU BÖLÜM EN ÇOK JARGON SIZAN YER. YAML alan adı yazma · BÜYÜK HARFLİ algoritma etiketi kopyalama · "değer alanı" yerine "yoğun işlem bölgesi" · "hacim profili şekli" yerine "işlem yoğunluğu haritası" veya doğrudan gözlem yaz. Okuyucu yalnız ne olduğunu sade Türkçeyle görsün; ham sayı yığını oluşturma.
 
 **SONUÇ:** 2-3 cümle, KOŞULLU TEZ formatında: "[seviye] tutarsa/kırılırsa [lean devam eder], [ters seviye] görülürse [lean geçersiz kalır]." Bu belirsizlik değil — kararlı ama şartlı konuşma. "Uzun lafın kısası" tonu, ham sayı dökmeden.
