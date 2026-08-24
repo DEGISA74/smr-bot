@@ -1,0 +1,3 @@
+# Doğrulama çıktıları yerelde kalır — depoya girmez.
+*
+!.gitignore
