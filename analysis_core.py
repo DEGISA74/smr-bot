@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 from data_layer import (CACHE_DIR, _yf_download_with_retry, get_benchmark_data,
                         get_safe_historical_data)
-from evidence import SCANNER_TIER_MAP
+from evidence import SCANNER_TIER_MAP, is_ai_suppressed, alfa_etiketi
 from ict_core import calculate_ict_deep_analysis, calculate_price_action_dna
 from indicators import (calculate_fib_levels, calculate_supertrend, calculate_volume_delta,
                         calculate_volume_profile_poc, check_lazybear_squeeze_breakout,
@@ -143,8 +143,14 @@ def get_active_scanner_tiers(ticker: str) -> list:
                             'hit10': _t[1], 'avg10': _t[2], 'display': _t[3], 'note': _t[4]})
     except Exception:
         pass
+    # 17 Agu 2026 — ALFA KAPISI: iki rejimde de negatif alfa veren taramalar
+    # AI prompt'a ve karar panellerine CIKMAZ (olcum: alfa_karne.py, 21.596 sinyal).
+    # Master Scan taramasi ve scan_signals kaydi ETKILENMEZ — sadece bu emit susar.
+    # Geri almak icin: evidence.ZAYIF_TARAMA_AI_BASTIR = False
+    out = [_d for _d in out if not is_ai_suppressed(_d.get('scan_type'))]
     # İş 2: örnek sayısını çıkar + güvenilirlik damgası (yetersizse AI ham rakamı susturur)
     for _d in out:
+        _d['alfa_etiket'] = alfa_etiketi(_d.get('scan_type'))
         _d['n_sample'] = _parse_tier_n(_d.get('note'))
         _d['reliable'] = (_d['n_sample'] is None) or (_d['n_sample'] >= _MIN_TIER_SAMPLE_N)
     # Tier önceliği: TIER_1 > TIER_2 > TIER_VADE_UZUN > TIER_3
@@ -1730,11 +1736,10 @@ def _compute_genel_ozet_pack_cached(ticker, gs_bms, dtok):
             _is_idx = (_ticker.startswith("XU") or _ticker.startswith("^") or
                        _ticker.endswith("=F") or "-USD" in _ticker)
             if _is_idx:
-                # Endeks için eski endeks-radar mantığı
-                _sms = calculate_smart_money_score(_ticker)
-                if _sms and _sms.get('score') is not None:
-                    _lr_score  = _sms['score']
-                    _lr_status = _sms.get('status', '')
+                # Endeks için 3-21 günlük skor, aşağıdaki altı oy tamamlandıktan sonra
+                # mevcut ağırlıklı netten üretilecek. Eski 5-kriterli kurulum skoru
+                # burada kullanılmaz; kısa vadeli radarın yanına yanlış anlam taşırdı.
+                _lr_status = "3-21gün ağırlıklı oy skoru"
             else:
                 # Hisseler için Erken Radar
                 _bench_t = "XU100.IS" if ".IS" in _ticker else "^GSPC"
@@ -1846,6 +1851,12 @@ def _compute_genel_ozet_pack_cached(ticker, gs_bms, dtok):
         _sigs_w = (_sig_hacim, _sig_obv, _sig_yapi,
                    _sig_rsi, _sig_rsi, _sig_cmf, _sig_cmf, _sig_mfi)
         _gs_net = sum(1 for s in _sigs_w if s > 0) - sum(1 for s in _sigs_w if s < 0)
+
+        # 09 Ağu 2026 — XU100 için gerçek kısa-vade radar skoru.
+        # Aynı 3 gün–3 hafta oylaması kullanılır; net aralık -8..+8 olduğu için
+        # 50 nötr merkezdir. Bu bir kazanma olasılığı değil, yön baskısı ölçeğidir.
+        if _is_idx:
+            _lr_score = int(round(max(0, min(100, 50.0 + (_gs_net / 8.0) * 50.0))))
 
         # Etiket eşikleri = backtest kova eşikleri (net/8: ★≥6, normal≥4, hafif>0)
         if   _gs_net >= 6:  _gs_net_clr = "#22c55e"; _gs_net_txt = "YUKARI ★"

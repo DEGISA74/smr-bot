@@ -186,7 +186,8 @@ def _ensure_single_instance():
 
 
 # ─── GEMİNİ: AI GÖREV 3 ─────────────────────────────────────────────────────
-async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
+async def call_gemini_gorev3(gorev3_prompt: str, ticker: str,
+                             tier: str = "pro") -> str:
     """
     Görev prompt'unu Gemini'ye gönder.
     429 kota hatası gelirse 60 sn bekleyip 3 kez tekrar dener.
@@ -202,13 +203,27 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
     # Gemini'de yük VE kota model-bazlı ayrı havuzlardadır; bu yüzden 503/429
     # gelince beklemek yerine SIRADAKİ MODELE geçiyoruz (ayrı kapasite + ayrı kota).
     # Her eleman: (model_adı, denemeden_önce_beklenecek_saniye).
-    _attempts = [
-        ("gemini-2.5-flash-lite",  0),   # birincil (ucuz, hızlı)
-        ("gemini-2.5-flash",       3),   # yedek 1 — ayrı kapasite havuzu
-        ("gemini-flash-latest",    3),   # yedek 2 — ayrı alias havuzu
-        ("gemini-2.5-flash-lite", 20),   # birincil ikinci tur (yük geçmiş olabilir)
-        ("gemini-2.5-flash",      20),   # son şans
-    ]
+    # 17 Ağu 2026 — ELITE'E GÜÇLÜ MODEL. flash-lite, 50 bin karakterlik ELITE
+    # promptunu tam takip edemiyordu: 5 günlük akışın YÖNÜNÜ ters yazdı (satış
+    # rakamını "net alım" diye sundu), yukarı hedefi hiç vermedi, ara ara
+    # kendisine verilen veri tablosunu kopyalayıp analiz diye gönderdi.
+    # ELITE günde birkaç istek → kota/maliyet etkisi ihmal edilebilir.
+    # PRO + günlük bülten ucuz modelde KALIR (hacmin tamamı orada).
+    if (tier or "").lower() == "elite":
+        _attempts = [
+            ("gemini-2.5-flash",       0),   # birincil — talimat takibi güçlü
+            ("gemini-flash-latest",    3),   # yedek 1 — ayrı alias havuzu
+            ("gemini-2.5-flash",      20),   # ikinci tur (yük geçmiş olabilir)
+            ("gemini-2.5-flash-lite",  3),   # son çare: kart hiç boş gitmesin
+        ]
+    else:
+        _attempts = [
+            ("gemini-2.5-flash-lite",  0),   # birincil (ucuz, hızlı)
+            ("gemini-2.5-flash",       3),   # yedek 1 — ayrı kapasite havuzu
+            ("gemini-flash-latest",    3),   # yedek 2 — ayrı alias havuzu
+            ("gemini-2.5-flash-lite", 20),   # birincil ikinci tur (yük geçmiş olabilir)
+            ("gemini-2.5-flash",      20),   # son şans
+        ]
     max_retries = len(_attempts)
     _last_err = ""
 
@@ -227,7 +242,10 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
                     # görevi, akıl yürütmeye gerek yok → düşünmeyi kapat (budget=0),
                     # tüm bütçe metne gitsin (test: 2064 kr kesik → 4517 kr tam).
                     config=genai_types.GenerateContentConfig(
-                        max_output_tokens=3000,
+                        # 17 Ağu 2026: ELITE çıktısı iki bölüm (derin analiz +
+                        # sade kart) → 3000 dar kalıyordu, 4000'e çıkarıldı.
+                        # Üretilmeyen token ücretlendirilmez; tavan yükseldi, gider değil.
+                        max_output_tokens=4000,
                         thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
                     )
                 )
@@ -281,6 +299,17 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
             )
             text = _stray_re.sub('', text)
 
+            # 17 Ağu 2026 — VERİ BLOĞU BAŞLIK ARTIĞI: model, kendisine verilen veri
+            # tablosunun ilk satırlarını ("📊 HİSSE: PGSUS | Fiyat: ...", "📅 Veri
+            # Tarihi: ...") analizin başına kopyalıyor. Abone bunu analiz sanıyor;
+            # oysa ham girdi. Bu iki satır kalıbı atılır — gerçek analiz cümleleri
+            # bu kalıba uymaz (satır başında emoji + sabit etiket + iki nokta).
+            _datahdr_re = _re_leak.compile(
+                r'^[ \t]*(?:\U0001F4CA[^\n|]*\|[ \t]*Fiyat[ \t]*:|\U0001F4CA[ \t]*(?:HİSSE|ENDEKS)[ \t]*:|\U0001F4C5[ \t]*Veri Tarihi[ \t]*:)[^\n]*\n?',
+                _re_leak.MULTILINE,
+            )
+            text = _datahdr_re.sub('', text)
+
             # ═══ tek başına satırlar — prompt bloğu artığı, legitimate output'ta yok
             _bar_re = _re_leak.compile(r'^[ \t]*═{5,}[^\n]*\n?', _re_leak.MULTILINE)
             text = _bar_re.sub('', text)
@@ -292,7 +321,15 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str) -> str:
             _hashtag_re = _re_leak.compile(r'(#SmartMoneyRadar\s+#\S+)', _re_leak.IGNORECASE)
             _hashtag_match = _hashtag_re.search(text)
             if _hashtag_match:
-                text = text[:_hashtag_match.end()].rstrip()
+                # 17 Ağu 2026 — SADE KART İSTİSNASI: ELITE çıktısı artık hashtag
+                # satırından SONRA "[[SADE]]" ayracı + sade versiyon kartı taşıyor.
+                # Bu kesim onu da siliyordu (kart üretiliyor ama aboneye hiç gitmiyordu).
+                # Ayraç varsa ondan itibaren KORUNUR; arasında kalan artık yine atılır.
+                _sade_mark = getattr(smr_core, "ELITE_SADE_MARKER", "[[SADE]]")
+                _tail = text[_hashtag_match.end():]
+                _mi = _tail.find(_sade_mark)
+                _keep = ("\n" + _tail[_mi:].rstrip()) if _mi != -1 else ""
+                text = text[:_hashtag_match.end()].rstrip() + _keep
 
             _cut = _orig_len - len(text)
             if _cut > 20:
@@ -424,7 +461,7 @@ async def get_analysis(ticker: str, tier: str = "free") -> tuple:
                         # tamamlanamadan kesiliyordu (XU100 PRO+ELITE bülten fallback'e düştü,
                         # 25-26 Haz art arda). 220sn: 3 tam deneme + ağ payı sığar.
                         ai_text = await asyncio.wait_for(
-                            call_gemini_gorev3(prompt, ticker), timeout=220
+                            call_gemini_gorev3(prompt, ticker, tier=tier), timeout=220
                         )
 
                         # DETERMİNİSTİK KAPILAR (17 Tem 2026) — PRO+ELITE ortak.
@@ -585,6 +622,54 @@ def _enforce_no_meli(ticker: str, ai_text: str) -> str:
         return ai_text
 
 
+# ─── ELITE SADE KART (17 Ağu 2026) ───────────────────────────────────────────
+# ELITE Görev 1 çıktısı artık İKİ bölüm taşıyor: derin analiz + "[[SADE]]" ayracı +
+# sade versiyon kartı. Derin analiz tek başına ~3200 karakter, sade kart ~900 —
+# ikisi tek Telegram mesajına (4096) sığmaz, gövde sondan kırpılırdı. Bu yüzden
+# ayraçtan bölüp AYRI mesaj olarak gönderiyoruz: abone önce derin analizi, hemen
+# altında sade özetini alıyor.
+# 17 Ağu 2026 — ELITE'te aboneye YALNIZCA sade kart gider. Derin analiz
+# üretilmeye devam eder (sade kart onun çevirisidir — kaldırırsak kartın
+# dayanağı kalmaz), sadece GÖNDERİLMEZ. Geri almak için: False.
+ELITE_SADECE_SADE = True
+
+_SADE_DISCLAIMER = "⚠️ _Eğitim amaçlıdır, yatırım tavsiyesi değildir._"
+
+
+def _split_sade_part(raw_text: str) -> tuple[str, str]:
+    """Ham AI metnini (derin analiz, sade kart) olarak ayır. Ayraç yoksa sade kart boş."""
+    marker = getattr(smr_core, "ELITE_SADE_MARKER", "[[SADE]]")
+    if not raw_text or marker not in raw_text:
+        return raw_text, ""
+    head, _, tail = raw_text.partition(marker)
+    # AI ayracı bazen kalın yazıyor (**[[SADE]]**) → artık yıldızları temizle
+    head = head.rstrip().rstrip("*_ \t\n")
+    tail = tail.lstrip("*_ \t").strip()
+    # "📝 SADE VERSİYON" gibi başlık satırı yazdıysa at — kart başlığı ticker satırıdır
+    lines = tail.splitlines()
+    while lines and ("SADE VERS" in lines[0].upper() or not lines[0].strip()):
+        lines.pop(0)
+    tail = "\n".join(lines).strip()
+    return head, tail
+
+
+def format_sade_message(ticker: str, sade_text: str) -> str:
+    """Sade kartı Telegram mesajına çevir: fazla boşluk temizliği + yasal satır."""
+    lines, out, prev_empty = sade_text.splitlines(), [], False
+    for ln in lines:
+        empty = not ln.strip()
+        if empty and prev_empty:
+            continue
+        out.append(ln.rstrip())
+        prev_empty = empty
+    body = "\n".join(out).strip()
+    if not body:
+        return ""
+    if "yatırım tavsiyesi değildir" not in body.lower():
+        body = body + "\n\n" + _SADE_DISCLAIMER
+    return body[:4000]
+
+
 # ─── TEKNİK KART: TELEGRAM FORMATLAMA ────────────────────────────────────────
 def format_ai_message(ticker: str, raw_text: str, tier: str = "pro") -> list[str]:
     """
@@ -594,6 +679,11 @@ def format_ai_message(ticker: str, raw_text: str, tier: str = "pro") -> list[str
     """
     if not raw_text:
         return []
+
+    # ELITE iki bölümlü çıktı: derin analiz + sade kart. Sade kart AYRI mesaj gider.
+    raw_text, _sade_text = _split_sade_part(raw_text)
+    if not raw_text.strip():
+        raw_text, _sade_text = _sade_text, ""   # AI sadece sade kartı yazdıysa onu gönder
 
     if tier == "elite":
         header = f"🔬 *SMR ELİTE UZMAN ANALİZ — #{ticker}*\n{'━'*20}\n"
@@ -633,8 +723,20 @@ def format_ai_message(ticker: str, raw_text: str, tier: str = "pro") -> list[str
     MAX_LEN = 4000
     full_text = header + intro + cleaned
 
+    _sade_parts = []
+    if _sade_text:
+        _sade_msg = format_sade_message(ticker, _sade_text)
+        if _sade_msg:
+            _sade_parts = [_sade_msg]
+
+    # Sade kart üretildiyse ELITE abonesine SADECE onu gönder. Sade kart
+    # çıkmadıysa (model ayracı yutmuşsa) derin analize düşülür — abone hiç
+    # boş mesaj almasın.
+    if ELITE_SADECE_SADE and tier == "elite" and _sade_parts:
+        return _sade_parts
+
     if len(full_text) <= MAX_LEN:
-        return [full_text]
+        return [full_text] + _sade_parts
 
     # Kapanış bloğunu ayır: son 8 satır içindeki yatay ayraç çizgisinden itibaren
     # gelen her şey (disclaimer + hashtag) footer sayılır ve korunur.
@@ -662,7 +764,7 @@ def format_ai_message(ticker: str, raw_text: str, tier: str = "pro") -> list[str
         body = body.rstrip() + "\n…"
 
     result = body + (("\n" + footer) if footer else "")
-    return [result[:MAX_LEN]]
+    return [result[:MAX_LEN]] + _sade_parts
 
 
 # ─── TELEGRAM HANDLER ────────────────────────────────────────────────────────
@@ -1845,7 +1947,13 @@ async def send_daily_bulletin(context: ContextTypes.DEFAULT_TYPE):
 
     # PRO önce, ELITE ardından (sequential — semaphore çakışması olmaz)
     await _send_bulletin_to_channel(context, PRO_ID,   tier="pro",   now_str=now_str, is_sunday=is_sunday, market_note=market_note)
-    await _send_bulletin_to_channel(context, ELITE_ID, tier="elite", now_str=now_str, is_sunday=is_sunday, market_note=market_note)
+    # ELITE bülteni GEÇİCİ İPTAL (29 Tem 2026) — henüz hiç ELITE abonesi yok → boşa
+    # Gemini yükü + smr-bot rahatlasın. Kod SİLİNMEDİ; aşağıdaki tarihte KENDİLİĞİNDEN
+    # geri açılır. Erken açmak için: tarihi öne çek veya bu if bloğunu kaldır.
+    if datetime.now() >= datetime(2027, 7, 29):
+        await _send_bulletin_to_channel(context, ELITE_ID, tier="elite", now_str=now_str, is_sunday=is_sunday, market_note=market_note)
+    else:
+        log.info("ELITE bülteni atlandı — 1 yıllık geçici iptal (ELITE abonesi yok; ~29.07.2027'de otomatik açılır).")
 
     # GÖREV BEKÇİSİ başarı-izi — bülten job'ı sonuna kadar çalıştıysa işaret bırak.
     # Bekçi (gorev_bekcisi.py) bu dosyanın tazeliğine bakar; job misfire ile hiç

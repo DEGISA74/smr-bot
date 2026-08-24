@@ -50,12 +50,14 @@ from ticker_short_names import get_ai_narrative_name  # Yalnız AI prompt anlat�
 import terazi_core  # 17 Tem 2026 EKRAN REFORMU 1a — Kanıt Terazisi saf hesap çekirdeği
 import tarama_merkezi  # 30 Tem 2026 EKRAN REFORMU 4 — toplu tarama KARAR MASASI (bayrak-korumalı, kapalı)
 import trajectory_tarama_merkezi  # 09 Ağu 2026 — T+3 yolculuk katmanı: aday → güçlenme → karar
+import master_scan_giris_senaryolari as _master_scan_giris_senaryolari  # 23 Ağu 2026 — B11/C6/Zirve/Radar2 giriş senaryoları
 import master_scan_progress  # Master Scan adım sürelerini öğrenen, yalnız UI ilerleme katmanı
 import kapanis_master_otomasyon  # 11 Ağu 2026 — kapanış veri kapısı + güvenli otomatik Master Scan zamanlaması
 import sampiyonlar_ligi  # 31 Tem 2026 — ŞAMPİYONLAR LİGİ: iki-rejim backtest'li 8 elit tarama (fiyat kartı altı buton)
 import ekran_v2     # 23 Tem 2026 — 🧪 YENİ EKRAN DENEMESİ (kapalı bar; mevcut ekran değişmez)
 import formasyon_core  # 21 Tem 2026 — yaşam döngüsü rozeti (stage_badge tek kaynak)
 import formasyon_v2_app  # 25 Tem 2026 — yalnız Formasyon Grafiği için V2 uyum katmanı
+import cizgi_yapi  # 20 Ağu 2026 — üçgen/kama ZARF hattı (regresyon değil); yalnız kutu+popup, skora bağlı DEĞİL
 import patron_db_guard
 from stp_uyanis_core import calculate_stp_uyanis_status
 from analysis_core import (_risk_profile, get_active_scanner_tiers, _scanner_setup_strength,
@@ -175,6 +177,23 @@ def _veri_bugunun_mu_app() -> bool:
         return False                          # şüphedeysen eski davranış
 
 # -> data_layer.py (Adim 6c, 9 Tem 2026): CACHE_DIR_BLOGU
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _cizgi_yapi_scan():
+    """Çizgi Yapıları — cizgi_yapi.tara_evren (tek hisse kutusuyla AYNI motor+elek).
+    BIST + depodaki diğer varlıklar (emtia/kripto/ABD). Döner: bulgu listesi.
+    Her tarama günlük dosyaya yazılır (cizgi_yapi_log.jsonl) — getiri ölçümü
+    ileride yapılacak, o gün elde veri olsun diye. Aynı gün tekrar yazmaz."""
+    try:
+        _cy_sonuc = cizgi_yapi.tara_evren(CACHE_DIR)
+        try:
+            cizgi_yapi.kaydet(_cy_sonuc)
+        except Exception:
+            pass
+        return _cy_sonuc
+    except Exception:
+        return []
+
 
 @st.cache_data(ttl=900, show_spinner=False)
 def _firsat_radar_scan():
@@ -5697,8 +5716,13 @@ def render_smart_volume_panel(ticker):
                     # oluyor ve fiyat dünkü kapanışın iki yanında gezindikçe hüküm
                     # gün içinde 17 puan zıplıyordu. Seans açıkken bugünün katkısını
                     # SAATLİK barların netinden alıyoruz (saatler birbirini dengeler).
-                    # Saatlik veri yoksa sessizce günlük davranışta kalır.
+                    # ⚠ 19 Ağu 2026 — SESSİZ DÜŞME KALDIRILDI. Önceden saatlik veri
+                    # yoksa/eksikse sessizce günlük hesaba dönülüyor, ekranda ise
+                    # aynı yazı duruyordu: bir hissede "saatlik teyit", diğerinde
+                    # aynı etiketin altında aslında günlük hesap. Artık kapının
+                    # (saatlik_kapi) verdiği durum ekrana yazılır.
                     _intraday_obv_on = False
+                    _intraday_obv_not = ""     # kapı kapalıysa okura söylenecek cümle
                     try:
                         if (_bist_is_trading_day() and len(_obv_s) >= 3
                                 and len(_df_ctx) >= 3):
@@ -5712,8 +5736,16 @@ def render_smart_volume_panel(ticker):
                                 if _iod is not None:
                                     _obv_s.iloc[-1] = float(_obv_s.iloc[-2]) + _iod
                                     _intraday_obv_on = True
+                                else:
+                                    try:
+                                        from saatlik_kapi import saatlik_durum as _sk_durum
+                                        _intraday_obv_not = _sk_durum(
+                                            ticker, for_date=_df_ctx.index[-1].date())["not"]
+                                    except Exception:
+                                        _intraday_obv_not = "saatlik veri okunamadı"
                     except Exception:
                         _intraday_obv_on = False
+                        _intraday_obv_not = ""
                     if len(_obv_s) >= 10:
                         _ov = _obv_s.values.astype(float)
                         _omin, _omax = float(_ov.min()), float(_ov.max())
@@ -5855,11 +5887,21 @@ def render_smart_volume_panel(ticker):
                                 # bilmeli: rakam kapanışta değişecek. Rozet yerine açık cümle.
                                 # Seans notu artık ayrı paragraf değil, başlığın yanında
                                 # küçük etiket — kendi satırını yemesin (14 Ağu 2026).
+                                # 19 Ağu 2026: etiket artık HANGİ VERİYLE hesaplandığını
+                                # da söyler. Saatlik kapıdan geçtiyse "saat saat akıştan",
+                                # geçmediyse "gün kapanışlarından" + sebebi. İki hisse
+                                # arasında sessiz kalite farkı kalmasın.
+                                if _intraday_obv_on:
+                                    _v_seans_txt = "seans sürüyor · saat saat akıştan · kapanışta değişir"
+                                elif _intraday_obv_not:
+                                    _v_seans_txt = f"seans sürüyor · gün kapanışlarından hesaplandı ({_intraday_obv_not})"
+                                else:
+                                    _v_seans_txt = ""
                                 _v_seans = (
                                     f'<span style="font-size:0.55rem;color:{text_muted};'
                                     f'font-weight:800;border:1px solid {divider};padding:1px 5px;'
-                                    f'white-space:nowrap;">seans sürüyor · kapanışta değişir</span>'
-                                ) if _intraday_obv_on else ''
+                                    f'white-space:nowrap;">{_v_seans_txt}</span>'
+                                ) if _v_seans_txt else ''
                                 _obv_verdict_html = (
                                     f'<div style="background:{_v_bg};border-left:3px solid {_v_clr};'
                                     f'padding:6px 9px;margin:2px 0;">'
@@ -8963,6 +9005,20 @@ def _get_formasyon_v2_view(symbol):
         return {"available": False, "data_ok": False, "issues": [f"V2 görünümü hazırlanamadı: {_v2_exc}"]}
 
 
+# --- ÇİZGİ YAPISI (20 Ağu 2026) — üçgen/kama için ZARF hattı, ayrı motor ---
+@st.cache_data(ttl=900, show_spinner=False)
+def _get_cizgi_yapi_view(symbol):
+    """Zarf hattıyla üçgen/kama görünümü. Tarama/AI/skor akışına YAZMAZ —
+    yalnız tek hisse kutusu + popup. Getirisi ölçülmedi, sadece 'kırıldı mı' der."""
+    try:
+        _df_cy = get_safe_historical_data(symbol, period="2y", interval="1d")
+        if _df_cy is None or _df_cy.empty:
+            return {"available": False, "issues": ["Günlük fiyat verisi bulunamadı."]}
+        return cizgi_yapi.gorunum(_df_cy, ticker=symbol, timeframe="1d")
+    except Exception as _cy_exc:
+        return {"available": False, "issues": [f"Çizgi yapısı hazırlanamadı: {_cy_exc}"]}
+
+
 # --- MİNİ FORMASYON GRAFİĞİ (tüm pattern tipleri) ---
 @st.cache_data(ttl=900, show_spinner=False)
 def _mini_pattern_chart_b64(symbol, chart_data, dark_mode):
@@ -10270,6 +10326,80 @@ def _harmonik_dialog(ticker, harm_res, current_price, display_ticker, is_dark):
         f'</div>',
         unsafe_allow_html=True
     )
+
+
+@st.dialog("📐 Çizgi Yapısı", width="large")
+def _cizgi_yapi_dialog(view, display_ticker):
+    """Zarf hattıyla çizilmiş üçgen/kama. Sadece 'kırıldı mı' der: hedef/puan YOK."""
+    if not isinstance(view, dict) or not view.get("available"):
+        st.warning("Bu hissede elekten geçen bir çizgi yapısı yok.")
+        return
+
+    def _fp(value):
+        try:
+            value = float(value)
+            return f"{value:,.2f}" if value < 1000 else f"{int(round(value)):,}"
+        except Exception:
+            return "—"
+
+    _bull = view.get("direction") == "bullish"
+    st.markdown(
+        f"<div style='display:flex;justify-content:space-between;align-items:flex-end;"
+        f"gap:12px;margin-bottom:12px;'>"
+        f"<div><div style='font-size:1.35rem;font-weight:900;color:#e2e8f0;'>"
+        f"📐 {display_ticker} — {view.get('pattern_label', 'Çizgi Yapısı')}</div>"
+        f"<div style='font-size:0.75rem;color:#64748b;margin-top:3px;'>"
+        f"Zarf hattı · günlük grafik · {view.get('bar', 0)} günlük yapı · "
+        f"{view.get('engine_version', '')}</div></div>"
+        f"<div style='text-align:right;padding:5px 11px;border-radius:7px;"
+        f"background:{view.get('durum_bg', '#64748b')};color:{view.get('durum_fg', '#fff')};"
+        f"font-size:0.8rem;font-weight:800;'>{view.get('durum_metni', '')}</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    _c_chart, _c_info = st.columns([62, 38], gap="medium")
+    with _c_chart:
+        _cb = view.get("chart_b64", "")
+        if _cb:
+            st.markdown(
+                f"<img src='data:image/png;base64,{_cb}' "
+                f"style='width:100%;border-radius:8px;display:block;'/>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.warning("Yapı bulundu fakat grafik üretilemedi.")
+
+    with _c_info:
+        _satir = [
+            ("Yapı başlangıcı", f"{view.get('bas_tarih', '—')} · {view.get('bar', 0)} gün"),
+            ("Temas sayısı", f"{view.get('temas_ust', 0)} üst + {view.get('temas_alt', 0)} alt"),
+            ("Tetik çizgisi", _fp(view.get("trigger"))),
+            ("Geçersizlik", _fp(view.get("invalidation"))),
+        ]
+        if view.get("kirilim_tarih"):
+            _satir.append(("Kırılım tarihi", view["kirilim_tarih"]))
+        elif view.get("mesafe_pct") is not None:
+            _satir.append(("Tetiğe uzaklık", f"%{view['mesafe_pct']:.1f}"))
+        _satir.append(("Ağız daralması", f"%{view.get('agiz_pct', 0):.0f}"))
+        _html = "".join(
+            f"<div style='display:flex;justify-content:space-between;gap:10px;"
+            f"padding:6px 0;border-bottom:1px solid #1e293b;'>"
+            f"<span style='color:#94a3b8;font-size:0.8rem;'>{_k}</span>"
+            f"<span style='color:#e2e8f0;font-size:0.84rem;font-weight:700;'>{_v}</span></div>"
+            for _k, _v in _satir
+        )
+        st.markdown(_html, unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='margin-top:12px;padding:9px 11px;border-radius:7px;"
+            f"background:#0f172a;border:1px solid #1e293b;color:#94a3b8;"
+            f"font-size:0.74rem;line-height:1.55;'>"
+            f"Bu kutu yalnızca <b>yapı kırıldı mı</b> sorusunu cevaplar. "
+            f"Hedef fiyat, kalite puanı veya yön tavsiyesi vermez — "
+            f"bu motorun getirisi henüz ölçülmedi. "
+            f"Çizgiler {view.get('temas_ust', 0) + view.get('temas_alt', 0)} gerçek "
+            f"temas noktasına oturur; hiçbir tepe/dip çizginin dışında kalmaz.</div>",
+            unsafe_allow_html=True,
+        )
 
 
 @st.dialog("📊 Formasyon Grafiği — V2", width="large")
@@ -21705,6 +21835,7 @@ def _render_left_col():
                 trajectory_tarama_merkezi.render_trajectory_tarama_merkezi(
                     st.session_state.get, _validate_toplu_terazi_payload,
                     on_scan_result_click)
+                _master_scan_giris_senaryolari.render_master_scan_entry_scenarios()
             _tm_fragment()
             st.markdown(
                 "<div style='height:1px;background:#1e293b;margin:12px 0;'></div>",
@@ -22092,6 +22223,60 @@ def _render_left_col():
             _tavan_skeleton.markdown(_tavan_bekleme_kutusu(), unsafe_allow_html=True)
     except Exception:
         _tavan_skeleton = None
+
+    # ══════════════════════════════════════════════════════════
+    # 📐 ÇİZGİ YAPILARI — Üçgen & Kama (20 Ağu 2026)
+    # cizgi_yapi.tara_evren → tek hisse kutusuyla AYNI motor ve AYNI elek (çelişmez).
+    # Hattı ZARF olarak çizer (noktaların ortasından değil, altından/üstünden).
+    # ⚠ Getirisi ÖLÇÜLMEDİ — bu yüzden ARAŞTIRMA LİSTELERİ altında, skora bağlı değil.
+    # ══════════════════════════════════════════════════════════
+    st.markdown(
+        "<div style='border-left:4px solid #38bdf8;padding-left:9px;margin:10px 0 6px;'>"
+        "<div style='font-size:0.88rem;font-weight:900;color:#e2e8f0;'>"
+        "📐 ÇİZGİ YAPILARI — Üçgen &amp; Kama</div>"
+        "<div style='font-size:0.7rem;color:#94a3b8;margin-top:2px;'>"
+        "Sınır çizgileri gerçek tepe/diplere oturur. Yalnız <b>kırıldı mı</b> der — "
+        "hedef, puan veya tavsiye vermez. Getirisi henüz ölçülmedi.</div></div>",
+        unsafe_allow_html=True)
+    if st.button("📐 ÇİZGİ YAPILARINI TARA (BIST + emtia/kripto)", type="secondary",
+                 width='stretch', key="btn_cizgi_yapi_scan",
+                 help="Uzun vadeli üçgen/kama sınır çizgileri. Tek hisse kutusuyla aynı motor."):
+        with st.spinner("Çizgi yapıları taranıyor (yaklaşık 1 dakika)..."):
+            st.session_state.cizgi_yapi_data = _cizgi_yapi_scan()
+            st.rerun()
+    _cyl = st.session_state.get('cizgi_yapi_data')
+    if _cyl is not None:
+        _cy_o, _cy_y, _cy_k = cizgi_yapi.kutula(_cyl)
+        _cy_c1, _cy_c2, _cy_c3 = st.columns(3)
+        _cy_kutular = (
+            (_cy_c1, "🌱 OLUŞUYOR", "#22c55e", "Yapı kuruluyor, çizgi kırılmadı", _cy_o, "cyo"),
+            (_cy_c2, "🔥 KIRILIMA YAKIN", "#eab308", "Çizgiye yaklaştı ya da teyit bekliyor", _cy_y, "cyy"),
+            (_cy_c3, "🚀 KIRDI", "#38bdf8", "Çizgi kırıldı (kapanışla teyitli)", _cy_k, "cyk"),
+        )
+        for _col, _bas, _renk, _alt, _liste, _pfx in _cy_kutular:
+            with _col:
+                st.markdown(
+                    f"<div style='text-align:center;font-weight:800;color:{_renk};padding:4px;'>{_bas}</div>"
+                    f"<div style='text-align:center;font-size:0.68rem;color:#94a3b8;margin-bottom:4px;'>{_alt}</div>",
+                    unsafe_allow_html=True)
+                with st.container(height=240, border=True):
+                    if not _liste:
+                        st.caption("yok")
+                    for _r in _liste[:15]:
+                        if _r.get('kirilim_tarih'):
+                            _etk = _r['kirilim_tarih'][5:].replace('-', '.')
+                        elif _r.get('mesafe') is not None:
+                            _etk = f"%{_r['mesafe']:.1f} kaldı"
+                        else:
+                            _etk = ""
+                        if st.button(f"{_r['kisa']} · {_r['ad']} · {_r['bar']}g — {_etk}",
+                                     key=f"{_pfx}_{_r['sembol']}", width='stretch'):
+                            on_scan_result_click(_r['sembol']); st.rerun()
+        _cy_gizli = len(_cyl) - (len(_cy_o) + len(_cy_y) + len(_cy_k))
+        st.caption(
+            f"📐 {len(_cyl)} yapı bulundu · likidite tabanı 25 mn TL/gün (BIST) · "
+            f"{_cy_gizli} tanesi geçmişte kalmış (bozuldu/uzadı/tamamlandı) → listelenmedi · "
+            f"tek hisse kutusuyla aynı motor")
 
     st.markdown("<hr style='margin:12px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
 
@@ -24109,6 +24294,19 @@ def _render_right_col():
     # ⚖ KANIT TERAZİSİ (17 Tem 2026 REFORM 1a) — ekranın TEK sentez hükmü, FİYAT kartı altı
     _render_kanit_terazisi_card(st.session_state.ticker)
 
+    # --- ÇİZGİ YAPISI (20 Ağu 2026) — zarf hattı; çakışma testi butonlardan ÖNCE ---
+    # İki motor da bir ÇİZGİ yapısı (üçgen/kama) diyorsa ve aynı tarih aralığını
+    # kaplıyorsa bu iki formasyon değil, aynı şeyin iki çizimidir → tek kutu (zarf
+    # yetkili, ölçüldü: eski motorun hattı noktaların ortasından geçiyor). İç içe
+    # ama farklı ölçekteyse gerçekten iki yapıdır → yan yana iki kutu.
+    _cy = _get_cizgi_yapi_view(st.session_state.ticker)
+    _cy_ok = isinstance(_cy, dict) and bool(_cy.get('available'))
+    _CIZGI_AILESI = {'ALÇALAN_KAMA', 'YÜKSELEN_KAMA', 'ALÇALAN_ÜÇGEN',
+                     'YÜKSELEN_ÜÇGEN', 'SİMETRİK_ÜÇGEN'}
+    _cy_eski_gun = None
+    _cakisma = False      # aynı yapının iki çizimi → eski kutu gizlenir
+    _yan_yana = False     # iki farklı ölçekte yapı → yan yana iki kutu
+
     # --- FORMASYON BUTONU — fiyat paneli hemen altında ---
     _fcd = st.session_state.get('_formasyon_chart_data')
     # 25 Tem 2026 — Beş ana yapı görünümünde V2 yetkilidir. Eski motorun target türlerinden
@@ -24120,7 +24318,22 @@ def _render_right_col():
         _fcd and isinstance(_fcd, dict)
         and not formasyon_v2_app.old_chart_is_v2_scope(_fcd)
     )
-    if _fv2_active or _old_form_allowed:
+    # Çakışma kararı: iki motor da ÇİZGİ yapısı diyorsa ölçeklerine bak.
+    if _cy_ok and _fv2_active and _fv2.get('pattern') in _CIZGI_AILESI:
+        try:
+            _e_bas = pd.to_datetime(str(_fv2.get('start_time'))[:10])
+            _e_son = pd.to_datetime(str(_fv2.get('end_time'))[:10])
+            _cy_eski_gun = max(1, int(np.busday_count(_e_bas.date(), _e_son.date())))
+        except Exception:
+            _cy_eski_gun = None
+        _y_gun = int(_cy.get('bar') or 0)
+        if _cy_eski_gun and _y_gun:
+            # kısa yapı, uzunun %60'ından büyükse "aynı yapı" say → tek kutu
+            _cakisma = (min(_cy_eski_gun, _y_gun) / max(_cy_eski_gun, _y_gun)) >= 0.60
+            _yan_yana = not _cakisma
+        else:
+            _cakisma = True
+    if (_fv2_active or _old_form_allowed) and not _cakisma and not _yan_yana:
         if _fv2_active:
             _fv2_is_candidate = float(_fv2.get('quality_score', 0)) < 90
             _fpl = _fv2.get('pattern_label', 'Formasyon') + (" · Aday" if _fv2_is_candidate else "")
@@ -24190,6 +24403,73 @@ def _render_right_col():
                     f"background:{_bg};color:{_fg};font-size:0.72rem;font-weight:700;"
                     f"text-align:center;line-height:1.4;'>{_bt}</div>",
                     unsafe_allow_html=True)
+
+    # --- ÇİZGİ YAPISI BUTONU (20 Ağu 2026) — zarf hattı; formasyon butonunun altında ---
+    # Yan yana hal: iki motor iki FARKLI ölçekte yapı görüyor (iç içe). İkisi de
+    # gösterilir, kullanıcı hangisine bakacağına kendi karar verir.
+    if _cy_ok or _yan_yana:
+        _cy_bull = _cy.get('direction') == 'bullish' if _cy_ok else True
+        _cy_bg = "#81bb96" if _cy_bull else "#9B7C99"
+        _cy_brd = "#3d8c5a" if _cy_bull else "#6b3a5c"
+        _cy_hov = "#6aaa82" if _cy_bull else "#876a85"
+        _cy_dsp = get_display_name(st.session_state.ticker)
+
+        def _cy_btn_css(_key, _bg, _brd, _hov):
+            st.markdown(f"""<style>
+                div.st-key-{_key} button {{
+                    background:{_bg} !important;
+                    border:1px solid {_brd} !important;
+                    color:white !important;
+                    font-weight:700 !important;
+                    min-height:1.9rem !important;
+                    padding:2px 8px !important;
+                    font-size:0.78rem !important;
+                }}
+                div.st-key-{_key} button:hover {{
+                    background:{_hov} !important;
+                    border-color:{_brd} !important;
+                }}
+            </style>""", unsafe_allow_html=True)
+
+        def _cy_rozet(_metin, _bg, _fg):
+            st.markdown(
+                f"<div style='margin:-4px 0 4px 0;padding:2px 8px;border-radius:6px;"
+                f"background:{_bg};color:{_fg};font-size:0.7rem;font-weight:700;"
+                f"text-align:center;line-height:1.4;'>{_metin}</div>",
+                unsafe_allow_html=True)
+
+        if _yan_yana:
+            _kisa_gun, _uzun_gun = _cy_eski_gun or 0, int(_cy.get('bar') or 0)
+            _kisa_solda = _kisa_gun <= _uzun_gun
+            _cc1, _cc2 = st.columns(2, gap="small")
+            _e_bull = _fv2.get('direction') == 'bullish'
+            _e_bg = "#81bb96" if _e_bull else "#9B7C99"
+            _e_brd = "#3d8c5a" if _e_bull else "#6b3a5c"
+            _e_hov = "#6aaa82" if _e_bull else "#876a85"
+            with (_cc1 if _kisa_solda else _cc2):
+                _cy_btn_css("btn_formasyon_dialog", _e_bg, _e_brd, _e_hov)
+                if st.button(f"📊 Kısa · {_kisa_gun}g", width='stretch',
+                             key="btn_formasyon_dialog"):
+                    _formasyon_v2_dialog(_fv2, _cy_dsp)
+                _cy_rozet(_fv2.get('pattern_label', 'Formasyon'), "#1e293b", "#cbd5e1")
+            with (_cc2 if _kisa_solda else _cc1):
+                _cy_btn_css("btn_cizgi_yapi_dialog", _cy_bg, _cy_brd, _cy_hov)
+                if st.button(f"📐 Uzun · {_uzun_gun}g", width='stretch',
+                             key="btn_cizgi_yapi_dialog"):
+                    _cizgi_yapi_dialog(_cy, _cy_dsp)
+                _cy_rozet(_cy.get('pattern_label', 'Çizgi Yapısı'), "#1e293b", "#cbd5e1")
+            _cy_rozet(_cy.get('durum_metni', ''), _cy.get('durum_bg', '#64748b'),
+                      _cy.get('durum_fg', '#ffffff'))
+        else:
+            _cy_btn_css("btn_cizgi_yapi_dialog", _cy_bg, _cy_brd, _cy_hov)
+            if st.button(f"📐 {_cy_dsp}-{_cy.get('pattern_label', 'Çizgi Yapısı')} · "
+                         f"{int(_cy.get('bar') or 0)}g",
+                         width='stretch', key="btn_cizgi_yapi_dialog"):
+                _cizgi_yapi_dialog(_cy, _cy_dsp)
+            _cy_durum = _cy.get('durum_metni', '')
+            if _cy.get('stage') in ('OLUŞUYOR', 'YAKIN') and _cy.get('mesafe_pct') is not None:
+                _cy_durum += f" · tetiğe %{_cy['mesafe_pct']:.1f}"
+            _cy_rozet(_cy_durum, _cy.get('durum_bg', '#64748b'), _cy.get('durum_fg', '#ffffff'))
 
     # --- HARMONİK FORMASYON BUTONU — formasyon butonunun hemen altında ---
     try:
@@ -24730,9 +25010,10 @@ def _render_right_col():
                         f"Setup: {setup} · Liderlik: {_life_stage} "
                         f"({_life_age}. seans){_dtip}"
                     )
+                    _triple_badge = _master_scan_giris_senaryolari.get_radar2_badge(sym)
                     if cols_r2[i % 3].button(
                         f"🚀 {int(row['Skor'])}/7 · {_life_icon} {_life_stage}\n"
-                        f"{sym.replace('.IS','')}{_dbadge}",
+                        f"{sym.replace('.IS','')}{_dbadge}{_triple_badge}",
                         key=f"r2_tab_{sym}_{i}",
                         width='stretch',
                         help=_help,

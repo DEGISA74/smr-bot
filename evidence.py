@@ -39,7 +39,7 @@ SCANNER_TIER_MAP = {
     # ── TIER_1_ELIT — BOŞ (18 Tem): temiz veride eşiği karşılayan YOK. 28 Tem'de yeniden bak. ──
     # ── TIER_2_GUVENILIR — sağlam destekleyici, ana hikaye olabilir ──
     'minervini':     ('TIER_2_GUVENILIR',75.0, 40.18, '🏔 Minervini SEPA',                        '20g · hit %75 ret %+40.2 · ⚠ N=20 KÜÇÜK (10g: %81/+17.2 N=37; ideal 18g: %+30.1 N=26) · sonuç güçlü, uzun vade örneği TIER_1 için yetersiz'),
-    'er_B11':        ('TIER_2_GUVENILIR',48.6,  4.52, '📐 Erken Radar B11 (Tepe Yakını Sıkışma)', '20g · hit %49 ret %+4.5 · N=529 · eksi piyasada +4.5 getiren tek büyük-örnekli tarama; hit köprü eşiğinin 1.4p altında ama piyasa hit\'i ~%37 iken — rejim payıyla TIER_2'),
+    'er_B11':        ('TIER_2_GUVENILIR',48.6,  4.52, '📐 Tepede Yay Geriliyor', '20g · hit %49 ret %+4.5 · N=529 · eksi piyasada +4.5 getiren tek büyük-örnekli tarama; hit köprü eşiğinin 1.4p altında ama piyasa hit\'i ~%37 iken — rejim payıyla TIER_2'),
     # ── TIER_3_ORTA — pozitif ama zayıf; ana hikaye DEĞİL, diğer teyitler aranır (temiz 20g ret sırasıyla) ──
     'er_C8':         ('TIER_3_ORTA',     44.9,  2.44, '🚀 Erken Radar C8 (Yukarı Kanal Testi)',   '20g · hit %45 ret %+2.4 · N=352'),
     'er_C6':         ('TIER_3_ORTA',     43.8,  2.16, '🚀 Erken Radar C6 (Piyasa Lideri)',        '20g · hit %44 ret %+2.2 · N=105 · 10g\'de belirgin güçlü (%55/+2.4 N=132, her ay piyasa üstü) — kısa vade karakterli'),
@@ -66,6 +66,136 @@ SCANNER_TIER_MAP = {
     # Önceki kaldırılanlar (hâlâ geçerli): er_B1, Royal Flush (nadir_firsat), ICT Sniper, Radar 1,
     # er_C1, guclu_donus — negatif/sıfır beklenti. UI'da çalışır, AI'dan gizli.
 }
+
+# ===============================================================
+# 17 AGU 2026 — ALFA KARNESI (endeks-kiyasli, IKI REJIM)
+# Kaynak: `alfa_karne.py` · 21.596 sinyal T+20 · Oca-Tem 2026
+#   alfa = sinyal getirisi - AYNI GUN baslayan XU100 getirisi
+#   Gun-kumelenmesi duzeltilmis t-testi (ayni gun taranan hisseler tek oy):
+#   15 zayif taramanin 14'u t<-2 ile GERCEKTEN negatif.
+#
+# GENEL: yukselen tape +0,55 alfa · dusen tape -3,68 alfa.
+#   Acigin tamami dusen piyasadan: zayif tape'te dibe dusmus hisse seciyoruz,
+#   endeks buyuklerle toparliyor, biz katilmiyoruz.
+#
+# KARAR (kullanici onayi 17 Agu):
+#   • DAHA ZAYIF + ZAYIF listesi AI prompt'a ve KARAR panellerine CIKMAZ.
+#   • Master Scan taramasi + scan_signals kaydi DEVAM EDER — pipeline'dan
+#     cikarilirsa olcum akisi da durur, bir sonraki rejimde korlesiriz.
+#   • Kod SILINMEDI. Gercek boga rejiminde yeniden olculecek.
+#
+# ⚠ SINIR: 43 ayri tarama gunu var ama T+20 pencereleri ortusuyor →
+#   etkin bagimsiz gozlem ~6-9 donem, hepsi tek rejim yayindan. "Zayif tape'te
+#   zarar veriyor" KANITLANDI; "her kosulda bozuk" KANITLANMADI.
+#   Rejim degisince `python alfa_karne.py` kos ve bu listeyi guncelle.
+#   Detay: memory/project_endeks_alti_alfa.md
+# ===============================================================
+
+# ===============================================================
+# 17 AGU 2026 — ELEME (kullanici karari: "27'sini cikar, her yerden")
+# Kaynak: alfa_karne.py · 60 tarama · T+20 alfa (endekse gore fark)
+# Olcut: 🔴 ELE (alfa -1..-2,5) + ⛔ KESIN ELE (alfa <= -2,5)
+# Bunlar SINYAL URETMEZ: senaryo motorunda atlanir, Master Scan adimi kosmaz,
+# panel cizilmez. Kod silinmedi — geri almak icin bu listeyi bosalt.
+# NOT: elenenler artik ölçülmüyor da; "acaba duzeldi mi" sorusu cevapsiz kalir.
+# Bilinerek kabul edildi (kullanici: "ugrasmayalim bunlarin yukuyle").
+# ===============================================================
+ELENEN_KLASIK = frozenset({
+    'ict_sniper', 'rs_leaders', 'vip_formasyon',
+    'nadir_firsat', 'harmonik_confluence',
+})
+# guclu_donus GERİ ALINDI (17 Agu, ayni gun): korunanlarla ayni tarih araligina
+# (18 Haz-17 Tem) kisilinca alfasi -2,27 → +0,34'e donuyor. Elenmesi veriyle
+# desteklenmiyordu; ilk olcumdeki -2,27 donem etkisi tasiyordu.
+
+# Erken Radar senaryolari (ERKEN_RADAR_SCENARIOS anahtarlari — 'er_' onsuz)
+ELENEN_ER_SENARYO = frozenset({
+    'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9',
+    'B1', 'B5',
+    'C1', 'C3', 'C5', 'C7', 'C9', 'C11',
+    'D1', 'D3', 'D4', 'D5',
+})
+
+ELENEN_TARAMALAR = ELENEN_KLASIK | frozenset(f"er_{_x}" for _x in ELENEN_ER_SENARYO)
+
+
+def elendi_mi(scan_type) -> bool:
+    """Bu tarama tamamen elendi mi? (True = hic calistirma, hic gosterme)"""
+    return scan_type in ELENEN_TARAMALAR
+
+
+# Tek anahtar: False yaparsan bastirma tamamen kalkar (geri alinabilir).
+ZAYIF_TARAMA_AI_BASTIR = True
+
+# DAHA ZAYIF — iki rejimde de negatif VE alfa <= -2,5 (ya da tek basina <= -4,0)
+DAHA_ZAYIF_SCANNERS = frozenset({
+    'ict_sniper',        # -4,89  (t -3,24)
+    'er_B1',             # -4,83  (t -2,60)
+    'er_A2',             # -4,24  (yuk +0,54 / dus -7,01)
+    'vip_formasyon',     # -3,87  (t -4,16)
+    'er_A1',             # -3,68  (t -6,33) — eskiden "Geri Donus SAMPIYONU"
+    'er_A8',             # -3,16  (t -2,20) — eskiden "isabet %100"
+    'er_A6',             # -2,91  (t -3,95)
+    'rs_leaders',        # -2,88  (t -3,95) — en buyuk toplam acik, N=1692
+    'er_D3',             # -2,76  (t -4,10)
+    'er_A9',             # -2,73  (t -5,24)
+    'er_A4',             # -2,53  (t -4,48)
+})
+
+# ZAYIF — iki rejimde de negatif (siddeti daha az)
+ZAYIF_SCANNERS = frozenset({
+    'tekli_altin',           # -0,98 gun-bazli (t -2,15)
+    'er_A3',                 # -2,48 (t -4,38)
+    'harmonik_confluence',   # -2,44 (t -2,47)
+    'er_B5',                 # -1,33 (t -1,67) ⚠ istatistiksel olarak BELIRSIZ
+})
+
+# GUCLU — iki rejimde de pozitif; guvenle vurgulanabilir tek aile
+GUCLU_SCANNERS = frozenset({'tavan_top30', 'tavan_alarm', 'zirve_devam', 'zirve_sikisma'})
+
+# TEK REJIM — sadece yukselen tape'te pozitif (rejim kapisi TARTISILIYOR:
+# CLAUDE.md "piyasa rejimi scanner filtresi olarak kullanilmaz" yasagiyla cakisiyor)
+TEK_REJIM_SCANNERS = frozenset({
+    'radar2', 'liderlik_aday', 'er_C2', 'er_C8', 'guclu_donus', 'prelaunch_bos',
+    'altin_setup', 'nadir_firsat', 'er_C3', 'er_C5', 'er_C7', 'er_C9', 'er_C11',
+    'er_D2', 'er_D4', 'er_D5', 'er_D1', 'er_A5', 'er_A7', 'er_C1',
+})
+
+
+# Olculmus T+20 alfa degerleri (panel rozetinde gosterilir). Kaynak: alfa_karne.py
+ALFA_T20 = {
+    'ict_sniper': -4.9, 'er_B1': -4.8, 'er_A2': -4.2, 'vip_formasyon': -3.9,
+    'er_A1': -3.7, 'er_A8': -3.2, 'er_A6': -2.9, 'rs_leaders': -2.9,
+    'er_D3': -2.8, 'er_A9': -2.7, 'er_A4': -2.5, 'harmonik_confluence': -2.1,
+    'er_A3': -2.0, 'er_B5': -1.9, 'tekli_altin': -0.9,
+    'tavan_top30': 2.6, 'tavan_alarm': 2.5, 'er_B11': 2.4,
+}
+
+
+def alfa_deger(scan_type):
+    """Olculmus T+20 alfa (endekse gore fark, yuzde). Bilinmiyorsa None."""
+    return ALFA_T20.get(scan_type)
+
+
+def is_ai_suppressed(scan_type) -> bool:
+    """Bu tarama AI prompt'a ve karar panellerine cikmali mi? (True = CIKMASIN)
+
+    Olcum: iki rejimde de negatif alfa. Master Scan taramasi ve scan_signals
+    kaydi bundan ETKILENMEZ — sadece karar yuzeyinden cekilir.
+    """
+    if not ZAYIF_TARAMA_AI_BASTIR:
+        return False
+    return scan_type in DAHA_ZAYIF_SCANNERS or scan_type in ZAYIF_SCANNERS
+
+
+def alfa_etiketi(scan_type) -> str:
+    """Panelde/logda gosterilebilir kisa etiket. Bilinmiyorsa ''."""
+    if scan_type in GUCLU_SCANNERS:      return "🟢 IKI REJIMDE POZITIF"
+    if scan_type in DAHA_ZAYIF_SCANNERS: return "⛔ DAHA ZAYIF"
+    if scan_type in ZAYIF_SCANNERS:      return "🔴 ZAYIF"
+    if scan_type in TEK_REJIM_SCANNERS:  return "🟡 SADECE YUKSELEN TAPE'TE"
+    return ""
+
 
 ER_ELIT_SCORE_MIN = 45   # Güncel vitrin gösterim eşiği; puanın kendisi backtest özetinden gelir.
 

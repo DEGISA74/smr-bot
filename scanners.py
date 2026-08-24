@@ -563,7 +563,11 @@ def process_single_accumulation(symbol, df, benchmark_series):
 def process_single_radar1(symbol, df, bench_series=None):
     try:
         if df.empty or 'Close' not in df.columns: return None
-        df = df.dropna(subset=['Close'])
+        # Master Scan'in ortak veri tablosunda çoğu hisse için kapanışlar zaten
+        # eksiksizdir. Bu durumda gereksiz tablo kopyası oluşturma; eksik varsa
+        # eski davranışı aynen koruyarak yalnız kapanışı eksik satırları çıkar.
+        if df['Close'].isna().any():
+            df = df.dropna(subset=['Close'])
         if len(df) < 60: return None
         
         close = df['Close']; high = df['High']; low = df['Low']
@@ -592,8 +596,11 @@ def process_single_radar1(symbol, df, bench_series=None):
         try:
             plus_dm = high.diff(); minus_dm = low.diff()
             plus_dm[plus_dm < 0] = 0; minus_dm[minus_dm > 0] = 0
-            tr1 = pd.DataFrame(high - low); tr2 = pd.DataFrame(abs(high - close.shift(1))); tr3 = pd.DataFrame(abs(low - close.shift(1)))
-            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            tr = pd.concat([
+                high - low,
+                abs(high - close.shift(1)),
+                abs(low - close.shift(1)),
+            ], axis=1).max(axis=1)
             atr_adx = tr.rolling(14).mean()
             plus_di = 100 * (plus_dm.ewm(alpha=1/14).mean() / atr_adx)
             minus_di = 100 * (abs(minus_dm).ewm(alpha=1/14).mean() / atr_adx)
@@ -648,9 +655,15 @@ def process_single_radar1(symbol, df, bench_series=None):
         mansfield_r1 = 0.0
         if bench_series is not None and len(close) > 60:
             try:
-                common = close.index.intersection(bench_series.index)
-                if len(common) > 55:
-                    rs_r = close.reindex(common) / bench_series.reindex(common)
+                # Hisse ve XU100 tarihleri zaten aynıysa (normal Master Scan
+                # yolu), her hissede iki kez yeniden eşleştirme yapmaya gerek yok.
+                # Eşit değilse eski güvenli eşleştirme yolu aynen çalışır.
+                if close.index.equals(bench_series.index):
+                    rs_r = close / bench_series
+                else:
+                    common = close.index.intersection(bench_series.index)
+                    rs_r = close.reindex(common) / bench_series.reindex(common) if len(common) > 55 else None
+                if rs_r is not None and len(rs_r) > 55:
                     rs_m = rs_r.rolling(50).mean()
                     m = ((rs_r / rs_m) - 1) * 10
                     mansfield_r1 = float(m.iloc[-1]) if not np.isnan(m.iloc[-1]) else 0.0
@@ -907,6 +920,24 @@ def calculate_guclu_donus_adaylari(ticker, df, bist100_close=None):
         except Exception:
             missed.append("VWAP")
 
+        # ── TEYİT KATMANI (30 Tem 2026): OBV↑ & CMF>0 → "para içeride" ─────
+        # Sahte dönüş (düşen bıçak) filtresi. Backtest (backtest_guclu_donus_filtre.py):
+        # teyitli adaylar 20g +%6.35/%62 vs teyitsiz +%4.91/%54; DÜŞEN rejimde
+        # fark uçuyor (+%8.9/%66 vs +%3.1/%55). P5 zaten OBV içeriyor → asıl yeni bilgi CMF.
+        _obv_up = len(obv) >= 6 and float(obv.iloc[-1]) > float(obv.iloc[-6])
+        try:
+            _cmf_val = float(compute_cmf(df, period=20))
+        except Exception:
+            _cmf_val = 0.0
+        para_teyit = bool(_obv_up and _cmf_val > 0)
+        dusen_rejim = False
+        if bist100_close is not None and len(bist100_close) >= 50:
+            try:
+                _sma50 = float(bist100_close.iloc[-50:].mean())
+                dusen_rejim = bool(float(bist100_close.iloc[-1]) < _sma50)
+            except Exception:
+                dusen_rejim = False
+
         # ── BONUS ────────────────────────────────────────────────────────
         weekly_up   = len(close) >= 6 and float(close.iloc[-1]) > float(close.iloc[-6])
         sweep_month = False
@@ -953,6 +984,9 @@ def calculate_guclu_donus_adaylari(ticker, df, bist100_close=None):
             "Sweep_Ay"   : sweep_month,
             "Weekly_Up"  : weekly_up,
             "RSI_Div"    : "✅",
+            "Para_Teyit" : para_teyit,
+            "CMF"        : round(_cmf_val, 3),
+            "Dusen_Rejim": dusen_rejim,
             "Passed"     : passed,
             "Missed"     : missed,
             "Aciklama"   : " · ".join(_ac_parts),
@@ -2076,7 +2110,7 @@ ERKEN_RADAR_SCENARIOS = {
     'B10': {'name': 'Yatay + Momentum Çelişkisi', 'category': 'B', 'stars': 5,
             'description': 'Fiyat 20 gündür yatay ama momentum (RSI) içeride güçleniyor. Görünen sakinliğe rağmen iç güç birikiyor — dönüş yakın olabilir.',
             'detect': lambda c: c['lateral_20'] and (c['strong_bull_div'] or c['medium_bull_div']) and c['vol_dried']},
-    'B11': {'name': 'Tepe Yakını Sıkışma', 'category': 'B', 'stars': 4,
+    'B11': {'name': 'Tepede Yay Geriliyor', 'category': 'B', 'stars': 4,
             'description': 'Hisse 60 günlük zirvesinin yakınında sıkışıyor ve endekse karşı güçlü. Tepe yakını sıkışmalar genellikle yukarı kırılımla sonuçlanır.',
             'detect': lambda c: c['pos_60_upper_80'] and c['bb_squeeze'] and c['rs_20d_pct'] > 0},
 
@@ -2134,6 +2168,13 @@ ERKEN_RADAR_SCENARIOS = {
 }
 
 
+# 17 Agu 2026 — elenen senaryo listesi (tek kaynak: evidence.py)
+try:
+    from evidence import ELENEN_ER_SENARYO as _ELENEN_ER
+except Exception:
+    _ELENEN_ER = frozenset()
+
+
 def evaluate_erken_radar(ticker, df, bench_df=None):
     """36 senaryoyu test et, eşleşenleri döner.
     Çıktı: {primary, confirmations, red_flags, overall_quality, verdict, context, matched_count}
@@ -2144,6 +2185,10 @@ def evaluate_erken_radar(ticker, df, bench_df=None):
     matched = []
     red_flags = []
     for sid, sc in ERKEN_RADAR_SCENARIOS.items():
+        # 17 Agu 2026 — ELEME: alfa karnesinde negatif cikan 21 senaryo hic uretilmez.
+        # Tanimlari duruyor (evidence.ELENEN_ER_SENARYO bosaltilirsa geri gelir).
+        if sid in _ELENEN_ER:
+            continue
         try:
             if sc['detect'](ctx):
                 entry = {

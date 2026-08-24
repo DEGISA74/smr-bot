@@ -1992,6 +1992,7 @@ def _calculate_price_action_dna_cached(ticker, cache_key):
         cum_delta_5 = float(df['Volume_Delta'].iloc[-5:].sum()) if 'Volume_Delta' in df.columns else 0.0
         total_vol_5 = float(df['Volume'].iloc[-5:].sum())
         cum_delta_pct = abs(cum_delta_5 / total_vol_5 * 100) if total_vol_5 > 0 else 0.0
+        cum_delta_signed_pct = (cum_delta_5 / total_vol_5 * 100) if total_vol_5 > 0 else 0.0
 
         # VALUE AREA POZİSYONU
         if fiyat > vah_price:
@@ -2019,7 +2020,8 @@ def _calculate_price_action_dna_cached(ticker, cache_key):
             except Exception:
                 pass
             hacim_4soru = hacim_dort_soru(cum_delta_5, rvol, _delta_ser, _close_ser,
-                                          vol_missing=_vol_data_missing, karsi=_fi_karsi)
+                                          vol_missing=_vol_data_missing, karsi=_fi_karsi,
+                                          cum_delta_pct=cum_delta_signed_pct)
         except Exception:
             hacim_4soru = None
 
@@ -2179,13 +2181,14 @@ def _hacim_hukum_cumlesi(yon_sign, kat_lvl, sur_lvl, teyit_durum, karsi=None):
     return base
 
 
-def hacim_dort_soru(cum_delta_5, rvol, delta_serisi, close_serisi, vol_missing=False, karsi=None):
+def hacim_dort_soru(cum_delta_5, rvol, delta_serisi, close_serisi, vol_missing=False, karsi=None,
+                    cum_delta_pct=None):
     """HACİM 4-PARÇA HÜKMÜ — tek hacim başlığını dört ayrı soruya böler.
 
     Sorun: 'POC ALANINDA — Alım Baskısı Var' tek başlığı, aynı ekrandaki 'hacim
     ortalamanın altında' ile çelişki gibi görünüyordu. Oysa hacim tek soru değil,
     DÖRT ayrı soru — dördü de aynı anda doğru olabilir:
-      1. Yön        — para giriyor mu, çıkıyor mu?      (cum_delta_5)
+      1. Yön        — net baskı anlamlı mı?              (5g normalize delta, ±%5 gürültü bandı)
       2. Katılım    — kalabalık mı, tenha mı?           (rvol)
       3. Süreklilik — tek günlük mü, ısrarlı mı?        (son 5 günün delta işaretleri)
       4. Fiyat teyidi — gelen para fiyatı taşıdı mı?    (son ~5 günün fiyat değişimi)
@@ -2205,13 +2208,23 @@ def hacim_dort_soru(cum_delta_5, rvol, delta_serisi, close_serisi, vol_missing=F
     except Exception:
         return None
 
-    # ── 1. YÖN — para giriyor mu, çıkıyor mu? ─────────────────────────────────
-    if cum > 0:
+    # ── 1. YÖN — AI prompt ile aynı ±%5 gürültü bandı ────────────────────────
+    # Kısa vadeli çok küçük farklar panelde "alım/satış", AI'da "nötr" diye
+    # iki ayrı hikâye üretmesin. Yüzde sağlanamayan eski çağrılarda geriye uyumlu
+    # ham işaret kullanılmaya devam eder.
+    try:
+        _cum_pct = float(cum_delta_pct) if cum_delta_pct is not None else None
+    except Exception:
+        _cum_pct = None
+    _yon_sign_raw = (1 if _cum_pct > 5 else (-1 if _cum_pct < -5 else 0)) if _cum_pct is not None else (
+        1 if cum > 0 else (-1 if cum < 0 else 0)
+    )
+    if _yon_sign_raw > 0:
         yon_lbl, yon_kisa, yon_sign = "Pozitif (para giriyor)", "Pozitif", +1
-    elif cum < 0:
+    elif _yon_sign_raw < 0:
         yon_lbl, yon_kisa, yon_sign = "Negatif (para çıkıyor)", "Negatif", -1
     else:
-        yon_lbl, yon_kisa, yon_sign = "Nötr (dengede)", "Nötr", 0
+        yon_lbl, yon_kisa, yon_sign = "Nötr (5g fark gürültü bandında)", "Nötr", 0
 
     # ── 2. KATILIM — kalabalık mı, tenha mı? (rvol; panel Tile eşikleriyle uyumlu)
     if rv >= 1.5:

@@ -809,6 +809,35 @@ def find_volume_gap_levels(df, lookback=60, bins=20):
     return out
 
 
+def relative_strength_ratio(stk_close, idx_close, window=10):
+    """Hisse ↔ endeks göreli güç (RS) — TEK KAYNAK (7 Ağu 2026).
+
+    w-günlük getiri oranı: (S[-1]/S[-w-1]) / (I[-1]/I[-w-1]).
+    app.py FİYAT kartı + infografik statbox ikisi de BUNU çağırır → pencere
+    bir daha sessizce ayrışamaz (eskiden biri 20g biri 126g idi). Hesap/AI'a
+    giden veri DEĞİL, yalnız iki render bu ortak fonksiyondan okur.
+    Dönüş: float oran veya None (veri yetersiz / geçersiz).
+    """
+    try:
+        import numpy as _np
+        s = _np.asarray(stk_close, dtype=float)
+        i = _np.asarray(idx_close, dtype=float)
+        if len(s) < window + 1 or len(i) < window + 1:
+            return None
+        _s0, _i0 = s[-window - 1], i[-window - 1]
+        if _s0 == 0 or _i0 == 0:
+            return None
+        _ir = i[-1] / _i0
+        if _ir == 0:
+            return None
+        _rs = (s[-1] / _s0) / _ir
+        if _rs != _rs:   # NaN guard
+            return None
+        return float(_rs)
+    except Exception:
+        return None
+
+
 def compute_obv_series(df):
     """OBV serisi — get_obv_divergence_status ile aynı formül (TEK KAYNAK, 10 Tem 2026).
 
@@ -817,6 +846,88 @@ def compute_obv_series(df):
     change = df['Close'].diff()
     direction = np.sign(change).fillna(0)
     return (direction * df['Volume']).cumsum()
+
+
+def intraday_obv_delta(ticker, prev_close, for_date=None):
+    """Seans İÇİNDE bugünün OBV katkısını SAATLİK barlardan hesaplar (14 Ağu 2026).
+
+    NEDEN: Günlük OBV'nin orta vitesi yok — gün yukarı kapanırsa TÜM hacim artı,
+    aşağı kapanırsa TÜM hacim eksi. Yatay bir günde (XU100 14 Ağu: %-0,00) bu,
+    114 milyar TL'yi yazı-turayla bir tarafa atıyor; fiyat dünkü kapanışın iki
+    yanında gezindikçe panel hükmü gün içinde 17 puan zıplıyor.
+    ÖLÇÜLDÜ: 8 hissenin 3'ünde (AKBNK/SISE/BIMAS — hepsi az hareketli gün)
+    günlük kuralın YÖNÜ saatlik akışın tersi çıktı. AKBNK günlük -72mn, saatlik +3mn.
+
+    Bu fonksiyon bugünü saat saat gezer, her barı kendi yönüne göre sayar ve NET
+    değeri döner. Saatler birbirini dengelediği için yatay gün yatay sonuç verir.
+
+    ⚠ SINIR: Yalnız bugünün barı için kullanılır; önceki günler günlük OBV'de kalır.
+    Net katkı doğası gereği tam-gün hacminden ~3 kat küçüktür, yani bugün geçmişe
+    kıyasla daha sessiz görünür. Bilinen ve kabul edilmiş takas (A planı).
+
+    prev_close: dünkü GÜNLÜK kapanış (ilk saatlik bar onunla kıyaslanır).
+    for_date  : hangi günün barları isteniyor (date). Verilmezse bugünün tarihi.
+
+    ⚠ 14 Ağu 2026 HATA DÜZELTMESİ: "bugün" önce dosyanın KENDİ son gününden
+    okunuyordu. Saatlik depo yalnız ~150 likit hisseyi güncelliyor, gerisi haftalar
+    öncesinde takılı → ACSEL'in 28 Temmuz'u "bugün" sanılıp bugünün OBV'sine
+    yazılıyordu. Artık takvim tarihiyle kıyaslanır; o güne ait bar yoksa None döner.
+
+    ⚠ 19 Ağu 2026 — KAPI ŞARTI: "o güne ait bar var mı" yetmiyordu. 18 Ağu'da
+    depo 13:30'da donmuştu; saat 17:45'te 5 bar duruyordu ve kod bunu bugünün
+    tam verisi sayıp yarım günü OBV'ye yazıyordu. Artık `saatlik_kapi` beklenen
+    bar sayısını da denetler; eksikse hesap YAPILMAZ. Kapı modülü yoksa da
+    hesap yapılmaz — denetimsiz saatlik veri kullanmak yasak.
+
+    Döner: float (TL, işaretli) veya None (saatlik veri kapıdan geçmedi →
+    çağıran günlüğe düşer AMA bunu ekranda söylemek zorundadır).
+    """
+    try:
+        from data_layer import INDEX_CIRO_TARGETS, compute_index_tl_ciro_series_hourly
+        from saatlik_kapi import saatlik_oku
+    except Exception:
+        return None
+    try:
+        _sym = str(ticker).upper().replace(".IS", "")
+        if for_date is None:
+            from datetime import datetime as _dtc
+            for_date = _dtc.now().date()
+        _bars, _durum = saatlik_oku(_sym, for_date=for_date)
+        if _bars is None or len(_bars) < 2:
+            return None            # kapı kapalı (kapsam dışı / yarım / bayat)
+
+        # Hacim kaynağı: endekslerin saatlik Volume'ü SIFIR (adet bile yok) →
+        # günlük kardeşiyle aynı yöntem: bileşenlerin Σ(Close×Volume) TL cirosu.
+        if _sym in INDEX_CIRO_TARGETS:
+            # for_date verilir → toplam yalnız O GÜN kapıdan geçen bileşenlerden
+            # kurulur; yarısı bayat bir bileşen listesiyle endeks cirosu şişmez.
+            _ciro = compute_index_tl_ciro_series_hourly(
+                _sym, allow_network=False, for_date=for_date)
+            if _ciro is None or _ciro.empty:
+                return None
+            _vols = _ciro.reindex(_bars.index)
+        else:
+            _vols = pd.to_numeric(_bars['Volume'], errors='coerce')
+        if _vols is None or _vols.isna().all() or float(_vols.fillna(0).sum()) <= 0:
+            return None
+
+        _delta = 0.0
+        _prev = float(prev_close)
+        for _t, _row in _bars.iterrows():
+            _c = float(_row['Close'])
+            _v = _vols.get(_t)
+            if _v is None or pd.isna(_v):
+                _prev = _c
+                continue
+            _v = float(_v)
+            if _c > _prev:
+                _delta += _v
+            elif _c < _prev:
+                _delta -= _v
+            _prev = _c
+        return _delta
+    except Exception:
+        return None
 
 
 def compute_obv_divergence_duration(df, window=14, max_scan=30):

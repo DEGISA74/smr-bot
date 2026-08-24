@@ -1,37 +1,37 @@
 {
-  "generated_at": "2026-07-29 19:27",
+  "generated_at": "2026-08-21 21:29",
   "category": "BIST 500 ",
   "public_items": [
     {
-      "ticker": "DUNYH",
-      "scenario_id": "C3",
-      "scenario_name": "Pullback + Hacimli Alım",
-      "category": "C",
+      "ticker": "CEMAS",
+      "scenario_id": "B4",
+      "scenario_name": "Yatayda Hacim Patlaması",
+      "category": "B",
       "stars": 5,
       "aging_days": 2,
       "event_day": 2,
-      "first_seen": "2026-06-24"
+      "first_seen": "2026-08-20"
     },
     {
-      "ticker": "KUVVA",
-      "scenario_id": "C3",
-      "scenario_name": "Pullback + Hacimli Alım",
-      "category": "C",
-      "stars": 5,
-      "aging_days": 2,
-      "event_day": 2,
-      "first_seen": "2026-07-27"
-    },
-    {
-      "ticker": "TUPRS",
-      "scenario_id": "C6",
-      "scenario_name": "Piyasa Lideri",
-      "category": "C",
+      "ticker": "FROTO",
+      "scenario_id": "B4",
+      "scenario_name": "Yatayda Hacim Patlaması",
+      "category": "B",
       "stars": 5,
       "aging_days": 1,
       "event_day": 1,
-      "first_seen": null
+      "first_seen": "2026-08-21"
+    },
+    {
+      "ticker": "TCELL",
+      "scenario_id": "B4",
+      "scenario_name": "Yatayda Hacim Patlaması",
+      "category": "B",
+      "stars": 5,
+      "aging_days": 1,
+      "event_day": 1,
+      "first_seen": "2026-08-21"
     }
   ],
-  "locked_count": 248
+  "locked_count": 47
 }

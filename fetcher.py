@@ -467,6 +467,57 @@ def _round_timeboxed(source: str, tickers: list[str], deadline: float):
     return done, ok
 
 
+def run_yahoo_refresh():
+    """Gün içi Yahoo turu: sonraki 10 dakikalık cron turuna taşmadan yayın yapar."""
+    tickers = load_bist_tickers()
+    # Cron her 10 dakikada bir başlar. Sonraki turun kilide takılmaması için
+    # mevcut tura 9 dakika ver; yetişmeyen semboller sonraki turda en başa gelir.
+    deadline = time.time() + 9 * 60
+    log.info(f"=== YAHOO GÜN İÇİ TUR === | {len(tickers)} ticker | süre sınırı 9 dk")
+    _round_timeboxed('yfinance', tickers, deadline)
+
+
+def _build_hot_list(universe: list[str]) -> list[str]:
+    """ACİL LİSTE (6 Ağu 2026): her turda çekilecek küçük öncelik kümesi —
+    endeksler + BIST30 (priority_bist_indices) + kullanıcı favorileri (patron.db
+    watchlist). Yalnız BIST evreninde olanlar; GC=F / SPCX gibi BIST-dışı favoriler
+    elenir. Sıra korunur (endeks/BIST30 önce, favoriler sonra), tekrar yok."""
+    uni = set(universe)
+    hot: list[str] = []
+    try:
+        from data_layer import priority_bist_indices
+        hot = [t for t in priority_bist_indices if t in uni]
+    except Exception as e:
+        log.debug(f"[acil] priority_bist_indices okunamadi: {e}")
+    try:
+        from db_layer import load_watchlist_db
+        for f in (load_watchlist_db() or []):
+            if (f.endswith('.IS') or f.startswith('X')) and f in uni and f not in hot:
+                hot.append(f)
+    except Exception as e:
+        log.debug(f"[acil] favoriler okunamadi: {e}")
+    return hot
+
+
+def run_acil_liste(cold_chunk: int = 60):
+    """2 KATMANLI GÜN İÇİ TUR (6 Ağu 2026) — Yahoo throttle'ını önlemek için tüm
+    615'i HER TURDA değil, KÜÇÜK + YAYILI çek:
+      • ACİL (her tur): endeks + BIST30 + favoriler → izlenen hisseler hep taze.
+      • EVREN (dönüşümlü): en bayat `cold_chunk` hisse → evren ~50 dk'da tam döner.
+    Yük ≈ (acil+dilim)/tur ≈ 100 istek / 5 dk = ~20/dk (throttle bölgesinden uzak).
+    Cron: */5 seans içi. Ölçülen kanıt: 615'i tek seferde istemek Yahoo'yu kısıyordu."""
+    universe = load_bist_tickers()
+    hot = _build_hot_list(universe)
+    hot_set = set(hot)
+    cold = [t for t in universe if t not in hot_set]
+    cold_stale = _stalest_first(cold)[:max(0, cold_chunk)]
+    batch = hot + cold_stale
+    deadline = time.time() + 4 * 60   # küçük parti; süre kutusu geniş, taşma beklenmez
+    log.info(f"=== ACİL LİSTE TURU === | acil={len(hot)} + evren_dilimi={len(cold_stale)}"
+             f" = {len(batch)} ticker (evren={len(universe)}, chunk={cold_chunk})")
+    _round_timeboxed('yfinance', batch, deadline)
+
+
 def run_kapanis():
     """18:15'te Task Scheduler başlatır. 18:45'e kadar her 5 dk işaretinde bir tur,
     kaynak sırası yfinance → isyatirim → borsapy. 18:35 slotu SMR_Finalize_Volume'a
@@ -502,12 +553,28 @@ def run_kapanis():
     log.info("=== KAPANIS PENCERESİ DONE ===")
 
 
+def run_kapanis_final():
+    """KAPANIŞ SONRASI KESİN FİYAT TURU (18 Ağu 2026).
+
+    Neden: `kapanis` penceresi 17:40'ta başlıyor, tam tur ~12 dk sürüyor → tur
+    borsa kapanmadan (18:10 seans sonu) bitiyordu. 18 Ağu'da 192 hissenin
+    "kapanışı" gün-içi fiyat olarak kalmıştı ve kimse fark etmedi.
+    Bu tur pencere kapandıktan SONRA tek sefer tüm evreni süre kutusuz çeker;
+    Yahoo günlük barı o saatte kesinleşmiş olur."""
+    log.info("=== KAPANIS FINAL (kesin fiyat turu) ===")
+    run('yfinance')
+
+
 if __name__ == "__main__":
-    if 'kapanis' in sys.argv[1:]:
+    if 'kapanis_final' in sys.argv[1:]:
+        run_kapanis_final()
+    elif 'kapanis' in sys.argv[1:]:
         run_kapanis()
     elif 'isyatirim' in sys.argv[1:]:
         run("isyatirim")
+    elif 'acil' in sys.argv[1:]:
+        run_acil_liste()
     elif 'yahoo' in sys.argv[1:]:
-        run("yfinance")
+        run_yahoo_refresh()
     else:
         run()

@@ -14,6 +14,7 @@ import time
 import sqlite3
 import logging
 import concurrent.futures
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytz
@@ -26,6 +27,7 @@ from data_layer import (CACHE_DIR, _apply_split_adjustments, _normalize_bist_tic
                         fetch_index_data_cached, get_batch_data_cached, get_benchmark_data,
                         get_safe_historical_data)
 from db_layer import DB_FILE, _compute_mkk_yabanci_signals, log_error
+from patron_db_guard import database_write_lock
 from indicators import (_harmonik_52h_strength, _spike_dom_ratio, calculate_anchored_vwap,
                         calculate_multi_tf_pocs, compute_cmf, compute_force_index_dual,
                         compute_mfi, compute_relative_obv_state, compute_updown_volume_ratio,
@@ -52,6 +54,8 @@ from scoring_core import (_compute_risk_profile, _compute_smc_elements, _detect_
                           calculate_smart_money_score, compute_smart_money_split_scores)
 from signal_policy import (assign_event_metadata_for_date, ensure_event_schema,
                            register_scan_run, resolve_next_open_entry)
+from stp_uyanis_core import calculate_stp_uyanis_status
+from market_cap_cache import load_market_cap_map
 
 _TZ_ISTANBUL = pytz.timezone("Europe/Istanbul")
 
@@ -671,6 +675,44 @@ def _compute_signal_features(ticker: str) -> dict:
         except Exception: pass
     return out
 
+
+# ── BAYAT VERİ YAZIM KAPISI (19 Ağu 2026) ────────────────────────────────────
+# 18 Ağu: lokal ayna 13:55'te donmuşken tarama koştu ve öğlen fiyatlarıyla 1.437
+# sinyal yazdı (giriş fiyatı ort. %1,8 — en kötüsü %15 sapma). Kayıtlar silindi.
+# Artık sinyal yazımı, deponun beklenen seansı taşımasına bağlı: bayatsa HİÇ
+# yazılmaz (yarım/kirli gün oluşmaz). Ölçüt tek kaynakta: depo_tazelik.yazim_izni.
+# Zorunlu hâlde kapıyı aç: SMR_BAYAT_YAZIM_IZNI=1
+_BAYAT_UYARI_VERILDI = False
+
+
+def _bayat_yazim_kapisi() -> str:
+    """Yazıma engel varsa gerekçeyi döner; sorun yoksa boş string."""
+    if os.environ.get("SMR_BAYAT_YAZIM_IZNI") == "1":
+        return ""
+    try:
+        from depo_tazelik import yazim_izni
+        ok, sebep = yazim_izni()
+    except Exception:
+        # Kapının kendi arızası taramayı durdurmasın — eski davranışa düş.
+        return ""
+    return "" if ok else sebep
+
+
+def _bayat_uyar(sebep: str) -> None:
+    """Ekrana + log'a bir kez yaz (her tarayıcı için tekrar etmesin)."""
+    global _BAYAT_UYARI_VERILDI
+    if _BAYAT_UYARI_VERILDI:
+        return
+    _BAYAT_UYARI_VERILDI = True
+    mesaj = ("🔴 VERİ BAYAT — tarama sonuçları kaydedilmedi. %s. "
+             "Depo tazelenince taramayı tekrar çalıştır." % sebep)
+    logging.warning("[log_scan_signal] %s" % mesaj)
+    try:
+        st.error(mesaj)
+    except Exception:
+        pass
+
+
 def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: int = 0):
     """
     Scan sonuçlarını signals.db'ye (patron.db içinde scan_signals tablosuna) yazar.
@@ -679,7 +721,11 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
     19:30 gece backtest'i kilidi tutarken rs_leaders'ın ~80 kaydı sessizce yutulmuştu).
     """
     if _SCAN_LOG_DISABLED:
-        return   # tek-hisse canlı tarama → DB log'u atla
+        return True   # tek-hisse canlı tarama → DB log'u atla
+    _bayat = _bayat_yazim_kapisi()
+    if _bayat:
+        _bayat_uyar(_bayat)
+        return False
     today = datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d")
     if _SCAN_LOG_SKIP and df_result is not None and hasattr(df_result, 'columns'):
         # sadece atlama setindeki ticker satırlarını süz — diğer semboller loglanır
@@ -693,14 +739,18 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
             return
     if df_result is None or (hasattr(df_result, 'empty') and df_result.empty):
         try:
-            conn = sqlite3.connect(DB_FILE, timeout=30)
-            previous_run = register_scan_run(conn, scan_type, today, 0, category)
-            assign_event_metadata_for_date(conn, scan_type, today, previous_run)
-            conn.commit()
-            conn.close()
-        except Exception:
-            pass
-        return
+            with database_write_lock(f"scan_log_{scan_type}"):
+                conn = sqlite3.connect(DB_FILE, timeout=60)
+                try:
+                    previous_run = register_scan_run(conn, scan_type, today, 0, category)
+                    assign_event_metadata_for_date(conn, scan_type, today, previous_run)
+                    conn.commit()
+                finally:
+                    conn.close()
+            return True
+        except Exception as e:
+            logging.warning(f"[log_scan_signal] HATA — scan_type={scan_type}: {e}")
+            return False
     # B4-2: df'te feature kolonu yoksa toplu hesapla (cache'li, ticker başı tek hesap)
     _has_feat_cols = any(str(_col).lower().startswith('f_') or str(_col).startswith('F_')
                          for _col in df_result.columns)
@@ -715,8 +765,12 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
                         _feat_cache[str(_sym)] = _compute_signal_features(str(_sym))
         except Exception:
             pass
+    conn = None
+    _write_guard = None
     try:
-        conn = sqlite3.connect(DB_FILE, timeout=30)
+        _write_guard = database_write_lock(f"scan_log_{scan_type}")
+        _write_guard.__enter__()
+        conn = sqlite3.connect(DB_FILE, timeout=60)
         ensure_event_schema(conn)
         ensure_deepening_schema(conn)
         previous_run = register_scan_run(conn, scan_type, today, len(df_result), category)
@@ -1015,16 +1069,43 @@ def log_scan_signal(scan_type: str, df_result, category: str = "", _lock_retry: 
         assign_event_metadata_for_date(conn, scan_type, today, previous_run)
         conn.commit()
         conn.close()
+        _write_guard.__exit__(None, None, None)
+        _write_guard = None
+        return True
     except sqlite3.OperationalError as e:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+        if _write_guard is not None:
+            _write_guard.__exit__(type(e), e, e.__traceback__)
+            _write_guard = None
         if 'locked' in str(e).lower() and _lock_retry < 3:
             import time as _lt
             _lt.sleep(8 * (_lock_retry + 1))   # 8-16-24 sn — backtest yazım penceresini atlat
             return log_scan_signal(scan_type, df_result, category, _lock_retry + 1)
-        import logging
         logging.warning(f"[log_scan_signal] KİLİT/HATA (deneme {_lock_retry+1}) — scan_type={scan_type}: {e}")
+        return False
     except Exception as e:
-        import logging
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+        if _write_guard is not None:
+            _write_guard.__exit__(type(e), e, e.__traceback__)
+            _write_guard = None
         logging.warning(f"[log_scan_signal] HATA — scan_type={scan_type}: {e}")
+        return False
 
 def backfill_signal_returns():
     """
@@ -1067,11 +1148,17 @@ def backfill_signal_returns():
 
     # Doğrudan parquet okuma — get_live_price/yfinance bypass.
     # Backfill geçmiş veri kullanır, bölünme/canlı fiyat kontrolü gereksiz.
-    def _read_parquet_fast(ticker):
+    def _read_parquet_fast(ticker, category):
         try:
-            _ct = ticker.replace(".IS", "")
-            if ".IS" in ticker or ticker.startswith("XU"):
-                _ct = ticker if ticker.endswith(".IS") else f"{ticker}.IS"
+            _ticker = str(ticker or "").strip()
+            _is_bist = (
+                "BIST" in str(category or "").upper()
+                or _ticker.upper().startswith(("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS"))
+                or _ticker.upper().endswith(".IS")
+            )
+            _ct = _ticker if not _is_bist else (
+                _ticker if _ticker.upper().endswith(".IS") else f"{_ticker}.IS"
+            )
             _fp = os.path.join(CACHE_DIR, f"{_ct}_1d.parquet")
             if not os.path.exists(_fp):
                 return None
@@ -1091,7 +1178,9 @@ def backfill_signal_returns():
     skipped = 0
 
     # Tek SQLite connection (eskiden döngüde açılıp kapatılıyordu).
-    conn = sqlite3.connect(DB_FILE, timeout=30)
+    _write_guard = database_write_lock("return_backfill")
+    _write_guard.__enter__()
+    conn = sqlite3.connect(DB_FILE, timeout=60)
     c = conn.cursor()
     try:
         for _, sig in pending.iterrows():
@@ -1103,7 +1192,7 @@ def backfill_signal_returns():
 
                 sym = sig['symbol']
                 if sym not in df_cache:
-                    df_cache[sym] = _read_parquet_fast(sym)
+                    df_cache[sym] = _read_parquet_fast(sym, sig.get('category', ''))
                 df_h = df_cache[sym]
                 if df_h is None or df_h.empty:
                     skipped += 1
@@ -1153,6 +1242,7 @@ def backfill_signal_returns():
         conn.commit()
     finally:
         conn.close()
+        _write_guard.__exit__(None, None, None)
 
     return (filled, skipped)
 
@@ -1169,6 +1259,8 @@ _BIRLESIK_ON = os.environ.get('BIRLESIK_ENGINE', '1') == '1'
 
 _BIR_SHAPE = {'tobo': ('🧛', 'TOBO'), 'fincan': ('☕', 'FİNCAN-KULP'),
               'ucgen': ('📐', 'YÜKSELEN ÜÇGEN'), 'dtri': ('📉', 'ALÇALAN ÜÇGEN'),
+              'simetrik': ('🎯', 'SİMETRİK ÜÇGEN'),
+              'kama_dusen': ('🔻', 'ALÇALAN KAMA'), 'kama_yuksek': ('🔺', 'YÜKSELEN KAMA'),
               'taban': ('🧱', 'TABAN')}
 _BIR_STATE = {'YAKIN': 'Yaklaşıyor', 'KIRILDI': 'Kırılım Bölgesinde', 'UZAMIS': 'Kırıldı, Uzadı',
               'ERKEN': 'Oluşuyor (Erken)', 'FAIL': 'Bozuldu'}
@@ -1227,7 +1319,20 @@ def _birlesik_pattern_row(symbol, df, close, volume, curr_price, sma200):
 _FORMASYON_ENGINE = os.environ.get('FORMASYON_ENGINE', 'v2').lower()
 
 _V2_SHAPE = {"TOBO": "tobo", "FİNCAN_KULP": "fincan", "FİNCAN_ADAYI": "fincan",
-             "YÜKSELEN_ÜÇGEN": "ucgen", "ALÇALAN_ÜÇGEN": "dtri"}
+             "YÜKSELEN_ÜÇGEN": "ucgen", "ALÇALAN_ÜÇGEN": "dtri",
+             "SİMETRİK_ÜÇGEN": "simetrik",
+             "ALÇALAN_KAMA": "kama_dusen", "YÜKSELEN_KAMA": "kama_yuksek"}
+# Yeni birleşen tipler (10 Ağu 2026): iki kenarı da EĞİMLİ → tek yatay çizgi yetmez.
+# Köprü chart_d'ye açık 'bias' + iki kenarın (line_top/line_bot) uç fiyatlarını geçer;
+# app render + hikaye shape=='dtri' binary'si yerine 'bias'ı okur (geriye-uyumlu fallback).
+_V2_SLOPED_SHAPES = {"simetrik", "kama_dusen", "kama_yuksek"}
+# VIP Formasyon (golden agent) v2 göçü (10 Ağu 2026) — v2 pattern adı → görünen etiket.
+_V2_VIP_LABEL = {
+    "FİNCAN_KULP": "☕ Fincan-Kulp", "TOBO": "🧛 TOBO",
+    "YÜKSELEN_ÜÇGEN": "📐 Yükselen Üçgen", "ALÇALAN_ÜÇGEN": "📉 Alçalan Üçgen",
+    "SİMETRİK_ÜÇGEN": "🎯 Simetrik Üçgen",
+    "ALÇALAN_KAMA": "🔻 Alçalan Kama", "YÜKSELEN_KAMA": "🔺 Yükselen Kama",
+}
 _V2_STATE = {"OLUŞUYOR": "ERKEN", "YAKIN": "YAKIN",
              "KIRILIM_ADAYI": "KIRILDI", "KIRILIM_DOĞRULANDI": "KIRILDI",
              "YENİDEN_TEST": "KIRILDI", "UZAMIŞ": "UZAMIS",
@@ -1267,13 +1372,17 @@ def _v2_pattern_row(symbol, df, close, volume, curr_price, sma200):
     def _d(ts):
         return str(pd.Timestamp(ts).date())
 
-    # LEVEL = ana çizgi (anlam şekle göre: ucgen üst direnç, dtri alt destek)
+    _bias = "bearish" if cand.direction == "bearish" else "bullish"
+    # LEVEL = KIRILIM (trigger) çizgisi. ucgen üst direnç, dtri alt destek;
+    # kama/simetrik kırılım yönüne göre (boğa=üst kenar, ayı=alt kenar).
     line = {"tobo": "boyun_çizgisi", "fincan": "fincan_ağzı",
-            "ucgen": "üst_sınır", "dtri": "alt_sınır"}.get(shape)
+            "ucgen": "üst_sınır", "dtri": "alt_sınır",
+            "kama_dusen": "üst_sınır", "kama_yuksek": "alt_sınır",
+            "simetrik": "üst_sınır" if _bias == "bullish" else "alt_sınır"}.get(shape)
     _ln = lns.get(line)
     level = float(_ln.end_price) if _ln else float(cand.trigger)
 
-    chart_d = {"type": "birlesik", "shape": shape, "state": state,
+    chart_d = {"type": "birlesik", "shape": shape, "state": state, "bias": _bias,
                "level": round(level, 2), "date_start": _d(cand.start_time)}
     _lc = _V2_LIFECYCLE.get(cand.stage)                      # yaşam döngüsü rozeti + AI uyarısı
     if _lc:
@@ -1285,8 +1394,10 @@ def _v2_pattern_row(symbol, df, close, volume, curr_price, sma200):
         tp = [first[r] for r in ("sol_dudak", "sağ_dudak") if r in first]
     elif shape == "ucgen":
         tp = multi.get("üst_temas", [])
-    else:                                                    # dtri
+    elif shape == "dtri":
         tp = multi.get("alt_temas", [])
+    else:                                                    # simetrik / kama — iki kenarın teması
+        tp = multi.get("üst_temas", []) + multi.get("alt_temas", [])
     chart_d["touch_dates"] = [_d(p.time) for p in tp]
     chart_d["touch_prices"] = [float(p.price) for p in tp]
     chart_d["pivot_dates"] = [_d(cand.start_time)] + chart_d["touch_dates"]
@@ -1297,6 +1408,24 @@ def _v2_pattern_row(symbol, df, close, volume, curr_price, sma200):
             chart_d["ls_date"] = _d(first["sol_omuz"].time); chart_d["ls_price"] = float(first["sol_omuz"].price)
     if shape == "dtri" and lns.get("üst_sınır"):
         chart_d["res_now"] = float(lns["üst_sınır"].end_price)
+    # EĞİMLİ tipler: iki kenarı da (uç fiyatlar) geçir → app iki eğimli çizgi çizer.
+    if shape in _V2_SLOPED_SHAPES:
+        _t, _b = lns.get("üst_sınır"), lns.get("alt_sınır")
+        if _t:
+            chart_d["line_top"] = [round(float(_t.start_price), 2), round(float(_t.end_price), 2)]
+        if _b:
+            chart_d["line_bot"] = [round(float(_b.start_price), 2), round(float(_b.end_price), 2)]
+
+    # breakout_state (0/1/2/3) — çekirdek motorda vardı, v2'ye taşındı (31 Tem 2026):
+    # v2 varsayılan motor olunca f_breakout_state snapshot'ı boşalmıştı (heartbeat anomali yakaladı).
+    # Ana çizgi (level) = kırılım sınırı; _detect_breakout_state ile ölç, ChartData'ya yaz.
+    try:
+        _bk_st, _bk_gap, _bk_vol = _detect_breakout_state(df, float(level))
+        chart_d["breakout_state"]     = int(_bk_st)
+        chart_d["breakout_gap_pct"]   = float(_bk_gap)
+        chart_d["breakout_vol_ratio"] = float(_bk_vol)
+    except Exception:
+        pass
 
     emoji, shname = _BIR_SHAPE.get(shape, ('🔺', shape.upper()))
     name = f"{emoji} {shname} — {_BIR_STATE.get(state, state)}"
@@ -2714,11 +2843,29 @@ def scan_golden_pattern_agent(asset_list, category="S&P 500"):
                 except Exception:
                     pass
 
-            # 11 — EN İYİ ADAY SEÇİMİ (eskiden ilk bulunan kazanıyordu)
-            if _gp_cands:
-                _gp_cands.sort(key=lambda c: (-c[0], c[1]))
-                base_score, _gp_ord, p_name = _gp_cands[0]
+            # ── VIP FORMASYON = v2 MOTOR (10 Ağu 2026) — yukarıdaki v1 tespiti YOK SAYILIR ──
+            # Kullanıcı kararı: VIP de v2'ye geçsin. v1 cup/tobo/üçgen/kama bloğu (yukarıda)
+            # koşuyor ama sonuç buradan v2 ile eziliyor → tek doğru formasyon kaynağı = v2.
+            # (Verimlilik için v1 bloğu ileride budanabilir; şimdilik güvenli-ölü.)
+            pattern_found = False; p_name = ""; base_score = 0
+            try:
+                import formasyon_v2 as _fv2vip
+                _vrep = _fv2vip.analyze_formations(df, ticker=symbol, timeframe="1d")
+                _vc = _vrep.patterns[0] if (_vrep and getattr(_vrep, "patterns", None)) else None
+            except Exception:
+                _vc = None
+            if _vc is not None:
                 pattern_found = True
+                _vlabel = _V2_VIP_LABEL.get(_vc.pattern, str(_vc.pattern).replace('_', ' ').title())
+                _vdist = abs(float(_vc.metrics.get('distance_to_trigger_pct', 0.0)))
+                if _vc.stage == 'KIRILIM_DOĞRULANDI':
+                    p_name, base_score = f"{_vlabel} — Kırılım Doğrulandı", min(95.0, float(_vc.quality_score))
+                elif _vc.stage in ('KIRILIM_ADAYI', 'YENİDEN_TEST'):
+                    p_name, base_score = f"{_vlabel} — Kırılım Bölgesinde", min(92.0, float(_vc.quality_score))
+                elif _vc.stage == 'YAKIN':
+                    p_name, base_score = f"⏳ {_vlabel} — %{_vdist:.1f} kaldı", min(80.0, float(_vc.quality_score))
+                else:  # OLUŞUYOR / KULP_BEKLENİYOR
+                    p_name, base_score = f"⏳ Oluşan {_vlabel} — %{_vdist:.1f} kaldı", min(75.0, float(_vc.quality_score))
 
             # --- 3. LİSTEYE ALMA VE PUANLAMA ---
             if pattern_found:
@@ -2904,6 +3051,72 @@ def radar2_scan(asset_list, min_price=5, max_price=5000, min_avg_vol_m=0.5):
             if res: results.append(res)
 
     return pd.DataFrame(results).sort_values(by=["Skor", "RS"], ascending=False).head(50) if results else pd.DataFrame()
+
+def scan_stp_uyanis_batch(asset_list):
+    """STP Uyanış gözlem havuzu — skora/AI'a girmeyen, yalnız izleme listesi.
+
+    Master Scan'in zaten belleğe aldığı 1 yıllık OHLCV fotoğrafını kullanır; ek
+    veri isteği yapmaz. Uzun grup 15 kesintisiz seans veya 15 seans içindeki
+    tek kısa tepkiyi tolere eder; T+2 teyidi sonrası T+5 planını izler.
+    7–14 kesintisiz seanslık grup yalnız erken gözlemdir; skor/AI'a girmez ve
+    işlem planı oluşturmaz.
+    """
+    try:
+        data = get_batch_data_cached(asset_list, period="1y")
+    except Exception:
+        return pd.DataFrame()
+    if data is None or data.empty:
+        return pd.DataFrame()
+
+    results = []
+    for symbol in asset_list:
+        try:
+            if isinstance(data.columns, pd.MultiIndex):
+                if symbol not in data.columns.get_level_values(0):
+                    continue
+                stock_df = data[symbol].dropna(how="all")
+            else:
+                if len(asset_list) != 1:
+                    continue
+                stock_df = data.dropna(how="all")
+            status = calculate_stp_uyanis_status(stock_df)
+            if not status:
+                continue
+            results.append({
+                "Sembol": symbol,
+                "Fiyat": status["current_price"],
+                "Durum": status["state_label"],
+                "Durum_Kodu": status["state"],
+                "Olay_Gunu": status["event_age"],
+                "Baski_Gun": status["days_below"],
+                "Uzun_Baski": status["long_pressure"],
+                "Baski_Sinifi": status["pressure_kind"],
+                "Baski_Etiketi": status["pressure_label"],
+                "Erken_Izleme": status["early_observation"],
+                "Baski_Sira": status["pressure_rank"],
+                "Hacim_Kat": status["volume_ratio"],
+                "Mum": status["candle"] or "—",
+                "Anlamli_Kesis": status["meaningful"],
+                "Tetik_Tarihi": status["signal_date"],
+                "Gecersizlik": status["signal_low"],
+            })
+        except Exception as exc:
+            log_error("scan_stp_uyanis", exc, symbol)
+
+    if not results:
+        return pd.DataFrame()
+
+    rank = {"confirmed": 0, "active": 0, "exit": 0, "t1": 1, "t0": 2,
+            "recross_down": 3, "invalid": 4}
+    output = pd.DataFrame(results)
+    output["_state_rank"] = output["Durum_Kodu"].map(rank).fillna(9)
+    output["_pressure_rank"] = pd.to_numeric(output["Baski_Sira"], errors="coerce").fillna(0)
+    output = output.sort_values(
+        by=["_state_rank", "_pressure_rank", "Baski_Gun", "Olay_Gunu"],
+        ascending=[True, False, False, True],
+    ).drop(columns=["_state_rank", "_pressure_rank"]).reset_index(drop=True)
+    return output
+
 
 def scan_guclu_donus_batch(asset_list):
     """
@@ -3406,6 +3619,25 @@ def scan_harmonic_confluence_batch(asset_list):
     df_out.reset_index(drop=True, inplace=True)
     return df_out
 
+def _published_v2_top10_symbols(signal_date):
+    """Aynı kapanış tarihindeki yayımlanmış V2 ilk 10 sembollerini salt-okunur al."""
+    try:
+        day = pd.Timestamp(signal_date).strftime("%Y-%m-%d")
+        db_path = Path(DB_FILE).resolve().with_name("patron2.db")
+        if not db_path.exists():
+            return set()
+        uri = f"file:{db_path.as_posix()}?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=5) as connection:
+            rows = connection.execute(
+                "SELECT symbol FROM candidates "
+                "WHERE engine='v2' AND signal_date=? AND published=1 AND rank<=10",
+                (day,),
+            ).fetchall()
+        return {str(row[0]).strip().upper().replace(".IS", "") for row in rows if row and row[0]}
+    except Exception:
+        return set()
+
+
 def scan_erken_radar_batch(asset_list):
     """
     Erken Radar batch tarama — her hisse için evaluate_erken_radar çağrılır,
@@ -3431,6 +3663,10 @@ def scan_erken_radar_batch(asset_list):
         bench_df = get_safe_historical_data("XU100.IS")
     except Exception:
         bench_df = None
+    try:
+        _v2_top10_symbols = _published_v2_top10_symbols(bench_df.index[-1]) if bench_df is not None else set()
+    except Exception:
+        _v2_top10_symbols = set()
 
     # TÜM hisseleri tek batch'te al (MultiIndex DataFrame, cache'li)
     # ⚡ CACHE HIT: asset_list (scan_list ile aynı) → Master Scan başındaki
@@ -3548,6 +3784,15 @@ def scan_erken_radar_batch(asset_list):
                     return _c6_fields
                 return {}
 
+            def _v2_badge_fields(scenario):
+                matched = str(scenario.get("id")) == "B11" and sym in _v2_top10_symbols
+                badge = "🚀 V2 İlk 10 Teyidi" if matched else ""
+                name = str(scenario.get("name", ""))
+                return {
+                    "ScenarioName": f"{name} · {badge}" if badge else name,
+                    "V2_Rozet": badge,
+                }
+
             # Primary
             primary = er.get('primary')
             if primary:
@@ -3556,7 +3801,7 @@ def scan_erken_radar_batch(asset_list):
                     'Fiyat':  round(price, 2),
                     'Skor':   quality,
                     'ScenarioId':   primary['id'],
-                    'ScenarioName': primary['name'],
+                    **_v2_badge_fields(primary),
                     'Category':     primary['category'],
                     'Stars':        primary['stars'],
                     'Role':         'primary',
@@ -3570,7 +3815,7 @@ def scan_erken_radar_batch(asset_list):
                     'Fiyat':  round(price, 2),
                     'Skor':   quality,
                     'ScenarioId':   c['id'],
-                    'ScenarioName': c['name'],
+                    **_v2_badge_fields(c),
                     'Category':     c['category'],
                     'Stars':        c['stars'],
                     'Role':         'confirmation',
@@ -3584,7 +3829,7 @@ def scan_erken_radar_batch(asset_list):
                     'Fiyat':  round(price, 2),
                     'Skor':   quality,
                     'ScenarioId':   rf['id'],
-                    'ScenarioName': rf['name'],
+                    **_v2_badge_fields(rf),
                     'Category':     rf['category'],
                     'Stars':        rf['stars'],
                     'Role':         'red_flag',
@@ -3599,6 +3844,7 @@ def scan_erken_radar_batch(asset_list):
 def scan_leadership_lifecycle(radar2_df, erken_radar_df, category=""):
     """Radar2 adayını C6 teyidiyle tek liderlik yaşam döngüsüne bağlar."""
     lifecycle = build_leadership_lifecycle(radar2_df, erken_radar_df)
+    persistence_ok = True
     if lifecycle.empty:
         for scan_type in (
             "liderlik_aday",
@@ -3606,7 +3852,8 @@ def scan_leadership_lifecycle(radar2_df, erken_radar_df, category=""):
             "liderlik_teyitli",
             "liderlik_gec",
         ):
-            log_scan_signal(scan_type, pd.DataFrame(), category=category)
+            persistence_ok = log_scan_signal(scan_type, pd.DataFrame(), category=category) and persistence_ok
+        lifecycle.attrs["_persistence_ok"] = persistence_ok
         return lifecycle
     for scan_type in (
         "liderlik_aday",
@@ -3615,7 +3862,7 @@ def scan_leadership_lifecycle(radar2_df, erken_radar_df, category=""):
         "liderlik_gec",
     ):
         subset = lifecycle[lifecycle["Liderlik_Tarama"] == scan_type]
-        log_scan_signal(scan_type, subset, category=category)
+        persistence_ok = log_scan_signal(scan_type, subset, category=category) and persistence_ok
     stage_order = {
         "YENİ LİDER": 0,
         "LİDERLİK TEYİTLİ": 1,
@@ -3623,7 +3870,7 @@ def scan_leadership_lifecycle(radar2_df, erken_radar_df, category=""):
         "GEÇ SİNYAL": 3,
     }
     lifecycle["_stage_order"] = lifecycle["Liderlik_Asamasi"].map(stage_order).fillna(9)
-    return (
+    lifecycle = (
         lifecycle.sort_values(
             ["_stage_order", "Kalite_Skoru", "Liderlik_Yasi"],
             ascending=[True, False, True],
@@ -3631,6 +3878,8 @@ def scan_leadership_lifecycle(radar2_df, erken_radar_df, category=""):
         .drop(columns=["_stage_order"])
         .reset_index(drop=True)
     )
+    lifecycle.attrs["_persistence_ok"] = persistence_ok
+    return lifecycle
 
 
 def log_erken_radar_signals(df_batch, category=""):
@@ -3653,8 +3902,12 @@ def log_erken_radar_signals(df_batch, category=""):
                 _er_feat[_s] = _compute_signal_features(_s) or {}
     except Exception:
         pass
+    conn = None
+    _write_guard = None
     try:
-        conn = sqlite3.connect(DB_FILE, timeout=30)
+        _write_guard = database_write_lock("early_radar_log")
+        _write_guard.__enter__()
+        conn = sqlite3.connect(DB_FILE, timeout=60)
         ensure_event_schema(conn)
         ensure_deepening_schema(conn)
         c = conn.cursor()
@@ -3704,9 +3957,33 @@ def log_erken_radar_signals(df_batch, category=""):
             _j_stage = row.get("Yolculuk_Asamasi")
             _j_age = row.get("Yolculuk_Gunu")
             _j_key = row.get("Yolculuk_Anahtari")
+
+            def _finite_float(value):
+                try:
+                    numeric = float(value)
+                    return numeric if np.isfinite(numeric) else None
+                except (TypeError, ValueError):
+                    return None
+
+            def _clean_text(value):
+                return str(value) if value is not None and pd.notna(value) else None
+
+            _q_score_clean = _finite_float(_q_score)
+            _q_label_clean = _clean_text(_q_label)
+            _q_detail_clean = _clean_text(_q_detail)
+            _j_stage_clean = _clean_text(_j_stage)
+            _j_age_clean = _finite_float(_j_age)
+            _j_key_clean = _clean_text(_j_key)
             if any(
                 value is not None
-                for value in (_q_score, _q_label, _q_detail, _j_stage, _j_age, _j_key)
+                for value in (
+                    _q_score_clean,
+                    _q_label_clean,
+                    _q_detail_clean,
+                    _j_stage_clean,
+                    _j_age_clean,
+                    _j_key_clean,
+                )
             ):
                 c.execute(
                     """
@@ -3716,12 +3993,12 @@ def log_erken_radar_signals(df_batch, category=""):
                     WHERE scan_date=? AND symbol=? AND scan_type=?
                     """,
                     (
-                        float(_q_score) if _q_score is not None else None,
-                        str(_q_label) if _q_label is not None else None,
-                        str(_q_detail) if _q_detail is not None else None,
-                        str(_j_stage) if _j_stage is not None else None,
-                        int(_j_age) if _j_age is not None else None,
-                        str(_j_key) if _j_key is not None else None,
+                        _q_score_clean,
+                        _q_label_clean,
+                        _q_detail_clean,
+                        _j_stage_clean,
+                        int(_j_age_clean) if _j_age_clean is not None else None,
+                        _j_key_clean,
                         today,
                         sym_db,
                         scan_type,
@@ -3731,13 +4008,27 @@ def log_erken_radar_signals(df_batch, category=""):
             assign_event_metadata_for_date(conn, _stype, today, _previous)
         conn.commit()
         conn.close()
+        _write_guard.__exit__(None, None, None)
+        _write_guard = None
+        return True
     except Exception as e:
-        import logging
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+        if _write_guard is not None:
+            _write_guard.__exit__(type(e), e, e.__traceback__)
+            _write_guard = None
         logging.warning(f"[log_erken_radar_signals] HATA: {e}")
+        return False
 
 def get_golden_trio_batch_scan(ticker_list):
     # Gerekli tüm kütüphaneleri burada çağırıyoruz
-    import yfinance as yf
     import pandas as pd
     import time
 
@@ -3752,6 +4043,7 @@ def get_golden_trio_batch_scan(ticker_list):
     golden_candidates = []
     platin_candidates = [] # YENİ: Platin Fırsat adayları
     tekli_altin_candidates = [] # Tekli hisse kriterleri (Altın %65 Discount + Platin bayrağı)
+    market_caps = load_market_cap_map()
 
     # 1. BİLGİLENDİRME & HAZIRLIK
     st.toast("Parquet önbellek kullanılıyor (Ban Korumalı Mod)...", icon="⚡")
@@ -3887,12 +4179,9 @@ def get_golden_trio_batch_scan(ticker_list):
 
             # === ALTIN FIRSAT ===
             if is_powerful and is_discount and is_energy:
-                # Piyasa Değeri
-                try:
-                    info = yf.Ticker(ticker).info
-                    mcap = info.get('marketCap', 0)
-                except:
-                    mcap = 0
+                # Piyasa değeri sadece önceden hazırlanmış yerel depodan okunur.
+                # Eksikse None kalır; tarama sırasında Yahoo'ya sorgu yapılmaz.
+                mcap = market_caps.get(str(ticker).strip().upper())
 
                 # Patlamaya en hazır olanı saptamak için Teknik Skor Üretimi:
                 # RSI Momentumu + Hacim Şiddeti Çarpanı + Göreceli Güç (Endeks Farkı)
@@ -3951,10 +4240,7 @@ def get_golden_trio_batch_scan(ticker_list):
                             _rs = ((float(_c.iloc[-1]) / float(_c.iloc[-10]) - 1) -
                                    (float(index_close.iloc[-1]) / float(index_close.iloc[-10]) - 1)) * 100
                         _skor = round(rsi_now + (_vr * 15) + _rs + (10 if _sma50_rising else 0), 2)
-                        try:
-                            _mcap_p = yf.Ticker(ticker).fast_info.get('marketCap', 0)
-                        except:
-                            _mcap_p = 0
+                        _mcap_p = market_caps.get(str(ticker).strip().upper())
                         platin_candidates.append({
                             "Hisse":         ticker,
                             "Fiyat":         round(current_price, 2),

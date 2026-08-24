@@ -258,8 +258,12 @@ def build_harsi_fig(ticker, nbar=120, len_h=14, len_rsi=7, smoothing=1):
     for y in (30, 20, -20, -30):
         fig.add_hline(y=y, line=dict(color='#64748b', width=0.7), opacity=0.4)
     fig.add_hline(y=0, line=dict(color='#e0a72e', width=0.8, dash='dot'), opacity=0.6)
-    # histogram (RSI değeri) — altta
-    fig.add_trace(go.Bar(x=x, y=rsiLine[s], marker_color='rgba(148,163,184,0.32)',
+    # histogram (RSI değeri) — altta.
+    # 3 Ağu 2026 — opaklık 0.32 → 0.12. Plotly go.Bar'ı candlestick'in ÜSTÜNDEKİ katmana
+    # çiziyor (trace sırası fark etmez); yüksek gri bar, içine düşen küçük HARSI mumlarını
+    # tamamen örtüyordu → "bazı mumlar yok" görüntüsü. Mumlar hep vardı, gri bar gizliyordu.
+    # Opaklık düşünce mumlar griden okunuyor (kesin değer zaten altın RSI çizgisinde).
+    fig.add_trace(go.Bar(x=x, y=rsiLine[s], marker_color='rgba(148,163,184,0.12)',
                          marker_line_width=0, name='Hist'))
     # HARSI mumları
     fig.add_trace(go.Candlestick(x=x, open=haOpen[s], high=haHigh[s], low=haLow[s], close=haClose[s],

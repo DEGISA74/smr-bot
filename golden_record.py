@@ -97,6 +97,25 @@ def _install_stubs():
     ar = types.ModuleType("streamlit_autorefresh")
     ar.st_autorefresh = lambda *a, **k: 0
     sys.modules["streamlit_autorefresh"] = ar
+    # yfinance NO-OP: golden donmus fixture'la calisir. "GLDN.IS" sahte test
+    # sembolu icin bazi motorlar canli hacim-tazeleme (fast_info/yf.download)
+    # deniyordu; delisted → periyot periyot retry ile golden'i dakikalarca
+    # asiyordu. Bu fetch sonucu ETKILEMEZ (vol_data_missing zaten atiliyor;
+    # ag-bloklu kosu da sifir-fark veriyordu). Bos donerek retry'i tamamen kes.
+    import pandas as _pd_yf
+    yf_mod = types.ModuleType("yfinance")
+    class _EmptyFastInfo(dict):
+        def __getattr__(self, _n): return None
+    class _StubTicker:
+        def __init__(self, *a, **k): pass
+        @property
+        def fast_info(self): return _EmptyFastInfo()
+        def history(self, *a, **k): return _pd_yf.DataFrame()
+        def __getattr__(self, _n): return lambda *a, **k: None
+    yf_mod.download = lambda *a, **k: _pd_yf.DataFrame()
+    yf_mod.Ticker = _StubTicker
+    yf_mod.Tickers = lambda *a, **k: types.SimpleNamespace(tickers={})
+    sys.modules["yfinance"] = yf_mod
 
 
 # ────────────────────────────────────────────────────────────────────────────

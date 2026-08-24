@@ -36,7 +36,7 @@ NOTICE_BADGE = (
     f"padding:10px 13px;flex:1;display:flex;align-items:center;'>"
     f"<span style='font-size:17px;line-height:1.55;color:{MUT};letter-spacing:0.2px;'>"
     f"<b style='color:{GOLD};'>DİKKAT.</b> BU GÖRSELİN HER HAKKI MAHFUZDUR. #SMARTMONEYRADAR EĞİTİM AMAÇLIDIR, YATIRIM TAVSİYESİ DEĞİLDİR. "
-    f"YAPAY ZEKA ÜRETİMİ DEĞİLDİR. 38000 SATIRLIK ALGORİTMAMIN ÇIKTISIDIR. "
+    f"YAPAY ZEKA ÜRETİMİ DEĞİLDİR. 52.000 SATIRLIK ALGORİTMAMIN ÇIKTISIDIR. "
     f"<b style='color:{INFO};'>#SMARTMONEYRADAR</b></span></div>"
 )
 
@@ -224,9 +224,13 @@ def _market_stats(ticker, df):
             sc = df['Close']; ic = idx['Close']
             common = sc.index.intersection(ic.index)
             sc = sc.reindex(common); ic = ic.reindex(common)
-            if len(common) >= 130:
-                w = 126
-                out['rs'] = float((sc.iloc[-1] / sc.iloc[-w-1]) / (ic.iloc[-1] / ic.iloc[-w-1]))
+            if len(common) >= 14:
+                # 7 Ağu 2026 — RS TEK KAYNAK 10g (indicators.relative_strength_ratio;
+                # app kartı ile aynı fonksiyon → pencere ayrışamaz).
+                from indicators import relative_strength_ratio as _rsr
+                _rsv = _rsr(sc.values, ic.values, window=10)
+                if _rsv is not None:
+                    out['rs'] = _rsv
             if len(common) >= 60:
                 sr = sc.pct_change().dropna(); ir = ic.pct_change().dropna()
                 k = min(len(sr), len(ir), 252)
@@ -255,8 +259,17 @@ def _statbox(d, ms):
                 f"<div style='font-size:10px;color:{MUT};letter-spacing:0.3px;'>{lbl}</div>"
                 f"<div style='font-size:16px;font-weight:800;color:{clr};'>{val}</div></div>")
     rs = ms['rs']; rs_v = f"{rs:.2f}×" if rs else "—"; rs_c = UP if (rs or 1) >= 1 else DN
-    mom = d['mom']; mom_v = f"%{abs(mom):.1f}" if mom is not None else "—"
-    mom_c = UP if (mom or 0) >= 0 else DN; mom_a = '▲' if (mom or 0) >= 0 else '▼'
+    mom5 = d.get('mom_5'); mom20 = d.get('mom_20')
+    if mom5 is not None and mom20 is not None:
+        _m5a = '▲' if mom5 >= 0 else '▼'
+        _m20a = '▲' if mom20 >= 0 else '▼'
+        mom_v = f"{_m5a}%{abs(mom5):.1f} · {_m20a}%{abs(mom20):.1f}"
+        mom_c = UP if mom5 >= 0 and mom20 >= 0 else (DN if mom5 < 0 and mom20 < 0 else GOLD)
+        mom_lbl = 'MOMENTUM <span style="font-size:8px;opacity:0.65;">5g · 20g</span>'
+    else:
+        mom = d.get('mom'); mom_v = f"%{abs(mom):.1f}" if mom is not None else "—"
+        mom_c = UP if (mom or 0) >= 0 else DN
+        mom_lbl = 'MOMENTUM'
     sa = ms.get('stp_above'); sd = ms.get('stp_days'); sx = ms.get('stp_crossed')
     if sa is None:
         stp_v = '—'; stp_c = TXT
@@ -266,14 +279,94 @@ def _statbox(d, ms):
     # 29 Tem 2026 — sadeleştirme ("nokta atışı"): RSI + BETA hücreleri KALDIRILDI.
     # HACİM yalnızca ortalamadan ±%20+ SAPARSA gösterilir (o değilse gürültü) →
     # sadece "1.4×" (yorum yok). Sapma yoksa hücre hiç basılmaz.
-    items = [('RS GÜCÜ', rs_v, rs_c), ('MOMENTUM', f'{mom_a} {mom_v}', mom_c)]
+    items = [('RS GÜCÜ <span style="font-size:8px;opacity:0.65;">10g</span>', rs_v, rs_c), (mom_lbl, mom_v, mom_c)]
     _rv = ms.get('rvol')
-    if _rv and abs(_rv - 1.0) >= 0.2:
-        items.append(('HACİM', f"{_rv:.1f}×", TXT))
+    if _rv is None:
+        items.append(('HACİM', '—', TXT))
+    else:
+        _rv_c = UP if _rv > 1.2 else (DN if _rv < 0.8 else TXT)
+        items.append(('HACİM', f"{_rv:.1f}×", _rv_c))
     items.append(('STP', stp_v, stp_c))
     cells = ''.join(cell(l, v, c, i < len(items) - 1) for i, (l, v, c) in enumerate(items))
     return (f"<div style='display:flex;align-items:center;border:1px solid {LINE};border-radius:10px;"
             f"background:{CARD2};padding:4px 2px;'>{cells}</div>")
+
+
+def _decision_box(df, d, ms):
+    """Görseldeki verilerden kısa-vade karar özeti üretir; AL/SAT emri değildir."""
+    try:
+        from smr_core import _genel_ozet_verdict_sc
+        _v = _genel_ozet_verdict_sc(df, detail=True) or {}
+    except Exception:
+        _v = {}
+    _net = str(_v.get('lbl') or 'KARARSIZ')
+    _sigs = _v.get('sigs') or {}
+    _trend_down = bool(d.get('last') is not None and d.get('sma', {}).get(50) is not None
+                       and d['last'] < d['sma'][50])
+    _trend_up = bool(d.get('last') is not None and d.get('sma', {}).get(50) is not None
+                     and d['last'] > d['sma'][50])
+    if _net in ('YUKARI ★', 'YUKARI', 'HAFİF YUKARI'):
+        _short = 'Tepki yükselişi' if _trend_down else 'Kısa vadeli yukarı'
+    elif _net in ('AŞAĞI ★', 'AŞAĞI', 'HAFİF AŞAĞI'):
+        _short = 'Geri çekilme' if _trend_up else 'Kısa vadeli zayıflık'
+    else:
+        _short = 'Yatay / kararsız'
+
+    _d5 = float(d.get('d5_signed') or 0)
+    _buyer = 'Kısa vadede iyileşmiş' if _d5 > 0 else ('Zayıflıyor' if _d5 < 0 else 'Dengede')
+    _rvol = ms.get('rvol')
+    if _rvol is None:
+        _volume = 'Veri yok'
+    elif _rvol < 0.8:
+        _volume = 'Normalin altında'
+    elif _rvol <= 1.2:
+        _volume = 'Yok denecek kadar normal'
+    else:
+        _volume = 'Var'
+    _obv = int(_sigs.get('obv') or 0); _cmf = int(_sigs.get('cmf') or 0)
+    _accum = 'İzi var' if _obv > 0 and _cmf > 0 else ('Dağıtım baskısı' if _obv < 0 and _cmf < 0 else 'Henüz yok')
+    try:
+        _h = float(df['High'].iloc[-1]); _l = float(df['Low'].iloc[-1]); _c = float(df['Close'].iloc[-1])
+        _close_pct = ((_c - _l) / (_h - _l) * 100) if _h > _l else 50.0
+    except Exception:
+        _close_pct = 50.0
+    _close = 'Satıcı tarafında' if _close_pct <= 35 else ('Alıcı tarafında' if _close_pct >= 65 else 'Dengede')
+    if _trend_down and _net in ('YUKARI ★', 'YUKARI', 'HAFİF YUKARI'):
+        _headline = 'Ana yapı aşağıda; son hareket tepki yükselişi gibi görünüyor.'
+        _risk = 'Bu tepki yükselişi yeniden aşağı dönebilir.'
+    elif _trend_up and _net in ('AŞAĞI ★', 'AŞAĞI', 'HAFİF AŞAĞI'):
+        _headline = 'Ana yapı yukarıda, ancak kısa vadede geri çekilme var.'
+        _risk = 'Geri çekilme derinleşebilir.'
+    elif _trend_down:
+        _headline = 'Ana yapı aşağıda ve kısa vadeli baskı sürüyor.'
+        _risk = 'Hacim teyidi olmazsa hareket daha da zayıflayabilir.'
+    elif _trend_up:
+        _headline = 'Ana yapı yukarıda ve kısa vadeli hareket destekli.'
+        _risk = 'Hacim desteği azalırsa yükseliş ivme kaybedebilir.'
+    else:
+        _headline = 'Ana yapı yatay; kısa vadede net bir yön oluşmuş değil.'
+        _risk = 'Yeni bir teyit gelmezse hareket yatay kalabilir.'
+    _buyer_txt = ('Son 5 günde alıcı ilgisi artmış' if _d5 > 0 else
+                  'Son 5 günde alıcı ilgisi zayıflamış' if _d5 < 0 else
+                  'Son 5 günde alıcı-satıcı dengesi belirgin değil')
+    _flow_txt = ('20 günlük akışta birikim izi var' if _obv > 0 and _cmf > 0 else
+                 '20 günlük akışta dağıtım baskısı var' if _obv < 0 and _cmf < 0 else
+                 '20 günlük akış kalıcı birikimi henüz doğrulamıyor')
+    _volume_txt = ('Hacim verisi yok' if _rvol is None else
+                   'Hacim ortalamanın altında' if _rvol < 0.8 else
+                   'Hacim normal seviyede' if _rvol <= 1.2 else
+                   'Hacim yükselmiş')
+    _close_txt = (' Seans satıcı tarafında kapandı.' if _close == 'Satıcı tarafında' else
+                  ' Seans alıcı tarafında kapandı.' if _close == 'Alıcı tarafında' else '')
+    _summary = (f"{_headline} {_buyer_txt}; {_flow_txt} ve {_volume_txt.lower()}."
+                f"{_close_txt} {_risk}")
+    _body = (f"<div style='font-size:11px;line-height:1.45;color:{TXT};"
+             f"max-width:100%;'>{_summary}</div>")
+    return (f"<div style='background:{CARD};border:1px solid {INFO}66;border-radius:10px;"
+            f"padding:9px 11px;margin-bottom:10px;width:100%;'>"
+            f"<div style='font-size:12px;font-weight:800;color:{INFO};margin-bottom:5px;'>"
+            f"SMART MONEY RADAR · ALGORİTMİK ÖZET</div>"
+            f"{_body}</div>")
 
 
 def _card(title, body):
@@ -320,9 +413,9 @@ def _signal_box(df, d):
                f"<span style='color:{NEU};'> · </span>"
                f"<span style='color:{DN};font-weight:800;'>{dn} aşağı ▼</span>"
                f"<span style='color:{NEU};'> · </span>"
-               f"<span style='color:{NEU};font-weight:700;'>{notr} kararsız →</span>")
+               f"<span style='color:{NEU};font-weight:700;'>{notr} sessiz →</span>")
     karne_html = (f"<div style='font-size:10px;color:{NEU};font-style:italic;margin-top:3px;'>"
-                  f"📊 Bu etiketin geçmiş karnesi{_karne.replace(' · geçmiş karnesi', '')}</div>"
+                  f"📊 Bu dağılımın geçmiş karnesi{_karne.replace(' · geçmiş karnesi', '')}</div>"
                   if _karne else "")
 
     def _cell(lbl, sig):
@@ -334,10 +427,111 @@ def _signal_box(df, d):
                 f"gap:8px;line-height:1.1;min-width:74px;'>"
                 f"<span style='font-size:9px;color:{LBL};font-weight:700;letter-spacing:0.04em;'>{lbl}</span>"
                 f"<span style='font-size:13px;color:{clr};font-weight:900;'>{ar}</span></div>")
-    arrow_stack = ("<div style='display:flex;flex-direction:column;gap:2px;flex:0 0 auto;'>"
-                   + _cell("HACİM", sig_hacim) + _cell("OBV", sig_obv)
-                   + _cell("YAPI", sig_yapi) + _cell("RSI ×2", sig_rsi)
-                   + _cell("CMF ×2", sig_cmf) + _cell("MFI", sig_mfi) + "</div>")
+    # ── 3 BAĞIMSIZ AİLE (7 Ağu 2026 — kanıt aile reformu) ─────────────
+    # A fiyat-hacim (hacim/obv/cmf/mfi) · B efor-sonuç (UDVR+Force Index) ·
+    # C gerçek akış (yabancı net alım). Hüküm = çoğunluk yönü (beraberlik→nötr);
+    # veri yoksa aile BASILMAZ (POC gibi koşullu). obv oyu zaten uyumsuzluk-duyarlı
+    # (fiyat↑ + OBV↓ → -1) → #4 A ailesine gömülü. RSI+YAPI aile değil → altta çip.
+    def _fam_dir(votes):
+        vp = sum(1 for s in votes if s > 0); vn = sum(1 for s in votes if s < 0)
+        return 1 if vp > vn else (-1 if vn > vp else 0)
+
+    _fam = []   # (dir, terim, alt_yazı, hüküm_metni)
+    # A — fiyat-hacim izi
+    _a_dir = _fam_dir([sig_hacim, sig_obv, sig_cmf, sig_mfi])
+    if _a_dir > 0:               _a_alt = "Fiyat-hacim verisinde para izi"
+    elif _a_dir < 0 and sig_obv < 0: _a_alt = "Fiyat yükselirken OBV teyit etmiyor"
+    elif _a_dir < 0:             _a_alt = "Fiyat-hacim verisi zayıflıyor"
+    else:                        _a_alt = "Fiyat-hacim verisi yönsüz"
+    _fam.append((_a_dir, "HACİM · OBV · CMF · MFI", _a_alt,
+                 {1: "▲ birikim izi", -1: "▼ dağıtım izi", 0: "→ yönsüz"}[_a_dir]))
+    # B — efor/sonuç (UDVR + Force Index)
+    _b_votes = []
+    try:
+        from indicators import compute_updown_volume_ratio, compute_force_index_dual
+        _ur = compute_updown_volume_ratio(df, period=20)
+        if _ur:
+            _cl = _ur.get('climax')
+            if _cl == 'climax_top':      _b_votes.append(-1)
+            elif _cl == 'climax_bottom': _b_votes.append(1)
+            else: _b_votes.append({'strong_buyer': 1, 'buyer': 1, 'strong_seller': -1,
+                                   'seller': -1, 'balanced': 0}.get(_ur.get('state'), 0))
+        _fi = compute_force_index_dual(df)
+        if _fi:
+            _b_votes.append({'strong_pos': 1, 'pos': 1, 'turning_up': 1, 'strong_neg': -1,
+                             'neg': -1, 'turning_down': -1, 'neutral': 0}.get(_fi.get('state'), 0))
+    except Exception:
+        _b_votes = []
+    if _b_votes:
+        _b_dir = _fam_dir(_b_votes)
+        _fam.append((_b_dir, "UDVR · Force Index", "Harcanan çaba, sonuca dönüyor mu?",
+                     {1: "▲ alıcı egemen", -1: "▼ satıcı egemen", 0: "→ sessiz"}[_b_dir]))
+    # C — gerçek akış (yabancı net alım) — BIST dışı / veri yoksa BASILMAZ
+    try:
+        from db_layer import _compute_mkk_yabanci_signals
+        _yb = _compute_mkk_yabanci_signals(d.get('ticker', ''))
+    except Exception:
+        _yb = None
+    # Gerçek veri şartı: mkk tablosunda bu hisse için EN AZ 1 yönlü kayıt olmalı
+    # (BIST ama kaydı yok → "nötr" değil "veri yok" → aile basılmaz).
+    if _yb and (_yb.get('in_days') or _yb.get('out_days') or _yb.get('streak_days')):
+        # AI PROMPT İLE UYUM (30 Haz karne): tek-gün GİRİŞ tek başına bullish DEĞİL
+        # (ileri getiri TERS -%10, isabet %20). Sadece SÜREKLİLİK (streak/anchor)
+        # pozitif; tek-gün giriş → temkinli/nötr; çıkış → negatif. app.py ~16146 ile aynı.
+        if _yb.get('f_yabanci_anchor') or _yb.get('f_yabanci_streak'):
+            _c_dir = 1
+        elif _yb.get('f_yabanci_cikis'):
+            _c_dir = -1
+        else:
+            _c_dir = 0
+        _c_alt = ("Yabancı oran 3+ gün üst üste artıyor" if _c_dir > 0 else
+                  "Son 5g net satış listesinde" if _c_dir < 0 else
+                  "Tek-gün giriş var ama süreklilik yok")
+        _fam.append((_c_dir, "Yabancı Net Alım", _c_alt,
+                     {1: "▲ süreklilik", -1: "▼ net satım", 0: "→ temkinli"}[_c_dir]))
+
+    # Hüküm — kaç aile aynı yönde
+    _n = len(_fam)
+    _nu = sum(1 for f in _fam if f[0] > 0); _nd = sum(1 for f in _fam if f[0] < 0)
+    _dom = max(_nu, _nd); _dom_dir = 1 if _nu >= _nd else -1
+    if _dom == _n and _n >= 2:
+        _vlbl = "tam mutabakat — GÜÇLÜ"; _vclr = UP if _dom_dir > 0 else DN
+    elif _dom <= 1 and _n >= 2:
+        _vlbl = "tek aile teyidi — ZAYIF"; _vclr = GOLD
+    else:
+        _vlbl = "kısmi mutabakat — ORTA"; _vclr = GOLD
+    _verdict_html = (
+        f"<div style='display:flex;align-items:center;gap:9px;margin:5px 0 7px;'>"
+        f"<div style='font-size:18px;font-weight:800;color:{_vclr};'>{_dom} / {_n}</div>"
+        f"<div style='line-height:1.15;'>"
+        f"<div style='font-size:11px;color:{TXT};font-weight:700;'>aile aynı yönde</div>"
+        f"<div style='font-size:9.5px;color:{_vclr};'>{_vlbl}</div></div></div>") if _n else ""
+
+    _fclr = {1: UP, -1: DN, 0: NEU}
+    _fbg = {1: "#4ade8014", -1: "#f8717114", 0: "#64748b14"}
+    _fbd = {1: "#4ade8040", -1: "#f8717140", 0: "#64748b40"}
+    family_cards = "".join(
+        f"<div style='background:{_fbg[fd]};border:1px solid {_fbd[fd]};border-radius:8px;"
+        f"padding:6px 9px;margin-bottom:5px;'>"
+        f"<div style='display:flex;justify-content:space-between;align-items:center;'>"
+        f"<span style='font-size:11px;font-weight:800;color:{_fclr[fd]};'>{trm}</span>"
+        f"<span style='font-size:10px;font-weight:700;color:{_fclr[fd]};'>{vt}</span></div>"
+        f"<div style='font-size:9.5px;color:{MUT};margin-top:1px;'>{alt}</div></div>"
+        for fd, trm, alt, vt in _fam)
+
+    # RSI + YAPI — aile değil, mevcut çip görselleriyle + açıklama (destekleyici teknik)
+    _yapi_txt = ("Fiyat yapısı yukarı eğimli" if sig_yapi > 0 else
+                 "Fiyat yapısı aşağı eğimli" if sig_yapi < 0 else "Yapı yatay/kararsız")
+    _rsi_txt = ("Momentum güçlü (güç devamı)" if sig_rsi > 0 else
+                "Dip görüntüsü (tuzak riski)" if sig_rsi < 0 else "Momentum nötr (kısa + orta)")
+    support_html = (
+        f"<div style='font-size:8.5px;color:{NEU};letter-spacing:0.05em;margin-bottom:4px;'>"
+        f"DESTEKLEYİCİ TEKNİK · aile değil</div>"
+        f"<div style='display:flex;flex-direction:column;gap:4px;'>"
+        f"<div style='display:flex;align-items:center;gap:7px;'>{_cell('YAPI', sig_yapi)}"
+        f"<span style='font-size:9.5px;color:{MUT};'>{_yapi_txt}</span></div>"
+        f"<div style='display:flex;align-items:center;gap:7px;'>{_cell('RSI ×2', sig_rsi)}"
+        f"<span style='font-size:9.5px;color:{MUT};'>{_rsi_txt}</span></div></div>")
 
     # ── 5 mumluk mini şerit (son 5 OHLC) ──────────────────────────────
     mini = ""
@@ -365,6 +559,7 @@ def _signal_box(df, d):
         except Exception:
             pass
         mini = (f"<div style='display:flex;flex-direction:column;align-items:center;'>"
+                f"<div style='font-size:9px;color:{NEU};margin-bottom:1px;letter-spacing:0.03em;'>son 5 mum</div>"
                 f"<svg width='100%' height='{H}' viewBox='0 0 {W} {H}' preserveAspectRatio='xMidYMid meet' "
                 f"style='max-width:110px;'>" + "".join(parts) + "</svg>" + _lc + "</div>")
     except Exception:
@@ -446,7 +641,7 @@ def _signal_box(df, d):
         if len(cl) >= 6:
             p5 = float(cl.iloc[-6]); tfs.append(("5g", 1 if cn > p5 else (-1 if cn < p5 else 0)))
         else: tfs.append(("5g", 0))
-        for _lbl, _p in (("20g", 20), ("50g", 50), ("200g", 200)):
+        for _lbl, _p in (("20g", 20), ("50g", 50)):
             if len(cl) >= _p:
                 _sv = float(cl.rolling(_p).mean().iloc[-1]); tfs.append((_lbl, 1 if cn > _sv else -1))
             else: tfs.append((_lbl, 0))
@@ -474,18 +669,14 @@ def _signal_box(df, d):
 
     return (f"<div style='background:rgba(56,189,248,0.07);border:1px solid {LINE};border-radius:10px;"
             f"padding:9px 11px;'>"
-            f"<div style='display:flex;align-items:center;flex-wrap:wrap;row-gap:4px;"
-            f"font-family:\"JetBrains Mono\",ui-monospace,Consolas,monospace;font-weight:800;'>"
-            f"<span style='color:{nc};font-size:14px;white-space:nowrap;'>{net}</span>"
-            f"<span style='display:inline-flex;align-items:center;white-space:nowrap;margin-left:auto;'>"
-            f"<span style='color:{NEU};padding:0 8px;font-weight:400;font-size:12px;'>|</span>"
-            f"<span style='color:{NEU};font-size:10px;font-weight:600;letter-spacing:0.04em;margin-right:4px;'>LONG</span>{longbar}</span>"
-            f"</div>"
-            f"<div style='font-size:10.5px;color:{TXT};margin-top:3px;'>"
-            f"6 sinyal oylaması <span style='opacity:0.65;'>(RSI+CMF çift oy)</span>: {oy_ozet}</div>"
+            f"<div style='font-family:\"JetBrains Mono\",ui-monospace,Consolas,monospace;"
+            f"font-size:14px;font-weight:800;color:{TXT};'>KANIT DAĞILIMI · AKILLI PARA</div>"
+            f"{_verdict_html}"
             f"{karne_html}"
-            f"<div style='display:flex;gap:8px;margin-top:8px;align-items:center;'>{arrow_stack}"
-            f"<div style='flex:1;display:flex;justify-content:center;align-items:center;'>{mini}</div>{tf}</div>"
+            f"{family_cards}"
+            f"<div style='display:flex;gap:8px;margin-top:6px;align-items:flex-start;'>"
+            f"<div style='flex:1;'>{support_html}</div>"
+            f"<div style='display:flex;justify-content:center;align-items:flex-start;'>{mini}</div>{tf}</div>"
             f"{gidisat}"
             f"</div>")
 
@@ -526,10 +717,12 @@ def build_html(ticker):
     chart, ivme, harsi_block = _figs_b64_3lu(ticker)   # 3 figür TEK Chrome açılışıyla (20 Tem)
     compass = cp.build_compass_html(ticker) or ""
     chg_clr = UP if d['chg'] >= 0 else DN; arrow = '▲' if d['chg'] >= 0 else '▼'
-    stats = _statbox(d, _market_stats(ticker, df))
+    _ms = _market_stats(ticker, df)
+    stats = _statbox(d, _ms)
     cards = "".join(_card(_HDR.get(k, k), g[k]) for k in _CARD_ORDER if k in g)
     if 'UYARI' in g: cards += _card_warn('⚠ UYARI', g['UYARI'])
-    levels = _card(_HDR['TEKNİK'], g['TEKNİK']) if 'TEKNİK' in g else ''
+    decision = _decision_box(df, d, _ms)
+    levels = ''
     sbox = _signal_box(df, d)
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}}
@@ -538,11 +731,11 @@ img{{display:block;border-radius:8px;}}
 </style></head><body>
 <div id="infografik" style="width:980px;background:{BG};padding:16px;color:{TXT};">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
-    <div style="display:flex;align-items:center;gap:10px;">
+    <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
       <div><div style="font-size:24px;font-weight:800;">{tk} · Teknik Görünüm</div>
-      <div style="font-size:11px;color:{MUT};letter-spacing:0.5px;">SMART MONEY RADAR · ALGORİTMİK ÖZET</div></div>
+      <div style="font-size:14px;color:{MUT};letter-spacing:0.5px;">SMART MONEY RADAR · ALGORİTMİK ÖZET</div></div>
     </div>
-    {stats}
+    <div style="flex:0 0 auto;">{stats}</div>
     <div style="background:#0c2238;border:1px solid {LINE};border-radius:10px;padding:11px 22px;text-align:right;display:flex;flex-direction:column;justify-content:center;">
       <div style="font-size:34px;font-weight:800;line-height:1.04;">{d['last']:.2f}</div>
       <div style="font-size:20px;font-weight:700;color:{chg_clr};margin-top:2px;">{arrow} %{abs(d['chg']):.2f}</div>
@@ -550,8 +743,9 @@ img{{display:block;border-radius:8px;}}
   </div>
   <div style="background:{INFO}1a;border:1px solid {INFO}55;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-weight:700;color:{INFO};font-size:14px;">{g['hook']}</div>
   <div style="display:grid;grid-template-columns:330px 1fr;gap:12px;align-items:stretch;">
-    <div>{compass}<div style="height:8px;"></div>{sbox}<div style="height:8px;"></div>{cards}</div>
+    <div>{compass}<div style="height:8px;"></div>{sbox}</div>
     <div style="display:flex;flex-direction:column;">
+      {decision}
       <div style="background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Teknik yapı · mumlar + SMA50/EMA144/SMA100/SMA200 + POC + VWAP</div>
         <img src="data:image/png;base64,{chart}" style="width:100%;"/>
@@ -562,9 +756,9 @@ img{{display:block;border-radius:8px;}}
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Para Akış İvmesi & Fiyat Dengesi</div>
         <img src="data:image/png;base64,{ivme}" style="width:100%;"/>
       </div>
-      {NOTICE_BADGE}
     </div>
   </div>
+  <div style="margin-top:12px;display:flex;">{NOTICE_BADGE}</div>
 </div>
 </body></html>"""
 
@@ -589,10 +783,12 @@ def build_widget_html(ticker):
     chart, ivme, harsi_block = _figs_b64_3lu(ticker)   # 3 figür TEK Chrome açılışıyla (20 Tem)
     compass = cp.build_compass_html(ticker) or ""
     chg_clr = UP if d['chg'] >= 0 else DN; arrow = '▲' if d['chg'] >= 0 else '▼'
-    stats = _statbox(d, _market_stats(ticker, df))
+    _ms = _market_stats(ticker, df)
+    stats = _statbox(d, _ms)
     cards = "".join(_card(_HDR.get(k, k), g[k]) for k in _CARD_ORDER if k in g)
     if 'UYARI' in g: cards += _card_warn('⚠ UYARI', g['UYARI'])
-    levels = _card(_HDR['TEKNİK'], g['TEKNİK']) if 'TEKNİK' in g else ''
+    decision = _decision_box(df, d, _ms)
+    levels = ''
     sbox = _signal_box(df, d)
     # 23 Tem 2026 — ANA KART parçaları buraya ENJEKTE edilir (app.py, ana thread).
     # Bu fonksiyon arka planda/terazisiz koştuğu için burada YALNIZ yer tutucu var;
@@ -602,12 +798,12 @@ def build_widget_html(ticker):
     #   <!--EKRANV2_OYLAR-->      → başlık altı (aşağı/yukarı diyenler + ne değişti)
     return f"""<div style="background:{BG};padding:16px;color:{TXT};font-family:'Segoe UI',Arial,sans-serif;border-radius:12px;">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
-    <div style="display:flex;align-items:center;gap:14px;">
+    <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0;">
       <div><div style="font-size:24px;font-weight:800;">{tk} · Teknik Görünüm</div>
-      <div style="font-size:11px;color:{MUT};">SMART MONEY RADAR · ALGORİTMİK ÖZET</div></div>
+      <div style="font-size:14px;color:{MUT};">SMART MONEY RADAR · ALGORİTMİK ÖZET</div></div>
     </div>
-    {stats}
     <div style="display:flex;align-items:center;gap:10px;"><!--EKRANV2_YON--><!--EKRANV2_GECERSIZLIK--></div>
+    <div style="flex:0 0 auto;">{stats}</div>
     <div style="background:#0c2238;border:1px solid {LINE};border-radius:10px;padding:11px 22px;text-align:right;display:flex;flex-direction:column;justify-content:center;">
       <div style="font-size:34px;font-weight:800;line-height:1.04;">{d['last']:.2f}</div>
       <div style="font-size:20px;font-weight:700;color:{chg_clr};margin-top:2px;">{arrow} %{abs(d['chg']):.2f}</div>
@@ -616,8 +812,9 @@ def build_widget_html(ticker):
   <!--EKRANV2_OYLAR-->
   <!-- 23 Tem 2026: hook barı ({{g['hook']}}) kaldırıldı — "okunan bir bar değildi" (kullanıcı). -->
   <div style="display:grid;grid-template-columns:330px 1fr;gap:12px;align-items:stretch;">
-    <div>{compass}<div style="height:8px;"></div>{sbox}<div style="height:8px;"></div>{cards}</div>
+    <div>{compass}<div style="height:8px;"></div>{sbox}</div>
     <div style="display:flex;flex-direction:column;">
+      {decision}
       <div style="background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Teknik yapı · mumlar + SMA50/EMA144/SMA100/SMA200 + POC + VWAP</div><img src="data:image/png;base64,{chart}" style="width:100%;display:block;border-radius:8px;"/>
       </div>
@@ -626,9 +823,9 @@ def build_widget_html(ticker):
       <div style="background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Para Akış İvmesi & Fiyat Dengesi</div><img src="data:image/png;base64,{ivme}" style="width:100%;display:block;border-radius:8px;"/>
       </div>
-      {NOTICE_BADGE}
     </div>
   </div>
+  <div style="margin-top:12px;display:flex;">{NOTICE_BADGE}</div>
 </div>"""
 
 

@@ -90,11 +90,23 @@ def son_islem_gunleri(n: int = 2) -> list[str]:
 
 
 # ---- Depo tarama -------------------------------------------------------------
+def _dead_symbols() -> frozenset:
+    """data_layer'daki ölü/işlem-görmeyen hisse kasası — alarmı susturmak için."""
+    try:
+        from data_layer import _DEAD_SYMBOLS
+        return _DEAD_SYMBOLS
+    except Exception:
+        return frozenset()
+
+
 def _stock_files() -> list[Path]:
     fs = []
+    dead = _dead_symbols()
     for f in glob.glob(str(VERILER / "*.IS_1d.parquet")):
         sym = os.path.basename(f).replace(".IS_1d.parquet", "")
         if sym.startswith("X"):   # endeks: İsyatirim vermez, ayrı gapfill'i var → atla
+            continue
+        if sym in dead:           # 14 Ağu 2026: ölü hisse → tekrarlayan sahte delik alarmı
             continue
         fs.append(Path(f))
     return fs

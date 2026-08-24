@@ -415,6 +415,7 @@ def _apply_futures_volume_override(df, symbol):
 
 _DEAD_SYMBOLS = frozenset({
     "UMPAS", "ISATR", "ROYAL", "RTALB", "FRIGO", "GOKNR", "YYLGD", "LKMNH",
+    "ISKUR", "YGYO",  # 14 Ağu 2026: tekrarlayan "veri deliği" alarmı — işlem görmüyor
 })
 
 
@@ -564,6 +565,36 @@ def is_yahoo_update_needed(ticker, local_last_date):
     return True
 
 
+def _us_last_bar_is_partial(ticker, df_cached, file_path):
+    """US hisse / FX / futures: cache'teki SON bar seans ORTASINDA çekilmiş YARIM bar mı?
+
+    12 Ağu 2026 — YARIM BAR ZEHRİ FIX. is_yahoo_update_needed yalnız VERİ TARİHİNE bakar.
+    Kullanıcı ABD seansı açıkken (ör. 17:16 İstanbul) hisseyi açarsa Yahoo o anki
+    seans-ORTASI barı döner: tarih doğru (11 Ağu) ama kapanış/hacim EKSİK. Bu bar cache'e
+    yazılınca ertesi gün tarih-kontrolü 'taze' sanar → gerçek kapanış (868.52) yerine yarım
+    fotoğraf (855.34) gösterilir, bir daha çekilmez. (MU 11 Ağu vakası: close 855.34 / hacim
+    9.2M — normalin ~1/3'ü.)
+
+    Kural: dosya, son barın gününde ve o günün seans KAPANIŞINDAN önce yazıldıysa → bar yarım.
+      • US hisse/FX: kapanış ~23:00 İstanbul → eşik 23:05.
+      • Yalnız US-tipi geçerli: BIST'i fetcher besler (ayrı yol), kripto 7/24 (yarım kavramı yok).
+    True dönerse okuyucu barı yeniden çeker (nihai kapanışı yazar).
+    """
+    tu = ticker.upper()
+    if (".IS" in ticker or "BIST" in ticker or "-USD" in ticker
+            or tu.startswith(("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS"))):
+        return False
+    try:
+        import time as _t
+        last_date = df_cached.index[-1].date()
+        mt = datetime.fromtimestamp(os.path.getmtime(file_path))
+        if mt.date() == last_date and (mt.hour * 100 + mt.minute) < 2305:
+            return True
+    except Exception:
+        return False
+    return False
+
+
 # --- BIST LİSTESİ (GENİŞLETİLMİŞ - BIST 500) ---
 priority_bist_indices = [
     "XU100.IS", "XU030.IS", "XBANK.IS", "XTUMY.IS", "XUSIN.IS", "EREGL.IS", "SISE.IS", "TUPRS.IS",
@@ -584,7 +615,7 @@ raw_bist_stocks = [
     "FADE.IS", "FENER.IS", "FLAP.IS", "FMIZP.IS", "FONET.IS", "FORMT.IS", "FORTE.IS", "FRIGO.IS", "FROTO.IS", "FZLGY.IS",
     "GARAN.IS", "GARFA.IS", "GEDIK.IS", "GEDZA.IS", "GENIL.IS", "GENTS.IS", "GEREL.IS", "GESAN.IS", "GLBMD.IS", "GLCVY.IS", "GLRYH.IS", "GLYHO.IS", "GMTAS.IS", "GOKNR.IS", "GOLTS.IS", "GOODY.IS", "GOZDE.IS", "GRNYO.IS", "GRSEL.IS", "GSDDE.IS", "GSDHO.IS", "GSRAY.IS", "GUBRF.IS", "GWIND.IS", "GZNMI.IS",
     "HALKB.IS", "HATEK.IS", "HATSN.IS", "HDFGS.IS", "HEDEF.IS", "HEKTS.IS", "HKTM.IS", "HLGYO.IS", "HRKET.IS", "HTTBT.IS", "HUBVC.IS", "HUNER.IS", "HURGZ.IS",
-    "ICBCT.IS", "ICUGS.IS", "IDGYO.IS", "IEYHO.IS", "IHAAS.IS", "IHEVA.IS", "IHGZT.IS", "IMASM.IS", "INDES.IS", "INFO.IS", "INGRM.IS", "INTEM.IS", "INVEO.IS", "INVES.IS", "ISATR.IS", "ISBIR.IS", "ISBTR.IS", "ISCTR.IS", "ISDMR.IS", "ISFIN.IS", "ISGSY.IS", "ISGYO.IS", "ISKPL.IS", "ISKUR.IS", "ISMEN.IS", "ISSEN.IS", "ISYAT.IS", "IZENR.IS", "IZFAS.IS", "IZINV.IS", "IZMDC.IS",
+    "ICBCT.IS", "ICUGS.IS", "IDGYO.IS", "IEYHO.IS", "IHAAS.IS", "IHEVA.IS", "IHGZT.IS", "IMASM.IS", "INDES.IS", "INFO.IS", "INGRM.IS", "INTEM.IS", "INVEO.IS", "INVES.IS", "ISBIR.IS", "ISBTR.IS", "ISCTR.IS", "ISDMR.IS", "ISFIN.IS", "ISGSY.IS", "ISGYO.IS", "ISKPL.IS", "ISMEN.IS", "ISSEN.IS", "ISYAT.IS", "IZENR.IS", "IZFAS.IS", "IZINV.IS", "IZMDC.IS",
     "JANTS.IS", "TRALT.IS", "ONRYT.IS", "EFOR.IS", "OZATD.IS", "EKDMR.IS",
     "KAPLM.IS", "KAREL.IS", "KARSN.IS", "KATMR.IS", "KAYSE.IS", "KCAER.IS", "KCHOL.IS", "KENT.IS", "KERVN.IS", "KFEIN.IS", "KGYO.IS", "KIMMR.IS", "KLGYO.IS", "KLKIM.IS", "KLMSN.IS", "KLNMA.IS", "KLSER.IS", "KLRHO.IS", "KMPUR.IS", "KNFRT.IS", "KOCMT.IS", "KONKA.IS", "KONTR.IS", "KONYA.IS", "KOPOL.IS", "KORDS.IS", "KOTON.IS", "KRDMA.IS", "KRDMB.IS", "KRDMD.IS", "KRGYO.IS", "KRONT.IS", "KRPLS.IS", "KRSTL.IS", "KRTEK.IS", "KRVGD.IS", "KSTUR.IS", "KTLEV.IS", "KTSKR.IS", "KUTPO.IS", "KUVVA.IS", "KUYAS.IS", "KZBGY.IS", "KZGYO.IS",
     "LIDER.IS", "LIDFA.IS", "LILAK.IS", "LINK.IS", "LKMNH.IS", "LMKDC.IS", "LOGO.IS", "LUKSK.IS",
@@ -609,7 +640,9 @@ raw_bist_stocks = [
     "OZYSR.IS", "PNSUT.IS", "QNBFK.IS", "QNBTR.IS", "RUZYE.IS", "SEGMN.IS", "SERNT.IS", "SKYLP.IS", "SMRVA.IS", "SVGYO.IS",
     "TARKM.IS", "TCKRC.IS", "TRENJ.IS", "TRMET.IS", "UCAYM.IS", "VAKFA.IS", "VSNMD.IS", "YIGIT.IS", "ZERGY.IS", "ZGYO.IS",
     # --- 6 Tem 2026 EKLENENler (yeni/IPO watchlist — veri gelince fetcher doldurur) ---
-    "SSAAT.IS", "EKIM.IS", "ISVEA.IS", "GOLDA.IS", "SOHOE.IS", "ORZAX.IS", "BETAE.IS"
+    "SSAAT.IS", "EKIM.IS", "ISVEA.IS", "GOLDA.IS", "SOHOE.IS", "ORZAX.IS", "BETAE.IS", "SARAE.IS",
+    # --- 23 Ağu 2026 EKLENENLER (son 3 ayda işlem görmeye başlayan halka arzlar) ---
+    "ALBTN.IS", "MASFN.IS", "KARCL.IS", "METEN.IS", "QUICK.IS", "CITAS.IS", "TKNKA.IS", "VEYAS.IS", "KPEKS.IS"
 ]
 
 # Kopyaları Temizle ve Birleştir
@@ -762,6 +795,92 @@ def compute_index_tl_ciro_series(index_sym: str, allow_network: bool = True):
     if ser.empty:
         return None
     _index_ciro_memo[index_sym] = (_now, ser)
+    return ser
+
+
+# --------------------------------------------------------------------
+# SAATLİK endeks TL cirosu (14 Ağu 2026)
+# Neden: OBV günlük barda "orta vites" tanımıyor — gün yukarı kapanırsa TÜM hacim
+# artı, aşağı kapanırsa TÜM hacim eksi yazılır. Yatay bir günde (XU100 14 Ağu:
+# %-0,00) bu, 114 milyar TL'yi yazı-turayla bir tarafa atıyor ve panel hükmü
+# gün içinde 17+ puan zıplıyor. Ölçüldü: 8 hissenin 3'ünde günlük kuralın yönü
+# saatlik akışın TERSİ çıktı (AKBNK günlük -72mn, saatlik +3mn).
+# Çözüm: gün içi okumayı saatlik barlardan yap → saatler birbirini dengeler.
+# Endekslerin saatlik parquet'inde Volume=0 (adet bile yok) olduğu için günlük
+# kardeşiyle aynı yöntem gerekiyor: Σ bileşen(Close×Volume), saatlik damgada.
+# TEK KAYNAK burada — çağıran taraf kendi toplamını yapmasın (drift olur).
+# --------------------------------------------------------------------
+HOURLY_CACHE_DIR = os.environ.get(
+    "SMR_HOURLY_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "veriler_saatlik"))
+
+_index_ciro_hourly_memo = {}      # {sym: (epoch, Series)} — 300s canlı memo
+INDEX_CIRO_HOURLY_MIN_MEMBERS = 60   # bu kadar bileşen yoksa güvenilmez → None
+
+
+def compute_index_tl_ciro_series_hourly(index_sym: str, allow_network: bool = False,
+                                        for_date=None):
+    """Endeksin SAATLİK yaklaşık TL cirosu: Σ bileşen(Close×Volume), saatlik damgada.
+
+    Günlük `compute_index_tl_ciro_series` ile aynı mantık, farklı çözünürlük.
+    allow_network varsayılan False — app tarafı ağa çıkmasın (yavaşlatmaz).
+    Yeterli bileşen toplanamazsa (< INDEX_CIRO_HOURLY_MIN_MEMBERS) None döner;
+    çağıran taraf o zaman günlük davranışa düşmeli — yarım veriyle hüküm verilmez.
+
+    ⚠ 19 Ağu 2026 — KAPI ŞARTI: bileşenlerin dosyası VAR diye veri sayılmıyordu.
+    Depodaki 580 dosyanın 328'i kapsam dışı (hiç güncellenmiyor), bir kısmı da
+    gün ortasında donuyor. Bunlar toplama girmese bile "60 bileşen bulundu"
+    sayısını şişirip endeks cirosunu eksik ama meşru gösteriyordu. `for_date`
+    verildiğinde her bileşen `saatlik_kapi`den geçer; geçenler sayılır.
+    Döner: pd.Series (saatlik damga → TL) veya None.
+    """
+    import time as _t
+    _now = _t.time()
+    _key = (index_sym, str(for_date) if for_date else None)
+    _m = _index_ciro_hourly_memo.get(_key)
+    if _m and (_now - _m[0]) < 300:
+        return _m[1]
+    members = load_index_components(index_sym, allow_network=allow_network)
+    if not members:
+        return None
+    _kapi = None
+    if for_date is not None:
+        try:
+            from saatlik_kapi import saatlik_durum as _kapi
+        except Exception:
+            return None      # kapı yoksa denetimsiz toplam kurulmaz
+    parts = []
+    for _mb in members:
+        if _kapi is not None and not _kapi(_mb, for_date=for_date)["ok"]:
+            continue         # o gün eksik/bayat/kapsam dışı bileşen toplama girmez
+        _p = os.path.join(HOURLY_CACHE_DIR, f"{_mb}.IS_1h.parquet")
+        if not os.path.exists(_p):
+            continue
+        try:
+            _d = pd.read_parquet(_p, columns=['Close', 'Volume'])
+            _c = pd.to_numeric(_d['Close'], errors='coerce')
+            _v = pd.to_numeric(_d['Volume'], errors='coerce')
+            _tl = (_c * _v).dropna()
+            _tl = _tl[_tl > 0]
+            if not len(_tl):
+                continue
+            # Saatlik parquet'lerin bir kısmı zaman-dilimli (+03:00), bir kısmı değil.
+            # Karıştırılırsa pandas birleştirmeyi reddediyor → hepsi İstanbul yerel
+            # saatine çevrilip dilimsiz hale getirilir (tek ortak eksen).
+            _ix = _tl.index
+            if isinstance(_ix, pd.DatetimeIndex) and _ix.tz is not None:
+                _tl.index = _ix.tz_convert("Europe/Istanbul").tz_localize(None)
+            parts.append(_tl)
+        except Exception:
+            continue
+    if len(parts) < INDEX_CIRO_HOURLY_MIN_MEMBERS:
+        return None
+    ser = pd.concat(parts, axis=1).sum(axis=1, min_count=1).dropna()
+    ser = ser[ser > 0]
+    if ser.empty:
+        return None
+    ser = ser.sort_index()
+    _index_ciro_hourly_memo[_key] = (_now, ser)
     return ser
 
 
@@ -967,7 +1086,20 @@ def get_benchmark_data(category):
 
         if df.empty: return None
         df = drop_adj_close(df)
-        return df['Close']
+        _close = df['Close']
+        # 19 Ağu 2026 — SÖZLEŞME ONARIMI: bu fonksiyon adı üstünde SERİ döndürür ve
+        # tüm çağıranlar seri bekler. Ama yfinance tek sembolde bile MultiIndex kolon
+        # dönebiliyor; o zaman df['Close'] seri değil TEK KOLONLU TABLO oluyor.
+        # Sonuç: seri/tablo bölmesi 248x249'luk anlamsız ızgara üretiyor, float()
+        # çevriminde TypeError atıyor ve çağıranların except blokları bunu sessizce
+        # yutuyordu. Ölçülen zarar: Gizli Birikim 31 May 2026'dan beri HER hisseyi
+        # reddediyordu (3 ay sıfır sinyal); ayrıca boğa/ayı ağırlığı, konviksiyon
+        # 5g endeks farkı ve iki RS hesabı sessizce devre dışıydı.
+        # NOT: golden_record bu fonksiyonu zaten SERİ olarak taklit ediyor — bu yüzden
+        # emniyet kemeri arızayı hiç görmedi. Onarım golden çıktısını değiştirmez.
+        if isinstance(_close, pd.DataFrame):
+            _close = _close.iloc[:, 0]
+        return _close
     except:
         return None
 
@@ -1007,7 +1139,10 @@ def _get_batch_data_cached_versioned(asset_list, period="1y", _bist_version="leg
                         needs_download = False
                         _CACHE_STATS['hit'] += 1
                         continue
-                    if not is_yahoo_update_needed(sym, df_cached.index[-1]):
+                    # 12 Ağu 2026 — YARIM BAR ZEHRİ: US/FX'te seans-ortası yarım son bar
+                    # tarih-kontrolünü kandırır → taze sayma, yeniden indir.
+                    if (not is_yahoo_update_needed(sym, df_cached.index[-1])
+                            and not _us_last_bar_is_partial(sym, df_cached, file_path)):
                         # Bölünme tespiti: son kapanıştaki ani sıçrama (>35% tek günde)
                         # → cache stale, yeniden indir
                         _rc = df_cached['Close'].dropna()
@@ -1314,6 +1449,62 @@ def get_live_price(ticker: str) -> float:
         return 0.0
 
 
+# 6 Ağu 2026 — AÇIK HİSSE CANLI YAMASI (Ayna Modu istisnası, DİSKE YAZMAZ)
+# Sorun: BIST'te app "Ayna Modu"nda kutuyu (parquet/onaylı sürüm kasası) körü körüne
+# gösteriyordu; fetcher günün erken/yarım barını yazıp geç güncellerse ekranda DONMUŞ
+# fiyat kalıyordu (CWENE 43.98 vs gerçek 46). Çözüm: ekranda AÇIK olan TEK hisse için,
+# seans içinde, son barı canlı fiyatla BELLEĞE yamala. Parquet + onaylı sürüm kasası
+# diske HİÇ yazılmaz → Ayna Modu'nu bozan disk-yazma yolu kullanılmaz, eski veri ezilmez.
+_HOT_TICKER = None
+# 6 Ağu 2026 (akşam) — CANLI YAMA DEVRE DIŞI. Yahoo fast_info BIST'te güvenilmez:
+# bazen günün erken bir saatinde DONUYOR (EREGL 42.02'de kaldı @10:25, gerçek 41.38,
+# oysa DEPO 41.40 = DOĞRUydu). Acil-liste modeli depoyu ~5 dk'da tazelediği için bu
+# yamaya artık gerek yok; üstelik taze/doğru depoyu bozuyordu. Depo tek kaynak.
+# Geri açmak istenirse True yap. [[project_acik_hisse_canli_yama]]
+_HOT_LIVE_PATCH_ENABLED = False
+
+
+def set_hot_ticker(ticker):
+    """App, ekranda açık olan tek hisseyi buraya yazar (tek-hisse paneli render'ında).
+    Sadece bu hisse canlı yamaya uygun olur; taramalar/batch/Master Scan etkilenmez."""
+    global _HOT_TICKER
+    try:
+        _HOT_TICKER = _normalize_bist_ticker(ticker) if ticker else None
+    except Exception:
+        _HOT_TICKER = ticker or None
+
+
+def _maybe_live_patch_hot(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd.DataFrame:
+    """Ekranda AÇIK olan hisse için seans içinde son barı canlı fiyatla yamalar.
+    DİSKE YAZMAZ (yalnız dönen kopyayı günceller). Koşullar: hot ticker + BIST işlem
+    günü + seans saatleri (10:00–18:30) + Master Scan dışı. Aksi halde df aynen döner
+    (mevcut davranış korunur)."""
+    try:
+        if not _HOT_LIVE_PATCH_ENABLED:
+            return df
+        if interval != "1d" or df is None or df.empty:
+            return df
+        if _HOT_TICKER is None or ticker != _HOT_TICKER:
+            return df
+        try:
+            if st.session_state.get('_master_scan_running', False):
+                return df
+        except Exception:
+            pass
+        _now = datetime.now(_TZ_ISTANBUL)
+        try:
+            if not _bist_is_trading_day(_now):
+                return df
+        except Exception:
+            return df
+        _hm = _now.hour * 100 + _now.minute
+        if not (1000 <= _hm <= 1830):
+            return df
+        return _patch_live_price(df, ticker, interval, force=True)
+    except Exception:
+        return df
+
+
 def _strip_holiday_bars(df: pd.DataFrame, ticker: str = "") -> pd.DataFrame:
     """SONDAKİ tatil/kapalı-gün 'hayalet barları'nı söker (30 May 2026).
 
@@ -1356,7 +1547,7 @@ def _strip_holiday_bars(df: pd.DataFrame, ticker: str = "") -> pd.DataFrame:
         return df
 
 
-def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd.DataFrame:
+def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d", force: bool = False) -> pd.DataFrame:
     """
     Günlük veri için son satırın Close fiyatını canlı fiyatla günceller.
     Grafik ile fiyat kutusu arasındaki cache kaynaklı uyuşmazlığı giderir.
@@ -1369,7 +1560,7 @@ def _patch_live_price(df: pd.DataFrame, ticker: str, interval: str = "1d") -> pd
         return df
     # 1 Tem 2026 — TEK KAYNAK: bayrak kapalıysa canlı patch YOK, ham veriler/ kapanışı döner
     # (infografik + AI ile birebir tutarlı; seans-içi Yahoo çelişkisi ortadan kalkar).
-    if not LIVE_PRICE_PATCH_ENABLED:
+    if not LIVE_PRICE_PATCH_ENABLED and not force:
         return df
     # Master Scan içinde live patch atla (parquet'teki kapanış zaten yeterli)
     try:
@@ -1662,7 +1853,10 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
             if _is_bist_fresh and os.environ.get("LIVE_ON_READ", "0") != "1" and _data_age_h <= _fresh_limit_h and not _vol_stale:
                 return apply_volume_projection(df_cached.tail(500).copy(), ticker)
 
-            if not is_yahoo_update_needed(ticker, df_cached.index[-1]) and not _vol_stale:
+            # 12 Ağu 2026 — YARIM BAR ZEHRİ: US/FX'te seans-ortası cache'lenmiş yarım son
+            # bar (tarih doğru, kapanış eksik) tarih-kontrolünü kandırır → yeniden çektir.
+            _us_partial = _us_last_bar_is_partial(ticker, df_cached, file_path)
+            if not is_yahoo_update_needed(ticker, df_cached.index[-1]) and not _vol_stale and not _us_partial:
                 return apply_volume_projection(df_cached.tail(500).copy(), ticker)
 
             # Güncelleme gerekiyor — retry ile dene
@@ -2293,6 +2487,8 @@ def get_safe_historical_data(ticker, period="1y", interval="1d"):
                 return pd.DataFrame()
         except Exception:
             pass
+        # 6 Ağu 2026 — ekranda AÇIK hisse ise son barı canlı fiyatla yamala (diske YAZMAZ)
+        _df_ro = _maybe_live_patch_hot(_df_ro, ticker, interval)
         return _df_ro
 
     if ticker.replace(".IS", "") in _DEAD_SYMBOLS:

@@ -283,92 +283,264 @@ def _yon_chip(yon, celiski):
     return lbl, col
 
 
-def _reason_line(bucket, report):
-    """Kartın 'neden bu bölümde' tek satırı (sahte 'en iyi işlem' iddiası YOK)."""
+_TR_AYLAR = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+             "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+
+
+def _human_date(iso):
+    """'2026-07-30T00:00:00' → '30 Temmuz kapanış verisi' (saat/saniye YOK)."""
+    try:
+        _d = str(iso or "").split("T")[0].split(" ")[0]
+        _y, _m, _g = _d.split("-")
+        return f"{int(_g)} {_TR_AYLAR[int(_m)]} kapanış verisi"
+    except Exception:
+        return "güncel kapanış verisi"
+
+
+def _karne_word(skor, label):
+    """Karne puanını yanıltıcı '%' gibi göstermeden sade güç kelimesine çevirir."""
+    if not isinstance(skor, (int, float)):
+        return ("Ölçümde", "#94a3b8")
+    if skor >= 70:
+        return ("Kanıt gücü: Güçlü", "#22c55e")
+    if skor >= 55:
+        return ("Kanıt gücü: Orta", "#f59e0b")
+    return ("Kanıt gücü: Zayıf", "#94a3b8")
+
+
+def _setup_label(best, sources):
+    """İç tarama kodunu (Erken Radar B8) senaryonun sade adına çevirir."""
+    _b = str(best or "").strip()
+    try:
+        import re as _re
+        import scanners as _sc
+        _m = _re.search(r'\b([A-Z]\d{1,2})\b', _b)
+        if _m and _m.group(1) in getattr(_sc, "ERKEN_RADAR_SCENARIOS", {}):
+            return _sc.ERKEN_RADAR_SCENARIOS[_m.group(1)]["name"]
+    except Exception:
+        pass
+    if _b:
+        return _b
+    _s = list(sources or [])
+    _MAP = {"guclu_donus": "Güçlü Dönüş adayı", "minervini": "Minervini SEPA",
+            "rsi_pozitif_uyumsuzluk": "RSI Pozitif Uyumsuzluk", "goldmine": "Kurulum"}
+    return _MAP.get(_s[0], "Kurulum") if _s else "Kurulum"
+
+
+def _split_votes(terazi):
+    """terazi votes → (destekleyen boğa oyları, karşıt ayı oyları). Her oy: ad + neden."""
+    _v = (terazi or {}).get("votes") or []
+    _boga = [x for x in _v if isinstance(x, dict) and x.get("yon") == "boga"]
+    _ayi = [x for x in _v if isinstance(x, dict) and x.get("yon") == "ayi"]
+    _boga.sort(key=lambda z: -float(z.get("agirlik", 0) or 0))
+    _ayi.sort(key=lambda z: -float(z.get("agirlik", 0) or 0))
+    return _boga, _ayi
+
+
+def _tez_cumle(bucket, terazi, report):
+    """Kartın/pencerenin sade yatırım tezi cümlesi (jargonsuz)."""
     if bucket == BUCKET_LONG:
-        return "Bütün kapıları geçti"
+        return ("Teknik kanıtlar yukarı yönü destekliyor ve belirgin bir karşıt "
+                "sinyal yok. Ölçülmüş bir kurulum.")
     if bucket == BUCKET_RISK:
-        return report.get("veto_reason") or "Sert risk vetosu"
+        return report.get("veto_reason") or "Piyasa geneli şok — hüküm askıda."
     if bucket == BUCKET_YENI:
         if report.get("yeni_alt") == "erken_donus":
-            return "Erken dönüş kurulumu — ölçümde (Öncelikli LONG değildir)"
-        return "Yeni/ölçümde — karne henüz yeterli değil"
+            return ("Erken bir dönüş sinyali belirdi; henüz geçmiş performansı "
+                    "ölçülmedi. Öncelikli LONG değildir, izlemede.")
+        return ("Yeni bir kurulum belirdi ama geçmiş kanıtı henüz yeterli değil — "
+                "izlemede.")
     _m = report.get("missing") or []
-    return "Eksik kapı: " + (_m[0] if _m else "teyit tamamlanmadı")
+    return "Potansiyel var ama teyit eksik: " + (_m[0].lower() if _m else "teyit tamamlanmadı") + "."
 
 
-def _render_card(st, cand, catalog, on_click, idx):
+def _human_missing(report):
+    """LONG kapılarını geçemeyen için 'ne eksik' — kullanıcı diline yakın."""
+    _m = report.get("missing") or []
+    if not _m:
+        # kanıtlı ama yaşam döngüsü bilinmiyorsa dürüst not
+        if report.get("lifecycle") is None and report.get("label") == "kanıtlı":
+            return "Sinyalin zamanlaması (taze mi geç mi) doğrulanamadı."
+        return "Teyit tamamlanmadı."
+    return _m[0]
+
+
+# ── RENDER kartları + popup ──────────────────────────────────────────────────
+def _card_html(cand, catalog):
+    """Tek kartın HTML gövdesi (buton hariç). Streamlit'siz üretilebilir → test kolay."""
     _sym = cand["sym"]
+    _bucket = cand["bucket"]
     _report = cand["report"]
     _result = cand["item"].get("result") or {}
     _terazi = _result.get("terazi") or {}
-    _yon_lbl, _yon_col = _yon_chip(_terazi.get("yon", "dengede"),
-                                   bool(_result.get("celiski")))
-    _best = _result.get("best") or (cand["item"].get("sources") or ["—"])[0]
-    _skor = _result.get("skor")
-    _skor_txt = f"karne {_skor}" if isinstance(_skor, (int, float)) else str(
-        _result.get("label", "ölçümde"))
-    _stage = cand.get("lifecycle_stage") or "—"
-    _reason = _reason_line(cand["bucket"], _report)
+    _best = _result.get("best")
+    _setup = _setup_label(_best, cand["item"].get("sources"))
+    _kw, _kc = _karne_word(_result.get("skor"), _result.get("label"))
+    _stage = cand.get("lifecycle_stage")
+    _fresh = _stage if _stage else ("zamanlama teyit edilmedi" if _bucket == BUCKET_LONG
+                                    else "—")
+    _boga, _ayi = _split_votes(_terazi)
+    _top = (_boga[0]["neden"] if _boga else _tez_cumle(_bucket, _terazi, _report))
+    _tarama = " · ".join(candidate_scan_membership(_sym, catalog)[:4]) or "—"
+    _left = {BUCKET_LONG: "#22c55e", BUCKET_TEYIT: "#f59e0b",
+             BUCKET_YENI: "#38bdf8", BUCKET_RISK: "#ef4444"}.get(_bucket, "#26364f")
 
-    if st.button(f"{_sym} · {_best}", key=f"tm_{cand['bucket']}_{_sym}_{idx}",
-                 width="stretch"):
-        on_click(cand["ticker"])
-        st.rerun()
-    st.markdown(
-        f"<div style='font-size:0.70rem;color:#cbd5e1;margin:-6px 0 3px 6px;"
-        f"line-height:1.35;'>"
-        f"<span style='color:{_yon_col};font-weight:800;'>Terazi {_yon_lbl}</span> · "
-        f"<span style='color:#fbbf24;'>{_skor_txt}</span> · yaşam: {_stage}<br>"
-        f"<span style='color:#94a3b8;'>{_reason}</span></div>",
-        unsafe_allow_html=True)
-    with st.expander("Neden burada?"):
-        _skor_ek = "" if _skor is None else f" (puan {_skor})"
-        _yas = cand.get("lifecycle_yas")
-        _yas_ek = "" if _yas is None else f" · {_yas} gün"
-        _celiski_txt = "evet" if _result.get("celiski") else "hayır"
-        _missing_txt = ", ".join(_report.get("missing") or []) or "— (yok)"
-        _taramalar = ", ".join(candidate_scan_membership(_sym, catalog)) or "—"
-        st.markdown(
-            f"- **Karne:** {_result.get('label','—')}{_skor_ek}\n"
-            f"- **Terazi:** {_terazi.get('yon','—')} · boğa {_result.get('boga','—')} / "
-            f"ayı {_result.get('ayi','—')} · çelişki: {_celiski_txt}\n"
-            f"- **Yaşam döngüsü:** {_stage}{_yas_ek}\n"
-            f"- **Bağımsız aile sayısı:** {_report.get('n_scanner','—')}\n"
-            f"- **Geçemediği kapılar:** {_missing_txt}\n"
-            f"- **Çıktığı taramalar:** {_taramalar}\n"
-            f"- **Veri tarihi:** {cand['item'].get('data_as_of','—')}")
+    if _bucket == BUCKET_TEYIT:
+        _mid = (f"<div style='color:#f8a5a5;font-size:0.70rem;margin-top:3px;'>"
+                f"⚠ Eksik: {_human_missing(_report)}</div>")
+    elif _bucket == BUCKET_YENI:
+        _mid = (f"<div style='color:#93c5fd;font-size:0.70rem;margin-top:3px;'>"
+                f"Geçmiş performansı henüz ölçülmedi — izlemede.</div>")
+    elif _bucket == BUCKET_RISK:
+        _mid = (f"<div style='color:#f8a5a5;font-size:0.70rem;margin-top:3px;'>"
+                f"{_report.get('veto_reason','Sert risk')}</div>")
+    else:
+        _mid = (f"<div style='color:#cbd5e1;font-size:0.71rem;margin-top:3px;"
+                f"line-height:1.4;'>{_top}</div>")
+
+    return (
+        f"<div style='background:#0f1a2e;border:1px solid #26364f;border-left:3px solid "
+        f"{_left};border-radius:9px;padding:9px 11px;min-height:118px;'>"
+        f"<div style='font-weight:800;font-size:0.95rem;color:#e2e8f0;'>{_sym}</div>"
+        f"<div style='font-size:0.76rem;font-weight:700;color:#cbd5e1;margin-top:1px;'>{_setup}</div>"
+        f"<div style='display:inline-block;font-size:0.64rem;font-weight:800;color:{_kc};"
+        f"background:{_kc}1e;border:1px solid {_kc}55;border-radius:4px;padding:0 6px;"
+        f"margin-top:4px;'>{_kw}</div>"
+        f"{_mid}"
+        f"<div style='font-size:0.63rem;color:#6b7d94;margin-top:5px;'>Güncellik: {_fresh}</div>"
+        f"<div style='font-size:0.63rem;color:#6b7d94;margin-top:2px;border-top:1px solid "
+        f"#ffffff0d;padding-top:4px;'><b style='color:#93a6bd;'>Taramalar:</b> {_tarama}</div>"
+        f"</div>")
 
 
-def _render_bucket(st, title, cands, catalog, on_click, empty_msg, first_n=5):
-    st.markdown(
-        f"<div style='font-size:0.9rem;font-weight:900;color:#e2e8f0;"
-        f"margin:10px 0 4px 0;'>{title} · {len(cands)}</div>",
-        unsafe_allow_html=True)
-    if not cands:
-        st.markdown(
-            f"<div style='border:1px dashed #334155;border-radius:6px;padding:10px;"
-            f"text-align:center;color:#94a3b8;font-size:0.75rem;'>{empty_msg}</div>",
-            unsafe_allow_html=True)
-        return
-    for _i, _c in enumerate(cands[:first_n]):
-        _render_card(st, _c, catalog, on_click, _i)
+def _render_grid(st, cands, catalog, open_detail, first_n=6, cols=3, key_prefix=""):
+    """Kartları N sütunlu grid'de render eder + 'Kurulumu aç' popup butonu."""
+    _shown = cands[:first_n]
+    for _r in range(0, len(_shown), cols):
+        _row = _shown[_r:_r + cols]
+        _ccols = st.columns(cols)
+        for _k, _cand in enumerate(_row):
+            with _ccols[_k]:
+                st.markdown(_card_html(_cand, catalog), unsafe_allow_html=True)
+                if st.button("🔍 Kurulumu aç", width="stretch",
+                             key=f"tmopen_{key_prefix}_{_cand['sym']}_{_r + _k}"):
+                    open_detail(_cand)
     if len(cands) > first_n:
-        with st.expander(f"Tüm uygun adayları göster (+{len(cands) - first_n})"):
-            for _i, _c in enumerate(cands[first_n:]):
-                _render_card(st, _c, catalog, on_click, first_n + _i)
+        with st.expander(f"Tümünü göster (+{len(cands) - first_n})"):
+            for _i, _cand in enumerate(cands[first_n:]):
+                if st.button(f"{_cand['sym']} · {_setup_label(_cand['item'].get('result',{}).get('best'), _cand['item'].get('sources'))}",
+                             width="stretch", key=f"tmmore_{key_prefix}_{_cand['sym']}_{_i}"):
+                    open_detail(_cand)
+
+
+def _render_bucket_header(st, title, n, note=None):
+    st.markdown(
+        f"<div style='font-size:0.92rem;font-weight:900;color:#e2e8f0;"
+        f"margin:14px 0 2px 0;'>{title} · {n}</div>", unsafe_allow_html=True)
+    if note:
+        st.markdown(
+            f"<div style='font-size:0.66rem;color:#64748b;margin:0 0 6px 2px;'>{note}</div>",
+            unsafe_allow_html=True)
+
+
+def render_setup_detail_body(st, cand, catalog, on_click):
+    """Kurulum-detay pop-up gövdesi (st.dialog İÇİNDE çağrılır). Hem Tarama Merkezi
+    batch grid'i hem app.py tekli ŞAMPİYONLAR LİGİ butonu ortak kullanır.
+    st: streamlit modülü çağırandan gelir (modülün lazy-import desenini korur)."""
+    # Genişliği ~%60'a daralt (large çok geniş). Streamlit modal'ını CSS ile sıkıştır.
+    st.markdown(
+        "<style>div[data-testid='stDialog'] div[role='dialog']"
+        "{width:60vw !important;max-width:820px !important;}</style>",
+        unsafe_allow_html=True)
+    _sym = cand["sym"]
+    _bucket = cand["bucket"]
+    _report = cand["report"]
+    _result = cand["item"].get("result") or {}
+    _terazi = _result.get("terazi") or {}
+    _setup = _setup_label(_result.get("best"), cand["item"].get("sources"))
+    _tag = {BUCKET_LONG: ("GÜÇLÜ LONG KURULUMU", "#22c55e"),
+            BUCKET_TEYIT: ("TEYİT BEKLİYOR", "#f59e0b"),
+            BUCKET_YENI: ("YENİ SİNYAL", "#38bdf8"),
+            BUCKET_RISK: ("RİSK", "#ef4444")}.get(_bucket, ("KURULUM", "#94a3b8"))
+    _boga, _ayi = _split_votes(_terazi)
+
+    st.markdown(
+        f"<div style='font-size:0.66rem;font-weight:800;color:{_tag[1]};"
+        f"letter-spacing:0.04em;'>{_tag[0]} · DETAY</div>"
+        f"<div style='font-size:1.25rem;font-weight:900;'>{_sym} — {_setup}</div>"
+        f"<div style='color:#94a3b8;font-size:0.72rem;'>{_human_date(cand['item'].get('data_as_of'))}</div>",
+        unsafe_allow_html=True)
+
+    st.markdown("**Ana yatırım tezi**")
+    st.markdown(
+        f"<div style='color:#cbd5e1;font-size:0.86rem;'>{_tez_cumle(_bucket, _terazi, _report)}</div>",
+        unsafe_allow_html=True)
+
+    if _bucket == BUCKET_TEYIT:
+        st.markdown("**Ne eksik?**")
+        st.markdown(
+            f"<div style='color:#f8a5a5;font-size:0.84rem;'>⚠ {_human_missing(_report)}</div>",
+            unsafe_allow_html=True)
+
+    st.markdown("**Kararı destekleyen yöntemler**")
+    if _boga:
+        st.markdown("".join(
+            f"<div style='margin:3px 0;font-size:0.82rem;'>"
+            f"<span style='color:#22c55e;font-weight:700;'>✓ {v.get('ad','—')}</span> "
+            f"<span style='color:#cbd5e1;'>— {v.get('neden','')}</span></div>"
+            for v in _boga[:6]), unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='color:#94a3b8;font-size:0.82rem;'>Ölçülmüş destekleyici kanıt yok.</div>",
+                    unsafe_allow_html=True)
+
+    st.markdown("**Karşıt / risk sinyalleri**")
+    if _ayi:
+        st.markdown("".join(
+            f"<div style='margin:3px 0;font-size:0.82rem;'>"
+            f"<span style='color:#f87171;font-weight:700;'>• {v.get('ad','—')}</span> "
+            f"<span style='color:#cbd5e1;'>— {v.get('neden','')}</span></div>"
+            for v in _ayi[:5]), unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='color:#94a3b8;font-size:0.82rem;'>Belirgin karşıt sinyal yok.</div>",
+                    unsafe_allow_html=True)
+
+    _stage = cand.get("lifecycle_stage")
+    _yas = cand.get("lifecycle_yas")
+    _fresh = (f"{_stage} · {_yas} gün" if _stage and _yas is not None
+              else (_stage or "teyit edilmedi"))
+    st.markdown(
+        f"<div style='margin-top:8px;'><b>İşlem haritası & zamanlama</b></div>"
+        f"<div style='color:#94a3b8;font-size:0.80rem;line-height:1.5;'>"
+        f"Sinyal güncelliği: {_fresh}<br>"
+        f"<span style='color:#f8a5a5;font-style:italic;'>Hedef / stop / risk-ödül: bu "
+        f"kurulum için ölçülmemiş — sayı uydurulmaz.</span></div>",
+        unsafe_allow_html=True)
+
+    _tarama = " · ".join(candidate_scan_membership(_sym, catalog)) or "—"
+    with st.expander("Teknik ayrıntı"):
+        _sk = _result.get("skor")
+        st.markdown(
+            f"- Kanıt puanı (karne): {_sk if _sk is not None else '—'}/100 · sınıf: {_result.get('label','—')}\n"
+            f"- Terazi: {_terazi.get('yon','—')} · boğa {_result.get('boga','—')} / ayı {_result.get('ayi','—')} · çelişki: {'evet' if _result.get('celiski') else 'hayır'}\n"
+            f"- Bağımsız kanıt ailesi: {_report.get('n_scanner','—')}\n"
+            f"- Çıktığı taramalar: {_tarama}\n"
+            f"- Veri tarihi: {_human_date(cand['item'].get('data_as_of'))}")
+
+    if st.button("📊 Tam hisse analizini aç", width="stretch",
+                 key=f"tmfull_{_sym}"):
+        on_click(cand["ticker"])
+        st.session_state["_tm_scroll_top"] = True  # seçilen hisse üstte → sayfayı yukarı kaydır
+        st.rerun(scope="app")  # fragment içindeyken de TÜM sayfayı yenile (üst paneller)
 
 
 def render_tarama_merkezi(session_getter, validate_fn, on_click):
-    """Toplu tarama KARAR MASASI. Eski/eksik cache'te hüküm göstermez → 'yeniden tara'.
-    session_getter: key->obj (st.session_state.get) · validate_fn: payload->(ok,msg)
-    · on_click: ticker->None (mevcut hisse seçim sistemi)."""
+    """Toplu tarama KARAR MASASI (kart grid + kurulum popup'ı).
+    session_getter: key->obj · validate_fn: payload->(ok,msg) · on_click: ticker->None."""
     import streamlit as st
 
     st.markdown(
-        "<div style='font-size:1.0rem;font-weight:900;color:#38bdf8;"
-        "margin:4px 0 2px 0;'>🛰️ TARAMA MERKEZİ — Tek Karar Masası</div>",
-        unsafe_allow_html=True)
+        "<div style='font-size:1.05rem;font-weight:900;color:#38bdf8;"
+        "margin:4px 0 1px 0;'>🧭 Tarama Merkezi</div>", unsafe_allow_html=True)
 
     payload = None
     try:
@@ -387,57 +559,77 @@ def render_tarama_merkezi(session_getter, validate_fn, on_click):
     _lc_lookup = build_lifecycle_lookup(_lc_df)
     desk = build_decision_desk(payload, _lc_lookup)
     catalog = build_catalog(session_getter)
-
     _c = desk["counts"]
-    st.caption(
-        f"Fotoğraf: {desk.get('as_of','—')} · aday {desk['meta'].get('candidate_count','—')} · "
-        f"LONG {_c.get(BUCKET_LONG,0)} · Teyit {_c.get(BUCKET_TEYIT,0)} · "
-        f"Yeni {_c.get(BUCKET_YENI,0)} · Risk {_c.get(BUCKET_RISK,0)}")
 
-    # 1) ÖNCELİKLİ LONG — sayfanın ilk bölümü (sahte sayı yok, dinamik)
     st.markdown(
-        "<div style='font-size:0.66rem;color:#64748b;margin:2px 0 0 2px;'>"
-        "Bütün kapıları geçen güncel kurulumlar · <b>teyit zamanı sıralı</b> "
-        "(“en iyi işlem” iddiası değildir)</div>", unsafe_allow_html=True)
-    _render_bucket(st, BUCKET_LABELS[BUCKET_LONG], desk[BUCKET_LONG], catalog, on_click,
-                   "Bugün bütün kapıları geçen kurulum yok.")
+        f"<div style='font-size:0.74rem;color:#94a3b8;margin-bottom:8px;'>"
+        f"{_human_date(desk.get('as_of'))} · "
+        f"<span style='color:#22c55e;font-weight:700;'>Güçlü {_c.get(BUCKET_LONG,0)}</span> · "
+        f"<span style='color:#f59e0b;font-weight:700;'>Teyit {_c.get(BUCKET_TEYIT,0)}</span> · "
+        f"<span style='color:#38bdf8;font-weight:700;'>Yeni {_c.get(BUCKET_YENI,0)}</span> · "
+        f"<span style='color:#ef4444;font-weight:700;'>Risk {_c.get(BUCKET_RISK,0)}</span>"
+        f"</div>", unsafe_allow_html=True)
 
-    _render_bucket(st, BUCKET_LABELS[BUCKET_TEYIT], desk[BUCKET_TEYIT], catalog, on_click,
-                   "Teyit bekleyen kurulum yok.")
+    # ── KURULUM DETAY POPUP'I (st.dialog) — gövde modül seviyesinde (app.py da kullanır)
+    @st.dialog("🔎 Kurulum Detayı", width="large")
+    def _open_detail(cand):
+        render_setup_detail_body(st, cand, catalog, on_click)
 
-    # Yeni Sinyaller — erken dönüş alt vurgusu
+    # ── GÜÇLÜ LONG ───────────────────────────────────────────────────────────
+    _render_bucket_header(
+        st, "🚀 Güçlü LONG Kurulumları", _c.get(BUCKET_LONG, 0),
+        "Sıralama: geçmiş performans → tazelik. \"En iyi işlem\" sıralaması değildir.")
+    if desk[BUCKET_LONG]:
+        _render_grid(st, desk[BUCKET_LONG], catalog, _open_detail, key_prefix="long")
+    else:
+        st.markdown(
+            "<div style='border:1px dashed #334155;border-radius:6px;padding:10px;"
+            "text-align:center;color:#94a3b8;font-size:0.75rem;'>"
+            "Bugün güçlü kurulum yok.</div>", unsafe_allow_html=True)
+
+    # ── TEYİT BEKLEYENLER ────────────────────────────────────────────────────
+    _render_bucket_header(st, "⏳ Teyit Bekleyenler", _c.get(BUCKET_TEYIT, 0),
+                          "Potansiyel var; aşağıdaki teyit henüz eksik.")
+    if desk[BUCKET_TEYIT]:
+        _render_grid(st, desk[BUCKET_TEYIT], catalog, _open_detail, key_prefix="teyit")
+    else:
+        st.markdown(
+            "<div style='border:1px dashed #334155;border-radius:6px;padding:10px;"
+            "text-align:center;color:#94a3b8;font-size:0.75rem;'>"
+            "Teyit bekleyen kurulum yok.</div>", unsafe_allow_html=True)
+
+    # ── YENİ SİNYALLER ───────────────────────────────────────────────────────
     _yeni = desk[BUCKET_YENI]
     _erken = [c for c in _yeni if c["report"].get("yeni_alt") == "erken_donus"]
-    st.markdown(
-        f"<div style='font-size:0.9rem;font-weight:900;color:#e2e8f0;"
-        f"margin:10px 0 4px 0;'>{BUCKET_LABELS[BUCKET_YENI]} · {len(_yeni)}</div>",
-        unsafe_allow_html=True)
+    _note = "Bugün belirdi; geçmiş kanıtı henüz yeterli değil."
     if _erken:
-        st.markdown(
-            f"<div style='font-size:0.72rem;color:#a78bfa;font-weight:700;"
-            f"margin:2px 0 2px 4px;'>🔄 Erken Dönüş Kurulumları — Ölçümde "
-            f"({len(_erken)}) · Öncelikli LONG değildir</div>",
-            unsafe_allow_html=True)
-    if not _yeni:
+        _note += f" · 🔄 {len(_erken)} erken dönüş kurulumu (ölçümde, Öncelikli LONG değil)."
+    _render_bucket_header(st, "🌱 Yeni Sinyaller", len(_yeni), _note)
+    if _yeni:
+        _render_grid(st, _yeni, catalog, _open_detail, key_prefix="yeni")
+    else:
         st.markdown(
             "<div style='border:1px dashed #334155;border-radius:6px;padding:10px;"
             "text-align:center;color:#94a3b8;font-size:0.75rem;'>Yeni sinyal yok.</div>",
             unsafe_allow_html=True)
+
+    # ── RİSK MASASI ──────────────────────────────────────────────────────────
+    _render_bucket_header(st, "⚠️ Risk Masası", _c.get(BUCKET_RISK, 0))
+    if desk[BUCKET_RISK]:
+        _render_grid(st, desk[BUCKET_RISK], catalog, _open_detail, first_n=9, key_prefix="risk")
     else:
-        for _i, _cc in enumerate(_yeni[:5]):
-            _render_card(st, _cc, catalog, on_click, _i)
-        if len(_yeni) > 5:
-            with st.expander(f"Tüm yeni sinyalleri göster (+{len(_yeni) - 5})"):
-                for _i, _cc in enumerate(_yeni[5:]):
-                    _render_card(st, _cc, catalog, on_click, 5 + _i)
+        st.markdown(
+            "<div style='border:1px dashed #334155;border-radius:6px;padding:10px;"
+            "text-align:center;color:#94a3b8;font-size:0.75rem;'>"
+            "Sert risk vetosu alan hisse yok.</div>", unsafe_allow_html=True)
 
-    _render_bucket(st, BUCKET_LABELS[BUCKET_RISK], desk[BUCKET_RISK], catalog, on_click,
-                   "Sert risk vetosu alan hisse yok.", first_n=10)
-
-    # 2) TARAMA KATALOĞU — denetim alanı (hisse tekrarı serbest)
+    # ── TARAMA KATALOĞU — denetim alanı (hisse tekrarı serbest) ──────────────
     st.markdown(
-        "<div style='font-size:0.9rem;font-weight:900;color:#e2e8f0;"
-        "margin:14px 0 4px 0;'>🗂️ Tarama Kataloğu</div>", unsafe_allow_html=True)
+        "<div style='font-size:0.92rem;font-weight:900;color:#e2e8f0;"
+        "margin:16px 0 2px 0;'>📚 Tarama Kataloğu</div>"
+        "<div style='font-size:0.66rem;color:#64748b;margin:0 0 6px 2px;'>"
+        "Karara oy verenler ile ek gözlemler burada; hisse birden çok listede olabilir.</div>",
+        unsafe_allow_html=True)
     for _cat in catalog:
         if _cat["count"] == 0:
             continue
@@ -447,7 +639,7 @@ def render_tarama_merkezi(session_getter, validate_fn, on_click):
                          if n != _cat["name"]]
                 if st.button(_s, key=f"tmcat_{_cat['key']}_{_s}_{_j}", width="stretch"):
                     on_click(_s + ".IS" if "." not in _s else _s)
-                    st.rerun()
+                    st.rerun(scope="app")
                 if _also:
                     st.markdown(
                         f"<div style='font-size:0.64rem;color:#64748b;"

@@ -752,6 +752,91 @@ def get_stock_info(ticker: str) -> dict:
     return result
 
 
+def veri_bugunun_mu(df) -> bool:
+    """Elimizdeki son mum BUGÜNE mi ait?
+
+    NEDEN VAR (17 Ağu 2026): kartlar 19:00'da "son seansta / son işlem gününde"
+    yazıyordu. Sebep: BIST 18:00'de kapanınca sistem "piyasa kapalı" deyip
+    veriyi ESKİ sayıyordu. Oysa o gün seans yapılmış, veri BUGÜNÜN verisiydi.
+    Abone haklı olarak "bugün neden demiyor, bu kadar robotik neden" dedi.
+    Doğru ölçüt kapalı/açık değil, SON MUMUN TARİHİ.
+    """
+    try:
+        import pytz as _pz
+        from datetime import datetime as _dt
+        _son = df.index[-1]
+        _son_d = _son.date() if hasattr(_son, "date") else None
+        _bugun = _dt.now(_pz.timezone("Europe/Istanbul")).date()
+        return _son_d is not None and _son_d == _bugun
+    except Exception:
+        return False
+
+
+def zaman_dili_notu(df) -> str:
+    """AI'ya "bugün mü, son seansta mı" diyeceğini SÖYLEYEN blok."""
+    try:
+        _son = df.index[-1]
+        _tarih = _son.strftime("%d.%m.%Y") if hasattr(_son, "strftime") else ""
+        _gunler = ["Pazartesi", "Salı", "Çarşamba", "Perşembe",
+                   "Cuma", "Cumartesi", "Pazar"]
+        _gun = _gunler[_son.weekday()] if hasattr(_son, "weekday") else ""
+    except Exception:
+        _tarih, _gun = "", ""
+
+    if veri_bugunun_mu(df):
+        return (
+            "\n⏰ ZAMAN DİLİ (BAĞLAYICI): Aşağıdaki TÜM veriler BUGÜNÜN seansına ait "
+            f"({_tarih} {_gun}). Seans tamamlandı, rakamlar kesinleşti.\n"
+            "   ✓ KULLAN: 'bugün', 'bugünkü seansta', 'günü ... liradan kapattı', "
+            "'bugün kapanışta'.\n"
+            "   ✗ YASAK: 'son seansta', 'son işlem gününde', 'geçen seans', 'dün'. "
+            "Bugünün verisini eski göstermek hem YANLIŞ hem robotik durur.\n"
+            "   ⚠️ TEKRAR SINIRI: zaman ifadesini kartın tamamında EN FAZLA İKİ kez kullan "
+            "(biri açılış, biri kapanış). Üçüncüsünde zaman belirtme, doğrudan bulguyu yaz.\n\n"
+        )
+    # Kapalı günde "son işlem gününde" DEME — o günün ADINI yaz ("Perşembe günü").
+    # Abone hangi güne baktığını bilsin; "son seansta" belirsiz ve robotik.
+    return (
+        f"\n⏰ ZAMAN DİLİ (BAĞLAYICI): Bugün seans YAPILMADI. Aşağıdaki TÜM veriler "
+        f"{_gun} günü ({_tarih}) yapılan seansa ait.\n"
+        f"   ✓ KULLAN — GÜN ADIYLA yaz: '{_gun} günü', '{_gun} kapanışında', "
+        f"'{_gun} seansında', '{_gun} gününü ... liradan kapattı'.\n"
+        f"   ✗ YASAK: 'bugün', 'bugünkü seansta' (bugün işlem olmadı) — VE AYRICA "
+        f"'son seansta', 'son işlem gününde', 'geçen seans', 'dün'. Bunlar belirsiz ve "
+        f"robotik; abone hangi güne baktığını bilsin diye GÜN ADINI yazıyoruz.\n"
+        f"   ⚠️ TEKRAR SINIRI: zaman ifadesini kartın tamamında EN FAZLA İKİ kez kullan "
+        f"(biri açılış, biri kapanış). Üçüncüsünde zaman belirtme, doğrudan bulguyu yaz.\n\n"
+    )
+
+
+def gunluk_degisim_pct(df, info=None) -> float:
+    """Günlük değişim yüzdesi — ANALİZİN DAYANDIĞI veriden hesaplanır.
+
+    NEDEN VAR (17 Ağu 2026, GLRMK vakası): yüzde, Yahoo'nun canlı
+    `previous_close` değerinden geliyordu; fiyat ise yerel kasadan (df).
+    İki kaynak aynı günü farklı kapatınca kart kendi kendisiyle çelişiyordu:
+    Yahoo dün 179.80 diyordu, kasa 179.00 → başlık "-%1.39" yazdı ama
+    analizin tamamı (ortalamalar, seviyeler, yorum) 177.30/179.00 = -%0.95
+    üzerine kuruluydu. Abone "fiyat doğru, yüzde yanlış, o yüzden yorum da
+    yanlış" diye yakaladı — haklıydı.
+
+    Kural: yüzde de fiyatla AYNI kasadan çıkar. df yetersizse (tek bar)
+    son çare olarak info'daki değere düşülür.
+    """
+    try:
+        _c = df["Close"].dropna()
+        if len(_c) >= 2:
+            _prev = float(_c.iloc[-2])
+            if _prev > 0:
+                return (float(_c.iloc[-1]) - _prev) / _prev * 100.0
+    except Exception:
+        pass
+    try:
+        return float((info or {}).get("day_change_pct", 0) or 0)
+    except Exception:
+        return 0.0
+
+
 # ─── PRICE ACTION (app.py'den aynen kopyalandı) ───────────────────────────────
 def detect_price_action_with_context(df: pd.DataFrame) -> tuple[str, str]:
     """
@@ -1660,6 +1745,20 @@ def compute_force_index_dual(df, span_short=2, span_long=13):
 # NOT: "güçlü tekrarı" gibi SAYIM kuralları prompt'ta çalışmıyor (LLM kendini sayamaz)
 # → ileride gerekirse deterministik post-pass'e bırakılır.
 LEAN_PROMPT_ENABLED = True
+# ─── ELITE İKİ BÖLÜMLÜ ÇIKTI AYRACI (17 Ağu 2026) ───────────────────────────
+# ELITE Görev 1 (derin analiz) + hemen altında SADE VERSİYON kartı tek Gemini
+# çağrısında üretilir. İki bölüm bu ayraçla ayrılır; smr_bot.format_ai_message
+# ayracı görüp çıktıyı İKİ AYRI Telegram mesajına böler (derin analiz zaten
+# ~3200 karakter — tek mesaja ikisi birden sığmaz, sondan kırpılırdı).
+ELITE_SADE_MARKER = "[[SADE]]"
+
+# Teknik kartta (aboneye giden görselin altındaki metin) gösterilen Destek 1 /
+# Direnç 1 değerleri burada saklanır. ELITE sade kartındaki "Kritik seviyeler"
+# AYNI iki sayı olmak zorunda — abone görselde 153.90 görüp analizde 152.40
+# okursa iki farklı sistem konuşuyor sanıyor. build_teknik_ozet yazar,
+# build_ai_prompt_gorev1 okur (get_analysis'te teknik kart ÖNCE üretilir).
+KART_SEVIYELERI = {}
+
 _LEAN_ANTITIK_RULE = """
 
 🚫 KALIP TİKİ YASAĞI (EN SON OKU — KRİTİK):
@@ -1874,6 +1973,48 @@ def _genel_ozet_verdict_sc(df, detail=False):
 
 
 # ─── AI PROMPT ÜRET ──────────────────────────────────────────────────────────
+# ── V2 GRAFİK FORMASYONU → BOT (10 Ağu 2026) — web terminali ile bot AYNI formasyonu konuşsun.
+# formasyon_v2 (fincan/tobo/kama/simetrik/üçgen) + aşama makinesini bota tek satır olarak enjekte eder.
+_V2_BOT_LABEL = {
+    "FİNCAN_KULP": "☕ Fincan-Kulp", "TOBO": "🧛 TOBO (Ters O-B-O)",
+    "YÜKSELEN_ÜÇGEN": "📐 Yükselen Üçgen", "ALÇALAN_ÜÇGEN": "📉 Alçalan Üçgen",
+    "SİMETRİK_ÜÇGEN": "🎯 Simetrik Üçgen",
+    "ALÇALAN_KAMA": "🔻 Alçalan Kama", "YÜKSELEN_KAMA": "🔺 Yükselen Kama",
+}
+
+
+def _v2_formasyon_txt(ticker: str, df: pd.DataFrame) -> str:
+    """Tek satır v2 grafik-formasyonu metni (web paneliyle aynı motor)."""
+    try:
+        import formasyon_v2 as _fv2b
+        _rep = _fv2b.analyze_formations(df, ticker=ticker, timeframe="1d")
+        _c = _rep.patterns[0] if (_rep and getattr(_rep, "patterns", None)) else None
+    except Exception:
+        _c = None
+    if _c is None:
+        return "belirgin grafik formasyonu yok"
+    _lbl = _V2_BOT_LABEL.get(_c.pattern, str(_c.pattern).replace('_', ' ').title())
+    _dist = abs(float(_c.metrics.get('distance_to_trigger_pct', 0.0)))
+    _dir = "boğa" if _c.direction == "bullish" else "ayı"
+    _prominent = _c.stage in ('KIRILIM_DOĞRULANDI', 'KIRILIM_ADAYI', 'YENİDEN_TEST', 'YAKIN')
+    if _c.stage == 'KIRILIM_DOĞRULANDI':
+        _st = "kırılım DOĞRULANDI"
+    elif _c.stage in ('KIRILIM_ADAYI', 'YENİDEN_TEST'):
+        _st = "kırılım bölgesinde"
+    elif _c.stage == 'YAKIN':
+        _st = f"kırılıma YAKIN (~%{_dist:.1f} kaldı)"
+    else:
+        _st = f"oluşuyor (~%{_dist:.1f} kaldı)"
+    _base = f"{_lbl} — {_st} ({_dir} yönlü)"
+    # NUDGE (11 Ağu 2026): formasyon kırılıma yakın/kırdıysa AI'ya "öne çıkar" direktifi göm.
+    # Oluşuyor/uzak ise sade bırak (gürültü yapma). Web paneliyle aynı öncelik mantığı.
+    if _prominent:
+        return (f"⚡ ÖNE ÇIKAN → {_base} · Bu, hissenin şu anki EN NET grafik kurulumu; "
+                f"yorumun merkezine al, boyun/sınır çizgisini + {_dir} yönünü ve geçersizlik "
+                f"seviyesini net söyle (aşama makinesi ölçtü, uydurma).")
+    return _base
+
+
 def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tuple:
     """Ortak veri bloğu — hem Görev 1 hem Görev 3 kullanır."""
     n      = len(df)
@@ -2361,6 +2502,8 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
             _vp_sm = calculate_full_volume_profile(_svd, lookback=20, bins=20)
             _sm_poc = float(_vp_sm['poc']); _sm_vah = float(_vp_sm['vah']); _sm_val = float(_vp_sm['val'])
             _sm_cum5 = float(_svd['Volume_Delta'].iloc[-5:].sum())
+            _sm_vol5 = float(df['Volume'].iloc[-5:].sum())
+            _sm_cum5_pct_signed = (_sm_cum5 / _sm_vol5 * 100) if _sm_vol5 > 0 else 0.0
             _sm_vapos = "ÜSTÜNDE" if curr > _sm_vah else ("ALTINDA" if curr < _sm_val else "İÇİNDE")
             _sm_title, _sm_desc = ict_core.smart_volume_title_desc(_sm_vapos, _sm_cum5, _sm_val, _sm_vah, rvol=rvol)
             sm_ozet_txt = f"{_sm_title} — {_sm_desc}"
@@ -2378,7 +2521,8 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
                     _sm_cum5, rvol,
                     _svd['Volume_Delta'].iloc[-5:].tolist(),
                     df['Close'].iloc[-6:].tolist(),
-                    vol_missing=False, karsi=_sm_karsi)
+                    vol_missing=False, karsi=_sm_karsi,
+                    cum_delta_pct=_sm_cum5_pct_signed)
                 if isinstance(_sm_ds, dict) and _sm_ds.get('satir'):
                     hacim_hukmu_txt = f"{_sm_ds['satir']} -> {_sm_ds['hukum']}"
             except Exception:
@@ -2501,7 +2645,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
             data_timestamp_txt = _last_bar.strftime("%d.%m.%Y")
     except Exception: pass
 
-    chg       = info.get("day_change_pct", 0)
+    chg       = gunluk_degisim_pct(df, info)   # tek kaynak: analizin df'i
     sign      = "+" if chg >= 0 else ""
     fiyat_str = f"{_fmt(curr)} ({sign}{chg:.2f}%)"
     clean     = ticker.replace(".IS", "").replace("-USD", "").replace("=F", "")
@@ -2567,6 +2711,40 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 
     # GENEL ÖZET 6-oy verdicti (13 Tem 2026 — app.py senkronu, V10)
     genel_verdict_txt = _genel_ozet_verdict_sc(df) or "(veri eksik)"
+    _genel_verdict_detail = _genel_ozet_verdict_sc(df, detail=True) or {}
+    _market_radar_321_txt = "(veri eksik)"
+    _smart_money_alignment_txt = "(veri eksik)"
+    try:
+        if _genel_verdict_detail:
+            _net_sc = int(_genel_verdict_detail.get("net", 0))
+            _radar_sc = int(round(max(0, min(100, 50.0 + (_net_sc / 8.0) * 50.0))))
+            _market_radar_321_txt = (
+                f"{_radar_sc}/100 (3–21g yön baskısı; 50 nötr; kazanma olasılığı değil)")
+            _sigs_sc = _genel_verdict_detail.get("sigs", {})
+            _fam1_sc = sum(int(_sigs_sc.get(k, 0) or 0)
+                           for k in ("hacim", "obv", "cmf"))
+            _fam2_sc = sum(int(_sigs_sc.get(k, 0) or 0)
+                           for k in ("yapi", "rsi", "mfi"))
+            _fam1_dir_sc = 1 if _fam1_sc > 0 else (-1 if _fam1_sc < 0 else 0)
+            _fam2_dir_sc = 1 if _fam2_sc > 0 else (-1 if _fam2_sc < 0 else 0)
+            if _fam1_dir_sc != 0 and _fam2_dir_sc != 0:
+                if _fam1_dir_sc == _fam2_dir_sc:
+                    _smart_money_alignment_txt = (
+                        "2/2 aynı yönde — akış ve yapı-zamanlama aileleri aynı yönü destekliyor; "
+                        "güven yüzdesi veya alım teyidi değildir")
+                else:
+                    _smart_money_alignment_txt = (
+                        "1/2 zıt yönde — akış ile yapı-zamanlama aileleri ayrışıyor; "
+                        "güven yüzdesi veya alım teyidi değildir")
+            elif _fam1_dir_sc != 0 or _fam2_dir_sc != 0:
+                _smart_money_alignment_txt = (
+                    "1/2 aile yön veriyor — diğer aile nötr; güven yüzdesi veya "
+                    "alım teyidi değildir")
+            else:
+                _smart_money_alignment_txt = (
+                    "0/2 belirgin yön yok — güven yüzdesi veya alım teyidi değildir")
+    except Exception:
+        pass
 
     # ══ ENDEKS MODU (17 Tem 2026) — hisseye-özel alanlar endekse GÖNDERİLMEZ ══
     # NEDEN VERİ SEVİYESİNDE: prompt'ta "endekste akıllı para/kurumsal alım yorumu
@@ -2584,8 +2762,9 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     _is_index = _clean_ix.startswith("X")
 
     # Endekse yaklaşık piyasa katılımı göstergesi KALIR: bileşenlerin kapanış×işlem adedi
-    # toplamından türetilir; resmi endeks cirosu değildir. Düşen sadece BAĞIL hacim (RVOL) ve akıllı
-    # para metrikleri, çünkü onlar "kurumlar mal topluyor" anlatısına zemin veriyor.
+    # toplamından türetilir; resmi endeks cirosu değildir. RVOL ve tekli-hisse akıllı para
+    # bloğu endekste yine DÜŞER; katılım okuması (katılım×yön) kullanıcı kararıyla "kurumsal
+    # katılım izleri / mal topluyor olabilir" dilini SADECE ortalama-üstü + yukarı-yön gününde açar.
     _ix_vol_line = ""
     if _is_index:
         try:
@@ -2598,15 +2777,36 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
                 if x >= 1e9:  return f"{x/1e9:.2f} milyar"
                 if x >= 1e6:  return f"{x/1e6:.0f} milyon"
                 return f"{x:,.0f}"
+            # Katılım × yön okuması (kullanıcı kararı, endeks modu): katılım ortalama üstü +
+            # yön yukarı → "kurumsal katılım izleri / akıllı para mal topluyor olabilir" dili.
+            # Yön aşağı veya katılım zayıfsa bu dil KULLANILMAZ (yanlış günde 'mal topluyor' demez).
+            _v_ratio_ix = (_v_last / _v_avg) if _v_avg > 0 else 1.0
+            _up_ix = False
+            try:
+                _cc_ix = df["Close"].astype(float)
+                _up_ix = (float(_cc_ix.iloc[-1]) >= float(_cc_ix.iloc[-6])) if len(_cc_ix) >= 6 \
+                         else (float(_cc_ix.iloc[-1]) >= float(_cc_ix.iloc[-2]))
+            except Exception:
+                _up_ix = False
+            if _v_ratio_ix >= 1.15 and _up_ix:
+                _ix_read = ("Katılım ortalamanın üzerinde ve yön yukarı — kurumsal bir katılım izleri var, "
+                            "akıllı para mal topluyor olabilir.")
+            elif _v_ratio_ix >= 1.15 and not _up_ix:
+                _ix_read = "Katılım ortalamanın üzerinde ama yön aşağı — kurumsal çıkış/dağıtım baskısı olabilir."
+            elif _v_ratio_ix <= 0.85:
+                _ix_read = "Katılım ortalamanın altında — belirgin kurumsal ilgi zayıf."
+            else:
+                _ix_read = "Katılım ortalamaya yakın — belirgin bir kurumsal yön yok."
             _ix_vol_line = (f"\n📦 HACİM\n• Yaklaşık piyasa katılımı: {_hf_ix(_v_last)} TL"
                             f" — 20 günlük yaklaşık ortalama {_hf_ix(_v_avg)} TL"
-                            f"\n  NOT: bu değer, eldeki bileşenlerin kapanış fiyatı × işlem adedi toplamından"
-                            f" türetilir; resmi endeks cirosu DEĞİLDİR. Tek bir kurumun"
-                            f" alım/satımı DEĞİLDİR. 'Kurumsal alım/mal toplama' göstergesi olarak"
-                            f" yorumlama; yalnızca yaklaşık piyasa katılımı göstergesidir."
+                            f"\n  {_ix_read}"
+                            f"\n• 3–21G PİYASA RADARI: {_market_radar_321_txt}"
+                            f"\n• AKILLI PARA UZLAŞISI: {_smart_money_alignment_txt}"
                             f"\n• GENEL ÖZET Verdicti: {genel_verdict_txt}")
         except Exception:
-            _ix_vol_line = f"\n📦 HACİM\n• GENEL ÖZET Verdicti: {genel_verdict_txt}"
+            _ix_vol_line = (f"\n📦 HACİM\n• 3–21G PİYASA RADARI: {_market_radar_321_txt}"
+                            f"\n• AKILLI PARA UZLAŞISI: {_smart_money_alignment_txt}"
+                            f"\n• GENEL ÖZET Verdicti: {genel_verdict_txt}")
 
     # ICT mikro-yapı (Order Block / FVG / bölge yaşı / EQH-EQL / Sweep) — endekste DÜŞER
     _ict_micro_block = "" if _is_index else f"""
@@ -2658,8 +2858,10 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • Hacim Kalitesi : {hacim_kal_txt}{rs_line}
 • Alıcı/Satıcı Eforu (UDVR): {udvr_txt}
 • Fiyat × Hacim Gücü (Force Index): {fi_txt}
+• AKILLI PARA UZLAŞISI: {_smart_money_alignment_txt}
 • GENEL ÖZET Verdicti: {genel_verdict_txt}{hazir_cumleler_block}"""
 
+    _v2_form_txt = _v2_formasyon_txt(ticker, df)  # web paneliyle aynı v2 grafik-formasyonu
     data_block = f"""═══════════════════════════════════════
 📊 {'ENDEKS' if _is_index else 'HİSSE'}: {ticker} | Fiyat: {fiyat_str}
 📅 Veri Tarihi: {data_timestamp_txt}
@@ -2690,6 +2892,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
 • Bollinger Band: {bb_txt}
 • VWAP(20G): {vwap_txt}
 • Piyasa Fazı: {faz_txt}
+• Grafik Formasyonu (v2): {_v2_form_txt}
 • Smart S/R: {smart_sr_txt}
 • Volume Profile HVN/LVN: {hvn_lvn_txt}{_akilli_para_block}
 💡 ICT SONUÇ: {ict.get('bottom_line', '-')}{_breakout_line}
@@ -2730,11 +2933,9 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         cp = float(c.iloc[-1])
         n  = len(c)
 
-        # Günlük değişim
-        if info and "day_change_pct" in info:
-            chg = float(info.get("day_change_pct") or 0)
-        else:
-            chg = ((float(c.iloc[-1]) / float(c.iloc[-2])) - 1) * 100 if n > 1 else 0.0
+        # Günlük değişim — kartın fiyatı df'ten geliyor, yüzdesi de df'ten gelmeli
+        # (bkz. gunluk_degisim_pct: Yahoo previous_close ile kasa ayrışabiliyor).
+        chg = gunluk_degisim_pct(df, info)
         chg_sign = "+" if chg >= 0 else ""
         chg_str  = f" {chg_sign}{chg:.2f}%"
 
@@ -3418,6 +3619,17 @@ def build_teknik_ozet(ticker: str, df: "pd.DataFrame | None" = None, ict: dict =
         except Exception as _e:
             log.debug(f"RS Gücü hesaplanamadı [{ticker}]: {_e}")
 
+        # ── SADE KART SEVİYE SENKRONU (17 Ağu 2026) ──────────────────────────
+        try:
+            KART_SEVIYELERI[ticker] = {
+                "sup1": fmt(_sup1_val), "sup1_lbl": _sup1_lbl,
+                "sup2": fmt(_sup2_val), "sup2_lbl": _sup2_lbl,
+                "res1": fmt(_res1_val), "res1_lbl": _res1_lbl,
+                "res2": fmt(_res2_val), "res2_lbl": _res2_lbl,
+            }
+        except Exception:
+            pass
+
         # ── ÇIKTI ────────────────────────────────────────────────────────────
         clean = ticker.replace('.IS', '').replace('-USD', '').replace('=F', '')
         lines = [
@@ -3541,13 +3753,13 @@ kendi cümlenle, sade Türkçe. Madde ekleme/çıkarma yok, sıra aynı.)
                 f"\n⛔ KRİTİK BAĞLAM — ÖNCE BUNU OKU: BUGÜN BIST KAPALI ({_today_lbl_bot}). "
                 f"Aşağıdaki TÜM hacim/delta/RVOL/OBV verileri SON İŞLEM GÜNÜNE aittir"
                 f"{f' ({_last_sess_bot})' if _last_sess_bot else ''}. "
-                f"'Bugün şu oldu' yazma — 'son işlem gününde...' veya 'son seansta...' diye ifade et."
+                f"Zaman dilini aşağıdaki ⏰ ZAMAN DİLİ bloğuna göre seç (o blok bağlayıcıdır)."
                 f"{_arefe_note_bot}\n\n"
             )
     except Exception:
         pass
 
-    return _bot_holiday_note + f"""*** SEN BİR ALGORİTMİK QUANT-RAPORTÖRSÜN ***
+    return _bot_holiday_note + zaman_dili_notu(df) + f"""*** SEN BİR ALGORİTMİK QUANT-RAPORTÖRSÜN ***
 ⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3200 karakteri KESİNLİKLE AŞMAYACAK — tek Telegram mesajına sığmalı.
 🎯 HEDEF ~2000 KARAKTER (bant: 1900–2300). İKİ TARAFLI SINIR, ikisine de uy:
    · ALT: 1800'ün altına düşme — kart cılız/kısır kalıyor, abone "bu kadar mı?" diyor.
@@ -3747,7 +3959,7 @@ NOT: VWAP "kurumların ortalama alım fiyatı" DEĞİL — istatistiksel hacim-a
 
 H) ENDEKS ANALİZ İSTİSNASI (XU100, XU030, XBANK, XHOLD, XUSIN, XGIDA vb.):
 × RVOL endekste anlamlı değildir — "RVOL 0.00x" veya "düşük RVOL" yazma; endeks için bu metrik atlanır.
-× Bireysel hisseye özgü jargon (kurumsal alım, mal topluyor, akıllı para emiyor) endeks için aşırı — "yaklaşık piyasa katılımı" tonu kullan.
+→ Endekste: HACİM satırındaki katılım okuması "kurumsal katılım izleri var, akıllı para mal topluyor olabilir" diyorsa bu dili kullanabilirsin (hedge'li, kesin dil değil). Okuma "yön aşağı / katılım zayıf / belirgin yön yok" diyorsa "mal topluyor / kurumsal alım" dilini KULLANMA — ham TL katılım rakamına ve verdicte sadık kal.
 × 52H konumu, MA dizilimi, VWAP, RSI, Z-Score endekste geçerli — bunları kullanmaya devam et.
 × Endekste "smart money OB" veya "kurumsal akümülasyon" gibi mikro-yapı yorumu YASAK — endeks toplam piyasanın aynası, bireysel kurum davranışı değil.
 
@@ -3865,7 +4077,7 @@ Veri bloğunda "🗣 HAZIR ALGORİTMA CÜMLELERİ" bölümü varsa: o satırlard
 
 *** GENEL ÖZET VERDİCTİ + VADE EŞLEŞTİRME (13 Tem 2026 — 600 hisse backtest) ***
 • "GENEL ÖZET Verdicti" satırı 6 oy sinyalinin (hacim/OBV/yapı/RSI/CMF/MFI) oylanmış özetidir — hacim/OBV/MFI/CMF akraba fiyat-hacim ailesindendir ("bağımsız" değil), yapı ve RSI ayrı eksenlerdir; backtest'te en isabetli ikili RSI+CMF çift ağırlıklıdır. Parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir — yorum güvenini buna göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiket hikayenin merkezine alınabilir; KARARSIZ/HAFİF etiketi büyük yön iddiasına ÇEVRİLMEZ.
-• VADE EŞLEŞTİRME (kritik): DÖNÜŞ sinyalleri (aşırı satım, dip görüntüsü, panik tepkisi) SADECE KISA VADEDE (~5 iş günü) çalışır — 10. günde avantaj erir; bunları "birkaç günlük tepki" çerçevesinde yaz, 2-4 haftalık hedefe bağlama. DEVAM sinyalleri (iki pencerede pozitif para akışı, güç teyitli aşırı alım, kalıcı alıcı baskısı) 10-20 günde büyür — 2-4 haftalık ana senaryo malzemesidir. İkisini aynı vadeye koyma; ikisi birden varsa vade ayrımını açıkça yaz.
+• VADE HİYERARŞİSİ (kritik): Ana karar vadesi 3–21 gündür. 5g kısa akış/tepkiyi, 20g kalıcılık ve teyidi, 50g ana yapıyı arka plan bağlamı olarak gösterir; 50g tahmin vadesi değildir ve 3–21g kararının yerine geçmez. DÖNÜŞ sinyalleri çoğunlukla ~5 iş gününde çalışır, 10. günde avantajı azalır. DEVAM sinyalleri 10–20 iş gününde büyür. 2–4 hafta ifadesi kullanma; 3 haftalık ana çerçeveyi koru.
 
 *** BREAKOUT ALERT REHBERİ (data_block'ta "🚀 BREAKOUT ALERT" satırı varsa) ***
 Range/bant tabanlı boundary (60-180g yatay bant tavanı) son barda **kapanış + hacim ≥ 1.5×** ile kırıldı.
@@ -4525,6 +4737,39 @@ def build_ai_prompt_gorev1(ticker: str, ict: dict, info: dict, df: pd.DataFrame)
     # KANIT KATMANI (19 Haz 2026 — app.py'den port, ELITE'e özel): güç tag + DB köprüsü
     _evidence_g1 = _evidence_block_g1(ticker, df)
 
+    # SADE VERSİYON başlık satırı (17 Ağu 2026) — "#PGSUS 151.70 (-%0.33)" biçimi.
+    # fiyat_str "151.70 (-0.33%)" verir; yüzde işareti sayının ÖNÜNE alınır.
+    # Kodda üretilir ki AI fiyatı/değişimi yeniden yazarken kaydırmasın.
+    _sade_baslik = f"#{clean_ticker} {fiyat_str}"
+    try:
+        _sp = fiyat_str.split(" (")
+        _p_txt = _sp[0].strip()
+        _c_txt = _sp[1].strip().rstrip(")").rstrip("%") if len(_sp) > 1 else ""
+        _c_sign = _c_txt[0] if _c_txt[:1] in ("+", "-") else "+"
+        _c_num = _c_txt.lstrip("+-")
+        if _c_num:
+            _sade_baslik = f"#{clean_ticker} {_p_txt} ({_c_sign}%{_c_num})"
+    except Exception:
+        pass
+
+    # Sade kartın "Kritik seviyeler" satırları — teknik kartla/görselle AYNI sayılar.
+    _sade_seviye_blok = ""
+    _lv = KART_SEVIYELERI.get(ticker)
+    if _lv:
+        _sade_seviye_blok = (
+            "\n⛔ 'Kritik seviyeler' İKİ SATIRI SABİTTİR — abonenin gördüğü teknik kart ve\n"
+            "   görselle birebir aynı olmak ZORUNDA. Kendi seviyeni koyma, yuvarlama:\n"
+            f"   ▲ satırını AYNEN şöyle yaz  →  ▲ {_lv['res1']} kırılırsa {_lv['res2']} direnci hedeflenir\n"
+            f"   ▼ satırı MUTLAKA {_lv['sup1']} ile başlar  →  ▼ {_lv['sup1']} altı [sonucu 3-6 kelimeyle yaz]\n"
+            f"   (kaynak: Direnç 1 {_lv['res1']} = {_lv['res1_lbl']} · Direnç 2 {_lv['res2']} = {_lv['res2_lbl']} ·\n"
+            f"    Destek 1 {_lv['sup1']} = {_lv['sup1_lbl']} · Destek 2 {_lv['sup2']} = {_lv['sup2_lbl']})\n"
+            "   ▲ satırındaki hedefi ATLAMAK YASAK — 'yukarı görünüm güçlenir' gibi hedefsiz\n"
+            f"   kaçamak cümle YAZMA; hedef {_lv['res2']} zaten ölçülmüş, onu yaz.\n"
+            f"   KAPANIŞ PARAGRAFINDA da bu dört sayı kullanılır: yukarı {_lv['res1']} → {_lv['res2']},\n"
+            f"   aşağı {_lv['sup1']} → {_lv['sup2']}. Kapanışta AŞAĞI kırılım için daha derin\n"
+            f"   seviyeyi ({_lv['sup2']}) MUTLAKA an — 'düşüş riski devam eder' deyip bırakma.\n"
+        )
+
     # ── BIST Kapalı Gün — AI'ya kritik bağlam notu (ELITE prompt başına) ──
     _bot_holiday_note_g1 = ""
     try:
@@ -4559,14 +4804,14 @@ def build_ai_prompt_gorev1(ticker: str, ict: dict, info: dict, df: pd.DataFrame)
                 f"\n⛔ KRİTİK BAĞLAM — ÖNCE BUNU OKU: BUGÜN BIST KAPALI ({_today_lbl_g1}). "
                 f"Aşağıdaki TÜM hacim/delta/RVOL/OBV/Smart Money verileri SON İŞLEM GÜNÜNE aittir"
                 f"{f' ({_last_sess_g1})' if _last_sess_g1 else ''}. "
-                f"'Bugün şu oldu' yazma — 'son işlem gününde...' veya 'son seansta...' diye ifade et. "
+                f"Zaman dilini aşağıdaki ⏰ ZAMAN DİLİ bloğuna göre seç (o blok bağlayıcıdır). "
                 f"Yarın seans açıldığında tablonun değişebileceğini analizinin bir yerinde kısaca hatırlat."
                 f"{_arefe_note_g1}\n\n"
             )
     except Exception:
         pass
 
-    return _bot_holiday_note_g1 + f"""
+    return _bot_holiday_note_g1 + zaman_dili_notu(df) + f"""
 ⚠️ UZUNLUK KURALI: Yanıtının tamamı (başlık dahil) 3200 karakteri KESİNLİKLE AŞMAYACAK — tek Telegram mesajına sığmalı. Her bölümü öz tut — 3 cümle yeterli.
 
 *** KİMLİĞİN ***
@@ -4692,7 +4937,7 @@ NOT: VWAP "kurumların ortalama alım fiyatı" DEĞİL — istatistiksel hacim-a
 
 H) ENDEKS ANALİZ İSTİSNASI (XU100, XU030, XBANK, XHOLD, XUSIN, XGIDA vb.):
 × RVOL endekste anlamlı değildir — "RVOL 0.00x" veya "düşük RVOL" yazma; endeks için bu metrik atlanır.
-× Bireysel hisseye özgü jargon (kurumsal alım, mal topluyor, akıllı para emiyor) endeks için aşırı — "yaklaşık piyasa katılımı" tonu kullan.
+→ Endekste: HACİM satırındaki katılım okuması "kurumsal katılım izleri var, akıllı para mal topluyor olabilir" diyorsa bu dili kullanabilirsin (hedge'li, kesin dil değil). Okuma "yön aşağı / katılım zayıf / belirgin yön yok" diyorsa "mal topluyor / kurumsal alım" dilini KULLANMA — ham TL katılım rakamına ve verdicte sadık kal.
 × 52H konumu, MA dizilimi, VWAP, RSI, Z-Score endekste geçerli — bunları kullanmaya devam et.
 × Endekste "smart money OB" veya "kurumsal akümülasyon" gibi mikro-yapı yorumu YASAK — endeks toplam piyasanın aynası, bireysel kurum davranışı değil.
 
@@ -4882,7 +5127,7 @@ Aşırıya kaçmadan, basit bir dilde yaz. Yatırımcıyı korkutmadan, umutland
 
 *** GENEL ÖZET VERDİCTİ + VADE EŞLEŞTİRME (13 Tem 2026 — 600 hisse backtest) ***
 • "GENEL ÖZET Verdicti" satırı 6 oy sinyalinin (hacim/OBV/yapı/RSI/CMF/MFI) oylanmış özetidir — hacim/OBV/MFI/CMF akraba fiyat-hacim ailesindendir ("bağımsız" değil), yapı ve RSI ayrı eksenlerdir; backtest'te en isabetli ikili RSI+CMF çift ağırlıklıdır. Parantezdeki "geçmiş karnesi" ÖLÇÜLMÜŞ değerdir — yorum güvenini buna göre ağırlıklandır: YUKARI ★/AŞAĞI ★ karneli etiket hikayenin merkezine alınabilir; KARARSIZ/HAFİF etiketi büyük yön iddiasına ÇEVRİLMEZ.
-• VADE EŞLEŞTİRME (kritik): DÖNÜŞ sinyalleri (aşırı satım, dip görüntüsü, panik tepkisi) SADECE KISA VADEDE (~5 iş günü) çalışır — 10. günde avantaj erir; bunları "birkaç günlük tepki" çerçevesinde yaz, 2-4 haftalık hedefe bağlama. DEVAM sinyalleri (iki pencerede pozitif para akışı, güç teyitli aşırı alım, kalıcı alıcı baskısı) 10-20 günde büyür — 2-4 haftalık ana senaryo malzemesidir. İkisini aynı vadeye koyma; ikisi birden varsa vade ayrımını açıkça yaz.
+• VADE HİYERARŞİSİ (kritik): Ana karar vadesi 3–21 gündür. 5g kısa akış/tepkiyi, 20g kalıcılık ve teyidi, 50g ana yapıyı arka plan bağlamı olarak gösterir; 50g tahmin vadesi değildir ve 3–21g kararının yerine geçmez. DÖNÜŞ sinyalleri çoğunlukla ~5 iş gününde çalışır, 10. günde avantajı azalır. DEVAM sinyalleri 10–20 iş gününde büyür. 2–4 hafta ifadesi kullanma; 3 haftalık ana çerçeveyi koru.
 
 *** BREAKOUT ALERT REHBERİ (data_block'ta "🚀 BREAKOUT ALERT" satırı varsa) ***
 Range/bant tabanlı boundary (60-180g yatay bant tavanı) son barda **kapanış + hacim ≥ 1.5×** ile kırıldı.
@@ -5072,8 +5317,125 @@ SMR-ELITE aboneleri için Detaylı Özel Analizdir. Eğitim amaçlıdır. Yatır
 Üçünden biri eksikse yanıtı tamamla — bu disclaimer cümlesi YASAL ZORUNLULUKTUR.
 
 *** ÇIKIŞ KURALI (KRİTİK — İHLAL EDERSEN GÖREV BAŞARISIZ) ***
-"#SmartMoneyRadar #{clean_ticker}" satırı YANITININ SON SATIRIDIR. DURURSUN.
-Bu satırdan SONRA HİÇBİR ŞEY YAZMA — boş satır, "═══", "KATMAN", "ÇIKIŞ-ÖNCESI", "İÇ DENETİM", "YASAKLI KELİME", "KARA LİSTE" YANITA KOPYALANMAZ.
+"#SmartMoneyRadar #{clean_ticker}" satırı BİRİNCİ BÖLÜMÜN (derin analiz) SON SATIRIDIR.
+Derin analize bu satırdan sonra HİÇBİR ŞEY EKLEME — "═══", "KATMAN", "ÇIKIŞ-ÖNCESI", "İÇ DENETİM", "YASAKLI KELİME", "KARA LİSTE" YANITA KOPYALANMAZ.
 Yukarıdaki tüm iç denetim blokları (6-KATMAN, GENİŞLETİLMİŞ KARA LİSTE F/G/H, UYDURMA YASAĞI, VWAP eşleştirme, ENDEKS istisnası) sadece senin için TALİMAT — analiz çıktısının BİR PARÇASI DEĞİL.
-Yanıtının başlangıcı: ana başlık. Yanıtının bitişi: hashtag satırı. Aradakiler analiz. Bu üçünün dışında hiçbir şey output edilemez.
+Birinci bölümün başlangıcı: ana başlık. Bitişi: hashtag satırı. Aradakiler analiz.
+Hashtag satırından SONRA yalnızca aşağıdaki İKİNCİ BÖLÜM gelir — başka hiçbir şey output edilemez.
+
+═══════════════════════════════════════════════════════════════════════
+📝 İKİNCİ BÖLÜM — SADE VERSİYON (ZORUNLU — DERİN ANALİZDEN HEMEN SONRA)
+═══════════════════════════════════════════════════════════════════════
+Hashtag satırını yazdıktan sonra ALT SATIRA, tek başına, AYNEN şu ayraç satırını yaz:
+[[SADE]]
+Ayraçtan sonra aşağıdaki SADE KART'ı yaz. Bu kart aboneye AYRI bir mesaj olarak gider.
+
+NE YAPIYORSUN: Yukarıdaki derin analizin, borsadan hiç anlamayan birine anlatılmış kısa hâli.
+Bu bir ÇEVİRİDİR — YENİ analiz DEĞİL. Yön, sayı, seviye, hedef, senaryo ve sonuç AYNEN korunur;
+sadece DİL sadeleşir. Üstte ne dediysen aynısını söyle, jargonsuz. Üstteki analizle çelişen tek
+bir cümle bile olmayacak.
+
+FORMAT (bu iskeleti bire bir kullan — başlıkları, okları ve satır sırasını değiştirme):
+
+{_sade_baslik} | [BU HİSSEYE VE BU SEANSA ÖZGÜ GERÇEK BİR İKİLEM SORUSU]
+
+[EN somut gelişme — TEK cümle: fiyat/seviye + hacim, mum veya aşırı alım/satım göstergesinden gerçekten baskın olan 1-2 veri. Zaman ifadesini ⏰ ZAMAN DİLİ bloğundan al.]
+
+Fiyatın altında çalışan sistem ne görüyor?
+
+🔹 Yapı: [ANA TRENDİ çıpa al — tek cümle. İçinde ya 200 günlük ortalamanın SEVİYESİ (veri bloğunda SMA200) ya da 52 haftalık konum YÜZDESİ geçecek. "tüm ortalamaların altında" gibi sayısız genel cümle YASAK]
+🔹 Akıllı para: [alıcı-satıcı baskısı, net alım/satım ağırlığı veya işlem ivmesi — tek cümle, İÇİNDE EN AZ İKİ SAYI (örn. "-0.208" ve "%54"). "para akışı eksi yönde" gibi sayısız cümle YASAK]
+🔹 Risk: [aynı tezi sınırlayan gerçek çelişki — tek cümle, içinde EN AZ BİR SAYI (endekse göre fark yüzdesi, hacim çarpanı, direnç seviyesi vb.). Gerçek risk yoksa ikinci bağımsız kanıtı yaz, boş madde bırakma]
+
+Kritik seviyeler:
+▲ [aşağıdaki ⛔ blokta verilen cümlenin AYNISI — hedef sayısı dahil]
+▼ [aşağıdaki ⛔ blokta verilen seviye + sonucu]
+{_sade_seviye_blok}
+
+[SADE KAPANIŞ PARAGRAFI — 4-6 kısa cümle, aşağıdaki 4. kurala göre]
+
+KURALLAR (SADE KART'a özel — istisnasız):
+1) BAŞLIK SATIRI: "{_sade_baslik}" kısmını AYNEN kopyala — fiyatı, yüzdeyi, işareti, biçimi
+   DEĞİŞTİRME. Sadece "|" işaretinden sonrasını sen yazarsın.
+2) İKİLEM SORUSU: kartın TEK izinli sorusudur (retorik soru yasağının tek istisnası).
+   Bugünkü gerçek çatışmadan doğar: "Dipte taban oluşumu mu, düşüş trendinin devamı mı?" /
+   "Direnç kırılır mı, tepe mi kuruluyor?" gibi. Tek tarafı bariz olan sahte ikilem KURMA,
+   boş "yukarı mı aşağı mı?" YAZMA.
+3) BAŞKA SORU YOK: kartın gövdesinde ve kapanışta soru cümlesi YASAK. Okuyucuya soru sorma —
+   "Sizce? / Karar sizde / Siz nasıl görüyorsunuz? / yorumlara yazın" gibi yanıt daveti
+   KESİNLİKLE YAZILMAZ. Bu kart sohbet çağrısı değil, aboneye verilen sade özettir.
+4) KAPANIŞ PARAGRAFI şu açılışlardan biriyle başlar: "Özetle dostlar," · "Sonuç olarak," ·
+   "Uzun lafın kısası," · "Kısaca dostlar," · "Özetle arkadaşlar," · "Sonuçta arkadaşlar,".
+   İçinde sırasıyla: (a) son kapanış ve hissenin genel konumu, (b) kısa vade ile orta/ana
+   trendin sade sentezi, (c) yukarı eşik aşılırsa NEREYE gidilebilir — HEDEF SAYISIYLA,
+   (d) aşağı eşik kırılırsa NEREYE inilebilir — DERİN SEVİYE SAYISIYLA. Hepsi düz konuşma
+   diliyle, her cümle TEK fikir. "bir miktar rahatlama görülebilir" / "düşüş riski devam
+   eder" gibi hedefsiz kapanış YASAK — iki yön de sayıyla biter.
+5) PARA BİRİMİ ZORUNLU: kapanış paragrafında seviyeleri birimiyle yaz — BIST hissesi/endeksi
+   için "151.70 liradan kapattı", "153.90 liranın üzerine". ABD hissesi veya kripto ise
+   "dolar". Çıplak sayı bırakma.
+6) HİSSENİN ADI: kapanışta "{clean_ticker}" kodunu ya da şirketin YAYGIN BİLİNEN kısa adını
+   kullanabilirsin; adından emin değilsen KODU yaz. Şirket adı UYDURMA.
+7) JARGON ÇEVİRİSİ (kartta çıplak gösterge adı YASAK):
+   OBV / birikimli hacim   → "paranın giriş-çıkış dengesi"
+   CMF                     → "alıcı-satıcı baskısı"
+   kümülatif delta         → "net alım/satım ağırlığı"
+   RSI                     → "aşırı alım/satım göstergesi"
+   OMI / kurumsal momentum → "büyük oyuncuların işlem ivmesi"
+   Z-Score                 → "normalden ne kadar sapmış"
+   divergence / uyumsuzluk → "fiyatla göstergenin ters yöne gitmesi"
+   displacement            → "sert/ani hamle"
+   5g / 20g penceresi      → "son 5 seans" / "son 20 seans"
+8) YASAK KELİMELER (geçerse o cümleyi baştan yaz): "pusula", "eksen", "profil ekseni",
+   "yanıltıcı okuma", "çift pencere", "emare", "konsolide", "nötr metrik", "okuması",
+   "YAML", "skor dökümü", açıklanmamış BÜYÜK HARF algoritma etiketi.
+9) SAYI SADAKATİ: kartta geçen HER sayı ya veri bloğunda ya da üstteki derin analizde
+   geçmiş olacak. Yeni seviye, yeni hedef, yeni yüzde UYDURMA.
+10) HUKUK: tavsiye dili YOK ("al / sat / bekle / izle / gir / çık" ve dolaylıları).
+    "-meli / -malı" eki YASAK. Koşullu konuş: "X aşılırsa Y görülebilir", "Z altında baskı sürer".
+11) EMOJİ: sadece 🔹 ▲ ▼ kullanılır. Başka emoji, hashtag yığını, ayraç çizgisi, disclaimer
+    satırı veya "SADE VERSİYON" başlığı YAZILMAZ — yasal satırı sistem kendisi ekler.
+12) UZUNLUK: toplam 130-190 kelime. Uzun paragraf, madde listesi, puanlama (8/10), alt-skor
+    dökümü YOK.
+13) HİSSEYİ ADIYLA AN — "Fiyat" / "Hisse" GENEL ÖZNE OLARAK YASAK:
+    ✗ "Fiyat 179.00 liranın altında seyrediyor"  ✗ "Hisse fiyatı ..."  ✗ "Hisse, endeksin gerisinde"
+    ✓ "Balsu 179.00 liranın altında seyrediyor"  ✓ "{clean_ticker} endeksin %10 gerisinde"
+    Şirketin YAYGIN BİLİNEN kısa adını kullan; adından emin değilsen "{clean_ticker}" kodunu yaz.
+    Adı her cümlede tekrarlama — kartta 2-3 kez yeter; gerisinde "şirket", "kâğıt" de veya
+    doğrudan fiille başla ("179.00'ın altında tutunuyor").
+    NOT: "fiyat" kelimesi bir SEVİYEYİ nitelerken serbesttir ("fiyat 153.90'ı geçerse");
+    yasak olan, hisseyi anlatırken onu ADSIZ bırakıp "Fiyat/Hisse" demek.
+14) ZAMAN İFADESİ: ⏰ ZAMAN DİLİ bloğuna harfiyen uy. Aynı zaman ifadesini kartta
+    İKİDEN FAZLA kullanma — "Son seansta ... Son seansta ... son işlem gününde" üçlemesi
+    robotik durur, abone bunu fark ediyor.
+
+ÖRNEK — sadece BİÇİMİ ve sadelik seviyesini öğren; içeriği, yönü ve sayıları ASLA kopyalama:
+#XXXXX 151.70 (-%0.33) | Dipte taban oluşumu mu, düşüş trendinin devamı mı?
+
+Bugün hacim 0.80x ile sakin seyrederken XXXXX 52 haftalık dip seviyesinin %2 üzerinde haftalık çekiç mumu oluşturdu.
+
+Fiyatın altında çalışan sistem ne görüyor?
+
+🔹 Yapı: XXXXX 52 haftalık bandın %3'lük dip bölgesinde tutunsa da 187.59'daki 200 günlük ortalama altında ana düşüş sürüyor.
+🔹 Akıllı para: Son 5 seansta net alım ağırlığı +%7.1 ile toparlanma arasa da 20 seanstaki alıcı-satıcı baskısı -0.197 ile negatif.
+🔹 Risk: Büyük oyuncuların işlem ivmesi -1.18 standart sapma ile zayıf; 153.90 direnci geçilmeden baskı bitmiş değil.
+
+Kritik seviyeler:
+▲ 153.90 kırılırsa 161.88 direnci hedeflenir
+▼ 148.40 altı ana düşüş yapısını derinleştirir
+
+Özetle dostlar, XXXXX günü 151.70 liradan kapattı ve yıllık bazda en ucuz fiyat seviyelerine yakın duruyor. Son 5 günde küçük çaplı alımlar gelse de orta vadede paranın giriş-çıkış dengesi zayıf ve genel düşüş trendi henüz bitmedi. Eğer fiyat 153.90 liranın üzerine çıkmayı başarırsa 161.88 liraya doğru bir toparlanma görebiliriz. Ancak 148.40 liranın altına inerse 147.06 lira seviyesine doğru düşüş riski devam eder.
+
+🚨 SON KONTROL (göndermeden önce tek tek say — biri bile tutmuyorsa DÜZELT):
+(1) "[[SADE]]" ayracı hashtag satırından hemen sonra tek başına duruyor mu?
+(2) Sade kartta okuyucuya sorulmuş bir soru KALDI mı? (başlıktaki ikilem hariç — o kalır)
+(3) ÜÇ 🔹 SATIRININ HER BİRİNDE en az bir SAYI var mı? Yoksa o satır sıfat yığınıdır,
+    veri bloğuna dön ve o maddenin rakamını bul, cümleyi baştan yaz.
+(4) ▲ satırında HEDEF sayısı var mı? "yukarı görünüm güçlenir" yazdıysan ihlal — düzelt.
+(5) Kapanış paragrafında hem yukarı hem aşağı için sayı var mı?
+(6) Aynı veriyi (hacim, ortalama, seviye) iki farklı satırda TEKRAR ettin mi? Ettiysen
+    ikincisini sil, yerine kullanılmamış bir kanıt koy. Her satır YENİ bilgi taşır.
+(7) "Son seansta" / "son işlem gününde" / "bugün" ifadesini KAÇ KEZ yazdın? İkiden
+    fazlaysa fazlalıkları sil — zaman belirtmeden doğrudan bulguyu yaz.
+(8) Cümlelere "Fiyat" veya "Hisse" diye mi başladın? Öyleyse hissenin adıyla değiştir.
 """

@@ -404,15 +404,22 @@ def compute_smart_money_split_scores(feature_dict: dict) -> dict:
         # (12 Haz Oturum 21) TEFAS + KAP + f_kurumsal_anchor skor katkıları KALDIRILDI
         # (TEFAS makro-rejim yasağı, KAP endpoint bloklu). Yabancı katkısı korundu.
         # MKK Yabancı
-        # (4 Tem 2026 karne) tek-gün f_yabanci_giris TERS çalışıyor (giris=1 → 10g ret
-        # -%9.05, n=102) → +6 katkısı KALDIRILDI. Puan sadece süreklilik (streak) veya
-        # giriş+streak kombinine verilir. Kolon scan_signals'a yazılmaya devam eder.
-        if f.get('f_yabanci_giris') == 1 and f.get('f_yabanci_streak') == 1:
-            struct_score += 10; struct_pos.append('Yabancı giriş + 3g+ süreklilik (kombin)')
-        elif f.get('f_yabanci_streak') == 1:
-            struct_score += 4; struct_pos.append('Yabancı 3+ gün üst üste artış')
+        # (13 Ağu 2026 karne — VERİYE HİZALA) tek-gün f_yabanci_giris ÜÇ koşuda da
+        # EN KÖTÜ bacak (giris=1 → 10g: 4 Tem -9.05 / 13 Ağu -1.71, hep negatif).
+        # Girişin streak'e EKLENMESİ puanı YÜKSELTMEZ → eski +10 kombin bonusu
+        # KALDIRILDI (giriş iyi bir şey eklemiyordu). Sadece süreklilik (streak)
+        # küçük oy alır. Streak KARARSIZ (yayılım +3.21→+0.27→+2.61 üç koşu) +
+        # size-confound var (çıkış bile baseline'dan iyi düşüyor = büyük/likit
+        # isim etkisi) → oy bilerek küçük. Kolon scan_signals'a yazılmaya devam eder.
+        if f.get('f_yabanci_streak') == 1:
+            struct_score += 4; struct_pos.append('Yabancı 3+ gün üst üste artış (süreklilik)')
+        # (13 Ağu 2026 — SİMETRİ) çıkış da tek-gün olay = giriş gibi güvenilmez.
+        # Karne: cikis=1 → 10g -0.37 vs baseline -1.55 → çıkış hisseleri baseline'dan
+        # DAHA AZ düşmüş (size-confound: listeye girmek = büyük/likit isim). Eski -8
+        # ağır cezası veriyle çelişiyordu → streak +4 ile simetrik küçük -4 oya indirildi
+        # (tamamen atmadık: yabancı net-satış listesi hâlâ küçük bir temkin oyu).
         if f.get('f_yabanci_cikis') == 1:
-            struct_score -= 8; struct_neg.append('Yabancı top-3 net satış listesinde')
+            struct_score -= 4; struct_neg.append('Yabancı top-3 net satış listesinde')
         # Relative OBV hesaplanır ve ayrı alanda raporlanır; bağımsız katkısı henüz
         # ölçülmediği için yapısal canlı skora ve pozitif/negatif oy listesine girmez.
         # POC mıknatıs / confluence (multi-TF = yapısal)
