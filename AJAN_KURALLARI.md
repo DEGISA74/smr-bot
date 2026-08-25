@@ -240,6 +240,12 @@ Değişmez kurallar:
 
 ## 11. İŞ BİTİRME KONTROL LİSTESİ
 
+**Ne zaman:** iş BİTİNCE — kod değiştirmediysen oturum başında koşmak zorunlu
+değil. Yine de yararlı: değiştirmeden önce bir kez koşarsan, sonraki sonucu
+neyle kıyaslayacağını bilirsin (bugünün mü, senden önceki durumun mu).
+Denetim bir bulgu verirse **önce oku, düzeltmeye atlama** — `_hesap_denetimi.py`
+içindeki BEYAZ_LISTE'de gerekçesiyle işaretlenmiş bilinen yanlış alarmlar var.
+
 Bir işi "bitti" demeden önce:
 
 - [ ] Kod çalıştırıldı, **çıktı görüldü** (sadece okunmadı)
