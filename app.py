@@ -58,6 +58,7 @@ import ekran_v2     # 23 Tem 2026 — 🧪 YENİ EKRAN DENEMESİ (kapalı bar; m
 import formasyon_core  # 21 Tem 2026 — yaşam döngüsü rozeti (stage_badge tek kaynak)
 import formasyon_v2_app  # 25 Tem 2026 — yalnız Formasyon Grafiği için V2 uyum katmanı
 import cizgi_yapi  # 20 Ağu 2026 — üçgen/kama ZARF hattı (regresyon değil); yalnız kutu+popup, skora bağlı DEĞİL
+import pusula_engine  # 24 Ağu 2026 — Piyasa Pusulası anlatı motoru (SADECE EKRAN; ölçülmemiş → AI/skor bağlantısı yok, 25 Ağu)
 import patron_db_guard
 from stp_uyanis_core import calculate_stp_uyanis_status
 from analysis_core import (_risk_profile, get_active_scanner_tiers, _scanner_setup_strength,
@@ -4903,12 +4904,13 @@ def render_synthetic_sentiment_panel(data):
     current_price = info.get('price', 0) if info else 0
     
     header_color = "#3b82f6" 
+    _cp_header_str = (f"{int(current_price):,}".replace(",", ".") if current_price >= 1000 else f"{current_price:.2f}")
     st.markdown(f"""
     <div class="info-card" style="border-top: 3px solid {header_color}; margin-bottom:15px;">
         <div class="info-header" style="color:#38bdf8; display:flex; justify-content:space-between; align-items:center;">
             <span style="font-size:1.1rem;">🌊 Para Akış İvmesi & Fiyat Dengesi: {display_ticker}</span>
             <span style="font-family:'JetBrains Mono'; font-weight:700; color:#f1f5f9; background:rgba(56,189,248,0.05); padding:2px 8px; border-radius:4px; font-size:1.25rem;">
-                {current_price:.2f}
+                {_cp_header_str}
             </span>
         </div>
     </div>
@@ -5012,7 +5014,7 @@ def render_synthetic_sentiment_panel(data):
                     _layers += [_ring_outer, _ring_inner, _ring_text]
         except Exception:
             pass
-        st.altair_chart(alt.layer(*_layers).resolve_scale(y='independent').properties(height=280, title=alt.TitleParams(f"Momentum — {display_ticker}", fontSize=14, color="#38bdf8")), width='stretch')
+        st.altair_chart(alt.layer(*_layers).resolve_scale(y='independent').properties(height=280, title=alt.TitleParams(f"🌊 Para Akış İvmesi & Fiyat — {display_ticker}", fontSize=14, color="#38bdf8")), width='stretch')
     with c2:
         _ymin2 = min(data['STP'].min(), data['Price'].min()) * 0.999
         _ymax2 = max(data['STP'].max(), data['Price'].max()) * 1.001
@@ -11325,7 +11327,7 @@ def render_roadmap_8_panel(ticker):
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;'
         f'padding-bottom:4px;border-bottom:1px solid rgba(100,116,139,0.18);">'
         f'<span style="font-size:0.7rem;font-weight:800;color:#64748b;letter-spacing:0.04em;'
-        f'text-transform:uppercase;" title="Yol Haritası 5 alt faktörünün ağırlıklı sentezi — Master Skor\'dan farklıdır, destekleyici alt-skor olarak okuyun.">🗺 Yol Haritası Skoru <span style="opacity:0.5;font-size:0.6rem;">(alt-skor)</span></span>'
+        f'text-transform:uppercase;" title="Yol Haritası 5 alt faktörünün ağırlıklı sentezi — Zamanlama ve Risk olgunluğunu ölçer.">🗺 Yol Haritası <span style="color:#38bdf8;font-size:0.58rem;font-weight:800;">[ZAMANLAMA & RİSK]</span></span>'
         f'<span style="font-size:0.7rem;font-weight:800;color:{_comp_color};">{_comp_decision}</span>'
         f'</div>'
         f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">'
@@ -11357,37 +11359,49 @@ def render_roadmap_8_panel(ticker):
         else:  # KARARSIZ
             _mtf_bg_rgb, _mtf_brd = "234,179,8", "#ca8a04"  # amber
 
-        # Yön çipi — yuvarlak, soft arkaplanlı, modern görünüm
-        def _mtf_chip(sig):
+        _status_pill = _mtf.get("status_pill", f"{_mtf_dom} %{_mtf_pct}")
+        _status_color = _mtf.get("status_color", _mtf_brd)
+        _diag_text = _mtf.get("diagnosis_text", "")
+        _tf_scores = _mtf.get("tf_scores", {})
+
+        # Yön çipi — kurumsal hap rozet (Pill)
+        def _mtf_chip(sig, is_vol=False):
             if sig > 0:
-                return ('<div style="display:inline-flex;align-items:center;justify-content:center;'
-                        'width:20px;height:20px;border-radius:50%;'
-                        'background:rgba(22,163,74,0.16);color:#16a34a;'
-                        'font-weight:800;font-size:0.82rem;line-height:1;">↑</div>')
+                _txt = "● YOĞUN" if is_vol else "● BOĞA"
+                return (f"<span style='background:rgba(34,197,94,0.16);color:#22c55e;"
+                        f"border:1px solid rgba(34,197,94,0.35);padding:1px 5px;border-radius:10px;"
+                        f"font-size:0.58rem;font-weight:800;white-space:nowrap;'>{_txt}</span>")
             if sig < 0:
-                return ('<div style="display:inline-flex;align-items:center;justify-content:center;'
-                        'width:20px;height:20px;border-radius:50%;'
-                        'background:rgba(248,113,113,0.16);color:#f87171;'
-                        'font-weight:800;font-size:0.82rem;line-height:1;">↓</div>')
-            return ('<div style="display:inline-flex;align-items:center;justify-content:center;'
-                    'width:20px;height:20px;border-radius:50%;'
-                    'background:rgba(148,163,184,0.14);color:#94a3b8;'
-                    'font-weight:700;font-size:0.74rem;line-height:1;">≈</div>')
+                _txt = "● SEYREK" if is_vol else "● AYI"
+                return (f"<span style='background:rgba(239,68,68,0.16);color:#ef4444;"
+                        f"border:1px solid rgba(239,68,68,0.35);padding:1px 5px;border-radius:10px;"
+                        f"font-size:0.58rem;font-weight:800;white-space:nowrap;'>{_txt}</span>")
+            _txt = "○ NORMAL" if is_vol else "○ NÖTR"
+            return (f"<span style='background:rgba(148,163,184,0.12);color:#94a3b8;"
+                    f"border:1px solid rgba(148,163,184,0.25);padding:1px 5px;border-radius:10px;"
+                    f"font-size:0.58rem;font-weight:700;white-space:nowrap;'>{_txt}</span>")
 
         # Grid: 5 sütun (label + 4 vade)
         _tfs   = _mtf['timeframes']
         _ncol  = len(_tfs)
-        _grid_cols = "1.15fr " + " ".join(["1fr"] * _ncol)
+        _grid_cols = "1fr " + " ".join(["1fr"] * _ncol)
         _items = []
+
+        _tf_subtitles = {
+            "4H": ("4S", "Taktik"),
+            "Günlük": ("1G", "Ana Yön"),
+            "Haftalık": ("1H", "Resim"),
+            "Aylık": ("1A", "Makro")
+        }
 
         # Üst sıra: boş köşe + timeframe başlıkları (subtle border-bottom)
         _items.append('<div></div>')
         for tf in _tfs:
+            _main_tf, _sub_tf = _tf_subtitles.get(tf, (tf, ""))
             _items.append(
-                f'<div style="font-size:0.6rem;font-weight:700;color:#64748b;'
-                f'text-align:center;padding:2px 0 5px 0;'
-                f'letter-spacing:0.05em;text-transform:uppercase;'
-                f'border-bottom:1px solid rgba(100,116,139,0.22);">{tf}</div>'
+                f"<div style='font-size:0.64rem;font-weight:800;color:#f1f5f9;"
+                f"text-align:center;padding:2px 0 3px 0;letter-spacing:0.02em;border-bottom:1px solid rgba(100,116,139,0.22);'>"
+                f"{_main_tf} <span style='font-size:0.50rem;color:#64748b;font-weight:600;'>({_sub_tf})</span></div>"
             )
 
         # 3 indicator satırı (Trend, Momentum, Hacim)
@@ -11395,44 +11409,55 @@ def render_roadmap_8_panel(ticker):
         for i, ind in enumerate(["trend", "momentum", "hacim"]):
             _sep = "border-top:1px dashed rgba(100,116,139,0.12);" if i > 0 else ""
             _items.append(
-                f'<div style="font-size:0.66rem;font-weight:700;color:#64748b;'
-                f'text-transform:uppercase;letter-spacing:0.03em;'
-                f'padding:6px 6px 6px 0;{_sep}">{_ind_labels[ind]}</div>'
+                f"<div style='font-size:0.65rem;font-weight:700;color:#94a3b8;"
+                f"text-transform:uppercase;letter-spacing:0.03em;padding:4px 4px 4px 0;{_sep}'>{_ind_labels[ind]}</div>"
             )
             for tf in _tfs:
+                _is_v = (ind == "hacim")
                 _items.append(
-                    f'<div style="text-align:center;padding:5px 0;{_sep}">'
-                    f'{_mtf_chip(_mtf["matrix"][tf].get(ind, 0))}</div>'
+                    f"<div style='text-align:center;padding:3px 0;{_sep}'>"
+                    f"{_mtf_chip(_mtf['matrix'][tf].get(ind, 0), is_vol=_is_v)}</div>"
                 )
+
+        # Vade Güç Satırı (Her vadenin net skoru)
+        _items.append(
+            f"<div style='font-size:0.60rem;font-weight:800;color:#64748b;"
+            f"text-transform:uppercase;letter-spacing:0.04em;padding:4px 4px 2px 0;"
+            f"border-top:1px solid rgba(100,116,139,0.18);'>GÜÇ</div>"
+        )
+        for tf in _tfs:
+            _ts = _tf_scores.get(tf, {})
+            _tp = _ts.get("pct", 50)
+            _td = _ts.get("dominant", "NÖTR")
+            _tc = "#22c55e" if _td == "YUKARI" else ("#ef4444" if _td == "AŞAĞI" else "#94a3b8")
+            _items.append(
+                f"<div style='text-align:center;padding:4px 0 2px 0;border-top:1px solid rgba(100,116,139,0.18);"
+                f"font-family:\"JetBrains Mono\",monospace;font-size:0.62rem;font-weight:800;color:{_tc};'>%{_tp}</div>"
+            )
 
         _grid_html_body = "".join(_items)
 
         mtf_card_html = (
-            f'<div style="background:rgba({_mtf_bg_rgb},0.08);border-left:3px solid {_mtf_brd};'
-            f'border-radius:5px;padding:6px 9px;">'
-            # Header (Composite ile aynı tarz: uppercase başlık + sağda skor)
-            f'<div style="display:flex;justify-content:space-between;align-items:center;'
-            f'margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid rgba(100,116,139,0.18);">'
-            f'<span style="font-size:0.7rem;font-weight:800;color:#64748b;letter-spacing:0.04em;'
-            f'text-transform:uppercase;">📐 Vade Uyumu (MTF)</span>'
-            f'<span style="font-size:0.7rem;font-weight:800;color:{_mtf_brd};">'
-            f'{_mtf_dom} %{_mtf_pct}</span>'
-            f'</div>'
+            f"<div style='background:rgba({_mtf_bg_rgb},0.08);border-left:3px solid {_mtf_brd};"
+            f"border-radius:5px;padding:6px 9px;'>"
+            # Header (Yeni durum teşhisi rozetiyle)
+            f"<div style='display:flex;justify-content:space-between;align-items:center;"
+            f"margin-bottom:5px;padding-bottom:4px;border-bottom:1px solid rgba(100,116,139,0.18);'>"
+            f"<span style='font-size:0.7rem;font-weight:800;color:#64748b;letter-spacing:0.04em;"
+            f"text-transform:uppercase;'>📐 Vade Uyumu (MTF)</span>"
+            f"<span style='font-size:0.62rem;font-weight:800;color:{_status_color};background:{_status_color}18;"
+            f"border:1px solid {_status_color}44;padding:1px 7px;border-radius:10px;white-space:nowrap;'>"
+            f"{_status_pill}</span>"
+            f"</div>"
             # Grid body
-            f'<div style="display:grid;grid-template-columns:{_grid_cols};gap:0 6px;align-items:center;">'
-            f'{_grid_html_body}'
-            f'</div>'
-            # Footer mini özet
-            f'<div style="font-size:0.6rem;color:#94a3b8;margin-top:5px;'
-            f'padding-top:4px;border-top:1px dashed rgba(100,116,139,0.18);'
-            f'display:flex;gap:8px;justify-content:center;">'
-            f'<span style="color:#16a34a;font-weight:700;">{_mtf["bull_cnt"]} ↑</span>'
-            f'<span style="opacity:0.4;">·</span>'
-            f'<span style="color:#f87171;font-weight:700;">{_mtf["bear_cnt"]} ↓</span>'
-            f'<span style="opacity:0.4;">·</span>'
-            f'<span style="color:#94a3b8;font-weight:700;">{_mtf["total"] - _mtf["bull_cnt"] - _mtf["bear_cnt"]} ≈</span>'
-            f'</div>'
-            f'</div>'
+            f"<div style='display:grid;grid-template-columns:{_grid_cols};gap:0 4px;align-items:center;'>"
+            f"{_grid_html_body}"
+            f"</div>"
+            # Footer: Kurumsal Tercüme Cümlesi
+            f"<div style='font-size:0.60rem;color:#94a3b8;margin-top:5px;padding-top:4px;"
+            f"border-top:1px dashed rgba(100,116,139,0.18);line-height:1.35;'>"
+            f"<b style='color:#38bdf8;'>💡 Not:</b> {_diag_text}</div>"
+            f"</div>"
         )
     else:
         mtf_card_html = (
@@ -12543,11 +12568,11 @@ def _render_genel_ozet_panel():
                 _dom_n      = max(_gs_up, _gs_dn)
                 # ER kurulum kalitesi — mini progress bar + skor
                 if _lr_score is not None:
-                    _lr_field_lbl = ("PİYASA RADARI <span style='font-size:0.5rem;opacity:0.7;'>3-21gün</span>" if
+                    _lr_field_lbl = ("PİYASA RADARI <span style='color:#38bdf8;font-size:0.55rem;font-weight:800;'>[YAPISAL SAĞLIK]</span>" if
                                      (_ticker.upper().startswith(("XU", "XB", "XT", "XY", "^"))
                                       or _ticker.upper().endswith("=F")
                                       or "-USD" in _ticker.upper())
-                                     else "ER KURULUM KALİTESİ")
+                                     else "ER KURULUM KALİTESİ <span style='color:#38bdf8;font-size:0.55rem;font-weight:800;'>[YAPISAL SAĞLIK]</span>")
                     _lr_bar_html = (
                         f"<span style='display:inline-block;width:42px;height:5px;background:#1e293b;"
                         f"border-radius:3px;position:relative;margin-right:5px;vertical-align:middle;'>"
@@ -12910,6 +12935,30 @@ def _render_genel_ozet_panel():
                             _yapi_expl = ("Son dip öncekinden düşük (LL) — satıcılar baskın, "
                                           "aşağı kırılım var ama henüz alçak tepe (LH) teyidi yok")
                             _yapi_short = "LL"
+
+                        # 25 Ağu 2026 — Akıllı Konsolidasyon Teşhisi (Karışık/Yön belirsiz yanılgısını önler)
+                        if _yapi_lbl == "Karışık" and len(_gs_df) >= 20:
+                            _c_now = float(_gs_df['Close'].iloc[-1])
+                            _sma50_val = float(_gs_df['Close'].rolling(min(50, len(_gs_df))).mean().iloc[-1])
+                            _h20 = float(_gs_df['High'].tail(20).max())
+                            _l20 = float(_gs_df['Low'].tail(20).min())
+                            _rng20 = (_h20 - _l20) or 1.0
+                            _pos20 = (_c_now - _l20) / _rng20
+                            if _c_now >= _sma50_val and _pos20 >= 0.60:
+                                _yapi_lbl = "Konsolidasyon ⏸"
+                                _yapi_expl = "Zirve bandında yatay denge arayışı — ana trend üstünde sağlıklı sindirme"
+                                _yapi_short = "Zirve Denge"
+                                _yapi_clr = "#38bdf8"
+                            elif _c_now >= _sma50_val:
+                                _yapi_lbl = "Yatay Range ⏸"
+                                _yapi_expl = "50 SMA üzerinde bant içi denge — yön için kırılım bekleniyor"
+                                _yapi_short = "Yatay"
+                                _yapi_clr = _gs_neu
+                            else:
+                                _yapi_lbl = "Dip Arayışı ⏸"
+                                _yapi_expl = "50 SMA altında taban arayışı — yön için dip teyidi bekleniyor"
+                                _yapi_short = "Taban"
+                                _yapi_clr = _gs_dn_clr
                 except Exception:
                     pass
 
@@ -12944,21 +12993,39 @@ def _render_genel_ozet_panel():
                             _mom_act = "düştü"
                         else:
                             _mom_act = "değişmedi"
+                        # Para akışı teyidi (CMF / Akış Uyumu)
+                        _cmf_val = 0.0
+                        try:
+                            _cmf_s = compute_cmf(_gs_df, 20)
+                            _cmf_val = float(_cmf_s.iloc[-1]) if _cmf_s is not None and len(_cmf_s) > 0 else 0.0
+                        except Exception:
+                            pass
+
                         if _rsi_dlt > 10 and _rsi_n < 50:
                             _mom_lbl = "Sert dönüş ↗↗"; _mom_clr = _gs_up_clr
+                            _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act}"
                         elif _rsi_dlt > 5 and _rsi_n < 50:
                             _mom_lbl = "Toparlanma ↗"; _mom_clr = _gs_up_clr
+                            _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act}"
                         elif _rsi_dlt > 5 and _rsi_n >= 50:
-                            _mom_lbl = "Trend hızlanıyor ↑"; _mom_clr = _gs_up_clr
+                            if _cmf_val < -0.02:
+                                _mom_lbl = "Fiyat Hızlı / Akış Zayıf ⚠"; _mom_clr = "#f59e0b"
+                                _mom_expl = f"RSI +{_rsi_dlt:.1f} yükseldi ama CMF ({_cmf_val:.2f}) para çıkışında — uyumsuzluk riski"
+                            else:
+                                _mom_lbl = "Trend hızlanıyor ↑"; _mom_clr = _gs_up_clr
+                                _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act} (Para akışıyla uyumlu)"
                         elif _rsi_dlt < -10 and _rsi_n > 60:
                             _mom_lbl = "Tepe geri çekilme ⤵"; _mom_clr = _gs_dn_clr
+                            _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act}"
                         elif _rsi_dlt < -5 and _rsi_n > 50:
                             _mom_lbl = "Yavaşlıyor ↘"; _mom_clr = _gs_dn_clr
+                            _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act}"
                         elif _rsi_dlt < -5 and _rsi_n <= 50:
                             _mom_lbl = "Aşağı ivme ↓↓"; _mom_clr = _gs_dn_clr
+                            _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act}"
                         else:
                             _mom_lbl = "Yatay →"; _mom_clr = _gs_neu
-                        _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act}"
+                            _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act}"
                 except Exception:
                     pass
 
@@ -13341,11 +13408,8 @@ def _render_genel_ozet_panel():
                             _drng         = _rng_pos_pct - _rng_prev_pct
 
                             # Sade açıklama: 20G önce → 5G önce → bugün yolculuk
-                            _rng_base = (f"Son 20 günün dip-tepe aralığında konum "
-                                         f"(0 = en dip, 100 = en tepe). "
-                                         f"⊙ 20g önce %{_rng_20g_pct:.0f} → "
-                                         f"○ 5g önce %{_rng_prev_pct:.0f} → "
-                                         f"● bugün %{_rng_pos_pct:.0f}")
+                            _rng_base = (f"20G dip-tepe aralığında %{_rng_pos_pct:.0f} "
+                                         f"(5G: %{_rng_prev_pct:.0f} · 20G: %{_rng_20g_pct:.0f})")
                             if _rng_pos_pct < 20 and _rng_prev_pct < 20:
                                 _rng_lbl  = f"%{_rng_pos_pct:.0f} · Dipte tutunma"; _rng_clr = _gs_dn_clr
                                 _rng_expl = f"{_rng_base} — dipte sıkışmış, satıcı baskın"
@@ -13422,59 +13486,41 @@ def _render_genel_ozet_panel():
                     except Exception:
                         pass
 
-                    # SATIR 2: tam genişlik bar — 3 işaret (20G ⊙ alt · 5G ○ üst · bugün ● bar)
-                    # 20G önce → 5G önce → bugün: fiyat yolculuğu görsel
-                    _prev_mark_clr = "#cbd5e1"   # 5G — bright slate (yakın geçmiş)
-                    _20g_mark_clr  = "#64748b"   # 20G — dim slate (uzak geçmiş)
-
-                    # 5G etiketi (üstte)
-                    _5g_side = "right" if _rng_prev_pct < 85 else "left"
-                    if _5g_side == "right":
-                        _5g_label_html = (f"<span style='position:absolute;left:calc({_rng_prev_pct:.0f}% + 7px);top:-15px;"
-                                          f"font-size:0.58rem;font-weight:800;color:{_prev_mark_clr};"
-                                          f"letter-spacing:0.04em;white-space:nowrap;line-height:1;'>5G</span>")
-                    else:
-                        _5g_label_html = (f"<span style='position:absolute;left:calc({_rng_prev_pct:.0f}% - 7px);top:-15px;"
-                                          f"font-size:0.58rem;font-weight:800;color:{_prev_mark_clr};"
-                                          f"letter-spacing:0.04em;white-space:nowrap;line-height:1;"
-                                          f"transform:translateX(-100%);'>5G</span>")
-
-                    # 20G etiketi (altta)
-                    _20g_side = "right" if (_rng_20g_pct or 0) < 85 else "left"
-                    if _20g_side == "right":
-                        _20g_label_html = (f"<span style='position:absolute;left:calc({_rng_20g_pct:.0f}% + 7px);top:9px;"
-                                           f"font-size:0.58rem;font-weight:800;color:{_20g_mark_clr};"
-                                           f"letter-spacing:0.04em;white-space:nowrap;line-height:1;'>20G</span>")
-                    else:
-                        _20g_label_html = (f"<span style='position:absolute;left:calc({_rng_20g_pct:.0f}% - 7px);top:9px;"
-                                           f"font-size:0.58rem;font-weight:800;color:{_20g_mark_clr};"
-                                           f"letter-spacing:0.04em;white-space:nowrap;line-height:1;"
-                                           f"transform:translateX(-100%);'>20G</span>")
+                    # SATIR 2: tam genişlik bar — temiz, çakışmasız rozet ve hat
+                    _prev_mark_clr = "#cbd5e1"   # 5G — bright slate
+                    _20g_mark_clr  = "#64748b"   # 20G — dim slate
 
                     _bottom_bar_html = (
-                        f"<div style='display:flex;align-items:center;gap:6px;margin-top:14px;margin-bottom:10px;'>"
+                        f"<div style='margin-top:10px;margin-bottom:6px;'>"
+                        f"<div style='display:flex;align-items:center;gap:6px;'>"
                         f"<span style='font-size:0.58rem;color:#64748b;font-weight:700;flex-shrink:0;'>0</span>"
-                        f"<span style='flex:1;display:block;height:5px;background:#1e293b;"
+                        f"<span style='flex:1;display:block;height:6px;background:#1e293b;"
                         f"border-radius:3px;position:relative;'>"
-                        # 5G hollow ring üstte
-                        f"<span style='position:absolute;left:{_rng_prev_pct:.0f}%;top:-9px;"
-                        f"width:10px;height:10px;border-radius:50%;background:#0f172a;"
-                        f"border:1.5px solid {_prev_mark_clr};"
-                        f"transform:translateX(-50%);' title='5 gün önce: %{_rng_prev_pct:.0f}'></span>"
-                        f"{_5g_label_html}"
-                        # 20G hollow ring altta (daha küçük + soluk)
-                        f"<span style='position:absolute;left:{_rng_20g_pct:.0f}%;top:4px;"
-                        f"width:8px;height:8px;border-radius:50%;background:#0f172a;"
+                        # 20G hollow ring
+                        f"<span style='position:absolute;left:{_rng_20g_pct:.0f}%;top:-3px;"
+                        f"width:12px;height:12px;border-radius:50%;background:#0f172a;"
                         f"border:1.5px solid {_20g_mark_clr};"
                         f"transform:translateX(-50%);' title='20 gün önce: %{_rng_20g_pct:.0f}'></span>"
-                        f"{_20g_label_html}"
-                        # Bugün solid dot, bar üzerinde
-                        f"<span style='position:absolute;left:{_rng_pos_pct:.0f}%;top:-3px;"
-                        f"width:11px;height:11px;border-radius:50%;background:{_rng_clr};"
-                        f"transform:translateX(-50%);box-shadow:0 0 5px {_rng_clr};"
+                        # 5G hollow ring
+                        f"<span style='position:absolute;left:{_rng_prev_pct:.0f}%;top:-3px;"
+                        f"width:12px;height:12px;border-radius:50%;background:#0f172a;"
+                        f"border:2px solid {_prev_mark_clr};"
+                        f"transform:translateX(-50%);' title='5 gün önce: %{_rng_prev_pct:.0f}'></span>"
+                        # Bugün solid dot
+                        f"<span style='position:absolute;left:{_rng_pos_pct:.0f}%;top:-4px;"
+                        f"width:14px;height:14px;border-radius:50%;background:{_rng_clr};"
+                        f"transform:translateX(-50%);box-shadow:0 0 6px {_rng_clr};"
                         f"' title='Bugün: %{_rng_pos_pct:.0f}'></span>"
                         f"</span>"
                         f"<span style='font-size:0.58rem;color:#64748b;font-weight:700;flex-shrink:0;'>100</span>"
+                        f"</div>"
+                        # Sub-legend (çakışmasız alt döküm)
+                        f"<div style='display:flex;justify-content:space-between;align-items:center;font-size:0.58rem;"
+                        f"color:#94a3b8;margin-top:5px;font-family:\"JetBrains Mono\",monospace;'>"
+                        f"<span><span style='color:#64748b;'>⊙ 20G:</span> %{_rng_20g_pct:.0f}</span>"
+                        f"<span><span style='color:#cbd5e1;'>○ 5G:</span> %{_rng_prev_pct:.0f}</span>"
+                        f"<span><span style='color:{_rng_clr};font-weight:800;'>● Bugün:</span> %{_rng_pos_pct:.0f}</span>"
+                        f"</div>"
                         f"</div>"
                     )
 
@@ -18457,6 +18503,42 @@ if st.session_state.generate_prompt:
     except Exception:
         pass
 
+    # ── 24 Ağu 2026: GEÇERSİZLİK (STOP) ÇİZGİSİ ─────────────────────────────
+    # 25 Ağu 2026 — PUSULA SENTEZİ AI EMIT'İ KALDIRILDI. İki sebep:
+    #  (a) Kod zaten ÖLÜYDÜ: motor title/text/note döndürüyor, burada ana_cumle
+    #      isteniyordu → blok her zaman boş string kalıyordu, AI hiç görmedi.
+    #  (b) Pusula ölçülmemiş sezgisel bir anlatı katmanı; çizgi/formasyon için
+    #      kalıcı kural: getirisi ölçülmedi → skora/AI'a bağlanmaz. Ekranda kalır.
+    #      Ölçüm yapılırsa yeniden bağlanır.
+    _em_inval_line = ""
+    try:
+        _inval_px = None
+        _inval_reason = ""
+        _cy_v = cizgi_yapi.gorunum(df_hist, ticker=t, timeframe="1d") if df_hist is not None else None
+        if _cy_v and _cy_v.get("invalidation"):
+            _inval_px = float(_cy_v["invalidation"])
+            _inval_reason = f"{_cy_v.get('pattern_label', 'Formasyon')} iptal çizgisi"
+        elif df_hist is not None and len(df_hist) >= 50:
+            _close_ser = df_hist['Close']
+            _cp_ai = float(_close_ser.iloc[-1])
+            _s50_ai = float(_close_ser.rolling(50).mean().iloc[-1])
+            if _cp_ai >= _s50_ai:
+                if len(_close_ser) >= 21:
+                    _inval_px = float(_close_ser.ewm(span=21, adjust=False).mean().iloc[-1])
+                    _inval_reason = "EMA 21 dinamik destek altı kapanış"
+                else:
+                    _inval_px = _s50_ai
+                    _inval_reason = "50 SMA ana trend desteği altı"
+            else:
+                _inval_px = _s50_ai
+                _inval_reason = "50 SMA düşüş trendi direnci üstü"
+
+        if _inval_px is not None and _inval_px > 0:
+            _inval_px_str = f"{int(_inval_px):,}".replace(",", ".") if _inval_px >= 1000 else f"{_inval_px:.2f}"
+            _em_inval_line = f"\n  gecersizlik_cizgisi_stop: \"{_inval_px_str} ({_inval_reason})\""
+    except Exception:
+        _em_inval_line = ""
+
     # ────────────────────────────────────────────────────────────────
 
     # 12) Master Score Breakdown — alt skorlar prompt için tek satır
@@ -19660,7 +19742,7 @@ institutional_ref:
   fiyat_vwap_uzaklik_pct: {v_diff:.1f}
   vwap_etiket: {vwap_ai_txt}
   rs_piyasa_gucu: {rs_ai_txt}
-  alpha: {alpha_val:.1f}{_poc_avwap_block}{_em_scanner_tiers}{_em_setup_strength}{_em_kanit}{_em_sok}{_em_liq}{_em_kapi}{_em_risk}{_em_kurumsal}{_em_temettu}{_em_breakout_alert}
+  alpha: {alpha_val:.1f}{_poc_avwap_block}{_em_scanner_tiers}{_em_setup_strength}{_em_kanit}{_em_sok}{_em_liq}{_em_kapi}{_em_risk}{_em_kurumsal}{_em_temettu}{_em_breakout_alert}{_em_inval_line}
 
 targets:
   direnc_fib: {fib_res}
@@ -22932,7 +23014,7 @@ def _render_kanit_terazisi_card(ticker):
         _hdr = (f"<div style='background:linear-gradient(90deg,#1e293b,#0f172a);border-bottom:1px solid #334155;"
                 f"padding:6px 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;'>"
                 f"<span style='display:inline-flex;flex-direction:column;line-height:1.12;'>"
-                f"<span style='font-size:0.8rem;font-weight:800;color:#e2e8f0;letter-spacing:0.04em;'>KANIT TERAZİSİ{_info_html}</span>"
+                f"<span style='font-size:0.8rem;font-weight:800;color:#e2e8f0;letter-spacing:0.04em;'>KANIT TERAZİSİ <small style='color:#38bdf8;font-size:0.58rem;font-weight:800;'>[BOĞA OY AĞIRLIĞI]</small>{_info_html}</span>"
                 f"<span style='font-size:0.55rem;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;'>ORTA VADE · 10-20 GÜN</span>"
                 f"</span>"
                 f"<span style='display:inline-flex;gap:5px;align-items:center;'>{_cnt_badges}"
@@ -23274,6 +23356,70 @@ def render_scanner_membership_panel(ticker):
                         f"<span style='color:#fbbf24;'>{_st}</span><br>{_scn.get('description','')}")
             return 'Hisse asıl harekete geçmeden önce, hareketin ilk küçük işaretlerini verdi.'
 
+        try:
+            _pos_5 = int(str(_h_5_pos).replace("%", "").strip())
+        except Exception:
+            _pos_5 = 50
+
+        try:
+            _pos_20 = int(str(_h_20_pos).replace("%", "").strip())
+        except Exception:
+            _pos_20 = 50
+
+        _pos_main = 85 if _h_main_up else (15 if _h_main_down else 50)
+
+        _label_5 = f"{_h_5_txt}" + (" · Akış Pozitif" if _pos_5 > 55 else (" · Akış Negatif" if _pos_5 < 45 else ""))
+        _label_20 = f"{_h_20_txt}" + (f" ({_h_risk_sign}%{abs(_h_mom20):.1f})" if _h_mom20 is not None else "")
+        _label_main = f"{_h_main_txt} (50G Omurga)"
+
+        _hierarchy_html = (
+            "<div style='padding:12px 10px 0;background:#091421;border-top:1px solid #29465f;overflow:hidden;'>"
+            "<div style='color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.13em;'>PİYASA PUSULASI</div>"
+            f"<div style='margin:4px 0 2px;color:{_h_dir_col};font-size:1.12rem;font-weight:900;line-height:1.15;'>{_h_story_title}</div>"
+            f"<div style='color:#b8c9d9;font-size:0.70rem;line-height:1.4;'>{_h_story_text}</div>"
+            "<div style='height:1px;background:#29465f;margin:10px 0 8px;'></div>"
+            # ── 🧭 YÖNÜN ZAMAN HARİTASI (Tek Kart & 3 Vade Çubuğu - 25 Ağu 2026) ──
+            "<div style='margin:0 0 7px;color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.12em;'>🧭 YÖNÜN ZAMAN HARİTASI</div>"
+            "<div style='padding:8px 9px;border:1px solid #29465f;border-radius:10px;background:#0c1b2c;'>"
+            # Üst 3 Horizon Rozeti
+            "<div style='display:flex;gap:4px;justify-content:space-between;margin-bottom:8px;'>"
+            f"<div style='flex:1;padding:3px 2px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;font-size:0.56rem;color:#cbd5e1;'><span style='color:{_h_5_visual_col};font-weight:800;'>⚡ 5G:</span> {_h_5_txt}</div>"
+            f"<div style='flex:1;padding:3px 2px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;font-size:0.56rem;color:#cbd5e1;'><span style='color:{_h_20_visual_col};font-weight:800;'>📅 20G:</span> {_h_20_txt}</div>"
+            f"<div style='flex:1;padding:3px 2px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;font-size:0.56rem;color:#cbd5e1;'><span style='color:{_h_main_visual_col};font-weight:800;'>🏛️ Trend:</span> {_h_main_txt}</div>"
+            "</div>"
+            # 3 Zengin Akış Çubuğu (İki Yönlü Denge Göstergesi)
+            + _h_bipolar_gauge("Son 5 gün", _label_5, _pos_5, _h_5_visual_col)
+            + _h_bipolar_gauge("Son 20 gün", _label_20, _pos_20, _h_20_visual_col)
+            + _h_bipolar_gauge("Ana Trend", _label_main, _pos_main, _h_main_visual_col)
+            # Ne Anlama Geliyor Kutusu
+            + f"<div style='margin-top:7px;padding:6px 8px;border-left:3px solid {_h_dir_col};border-radius:0 6px 6px 0;background:rgba(2,6,17,0.60);color:#cbd5e1;font-size:0.62rem;line-height:1.35;'><b style='color:{_h_dir_col};'>💡 Ne anlama geliyor?</b> {_h_story_note}</div>"
+            + "</div>"
+            # ── ⚡ HAREKETİN GÜCÜ (Kompakt 3'lü HUD Kartı - 25 Ağu 2026) ──
+            "<div style='height:1px;background:#29465f;margin:10px 0 8px;'></div>"
+            "<div style='margin:0 0 6px;color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.12em;'>⚡ HAREKETİN GÜCÜ</div>"
+            "<div style='padding:8px 9px;border:1px solid #29465f;border-radius:10px;background:#0c1b2c;'>"
+            "<div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;'>"
+            # Kart 1: Hacim
+            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
+            f"<div style='display:inline-block;padding:1px 4px;background:{_h_vol_visual_col}22;border:1px solid {_h_vol_visual_col}55;border-radius:4px;color:{_h_vol_visual_col};font-size:0.60rem;font-weight:900;'>📊 {_h_vol_pct} HACİM</div>"
+            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_vol_label}</div>"
+            f"</div>"
+            # Kart 2: EMA 6
+            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
+            f"<div style='display:inline-block;padding:1px 4px;background:{_h_stp_color}22;border:1px solid {_h_stp_color}55;border-radius:4px;color:{_h_stp_color};font-size:0.60rem;font-weight:900;'>📈 EMA 6: {_h_stp_circle}G</div>"
+            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_stp_title}</div>"
+            f"</div>"
+            # Kart 3: 20G Değişim
+            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
+            f"<div style='display:inline-block;padding:1px 4px;background:{_h_risk_col}22;border:1px solid {_h_risk_col}55;border-radius:4px;color:{_h_risk_col};font-size:0.60rem;font-weight:900;'>⚡ {_h_risk_sign}%{abs(_h_mom20):.1f} (20G)</div>"
+            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>20G Değişim</div>"
+            f"</div>"
+            "</div>"
+            + f"<div style='margin-top:6px;padding:5px 7px;border-left:2px solid {_h_vol_visual_col};border-radius:0 4px 4px 0;background:rgba(2,6,17,0.60);color:#cbd5e1;font-size:0.58rem;line-height:1.3;'>{_h_vol_note}</div>"
+            + "</div>"
+            + "</div>"
+        )
+
         # Güç-filtreli 4 tarama (52H/RSI gücü)
         _strength = {s: g for s, g, _v in _scanner_setup_strength(ticker)}
 
@@ -23412,10 +23558,11 @@ def render_scanner_membership_panel(ticker):
         elif _kz['label'] == 'kanıt bekliyor':
             _ks_chip = "<span style='color:#a8a29e;font-weight:700;'>Karne: ölçüm bekliyor</span>"
         else:
-            # 17 Tem 2026 reform 1a dil düzeltmesi: endekste "kanıt yok" değil,
-            # "yapısal olarak olmaz" — okuyucuya eksiklik gibi görünmesin.
             _is_idx_kz = (str(ticker).upper().startswith(('XU', 'XB', 'XT', 'XY', '^'))
                           or str(ticker).upper().endswith('=F'))
+            # 17 Tem 2026 reform 1a dil düzeltmesi: endekste "kanıt yok" değil,
+            # "yapısal olarak olmaz" — okuyucuya eksiklik gibi görünmesin.
+            # 25 Ağu 2026: araya giren lokomotif widget'ı kaldırıldı, dil düzeltmesi geri.
             _ks_chip = ("<span style='color:#64748b;font-weight:700;'>Endeks — tarama karnesi olmaz</span>"
                         if _is_idx_kz else
                         "<span style='color:#64748b;font-weight:700;'>Pozitif tarama karnesi yok</span>")
@@ -24132,55 +24279,32 @@ def _render_right_col():
         else:
             _h_main_txt, _h_main_arrow, _h_main_visual_col = "Veri yok", "•", _SO_NEUTRAL
 
-        # Başlık = sol karne birincil; akış ailesi + 50g bariyeri teyit/risk.
-        # "Satış baskısı sürüyor" ancak 4 ölçü birlikte aşağı olunca çıkar.
-        _h_net_low = _h_net_txt.lower()
-        if _h_karne_dir > 0 and _h_flow_dir >= 0 and _h_main_dir > 0:
-            _h_story_title = "Kısa ve ana trend yukarı"
-            _h_story_text = "Sol karne, para akışı ailesi ve 50 günlük ana trend birlikte yukarıyı gösteriyor."
-            _h_story_note = "Üç ölçü de aynı yönü destekliyor; teyit güçlü."
-            _h_dir_col = _SO_GREEN
-        elif _h_karne_dir > 0:
-            _eksik = []
-            if _h_main_dir < 0: _eksik.append("fiyat 50 günlük ortalamanın altında")
-            if _h_flow_dir < 0: _eksik.append("para akışı ailesi zayıf")
-            elif _h_flow_dir == 0: _eksik.append("para akışı henüz nötr")
-            _eksik_txt = " ve ".join(_eksik) if _eksik else "kısa vadeli teyit henüz tam değil"
-            _h_story_title = "Yukarı denemesi var, teyit eksik"
-            _h_story_text = f"Sol karne {_h_net_low}; fakat {_eksik_txt}."
-            _h_story_note = "Fırsat da risk de var: karne yukarı, teyitler henüz tamamlanmadı."
-            _h_dir_col = _SO_YELLOW
-        elif _h_karne_dir < 0 and _h_short_down and _h_20_down and _h_main_dir < 0:
-            # Metinle birebir aynı 4 şart: karne + 5g + 20g + 50g hepsi aşağı.
-            _h_story_title = "Satış baskısı sürüyor"
-            _h_story_text = "Sol karne, son 5 gün ve 20 gün para akışı ile 50 günlük ana trend birlikte aşağıyı destekliyor."
-            _h_story_note = "Dört ölçü de aynı yönde aşağı; baskı geniş tabanlı."
-            _h_dir_col = _SO_RED
-        elif _h_karne_dir < 0:
-            _tut = []
-            if _h_main_dir > 0: _tut.append("fiyat 50 günlük ortalamanın üstünde")
-            if not _h_short_down: _tut.append("son 5 gün henüz aşağı değil")
-            if not _h_20_down: _tut.append("20 günlük akış henüz negatife geçmedi")
-            _tut_txt = " ve ".join(_tut) if _tut else "kısa vadeli teyit henüz tam değil"
-            _h_story_title = "Aşağı baskı var, teyit tam değil"
-            _h_story_text = f"Sol karne {_h_net_low}; ancak {_tut_txt}."
-            _h_story_note = "Zayıflık işareti var; ama satışın geniş tabana yayıldığı henüz doğrulanmadı."
-            _h_dir_col = _SO_YELLOW
-        elif _h_flow_dir > 0 and _h_main_dir >= 0:
-            _h_story_title = "Karne nötr, sinyaller hafif yukarı"
-            _h_story_text = "Sol karne net yön vermiyor; para akışı ve fiyat konumu hafif yukarıyı işaret ediyor."
-            _h_story_note = "Belirgin üstünlük yok; yukarı sinyaller henüz zayıf."
-            _h_dir_col = _SO_YELLOW
-        elif _h_flow_dir < 0 and _h_main_dir <= 0:
-            _h_story_title = "Karne nötr, sinyaller hafif aşağı"
-            _h_story_text = "Sol karne net yön vermiyor; para akışı ve fiyat konumu hafif aşağıyı işaret ediyor."
-            _h_story_note = "Belirgin üstünlük yok; aşağı sinyaller henüz zayıf."
-            _h_dir_col = _SO_YELLOW
-        else:
-            _h_story_title = "Yön henüz net değil"
-            _h_story_text = "Sol karne, para akışı ve 50 günlük ana trend belirgin bir üstünlük kurmuyor."
-            _h_story_note = "Net yön için karne, akış ve fiyat yapısının birlikte güçlenmesi gerekir."
-            _h_dir_col = _h_net_col
+        # ── 5 BOYUTLU PİYASA PUSULASI SENTEZİ (24 Ağu 2026) ───────────────────
+        # Çizgi Yapısı (Kama/Üçgen) + ICT/SFP + Uyumsuzluk + Hacim Şoku + Ortalamalar
+        _cy_view = None
+        try:
+            _cy_view = _get_cizgi_yapi_view(_tk)
+        except Exception:
+            _cy_view = None
+
+        _disp_name_compass = get_display_name(_tk) if '_tk' in locals() else None
+
+        _pusula_out = pusula_engine.synthesize_market_compass(
+            ticker=_tk,
+            df=_h_df,
+            cizgi_view=_cy_view,
+            ict_data=_so_ict_data if '_so_ict_data' in locals() else None,
+            terazi_res=_hier_pack.get("_terazi_res"),
+            feat=_hier_pack.get("_feat"),
+            hier_pack=_hier_pack,
+            is_index=_is_idx,
+            display_name=_disp_name_compass
+        )
+
+        _h_story_title = _pusula_out.get("title", "Kısa ve ana trend dengeli")
+        _h_story_text = _pusula_out.get("text", "Piyasa dengeli görünümünü koruyor.")
+        _h_story_note = _pusula_out.get("note", "Ana seviyeler izlenmeli.")
+        _h_dir_col = _pusula_out.get("color", _SO_GREEN)
 
         def _h_horizon_card(period, label, arrow, color):
             return (
@@ -24227,10 +24351,12 @@ def _render_right_col():
             _h_vol_ratio = float(str(_vol_str).replace("×", "").strip())
         except Exception:
             pass
-        if _h_vol_ratio is None:
-            _h_vol_pct = "—"; _h_vol_deg = 0; _h_vol_label = "Hacim verisi yok"
-            _h_vol_note = "20 günlük hacim ortalamasıyla karşılaştırmak için yeterli veri yok."
-            _h_vol_visual_col = _SO_NEUTRAL
+        if _h_vol_ratio is None or (_h_vol_ratio == 0 and _is_idx):
+            _h_vol_pct = "Ortalama" if _is_idx else "—"
+            _h_vol_deg = 180 if _is_idx else 0
+            _h_vol_label = "Piyasa Katılımı" if _is_idx else "Hacim verisi yok"
+            _h_vol_note = "Endeks piyasa geneli hacim ortalaması baz alınır." if _is_idx else "20 günlük hacim ortalamasıyla karşılaştırmak için yeterli veri yok."
+            _h_vol_visual_col = _SO_GREEN if _is_idx else _SO_NEUTRAL
         else:
             _h_vol_pct = f"%{int(round(_h_vol_ratio * 100))}"
             _h_vol_deg = max(0, min(360, int(round(_h_vol_ratio * 360))))
@@ -24280,40 +24406,101 @@ def _render_right_col():
             for height, opacity in ((7, ".4"), (12, ".58"), (18, ".78"), (24, "1"))
         )
 
+        def _h_bipolar_gauge(period, label, pos_pct, color):
+            _p = max(8, min(92, int(pos_pct)))
+            _arrow_html = (
+                f"<span style='position:absolute;left:calc({_p}% - 14px);top:-2px;font-size:0.54rem;color:#f87171;font-weight:900;'>◀</span>"
+                if _p < 48 else (
+                    f"<span style='position:absolute;left:calc({_p}% + 5px);top:-2px;font-size:0.54rem;color:#10b981;font-weight:900;'>▶</span>"
+                    if _p > 52 else ""
+                )
+            )
+            _fill_html = (
+                f"<div style='position:absolute;left:50%;top:0;bottom:0;width:{_p - 50}%;background:rgba(16,185,129,0.38);border-radius:0 99px 99px 0;'></div>"
+                if _p > 50 else (
+                    f"<div style='position:absolute;right:50%;top:0;bottom:0;width:{50 - _p}%;background:rgba(239,68,68,0.38);border-radius:99px 0 0 99px;'></div>"
+                    if _p < 50 else ""
+                )
+            )
+            return (
+                f"<div style='margin-bottom:8px;'>"
+                f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+                f"margin-bottom:3px;font-size:0.62rem;'>"
+                f"<span style='color:#cbd5e1;font-weight:700;'>{period}</span>"
+                f"<span style='color:{color};font-weight:800;font-family:\"JetBrains Mono\",monospace;'>{label}</span>"
+                f"</div>"
+                f"<div style='position:relative;height:10px;border-radius:99px;"
+                f"background:linear-gradient(90deg,rgba(239,68,68,0.30) 0%,rgba(239,68,68,0.30) 50%,rgba(16,185,129,0.30) 50%,rgba(16,185,129,0.30) 100%);"
+                f"background-color:#0b1320;border:1px solid rgba(255,255,255,0.08);overflow:visible;'>"
+                f"<div style='position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.25);'></div>"
+                f"{_fill_html}"
+                f"<div style='position:absolute;left:calc({_p}% - 1.5px);top:-2px;width:3px;height:14px;background:#ffffff;border-radius:2px;box-shadow:0 0 6px rgba(255,255,255,0.9);z-index:2;'></div>"
+                f"{_arrow_html}"
+                f"</div>"
+                f"</div>"
+            )
+
+        try:
+            _pos_5 = int(str(_h_5_pos).replace("%", "").strip())
+        except Exception:
+            _pos_5 = 50
+
+        try:
+            _pos_20 = int(str(_h_20_pos).replace("%", "").strip())
+        except Exception:
+            _pos_20 = 50
+
+        _pos_main = 85 if _h_main_up else (15 if _h_main_down else 50)
+
+        _label_5 = f"{_h_5_txt}" + (" · Akış Pozitif" if _pos_5 > 55 else (" · Akış Negatif" if _pos_5 < 45 else ""))
+        _label_20 = f"{_h_20_txt}" + (f" ({_h_risk_sign}%{abs(_h_mom20):.1f})" if _h_mom20 is not None else "")
+        _label_main = f"{_h_main_txt} (50G Omurga)"
+
         _hierarchy_html = (
             "<div style='padding:12px 10px 0;background:#091421;border-top:1px solid #29465f;overflow:hidden;'>"
             "<div style='color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.13em;'>PİYASA PUSULASI</div>"
             f"<div style='margin:4px 0 2px;color:{_h_dir_col};font-size:1.12rem;font-weight:900;line-height:1.15;'>{_h_story_title}</div>"
             f"<div style='color:#b8c9d9;font-size:0.70rem;line-height:1.4;'>{_h_story_text}</div>"
-            "<div style='height:1px;background:#29465f;margin:12px 0 9px;'></div>"
-            "<div style='margin:0 0 7px;color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.12em;'>YÖNÜN ZAMAN HARİTASI</div>"
-            "<div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;'>"
-            + _h_horizon_card("SON 5 GÜN", _h_5_txt, _h_5_arrow, _h_5_visual_col)
-            + _h_horizon_card("SON 20 GÜN", _h_20_txt, _h_20_arrow, _h_20_visual_col)
-            + _h_horizon_card("ANA TREND", _h_main_txt, _h_main_arrow, _h_main_visual_col)
-            + "</div>"
-            f"<div style='margin:8px 0 0;padding:6px 8px;border-left:3px solid {_h_dir_col};border-radius:0 6px 6px 0;background:#151a1b;color:#c2d0de;font-size:0.64rem;line-height:1.35;'><b style='color:{_h_dir_col};'>Ne anlama geliyor?</b> {_h_story_note}</div>"
-            "<div style='height:1px;background:#29465f;margin:12px 0 9px;'></div>"
-            "<div style='margin:0 0 7px;color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.12em;'>PARA AKIŞI</div>"
+            "<div style='height:1px;background:#29465f;margin:10px 0 8px;'></div>"
+            # ── 🧭 YÖNÜN ZAMAN HARİTASI (Tek Kart & 3 Vade Çubuğu - 25 Ağu 2026) ──
+            "<div style='margin:0 0 7px;color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.12em;'>🧭 YÖNÜN ZAMAN HARİTASI</div>"
             "<div style='padding:8px 9px;border:1px solid #29465f;border-radius:10px;background:#0c1b2c;'>"
-            + _h_flow_row("Son 5 gün", _h_5_txt, _h_5_visual_col, _h_5_pos)
-            + "<div style='height:1px;background:#233e57;'></div>"
-            + _h_flow_row("Son 20 gün", _h_20_txt, _h_20_visual_col, _h_20_pos)
-            + "<div style='height:1px;background:#29465f;margin:5px 0 8px;'></div>"
-            + "<div style='display:grid;grid-template-columns:1fr 18px 1fr;gap:5px;align-items:center;'>"
-            + f"<div style='display:flex;gap:6px;align-items:center;'><i style='width:12px;height:12px;flex:none;border-radius:50%;background:{_h_f1_col};box-shadow:0 0 0 4px {_h_f1_col}22;'></i><span><b style='display:block;color:{_h_f1_col};font-size:0.62rem;'>Para akışı</b><small style='display:block;color:#94abc0;font-size:0.56rem;'>{_h_f1_desc}</small></span></div>"
-            + "<span style='color:#6e879d;font-size:0.95rem;text-align:center;'>+</span>"
-            + f"<div style='display:flex;gap:6px;align-items:center;'><i style='width:12px;height:12px;flex:none;border-radius:50%;background:{_h_f2_col};box-shadow:0 0 0 4px {_h_f2_col}22;'></i><span><b style='display:block;color:{_h_f2_col};font-size:0.62rem;'>Kısa yapı ve zamanlama</b><small style='display:block;color:#94abc0;font-size:0.56rem;'>{_h_f2_desc}</small></span></div>"
+            # Üst 3 Horizon Rozeti
+            "<div style='display:flex;gap:4px;justify-content:space-between;margin-bottom:8px;'>"
+            f"<div style='flex:1;padding:3px 2px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;font-size:0.56rem;color:#cbd5e1;'><span style='color:{_h_5_visual_col};font-weight:800;'>⚡ 5G:</span> {_h_5_txt}</div>"
+            f"<div style='flex:1;padding:3px 2px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;font-size:0.56rem;color:#cbd5e1;'><span style='color:{_h_20_visual_col};font-weight:800;'>📅 20G:</span> {_h_20_txt}</div>"
+            f"<div style='flex:1;padding:3px 2px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;font-size:0.56rem;color:#cbd5e1;'><span style='color:{_h_main_visual_col};font-weight:800;'>🏛️ Trend:</span> {_h_main_txt}</div>"
+            "</div>"
+            # 3 Zengin Akış Çubuğu (İki Yönlü Denge Göstergesi)
+            + _h_bipolar_gauge("Son 5 gün", _label_5, _pos_5, _h_5_visual_col)
+            + _h_bipolar_gauge("Son 20 gün", _label_20, _pos_20, _h_20_visual_col)
+            + _h_bipolar_gauge("Ana Trend", _label_main, _pos_main, _h_main_visual_col)
+            # Ne Anlama Geliyor Kutusu
+            + f"<div style='margin-top:7px;padding:6px 8px;border-left:3px solid {_h_dir_col};border-radius:0 6px 6px 0;background:rgba(2,6,17,0.60);color:#cbd5e1;font-size:0.62rem;line-height:1.35;'><b style='color:{_h_dir_col};'>💡 Ne anlama geliyor?</b> {_h_story_note}</div>"
             + "</div>"
-            + f"<div style='margin-top:8px;color:#b9c9d8;font-size:0.62rem;line-height:1.35;'><b style='color:#f3ca5b;'>Okuma:</b> {_h_alignment_note}</div>"
+            # ── ⚡ HAREKETİN GÜCÜ (Kompakt 3'lü HUD Kartı - 25 Ağu 2026) ──
+            "<div style='height:1px;background:#29465f;margin:10px 0 8px;'></div>"
+            "<div style='margin:0 0 6px;color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.12em;'>⚡ HAREKETİN GÜCÜ</div>"
+            "<div style='padding:8px 9px;border:1px solid #29465f;border-radius:10px;background:#0c1b2c;'>"
+            "<div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;'>"
+            # Kart 1: Hacim
+            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
+            f"<div style='display:inline-block;padding:1px 4px;background:{_h_vol_visual_col}22;border:1px solid {_h_vol_visual_col}55;border-radius:4px;color:{_h_vol_visual_col};font-size:0.60rem;font-weight:900;'>📊 {_h_vol_pct} HACİM</div>"
+            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_vol_label}</div>"
+            f"</div>"
+            # Kart 2: EMA 6
+            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
+            f"<div style='display:inline-block;padding:1px 4px;background:{_h_stp_color}22;border:1px solid {_h_stp_color}55;border-radius:4px;color:{_h_stp_color};font-size:0.60rem;font-weight:900;'>📈 EMA 6: {_h_stp_circle}G</div>"
+            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_stp_title}</div>"
+            f"</div>"
+            # Kart 3: 20G Değişim
+            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
+            f"<div style='display:inline-block;padding:1px 4px;background:{_h_risk_col}22;border:1px solid {_h_risk_col}55;border-radius:4px;color:{_h_risk_col};font-size:0.60rem;font-weight:900;'>⚡ {_h_risk_sign}%{abs(_h_mom20):.1f} (20G)</div>"
+            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>20G Değişim</div>"
+            f"</div>"
+            "</div>"
+            + f"<div style='margin-top:6px;padding:5px 7px;border-left:2px solid {_h_vol_visual_col};border-radius:0 4px 4px 0;background:rgba(2,6,17,0.60);color:#cbd5e1;font-size:0.58rem;line-height:1.3;'>{_h_vol_note}</div>"
             + "</div>"
-            "<div style='height:1px;background:#29465f;margin:12px 0 9px;'></div>"
-            "<div style='margin:0 0 7px;color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.12em;'>HAREKETİN GÜCÜ</div>"
-            "<div style='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;'>"
-            + f"<div style='min-height:154px;padding:9px 7px;border:1px solid #29465f;border-radius:10px;background:#0c1b2c;text-align:center;'><div style='display:grid;place-items:center;width:52px;height:52px;margin:0 auto 6px;border:2px solid {_h_vol_visual_col};border-radius:50%;color:{_h_vol_visual_col};font-size:0.70rem;font-weight:900;line-height:1;'>{_h_vol_pct}</div><b style='display:block;color:#eef4fb;font-size:0.64rem;line-height:1.2;'>{_h_vol_label}</b><span style='display:block;margin-top:3px;color:#9fb4c8;font-size:0.56rem;line-height:1.3;'>{_h_vol_note}</span></div>"
-            + f"<div style='min-height:154px;padding:9px 7px;border:1px solid #29465f;border-radius:10px;background:#0c1b2c;text-align:center;'><div style='display:grid;place-items:center;width:52px;height:52px;margin:0 auto 6px;border:2px solid {_h_stp_color};border-radius:50%;color:{_h_stp_color};font-size:1.25rem;font-weight:900;line-height:1;'>{_h_stp_circle}</div><b style='display:block;color:#eef4fb;font-size:0.64rem;line-height:1.2;'>{_h_stp_title}</b><span style='display:block;margin-top:3px;color:#9fb4c8;font-size:0.56rem;line-height:1.3;'>{_h_stp_note}</span><span style='display:block;margin-top:5px;color:#8fa7bc;font-size:0.52rem;line-height:1.25;'>EMA 6: Son 6 günün, yeni günlere daha çok ağırlık veren ortalaması.</span></div>"
-            + "</div>"
-            + f"<div style='display:flex;gap:8px;align-items:center;margin:12px -10px 0;padding:9px 10px;border-top:1px solid #29465f;background:#0b1726;'><span style='display:flex;align-items:flex-end;gap:2px;height:24px;flex:none;'>{_h_risk_bars}</span><span><b style='display:block;color:#eef4fb;font-size:0.64rem;'>{_h_risk_title}</b><small style='display:block;margin-top:2px;color:#adc0d0;font-size:0.58rem;line-height:1.32;'>{_h_risk_note}</small></span></div>"
             + "</div>"
         )
 
@@ -24321,9 +24508,9 @@ def _render_right_col():
         _px_fmt = (f"{int(price_val):,}".replace(",", ".") if _is_idx else f"{price_val:.2f}")
 
         # ── 🚦 GİRİŞ KALİTESİ (18 Ağu 2026): güvenlik kapısının hükmü FİYAT kartında,
-        # PİYASA PUSULASI'nın hemen ÜSTÜNDE. Sabit yer = göz alışır. ELVERİŞLİ / ZAYIF /
-        # ÖLÇÜLEMEDİ burada; ara ton TEMKİNLİ tarama üyelik panelinde kalır (çift gösterim yok).
-        # Kart zemini dinamik olduğu için şerit KENDİ koyu zeminini taşır (RSI bandı kalıbı).
+        # PİYASA PUSULASI'nın hemen ÜSTÜNDE. Sabit yer = göz alışır.
+        # 25 Ağu 2026: endeks "piyasa genişliği" dalı KALDIRILDI — 8 lokomotif hisseye
+        # "piyasa genişliği" demek yanıltıcıydı + her render'da 8 ek veri okuması yapıyordu.
         _kapi_strip_html = ""
         try:
             _gk = _giris_kalitesi(st.session_state.ticker)
@@ -24342,6 +24529,95 @@ def _render_right_col():
                     f"color:rgba(255,255,255,0.78);'>{_gk['sebep']}</div></div>")
         except Exception:
             pass
+
+        # ── ⛔ GEÇERSİZLİK ÇİZGİSİ (24 Ağu 2026) ────────────────────────────
+        # Trader'ın karar iptal seviyesi: Formasyon varsa formasyon stopu,
+        # trend yukarıysa EMA 21 / 50 SMA, trend aşağıysa 50 SMA bariyeri.
+        _inval_strip_html = ""
+        try:
+            _inval_px = None
+            _inval_reason = ""
+            if _cy_view and _cy_view.get("invalidation"):
+                _inval_px = float(_cy_view["invalidation"])
+                _inval_reason = f"{_cy_view.get('pattern_label', 'Formasyon')} iptal çizgisi"
+            elif _hier_pack.get("_gs_sma50_above"):
+                if _h_df is not None and len(_h_df) >= 21:
+                    _inval_px = float(_h_df['Close'].ewm(span=21, adjust=False).mean().iloc[-1])
+                    _inval_reason = "EMA 21 dinamik destek altı kapanış"
+                elif _hier_pack.get("_gs_sma50"):
+                    _inval_px = float(_hier_pack["_gs_sma50"])
+                    _inval_reason = "50 SMA ana trend desteği altı"
+            else:
+                if _hier_pack.get("_gs_sma50"):
+                    _inval_px = float(_hier_pack["_gs_sma50"])
+                    _inval_reason = "50 SMA düşüş trendi direnci üstü"
+
+            if _inval_px is not None and _inval_px > 0:
+                _inval_px_str = f"{int(_inval_px):,}".replace(",", ".") if _inval_px >= 1000 else f"{_inval_px:.2f}"
+                _inval_strip_html = (
+                    f"<div style='padding:6px 12px;background:rgba(2,6,17,0.65);"
+                    f"border-top:1px solid rgba(239,68,68,0.25);border-left:3px solid #ef4444;"
+                    f"display:flex;justify-content:space-between;align-items:center;'>"
+                    f"<div><span style='font-size:0.58rem;font-weight:900;letter-spacing:0.12em;"
+                    f"color:#f87171;'>⛔ GEÇERSİZLİK (STOP)</span>"
+                    f"<div style='font-size:0.62rem;color:rgba(255,255,255,0.70);'>{_inval_reason}</div></div>"
+                    f"<span style='font-family:\"JetBrains Mono\",monospace;font-size:0.85rem;"
+                    f"font-weight:900;color:#fecaca;'>{_inval_px_str}</span></div>"
+                )
+        except Exception:
+            _inval_strip_html = ""
+
+        # ── 📐 VADE UYUMU (MTF) HUD ŞERİDİ (25 Ağu 2026) ───────────────────
+        # Sağ üst karar kokpitinde tek bakışta 4 vadenin (4S·1G·1H·1A) özeti.
+        _mtf_hud_strip_html = ""
+        try:
+            _mtf_hud = calculate_multi_timeframe_alignment(st.session_state.ticker)
+            if _mtf_hud and _mtf_hud.get('matrix'):
+                _m_hud = _mtf_hud['matrix']
+                _hud_pills = []
+                _hud_tf_labels = [("4H", "4S"), ("Günlük", "1G"), ("Haftalık", "1H"), ("Aylık", "1A")]
+                for _k_tf, _l_tf in _hud_tf_labels:
+                    _tf_obj = _m_hud.get(_k_tf, {})
+                    _tr = _tf_obj.get("trend", 0)
+                    _mo = _tf_obj.get("momentum", 0)
+                    _sum_tf = _tr + _mo
+                    if _sum_tf > 0:
+                        _dot_col = "#22c55e"
+                        _dot_sym = "●"
+                    elif _sum_tf < 0:
+                        _dot_col = "#ef4444"
+                        _dot_sym = "●"
+                    else:
+                        _dot_col = "#94a3b8"
+                        _dot_sym = "○"
+                    _hud_pills.append(
+                        f"<span style='font-family:\"JetBrains Mono\",monospace;font-size:0.62rem;"
+                        f"font-weight:800;color:{_dot_col};background:rgba(2,6,17,0.45);padding:1px 5px;"
+                        f"border-radius:4px;border:1px solid {_dot_col}44;white-space:nowrap;'>"
+                        f"{_l_tf} {_dot_sym}</span>"
+                    )
+
+                _hud_pills_str = " ".join(_hud_pills)
+                _hud_status = _mtf_hud.get("status_pill", "")
+                _hud_col = _mtf_hud.get("status_color", "#38bdf8")
+                _hud_diag = str(_mtf_hud.get("diagnosis_text", "")).replace('"', '&quot;')
+
+                _mtf_hud_strip_html = (
+                    f"<div title=\"{_hud_diag}\" style='padding:6px 12px;background:rgba(2,6,17,0.60);"
+                    f"border-top:1px solid rgba(56,189,248,0.20);border-left:3px solid {_hud_col};"
+                    f"display:flex;justify-content:space-between;align-items:center;cursor:help;gap:6px;'>"
+                    f"<div style='display:flex;align-items:center;gap:6px;overflow:hidden;'>"
+                    f"<span style='font-size:0.58rem;font-weight:900;letter-spacing:0.10em;"
+                    f"color:#91b7d6;white-space:nowrap;'>VADE UYUMU</span>"
+                    f"<span style='font-size:0.60rem;font-weight:800;color:{_hud_col};white-space:nowrap;"
+                    f"overflow:hidden;text-overflow:ellipsis;'>{_hud_status}</span>"
+                    f"</div>"
+                    f"<div style='display:flex;gap:4px;flex-shrink:0;align-items:center;'>"
+                    f"{_hud_pills_str}"
+                    f"</div></div>"
+                )
+        except Exception:
+            _mtf_hud_strip_html = ""
 
         # ── 2b REFORM (17 Tem 2026): RSI uç rozeti — normal modda (25-80) görünmez,
         # uçta alt şeridin altında yerinde büyür. Eşik + karne: rsi_kova_backtest.
@@ -24395,6 +24671,8 @@ def _render_right_col():
 
   <!-- GİRİŞ KALİTESİ: güvenlik kapısı hükmü (fiyatın altı, pusulanın üstü) -->
   {_kapi_strip_html}
+  {_inval_strip_html}
+  {_mtf_hud_strip_html}
   <!-- ORTA BÖLÜM: 10 maddelik kanıt hiyerarşisi -->
   {_hierarchy_html}
   {_rsi_alert_html}

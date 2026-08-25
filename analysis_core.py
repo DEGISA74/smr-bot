@@ -934,6 +934,68 @@ def calculate_multi_timeframe_alignment(ticker):
         dominant_count = max(bull_cnt, bear_cnt)
         overall_pct = round(dominant_count / total * 100) if total > 0 else 0
 
+        # Vade bazlı güç puanları (3 kriterin uyum yüzdesi)
+        tf_scores = {}
+        for tf_name, sigs in matrix.items():
+            b_c = sum(1 for s in sigs.values() if s == 1)
+            be_c = sum(1 for s in sigs.values() if s == -1)
+            if b_c > be_c:
+                pct = round((b_c / 3) * 100)
+                tf_dom = "YUKARI"
+            elif be_c > b_c:
+                pct = round((be_c / 3) * 100)
+                tf_dom = "AŞAĞI"
+            else:
+                pct = 50
+                tf_dom = "NÖTR"
+            tf_scores[tf_name] = {"pct": pct, "bull": b_c, "bear": be_c, "dominant": tf_dom}
+
+        # Akıllı Durum Teşhisi ve Kurumsal Çatışma Çözümleyici (25 Ağu 2026)
+        w_sig = matrix.get('Haftalık', {})
+        m_sig = matrix.get('Aylık', {})
+        d_sig = matrix.get('Günlük', {})
+        h4_sig = matrix.get('4H', {})
+
+        w_bull = (w_sig.get('trend', 0) >= 0 and w_sig.get('momentum', 0) >= 0)
+        m_bull = (m_sig.get('trend', 0) >= 0 and m_sig.get('momentum', 0) >= 0)
+        w_bear = (w_sig.get('trend', 0) <= 0 and w_sig.get('momentum', 0) <= 0)
+        m_bear = (m_sig.get('trend', 0) <= 0 and m_sig.get('momentum', 0) <= 0)
+        h4_bear = (h4_sig.get('trend', 0) < 0 or h4_sig.get('momentum', 0) < 0 or h4_sig.get('hacim', 0) < 0)
+        h4_bull = (h4_sig.get('trend', 0) > 0 and h4_sig.get('momentum', 0) > 0)
+
+        # 25 Ağu 2026 — DÜRÜSTLÜK DÜZELTMESİ: eşik 9/12, "tam / tüm vadelerde" DEĞİL.
+        # Metin kaç ölçünün hangi yönde olduğunu sayıyla söyler; okuyucu kendi tartar.
+        if bull_cnt >= 9:
+            status_pill = f"GENİŞ BOĞA UYUMU ({bull_cnt}/{total})"
+            status_color = "#22c55e"
+            diagnosis_text = (f"4 vadedeki {total} ölçüden {bull_cnt} tanesi alıcı yönde. "
+                              f"Yükseliş tek bir vadeye sıkışmamış, geniş tabana yayılmış durumda.")
+        elif bear_cnt >= 9:
+            status_pill = f"GENİŞ AYI UYUMU ({bear_cnt}/{total})"
+            status_color = "#ef4444"
+            diagnosis_text = (f"4 vadedeki {total} ölçüden {bear_cnt} tanesi satıcı yönde. "
+                              f"Satış baskısı geniş tabanlı; kısa vadeli tepkiler bu tabloyu tek başına çevirmiyor.")
+        elif w_bull and m_bull and h4_bear:
+            status_pill = "KISA VADE SİNDİRME · ANA TREND BOĞA"
+            status_color = "#38bdf8"
+            diagnosis_text = "Haftalık ve Aylık omurga yukarı yönlü. 4 Saatlikteki geri çekilme ana trendi bozmuyor; sağlıklı bir dinlenme olarak çalışıyor."
+        elif w_bear and m_bear and (h4_bull or d_sig.get('trend', 0) > 0):
+            status_pill = "DİP TEPKİSİ · ANA TREND AYI BARIYERİNDE"
+            status_color = "#f59e0b"
+            diagnosis_text = "Kısa vadede yukarı tepki hamlesi var; ancak üst vadeler (Haftalık/Aylık) henüz direnci aşamadı. Temkinli olunmalı."
+        elif dominant == "YUKARI":
+            status_pill = f"POZİTİF UYUM (%{overall_pct} Boğa)"
+            status_color = "#22c55e"
+            diagnosis_text = "Vadelerin çoğunluğu yukarıyı destekliyor. Momentum alıcı lehine seyrediyor."
+        elif dominant == "AŞAĞI":
+            status_pill = f"NEGATİF UYUM (%{overall_pct} Ayı)"
+            status_color = "#ef4444"
+            diagnosis_text = "Vadelerin çoğunluğunda satış baskısı hakim. Güçlü bir teyit gelmeden acele edilmemeli."
+        else:
+            status_pill = "KARARSIZ · VADELER AYRIŞIK"
+            status_color = "#94a3b8"
+            diagnosis_text = "Vadeler arasında belirgin bir konsensüs yok. Piyasa yatay bantta denge arıyor."
+
         return {
             "matrix":         matrix,
             "timeframes":     list(matrix.keys()),
@@ -942,6 +1004,10 @@ def calculate_multi_timeframe_alignment(ticker):
             "bull_cnt":       bull_cnt,
             "bear_cnt":       bear_cnt,
             "total":          total,
+            "tf_scores":      tf_scores,
+            "status_pill":    status_pill,
+            "status_color":   status_color,
+            "diagnosis_text": diagnosis_text,
         }
     except Exception:
         return None

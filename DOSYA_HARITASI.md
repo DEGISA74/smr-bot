@@ -80,6 +80,9 @@ Ekranın TEK sentez hükmünü üretir (boğa/ayı oyları toplar → hüküm + 
 ### `veri_bekcisi.py` (~290 satır) — TEK KAPI VERİ DOĞRULAMA
 Veri katmanından panellere giden HER OHLCV df'i tek kapıdan geçirir; bozuk veri ekrana ÇIKAMAZ (5 kontrol: referans ayrışması ±1.25x / Frankenstein bar / doji salgını / bölünme zıplaması / bayat veri + hacim çökmesi). Bozuksa depo boşaltılıp taze denenir, olmadı boş df + kırmızı şerit + `logs/veri_bekcisi.log`. data_layer'ı IMPORT ETMEZ (döngüsel). EREGL 40.86-vs-9.4 vakasından doğdu. **Ne zaman dokun:** yeni veri-bozukluğu tipi yakalama, false-positive uyarı.
 
+### `pusula_engine.py` (~350 satır) — PİYASA PUSULASI ANLATI MOTORU
+24 Ağu 2026'da eklendi. Fiyat kartı altındaki Piyasa Pusulası için 5 katmanlı (Çizgi Geometri, PA & ICT, Uyumsuzluklar, VPA & Hacim Şoku, Hareketli Ortalamalar & Rejim) 17 dallı arketip anlatısı üretir. ⚠ **ÖLÇÜLMEMİŞ**: öncelik sırası ve dal kuralları sezgisel, backtest yok. 25 Ağu 2026'da AI prompt bağlantısı KALDIRILDI (zaten ölüydü — anahtar adları tutmuyordu) — sadece EKRANDA anlatır, skora ve AI'a girmez. Getirisi ölçülürse yeniden bağlanabilir. **Ne zaman dokun:** Pusula sentez kuralları, arketip ve hikâye kombinasyonları.
+
 ---
 
 ## B. VERİ HATTI (arka plan — parquet üretimi + politika + onarım)
