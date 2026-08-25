@@ -92,6 +92,16 @@ from db_layer import (DB_FILE, log_error, init_db, _fetch_mkk_yabanci_rss,
                       add_watchlist_db, remove_watchlist_db, get_scenario_ages_batch)
 from signal_policy import (BADGE_SCAN_TYPES, resolve_next_open_entry,
                            scanner_family, unique_scanner_families)
+try:
+    from zamanlama_core import (evaluate_4s_timing, evaluate_asimetrik_firsat,
+                                gunluk_kapi_gecti)
+except ImportError:
+    def evaluate_4s_timing(symbol, df_4s=None):
+        return {"status": "YOK", "label": "4S Veri Yok", "badge_text": "", "badge_color": "gray"}
+    def evaluate_asimetrik_firsat(symbol, yab_sig=None, timing_res=None):
+        return {"verdict": "STANDART", "verdict_badge": "", "verdict_color": "gray", "timing": {}}
+    def gunluk_kapi_gecti(df_gunluk=None):
+        return False
 # 6 Tem 2026 — BÖLME ADIM 6a: tek-hisse tarayıcı çekirdekleri scanners.py içinde
 from scanners import (process_single_accumulation, process_single_radar1, process_single_radar2,
                       calculate_guclu_donus_adaylari, calculate_prelaunch_bos, process_single_ict_setup)
@@ -1115,6 +1125,15 @@ SMC_IFVG_BB_AI_ENABLED = False
 # SIFIR AYRIM → AI prompt'tan çekildi. scan_signals'a YAZILMAYA devam (Eylül backtest).
 # Karne hit/ret anlamlı edge verirse True yap → AI'a geri ekle.
 SMC_YOPEN_AI_ENABLED = False
+# 25 Ağu 2026 — 4S ZAMANLAMA ROZETİ KAPATILDI (_4s_filtre_backtest.py ölçtü).
+# 1.692 sinyal × 3 vade (T+5/10/20) × scan_signals JOIN. Sonuç: HİÇBİR VADEDE
+# TUTARLI AYRIM YOK. En kalabalık grup "dengeli" (N=1455) üç vadede de ~0
+# (-0.08 / +0.06 / -0.03). "Şişkin" ve "baskı altında" ise vadeye göre İŞARET
+# DEĞİŞTİRİYOR (şişkin: -0.48 @T+10 → +1.19 @T+20; baskı: +1.45 @T+5 → -1.17
+# @T+20) — bilgi taşıyan sinyal zayıflar, işaret değiştirmez; bu gürültü imzası.
+# Modül SİLİNMEDİ, susturuldu: ikinci rejimde `python _4s_filtre_backtest.py`
+# tekrar koş, tablo tutarlılaşırsa True yap.
+ZAMANLAMA_4S_ENABLED = False
 
 # -> indicators.py (Adim 4, 4 Tem 2026): _spike_dom_ratio
 
@@ -6812,6 +6831,27 @@ def render_smart_volume_panel(ticker):
     except Exception:
         pass
 
+    # ── 4 Saatlik Zamanlama rozeti (4S MTF — 25 Ağu 2026, koruyucu filtre) ──
+    # İKİ KADEME (25 Ağu): 4S yalnızca GÜNLÜK kapıyı geçen hissede konuşur.
+    # Üst basamak "bu hisseye bakılır mı?" (trend + para akışı), alt basamak
+    # "zamanlaması nasıl?". Günlük tablo olumsuzken 4S rozeti anlamsız — çöp
+    # hissede "4S dengeli" yazmak okuyucuyu yanıltır, ekranı da kalabalıklaştırır.
+    _timing_badge = ""
+    try:
+        if (ZAMANLAMA_4S_ENABLED and not is_index and ".IS" in ticker
+                and gunluk_kapi_gecti(get_safe_historical_data(ticker, period="1y"))):
+            _t_eval = evaluate_4s_timing(ticker)
+            _t_stat = _t_eval.get("status")
+            _r_val = _t_eval.get("rsi14")
+            if _t_stat == "ASIRI_ALIM_SISKIN" and _r_val is not None:
+                _timing_badge = _mini_badge("⏱", "#f87171", "4S", f"ŞİŞKİN (RSI {_r_val:.0f})")
+            elif _t_stat == "DENGELI" and _r_val is not None:
+                _timing_badge = _mini_badge("⏱", "#10b981", "4S", f"DENGELİ (RSI {_r_val:.0f})")
+            elif _t_stat == "BASKI_ALTINDA" and _r_val is not None:
+                _timing_badge = _mini_badge("⏱", "#94a3b8", "4S", f"BASKI (RSI {_r_val:.0f})")
+    except Exception:
+        pass
+
     # ── Uyumsuzluk rozeti (öneri 8, 10 Tem 2026) — 5+ gün süren fiyat-OBV ayrışması ──
     _div_badge = ""
     if _div_badge_info:
@@ -6911,7 +6951,7 @@ def render_smart_volume_panel(ticker):
         _mini_badge(c2_icon, c2_clr, "Hacim", c2_lbl) +
         _mini_badge(c3_icon, c3_clr, "Akıllı Para", c3_lbl) +
         (_mini_badge(_mfi_icon, _mfi_clr, "MFI", _mfi_lbl_v) if _mfi_lbl_v != "—" else "") +
-        _yab_badge + _div_badge + _conflict_badge
+        _yab_badge + _timing_badge + _div_badge + _conflict_badge
         # 22 Tem 2026: "◆ Geçmiş" (_cs_hist_badge) kaldırıldı — kullanıcı isteği (ayırt edici değildi)
     )
 
@@ -17632,6 +17672,24 @@ if st.session_state.generate_prompt:
                 "göründü, negatif bps; yabancı kurumsal çıkış izi; backtest negatif getiriyle "
                 "uyumlu; olumlu teze karşı riski vurgula)"
             )
+        # ── 4 Saatlik Zamanlama (4S MTF — 25 Ağu 2026, koruyucu filtre) ──
+        # İKİ KADEME: panelle aynı günlük kapı — 4S yalnızca üst basamağı
+        # geçen hissede AI'a gider (ekran ve prompt aynı şeyi konuşsun).
+        if (ZAMANLAMA_4S_ENABLED and not is_index and ".IS" in ticker
+                and gunluk_kapi_gecti(df_hist)):
+            _asim_eval = evaluate_asimetrik_firsat(ticker)
+            _t_eval = _asim_eval.get("timing", {})
+            _t_stat = _t_eval.get("status")
+            _t_rsi = _t_eval.get("rsi14")
+            if _t_stat == "ASIRI_ALIM_SISKIN" and _t_rsi is not None:
+                _poc_avwap_lines.append(
+                    f"  ⚠️ 4S MOMENTUM ŞİŞKİN: True (4 saatlik RSI {_t_rsi:.0f} aşırı alım bölgesinde — "
+                    f"kısa vadeli tepe / düzeltme riski; tepeden kovalama uyarısı yap)"
+                )
+            elif _asim_eval.get("verdict") == "YABANCI_DESTEKLI_DENGELI" and _t_rsi is not None:
+                _poc_avwap_lines.append(
+                    f"  ⏱ 4S MOMENTUM DENGELİ: True (Yabancı takas serisi var ve 4S RSI {_t_rsi:.0f} dengeli bölgede)"
+                )
     except Exception: pass
 
     _poc_avwap_block = ("\n" + "\n".join(_poc_avwap_lines)) if _poc_avwap_lines else ""
