@@ -37,6 +37,22 @@ BUILTIN = set(dir(builtins)) | {"__name__", "__file__", "__doc__", "_"}
 # Bar/gauge konumu olduğu belli olan değişken adları
 KONUM_ADI = ("_pos", "pos_", "gauge", "_p =", "percent", "yuzde")
 
+# ── BİLİNEN YANLIŞ ALARMLAR (25 Ağu 2026) ───────────────────────────────
+# Bunlar incelendi ve GÜVENLİ bulundu. Rapora "bilinen" etiketiyle düşer;
+# DÜZELTMEYE ÇALIŞMA. Yeni bir yanlış alarm doğrularsan buraya ekle ki
+# sonraki ajan aynı yanılgıya düşmesin.
+BEYAZ_LISTE_TANIMSIZ = {
+    # `_, x = _bist_day_status() if '_bist_day_status' in globals() else (...)`
+    # Kod kendini globals() ile koruyor — çağrı ancak tanımlıysa yapılıyor.
+    ("smr_core.py", "_bist_day_status"),
+}
+BEYAZ_LISTE_SABIT = {
+    # `_pos_main = 85 if _h_main_up else (15 if ...)` → bunlar YEDEK satır:
+    # 50 günlük ortalama hesaplanamazsa devreye giren fallback. Asıl yol
+    # fiyatın ortalamaya uzaklığından gerçek konumu üretiyor. SİLME.
+    ("app.py", "_pos_main"),
+}
+
 
 def modul_isimleri(tree: ast.Module) -> set:
     """import + top-level atama + def/class adları."""
@@ -120,8 +136,11 @@ def denetle(dosya: str):
             elif isinstance(n.ctx, ast.Store):
                 yazilan.setdefault(n.id, n.lineno)
 
+        dosya_adi = os.path.basename(dosya)
         for isim, ln in okunan.items():
             if isim not in gorunur and not isim.startswith("__"):
+                if (dosya_adi, isim) in BEYAZ_LISTE_TANIMSIZ:
+                    continue          # bilinen yanlış alarm — incelendi, güvenli
                 tanimsiz.append((ln, ad, isim))
         for isim, ln in yazilan.items():
             if isim.startswith("_") and isim not in okunan and len(isim) > 3:
@@ -136,6 +155,9 @@ def denetle(dosya: str):
         # "_pos_x = 85 if ..." / 'return ..., "75%"' kalıpları
         if ("= 85 if" in t or "= 75 if" in t or "= 25 if" in t
                 or '"75%"' in t or '"85%"' in t or '"25%"' in t):
+            _dosya = os.path.basename(dosya)
+            if any(_dosya == d and v in t for d, v in BEYAZ_LISTE_SABIT):
+                continue              # bilinen yedek (fallback) satır — SİLME
             sabit.append((i, t[:96]))
 
     return tanimsiz, olu, sabit
