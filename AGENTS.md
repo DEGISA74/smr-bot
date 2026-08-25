@@ -1,8 +1,8 @@
-# Patron Terminal — CLAUDE.md
+# Patron Terminal — AGENTS.md
 # ⚖️ ÇALIŞMA KURALLARI (Claude · Codex · Antigravity — ÜÇÜ İÇİN BAĞLAYICI) → **`AJAN_KURALLARI.md`** (kök — ölçüm/dil/kod/git/VPS/çakışma kuralları + bilinen tuzaklar + iş bitirme kontrol listesi. Oturum başında OKU. Claude aynı zamanda DENETÇİ.)
 # 🗺️ "Hangi dosyayı değiştireceğim?" → `DOSYA_HARITASI.md` (kök — her dosya ne işe yarar, ne zaman dokunulur).
 # 🚰 VERİ HATTI (fetcher / donmuş fiyat / acil liste / Yahoo throttle / "çalışanı bozma" guardrail'leri) → `VERI_HATTI_DURUM.md` (kök — 6 Ağu 2026 GÜNCEL, işe başlamadan OKU).
-# 🏷️ TARAMA ETİKETLERİ (ELİT/ZAYIF) → **17 Ağu 2026'da yeniden ölçüldü, çoğu ÇÜRÜTÜLDÜ.** Eski "ELİT" listesine GÜVENME. Geçerli tablo: "E. TIER REFORM" bölümündeki **GÜNCEL HÜKÜM**. **19 Ağu 2026 ölçümü: iki rejimde de pozitif alfa veren tarama KALMADI** — `tavan_top30` düşen tape'te +0,67'den **-1,57**'ye döndü (🟡 tek rejim). En iyiler artık ⚪ nötr: `er_B8`, `er_B11`, `tavan_alarm`. ⛔ DAHA ZAYIF (AI'dan çıkarılacak): `ict_sniper`, `rs_leaders`, `vip_formasyon`, `er_A1/A2/A4/A6/A8/A9`, `er_B1`, `er_D3`. Araç: `alfa_karne.py` · detay: `memory/project_endeks_alti_alfa.md`.
+# 🤝 VPS DEPLOY (Claude+Codex aynı dosyada — ezme/clobber önleme) → `IKI_AJAN_VPS_DEPLOY.md` (kök — VPS'e her deploy'dan ÖNCE 6 adım: oku-sonra-düzenle · 3 kapı · diff · bağımlılık paketi · scp+yedek+restart · DUYUR. Şüphe = DUR + sor. VPS'te git pull YOK).
 # 🚀 VPS DEPLOY → **`./deploy.sh`** (kuru çalışma için argümansız, göndermek için `--go`). Değişeni kendi bulur · ezme kontrolü · 3 kapı · yedek · health · bozulursa OTOMATİK geri alır. Detay: `IKI_AJAN_VPS_DEPLOY.md`.
 # Hızlı navigasyon. Sistemin TAMAMI: `memory/SMR_SISTEM_OZETI.md` (tek kaynak).
 # Son güncelleme: 17 Tem 2026 (EKRAN HİYERARŞİ REFORMU CANLI — YENİ MODÜL `terazi_core.py` [⚖ Kanıt Terazisi + şok paketi + RSI uç rozeti + döküm kuralı çekirdeği; app.py import ediyor → ⚠ VPS scp listesine DAHİL]. 7 karar bloğu + AI prompt 3 eki [RSI uç kuralı/sok_gunu/karşı-sinyal] uygulandı; 2 yeni backtest: rsi_kova + sert_gun. TEK KAYNAK → memory/project_ekran_hiyerarsi_reformu.md [7 kalıcı ilke + kuyruk: piyasa-şoku modu, geçersizlik çizgisi, lens gerekçeleri, smr_core senkronu])
@@ -26,6 +26,7 @@
 | "Oturum 9 / 11 / 12'de ne refactor edildi?" | [Önceki Oturumlar](#önceki-oturumlar-kısa-kronoloji--detay-smr_sistem_ozetimd) |
 | "Hayalet Bar Plan B / CMF Phase 3 ne durumda?" | [Açık Konular](#açık-konular-devam-eden) |
 | "Bu dosyaya ne zaman / ne yazayım?" | [NE ZAMAN güncelle](#-bu-dosyayı-ne-zaman-güncelle) |
+| "Veri hattı / fetcher yavaş / donmuş fiyat / acil liste / Yahoo throttle?" | → `VERI_HATTI_DURUM.md` (kök — 6 Ağu güncel) |
 | "Mimari / bot kuralları / deploy / VPS / DB / launch durumu?" | → `memory/SMR_SISTEM_OZETI.md` (bu dosya değil) |
 | "Bot durumu / smr_core / smr_bot / Telegram kanalları?" | → `memory/project_bot_status.md` |
 | "Formasyon motoru / zigzag / pattern detector geçmişi?" | → `memory/project_pattern_engine.md` |
@@ -50,7 +51,7 @@
 - **Ana dosya:** `app.py` (**19.997 satır** — saf UI + AI prompt if-bloğu; 16 Tem 2026 ölü-import temizliği: 67 kullanılmayan import silindi). Hesap kodu AŞAĞIDAKİ MODÜLLERDE; app.py sadece import edip render eder.
 - **AI PROMPT (B35):** `if st.session_state.generate_prompt:` altında ~4K satır inline script — app.py'de. Ayrı modüle taşınması (9b) BELİRSİZ/opsiyonel; taşınacaksa önce fonksiyona sarma + aynı-gün karakter-karakter metin kıyası şart (detay: `memory/project_appy_bolme.md`).
 
-### Bölme modülleri (app.py'den doğdu — VPS'e app.py ile BİRLİKTE gider, 12 dosya)
+### Bölme modülleri (app.py'den doğdu — VPS'e app.py ile BİRLİKTE gider, 13 dosya)
 | Modül | ~Satır | İçerik |
 |---|---|---|
 | `data_layer.py` | 1.860 | VERİ KATMANI: get_batch/get_safe/benchmark/fetch aileleri, parquet cache, BIST evreni, TICKER_DISPLAY_NAMES/get_display_name |
@@ -62,12 +63,13 @@
 | `ict_core.py` | 2.360 | ICT yardımcıları + **calculate_ict_deep_analysis + PA-DNA + Minervini + harmonik küme** |
 | `scoring_core.py` | 1.500 | 9 saf skor motoru: **smart_money/sentiment/master skor** + SMC elements + split scores + risk |
 | `scan_pipeline.py` | 3.420 | **MASTER SCAN boru hattı**: _compute_signal_features + log_scan_signal + backfill + tüm scan_*_batch + chart_patterns + GPA + golden_trio |
+| `rsi_divergence_scanner.py` | 410 | **Wilder RSI pozitif uyumsuzluk**: dip geometrisi + dönüş tetiği + likidite/geç-kalmama/risk-ödül kapıları; saf hesap |
 | `charts.py` | 860 | `_main_price_chart_plotly` (SMC candlestick ana grafik) |
 | `analysis_core.py` | 1.455 | 14 panel/prompt motoru: **8'li roadmap + weekly frame** + STP/breakout/MTF/OBV-div/synthetic-sentiment/ICT-reversal/advanced-levels/ER-prompt-text/risk_profile/tier+güç/hacim-kalite |
 
 Import akışı (döngüsüz): `app.py → analysis_core/charts → scan_pipeline → scoring_core → ict_core/scanners → pattern_core/indicators → data_layer/db_layer/evidence/bist_calendar/data_policy`
 
-- **Bağımsız yardımcılar:** `saatlik_kapi.py` (⏱ **SAATLİK VERİ KAPISI, 19 Ağu 2026** — tek yetkili: kapsam (250 likit liste) + tamlık (beklenen bar) denetimi. Depodaki 580 dosyanın 328'i kapsam dışı, 18 Ağu'da hepsi 13:30'da donmuştu; kod yarım günü "bugünün verisi" sayıyordu. Artık kapıdan geçmeyen saatlik veriyle hesap YAPILMAZ ve ekran hangi veriyle hesaplandığını söyler. `indicators.intraday_obv_delta` + `data_layer` endeks saatlik cirosu buradan geçer → **VPS scp listesine DAHİL**. Karne: `python saatlik_kapi.py`. Detay: `memory/project_saatlik_kapi.md`) · `terazi_core.py` (⚖ **EKRAN REFORMU çekirdeği, 17 Tem 2026** — Kanıt Terazisi oy/hüküm motoru + şok değerlendirme + RSI uç rozeti + döküm-özeti; SAF hesap, render app.py'de. app.py import eder → **VPS scp listesine DAHİL**. Karar/karne kaynağı: `memory/project_ekran_hiyerarsi_reformu.md`) · `veri_bekcisi.py` (🛡 **TEK KAPI veri doğrulama, 13 Tem 2026** — `get_safe_historical_data` çıkışında 5 kontrol: referans ayrışması ±1.25x / Frankenstein bar / doji salgını / bölünme zıplaması / bayat veri. Bozuk veri panele ÇIKAMAZ: önce depo boşaltılıp taze denenir, olmadı boş df + app.py kırmızı şerit + `logs/veri_bekcisi.log`. **VPS scp listesine DAHİL.** EREGL 40.86-vs-9.4 vakası sonrası) · `bist_calendar.py` (BIST takvimi) · `data_policy.py` (AUTO_ADJUST tek-kaynak) · `golden_record.py` (⚡ emniyet kemeri, 5×69 ölçüm — **kod GİT'TE** (16 Tem `41ee5a2`), **`golden_record.json` referansı LOKAL kalır**, ikisi de **VPS'e gitmez**. Adları bölme modüllerinden çözer — app.py'nin import listesine bağımlı değil) · `backtest_runner.py` (19:30 forward returns) · `backup_patron_db.ps1` (Pazar 21:00 yedek)
+- **Bağımsız yardımcılar:** `terazi_core.py` (⚖ **EKRAN REFORMU çekirdeği, 17 Tem 2026** — Kanıt Terazisi oy/hüküm motoru + şok değerlendirme + RSI uç rozeti + döküm-özeti; SAF hesap, render app.py'de. app.py import eder → **VPS scp listesine DAHİL**. Karar/karne kaynağı: `memory/project_ekran_hiyerarsi_reformu.md`) · `veri_bekcisi.py` (🛡 **TEK KAPI veri doğrulama, 13 Tem 2026** — `get_safe_historical_data` çıkışında 5 kontrol: referans ayrışması ±1.25x / Frankenstein bar / doji salgını / bölünme zıplaması / bayat veri. Bozuk veri panele ÇIKAMAZ: önce depo boşaltılıp taze denenir, olmadı boş df + app.py kırmızı şerit + `logs/veri_bekcisi.log`. **VPS scp listesine DAHİL.** EREGL 40.86-vs-9.4 vakası sonrası) · `bist_calendar.py` (BIST takvimi) · `data_policy.py` (AUTO_ADJUST tek-kaynak) · `golden_record.py` (⚡ emniyet kemeri, 5×69 ölçüm — **kod GİT'TE** (16 Tem `41ee5a2`), **`golden_record.json` referansı LOKAL kalır**, ikisi de **VPS'e gitmez**. Adları bölme modüllerinden çözer — app.py'nin import listesine bağımlı değil) · `backtest_runner.py` (19:30 forward returns) · `backup_patron_db.ps1` (Pazar 21:00 yedek)
 - **Veri:** **Yahoo (OHLC) + İsyatirim (Volume override)** hibrit + parquet cache. Detay: `memory/SMR_SISTEM_OZETI.md` → "VERİ KATMANI" bölümü
 - **DB:** patron.db (Master Scan + scan_signals + signal_returns + signal_results), signals.db (bot)
 - ⚠️ **Kural:** modül dosyasına dokunulan her bloğun SONUNDA 8501 TAM restart (hot-reload modülü yenilemez — bekçi sarı şeritle uyarır) + hesap değişikliğinde `python golden_record.py`
@@ -169,10 +171,11 @@ Import akışı (döngüsüz): `app.py → analysis_core/charts → scan_pipelin
 8.  scan_minervini_batch
 9.  scan_rs_momentum_leaders
 10. scan_guclu_donus_batch
-11. scan_prelaunch_bos
-12. scan_golden_pattern_agent
-13. scan_erken_radar_batch + log
-14. Site frontend JSON export (BIST only)
+11. scan_wilder_positive_divergence_batch     → izleme + onaylı
+12. scan_prelaunch_bos
+13. scan_golden_pattern_agent
+14. scan_erken_radar_batch + log
+15. Site frontend JSON export (BIST only)
 ```
 
 ---
@@ -191,7 +194,7 @@ Import akışı (döngüsüz): `app.py → analysis_core/charts → scan_pipelin
 - **Sektör endeksi + piyasa rejimi → AI prompt'a EKLENMEZ** (`memory/feedback_sektor_rejim_yasak.md`)
 - **Weinstein Stage Analysis → YAPILMAYACAK** (analysis paralysis — 30 May 2026 reddedildi)
 - `detect_market_regime` UI'da var (sağ kart Makro) — ama scanner filtresi VEYA AI context'i olarak kullanılmaz
-- **CLAUDE.md uzatma yasağı:** Bu dosya kısa kalır. Detay → `memory/SMR_SISTEM_OZETI.md`
+- **AGENTS.md uzatma yasağı:** Bu dosya kısa kalır. Detay → `memory/SMR_SISTEM_OZETI.md`
 - **🧩 Yeni hesap kodu app.py'ye YAZILMAZ (4 Tem 2026):** yeni hesaplama/analiz fonksiyonları ayrı modüle (radar_core/tavan_engine kalıbı); app.py'de sadece UI + import. Mevcut kodu taşıma YOK (büyük refactor yasak). Detay → `memory/feedback_yeni_kod_ayri_modul.md`
 
 ---
@@ -258,40 +261,11 @@ Import akışı (döngüsüz): `app.py → analysis_core/charts → scan_pipelin
 - **Yasak listesi sertleştirme:** "ÇIPLAK YASAK LİSTE"ye "çift pencere · iki pencerede · iki farklı zaman diliminde · dual window" eklendi. ÖZ-DENETLEME'ye madde 16-17 eklendi: Tarih damgası `(GG.AA.YYYY, SS:DD)` ZERO geçiş + "çift pencere" ZERO geçiş.
 - Backup: `app_backup_pre_tweet_variation.py`.
 
-### E. BACKTEST'E DAYALI TIER REFORM (29.023 sinyal) — ⛔ ETİKETLERİ ÇÜRÜTÜLDÜ
-
-> 🔴 **17 AĞU 2026 — AŞAĞIDAKİ ELİT ETİKETLERİ GEÇERSİZ, OKUMA.** 15-16 Haz ölçümü
-> TEK REJİMDEN (yükselen tape) + zehirli DB döneminden çıkmıştı. Endeks-kıyaslı yeniden
-> ölçüm (`alfa_karne.py` · 21.596 sinyal · Oca-Tem 2026 · iki rejim) etiketlerin çoğunu
-> çürüttü. **Geçerli hüküm: bir alttaki tablo.** Kod tarafı zaten doğru — `evidence.py`
-> 18 Tem'de TIER_1'i BOŞALTTI. Detay → `memory/project_endeks_alti_alfa.md`.
-
-**Veri (eski, arşiv):** 6 aylık backtest panelinde 47 tarama tipi, 29K sinyal.
-**Eski tespit — ⛔ ARTIK GEÇERSİZ:**
-~~- 🏆 **ELİT (kanıtlı iyi):** Pre-Launch BOS (hit %45.5 ret %+15.1 PF 1.86 · 66 sinyal), ER A8 Ucuz+Hacimli (hit %100 ret %+12.4), ER B1 Mükemmel Sıkışma, **ER A1 Dipte Sessizlik (hit %66.7 ret %+4.0 · 99 sinyal · Geri Dönüş ŞAMPİYONU)**, **ER B8 Sıkışma Sonu (hit %69.2 ret %+3.7 · 46 sinyal · Sıkışma ŞAMPİYONU)**.~~
-~~- 🚫 **ZAYIF (kanıtlı kötü):** Royal Flush (hit %24-34 · 71 sinyal · TIER_VADE_UZUN hipotezi REDDEDİLDİ), ICT Sniper (534 sinyal hit %39 PF 0.88), Radar 1 (2097 sinyal hit %40 ret -%0.16). Yeterli örnek + negatif beklenti = kesin yanlış.~~
-
-**🔵 GÜNCEL HÜKÜM (17 Ağu 2026 · alfa = sinyal getirisi − aynı gün XU100 · T+20):**
-
-Genel: yükselen tape **+0,55** alfa · düşen tape **-3,68** alfa. Açığın TAMAMI düşen
-piyasadan — zayıf tape'te dibe düşmüş hisse seçiyoruz, endeks büyüklerle toparlıyor,
-biz katılmıyoruz. (= [[project-donus-el-kitabi]] dersi, 10 kat örneklemle.)
-
-| Etiket | Ölçüt | Taramalar |
-|---|---|---|
-| 🟢 **GÜÇLÜ** | iki rejimde de pozitif | `tavan_top30` (+3,12/+0,67) · `tavan_alarm` (+3,37/+0,26) · *(N<80: `zirve_devam` +9,24 · `zirve_sikisma` +3,52)* |
-| ⚪ NÖTR | iki rejim ≈0 | `er_B11` (+10,54/-0,80 — yükselende çok güçlü) · `er_B8` |
-| 🟡 TEK REJİM | sadece yükselende | `radar2` · `liderlik_aday` · `er_C2` · `er_C8` · `guclu_donus` · `prelaunch_bos` · `altin_setup` · `nadir_firsat` · `er_C3/C5/C7/C9/C11/D2/D4/D5/D1/A5/A7/C1` |
-| 🔴 ZAYIF | iki rejimde de negatif | `tekli_altin` · `er_A3` · `er_B5` · `harmonik_confluence` |
-| ⛔ **DAHA ZAYIF** | iki rejim negatif **ve** alfa ≤ -2,5 (ya da tek başına ≤ -4,0) | `ict_sniper` (-4,89) · `er_B1` (-4,83) · `er_A2` (-4,24 · yükselende +0,54 ama düşende -7,01) · `vip_formasyon` (-3,87) · `er_A1` (-3,68) · `er_A8` (-3,16) · `er_A6` (-2,91) · `rs_leaders` (-2,88 · **en büyük toplam açık, N=1692**) · `er_D3` (-2,76) · `er_A9` (-2,73) · `er_A4` (-2,53) |
-
-**Çürütülenler (eskiden ELİT yazıyordu):** `er_A1` "Geri Dönüş ŞAMPİYONU %66,7" → **⛔ -3,68** ·
-`er_A8` "isabet %100" → **⛔ -3,16** · `er_B1` "Mükemmel Sıkışma" → **⛔ -4,83** ·
-`prelaunch_bos` "PF 1,86" → 🟡 rejime bağımlı (+2,55/-2,72) · `er_B8` "Sıkışma ŞAMPİYONU" → ⚪ nötr.
-
-⚠ Sınır: T+20 verisi 17 Tem'de bitiyor · "düşen" kovası ağırlıkla Haz-Tem çöküşü ·
-beta düzeltmesi yok. **Rejim değişince `python alfa_karne.py` yeniden koş.**
-
+### E. BACKTEST'E DAYALI TIER REFORM (29.023 sinyal, ana iş)
+**Veri:** 6 aylık backtest panelinde 47 tarama tipi, 29K sinyal değerlendirildi.
+**Tespit (kanıt):**
+- 🏆 **ELİT (kanıtlı iyi):** Pre-Launch BOS (hit %45.5 ret %+15.1 PF 1.86 · 66 sinyal), ER A8 Ucuz+Hacimli (hit %100 ret %+12.4), ER B1 Mükemmel Sıkışma, **ER A1 Dipte Sessizlik (hit %66.7 ret %+4.0 · 99 sinyal · Geri Dönüş ŞAMPİYONU)**, **ER B8 Sıkışma Sonu (hit %69.2 ret %+3.7 · 46 sinyal · Sıkışma ŞAMPİYONU)**.
+- 🚫 **ZAYIF (kanıtlı kötü):** Royal Flush (hit %24-34 · 71 sinyal · TIER_VADE_UZUN hipotezi REDDEDİLDİ), ICT Sniper (534 sinyal hit %39 PF 0.88), Radar 1 (2097 sinyal hit %40 ret -%0.16). Yeterli örnek + negatif beklenti = kesin yanlış.
 **6 Adım uygulandı:**
 1. **SCANNER_TIER_MAP güncellendi** (app.py ~2059): ER A1 → TIER_1_ELIT yükseltildi, ER B8 → TIER_2_GUVENILIR yükseltildi, Royal Flush map'ten KALDIRILDI ("nadir_firsat" → `get_active_scanner_tiers` `_classic_map`'ten de çıkarıldı). ICT Sniper + Radar 1 zaten map'te yoktu.
 2. **Master Scan tier sırasına yeniden sıralandı** (app.py:23693+): ELİT ÖNCE (%20 Pre-Launch BOS → %35 Erken Radar), GÜVENİLİR ortada (%45 Hidden Acc → %72 RS Momentum), ZAYIF EN SONA (%92 ICT+Royal Flush paralel → %95 Radar 1 → %97 Güçlü Dönüş). İlerleme barı etiketlerinde "ELİT (TIER_1)" / "GÜVENİLİR (TIER_2)" / "ZAYIF" yazıyor.
@@ -301,13 +275,13 @@ beta düzeltmesi yok. **Rejim değişince `python alfa_karne.py` yeniden koş.**
 6. **Tek hisse paneline tier rozeti** (app.py:20996+): `_render_genel_ozet_panel` başına TIER rozeti. TIER_1 → büyük yeşil gradient ("🏆 ELİT İŞARETLİ — Backtest Kanıtladı"). TIER_2 → orta sarı ("🥈 GÜVENİLİR İŞARETLİ"). ZAYIF için rozet YOK (sessizce gizli).
 - Backup: `app_backup_pre_tier_render.py`.
 
-### F. AÇIKLAMA TARZI KURALI (kalıcı CLAUDE.md kuralı)
-Kullanıcı talebi: "rezalet, robotik anlattın" diye uyarmak yorucu. CLAUDE.md'ye "📐 AÇIKLAMA TARZI KURALI" eklendi (kalıcı). Yapı: Sorun → Niye sorun → Çözüm (kod gösterme, terim ve satır numarası yasak) → Sonuç (❌/⏱/🚀 emoji) → Test et (elini tutar adımlar). Kontrol sorusu: "Bu açıklamayı kod yazmayı bilmeyen biri okursa olayı anlar mı?"
+### F. AÇIKLAMA TARZI KURALI (kalıcı AGENTS.md kuralı)
+Kullanıcı talebi: "rezalet, robotik anlattın" diye uyarmak yorucu. AGENTS.md'ye "📐 AÇIKLAMA TARZI KURALI" eklendi (kalıcı). Yapı: Sorun → Niye sorun → Çözüm (kod gösterme, terim ve satır numarası yasak) → Sonuç (❌/⏱/🚀 emoji) → Test et (elini tutar adımlar). Kontrol sorusu: "Bu açıklamayı kod yazmayı bilmeyen biri okursa olayı anlar mı?"
 
 ### G. AÇIK KONULAR
 - Twitter takipçi artışı: Mayıs sonu zirvesi (+35/gün) sonrası düştü; algoritma bastırıyor olabilir. Bekleme listesinde 1 lead (utatli@gmail.com gerçek). Strateji: posting cadence (17dk'da 6 → 2-3 saat aralık), thread + video + soru tweet'leri.
 - Showcase performansı: Cold open 5-20sn, sıcak <1sn. Pre-warm cron önerisi (gece BIST top 30'u ısıt) ileride yapılabilir.
-- ~~Adım 5 sonraki: ER B8 sample artarsa TIER_1'e yükseltme~~ → **İPTAL (17 Ağu):** ER B8 iki-rejim ölçümünde ⚪ nötr (-0,14/-0,18). TIER_1 terfi gündemde değil. (⛔ DAHA ZAYIF listesi AI prompt'tan ÇIKARILDI — iş bitti, 25 Ağu doğrulandı.)
+- Adım 5 sonraki: Eylül 2026 ortası — ER B8 (46 sample sınır) sample artarsa TIER_1'e yükseltme · 20G isabet verisi olgunlaşır · Minervini SEPA örnek sayısı yeterli olursa kalibre.
 
 Backup'lar (bu oturum): `app_backup_pre_futures_volume_override.py` · `app_backup_pre_tweet_variation.py` · `app_backup_pre_tier_render.py`.
 
@@ -405,7 +379,7 @@ Commits: `cecf58a` (faz_X) · `8926ee7` (3 flag fix) · `2a3c432` (/bulten + lea
 
 **Backup otomasyonu:** `backup_patron_db.ps1` + Windows Task Scheduler `SMR_DB_Weekly_Backup` (Pazar 21:00, 84 gün retention). patron.db git'te değil → tek koruma katmanı.
 
-**CLAUDE.md sıkıştırıldı:** 53K → ~7K karakter. Eski içerik `CLAUDE_backup_before_compress.md`'de.
+**AGENTS.md sıkıştırıldı:** 53K → ~7K karakter. Eski içerik `CLAUDE_backup_before_compress.md`'de.
 
 ---
 
@@ -427,7 +401,6 @@ Commits: `cecf58a` (faz_X) · `8926ee7` (3 flag fix) · `2a3c432` (/bulten + lea
 - ✅ **TEFAS + KAP KALDIRILDI (12 Haz Oturum 21, commit `11ad6a3`):** Canlı endpoint testi sonrası tamamen söküldü (~469 satır). KAP `/api/disclosures` → **status 666** (bot-block, HTML); TEFAS pytefas çalışıyor ama yeni API **hisse-bazlı veri vermiyor** (sadece makro fon allocation = kalıcı rejim yasağı) + AUM kolonu yanlış (`market_cap` yerine `portfolio_size`). 6 fonksiyon + `_KURUMSAL_THRESHOLDS` + Master Scan fetch + skor + AI emit + prompt metni silindi. **Korundu:** MKK yabancı (hisse-bazlı, çalışıyor), rel_obv, UDVR, Force Index. scan_signals `f_tefas_*`/`f_buyback_*`/`f_kurumsal_anchor` kolonları NULL kalır (schema bozulmadı). Backup: `app_backup_pre_tefas_kap_removal.py`. İleride güvenilir KAP kaynağı bulunursa buyback/insider yeniden değerlendirilebilir.
 - ✅ **Feature snapshot scanner-side yazım** — TAMAMLANDI (3 Haz Oturum 14): `_compute_signal_features` helper + `log_scan_signal` fallback. Sonraki Master Scan'den kolonlar dolacak.
 - ✅ **Bot tarafına AI Prompt v2 senkron** — TAMAMLANDI (3 Haz Oturum 14): smr_core.py PRO (build_ai_prompt) + ELITE (build_ai_prompt_gorev1) → Z-Score + POC/VWAP + KESİN YASAK 3 blok konsolide (1 birleşik Rehber), anti-kalıp mekanik kural (PRO+ELITE), ELITE ANLATIM KURALI Oturum 14 formatına geçti (insani cümle + parantezde kısaltma + İLHAM + anti-kopya). Net: 3282→3115 satır (-167). Backup: `smr_core_backup_pre_prompt_v2.py`. ⚠️ VPS deploy gerek: `git push` + `ssh wm11tr@34.153.19.220 "cd ~/smr && git pull && sudo systemctl restart smr-bot"`.
-- ✅ **⛔ DAHA ZAYIF taramalar ÇIKARILDI — İŞ BİTTİ (17 Ağu, 25 Ağu doğrulandı):** iki rejimde de negatif alfa veren 11 tarama (`ict_sniper` -4,89 · `rs_leaders` -2,88/N=1692 · `vip_formasyon` -3,87 · `er_A1/A2/A4/A6/A8/A9` · `er_B1` · `er_D3`) hem AI prompt'tan hem panellerden çekildi, üstelik SİNYAL BİLE ÜRETMİYORLAR. Mekanizma: `evidence.ZAYIF_TARAMA_AI_BASTIR` + `ELENEN_TARAMALAR` → `analysis_core.py:150` (AI emit filtresi) · `scanners.py:2173` (ER senaryo atlama) · `app.py:15166` (klasik). Geri alma: `evidence.py`'deki listeleri boşalt. → `memory/project_endeks_alti_alfa.md`
 - ⏳ **base_powers reranking** — `eval_20g ≥ 30` eşiği bekleniyor. Şu an Royal Flush 11/71. Eylül 2026 itibariyle olgunlaşır.
 - ⏳ **Hayalet Bar Plan B** — `_strip_holiday_bars` ortadaki V=0 barları da silsin (2-3 hafta backtest sonrası karar)
 - ⏳ **CMF Dual-Window Phase 3** — `get_obv_divergence_status` + `calculate_price_action_dna` + `process_single_accumulation` + Tile 6'ya yay
