@@ -75,6 +75,7 @@ from analysis_core import (_risk_profile, get_active_scanner_tiers, _scanner_set
 from data_policy import AUTO_ADJUST, drop_adj_close  # 3 Tem 2026 — veri politikası TEK KAYNAK (fetcher ile aynı)
 # 4 Tem 2026 — BÖLME ADIM 4: saf hesap fonksiyonları indicators.py içinde
 from indicators import (
+    hacim_durumu,   # 25 Ağu 2026 — TEK KAYNAK hacim eşiği (20G ort., endeks/hisse ayrımı yok)
     calculate_harsi, check_lazybear_squeeze_breakout, check_lazybear_squeeze,
     compute_mfi, compute_relative_obv_state, compute_force_index_dual, compute_updown_volume_ratio,
     intraday_obv_delta,
@@ -5714,11 +5715,8 @@ def render_smart_volume_panel(ticker):
     # + OBV sparkline & uyumsuzluk süresi (öneri 8+10)
     _flow_persist_html = ""
     _flow_persist_txt = ""
-    _absorption_html = ""
     _obv_spark_html = ""
     _obv_verdict_html = ""   # 14 Ağu 2026 — grafiğin üstündeki tek cümlelik hüküm şeridi
-    _obv_expl_html = ""
-    _obv_sentez_html = ""
     _obv_sentez_txt = ""     # 22 Tem: HÜKÜM 2. paragrafı için düz (renk-span'li) OBV sentez cümlesi
     _div_badge_info = None   # ('bearish'|'bullish', days)
     _cs_hist_list = []       # son 10 gün konsensüs skoru (yaklaşık)
@@ -6044,16 +6042,6 @@ def render_smart_volume_panel(ticker):
                             f'</div>'
                         )
                         # SÜTUN 2 — okuma rehberi (hiç bilmeyen biri için, kısa)
-                        _obv_expl_html = (
-                            f'<b>Kalın çizgi</b> = para akışı — kesikli çizginin üstünde '
-                            f'<span style="color:#10b981;">yeşil</span>, altında '
-                            f'<span style="color:#ef4444;">kırmızı</span>; koyu ton = o yöne '
-                            f'devam ediyor, açık ton = ters dönmüş. '
-                            f'<b>Açık gri</b> = fiyat. Aradaki dolgu: '
-                            f'<span style="color:#10b981;">yeşil</span> = akış fiyattan güçlü · '
-                            f'<span style="color:#ef4444;">kırmızı</span> = akış fiyattan zayıf · '
-                            f'boş = uyumlu.'
-                        )
                         # SÜTUN 4 — SENTEZ: günlük hız (GENEL ÖZET barlarıyla aynı hesap:
                         # OBV EMA5 günlük farkı) × fiyata göre konum (son 10 gün dolgu yönü)
                         # → tek basit cümle. (14 Tem 2026, kullanıcı tarifi: AKBNK örneği)
@@ -6095,10 +6083,9 @@ def render_smart_volume_panel(ticker):
                                     _sz = f'Akış yatay ✚ fiyata göre zayıf (dolgu {_c_ki}) — alıcı isteksiz.'
                                 else:
                                     _sz = 'Akış yatay, fiyatla uyumlu — belirgin sinyal yok.'
-                            _obv_sentez_html = f'<b>{_dn_ss}</b> — {_sz}'
                             _obv_sentez_txt = _sz
                         except Exception:
-                            _obv_sentez_html = ""
+                            pass
                 except Exception:
                     pass
                 # 8) Fiyat-OBV uyumsuzluğu kaç gündür sürüyor (5+ gün ise rozet)
@@ -6154,11 +6141,6 @@ def render_smart_volume_panel(ticker):
                                    'orta': "aralık ortası, taraf belirsiz"}[_ab['loc']]
                     _ab_clr = {'dip': "#10b981", 'tepe': "#f87171", 'orta': "#f59e0b"}[_ab['loc']]
                     _ab_sign = "+" if _ab['chg_pct'] >= 0 else ""
-                    _absorption_html = (
-                        f'<div style="margin-top:3px;font-size:0.68rem;color:{_ab_clr};font-weight:700;">'
-                        f'&#129533; Absorpsiyon ({_ab["date"]}): {_ab["rvol"]:.1f}x hacim, '
-                        f'fiyat %{_ab_sign}{_ab["chg_pct"]:.1f} — {_ab_loc_txt}</div>'
-                    )
                 # 7) Düşük hacim + BB sıkışması → "ilgisiz piyasa" değil "arz kuruması"
                 if t4_pos is False and check_lazybear_squeeze(_df_ctx):
                     t4_lbl = "Hacim Kuruması · Sıkışma"
@@ -6274,7 +6256,6 @@ def render_smart_volume_panel(ticker):
     _t6_tile_pos = True if _t6_is_pos else (False if _t6_is_neg else None)
 
     # ── VA Proximity HTML (Tile 2 eki — tüm pozisyonlar) ─────────
-    _va_prox_html = ""
     if vah > val > 0 and _cp > 0:
         if va_pos == "İÇİNDE":
             _range_va  = vah - val
@@ -6287,85 +6268,25 @@ def render_smart_volume_panel(ticker):
                 _prox_clr = "#f59e0b"; _prox_txt = f"VAH'a yakın (+%{_dist_vah:.1f})"
             else:
                 _prox_clr = "#94a3b8"; _prox_txt = "VA orta bölge"
-            _va_prox_html = (
-                f"<div style='margin-top:5px;border-top:1px solid {divider};padding-top:4px;'>"
-                f"<div style='display:flex;justify-content:space-between;font-size:0.60rem;"
-                f"color:{text_muted};margin-bottom:2px;'>"
-                f"<span>VAL {val:.2f}</span><span>VAH {vah:.2f}</span></div>"
-                f"<div style='position:relative;height:5px;background:{track_bg};border-radius:3px;'>"
-                f"<div style='position:absolute;left:{_pos_in_va:.0f}%;top:-3px;"
-                f"width:9px;height:11px;background:{_prox_clr};"
-                f"border-radius:2px;transform:translateX(-50%);'></div></div>"
-                f"<div style='font-size:0.70rem;color:{_prox_clr};font-weight:700;"
-                f"margin-top:3px;'>{_prox_txt}</div>"
-                f"</div>"
-            )
         elif "ALTINDA" in va_pos:
             _dist_pct_val = (val - _cp) / val * 100 if val > 0 else 0
             _fill_w = min(_dist_pct_val * 3, 100)
-            _va_prox_html = (
-                f"<div style='margin-top:5px;border-top:1px solid {divider};padding-top:4px;'>"
-                f"<div style='display:flex;justify-content:space-between;font-size:0.60rem;"
-                f"color:{text_muted};margin-bottom:2px;'>"
-                f"<span>Fiyat</span><span>VAL {val:.2f}</span></div>"
-                f"<div style='height:5px;background:{track_bg};border-radius:3px;overflow:hidden;"
-                f"display:flex;align-items:stretch;justify-content:flex-end;'>"
-                f"<div style='width:{_fill_w:.0f}%;background:#f87171;opacity:0.75;'></div></div>"
-                f"<div style='font-size:0.70rem;color:#f87171;font-weight:700;margin-top:3px;'>"
-                f"↑ VAL'e %{_dist_pct_val:.1f} mesafe</div>"
-                f"</div>"
-            )
         elif "ÜSTÜNDE" in va_pos:
             _dist_pct_vah = (_cp - vah) / vah * 100 if vah > 0 else 0
             _fill_w2 = min(_dist_pct_vah * 3, 100)
-            _va_prox_html = (
-                f"<div style='margin-top:5px;border-top:1px solid {divider};padding-top:4px;'>"
-                f"<div style='display:flex;justify-content:space-between;font-size:0.60rem;"
-                f"color:{text_muted};margin-bottom:2px;'>"
-                f"<span>VAH {vah:.2f}</span><span>Fiyat</span></div>"
-                f"<div style='height:5px;background:{track_bg};border-radius:3px;overflow:hidden;'>"
-                f"<div style='height:100%;width:{_fill_w2:.0f}%;background:#10b981;"
-                f"opacity:0.75;border-radius:3px;'></div></div>"
-                f"<div style='font-size:0.70rem;color:#10b981;font-weight:700;margin-top:3px;'>"
-                f"VAH'ın %{_dist_pct_vah:.1f} üzerinde</div>"
-                f"</div>"
-            )
 
     # ── POC Mesafe Mini-Bar (Tile 1 eki) ────────────────────────
-    _poc_bar_html = ""
     if poc > 0 and _cp > 0:
         _poc_pct = (_cp - poc) / poc * 100
         _poc_clamped = max(-15.0, min(15.0, _poc_pct))
         _poc_dot_pos = (_poc_clamped + 15.0) / 30.0 * 100
         _poc_clr = "#10b981" if _poc_pct > 2 else ("#f87171" if _poc_pct < -2 else "#f59e0b")
         _poc_sign = "+" if _poc_pct > 0 else ""
-        _poc_bar_html = (
-            f"<div style='margin-top:5px;border-top:1px solid {divider};padding-top:4px;'>"
-            f"<div style='display:flex;justify-content:space-between;font-size:0.60rem;"
-            f"color:{text_muted};margin-bottom:2px;'>"
-            f"<span>−15%</span><span>POC</span><span>+15%</span></div>"
-            f"<div style='position:relative;height:5px;background:{track_bg};border-radius:3px;'>"
-            f"<div style='position:absolute;left:50%;top:0;bottom:0;width:1px;"
-            f"background:{text_muted};opacity:0.4;'></div>"
-            f"<div style='position:absolute;left:{_poc_dot_pos:.0f}%;top:-3px;"
-            f"width:9px;height:11px;background:{_poc_clr};"
-            f"border-radius:2px;transform:translateX(-50%);'></div></div>"
-            f"<div style='font-size:0.70rem;color:{_poc_clr};font-weight:700;"
-            f"margin-top:3px;'>{_poc_sign}{_poc_pct:.1f}% POC'tan</div>"
-            f"</div>"
-        )
 
     # ── Delta Güç Barı (Tile 3 eki) ──────────────────────────────
-    _delta_strength_html = ""
     if delta_val != 0 and t3_pos is not None and delta_yuzde > 0:
         _ds_w = min(float(abs(delta_yuzde)), 100.0)
         _ds_lbl = "Güçlü" if delta_yuzde >= 65 else ("Orta" if delta_yuzde >= 40 else "Zayıf")
-        _delta_strength_html = (
-            f"<div style='margin-top:2px;'>"
-            f"<div style='font-size:0.66rem;color:{t3_ic};font-weight:700;'>"
-            f"{_ds_lbl} baskı · %{delta_yuzde:.0f}</div>"
-            f"</div>"
-        )
 
     # ── 5 Günlük Kapanış Yönü Noktaları (Tile 5 eki) ─────────────
     _delta_5d_dots_html = ""
@@ -6404,7 +6325,6 @@ def render_smart_volume_panel(ticker):
     # ── 5G RVOL Trend HTML (Tile 4 eki) ──────────────────────────
     # Bugünkü RVOL boşsa (rvol<0.05 / _vol_data_missing) → 5G grafiği de gösterme;
     # aksi halde "veri yok" mesajıyla altta dolu grafik çelişiyor.
-    _rvol_5d_html = ""
     _rvol_5d_big_html = ""
     _rvol_5d = []
     _rvol_5d_days = []
@@ -6455,14 +6375,6 @@ def render_smart_volume_panel(ticker):
                 _td5  = _rvol_5d[-1] - _rvol_5d[0]
                 _tdir = "↑ ivmeleniyor" if _td5 > 0.2 else ("↓ yavaşlıyor" if _td5 < -0.2 else "→ sabit")
                 _tcol = "#10b981" if "↑" in _tdir else ("#f87171" if "↓" in _tdir else "#94a3b8")
-                _rvol_5d_html = (
-                    f"<div style='margin-top:2px;display:flex;align-items:flex-end;gap:8px;'>"
-                    f"<div style='display:flex;align-items:flex-end;gap:3px;height:22px;'>"
-                    f"{_bars5}"
-                    f"</div>"
-                    f"<span style='font-size:0.66rem;color:{_tcol};font-weight:700;'>5G {_tdir}</span>"
-                    f"</div>"
-                )
                 # Büyük varyant — üst sağ HİSSE HACMİ kartının sol 1/3 sütunu (10 Tem 2026)
                 _bars5_big = ""
                 for _rv5, _dl5, _dir5 in zip(_rvol_5d, _rvol_5d_days, _rvol_5d_dir):
@@ -6975,7 +6887,6 @@ def render_smart_volume_panel(ticker):
     # ── HACİM 4-PARÇA HÜKMÜ bloğu (yön / katılım / süreklilik / fiyat teyidi) ──
     # ict_core.hacim_dort_soru çıktısını renkli segment kartlarına + birleşik hükme
     # çevirir. "Alım var ama hacim düşük" çelişkisini panelin en üstünde tek dille çözer.
-    _dort_soru_html = ""
     _ds = sv.get("dort_soru")
     if _ds:
         _pal = {
@@ -7095,25 +7006,9 @@ def render_smart_volume_panel(ticker):
         # 22 Tem 2026 — 5 sütunlu yapı (kullanıcı): SOL sütun = 4 chip (üstte) + SKOR 10G/pil
         # şeridi (altta), justify-content:space-between ile dikeyi doldurur. SAĞ sütun = HÜKÜM
         # tam boy. Alt şerit buraya taşındı + "Geçmiş" rozeti kaldırıldı → alt boşluk kapandı.
-        _dort_soru_html = (
-            f'<div style="margin:7px 12px 8px; display:flex; gap:6px; align-items:stretch; '
-            f'border-bottom:1px solid {divider}; padding-bottom:8px;">'
-            f'<div style="flex:4; min-width:0; display:flex; flex-direction:column; justify-content:space-between; gap:7px;">'
-            f'<div style="display:flex; gap:6px; align-items:stretch;">{_chips}</div>'
-            f'<div style="display:flex; align-items:center; gap:6px 8px; flex-wrap:wrap;">{_cs_hist_strip}{_verdict_strip}</div>'
-            f'</div>'
-            f'{_hukum_cell}'
-            f'</div>'
-        )
 
     # ── VERDICT STRIP — _ds varsa yukarı (HÜKÜM bloğunun sol sütununa) taşındı;
     #     _ds yoksa (endeks/hacimsiz sembol) fallback olarak kendi satırında kalır.
-    _strip_row_html = (
-        f'<div style="padding:4px 12px;border-bottom:1px solid {divider};'
-        f'display:flex;align-items:center;gap:7px 8px;flex-wrap:wrap;justify-content:flex-start;">'
-        f'{_cs_hist_strip}{_verdict_strip}'
-        f'</div>'
-    ) if not _ds else ''
 
     # ── RENDER-ONLY GÖRÜNÜM MODELİ ───────────────────────────────
     # Bu bölüm yalnızca yukarıda hesaplanmış değerleri sade başlıklara yerleştirir.
@@ -7210,14 +7105,11 @@ def render_smart_volume_panel(ticker):
         }.get(_alignment_state, "Fiyat ile akıllı para ilişkisini gösterir")
         _alignment_clr = "#10b981" if _alignment_state == "var" else ("#f87171" if _alignment_state == "iraksama" else "#f59e0b")
 
-    if _vol_data_missing or rvol < 0.05:
-        _volume_status, _volume_note = "VERİ YOK", "20G ortalaması hesaplanamadı"
-    elif rvol < 0.8:
-        _volume_status, _volume_note = "DÜŞÜK", f"20G ort. %{(1.0-rvol)*100:.0f} altı"
-    elif rvol < 1.5:
-        _volume_status, _volume_note = "NORMAL", "20G ortalamasına yakın"
-    else:
-        _volume_status, _volume_note = "YÜKSEK", f"20G ort. %{(rvol-1.0)*100:.0f} üstü"
+    # 25 Ağu 2026 — TEK KAYNAK: eşikler indicators.hacim_durumu içinde.
+    # Sağ paneldeki hacim kartı da aynı fonksiyonu kullanır (iki panel çelişmesin).
+    _volume_status, _volume_note, _ = hacim_durumu(None if _vol_data_missing else rvol)
+    if _volume_status == "YOK":
+        _volume_status = "VERİ YOK"
     _rvol_text = "—" if _vol_data_missing or rvol < 0.05 else f"{rvol:.2f}×"
 
     _smart10_html = _cs_hist_strip.replace("SKOR 10G", "") if _cs_hist_strip else (
@@ -12636,24 +12528,16 @@ def _render_genel_ozet_panel():
                 #                       · "alt ({dip}) kırılırsa short, üst ({tepe}) kırılırsa long"
                 if _gs_net_txt in ("YUKARI", "HAFİF YUKARI") and _gs_low5_txt:
                     _lvl_label = "STOP"
-                    _lvl_vhtml = (f"<span style='color:{_gs_dn_clr};font-size:0.72rem;'>"
-                                  f"↓{_gs_low5_txt}</span>")
                     _lvl_expl  = f"alt ({_gs_low5_txt}) kırılırsa short"
                 elif _gs_net_txt in ("AŞAĞI", "HAFİF AŞAĞI") and _gs_high5_txt:
                     _lvl_label = "İPTAL"
-                    _lvl_vhtml = (f"<span style='color:{_gs_up_clr};font-size:0.72rem;'>"
-                                  f"↑{_gs_high5_txt}</span>")
                     _lvl_expl  = f"üst ({_gs_high5_txt}) kırılırsa long"
                 elif _gs_low5_txt and _gs_high5_txt:
                     _lvl_label = "KIRILIM"
-                    _lvl_vhtml = (f"<span style='color:{_gs_dn_clr};font-size:0.72rem;'>↓{_gs_low5_txt}</span>"
-                                  f"<span style='color:{_gs_neu};font-size:0.68rem;padding:0 3px;'>↔</span>"
-                                  f"<span style='color:{_gs_up_clr};font-size:0.72rem;'>↑{_gs_high5_txt}</span>")
                     _lvl_expl  = (f"alt ({_gs_low5_txt}) kırılırsa short, "
                                   f"üst ({_gs_high5_txt}) kırılırsa long")
                 else:
                     _lvl_label = "SEVİYE"
-                    _lvl_vhtml = f"<span style='color:{_gs_neu};font-size:0.72rem;'>—</span>"
                     _lvl_expl  = ""
 
                 _sig_bd_full = _sig_bd + (f" · {_lvl_expl}" if _lvl_expl else "")
@@ -12837,15 +12721,6 @@ def _render_genel_ozet_panel():
                     "AŞAĞI":        "çoğunluk AŞAĞI diyor",
                     "AŞAĞI ★":      "neredeyse tam fikir birliğiyle AŞAĞI",
                 }.get(_gs_net_txt, "")
-                _verdict_sub_html = (
-                    f"<div style='font-size:0.66rem;color:{_gs_expl_col};"
-                    f"font-weight:500;margin-top:4px;line-height:1.45;'>"
-                    f"Aşağıdaki, birbiriyle kısmen ilişkili 6 göstergenin oylaması "
-                    f"<span style='opacity:0.7;'>(3 gün–3 hafta penceresi; en isabetli ikili "
-                    f"RSI+CMF çift oy kullanır)</span>: {_oy_ozet}"
-                    f"<span style='color:{_gs_neu};'> — yani </span>"
-                    f"<span style='color:{_gs_net_clr};font-weight:700;'>{_verdict_sub}</span></div>"
-                )
 
                 # ── KANIT SATIRI (13 Tem 2026) — etiketin ölçülmüş geçmişi ───
                 # genel_ozet_verdict_backtest.json (V8, 600 hisse × 56K örnek).
@@ -23414,22 +23289,8 @@ def render_scanner_membership_panel(ticker):
                         f"<span style='color:#fbbf24;'>{_st}</span><br>{_scn.get('description','')}")
             return 'Hisse asıl harekete geçmeden önce, hareketin ilk küçük işaretlerini verdi.'
 
-        try:
-            _pos_5 = int(str(_h_5_pos).replace("%", "").strip())
-        except Exception:
-            _pos_5 = 50
-
-        try:
-            _pos_20 = int(str(_h_20_pos).replace("%", "").strip())
-        except Exception:
-            _pos_20 = 50
-
-        _pos_main = 85 if _h_main_up else (15 if _h_main_down else 50)
-
-        _label_5 = f"{_h_5_txt}" + (" · Akış Pozitif" if _pos_5 > 55 else (" · Akış Negatif" if _pos_5 < 45 else ""))
-        _label_20 = f"{_h_20_txt}" + (f" ({_h_risk_sign}%{abs(_h_mom20):.1f})" if _h_mom20 is not None else "")
-        _label_main = f"{_h_main_txt} (50G Omurga)"
-
+        # (25 Ağu 2026: ölü _hierarchy_html ile birlikte kullanılan _pos_*/_label_*
+        #  hesapları da kaldırıldı — bu fonksiyonda hiçbiri okunmuyordu.)
         # 25 Ağu 2026 — ÖLÜ _hierarchy_html BLOĞU KALDIRILDI (47 satır).
         # Buradaki kopya, `_render_right_col`'a ait olan PİYASA PUSULASI HTML'inin
         # ikizi idi ama (a) atandığı değişken bu fonksiyonda HİÇ okunmuyordu,
@@ -24042,7 +23903,6 @@ def _render_right_col():
             + "</div>"
         )
 
-        _right_col_html = ""
 
         # Alt şerit: RSI + koşullu HACİM + koşullu BETA + GÜVEN
         # (9 Haz 2026: bir tur daha küçültüldü — 2px → 1px padding, fontlar 0.62/0.78)
@@ -24072,7 +23932,6 @@ def _render_right_col():
                 _middle_cells.append(("RS GÜCÜ <span style='font-size:0.6rem;font-weight:600;opacity:0.7;'>10g</span>", _rs_str, _rs_col))
             if _mom_str and _mom_str != "—":
                 _middle_cells.append(("MOMENTUM", _mom_str, _mom_col))
-        _middle_html = ""
         if _middle_cells:
             _n_mid = len(_middle_cells)
             for _i, (_lbl, _val, _col) in enumerate(_middle_cells):
@@ -24080,26 +23939,9 @@ def _render_right_col():
                 # MOMENTUM hücresi: mini mavi/kırmızı bar histogramı (Para Akış
                 # İvmesi panelinin 16-günlük minisi) + değer yan yana
                 if _lbl == "MOMENTUM" and _mom_svg:
-                    _middle_html += (
-                        f"<div style='flex:1;padding:6px 10px;{_sep_mid}'>"
-                        f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
-                        f"letter-spacing:0.5px;font-weight:700;'>{_lbl} <span style='font-size:0.6rem;"
-                        f"font-weight:600;text-transform:none;opacity:0.75;'>ivme değişimi · 10 günlük</span></div>"
-                        f"<div style='display:flex;align-items:center;gap:8px;'>"
-                        f"{_mom_svg}"
-                        f"<span style='font-size:1.0rem;font-weight:800;color:{_col};"
-                        f"font-family:\"JetBrains Mono\",monospace;'>{_val}</span>"
-                        f"</div></div>"
-                    )
+                    pass
                 else:
-                    _middle_html += (
-                        f"<div style='flex:1;padding:6px 10px;{_sep_mid}'>"
-                        f"<div style='font-size:0.9rem;color:{_CLR_TEXT_SEC};text-transform:uppercase;"
-                        f"letter-spacing:0.5px;font-weight:700;'>{_lbl}</div>"
-                        f"<div style='font-size:1.0rem;font-weight:800;color:{_col};"
-                        f"font-family:\"JetBrains Mono\",monospace;'>{_val}</div>"
-                        f"</div>"
-                    )
+                    pass
 
         # Alt şerit
         # BIST: RSI + HACİM + BETA (MOMENTUM orta şeritte)
@@ -24120,12 +23962,11 @@ def _render_right_col():
             _chips_list.append(("HACİM", _vol_str, _vol_col))
         if _show_beta and _beta_str and _beta_str != "—":
             _chips_list.append(("BETA", _beta_str, _beta_col))
-        _bottom_html = ""
         for _i, (_lbl, _val, _col) in enumerate(_chips_list):
             if _i == len(_chips_list) - 1:
-                _bottom_html += _chip_last(_lbl, _val, _col)
+                pass
             else:
-                _bottom_html += _chip(_lbl, _val, _col)
+                pass
 
         # Fiyat kartının kırmızı orta alanı — canlı 10 maddelik kanıt hiyerarşisi.
         # Üst fiyat şeridi ve alttaki RSI uç uyarısı korunur; eski RS/Momentum ve
@@ -24279,17 +24120,28 @@ def _render_right_col():
         # ── FİYAT KARTI: PİYASA PUSULASI (12 Ağu 2026) ──────────────────────
         # Mevcut veriler korunur; yalnız şifreli 10-satır görünümü, okunan görsel
         # hikâyeye çevrilir. Yeni hesap/filtre/skor YOK.
-        def _h_flow_visual(state):
+        def _h_flow_visual(state, value=None):
+            """25 Ağu 2026 — BAR ARTIK GERÇEK DEĞERİ ÇİZİYOR.
+            Eskiden konum sabitti: pozitif→%75, nötr→%50, negatif→%25. Yani CMF
+            0,06 ile 0,45 aynı yerde görünüyordu; XU100'de CMF 0,104 (kıl payı
+            alıcı) bar %75'te "ezici üstünlük" gibi duruyordu. CMF ölçeği -1..+1,
+            o yüzden konum = 50 + CMF×50 (uçlar %8-%92 arasına kırpılır)."""
             if state == "pozitif":
-                return "Alıcılar önde", "↑", _SO_GREEN, "75%"
-            if state == "negatif":
-                return "Satıcılar önde", "↓", _SO_RED, "25%"
-            if state == "nötr":
-                return "Net yön yok", "→", _SO_YELLOW, "50%"
-            return "Veri yok", "•", _SO_NEUTRAL, "50%"
+                _t, _ok, _c = "Alıcılar önde", "↑", _SO_GREEN
+            elif state == "negatif":
+                _t, _ok, _c = "Satıcılar önde", "↓", _SO_RED
+            elif state == "nötr":
+                _t, _ok, _c = "Net yön yok", "→", _SO_YELLOW
+            else:
+                return "Veri yok", "•", _SO_NEUTRAL, "50%"
+            try:
+                _p = 50 + float(value) * 50 if value is not None else 50
+            except Exception:
+                _p = 50
+            return _t, _ok, _c, f"{max(8, min(92, int(round(_p))))}%"
 
-        _h_5_txt, _h_5_arrow, _h_5_visual_col, _h_5_pos = _h_flow_visual(_h_5_lbl)
-        _h_20_txt, _h_20_arrow, _h_20_visual_col, _h_20_pos = _h_flow_visual(_h_20_lbl)
+        _h_5_txt, _h_5_arrow, _h_5_visual_col, _h_5_pos = _h_flow_visual(_h_5_lbl, _h_cmf5)
+        _h_20_txt, _h_20_arrow, _h_20_visual_col, _h_20_pos = _h_flow_visual(_h_20_lbl, _h_cmf20)
         if _h_main_up:
             _h_main_txt, _h_main_arrow, _h_main_visual_col = "Yukarı yönlü", "↑", _SO_GREEN
         elif _h_main_down:
@@ -24381,25 +24233,29 @@ def _render_right_col():
             _h_vol_ratio = float(str(_vol_str).replace("×", "").strip())
         except Exception:
             pass
-        if _h_vol_ratio is None or (_h_vol_ratio == 0 and _is_idx):
-            _h_vol_pct = "Ortalama" if _is_idx else "—"
-            _h_vol_deg = 180 if _is_idx else 0
-            _h_vol_label = "Piyasa Katılımı" if _is_idx else "Hacim verisi yok"
-            _h_vol_note = "Endeks piyasa geneli hacim ortalaması baz alınır." if _is_idx else "20 günlük hacim ortalamasıyla karşılaştırmak için yeterli veri yok."
-            _h_vol_visual_col = _SO_GREEN if _is_idx else _SO_NEUTRAL
+        # 25 Ağu 2026 — TEK KAYNAK HACİM EŞİĞİ (indicators.hacim_durumu).
+        # Kullanıcı kararı: ölçüt her ürünün KENDİ son 20 günlük ortalama hacmi;
+        # endeks / hisse ayrımı YOK. Eskiden endekse "Piyasa Katılımı" diye sabit
+        # etiket basılıyor, hisselerde de sol panelden FARKLI eşik (1,0 vs 0,8)
+        # kullanılıyordu → aynı hacim bir panelde "normalin altında",
+        # diğerinde "NORMAL" görünüyordu.
+        _h_vol_durum, _h_vol_kisa, _h_vol_uzun = hacim_durumu(_h_vol_ratio)
+        if _h_vol_durum == "YOK":
+            _h_vol_pct = "—"
+            _h_vol_deg = 0
+            _h_vol_label = "Hacim verisi yok"
+            _h_vol_note = _h_vol_uzun
+            _h_vol_visual_col = _SO_NEUTRAL
         else:
             _h_vol_pct = f"%{int(round(_h_vol_ratio * 100))}"
             _h_vol_deg = max(0, min(360, int(round(_h_vol_ratio * 360))))
-            _h_vol_visual_col = _SO_GREEN if _h_vol_ratio >= 1.0 else _SO_YELLOW
-            if _h_vol_ratio >= 1.5:
-                _h_vol_label = "Hacim güçlü"
-                _h_vol_note = f"Bugünkü hacim, 20 günlük ortalamanın %{int(round(_h_vol_ratio * 100))}'si; hareket güçlü biçimde destekleniyor."
-            elif _h_vol_ratio >= 1.0:
-                _h_vol_label = "Hacim ortalamanın üzerinde"
-                _h_vol_note = f"Bugünkü hacim, 20 günlük ortalamanın %{int(round(_h_vol_ratio * 100))}'si."
-            else:
-                _h_vol_label = "Hacim normalin altında"
-                _h_vol_note = f"Bugünkü hacim, 20 günlük ortalamanın %{int(round(_h_vol_ratio * 100))}'i; hareket henüz güçlü hacim desteği almıyor."
+            _h_vol_label = {"DÜŞÜK": "Hacim ortalamanın altında",
+                            "NORMAL": "Hacim olağan aralıkta",
+                            "YÜKSEK": "Hacim güçlü"}[_h_vol_durum]
+            _h_vol_note = _h_vol_uzun
+            _h_vol_visual_col = {"DÜŞÜK": _SO_YELLOW,
+                                 "NORMAL": _SO_NEUTRAL,
+                                 "YÜKSEK": _SO_GREEN}[_h_vol_durum]
 
         _h_stp_day = None
         try:
@@ -24480,11 +24336,35 @@ def _render_right_col():
         except Exception:
             _pos_20 = 50
 
-        _pos_main = 85 if _h_main_up else (15 if _h_main_down else 50)
+        # 25 Ağu 2026 — ANA TREND BARI GERÇEK MESAFEYİ ÇİZİYOR.
+        # Eskiden sabitti: yukarı→%85, aşağı→%15. XU100'de fiyat 50 günlük
+        # ortalamanın sadece %2,4 üstündeyken bar %85'te "çok güçlü" gösteriyordu.
+        # Şimdi konum, fiyatın ortalamaya uzaklığından: ±%10 sapma ölçeğin ucu.
+        _pos_main = 50
+        _h_s50_uzaklik = None
+        try:
+            if _h_df is not None and len(_h_df) >= 50:
+                _c50 = _h_df['Close']
+                if isinstance(_c50, pd.DataFrame):
+                    _c50 = _c50.iloc[:, 0]
+                _h_s50_uzaklik = (float(_c50.iloc[-1]) / float(_c50.rolling(50).mean().iloc[-1]) - 1.0) * 100.0
+                _pos_main = int(round(50 + max(-10.0, min(10.0, _h_s50_uzaklik)) * 4))
+            else:
+                _pos_main = 85 if _h_main_up else (15 if _h_main_down else 50)
+        except Exception:
+            _h_s50_uzaklik = None
+            _pos_main = 85 if _h_main_up else (15 if _h_main_down else 50)
 
-        _label_5 = f"{_h_5_txt}" + (" · Akış Pozitif" if _pos_5 > 55 else (" · Akış Negatif" if _pos_5 < 45 else ""))
-        _label_20 = f"{_h_20_txt}" + (f" ({_h_risk_sign}%{abs(_h_mom20):.1f})" if _h_mom20 is not None else "")
-        _label_main = f"{_h_main_txt} (50G Omurga)"
+        # Etiketler: kategori değil GERÇEK RAKAM. CMF ölçeği -1..+1 olduğu için
+        # değerin kendisi yazılır; okuyucu "ne kadar önde" olduğunu görür.
+        _label_5 = f"{_h_5_txt}" + (f" · CMF {_h_cmf5:+.2f}" if _h_cmf5 is not None else "")
+        # ⚠ _h_mom20 PARA AKIŞI DEĞİL, FİYAT değişimidir. Eskiden "Alıcılar önde
+        # (+%5,7)" diye yazılıyordu ve okuyucu "%5,7 para girdi" sanıyordu.
+        _label_20 = f"{_h_20_txt}" + (f" · CMF {_h_cmf20:+.2f}" if _h_cmf20 is not None else "")
+        if _h_mom20 is not None:
+            _label_20 += f" · fiyat {_h_risk_sign}%{abs(_h_mom20):.1f}"
+        _label_main = f"{_h_main_txt}" + (f" · 50G ort. {_h_s50_uzaklik:+.1f}%"
+                                          if _h_s50_uzaklik is not None else " (50G Omurga)")
 
         _hierarchy_html = (
             "<div style='padding:12px 10px 0;background:#091421;border-top:1px solid #29465f;overflow:hidden;'>"

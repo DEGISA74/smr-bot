@@ -2232,3 +2232,44 @@ def compute_volume_breadth(ticker, df=None):
             'desc': 'Sağlıklı işlem hacmi ve dengeli kurumsal likidite.'
         }
 
+
+
+# =============================================================================
+# HACİM DURUMU — TEK KAYNAK (25 Ağu 2026, kullanıcı kararı)
+# =============================================================================
+# ÖLÇÜT: incelenen ürünün KENDİ son 20 günlük ortalama hacmi.
+# Endeks / hisse / emtia ayrımı YOK — her ürün kendi ortalamasıyla kıyaslanır.
+#
+# NEDEN: aynı ölçü iki panelde iki farklı eşikle etiketleniyordu —
+#   sağ panel 1,0 altını "normalin altında" sayıyordu,
+#   sol panel 0,8 altını "düşük" sayıyordu.
+# Sonuç: hacim ortalamanın %90'ıyken bir panel uyarı verirken diğeri
+# "NORMAL" diyordu. Aynı sınava iki öğretmen, iki not.
+HACIM_ESIK_DUSUK = 0.8
+HACIM_ESIK_YUKSEK = 1.5
+
+
+def hacim_durumu(rvol):
+    """Hacim oranını tek sözleşmeyle etiketler.
+
+    rvol = bugünkü hacim / son 20 günlük ortalama hacim.
+
+    Dönüş: (durum, kisa_not, uzun_not)
+      durum: 'YOK' | 'DÜŞÜK' | 'NORMAL' | 'YÜKSEK'
+    """
+    try:
+        r = float(rvol)
+    except (TypeError, ValueError):
+        r = None
+    if r is None or r < 0.05:
+        return ("YOK", "20G ortalaması hesaplanamadı",
+                "20 günlük hacim ortalamasıyla karşılaştırmak için yeterli veri yok.")
+    _pct = int(round(r * 100))
+    if r < HACIM_ESIK_DUSUK:
+        return ("DÜŞÜK", f"20G ort. %{int(round((1.0 - r) * 100))} altı",
+                f"Hacim, 20 günlük ortalamanın %{_pct}'i; hareket güçlü hacim desteği almıyor.")
+    if r < HACIM_ESIK_YUKSEK:
+        return ("NORMAL", "20G ortalamasına yakın",
+                f"Hacim, 20 günlük ortalamanın %{_pct}'i; olağan aralıkta.")
+    return ("YÜKSEK", f"20G ort. %{int(round((r - 1.0) * 100))} üstü",
+            f"Hacim, 20 günlük ortalamanın %{_pct}'si; hareket güçlü biçimde destekleniyor.")
