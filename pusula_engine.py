@@ -168,7 +168,7 @@ def _calculate_mas_and_structure(df: pd.DataFrame) -> Dict[str, Any]:
     return res
 
 
-def synthesize_market_compass(
+def _synthesize_raw(
     ticker: str,
     df: Optional[pd.DataFrame] = None,
     cizgi_view: Optional[Dict[str, Any]] = None,
@@ -263,7 +263,7 @@ def synthesize_market_compass(
             else:
                 text += "."
             
-            note = f"Kırılım teyitli; {trig_str} üzerinde kalıcılık yapının korunduğunu gösterir." + (f" (Geçersizlik: {inval_str})" if inval_str else "")
+            note = f"Kırılım teyitli; {trig_str} yapının geçersizlik sınırı." + (f" (Geçersizlik: {inval_str})" if inval_str else "")
             return {
                 "title": title,
                 "text": text,
@@ -332,7 +332,7 @@ def synthesize_market_compass(
             f"Fiyatın yeni dip yapamaması ve osilatörün yukarı ivmelenmesi, satış gücünün tükendiğini ve "
             f"akıllı paranın gizli birikim yaptığını gösteriyor."
         )
-        note = "Düşüş momentumu kırıldı; hacimli bir dönüş mumuyla trend değişimi başlayabilir."
+        note = "Fiyat yeni dip yapmazken osilatör yukarı ayrıştı — uyumsuzluk oluşmuş durumda."
         return {
             "title": title,
             "text": text,
@@ -386,7 +386,7 @@ def synthesize_market_compass(
                 f"{name}, {sma50_days_up} gündür 50 günlük ortalamanın üzerinde ana yükseliş trendini sürdürüyor. "
                 f"Para akışı ve fiyat yapısı kurumsal taşımayı teyit ediyor; ara düzeltmeler trendin genel yönünü bozmuyor."
             )
-            note = f"50 günlük ortalama ({sma50:.2f}) ana trend sigortası olarak geçerliliğini koruyor."
+            note = f"Fiyat 50 günlük ortalamanın ({sma50:.2f}) üzerinde kalmayı sürdürüyor."
             return {
                 "title": title,
                 "text": text,
@@ -417,12 +417,12 @@ def synthesize_market_compass(
     # ÖNCELİK 6: VOLATİLİTE SIKIŞMASI / ENERJİ BİRİKİMİ (SQUEEZE)
     # ─────────────────────────────────────────────────────────────────────────
     if vol_ratio and vol_ratio <= 0.65 and (ma["ret5"] is not None and abs(ma["ret5"]) <= 1.8):
-        title = "Volatilite Sıkışması (Enerji Birikimi)"
+        title = "Volatilite Sıkışması (Bant Daralması)"
         text = (
             f"{name} daralan bir fiyat bandında enerji biriktiriyor; işlem hacmi 20 günlük ortalamanın %{int(vol_ratio*100)}'sine kadar kurudu. "
             f"Bu tip düşük hacimli yatay konsolidasyonlar genellikle sert ve yönlü bir kırılımla sonuçlanır."
         )
-        note = "Yay geriliyor; bandın dışına çıkacak ilk hacimli seans yön tayini için belirleyici olacaktır."
+        note = "Bantlar daraldı; fiyat sıkışma aralığının içinde, yön henüz belirsiz."
         return {
             "title": title,
             "text": text,
@@ -443,7 +443,7 @@ def synthesize_market_compass(
                     f"{name} uzun vadeli boğa/ayı rejim çizgisi olan 200 SMA ({sma200:.2f}) üzerinde tutunma mücadelesi veriyor. "
                     f"Bu seviyenin üzerinde kalıcılık, hissenin uzun vadeli pozitif döngüye geçişini teyit edecektir."
                 )
-                note = f"200 SMA ({sma200:.2f}) üzerinde kalındıkça görünüm pozitife evrilir."
+                note = f"Fiyat 200 günlük ortalamanın ({sma200:.2f}) üzerinde — ana rejim sınırının üst tarafı."
                 return {
                     "title": title, "text": text, "note": note,
                     "color": CLR_GREEN if (short_flow == "pozitif") else CLR_YELLOW,
@@ -455,7 +455,7 @@ def synthesize_market_compass(
                     f"{name} uzun vadeli ana direnci olan 200 SMA ({sma200:.2f}) eşiğine dayandı. "
                     f"Düşüş trendinin kalıcı olarak sonlanması için 200 günlük bariyerin hacim patlamasıyla aşılması gerekiyor."
                 )
-                note = f"200 SMA ({sma200:.2f}) geçilmedikçe yükselişler ana trend içi tepki kalabilir."
+                note = f"Fiyat 200 günlük ortalamanın ({sma200:.2f}) altında — ana rejim sınırının alt tarafı."
                 return {
                     "title": title, "text": text, "note": note,
                     "color": CLR_YELLOW,
@@ -481,7 +481,7 @@ def synthesize_market_compass(
                 "archetype": "BEAR_MARKET_RALLY"
             }
         else:
-            title = "Satış Baskısı & Dağıtım Sürüyor"
+            title = "Fiyat Ana Ortalamaların Altında"
             text = (
                 f"{name} tüm ana hareketli ortalamalarının altında negatif rejimde kalmaya devam ediyor. "
                 f"Para akışında henüz kurumsal bir emilim görülmüyor; her yükseliş denemesi satıcılar tarafından karşılanıyor."
@@ -497,7 +497,7 @@ def synthesize_market_compass(
     # ÖNCELİK 9: TAZE YÜKSELİŞ BAŞLANGICI / KIRILIM (BREAKOUT IGNITION)
     # ─────────────────────────────────────────────────────────────────────────
     if sma50_days_up in range(1, 15) and (short_flow == "pozitif" or (vol_ratio and vol_ratio >= 1.2)):
-        title = "Taze Yükseliş Başlangıcı (50G Üzeri)"
+        title = "50 Günlük Ortalama Yeni Geçildi"
         text = (
             f"{name} 50 günlük ortalamasının üzerine yeni çıktı ve para akışı alıcı tarafında güçleniyor. "
             f"Kısa vadeli momentum pozitif; hareketin devamı için 50G ortalama üzerinde kapanış serisinin sürmesi beklenir."
@@ -520,7 +520,7 @@ def synthesize_market_compass(
             f"{name} 50 günlük ortalamasının üzerinde pozitif trend yapısını koruyor. "
             f"Para akışı ve hacim desteği dengeli; ana yön yukarıyı işaret ediyor."
         )
-        note = "Trend sağlam; ana destek seviyeleri korunduğu sürece pozitif görünüm geçerlidir."
+        note = "Fiyat ana ortalamaların üzerinde; kısa ve orta vade yapısı hizalı."
         return {
             "title": title, "text": text, "note": note,
             "color": CLR_GREEN,
@@ -538,3 +538,68 @@ def synthesize_market_compass(
             "color": CLR_NEUTRAL,
             "archetype": "NEUTRAL_RANGE"
         }
+
+
+# =============================================================================
+# ARKETİP KARNESİ — 25 Ağu 2026, `_pusula_backtest.py` ölçümü
+# =============================================================================
+# 3.985 sinyal · scan_signals × signal_returns · T+5/T+10/T+20 · look-ahead yok
+# Motor sezgiyle yazılmıştı; ölçüm 5 dalın TERS yönde konuştuğunu gösterdi
+# (ekranda iyi haber, getiride ortalamanın altı — ve tersi).
+#
+# ⚠ TEK REJİM: ölçüm 2026'nın tek piyasa dönemini kapsıyor, baseline T+20 = -0,95
+# (düşen tape). Rejim değişince `python _pusula_backtest.py` YENİDEN KOŞ ve bu
+# sözlüğü güncelle. Kural: AJAN_KURALLARI §2.1 / §2.3.
+#
+# Değer: (T+20 ortalamaya fark [puan], örneklem N, T+20 isabet %)
+#        None  → ölçüldü ama ayrım çıkmadı (işaret değişiyor / fark < 0,35)
+ARKETIP_KARNE = {
+    "SECULAR_MOMENTUM_RUN": (+10.38, 60,  67),
+    "SECULAR_PULLBACK":     (+5.58,  124, 52),
+    "SMA200_TEST_BEAR":     (+2.34,  222, 36),
+    "MARKDOWN_BEAR":        (+1.28,  611, 43),
+    "CIZGI_KIRILIM_BOGA":   (+1.12,  39,  44),
+    "NEUTRAL_RANGE":        None,
+    "BALANCED_BULL":        None,
+    "SECULAR_TREND":        None,
+    "VOLATILITY_SQUEEZE":   (-1.80,  267, 32),
+    "SMA200_TEST_BULL":     (-1.95,  162, 32),
+    "FRESH_IGNITION":       (-3.20,  539, 27),
+    "BEAR_MARKET_RALLY":    (-3.51,  273, 26),
+}
+
+# Ölçüm penceresinde 30'dan az örnek gördüğü veya hiç tetiklenmediği için
+# hüküm verilemeyen dallar (BLOW_OFF_CLIMAX N=6 · SFP dalları · CIZGI_KIRILIM_AYI).
+# RSI_POZ_DIV ayrıca ölçülemez: `f_rsi_div_pos` scan_signals'ta yok.
+
+
+def karne_notu(archetype: str) -> str:
+    """Arketipin ölçülmüş karnesini tek cümlede verir. Yön ≠ Eylem: yorum yok,
+    yalnız rakam. Ölçülmemişse dürüstçe onu söyler."""
+    if archetype not in ARKETIP_KARNE:
+        return "📊 Karne: bu kurulum henüz ölçülmedi (örneklem yetersiz)."
+    k = ARKETIP_KARNE[archetype]
+    if k is None:
+        return "📊 Karne: ölçüldü, ileri getiride ayrım çıkmadı — yön göstergesi olarak zayıf."
+    fark, n, isabet = k
+    yon = "ÜSTÜNDE" if fark > 0 else "ALTINDA"
+    return (f"📊 Karne ({n} örnek, 2026): 20 gün sonrası ortalamanın "
+            f"{abs(fark):.1f} puan {yon}, isabet %{isabet}.")
+
+
+def synthesize_market_compass(*args, **kwargs) -> Dict[str, Any]:
+    """Piyasa Pusulası — anlatı + ÖLÇÜLMÜŞ KARNE.
+
+    `_synthesize_raw` durumu tespit eder; bu sarmalayıcı her arketipe geçmiş
+    karnesini ekler. Böylece ekranda "ne oluyor" ile "bu kurulum geçmişte ne
+    yaptı" birlikte görünür — kullanıcı yönü kendi tartar (AJAN_KURALLARI §3.1).
+    """
+    out = _synthesize_raw(*args, **kwargs)
+    if not isinstance(out, dict):
+        return out
+    ark = out.get("archetype") or ""
+    out["karne"] = karne_notu(ark)
+    out["karne_fark"] = (ARKETIP_KARNE.get(ark) or (None,))[0]
+    _note = out.get("note") or ""
+    out["note"] = f"{_note} {out['karne']}".strip()
+    return out
