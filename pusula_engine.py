@@ -381,7 +381,7 @@ def _synthesize_raw(
                 "archetype": "SECULAR_PULLBACK"
             }
         else:
-            title = "Kurumsal Taşıma Trendi Korunuyor"
+            title = "Fiyat 50 Günlük Ortalamanın Üzerinde"
             text = (
                 f"{name}, {sma50_days_up} gündür 50 günlük ortalamanın üzerinde ana yükseliş trendini sürdürüyor. "
                 f"Para akışı ve fiyat yapısı kurumsal taşımayı teyit ediyor; ara düzeltmeler trendin genel yönünü bozmuyor."
@@ -515,7 +515,7 @@ def _synthesize_raw(
     # ─────────────────────────────────────────────────────────────────────────
     # Hiçbir spesifik uç tetiklenmediyse akış ve ortalama dengesini profesyonelce özetle
     if price and sma50 and price >= sma50:
-        title = "Kısa ve Ana Trend Dengeli Yukarı"
+        title = "Kısa ve Ana Trend Hizalı"
         text = (
             f"{name} 50 günlük ortalamasının üzerinde pozitif trend yapısını koruyor. "
             f"Para akışı ve hacim desteği dengeli; ana yön yukarıyı işaret ediyor."
@@ -587,6 +587,25 @@ def karne_notu(archetype: str) -> str:
             f"{abs(fark):.1f} puan {yon}, isabet %{isabet}.")
 
 
+# Rozet eşiği: |fark| >= 2,0 puan VE N >= 30. Altındakiler rozetsiz kalır —
+# küçük farkı vurgulamak, olmayan kesinlik üretmek olur.
+ROZET_FARK_ESIGI = 2.0
+ROZET_MIN_N = 30
+
+
+def karne_rozeti(archetype: str):
+    """(etiket, renk) veya None. Ölçülmüş güçlü/zayıf dalları görsel ayırır."""
+    k = ARKETIP_KARNE.get(archetype)
+    if not k:
+        return None
+    fark, n, _isabet = k
+    if n < ROZET_MIN_N or abs(fark) < ROZET_FARK_ESIGI:
+        return None
+    if fark > 0:
+        return (f"🏅 GEÇMİŞİ GÜÇLÜ  +{fark:.1f} puan", CLR_GREEN)
+    return (f"⚠ GEÇMİŞİ ZAYIF  {fark:.1f} puan", CLR_RED)
+
+
 def synthesize_market_compass(*args, **kwargs) -> Dict[str, Any]:
     """Piyasa Pusulası — anlatı + ÖLÇÜLMÜŞ KARNE.
 
@@ -600,6 +619,9 @@ def synthesize_market_compass(*args, **kwargs) -> Dict[str, Any]:
     ark = out.get("archetype") or ""
     out["karne"] = karne_notu(ark)
     out["karne_fark"] = (ARKETIP_KARNE.get(ark) or (None,))[0]
+    _rozet = karne_rozeti(ark)
+    out["karne_rozet"] = _rozet[0] if _rozet else ""
+    out["karne_rozet_renk"] = _rozet[1] if _rozet else ""
     _note = out.get("note") or ""
     out["note"] = f"{_note} {out['karne']}".strip()
     return out

@@ -23430,53 +23430,13 @@ def render_scanner_membership_panel(ticker):
         _label_20 = f"{_h_20_txt}" + (f" ({_h_risk_sign}%{abs(_h_mom20):.1f})" if _h_mom20 is not None else "")
         _label_main = f"{_h_main_txt} (50G Omurga)"
 
-        _hierarchy_html = (
-            "<div style='padding:12px 10px 0;background:#091421;border-top:1px solid #29465f;overflow:hidden;'>"
-            "<div style='color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.13em;'>PİYASA PUSULASI</div>"
-            f"<div style='margin:4px 0 2px;color:{_h_dir_col};font-size:1.12rem;font-weight:900;line-height:1.15;'>{_h_story_title}</div>"
-            f"<div style='color:#b8c9d9;font-size:0.70rem;line-height:1.4;'>{_h_story_text}</div>"
-            "<div style='height:1px;background:#29465f;margin:10px 0 8px;'></div>"
-            # ── 🧭 YÖNÜN ZAMAN HARİTASI (Tek Kart & 3 Vade Çubuğu - 25 Ağu 2026) ──
-            "<div style='margin:0 0 7px;color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.12em;'>🧭 YÖNÜN ZAMAN HARİTASI</div>"
-            "<div style='padding:8px 9px;border:1px solid #29465f;border-radius:10px;background:#0c1b2c;'>"
-            # Üst 3 Horizon Rozeti
-            "<div style='display:flex;gap:4px;justify-content:space-between;margin-bottom:8px;'>"
-            f"<div style='flex:1;padding:3px 2px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;font-size:0.56rem;color:#cbd5e1;'><span style='color:{_h_5_visual_col};font-weight:800;'>⚡ 5G:</span> {_h_5_txt}</div>"
-            f"<div style='flex:1;padding:3px 2px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;font-size:0.56rem;color:#cbd5e1;'><span style='color:{_h_20_visual_col};font-weight:800;'>📅 20G:</span> {_h_20_txt}</div>"
-            f"<div style='flex:1;padding:3px 2px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;font-size:0.56rem;color:#cbd5e1;'><span style='color:{_h_main_visual_col};font-weight:800;'>🏛️ Trend:</span> {_h_main_txt}</div>"
-            "</div>"
-            # 3 Zengin Akış Çubuğu (İki Yönlü Denge Göstergesi)
-            + _h_bipolar_gauge("Son 5 gün", _label_5, _pos_5, _h_5_visual_col)
-            + _h_bipolar_gauge("Son 20 gün", _label_20, _pos_20, _h_20_visual_col)
-            + _h_bipolar_gauge("Ana Trend", _label_main, _pos_main, _h_main_visual_col)
-            # Ne Anlama Geliyor Kutusu
-            + f"<div style='margin-top:7px;padding:6px 8px;border-left:3px solid {_h_dir_col};border-radius:0 6px 6px 0;background:rgba(2,6,17,0.60);color:#cbd5e1;font-size:0.62rem;line-height:1.35;'><b style='color:{_h_dir_col};'>💡 Ne anlama geliyor?</b> {_h_story_note}</div>"
-            + "</div>"
-            # ── ⚡ HAREKETİN GÜCÜ (Kompakt 3'lü HUD Kartı - 25 Ağu 2026) ──
-            "<div style='height:1px;background:#29465f;margin:10px 0 8px;'></div>"
-            "<div style='margin:0 0 6px;color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.12em;'>⚡ HAREKETİN GÜCÜ</div>"
-            "<div style='padding:8px 9px;border:1px solid #29465f;border-radius:10px;background:#0c1b2c;'>"
-            "<div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;'>"
-            # Kart 1: Hacim
-            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
-            f"<div style='display:inline-block;padding:1px 4px;background:{_h_vol_visual_col}22;border:1px solid {_h_vol_visual_col}55;border-radius:4px;color:{_h_vol_visual_col};font-size:0.60rem;font-weight:900;'>📊 {_h_vol_pct} HACİM</div>"
-            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_vol_label}</div>"
-            f"</div>"
-            # Kart 2: EMA 6
-            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
-            f"<div style='display:inline-block;padding:1px 4px;background:{_h_stp_color}22;border:1px solid {_h_stp_color}55;border-radius:4px;color:{_h_stp_color};font-size:0.60rem;font-weight:900;'>📈 EMA 6: {_h_stp_circle}G</div>"
-            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_stp_title}</div>"
-            f"</div>"
-            # Kart 3: 20G Değişim
-            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
-            f"<div style='display:inline-block;padding:1px 4px;background:{_h_risk_col}22;border:1px solid {_h_risk_col}55;border-radius:4px;color:{_h_risk_col};font-size:0.60rem;font-weight:900;'>⚡ {_h_risk_sign}%{abs(_h_mom20):.1f} (20G)</div>"
-            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>20G Değişim</div>"
-            f"</div>"
-            "</div>"
-            + f"<div style='margin-top:6px;padding:5px 7px;border-left:2px solid {_h_vol_visual_col};border-radius:0 4px 4px 0;background:rgba(2,6,17,0.60);color:#cbd5e1;font-size:0.58rem;line-height:1.3;'>{_h_vol_note}</div>"
-            + "</div>"
-            + "</div>"
-        )
+        # 25 Ağu 2026 — ÖLÜ _hierarchy_html BLOĞU KALDIRILDI (47 satır).
+        # Buradaki kopya, `_render_right_col`'a ait olan PİYASA PUSULASI HTML'inin
+        # ikizi idi ama (a) atandığı değişken bu fonksiyonda HİÇ okunmuyordu,
+        # (b) içindeki _h_story_title/_text/_note/_dir_col bu kapsamda TANIMSIZDI
+        #     → çalıştığında NameError, saran try onu sessizce yutuyor, fonksiyon
+        #     orada kesiliyor ve AŞAĞIDAKİ asıl st.markdown render'ı hiç çalışmıyordu.
+        # Tek kaynak: pusula HTML'i yalnız _render_right_col içinde üretilir.
 
         # Güç-filtreli 4 tarama (52H/RSI gücü)
         _strength = {s: g for s, g, _v in _scanner_setup_strength(ticker)}
@@ -24363,6 +24323,18 @@ def _render_right_col():
         _h_story_text = _pusula_out.get("text", "Piyasa dengeli görünümünü koruyor.")
         _h_story_note = _pusula_out.get("note", "Ana seviyeler izlenmeli.")
         _h_dir_col = _pusula_out.get("color", _SO_GREEN)
+        # 25 Ağu 2026 — ARKETİP KARNE ROZETİ (_pusula_backtest.py ölçümü).
+        # Ölçülmüş güçlü/zayıf dalları görsel ayırır; eşik |fark| >= 2,0 puan
+        # ve N >= 30. Altındakiler rozetsiz kalır — küçük farkı vurgulamak
+        # olmayan kesinlik üretmek olur.
+        _pus_rozet = _pusula_out.get("karne_rozet", "")
+        _pus_rozet_clr = _pusula_out.get("karne_rozet_renk", "") or "#94a3b8"
+        _pus_rozet_html = (
+            f"<div style='display:inline-block;margin:3px 0 2px;padding:2px 9px;"
+            f"border-radius:10px;background:{_pus_rozet_clr}1f;"
+            f"border:1px solid {_pus_rozet_clr}66;color:{_pus_rozet_clr};"
+            f"font-size:0.56rem;font-weight:900;letter-spacing:0.04em;'>{_pus_rozet}</div>"
+        ) if _pus_rozet else ""
 
         def _h_horizon_card(period, label, arrow, color):
             return (
@@ -24518,6 +24490,7 @@ def _render_right_col():
             "<div style='padding:12px 10px 0;background:#091421;border-top:1px solid #29465f;overflow:hidden;'>"
             "<div style='color:#91b7d6;font-size:0.60rem;font-weight:900;letter-spacing:0.13em;'>PİYASA PUSULASI</div>"
             f"<div style='margin:4px 0 2px;color:{_h_dir_col};font-size:1.12rem;font-weight:900;line-height:1.15;'>{_h_story_title}</div>"
+            f"{_pus_rozet_html}"
             f"<div style='color:#b8c9d9;font-size:0.70rem;line-height:1.4;'>{_h_story_text}</div>"
             "<div style='height:1px;background:#29465f;margin:10px 0 8px;'></div>"
             # ── 🧭 YÖNÜN ZAMAN HARİTASI (Tek Kart & 3 Vade Çubuğu - 25 Ağu 2026) ──
