@@ -232,6 +232,9 @@ Değişmez kurallar:
 | **Elenen sinyalin geri dönüşü** | `in_days` üç ölçümde en kötü bacaktı, elmas rozeti tetikliyordu | Karneyi kontrol et |
 | **Sessiz disk dolması** | Log döngüsü diski %100 yaptı, veri akışı 25 dk sessizce durdu | Alarm + periyodik bakış |
 | **Kilitsiz cron** | 29 süreç birikti | `flock -n` |
+| **Sabit gösterge konumu** | CMF 0,104 iken bar %75 — endeks düşerken "alıcılar ezici" | Barı gerçek değerden çiz |
+| **Aynı ölçü, iki eşik** | %90 hacim bir panelde "düşük", diğerinde "normal" | Eşik tek fonksiyonda |
+| **Karışık birim** | Para akışı etiketinin yanında fiyat yüzdesi | Her rakamın birimini yaz |
 
 ---
 
@@ -243,6 +246,7 @@ Bir işi "bitti" demeden önce:
 - [ ] Yeni etiket/rozet varsa **ölçüldü** (3 vade)
 - [ ] Dil kontrolü: emir cümlesi yok, isim dürüst
 - [ ] Yeni modül varsa `deploy.sh` listesinde
+- [ ] `python _hesap_denetimi.py` — tanımsız değişken / sabit gösterge konumu / ölü atama
 - [ ] `golden_record.py` sıfır fark
 - [ ] Lokal `ast.parse` + VPS `py_compile`
 - [ ] Deploy sonrası health 200 + log temiz
