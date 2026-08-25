@@ -9,8 +9,8 @@ Kullanım Amacı:
 
 İlkeler:
   - Yön != Eylem: Asla "Al", "Giriş Yap", "Stop Şurası" gibi emir / yatırım tavsiyesi vermez.
-  - Bayat Veri Reddi: saatlik_kapi kapsam denetimi (hata verirse REDDEDER) + son bar
-    3 takvim gününden eskiyse veri yok sayılır.
+  - Bayat Veri Reddi: son bar 3 takvim gününden eskiyse veri yok sayılır (kendi
+    deposu üzerinden ölçülür — saatlik depo vekil olarak KULLANILMAZ).
   - Yarım Bar Koruması: kapanmamış seans barı hesaba GİRMEZ (_son_bar_yarim_mi).
   - İki Kademe: 4S yalnızca günlük kapıyı geçen hissede konuşur (gunluk_kapi_gecti).
 """
@@ -53,24 +53,21 @@ def _son_bar_yarim_mi(df: pd.DataFrame) -> bool:
 def get_4s_data(symbol: str) -> pd.DataFrame | None:
     """4 saatlik parquet deposundan veriyi bayat/yarım korumasıyla okur.
 
-    Üç kapı: (1) saatlik_kapi kapsam denetimi — HATA VERİRSE REDDEDER,
-    (2) dosyanın son barı 3 günden eski olmamalı, (3) kapanmamış son bar atılır.
+    Üç kapı, hepsi 4S deposunun KENDİ verisi üzerinden: (1) dosya var mı,
+    (2) son barı 3 takvim gününden eski olmamalı, (3) kapanmamış son bar atılır.
     """
     sym = symbol.replace(".IS", "").replace(".is", "").upper()
 
-    # 1. Kapsam/tazelik kapısı — bekçi konuşamıyorsa GEÇİRME (fail-closed).
-    #    Eski hali `except: pass` idi: bekçi hata verince kapı sessizce açık
-    #    kalıyordu. Bu projede sessiz arıza en pahalı hata tipi.
-    try:
-        from saatlik_kapi import saatlik_durum
-        if not saatlik_durum(sym).get("ok"):
-            return None
-    except ImportError:
-        pass                     # modül hiç yoksa (kurulum eksik) diğer kapılar korur
-    except Exception:
-        return None              # bekçi VAR ama hata verdi → güvenme, reddet
+    # NOT (25 Ağu 2026) — saatlik_kapi BAĞI KALDIRILDI. Gerekçe: o bekçi
+    # `veriler_saatlik/` deposunu denetler, buradaki veri ise `veriler_4s/`
+    # deposundan okunur. Yanlış deponun bekçisi = dolaylı vekil. Somut zarar:
+    # VPS'te 4S deposu 231 dosyayla TAZEyken saatlik depo 7 dosya olduğu için
+    # bekçi hepsini eledi (kapıdan geçen: 0). Tazelik zaten AŞAĞIDA, doğru
+    # depo üzerinden ölçülüyor (3 gün kuralı + yarım bar reddi); kapsam
+    # denetimini de dosyanın varlığı yapıyor — 4S deposunda dosyası olmayan
+    # hisse zaten None döner.
 
-    # 2. Dosya
+    # 1. Dosya
     path = os.path.join(DEPO_4S, f"{sym}.IS_4h.parquet")
     if not os.path.exists(path):
         return None
@@ -80,13 +77,13 @@ def get_4s_data(symbol: str) -> pd.DataFrame | None:
         if df is None or df.empty or len(df) < 20:
             return None
 
-        # 3. Bayat mı? (son bar 3 takvim gününden eski)
+        # 2. Bayat mı? (son bar 3 takvim gününden eski)
         last_dt = df.index[-1]
         last_date = last_dt.date() if hasattr(last_dt, "date") else pd.to_datetime(last_dt).date()
         if (datetime.now().date() - last_date).days > BAYAT_GUN_ESIGI:
             return None
 
-        # 4. Kapanmamış son barı at
+        # 3. Kapanmamış son barı at
         if _son_bar_yarim_mi(df):
             df = df.iloc[:-1]
             if len(df) < 20:
