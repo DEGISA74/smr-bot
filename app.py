@@ -7347,13 +7347,13 @@ def render_smart_volume_panel(ticker):
             # 14 Ağu 2026: justify-content center → flex-start. Kutular gerildiğinde
             # içerik ortalanıp altta/üstte kocaman boşluk bırakıyordu.
             f'<div style="min-width:0;height:100%;box-sizing:border-box;display:flex;flex-direction:column;'
-            f'justify-content:flex-start;padding:6px 8px;border-radius:6px;border:1px solid {divider};'
+            f'justify-content:flex-start;padding:4px 6px;border-radius:6px;border:1px solid {divider};'
             f'border-left:3px solid {color};background:rgba(15,23,42,0.50);">'
-            f'<div style="font-size:0.52rem;color:{text_muted};font-weight:900;letter-spacing:0.60px;text-transform:uppercase;">{label}</div>'
-            f'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:5px;margin-top:2px;">'
-            f'<span style="font-size:0.78rem;color:{color};font-weight:900;line-height:1.12;">{main}</span>'
-            f'<span style="font:800 0.74rem JetBrains Mono;color:{color};white-space:nowrap;">{value}</span>'
-            f'</div><div style="font-size:0.62rem;color:{text_sub};line-height:1.26;margin-top:3px;">{note}</div></div>'
+            f'<div style="font-size:0.48rem;color:{text_muted};font-weight:900;letter-spacing:0.48px;text-transform:uppercase;">{label}</div>'
+            f'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:4px;margin-top:1px;">'
+            f'<span style="font-size:0.70rem;color:{color};font-weight:900;line-height:1.08;">{main}</span>'
+            f'<span style="font:800 0.68rem JetBrains Mono;color:{color};white-space:nowrap;">{value}</span>'
+            f'</div><div style="font-size:0.55rem;color:{text_sub};line-height:1.20;margin-top:2px;">{note}</div></div>'
         )
 
     # Son seans / 5 seans: metin yerine ibreli taraf ölçeri.
@@ -7502,33 +7502,27 @@ def render_smart_volume_panel(ticker):
         f'{"cursor:help;" if _session_tag_hl else ""}">'
         f'{"&#9203; " if _session_tag_hl else ""}{_session_tag}</span></div>'
 
-        # 1+2) SOL istif (4 tile + akıllı para durumu) | SAĞ tam-boy GENEL OKUMA
-        # 14 Ağu 2026 — sol daraldı / sağ genişledi (grafik hak ettiği yeri alsın).
-        f'<div style="display:grid;grid-template-columns:minmax(0,0.85fr) minmax(0,1.6fr);gap:6px;padding:6px 10px;align-items:start;">'
+        # 1+2) SOL açıklama + iki baskı kartı | SAĞ tam-boy OBV grafiği
+        f'<div style="display:grid;grid-template-columns:minmax(0,0.85fr) minmax(0,1.6fr);gap:6px;padding:6px 10px;align-items:stretch;">'
 
         # ── SOL SÜTUN ──
-        f'<div style="display:flex;flex-direction:column;gap:6px;">'
-        # 4 tile — 4 yan yana DEĞİL 2×2: dar sütunda yan yana dizilince kutular
-        # incecik+upuzun oluyor, içleri boşalıyordu (14 Ağu 2026).
+        f'<div style="min-width:0;height:100%;display:flex;flex-direction:column;gap:6px;">'
+        # Açıklama en üstte; kalan dikey alanı doldurur.
+        f'<div style="flex:1;min-width:0;padding:6px 8px;background:rgba(15,23,42,0.38);border:1px solid {divider};border-radius:6px;display:flex;flex-direction:column;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;gap:5px 8px;flex-wrap:wrap;margin-bottom:4px;">'
+        f'<div style="font-size:0.60rem;color:{text_muted};font-weight:900;letter-spacing:0.55px;">SON 5 GÜN: FİYAT vs AKILLI PARA</div>'
+        f'{_general_eval_badge}</div>'
+        f'{_general_eval_note_html}'
+        f'<div style="flex:1;display:flex;flex-direction:column;justify-content:space-evenly;gap:4px;font-size:0.70rem;color:{text_main};line-height:1.38;font-weight:600;">{_reading_compact_blocks}</div>'
+        f'<div style="margin-top:4px;padding-top:5px;border-top:1px dashed {divider};font-size:0.62rem;color:{text_sub};font-weight:800;line-height:1.35;">'
+        f'Son seans: <span style="color:{t3_ic};">{_last_word}</span> · Son 5 seans: <span style="color:{t5_ic};">{_five_word}</span> · '
+        f'OBV 5/14 seans · CMF 5/20 seans: <span style="color:{_ap14_clr};">{_ap14_status_text}</span></div>'
+        f'</div>'
+        # Son seans ve son 5 seans kartları açıklamanın altında yan yana kalır.
         f'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;">'
         f'{_sv_pressure_card("SON SEANS", t3_pct, 1 if delta_val > 0 else -1 if delta_val < 0 else 0, delta_yuzde)}'
         f'{_sv_pressure_card("SON 5 SEANS", t5_pct, 1 if cum5 > 0 else -1 if cum5 < 0 else 0, cum5_pct)}'
-        f'{_sv_stat_card("OBV 5/14 · CMF 5/20 SEANS", f"{_ap14_icon} {_ap14_status}", f"CMF20 {_ap14_value_display}", _ap14_clr, _t6_short_desc)}'
-        f'{_sv_stat_card("HACİM DESTEĞİ", f"&#9675; {_volume_status}", _rvol_text, t4_ic, _volume_note)}'
         f'</div>'
-        # akıllı para durumu — yükseklik azaltıldı
-        f'<div style="padding:5px 8px;border:1px solid {divider};border-radius:6px;background:rgba(15,23,42,0.38);">'
-        f'<div style="font-size:0.56rem;color:{text_muted};font-weight:900;letter-spacing:0.65px;margin-bottom:3px;">AKILLI PARA DURUMU</div>'
-        # 14 Ağu 2026 — BASKININ SÜRESİ + FİYAT–AKILLI PARA UYUMU sağdaki
-        # "AKILLI PARA OKUMASI · OBV" kutusuna taşındı (ikisi de OBV grafiğinin okuması).
-        # Kalan MFI tek başına kutuyu boş bırakıyordu → 10 seans şeridiyle YAN YANA.
-        f'<div style="display:grid;grid-template-columns:0.85fr 1.15fr;gap:6px;align-items:stretch;">'
-        f'{_sv_stat_card("MFI (PARA GİRİŞ GÜCÜ)", _mfi_badge_text, _mfi_val_text, _mfi_clr, _mfi_note_text)}'
-        f'<div style="min-width:0;display:flex;flex-direction:column;justify-content:center;'
-        f'padding:6px 8px;border-radius:6px;border:1px solid {divider};background:rgba(15,23,42,0.50);">'
-        f'<div style="font-size:0.52rem;color:{text_muted};font-weight:900;letter-spacing:0.60px;margin-bottom:3px;">AKILLI PARANIN SON 10 SEANSI</div>'
-        f'<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">{_smart10_html}</div></div>'
-        f'</div></div>'
         f'</div>'  # /SOL SÜTUN
         f'{_obv_flow_html}'
 
@@ -7538,8 +7532,8 @@ def render_smart_volume_panel(ticker):
         f'<div style="padding:4px 12px;font-size:0.58rem;color:{text_muted};font-weight:900;letter-spacing:0.8px;'
         f'background:rgba(0,0,0,0.18);border-top:1px solid {divider};border-bottom:1px solid {divider};">TEKNİK DETAYLAR</div>'
 
-        # 3) Seviye haritası + 5 seanslık akıllı para/hacim + özet okuma
-        f'<div style="display:grid;grid-template-columns:1.12fr 1.45fr 1.05fr;gap:0;border-bottom:1px solid {divider};">'
+        # 3) Seviye haritası + 5 seanslık akıllı para/hacim + teknik akış kartları
+        f'<div style="display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,1.37fr) minmax(0,1.18fr);gap:0;align-items:stretch;border-bottom:1px solid {divider};">'
         f'<div style="padding:6px 8px;border-right:1px solid {divider};background:{t1_bb};">'
         f'<div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline;">'
         f'<span style="font-size:0.60rem;color:{text_muted};font-weight:900;letter-spacing:0.55px;">SEVİYE HARİTASI</span>'
@@ -7563,19 +7557,21 @@ def render_smart_volume_panel(ticker):
         f'{_volume_aligned_chart_html if _volume_aligned_chart_html else _volume_fallback_html}'
         f'</div></div>'
 
-        # 14 Ağu 2026 — bu hücre eskiden "AKILLI PARA OKUMASI" idi; 5 satırının 3'ü
-        # sol tile'ların tekrarıydı, 2'si (OBV yapısı/ivmesi) yukarı taşındı.
-        # Yerine GENEL OKUMA indi: sonuç, kanıttan SONRA okunsun.
-        f'<div style="padding:6px 8px;background:rgba(15,23,42,0.38);">'
-        f'<div style="display:flex;justify-content:space-between;align-items:center;gap:5px 8px;flex-wrap:wrap;margin-bottom:4px;">'
-        f'<div style="font-size:0.60rem;color:{text_muted};font-weight:900;letter-spacing:0.55px;">SON 5 GÜN: FİYAT vs AKILLI PARA</div>'
-        f'{_general_eval_badge}</div>'
-        f'{_general_eval_note_html}'
-        f'<div style="font-size:0.70rem;color:{text_main};line-height:1.5;font-weight:600;">{_general_reading}</div>'
-        f'<div style="margin-top:6px;padding-top:5px;border-top:1px dashed {divider};font-size:0.62rem;color:{text_sub};font-weight:800;line-height:1.4;">'
-        f'Son seans: <span style="color:{t3_ic};">{_last_word}</span> · Son 5 seans: <span style="color:{t5_ic};">{_five_word}</span> · '
-        f'OBV 5/14 seans · CMF 5/20 seans: <span style="color:{_ap14_clr};">{_ap14_status_text}</span></div>'
-        f'</div></div>'
+        # Sağ sütun: üstte iki teknik kart, altta akıllı para durumu; iki sıra da alanı doldurur.
+        f'<div style="min-width:0;height:100%;box-sizing:border-box;padding:5px 7px;background:rgba(15,23,42,0.38);display:grid;grid-template-rows:repeat(2,minmax(0,1fr));gap:6px;">'
+        f'<div style="min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;align-items:stretch;">'
+        f'{_sv_stat_card("OBV 5/14 · CMF 5/20 SEANS", f"{_ap14_icon} {_ap14_status}", f"CMF20 {_ap14_value_display}", _ap14_clr, _t6_short_desc)}'
+        f'{_sv_stat_card("HACİM DESTEĞİ", f"&#9675; {_volume_status}", _rvol_text, t4_ic, _volume_note)}'
+        f'</div>'
+        f'<div style="min-width:0;height:100%;box-sizing:border-box;padding:4px 6px;border:1px solid {divider};border-radius:6px;background:rgba(15,23,42,0.38);">'
+        f'<div style="font-size:0.52rem;color:{text_muted};font-weight:900;letter-spacing:0.55px;margin-bottom:2px;">AKILLI PARA DURUMU</div>'
+        f'<div style="display:grid;grid-template-columns:minmax(0,0.85fr) minmax(0,1.15fr);gap:6px;align-items:stretch;">'
+        f'{_sv_stat_card("MFI (PARA GİRİŞ GÜCÜ)", _mfi_badge_text, _mfi_val_text, _mfi_clr, _mfi_note_text)}'
+        f'<div style="min-width:0;display:flex;flex-direction:column;justify-content:center;'
+        f'padding:4px 6px;border-radius:6px;border:1px solid {divider};background:rgba(15,23,42,0.50);">'
+        f'<div style="font-size:0.48rem;color:{text_muted};font-weight:900;letter-spacing:0.48px;margin-bottom:2px;">AKILLI PARANIN SON 10 SEANSI</div>'
+        f'<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">{_smart10_html}</div></div>'
+        f'</div></div></div></div>'
 
         # 4) OBV akışı + vade ayrışması
         f'<div style="display:none;grid-template-columns:1.65fr 1fr;gap:0;">'
