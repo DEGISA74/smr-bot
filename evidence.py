@@ -148,16 +148,22 @@ ZAYIF_SCANNERS = frozenset({
     'er_A3',                 # -2,48 (t -4,38)
     'harmonik_confluence',   # -2,44 (t -2,47)
     'er_B5',                 # -1,33 (t -1,67) ⚠ istatistiksel olarak BELIRSIZ
+    # 26 Agu 2026 — karar yuzeyinden yumusak cekildi; olcum/scan_signals surer.
+    'radar1',
+    'radar2',
+    'altin_setup',
+    'platin_setup',
+    'guclu_donus',
 })
 
-# GUCLU — iki rejimde de pozitif; guvenle vurgulanabilir tek aile
-GUCLU_SCANNERS = frozenset({'tavan_top30', 'tavan_alarm', 'zirve_devam', 'zirve_sikisma'})
+# GUCLU — iki rejimde de pozitif; zirve ailesi bu turda olculmedi, dokunulmaz
+GUCLU_SCANNERS = frozenset({'zirve_devam', 'zirve_sikisma'})
 
 # TEK REJIM — sadece yukselen tape'te pozitif (rejim kapisi TARTISILIYOR:
 # CLAUDE.md "piyasa rejimi scanner filtresi olarak kullanilmaz" yasagiyla cakisiyor)
 TEK_REJIM_SCANNERS = frozenset({
-    'radar2', 'liderlik_aday', 'er_C2', 'er_C8', 'guclu_donus', 'prelaunch_bos',
-    'altin_setup', 'nadir_firsat', 'er_C3', 'er_C5', 'er_C7', 'er_C9', 'er_C11',
+    'tavan_top30', 'tavan_alarm', 'liderlik_aday', 'er_C2', 'er_C8', 'prelaunch_bos',
+    'nadir_firsat', 'er_C3', 'er_C5', 'er_C7', 'er_C9', 'er_C11',
     'er_D2', 'er_D4', 'er_D5', 'er_D1', 'er_A5', 'er_A7', 'er_C1',
 })
 
@@ -168,7 +174,7 @@ ALFA_T20 = {
     'er_A1': -3.7, 'er_A8': -3.2, 'er_A6': -2.9, 'rs_leaders': -2.9,
     'er_D3': -2.8, 'er_A9': -2.7, 'er_A4': -2.5, 'harmonik_confluence': -2.1,
     'er_A3': -2.0, 'er_B5': -1.9, 'tekli_altin': -0.9,
-    'tavan_top30': 2.6, 'tavan_alarm': 2.5, 'er_B11': 2.4,
+    'er_B11': 2.4,
 }
 
 

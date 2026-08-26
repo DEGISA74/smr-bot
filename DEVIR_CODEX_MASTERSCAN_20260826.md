@@ -109,6 +109,38 @@ Codex'in iki itirazı sınandı: **biri Claude'u haklı, biri haksız çıkardı
 
 ---
 
+## B0b. BÖLÜM A SONUCU — yapıldı ve denetlendi (26 Ağu gecesi)
+
+Codex Bölüm A'yı uyguladı, Claude diff'i denetledi. **Sonuç: temiz.**
+
+| Kontrol | Sonuç |
+|---|---|
+| Altı tarama yumuşak susturuldu | ✅ `is_ai_suppressed=True`, `elendi_mi=False` |
+| Tavan rozeti düştü | ✅ 🟢 → 🟡, `ALFA_T20` değerleri kalktı |
+| `zirve_devam` / `zirve_sikisma` | ✅ dokunulmadı |
+| `ELENEN_KLASIK` | ✅ değişmedi (5 tarama) |
+| `golden_record.py` | ✅ "BİREBİR AYNI", çıkış kodu 0 |
+
+Codex talimatın ötesinde bir düzeltme daha yaptı ve **doğru yaptı**: `radar2`, `altin_setup`, `guclu_donus` `TEK_REJIM_SCANNERS`'tan da çıkarıldı — yoksa aynı tarama iki kümede durur, etiket sırasına bağlı belirsizlik kalırdı.
+
+### ⚠️ AÇIK: D1'in ekran yarısı teslim edilmedi
+
+Hükümde "karar **yüzeyinden** çekilir" yazıyordu ve mekanizma olarak `is_ai_suppressed` gösterilmişti. Kod tarandı: o fonksiyon yalnız **iki yerde** okunuyor — AI metnini süzen yer ve tek bir Erken Radar rozetinin yazısı.
+
+**Ekran panelleri onu hiç sormuyor.** Radar 1'in ~597 ismi, Altın, Platin, Tekli Altın ve Güçlü Dönüş listeleri sağ sütunda **görünmeye devam ediyor**.
+
+Bu kod tabanında ekrandan çıkarmanın tek mevcut yolu sert eleme (tarama anında tablonun boşaltılması) — o da ölçümü öldürüyor. Yani **"ekrandan çık ama ölçüm sürsün" diyen bir mekanizma sistemde YOK.** Talimat bunu var sayarak yazılmıştı; kusur talimatta, uygulamada değil.
+
+**KARAR (kullanıcı, 26 Ağu):** Ekran yarısı **şimdi yapılmayacak**, İş 6/7'de tamamlanacak. Gerekçe: yeni Tarama Merkezi zaten karar yüzeyi olacak, havuzuna bu taramaları almıyor ve eski paneller o iş sırasında kaldırılacak. Aynı işi iki kez yapmaya gerek yok.
+
+**Ara dönemde beklenen davranış:** AI bu altı taramayı duymaz, ekran gösterir. Bu bilinen ve kabul edilmiş bir ara durumdur — hata değildir.
+
+### Küçük not (acil değil)
+
+Tavan çıkınca 🟢 "İKİ REJİMDE POZİTİF" rozeti yalnız `zirve_devam` ve `zirve_sikisma`'da kaldı — ve bu ikisi bu turda **ölçülmedi** (örneklem <100). Sistemin en güçlü rozeti şu an doğrulanmamış iki taramaya yaslanıyor. Bir sonraki ölçüm turunda sıraya alınmalı.
+
+---
+
 ## B1. GERİ ÇEKİLENLER VE DÜZELTİLENLER
 
 ### B1a. Yuvarlama kusuru
@@ -287,13 +319,19 @@ Kabul kapısı:
 
 ## B7. SIRA
 
-1. ✅ **Bölüm A** — `evidence.py` (devir işi)
+1. ✅ **Bölüm A** — `evidence.py` (devir işi) — YAPILDI + DENETLENDİ (B0b)
 2. 🛑 **DUR** — kullanıcının ikinci emri
-3. D1 sonrası aday havuzu ölçümü (B5'teki risk)
-4. D7 — geçmiş karnelerin ertesi açılış + tavan kilidiyle yeniden okunması
-5. D5 — yeni dip motorunun test betiği (canlı dosyaya dokunmaz)
-6. Tarama Merkezi'nin canlıya alınması
-7. D2 — vade masaları, Tarama Merkezi'nin sekmelerinin içine
+3. **İş 1** — D1 sonrası aday havuzu ölçümü (B5'teki risk)
+4. **İş 2** — D7: karnelerin ertesi açılış + tavan kilidiyle yeniden okunması
+5. **İş 3** — D6: rejim tanımının mühürlenmesi (XU100 > 50 günlük ortalama)
+6. **İş 4** — D3/D4/D8: vade + son kullanma etiketleri, Pre-Launch'ın taşınması
+7. **İş 5** — yeni dip motorunun test betiği (canlı dosyaya dokunmaz)
+8. **İş 6** — Tarama Merkezi'nin canlıya alınması
+   → ⚠ **D1'in EKRAN YARISI BURADA TAMAMLANIR** (B0b): eski toplu render blokları
+   kaldırılınca Radar 1 / Altın / Platin / Tekli Altın / Güçlü Dönüş ekrandan da
+   çıkmış olur. Kaldırma sırasında bu altısının gerçekten görünmez olduğunu
+   DOĞRULA; olmuyorsa yeni ekrana çizim-anı süzgeci ekle (`is_ai_suppressed`).
+9. **İş 7** — D2: vade masaları, Tarama Merkezi'nin sekmelerinin içine
 
 ---
 
