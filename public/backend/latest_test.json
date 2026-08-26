@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "tarih": "2026-05-11",
+    "guncelleme": "16:21",
+    "versiyon": "1.0",
+    "kaynak": "Önceki kapanış verisi · Eğitim / veri analitiği amaçlıdır"
+  },
+  "xu100": {
+    "kapanis": 15125.75,
+    "degisim_pct": 0.42,
+    "sma50": 13644.91,
+    "sma200": 12068.54,
+    "rsi": 65.3,
+    "rejim": "Boğa Trendi",
+    "rejim_renk": "green",
+    "yillik_yuksek": 15167.1,
+    "yillik_dusuk": 8964.95,
+    "pozisyon_pct": 99.3
+  },
+  "piyasa_ozeti": {
+    "taranan": 148,
+    "sma200_ustu": 115,
+    "sma200_ustu_pct": 77.7,
+    "sma50_ustu": 130,
+    "rsi_50_ustu": 92,
+    "guclu_sinyal": 20,
+    "genel_skor": 60.2
+  },
+  "kilitli": {
+    "ict_bottomline": {
+      "baslik": "ICT Bottom Line",
+      "teaser": "Likidite yönü, kritik OB bölgesi ve kurumsal ayak izi analizi",
+      "plan": "PRO"
+    },
+    "teknik_seviyeler": {
+      "baslik": "Teknik Seviyeler",
+      "teaser": "Destek / direnç matrisi — 5 kritik fiyat seviyesi",
+      "plan": "PRO"
+    },
+    "smc_hacim": {
+      "baslik": "SMC Hacim Analizi",
+      "teaser": "Para akışı anomalisi ve kurumsal hacim izleri",
+      "plan": "ELITE"
+    },
+    "risk_haritasi": {
+      "baslik": "Risk & Volatilite Haritası",
+      "teaser": "ATR bazlı risk bölgeleri ve volatilite yapısı",
+      "plan": "ELITE"
+    }
+  }
+}

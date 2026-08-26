@@ -1,0 +1,103 @@
+{
+  "motor": "V2 Erken Radar",
+  "as_of": "2026-08-26",
+  "status": "success",
+  "created_at": "2026-08-26T17:47:17.713107+03:00",
+  "market_snapshot_timestamp": "2026-08-26T16:30:00+03:00",
+  "eligible": 210,
+  "model_version": "2.0.0",
+  "official_v2_untouched": true,
+  "partial_day_shadow_model": true,
+  "list": [
+    {
+      "rank": 1,
+      "ticker": "BJKAS",
+      "olasilik_pct": 76.5974,
+      "neden": "mum_yapisi + goreli_guc + hacim",
+      "reference_price": 2.68,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    },
+    {
+      "rank": 2,
+      "ticker": "BRLSM",
+      "olasilik_pct": 61.0426,
+      "neden": "goreli_guc + hacim + mum_yapisi",
+      "reference_price": 22.799999,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    },
+    {
+      "rank": 3,
+      "ticker": "IZFAS",
+      "olasilik_pct": 46.3752,
+      "neden": "momentum + oynaklik + mum_yapisi",
+      "reference_price": 58.900002,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    },
+    {
+      "rank": 4,
+      "ticker": "CRFSA",
+      "olasilik_pct": 46.3673,
+      "neden": "oynaklik + trend + manip_riski",
+      "reference_price": 277.0,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    },
+    {
+      "rank": 5,
+      "ticker": "ENSRI",
+      "olasilik_pct": 44.0166,
+      "neden": "momentum + konum + mum_yapisi",
+      "reference_price": 5.59,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    },
+    {
+      "rank": 6,
+      "ticker": "KRDMA",
+      "olasilik_pct": 40.7651,
+      "neden": "goreli_guc + mum_yapisi + trend",
+      "reference_price": 59.849998,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    },
+    {
+      "rank": 7,
+      "ticker": "TMPOL",
+      "olasilik_pct": 40.0865,
+      "neden": "oynaklik + konum + manip_riski",
+      "reference_price": 493.75,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    },
+    {
+      "rank": 8,
+      "ticker": "ATATP",
+      "olasilik_pct": 38.648,
+      "neden": "mum_yapisi + oynaklik + goreli_guc",
+      "reference_price": 318.5,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    },
+    {
+      "rank": 9,
+      "ticker": "GUNDG",
+      "olasilik_pct": 37.1018,
+      "neden": "oynaklik + mum_yapisi + manip_riski",
+      "reference_price": 1944.0,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    },
+    {
+      "rank": 10,
+      "ticker": "ISKPL",
+      "olasilik_pct": 35.4941,
+      "neden": "goreli_guc + oynaklik + konum",
+      "reference_price": 8.66,
+      "reference_timestamp": "2026-08-26T16:30:00+03:00",
+      "b11_teyidi": false
+    }
+  ]
+}

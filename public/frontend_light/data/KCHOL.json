@@ -1,0 +1,397 @@
+{
+  "meta": {
+    "tarih": "2026-06-13",
+    "guncelleme": "18:27",
+    "versiyon": "light-1.0",
+    "kaynak": "Önceki kapanış verisi · Eğitim / veri analitiği amaçlıdır"
+  },
+  "xu100": {
+    "ticker": "KCHOL",
+    "kapanis": 187.5,
+    "degisim_pct": 1.79,
+    "sma50": 197.89,
+    "sma200": 181.1,
+    "rsi": 43.9,
+    "rejim": "Nötr",
+    "rejim_renk": "orange",
+    "yillik_yuksek": 220.84,
+    "yillik_dusuk": 135.92,
+    "pozisyon_pct": 60.7,
+    "genel_skor": 45
+  },
+  "xu100_grafik": [
+    {
+      "date": "30 Apr",
+      "mf": -0.1991,
+      "stp": 203.6096,
+      "price": 202.2
+    },
+    {
+      "date": "4 May",
+      "mf": -0.3108,
+      "stp": 202.3973,
+      "price": 197.4
+    },
+    {
+      "date": "5 May",
+      "mf": -0.1119,
+      "stp": 201.9695,
+      "price": 201.9
+    },
+    {
+      "date": "6 May",
+      "mf": 1.1278,
+      "stp": 204.083,
+      "price": 210.5
+    },
+    {
+      "date": "7 May",
+      "mf": 1.033,
+      "stp": 206.0402,
+      "price": 211.5
+    },
+    {
+      "date": "8 May",
+      "mf": 0.9526,
+      "stp": 207.8002,
+      "price": 213.0
+    },
+    {
+      "date": "11 May",
+      "mf": 0.7129,
+      "stp": 208.8287,
+      "price": 212.3
+    },
+    {
+      "date": "12 May",
+      "mf": 0.2301,
+      "stp": 208.0491,
+      "price": 203.6
+    },
+    {
+      "date": "13 May",
+      "mf": 0.0248,
+      "stp": 206.8446,
+      "price": 204.4
+    },
+    {
+      "date": "14 May",
+      "mf": 0.1108,
+      "stp": 206.4033,
+      "price": 204.5
+    },
+    {
+      "date": "15 May",
+      "mf": -0.471,
+      "stp": 204.5071,
+      "price": 199.0
+    },
+    {
+      "date": "18 May",
+      "mf": -0.652,
+      "stp": 202.067,
+      "price": 195.0
+    },
+    {
+      "date": "20 May",
+      "mf": -0.5477,
+      "stp": 200.2764,
+      "price": 196.0
+    },
+    {
+      "date": "21 May",
+      "mf": -1.7887,
+      "stp": 196.1498,
+      "price": 183.3
+    },
+    {
+      "date": "22 May",
+      "mf": -1.2541,
+      "stp": 193.5642,
+      "price": 190.2
+    },
+    {
+      "date": "25 May",
+      "mf": -0.7376,
+      "stp": 192.7839,
+      "price": 190.9
+    },
+    {
+      "date": "26 May",
+      "mf": -0.6351,
+      "stp": 191.9599,
+      "price": 189.1
+    },
+    {
+      "date": "27 May",
+      "mf": -0.5196,
+      "stp": 191.1428,
+      "price": 189.1
+    },
+    {
+      "date": "28 May",
+      "mf": -0.4251,
+      "stp": 190.5592,
+      "price": 189.1
+    },
+    {
+      "date": "29 May",
+      "mf": -0.3478,
+      "stp": 190.1423,
+      "price": 189.1
+    },
+    {
+      "date": "1 Jun",
+      "mf": -0.3517,
+      "stp": 189.7016,
+      "price": 186.0
+    },
+    {
+      "date": "2 Jun",
+      "mf": 0.1049,
+      "stp": 190.2631,
+      "price": 193.3
+    },
+    {
+      "date": "3 Jun",
+      "mf": -0.0252,
+      "stp": 190.2641,
+      "price": 188.6
+    },
+    {
+      "date": "4 Jun",
+      "mf": 0.0441,
+      "stp": 190.4458,
+      "price": 191.2
+    },
+    {
+      "date": "5 Jun",
+      "mf": -0.0412,
+      "stp": 190.3089,
+      "price": 189.0
+    },
+    {
+      "date": "8 Jun",
+      "mf": -0.1117,
+      "stp": 190.0111,
+      "price": 190.9
+    },
+    {
+      "date": "9 Jun",
+      "mf": -0.2108,
+      "stp": 189.4746,
+      "price": 186.7
+    },
+    {
+      "date": "10 Jun",
+      "mf": -0.3785,
+      "stp": 188.2819,
+      "price": 185.0
+    },
+    {
+      "date": "11 Jun",
+      "mf": -0.4646,
+      "stp": 187.0109,
+      "price": 184.2
+    },
+    {
+      "date": "12 Jun",
+      "mf": 0.5576,
+      "stp": 187.4173,
+      "price": 187.5
+    }
+  ],
+  "piyasa_ozeti": {
+    "taranan": 150,
+    "sma200_ustu": 115,
+    "sma200_ustu_pct": 76.7,
+    "sma50_ustu": 131,
+    "rsi_50_ustu": 94,
+    "guclu_sinyal": 28,
+    "genel_skor": 60.9,
+    "one_cikanlar": [
+      {
+        "ticker": "ALFAS",
+        "close": 51.05,
+        "degisim_pct": 9.93,
+        "rsi": 88.8,
+        "sma200_pct": 19.0,
+        "hacim_x": 1.3
+      },
+      {
+        "ticker": "KRDMD",
+        "close": 44.16,
+        "degisim_pct": 8.98,
+        "rsi": 86.5,
+        "sma200_pct": 51.2,
+        "hacim_x": 1.98
+      },
+      {
+        "ticker": "AKENR",
+        "close": 12.21,
+        "degisim_pct": 1.58,
+        "rsi": 84.8,
+        "sma200_pct": 12.7,
+        "hacim_x": 3.45
+      },
+      {
+        "ticker": "EREGL",
+        "close": 40.86,
+        "degisim_pct": -0.97,
+        "rsi": 83.7,
+        "sma200_pct": 45.8,
+        "hacim_x": 1.48
+      },
+      {
+        "ticker": "ALTNY",
+        "close": 19.37,
+        "degisim_pct": -0.56,
+        "rsi": 80.3,
+        "sma200_pct": 19.4,
+        "hacim_x": 1.92
+      },
+      {
+        "ticker": "BVSAN",
+        "close": 146.5,
+        "degisim_pct": -2.66,
+        "rsi": 76.4,
+        "sma200_pct": 30.7,
+        "hacim_x": 2.52
+      },
+      {
+        "ticker": "EGGUB",
+        "close": 142.2,
+        "degisim_pct": 9.89,
+        "rsi": 72.5,
+        "sma200_pct": 33.0,
+        "hacim_x": 2.32
+      },
+      {
+        "ticker": "BRKSN",
+        "close": 9.43,
+        "degisim_pct": 1.4,
+        "rsi": 72.4,
+        "sma200_pct": 11.4,
+        "hacim_x": 1.42
+      },
+      {
+        "ticker": "ERBOS",
+        "close": 224.1,
+        "degisim_pct": 4.33,
+        "rsi": 71.6,
+        "sma200_pct": 18.1,
+        "hacim_x": 2.32
+      },
+      {
+        "ticker": "AKSEN",
+        "close": 88.2,
+        "degisim_pct": 1.73,
+        "rsi": 71.4,
+        "sma200_pct": 47.4,
+        "hacim_x": 1.28
+      },
+      {
+        "ticker": "ARSAN",
+        "close": 4.19,
+        "degisim_pct": 7.44,
+        "rsi": 70.8,
+        "sma200_pct": 24.2,
+        "hacim_x": 2.36
+      },
+      {
+        "ticker": "AEFES",
+        "close": 21.2,
+        "degisim_pct": 3.62,
+        "rsi": 70.6,
+        "sma200_pct": 26.4,
+        "hacim_x": 1.41
+      },
+      {
+        "ticker": "ANHYT",
+        "close": 119.3,
+        "degisim_pct": 2.58,
+        "rsi": 68.2,
+        "sma200_pct": 24.0,
+        "hacim_x": 1.31
+      },
+      {
+        "ticker": "CWENE",
+        "close": 40.0,
+        "degisim_pct": 6.38,
+        "rsi": 67.2,
+        "sma200_pct": 51.7,
+        "hacim_x": 1.27
+      },
+      {
+        "ticker": "ALKIM",
+        "close": 20.82,
+        "degisim_pct": 1.86,
+        "rsi": 66.1,
+        "sma200_pct": 12.6,
+        "hacim_x": 1.53
+      },
+      {
+        "ticker": "BAGFS",
+        "close": 38.08,
+        "degisim_pct": 6.31,
+        "rsi": 65.8,
+        "sma200_pct": 17.1,
+        "hacim_x": 1.94
+      },
+      {
+        "ticker": "FADE",
+        "close": 16.21,
+        "degisim_pct": 1.63,
+        "rsi": 64.3,
+        "sma200_pct": 10.6,
+        "hacim_x": 1.93
+      },
+      {
+        "ticker": "BIZIM",
+        "close": 30.94,
+        "degisim_pct": -7.31,
+        "rsi": 63.7,
+        "sma200_pct": 10.9,
+        "hacim_x": 4.74
+      },
+      {
+        "ticker": "SISE",
+        "close": 52.35,
+        "degisim_pct": 1.06,
+        "rsi": 63.4,
+        "sma200_pct": 28.2,
+        "hacim_x": 1.48
+      },
+      {
+        "ticker": "SASA",
+        "close": 3.54,
+        "degisim_pct": 0.57,
+        "rsi": 63.3,
+        "sma200_pct": 16.4,
+        "hacim_x": 10.0
+      }
+    ]
+  },
+  "kilitli": {
+    "ict_bottomline": {
+      "baslik": "ICT Bottom Line",
+      "teaser": "Likidite yönü, kritik OB bölgesi ve kurumsal ayak izi analizi",
+      "plan": "PRO"
+    },
+    "teknik_seviyeler": {
+      "baslik": "Teknik Seviyeler",
+      "teaser": "Destek / direnç matrisi — 5 kritik fiyat seviyesi",
+      "plan": "PRO"
+    },
+    "smc_hacim": {
+      "baslik": "SMC Hacim Analizi",
+      "teaser": "Para akışı anomalisi ve kurumsal hacim izleri",
+      "plan": "ELITE"
+    },
+    "risk_haritasi": {
+      "baslik": "Risk & Volatilite Haritası",
+      "teaser": "ATR bazlı risk bölgeleri ve volatilite yapısı",
+      "plan": "ELITE"
+    }
+  }
+}

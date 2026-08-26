@@ -1,0 +1,88 @@
+{
+  "generated": "2026-07-30 17:02",
+  "universe_note": "BIST100 proxy = son 180 gün en likit 100 hisse (TL cirosu)",
+  "eval_days": 180,
+  "n_eval_total": 17629,
+  "combo": {
+    "5g": {
+      "n": 1259,
+      "ort": 2.04,
+      "isabet": 57.8,
+      "medyan": 1.27
+    },
+    "10g": {
+      "n": 1259,
+      "ort": 4.09,
+      "isabet": 60.0,
+      "medyan": 3.14
+    },
+    "20g": {
+      "n": 1259,
+      "ort": 9.09,
+      "isabet": 63.1,
+      "medyan": 5.76
+    }
+  },
+  "baseline": {
+    "5g": {
+      "n": 17629,
+      "ort": 2.78,
+      "isabet": 54.6,
+      "medyan": 0.75
+    },
+    "10g": {
+      "n": 17629,
+      "ort": 4.13,
+      "isabet": 55.2,
+      "medyan": 1.32
+    },
+    "20g": {
+      "n": 17629,
+      "ort": 6.86,
+      "isabet": 57.2,
+      "medyan": 2.68
+    }
+  },
+  "regime_up": {
+    "5g": {
+      "n": 974,
+      "ort": 1.71,
+      "isabet": 57.2,
+      "medyan": 1.12
+    },
+    "10g": {
+      "n": 974,
+      "ort": 3.05,
+      "isabet": 57.4,
+      "medyan": 2.15
+    },
+    "20g": {
+      "n": 974,
+      "ort": 6.94,
+      "isabet": 58.2,
+      "medyan": 3.62
+    }
+  },
+  "regime_down": {
+    "5g": {
+      "n": 277,
+      "ort": 3.11,
+      "isabet": 59.6,
+      "medyan": 1.79
+    },
+    "10g": {
+      "n": 277,
+      "ort": 7.57,
+      "isabet": 69.0,
+      "medyan": 6.21
+    },
+    "20g": {
+      "n": 277,
+      "ort": 16.35,
+      "isabet": 80.1,
+      "medyan": 9.41
+    }
+  },
+  "verdict": "ZAYIF — baseline'a edge -0.04% (10g). Ekstra değer yok, tarama yazma. Bileşenler zaten panelde.",
+  "note": "Tek rejimde koşulduysa 2. rejimde yeniden koş. [[feedback-extrapolation-yasak]]"
+}

@@ -1,0 +1,190 @@
+[
+  {
+    "ticker": "DAGI",
+    "verdict_insan": "MÜKEMMEL fincan boyun",
+    "kind": "POZITIF_NECK",
+    "engine_pattern": "FİNCAN_KULP",
+    "engine_stage": "KIRILIM_DOĞRULANDI",
+    "engine_score": 93.6,
+    "lines": [
+      {
+        "role": "fincan_ağzı",
+        "drift_pct": 0.0,
+        "touches": 5,
+        "min_touch": 2,
+        "pass": true,
+        "why": ""
+      }
+    ],
+    "agree": true,
+    "agree_why": "tüm hatlar geometri sınavını geçti"
+  },
+  {
+    "ticker": "AKSA",
+    "verdict_insan": "MÜKEMMEL fincan boyun",
+    "kind": "POZITIF_NECK",
+    "engine_pattern": "FİNCAN_KULP",
+    "engine_stage": "OLUŞUYOR",
+    "engine_score": 89.5,
+    "lines": [
+      {
+        "role": "fincan_ağzı",
+        "drift_pct": 0.0,
+        "touches": 4,
+        "min_touch": 2,
+        "pass": true,
+        "why": ""
+      }
+    ],
+    "agree": true,
+    "agree_why": "tüm hatlar geometri sınavını geçti"
+  },
+  {
+    "ticker": "FORTE",
+    "verdict_insan": "MÜKEMMEL fincan boyun",
+    "kind": "POZITIF_NECK",
+    "engine_pattern": "FİNCAN_KULP",
+    "engine_stage": "YAKIN",
+    "engine_score": 95.3,
+    "lines": [
+      {
+        "role": "fincan_ağzı",
+        "drift_pct": 0.0,
+        "touches": 2,
+        "min_touch": 2,
+        "pass": true,
+        "why": ""
+      }
+    ],
+    "agree": true,
+    "agree_why": "tüm hatlar geometri sınavını geçti"
+  },
+  {
+    "ticker": "AKGRT",
+    "verdict_insan": "MÜKEMMEL üçgen/kama çizgi",
+    "kind": "POZITIF_LINE",
+    "engine_pattern": "SİMETRİK_ÜÇGEN",
+    "engine_stage": "YAKIN",
+    "engine_score": 93.6,
+    "lines": [
+      {
+        "role": "üst_sınır",
+        "drift_pct": 9.21,
+        "touches": 4,
+        "min_touch": 3,
+        "pass": true,
+        "why": ""
+      },
+      {
+        "role": "alt_sınır",
+        "drift_pct": 1.88,
+        "touches": 4,
+        "min_touch": 3,
+        "pass": true,
+        "why": ""
+      }
+    ],
+    "agree": true,
+    "agree_why": "tüm hatlar geometri sınavını geçti"
+  },
+  {
+    "ticker": "YKSLN",
+    "verdict_insan": "MÜKEMMEL üçgen/kama çizgi",
+    "kind": "POZITIF_LINE",
+    "engine_pattern": "ALÇALAN_KAMA",
+    "engine_stage": "OLUŞUYOR",
+    "engine_score": 90.2,
+    "lines": [
+      {
+        "role": "üst_sınır",
+        "drift_pct": 11.98,
+        "touches": 3,
+        "min_touch": 3,
+        "pass": true,
+        "why": ""
+      },
+      {
+        "role": "alt_sınır",
+        "drift_pct": 2.0,
+        "touches": 3,
+        "min_touch": 3,
+        "pass": true,
+        "why": ""
+      }
+    ],
+    "agree": true,
+    "agree_why": "tüm hatlar geometri sınavını geçti"
+  },
+  {
+    "ticker": "AKMGY",
+    "verdict_insan": "iyi üçgen/kama çizgi",
+    "kind": "POZITIF_LINE",
+    "engine_pattern": "ALÇALAN_ÜÇGEN",
+    "engine_stage": "YAKIN",
+    "engine_score": 90.8,
+    "lines": [
+      {
+        "role": "üst_sınır",
+        "drift_pct": 17.79,
+        "touches": 3,
+        "min_touch": 3,
+        "pass": true,
+        "why": ""
+      },
+      {
+        "role": "alt_sınır",
+        "drift_pct": 1.04,
+        "touches": 3,
+        "min_touch": 3,
+        "pass": true,
+        "why": ""
+      }
+    ],
+    "agree": true,
+    "agree_why": "tüm hatlar geometri sınavını geçti"
+  },
+  {
+    "ticker": "FZLGY",
+    "verdict_insan": "BERBAT OBO boyun (dik çapraz)",
+    "kind": "NEGATIF_NECK",
+    "engine_pattern": null,
+    "engine_stage": null,
+    "engine_score": null,
+    "lines": [],
+    "agree": true,
+    "agree_why": "motor berbat boyun çizmedi (doğru)"
+  },
+  {
+    "ticker": "ARTMS",
+    "verdict_insan": "BERBAT OBO boyun (dik çapraz)",
+    "kind": "NEGATIF_NECK",
+    "engine_pattern": null,
+    "engine_stage": null,
+    "engine_score": null,
+    "lines": [],
+    "agree": true,
+    "agree_why": "motor berbat boyun çizmedi (doğru)"
+  },
+  {
+    "ticker": "BORLS",
+    "verdict_insan": "BERBAT OBO boyun (dik çapraz)",
+    "kind": "NEGATIF_NECK",
+    "engine_pattern": null,
+    "engine_stage": null,
+    "engine_score": null,
+    "lines": [],
+    "agree": true,
+    "agree_why": "motor berbat boyun çizmedi (doğru)"
+  },
+  {
+    "ticker": "DCTTR",
+    "verdict_insan": "BERBAT OBO boyun (dik çapraz)",
+    "kind": "NEGATIF_NECK",
+    "engine_pattern": null,
+    "engine_stage": null,
+    "engine_score": null,
+    "lines": [],
+    "agree": true,
+    "agree_why": "motor berbat boyun çizmedi (doğru)"
+  }
+]

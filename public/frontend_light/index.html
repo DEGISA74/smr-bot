@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Money Radar — BIST Algoritmik Analiz Terminali</title>
+  <meta name="description" content="XU100, BIST hisseleri ve kripto için smart money analizi. Para akışı, ICT seviyeleri, swing sinyalleri ve kurumsal bölgeler — tek ekranda.">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type"        content="website">
+  <meta property="og:url"         content="https://smartmoneyradar.app/">
+  <meta property="og:title"       content="Smart Money Radar — BIST Algoritmik Analiz">
+  <meta property="og:description" content="XU100, BIST hisseleri ve kripto için smart money analizi. Para akışı, ICT seviyeleri, swing sinyalleri ve kurumsal bölgeler — tek ekranda.">
+  <meta property="og:image"       content="https://smartmoneyradar.app/assets/ornek_pro.png">
+  <meta property="og:locale"      content="tr_TR">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card"        content="summary_large_image">
+  <meta name="twitter:site"        content="@SMRadar_2026">
+  <meta name="twitter:title"       content="Smart Money Radar — BIST Algoritmik Analiz">
+  <meta name="twitter:description" content="XU100, BIST hisseleri ve kripto için smart money analizi. Para akışı, ICT seviyeleri, swing sinyalleri ve kurumsal bölgeler — tek ekranda.">
+  <meta name="twitter:image"       content="https://smartmoneyradar.app/assets/ornek_pro.png">
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-V55HT7RJ1W"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-V55HT7RJ1W');
+  </script>
+
+  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wqd0ild0wj");
+</script>
+</head>
+<body>
+
+  <!-- ARKA PLAN DEKORASYONU: sol foto + sağ mum grafik -->
+  <div id="bg-deco" aria-hidden="true">
+    <div class="bg-left" id="bg-left"></div>
+    <div class="bg-right" id="bg-right">
+      <canvas id="candle-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- DUYURU BARI -->
+  <div onclick="smrOpenPlans()" style="cursor:pointer;text-align:center;padding:7px 12px;background:linear-gradient(90deg,#0d9488,#0891b2);color:#fff;font-size:12.5px;font-weight:700;line-height:1.4;">
+    🎉 Açılışa özel: şu an her şey ÜCRETSİZ · üyelik çok yakında <span style="text-decoration:underline">%20 indirimle</span> →
+  </div>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-logo">
+      <div class="logo-icon">📡</div>
+      <div>
+        <div class="logo-text">SMART MONEY RADAR</div>
+        <div class="hero-sub" style="font-size:10.5px;color:#94a3b8;font-weight:500;line-height:1.2;margin-top:1px;">BIST için kurumsal/akıllı para analizi · web + Telegram</div>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="update-badge">
+        <span class="live-dot"></span>
+        Son güncelleme: <span id="update-time">—</span>
+      </div>
+    </div>
+    <div class="header-right" style="display:flex;align-items:center;gap:8px;">
+      <button onclick="smrLogin()" style="background:transparent;color:#e2e8f0;border:1px solid #334155;border-radius:7px;padding:6px 14px;font-size:0.72rem;font-weight:600;cursor:pointer;">Giriş</button>
+      <button onclick="smrOpenPlans()" style="background:#1d9e75;color:#fff;border:none;border-radius:7px;padding:6px 16px;font-size:0.72rem;font-weight:700;cursor:pointer;">Üye Ol</button>
+      <a href="https://x.com/SMRadar_2026" target="_blank" class="btn-twitter" style="font-size:0.65rem;padding:4px 11px;">
+        𝕏 Takip Et
+      </a>
+    </div>
+  </header>
+
+  <script>
+    // Üye aracı URL'si — VPS'te üye instance (örn https://smartmoneyradar.app/tool). Lokal test: localhost:8501
+    var TOOL_URL = "http://localhost:8501";
+    // SERBEST TANITIM DÖNEMİ: üyelik/ödeme henüz açık değil. Açılınca → true.
+    var MEMBERSHIP_LIVE = false;
+    // Shopier ödeme linkleri — TODO: gerçek ürün linkleriyle değiştir
+    var SHOPIER_PRO_URL   = "https://www.shopier.com/SENIN_PRO_URUN_LINKIN";
+    var SHOPIER_ELITE_URL = "https://www.shopier.com/SENIN_ELITE_URUN_LINKIN";
+    function smrBuy(tier){
+      window.open(tier === 'ELITE' ? SHOPIER_ELITE_URL : SHOPIER_PRO_URL, '_blank');
+    }
+    function smrLogin(){
+      if(!MEMBERSHIP_LIVE){ smrOpenPlans(); return; }   // üyelik henüz açılmadı → "çok yakında" modalı
+      // Email-login: araca git, orada ödeme e-postanı gir.
+      window.location.href = TOOL_URL + "/";
+    }
+    function smrOpenPlans(){
+      var m = document.getElementById('plans-modal');
+      if(m){ m.style.display='block'; document.body.style.overflow='hidden'; }
+      else { alert('Üyelik planları yakında — PRO ve ELITE.'); }
+    }
+    // E-posta bekleme listesi — API_URL: lokalde :8090, canlıda "" (aynı origin, nginx /api/)
+    var API_URL = (location.hostname === "localhost" || location.hostname === "127.0.0.1") ? "http://localhost:8090" : "";
+    function smrWaitlist(){
+      var inp = document.getElementById('waitlist-email');
+      var msg = document.getElementById('waitlist-msg');
+      var email = (inp.value || '').trim();
+      if(!email || email.indexOf('@') < 1){ msg.textContent = 'Geçerli bir e-posta gir.'; msg.style.color = '#f59e0b'; return; }
+      msg.textContent = 'Gönderiliyor…'; msg.style.color = '#94a3b8';
+      fetch(API_URL + "/api/subscribe?email=" + encodeURIComponent(email), {credentials:'include'})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if(j.ok){ msg.innerHTML = '✅ Teşekkürler! Üyelik açılınca ilk sen haber alacaksın.'; msg.style.color = '#4ade80'; inp.value=''; }
+          else { msg.textContent = 'Bir sorun oldu, tekrar dene.'; msg.style.color = '#f59e0b'; }
+        })
+        .catch(function(){ msg.textContent = 'Bağlantı hatası, birazdan tekrar dene.'; msg.style.color = '#f59e0b'; });
+    }
+    function smrOpenKvkk(){ var m=document.getElementById('kvkk-modal'); if(m){ m.style.display='block'; document.body.style.overflow='hidden'; } }
+    function closeKvkk(){ var m=document.getElementById('kvkk-modal'); if(m){ m.style.display='none'; document.body.style.overflow=''; } }
+  </script>
+
+  <!-- DISCLAIMER -->
+  <div class="disclaimer-bar">
+    📡 XU100 15 dakika gecikmeli güncellenmektedir &nbsp;·&nbsp; Yatırım danışmanlığı değildir.
+  </div>
+
+  <!-- LOADING -->
+  <div id="loading" class="loading-screen">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Piyasa verisi yükleniyor...</div>
+  </div>
+
+  <!-- MAIN (hidden until loaded) -->
+  <div id="app" style="display:none">
+
+  <div class="page-container">
+
+    <!-- TOP BANNER kaldırıldı — ELITE strip counter-bar pozisyonuna taşındı -->
+
+    <!-- ── CANLI ARAÇ CTA (zengin app.py showcase /app/) ──────────────── -->
+    <!-- CTA şimdilik GİZLİ (RT kampanyası — link /test ile dağıtılıyor). Geri açmak: display:none → flex -->
+    <div style="display:none;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;text-align:center;padding:8px 12px;margin-bottom:10px;background:rgba(13,148,136,0.08);border:1px solid #155e63;border-radius:8px">
+      <span style="font-size:12px;color:#94a3b8">Canlı smart money analiz aracı — şu an ücretsiz.</span>
+      <a href="/test/" style="display:inline-block;background:#1d9e75;color:#fff;text-decoration:none;font-size:12px;font-weight:700;padding:6px 14px;border-radius:6px">🚀 Aracı Aç</a>
+    </div>
+
+    <!-- ── HİSSE SEÇİCİ BAR (light app — Oturum 22) ──────────────────── -->
+    <div id="stock-selector-bar" style="position:sticky;top:0;z-index:50;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+         padding:10px 12px;margin-bottom:12px;background:#0b1020;border:1px solid #1e2742;border-radius:10px;">
+      <div style="display:flex;flex-direction:column;gap:2px;min-width:120px;">
+        <label style="font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:#64748b;">Kategori</label>
+        <select id="sel-category" style="background:#0f1729;color:#e2e8f0;border:1px solid #243049;border-radius:7px;padding:8px 10px;font-size:13px;">
+          <option value="BIST">BIST</option>
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px;">
+        <label style="font-size:9px;letter-spacing:.5px;color:#64748b;text-transform:uppercase;">Hisse</label>
+        <input id="sel-stock-input" list="stock-datalist" value="XU100" placeholder="Hisse ara veya seç…" autocomplete="off"
+               style="background:#0f1729;color:#e2e8f0;border:1px solid #243049;border-radius:7px;padding:8px 10px;font-size:13px;width:100%;">
+        <datalist id="stock-datalist"></datalist>
+      </div>
+      <button id="sel-stock-go" style="background:#1d9e75;color:#fff;border:none;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;align-self:flex-end;">
+        Analiz Et
+      </button>
+      <div id="sel-status" style="font-size:12px;color:#94a3b8;align-self:flex-end;padding-bottom:8px;"></div>
+    </div>
+
+    <script>
+    (function(){
+      // İlk sürüm hisse listesi — sonraki adımda backend'den tam liste gelecek
+      var STOCKS = ["XU100","ASELS","THYAO","GARAN","AKBNK","ISCTR","SAHOL","KCHOL","EREGL","TCELL","SISE",
+        "TUPRS","BIMAS","FROTO","TOASO","HALKB","VAKBN","YKBNK","ENKAI","TKFEN","PGSUS",
+        "PETKM","CCOLA","EKGYO","ARCLK","GUBRF","KRDMD","SASA","TTKOM","TTRAK","KOZAL",
+        "ASTOR","ALFAS","ALTNY","BVSAN","EGGUB","CWENE","AEFES","ANHYT","BAGFS","MPARK",
+        "OTKAR","DOAS","LOGO","AGHOL","BRISA","AKSEN","ALKIM","ARSAN","KONTR","SMRTG"];
+      window.SELECTED_TICKER = window.SELECTED_TICKER || null;
+
+      function buildList(){
+        var dl = document.getElementById('stock-datalist');
+        if (!dl) return;
+        dl.innerHTML = STOCKS.slice().sort().map(function(t){ return '<option value="'+t+'">'; }).join('');
+      }
+      async function applyTicker(t){
+        t = (t||'').trim().toUpperCase();
+        if (!t) return;
+        var status = document.getElementById('sel-status');
+        if (STOCKS.indexOf(t) === -1){
+          status.textContent = '"'+t+'" listede yok';
+          return;
+        }
+        window.SELECTED_TICKER = t;
+        document.querySelectorAll('.sel-ticker').forEach(function(el){ el.textContent = t; });
+        status.innerHTML = '<span style="color:#94a3b8;">'+t+' yükleniyor…</span>';
+        if (typeof window.loadTicker === 'function'){
+          var ok = await window.loadTicker(t);
+          if (ok){
+            status.innerHTML = '<span style="color:#1d9e75;font-weight:600;">'+t+'</span> yüklendi';
+          } else {
+            status.innerHTML = '<span style="color:#f59e0b;">'+t+' verisi henüz yok</span> · backend adımı';
+          }
+        } else {
+          status.innerHTML = '<span style="color:#1d9e75;font-weight:600;">'+t+'</span> seçildi';
+        }
+      }
+
+      function init(){
+        buildList();
+        var btn = document.getElementById('sel-stock-go');
+        var inp = document.getElementById('sel-stock-input');
+        if (btn) btn.addEventListener('click', function(){ applyTicker(inp.value); });
+        if (inp){
+          inp.addEventListener('change', function(){ applyTicker(inp.value); });
+          inp.addEventListener('keydown', function(e){ if(e.key==='Enter'){ applyTicker(inp.value); } });
+        }
+      }
+      if (document.readyState === 'loading'){ document.addEventListener('DOMContentLoaded', init); }
+      else { init(); }
+    })();
+    </script>
+
+    <!-- (a) LIGHT ANALİZ GÖRÜNÜMÜ — pazarlama/landing blokları gizlendi, temiz 3-sütun araç.
+         Geri almak için bu <style> bloğunu sil. -->
+    <style id="light-a-layout">
+      #cta-section, #user-counter-strip, #top3-sinyaller-panel,
+      #one-cikanlar-panel, #hisse-arama-section, #kurumsal-panel, #teknik-yol-panel,
+      #radar-panel, .twitter-strip,
+      #mobile-plans, .mob-tw-strip, #tg-ad-panel,
+      #erken-radar-panel, #hisse-detay-panel { display: none !important; }
+
+      /* Masaüstü: 3 sütun BAĞIMSIZ scroll (app.py'deki gibi) */
+      @media (min-width: 961px) {
+        #stock-selector-bar { z-index: 60; }
+        .main-layout { align-items: flex-start; }
+        .sidebar-left, .main-content, .sidebar-right {
+          height: calc(100vh - 96px);
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
+        /* KRİTİK: bu sütunlar flex-column → sabit yükseklikte çocukları EZMESİN (h=2 bug).
+           flex-shrink:0 → paneller doğal yüksekliğini korur, sığmayınca scroll olur. */
+        .sidebar-left > *, .main-content > *, .sidebar-right > * { flex-shrink: 0; }
+        /* ince scroll çubuğu */
+        .sidebar-left::-webkit-scrollbar,
+        .main-content::-webkit-scrollbar,
+        .sidebar-right::-webkit-scrollbar { width: 7px; }
+        .sidebar-left::-webkit-scrollbar-thumb,
+        .main-content::-webkit-scrollbar-thumb,
+        .sidebar-right::-webkit-scrollbar-thumb { background: #1e2742; border-radius: 4px; }
+      }
+
+      /* Mobil: üst kısım sıkışmasın/çakışmasın */
+      @media (max-width: 600px) {
+        .header { position: static !important; flex-wrap: wrap; gap: 6px; height: auto; padding: 8px 10px; }
+        .header-center { display: none !important; }   /* "Son güncelleme" mobilde gizli */
+        .hero-sub { display: none !important; }          /* logo altı açıklama mobilde gizli */
+        .header-right { flex-wrap: wrap; justify-content: flex-end; }
+        #stock-selector-bar { position: static !important; }
+      }
+    </style>
+
+    <!-- APP LAYOUT: 3-kolon içerik + sağda TG reklam -->
+    <div class="app-layout">
+
+    <!-- 3-COLUMN LAYOUT -->
+    <div class="main-layout">
+
+      <!-- ── LEFT SIDEBAR ────────────────────────────────────────────── -->
+      <aside class="sidebar-left">
+
+        <!-- GENEL ÖZET -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">⚡ Genel Özet</div>
+          <div class="rejim-mini" id="sidebar-rejim">
+            <!-- app.js -->
+          </div>
+        </div>
+
+        <!-- TEKNİK GÖRÜNÜM (speedometer) -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title green">🧭 Teknik Görünüm</div>
+          <div class="gauge-wrap" id="sidebar-gauge">
+            <!-- app.js -->
+          </div>
+        </div>
+
+        <!-- Genel Özet ek kilitli -->
+        <div class="sidebar-section" id="sidebar-genel-extra"><!-- app.js --></div>
+
+        <!-- KURUMSAL İLGİ mini -->
+        <div class="sidebar-section" id="sidebar-kurumsal-section">
+          <div class="sidebar-section-title orange">💼 Kurumsal İlgi</div>
+          <div class="xu100-mini" id="sidebar-xu100mini">
+            <!-- app.js -->
+          </div>
+          <div class="blur-block" onclick="openPlansModal()">
+            <div class="blur-content">
+              Delta birikim +284M · OBV yükseliş · RVOL 1.42× · Kurumsal ayak
+              izi 5/7 · RS gücü +18.4% · Smart Money bölge tespiti aktif ·
+              Kritik direnç 15,304–15,533 · Realizasyon riski izleniyor...
+            </div>
+            <div class="blur-overlay">
+              <div class="elite-badge">ELITE</div>
+              <div class="elite-label">Daha fazla detay için ELITE</div>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- ── MAIN CONTENT ────────────────────────────────────────────── -->
+      <main class="main-content">
+
+        <!-- CTA BÖLÜMÜ (üste taşındı) -->
+        <div class="cta-section" id="cta-section"><!-- app.js --></div>
+
+        <!-- NASIL ABONE OLUNUR — TEK SÜREÇ (site + Telegram) -->
+        <div class="hiw-wrap">
+          <div class="hiw-title">⚡ NASIL ABONE OLUNUR? <span style="font-weight:500;color:#94a3b8;font-size:0.8em;">— Tek üyelik, hem site hem Telegram</span></div>
+          <div class="hiw-steps">
+            <div class="hiw-step">
+              <div class="hiw-num">1</div>
+              <div class="hiw-step-title">Üye Ol</div>
+              <div class="hiw-step-desc">Üstteki <strong>Üye Ol</strong> butonuna tıkla, <strong>PRO</strong> (349₺) veya <strong>ELITE</strong> (599₺) planını seç.</div>
+            </div>
+            <div class="hiw-arrow">→</div>
+            <div class="hiw-step">
+              <div class="hiw-num">2</div>
+              <div class="hiw-step-title">Shopier'da Öde</div>
+              <div class="hiw-step-desc"><strong>E-postanla</strong> öde. Telegram'dan da kullanmak istersen <strong>"Not"</strong> alanına Telegram kullanıcı adını ekle <em>(opsiyonel)</em>.</div>
+            </div>
+            <div class="hiw-arrow">→</div>
+            <div class="hiw-step">
+              <div class="hiw-num">3</div>
+              <div class="hiw-step-title">~10 Dakika Bekle</div>
+              <div class="hiw-step-desc">Aboneliğin otomatik aktifleşir — <strong>hem site hem Telegram</strong> erişimi açılır.</div>
+            </div>
+            <div class="hiw-arrow">→</div>
+            <div class="hiw-step">
+              <div class="hiw-num">4</div>
+              <div class="hiw-step-title">Kullanmaya Başla</div>
+              <div class="hiw-step-desc">🌐 Site: <strong>Giriş</strong>'e e-postanı gir. &nbsp;📱 Telegram: @SMRBorsaBot'a START bas. İstediğin hisseyi analiz et.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KULLANICI SAYACI -->
+        <div id="user-counter-strip"></div>
+
+        <!-- TOP 3 SİNYALLER -->
+        <div id="top3-sinyaller-panel"></div>
+        <div class="mob-tw-strip"><span class="mob-tw-strip-text">Günlük BİST yorumları için</span><a href="https://x.com/SMRadar_2026" target="_blank" class="btn-twitter" style="font-size:11px;padding:5px 12px;border-radius:16px;white-space:nowrap;">𝕏 Takip Et</a></div>
+
+        <!-- XU100 PANEL -->
+        <div class="panel" id="xu100-panel">
+          <div class="panel-header green">
+            <div class="panel-title">📈 Para Akış İvmesi &amp; Fiyat Dengesi: XU100</div>
+            <div id="xu100-header-price" class="panel-tag">—</div>
+          </div>
+          <div class="panel-body" id="xu100-body"><!-- app.js --></div>
+        </div>
+
+        <!-- GÜNÜN ÖNE ÇIKANLARI -->
+        <div class="panel" id="one-cikanlar-panel"><!-- app.js --></div>
+
+        <!-- HİSSE DETAY PANELİ (Öne Çıkanlar tıklama) -->
+        <div class="panel" id="hisse-detay-panel" style="display:none"><!-- app.js --></div>
+
+        <!-- ERKEN RADAR PREVIEW (Tadımlık — FREE) -->
+        <div class="panel" id="erken-radar-panel" style="display:none;">
+          <div class="panel-header" style="background:linear-gradient(90deg,#0d1f24 0%,#0d1829 100%);border-bottom:1px solid #7dd3fc;">
+            <div class="panel-title" style="color:#7dd3fc;">🎯 ERKEN RADAR — Bu Hafta Öne Çıkanlar</div>
+            <div id="erken-radar-tag" class="panel-tag" style="color:#94a3b8;">FREE örnek</div>
+          </div>
+          <div class="panel-body" id="erken-radar-body"><!-- app.js --></div>
+        </div>
+
+        <!-- HISSE ARAMA -->
+        <div id="hisse-arama-section" style="background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:12px 16px;margin-bottom:12px;">
+          <div style="display:flex;gap:8px;">
+            <input id="stock-search-input" type="text" placeholder="Hisse ara... (örn: BIMAS)"
+              maxlength="10" onkeydown="if(event.key==='Enter')handleStockSearch()"
+              style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:6px;
+                     color:#e2e8f0;padding:8px 12px;font-size:13px;outline:none;" />
+            <button onclick="handleStockSearch()"
+              style="background:#06b6d4;color:#080c18;border:none;border-radius:6px;
+                     padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;">Ara</button>
+          </div>
+          <div id="stock-search-result" style="margin-top:8px;font-size:12.5px;color:#94a3b8;min-height:16px;line-height:1.4;"></div>
+        </div>
+
+        <!-- TEKNİK SEVİYELER -->
+        <div class="panel" id="levels-panel">
+          <div class="panel-header">
+            <div class="panel-title">📊 Teknik Seviyeler</div>
+            <div class="panel-tag" id="levels-xu-tag">XU100 — —</div>
+          </div>
+          <div class="panel-body" id="levels-body"><!-- app.js --></div>
+        </div>
+
+        <!-- SMART MONEY HACİM -->
+        <div class="panel" id="hacim-panel">
+          <div class="panel-header orange">
+            <div class="panel-title">💧 Smart Money Hacim Analizi</div>
+            <div id="poc-tag" class="panel-tag">—</div>
+          </div>
+          <div class="panel-body" id="hacim-body"><!-- app.js --></div>
+        </div>
+
+        <!-- TEKNİK YOL HARİTASI (composite) -->
+        <div class="panel" id="composite-panel">
+          <div class="panel-header">
+            <div class="panel-title">🗺️ Teknik Yol Haritası</div>
+            <div class="panel-tag" id="composite-tag">—</div>
+          </div>
+          <div class="panel-body" id="composite-body"><!-- app.js --></div>
+        </div>
+
+        <!-- ICT SMART MONEY ANALİZİ -->
+        <div class="panel" id="ict-panel">
+          <div class="panel-header purple">
+            <div class="panel-title">🎯 ICT Smart Money Analizi: XU100</div>
+            <div class="panel-tag" id="ict-tag">—</div>
+          </div>
+          <div class="panel-body" id="ict-body"><!-- app.js --></div>
+        </div>
+
+        <div class="mob-tw-strip"><span class="mob-tw-strip-text">Günlük BİST yorumları için</span><a href="https://x.com/SMRadar_2026" target="_blank" class="btn-twitter" style="font-size:11px;padding:5px 12px;border-radius:16px;white-space:nowrap;">𝕏 Takip Et</a></div>
+
+        <!-- KURUMSAL İLGİ PANELİ -->
+        <div class="panel" id="kurumsal-panel"><!-- app.js --></div>
+
+        <!-- TEKNİK YOL HARİTASI GENİŞLETİLMİŞ -->
+        <div class="panel" id="teknik-yol-panel"><!-- app.js --></div>
+
+        <!-- GELİŞMİŞ RADARLAR VE SİNYALLER -->
+        <div class="panel" id="radar-panel"><!-- app.js --></div>
+
+        <!-- MOBİL INLINE CTA (sadece mobilde görünür) -->
+        <div class="mob-inline-cta">
+          <a href="#" onclick="smrOpenPlans();return false;" class="mob-inline-cta-btn">📊 PRO veya ELITE'e Abone Ol</a>
+        </div>
+
+        <!-- SSS / FAQ -->
+        <div class="faq-wrap">
+          <div class="faq-title">❓ Sıkça Sorulan Sorular</div>
+          <div style="font-size:12.5px;color:#94a3b8;line-height:1.6;margin-bottom:14px;">
+            <strong style="color:#22d3ee;">Tek üyelik (PRO veya ELITE) hem siteyi hem Telegram'ı açar.</strong>
+            🌐 <strong>Site:</strong> web aracında 3 sütunlu detaylı analiz — istediğin hisseyi seç, incele.
+            📱 <strong>Telegram:</strong> bot'a hisse kodu yaz, analizi DM al. İkisi de aynı üyeliğe dahildir.
+          </div>
+
+          <details class="faq-item">
+            <summary class="faq-q">Üyelik bana ne veriyor?</summary>
+            <div class="faq-a">Tek ödeme ile <strong>iki erişim birden</strong> açılır: <strong>🌐 Site</strong> — web analiz aracına giriş; istediğin hisseyi seçer, fiyat/sinyal/grafik/seviye ve pakete göre derin panelleri ekranda görürsün. <strong>📱 Telegram</strong> — bot'a <code class="hiw-code">#THYAO</code> gibi kod yazınca grafik + analiz DM'ine gelir. İkisi de aynı üyelikte.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Nasıl abone olurum?</summary>
+            <div class="faq-a"><strong>1.</strong> Üstteki <strong>Üye Ol</strong>'a tıkla, <strong>PRO</strong> (349₺/ay) veya <strong>ELITE</strong> (599₺/ay) seç.<br><strong>2.</strong> Shopier'da <strong>e-postanla</strong> öde. Telegram'dan da kullanmak istiyorsan ödeme <strong>"Not"</strong> alanına Telegram kullanıcı adını ekle <em>(örn. @ahmet — opsiyonel)</em>.<br><strong>3.</strong> ~10 dakika içinde aboneliğin otomatik aktifleşir.<br><strong>4.</strong> Site için <strong>Giriş</strong>'e ödeme e-postanı gir; Telegram için @SMRBorsaBot'a START bas.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">PRO ile ELITE arasındaki fark ne?</summary>
+            <div class="faq-a"><strong>PRO</strong> — günde <strong>3 hisse</strong> (hem sitede hem Telegram'da). Sitede: fiyat kartı, sinyal özeti, genel sağlık, para akışı grafiği, teknik seviyeler. Telegram'da: grafik + teknik analiz özeti + her akşam 19:00 BIST bülteni.<br><br><strong>ELITE</strong> — günde <strong>8 hisse</strong>. PRO'daki her şey + sitede derin paneller (Smart Money Hacim, ICT analizi, Teknik Yol Haritası, Price Action, Kurumsal İlgi, yazılı sonuç yorumu); Telegram'da Uzman AI Raporu + haftalık tarama.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Siteye nasıl giriş yaparım?</summary>
+            <div class="faq-a">Üstteki <strong>Giriş</strong> butonuna tıkla, <strong>ödeme yaptığın e-postayı</strong> gir. Şifre yok — e-postan yeterli. Her cihazdan aynı e-postayla girebilirsin.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Telegram'ı nasıl kullanırım?</summary>
+            <div class="faq-a">Ödeme "Not" alanına Telegram kullanıcı adını yazdıysan: @SMRBorsaBot'u aç, <strong>START</strong>'a bas. Bot ~5–15 dk içinde davet linkini DM atar. Sonra <code class="hiw-code">#THYAO</code>, <code class="hiw-code">#GARAN</code>, <code class="hiw-code">#BTC</code> gibi bir kod yaz — analiz sana özel DM gelir.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Telegram zorunlu mu? Sadece siteyi kullanabilir miyim?</summary>
+            <div class="faq-a">Telegram <strong>opsiyonel</strong>. Sadece siteyi istiyorsan e-postanla ödemen yeterli — Telegram kullanıcı adı eklemene gerek yok. İstersen sonradan da ekleyebilirsin (@SmartMoneyRadar26'ya yaz).</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Ödedim ama erişemiyorum, ne yapmalıyım?</summary>
+            <div class="faq-a">🕐 Sistem ödemeleri birkaç dakikada bir kontrol eder; aboneliğin genellikle <strong>~10 dakika</strong> içinde aktifleşir. Biraz bekleyip siteye tekrar <strong>Giriş</strong> yap (veya Telegram'da START'a tekrar bas). 15 dakikadan uzun sürerse @SmartMoneyRadar26'ya Shopier sipariş numaranla yaz, elle aktifleştirilir.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Günlük hak ne zaman sıfırlanır?</summary>
+            <div class="faq-a">Her gece otomatik sıfırlanır. PRO: günde 3, ELITE: günde 8. Sitede aynı hisseyi tekrar açmak hak yemez ve endeks (XU100) ücretsizdir. Site ve Telegram hakları ayrı sayılır.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Hangi varlıkları analiz edebilirim?</summary>
+            <div class="faq-a">📱 Telegram: 631 BIST hissesi (5 endeks dahil), 84 kripto (BTC, ETH, SOL, PEPE…) ve 6 emtia (Altın, Gümüş, Bakır, Petrol, Brent, Doğalgaz). 🌐 Site: BIST hisseleri ve endeks. Kripto/emtia için Telegram'ı kullan.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Aboneliğimi nasıl yeniler / iptal ederim?</summary>
+            <div class="faq-a">Şu an yenileme <strong>aylık elle</strong>: her ay Shopier'dan tekrar ödersen süren uzar (aynı e-posta/kullanıcı adıyla). Ödemezsen abonelik dönem sonunda kendiliğinden biter — ekstra iptal işlemi gerekmez. Erken iptal/iade için @SmartMoneyRadar26.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Ödeme güvenli mi?</summary>
+            <div class="faq-a">Ödeme <strong>Shopier</strong> üzerinden işlenir — Türkiye'nin yaygın e-ticaret ödeme altyapısı. Kart bilgilerin bize veya bota iletilmez, doğrudan Shopier'ın güvenli sisteminde işlenir.</div>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-q">Analizler yatırım tavsiyesi mi?</summary>
+            <div class="faq-a">Hayır. Tüm içerik algoritmik teknik analiz çıktısıdır ve yalnızca eğitim/bilgi amaçlıdır. Yatırım kararlarının sorumluluğu tamamen kullanıcıya aittir.</div>
+          </details>
+        </div>
+
+        <!-- SSS DESTEK SATIRI -->
+        <div class="faq-support">
+          Başka soruların mı var? &nbsp;→&nbsp;
+          <a href="https://t.me/SmartMoneyRadar26" target="_blank">@SmartMoneyRadar26</a>'ya yaz.
+        </div>
+
+        <!-- TWITTER + CTA -->
+        <div class="twitter-strip">
+          <div class="twitter-strip-text">
+            <strong>Daha fazla analiz ve piyasa yorumu için</strong> Twitter'ı takip et.
+            Her sabah BİST görünümü, akşam kapanış özeti.
+          </div>
+          <a href="https://x.com/SMRadar_2026" target="_blank" class="btn-twitter">𝕏 Twitter'da Takip Et</a>
+        </div>
+
+        <!-- MOBİL PLAN KARTLARI (sadece mobilde görünür, TG panel gizli olduğunda) -->
+        <div id="mobile-plans"><!-- app.js --></div>
+
+        <div style="text-align:center;">
+          <a href="https://x.com/SMRadar_2026" target="_blank" class="btn-twitter">
+            𝕏 Günlük Yorumlar İçin Twitter'ı Takip Et
+          </a>
+        </div>
+
+      </main>
+
+      <!-- ── RIGHT SIDEBAR ───────────────────────────────────────────── -->
+      <aside class="sidebar-right">
+
+        <!-- BIG PRICE CARD -->
+        <div class="price-card-big" id="price-card-big"><!-- app.js --></div>
+
+        <!-- SIGNALS / CANLI SİNYALLER -->
+        <div class="rsection" id="canli-sinyaller-panel"><!-- app.js --></div>
+
+        <!-- PRICE ACTION -->
+        <div class="rsection" id="price-action-section"><!-- app.js --></div>
+
+        <!-- ARZ-TALEP -->
+        <div class="rsection">
+          <div class="rsection-title">📦 Arz-Talep (S&amp;D) Bölgeleri</div>
+          <div class="rsection-locked" onclick="openPlansModal()">
+            <div class="elite-badge">ELITE</div>
+            <span style="font-size:9.5px">Detaylı bilgi için ELITE</span>
+          </div>
+        </div>
+
+        <!-- FORMASYONLAR -->
+        <div class="rsection">
+          <div class="rsection-title purple">🔷 Formasyon &amp; Harmonikler</div>
+          <div class="rsection-locked" onclick="openPlansModal()">
+            <div class="elite-badge">ELITE</div>
+            <span style="font-size:9.5px">Detaylı bilgi için ELITE</span>
+          </div>
+        </div>
+
+        <!-- VWAP -->
+        <div class="rsection">
+          <div class="rsection-title cyan">📐 Kurumsal Maliyet (VWAP)</div>
+          <div class="rsection-locked" onclick="openPlansModal()">
+            <div class="elite-badge">ELITE</div>
+            <span style="font-size:9.5px">Detaylı bilgi için ELITE</span>
+          </div>
+        </div>
+
+        <!-- HACİM & VSA -->
+        <div class="rsection">
+          <div class="rsection-title green">📊 Hacim &amp; VSA</div>
+          <div class="rsection-body">
+            <div class="hacim-normal-badge" id="vsa-badge">
+              <span id="vsa-icon">📊</span>
+              <span id="vsa-text">—</span>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+    </div><!-- /main-layout -->
+
+    <!-- TELEGRAM REKLAM PANELİ (sağ, sticky) -->
+    <aside class="tg-ad-panel" id="tg-ad-panel"><!-- app.js --></aside>
+
+    </div><!-- /app-layout -->
+
+  </div><!-- /page-container -->
+
+  </div><!-- /app -->
+
+  <!-- MOBİL STICKY BAR -->
+  <div id="mobile-cta-bar">
+    <a href="#" onclick="smrOpenPlans();return false;">📊 PRO / ELITE'e Abone Ol →</a>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <p class="footer-spk">
+      Burada yer alan bilgi, yorum, skor ve algoritmik tarama sonuçları yatırım danışmanlığı
+      kapsamında değildir. Herhangi bir al-sat-tut tavsiyesi, getiri vaadi veya kişiye özel
+      portföy önerisi içermez. İçerikler yalnızca eğitim ve veri analitiği amacıyla sunulur.
+      Yatırım kararları kişisel mali durum, risk tercihi ve hedefler dikkate alınarak yetkili
+      kuruluşlardan alınacak danışmanlık çerçevesinde değerlendirilmelidir.
+    </p>
+    <div class="footer-links">
+      <a href="https://x.com/SMRadar_2026" target="_blank" class="footer-link btn-twitter" style="padding:3px 10px;font-size:10px;">𝕏 Twitter</a>
+      <a href="#planlar" onclick="smrOpenPlans();return false;" class="footer-link">PRO Üyelik</a>
+      <a href="#planlar" onclick="smrOpenPlans();return false;" class="footer-link">ELITE Üyelik</a>
+      <a href="#" onclick="smrOpenKvkk();return false;" class="footer-link">KVKK / Gizlilik</a>
+      <span class="footer-link">© 2026 Smart Money Radar</span>
+    </div>
+  </footer>
+
+  <script src="app.js?v=47"></script>
+
+<!-- PLANS MODAL -->
+<div id="plans-modal" onclick="if(event.target===this)closePlansModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;overflow-y:auto;padding:20px">
+  <div style="max-width:540px;margin:40px auto;background:#0d1829;border:1px solid #1e3a5f;border-radius:14px;overflow:hidden">
+    <div style="position:sticky;top:0;z-index:2;background:#0d1829;border-bottom:1px solid #1e293b;padding:10px 14px;display:flex;justify-content:flex-end">
+      <button onclick="closePlansModal()" style="background:rgba(100,116,139,0.15);border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:14px;font-weight:700;cursor:pointer;padding:6px 14px;display:flex;align-items:center;gap:6px"><span style="font-size:16px;line-height:1">✕</span> Kapat</button>
+    </div>
+    <div style="padding:24px">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:10px;font-weight:700;color:#22d3ee;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">TEK ÜYELİK</div>
+      <div style="font-size:17px;font-weight:800;color:#f1f5f9">Bir öde, her yerden eriş.</div>
+      <div style="margin-top:8px;font-size:12px;color:#94a3b8;line-height:1.6">
+        Üyeliğin <strong style="color:#e2e8f0">🌐 web aracını</strong> (detaylı 3 sütunlu analiz) ve
+        <strong style="color:#e2e8f0">📱 Telegram'ı</strong> (hisse kodu yaz, DM al) birlikte açar.
+      </div>
+    </div>
+    <div style="background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.35);border-radius:8px;padding:10px 12px;margin-bottom:14px;text-align:center;font-size:12.5px;color:#4ade80;font-weight:700">
+      🎉 Şu an her şey ÜCRETSİZ — üyelik çok yakında. <strong>Açılışa özel kısa süre %20 indirim!</strong>
+    </div>
+    <div style="background:#0a1628;border:1px solid #22d3ee;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:800;color:#22d3ee;margin-bottom:6px">🔔 Üyelik açılınca ilk sen haber al</div>
+      <div style="display:flex;gap:6px">
+        <input id="waitlist-email" type="email" placeholder="e-posta adresin" autocomplete="email"
+               style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 10px;font-size:12px;outline:none;width:0">
+        <button onclick="smrWaitlist()" style="background:#22d3ee;color:#062a30;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">Haber Ver</button>
+      </div>
+      <div id="waitlist-msg" style="margin-top:6px;font-size:11px;color:#94a3b8;min-height:14px"></div>
+      <div style="margin-top:4px;font-size:9.5px;color:#64748b;line-height:1.5">E-postanı bırakarak <a href="#" onclick="smrOpenKvkk();return false;" style="color:#64748b;text-decoration:underline">KVKK Aydınlatma Metni</a> kapsamında bilgilendirme almayı kabul edersin.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <!-- ELITE -->
+      <div style="background:#0a1628;border:1px solid #7c3aed;border-radius:10px;padding:14px 16px">
+        <div style="font-size:9px;font-weight:700;color:#8b5cf6;letter-spacing:1px;text-transform:uppercase">ELİTE</div>
+        <div style="font-size:18px;font-weight:900;color:#8b5cf6;margin:2px 0 8px"><span style="font-size:12px;color:#64748b;text-decoration:line-through;font-weight:600">₺749</span> ₺599 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span> <span style="display:inline-block;margin-left:2px;background:rgba(0,200,83,0.15);color:#4ade80;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;vertical-align:middle">AÇILIŞA ÖZEL %20</span></div>
+        <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 8 · Aylık 240 rapor (~2.50₺ / rapor)<br>• Momentum-Para Akışı &amp; Sentiment Grafikleri<br>• <strong style="color:#f1f5f9">Tam sayfa Derinlemesine AI uzman analizi</strong><br>• <strong style="color:#f1f5f9">Kapsamlı SMR yapı-anatomi-kurumsal ayak izi değerlendirmesi</strong><br>• Her işlem günü 19:00 bülteni (XU100)<br>• Hafta sonu özel tarama özetleri<br>• 631 BIST · 84 kripto · 6 emtia</div>
+        <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-top:8px;background:#7c3aed;border:none;border-radius:6px;padding:8px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <div style="display:flex;flex-direction:column;gap:3px;margin:8px 0">
+          <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.2);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#ffd700;font-weight:700">⭐ CONFLUENCE TARAMA</div>
+          <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#8b5cf6;font-weight:700">✦ ELİTE SET-UP'LAR</div>
+          <div style="background:rgba(255,100,50,0.08);border:1px solid rgba(255,100,50,0.2);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#ff8c5a;font-weight:700">🎯 ICT SNIPER TARAMA</div>
+        </div>
+        <div style="display:block;width:100%;margin-top:6px;text-align:center;background:rgba(124,58,237,0.15);border:1px solid #7c3aed;border-radius:7px;padding:9px;color:#a78bfa;font-size:12px;font-weight:800;letter-spacing:0.3px">🕐 Üyelik Çok Yakında</div>
+      </div>
+      <!-- PRO -->
+      <div style="background:#0a1628;border:1px solid #2563eb;border-radius:10px;padding:14px 16px">
+        <div style="font-size:9px;font-weight:700;color:#3b82f6;letter-spacing:1px;text-transform:uppercase">PRO</div>
+        <div style="font-size:18px;font-weight:900;color:#3b82f6;margin:2px 0 8px"><span style="font-size:12px;color:#64748b;text-decoration:line-through;font-weight:600">₺439</span> ₺349 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span> <span style="display:inline-block;margin-left:2px;background:rgba(0,200,83,0.15);color:#4ade80;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;vertical-align:middle">AÇILIŞA ÖZEL %20</span></div>
+        <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 3 · Aylık 90 rapor (~3.88₺ / rapor)<br>• Momentum-Para Akışı &amp; Sentiment Grafikleri<br>• <strong style="color:#e2e8f0">Algoritmik Teknik Analiz Özeti</strong><br>• <strong style="color:#f1f5f9">Tam sayfa 7 maddelik Detaylı Teknik Analiz (PA + ICT) Kart</strong><br>• Her işlem günü 19:00 bülteni (XU100)<br>• 631 BIST · 84 kripto · 6 emtia</div>
+        <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-top:8px;background:#2563eb;border:none;border-radius:6px;padding:8px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <div style="display:block;width:100%;margin-top:6px;text-align:center;background:rgba(37,99,235,0.15);border:1px solid #2563eb;border-radius:7px;padding:9px;color:#60a5fa;font-size:12px;font-weight:800;letter-spacing:0.3px">🕐 Üyelik Çok Yakında</div>
+      </div>
+      <!-- FREE -->
+      <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:10px;padding:14px 16px">
+        <div style="font-size:9px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase">ÜCRETSİZ</div>
+        <div style="font-size:18px;font-weight:900;color:#f1f5f9;margin:2px 0 8px">FREE <span style="font-size:12px;color:#64748b;font-weight:400">₺0 /ay</span></div>
+        <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 1 hisse kartı (aylık 30)<br>• Momentum-Para Akışı &amp; Sentiment Grafikleri<br>• <strong style="color:#e2e8f0">Algoritmik Teknik Analiz Özeti</strong></div>
+        <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-top:8px;background:#00c853;border:none;border-radius:6px;padding:8px;color:#000;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
+        <button onclick="closePlansModal()" style="display:block;width:100%;margin-top:6px;text-align:center;background:#00c853;border:none;border-radius:7px;padding:9px;color:#000;font-size:12px;font-weight:800;cursor:pointer;letter-spacing:0.3px">Hemen Ücretsiz Dene</button>
+      </div>
+    </div>
+    </div><!-- /padding:24px -->
+  </div>
+</div>
+<!-- KVKK AYDINLATMA MODALI -->
+<div id="kvkk-modal" onclick="if(event.target===this)closeKvkk()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10001;overflow-y:auto;padding:20px">
+  <div style="max-width:580px;margin:30px auto;background:#0d1829;border:1px solid #1e3a5f;border-radius:14px;padding:22px 24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:15px;font-weight:800;color:#f1f5f9">KVKK Aydınlatma Metni & Gizlilik</div>
+      <button onclick="closeKvkk()" style="background:rgba(100,116,139,0.15);border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:13px;font-weight:700;cursor:pointer;padding:5px 12px">✕ Kapat</button>
+    </div>
+    <div style="font-size:12px;color:#cbd5e1;line-height:1.75">
+      <p>6698 sayılı Kişisel Verilerin Korunması Kanunu (KVKK) kapsamında, Smart Money Radar olarak kişisel verilerinizin işlenmesine ilişkin aydınlatma yükümlülüğümüzü aşağıdaki şekilde yerine getiririz.</p>
+      <p><strong style="color:#e2e8f0">Toplanan veriler:</strong> e-posta adresi (bekleme listesi / üyelik için), IP adresi ve tarayıcı bilgisi (güvenlik, kötüye kullanım önleme ve istatistik için), site kullanım verileri (ziyaret sayısı vb.).</p>
+      <p><strong style="color:#e2e8f0">İşleme amaçları:</strong> üyelik açıldığında bilgilendirme yapmak, hizmeti sunmak ve iyileştirmek, yasal yükümlülükleri yerine getirmek, güvenliği sağlamak.</p>
+      <p><strong style="color:#e2e8f0">Hukuki sebep:</strong> açık rızanız (e-posta bırakma) ve meşru menfaat (güvenlik/istatistik).</p>
+      <p><strong style="color:#e2e8f0">Saklama:</strong> veriler yalnızca amaç için gerekli süre boyunca saklanır; talep üzerine silinir.</p>
+      <p><strong style="color:#e2e8f0">Aktarım:</strong> veriler üçüncü kişilerle pazarlama amacıyla paylaşılmaz. Yalnızca hizmetin çalışması için kullanılan altyapı sağlayıcıları (ödeme: Shopier; analitik: Google/Microsoft) işleyebilir.</p>
+      <p><strong style="color:#e2e8f0">Haklarınız (KVKK md. 11):</strong> verilerinize erişme, düzeltme, silme, işlemeye itiraz etme haklarına sahipsiniz. Talepleriniz için <a href="https://t.me/SmartMoneyRadar26" target="_blank" style="color:#22d3ee">@SmartMoneyRadar26</a> üzerinden bize ulaşabilirsiniz.</p>
+      <p style="color:#64748b;font-size:11px">Not: Bu metin standart bir bilgilendirmedir; nihai hukuki uygunluk için bir uzmana danışılması önerilir. İçerikler yatırım tavsiyesi değildir.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ÖRNEK ÇIKTI MODAL -->
+<div id="example-modal" onclick="if(event.target===this)closeExampleModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;overflow-y:auto;padding:20px">
+  <div style="max-width:480px;margin:30px auto;background:#0d1117;border-radius:14px;overflow:hidden;position:relative">
+    <!-- Header -->
+    <div id="ex-header" style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #1e293b;position:sticky;top:0;background:#0d1117;z-index:2">
+      <button onclick="closeExampleModal()" style="background:rgba(100,116,139,0.15);border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:13px;font-weight:700;cursor:pointer;padding:5px 12px;white-space:nowrap">✕ Kapat</button>
+      <div>
+        <div id="ex-tier-label" style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase"></div>
+        <div style="font-size:12px;color:#64748b">Gerçek bot çıktısı örneği — XU100 analizi</div>
+      </div>
+      <div id="ex-tier-badge" style="margin-left:auto;font-size:10px;font-weight:800;padding:3px 8px;border-radius:4px"></div>
+    </div>
+    <!-- İçerik -->
+    <div id="ex-content" style="padding:0"></div>
+    <!-- Alt CTA -->
+    <div id="ex-cta" style="padding:14px 16px;border-top:1px solid #1e293b;text-align:center"></div>
+  </div>
+</div>
+
+<!-- ÖRNEK İÇERİK ŞABLONLARI — içerik doğrudan HTML, JS string yok -->
+
+<!-- FREE şablon -->
+<div id="ex-tpl-free" style="display:none">
+  <div style="background:#1a1a2e;height:90px;overflow:hidden;border-bottom:1px solid #1e293b">
+    <svg width="100%" height="90" viewBox="0 0 440 90" preserveAspectRatio="none" style="opacity:0.6">
+      <polyline points="0,70 40,65 80,72 100,55 130,60 160,40 190,50 210,30 240,45 260,35 290,55 320,42 350,38 380,50 420,30 440,45" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+      <rect x="30" y="60" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="70" y="52" width="8" height="15" fill="#22c55e" opacity="0.7"/>
+      <rect x="150" y="35" width="8" height="18" fill="#ef4444" opacity="0.7"/><rect x="210" y="25" width="8" height="14" fill="#22c55e" opacity="0.7"/>
+      <rect x="330" y="32" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="390" y="26" width="8" height="16" fill="#ef4444" opacity="0.7"/>
+      <text x="8" y="82" fill="#334155" font-size="8" font-family="monospace">Para Akisi Grafigi — ornek</text>
+    </svg>
+  </div>
+  <div style="background:#17212b;padding:14px 16px;font-family:monospace;font-size:12px">
+    <div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">📊 <b>#XU100</b> — 14.203 <span style="color:#ef4444">▼%1,11</span></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      📍 <b>Büyük Ana Trend:</b> 🟢 YUKARI<br>
+      <span style="color:#64748b;font-size:11px;padding-left:16px">└ SMA50 üstünde · 1g</span><br>
+      🌟 <b>Kısa Vade Görünüm:</b> 🔴 AŞAĞI ↓<br>
+      <span style="color:#64748b;font-size:11px;padding-left:16px">└ Kısa vade (bugün–bu hafta) · 0/4 sinyal yukarı yönde</span>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      🛡 <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.008</code> — <i style="color:#64748b">ATR Destek</i><br>
+      🛡 <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">13.715</code> — <i style="color:#64748b">ATR Destek 4</i><br>
+      🎯 <b>Direnç 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.399</code> — <i style="color:#64748b">ATR Direnç</i><br>
+      🎯 <b>Direnç 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.692</code> — <i style="color:#64748b">ATR Direnç 4</i>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      ❌ <b>OBV Birikim</b> — Net birikim yok<br>
+      ❌ <b>BB Sıkışma</b> — Aktif sıkışma yok<br>
+      ❌ <b>Tetikleyici</b> — Tetik atılmadı | RSI 41<br>
+      ✦ <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">1/4</code>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1">📈 <b>RSI:</b> 41.4</div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#94a3b8;line-height:1.7;font-size:11.5px">💬 Makro yön yukarı (Boğa %61) ama kısa vadede sıkışma var. RSI 41 nötr; MACD negatif eğilimde, OBV yukarı. 14.399 kırılımı hacimle desteklenirse momentum geri gelebilir. 14.008 altına sarkmadıkça trend bozulmuş sayılmaz.</div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="font-size:10px;color:#475569;line-height:1.7">⚠️ <i>Eğitim amaçlıdır, yatırım tavsiyesi değildir.</i><br>
+    <span style="color:#3b82f6">— PRO üyeler bu hisse için Detaylı Teknik Kartı da okudu. Sen de ister misin?</span></div>
+  </div>
+</div>
+
+<!-- PRO şablon -->
+<div id="ex-tpl-pro" style="display:none">
+  <div style="background:#1a1a2e;height:90px;overflow:hidden;border-bottom:1px solid #1e293b">
+    <svg width="100%" height="90" viewBox="0 0 440 90" preserveAspectRatio="none" style="opacity:0.6">
+      <polyline points="0,70 40,65 80,72 100,55 130,60 160,40 190,50 210,30 240,45 260,35 290,55 320,42 350,38 380,50 420,30 440,45" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+      <rect x="30" y="60" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="70" y="52" width="8" height="15" fill="#22c55e" opacity="0.7"/>
+      <rect x="150" y="35" width="8" height="18" fill="#ef4444" opacity="0.7"/><rect x="210" y="25" width="8" height="14" fill="#22c55e" opacity="0.7"/>
+      <rect x="330" y="32" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="390" y="26" width="8" height="16" fill="#ef4444" opacity="0.7"/>
+      <text x="8" y="82" fill="#334155" font-size="8" font-family="monospace">Para Akisi Grafigi — ornek</text>
+    </svg>
+  </div>
+  <div style="background:#17212b;padding:14px 16px;font-family:monospace;font-size:12px">
+    <div style="font-size:10px;font-weight:700;color:#64748b;border-bottom:1px solid #1e293b;padding-bottom:6px;margin-bottom:10px">🏛 SMR Günlük Bülten — 18.05.2026</div>
+    <div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">📊 <b>#XU100</b> — 14.029 <span style="color:#ef4444">▼%2,32</span></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      📍 <b>Büyük Ana Trend:</b> 🟢 YUKARI<br>
+      <span style="color:#64748b;font-size:11px;padding-left:16px">└ SMA50 üstünde · 1g</span><br>
+      🌟 <b>Kısa Vade Görünüm:</b> 🔴 AŞAĞI ↓<br>
+      <span style="color:#64748b;font-size:11px;padding-left:16px">└ 0/4 sinyal yukarı yönde</span>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      🛡 <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">13.824</code> — <i style="color:#64748b">ATR Destek</i><br>
+      🛡 <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">13.516</code> — <i style="color:#64748b">ATR Destek 4</i><br>
+      🎯 <b>Direnç 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.234</code> — <i style="color:#64748b">ATR Direnç</i><br>
+      🎯 <b>Direnç 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">14.538</code> — <i style="color:#64748b">FVG Alt</i>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1;line-height:2.1">
+      ❌ <b>OBV Birikim</b> — Net birikim yok<br>
+      ❌ <b>BB Sıkışma</b> — Aktif sıkışma yok<br>
+      ❌ <b>Tetikleyici</b> — Tetik atılmadı | RSI 38<br>
+      ✦ <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px;font-size:11px">1/4</code>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#cbd5e1">📈 <b>RSI:</b> 38.5</div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="color:#94a3b8;line-height:1.7;font-size:11.5px">💬 Aktif yükseliş dalgası — SMA50 (13.757) üstünde tutunma sürüyor (Boğa %59). RSI 38 ve OBV yukarı, kurumsal iştahın canlı olduğunu gösteriyor. 14.234 üzerinde hacimli geçiş yeni yön açabilir. Yapı bozulması için referans: 13.824 altı.</div>
+    <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
+    <div style="font-size:10px;color:#475569">⚠️ <i>Eğitim amaçlıdır, yatırım tavsiyesi değildir.</i></div>
+  </div>
+  <!-- AI TEKNİK KART -->
+  <div style="background:#0f1923;border-top:2px solid #2563eb;padding:14px 16px;font-family:monospace">
+    <div style="font-size:11px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;margin-bottom:12px">🤖 AI TEKNİK KART — #XU100</div>
+    <div style="font-size:11.5px;color:#cbd5e1;line-height:1.85">
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">1️⃣ Genel Sentez</span><br>
+        <span style="color:#94a3b8">Düşüş kırılımı (BOS) ile düşüş trendi hakim. Son swing tepesi 15.205, salınım dibi 14.246,30. Fiyat kurumsal satım bölgesi olan premium (pahalı) alanda işlem görüyor.</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">2️⃣ Yapı &amp; Fiyat Davranışı</span><br>
+        <span style="color:#94a3b8">Mum kapanışları günlük aralığın alt kısmında — satıcı baskısı belirginleşiyor. OB: 14.991–15.204 aralığında arz bölgesi. FVG: 14.538–14.566. EQL: 14.246,30 seviyesinde eşit dipler (likidite havuzu).</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">3️⃣ Momentum &amp; Vade Uyumu</span><br>
+        <span style="color:#94a3b8">RSI 5g değişim hızı yatay, MACD histogramı genişliyor — momentum zayıflıyor. RSI uyumsuzluğu tespit edilmedi. Kısa ve orta vadeli momentumun zayıflama eğiliminde.</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">4️⃣ Hacim, Efor ve Akıllı Para İzi (VSA)</span><br>
+        <span style="color:#94a3b8">SMA200 üstünde (ana yapı sağlam) ancak SMA20 altında. Düşük hacimle hareket (RVOL 0.0x). Kümülatif delta son 5 günde %80 satış baskısına işaret ediyor. VWAP'ın %4,2 altında işlem. Piyasa Fazı: YÜKSELİŞ (FAZ 2).</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">5️⃣ Likidite &amp; Kritik Bantlar</span><br>
+        <span style="color:#94a3b8">Üst Havuz: 15.205. Alt Havuz: 14.266 (PDL kırıldı) ve 14.246,30 (EQL). Son 20g aralığın alt bandına yakın; sert düşüş sonrası tutunma eğilimi.</span>
+      </div>
+      <div style="margin-bottom:10px">
+        <span style="color:#3b82f6;font-weight:700">6️⃣ Trend Skoru ve Enerji</span><br>
+        <span style="color:#94a3b8">Enerji Puanı: 4/5. Sonraki hamle için enerji birikimi var; ancak sinyaller karışık.</span>
+      </div>
+      <div>
+        <span style="color:#3b82f6;font-weight:700">7️⃣ Teknik Okuma Özeti</span><br>
+        <span style="color:#94a3b8">Düşüş kırılımı (BOS) sonrası fiyat premium bölgede, düşük hacimle satış baskısıyla işlem görüyor. 14.246,30'daki EQL'e (eşit diplere) doğru çekilme ihtimali masada. Risk: Düşük hacim ve belirgin satış baskısı düşüşün devamını güçlendiriyor.</span>
+      </div>
+    </div>
+    <div style="border-top:1px solid #1e293b;margin-top:12px;padding-top:8px;font-size:10px;color:#475569;line-height:1.7">
+      SMR-PRO aboneleri için Algoritmanın TEKNİK KART çıktısıdır. Eğitim amaçlıdır. Yatırım tavsiyesi değildir.<br>
+      <span style="color:#94a3b8">#SmartMoneyRadar #XU100</span><br><br>
+      <span style="color:#8b5cf6;font-weight:600">— ELİTE üyeler tam uzman analizini de aldı. Farkı görmek ister misin?</span>
+    </div>
+  </div>
+</div>
+
+<!-- ELITE şablon (şimdilik PRO ile aynı, ELITE kartı gelince güncellenecek) -->
+<div id="ex-tpl-elite" style="display:none">
+  <div style="background:#0a0f1a;padding:20px;font-family:monospace;text-align:center;color:#8b5cf6;font-size:13px">
+    🔬 ELİTE örnek içeriği yakında eklenecek
+  </div>
+</div>
+
+<!-- CTA divleri -->
+<div id="ex-cta-free" style="display:none">
+  <a href="#" onclick="closeExampleModal();openPlansModal();return false;" style="display:inline-block;background:rgba(255,255,255,0.06);border:1px solid #334155;border-radius:7px;padding:8px 20px;color:#94a3b8;text-decoration:none;font-size:12px;font-weight:600">Kanala Katıl →</a>
+</div>
+<div id="ex-cta-pro" style="display:none">
+  <a href="#" onclick="closeExampleModal();openPlansModal();return false;" style="display:inline-block;background:#1d4ed8;border-radius:7px;padding:8px 20px;color:#fff;text-decoration:none;font-size:12px;font-weight:700">🔵 PRO'ya Katıl →</a>
+</div>
+<div id="ex-cta-elite" style="display:none">
+  <div style="font-size:11px;color:#8b5cf6;font-weight:700">🕐 Yakında açılıyor</div>
+</div>
+
+<script>
+var EX_META = {
+  free:  { label:'ÜCRETSİZ', lc:'#64748b', badge:'FREE',  bb:'rgba(100,116,139,0.15)', bc:'#94a3b8' },
+  pro:   { label:'PRO',      lc:'#3b82f6', badge:'PRO',   bb:'rgba(37,99,235,0.15)',   bc:'#3b82f6' },
+  elite: { label:'ELİTE',    lc:'#8b5cf6', badge:'ELİTE', bb:'rgba(124,58,237,0.15)',  bc:'#8b5cf6' }
+};
+(function buildTemplates(){
+  function makeChartImg(src, label) {
+    var fallback = 'this.style.display=\'none\';this.parentNode.style.minHeight=\'0\'';
+    return '<div style="background:#0a0f1a;border-bottom:1px solid #1e293b;text-align:center">' +
+      '<div style="font-size:9px;color:#334155;padding:4px 8px;text-align:left;font-family:monospace">' + label + '</div>' +
+      '<img src="' + src + '" alt="' + label + '" loading="lazy" ' +
+      'style="width:100%;max-height:480px;object-fit:contain;display:block" ' +
+      'onerror="' + fallback + '">' +
+      '</div>';
+  }
+
+  var FREE_CHART  = makeChartImg('assets/ornek_free.png',  'Örnek FREE analiz çıktısı');
+  var PRO_CHART   = makeChartImg('assets/ornek_pro.png',   'Örnek PRO analiz çıktısı');
+  var ELITE_CHART = makeChartImg('assets/ornek_elite.png', 'Örnek ELİTE analiz çıktısı');
+
+  var FREE_HTML = FREE_CHART +
+    '<div style="background:#17212b;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">&#128202; <b>#XU100</b> &#8212; 14,203 <span style="color:#ef4444">&#9660;%1.11</span></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128205; <b>Buyuk Ana Trend:</b> &#127834; YUKARI<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; SMA50 ustunde &middot; 1g</span><br>&#127775; <b>Kisa Vade Gorunum:</b> &#128308; ASAGI &#8595;<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; 0/4 sinyal yukari yonde</span></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128737; <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,008</code> &#8212; <i style="color:#64748b">ATR Destek</i><br>&#128737; <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">13,715</code> &#8212; <i style="color:#64748b">ATR Destek 4</i><br>&#127919; <b>Direnc 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,399</code> &#8212; <i style="color:#64748b">ATR Direnc</i><br>&#127919; <b>Direnc 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,692</code> &#8212; <i style="color:#64748b">ATR Direnc 4</i></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#10060; <b>OBV Birikim</b> &#8212; Net birikim yok<br>&#10060; <b>BB Sikisma</b> &#8212; Aktif sikisma yok<br>&#10060; <b>Tetikleyici</b> &#8212; Tetik atilmadi | RSI 41<br>&#10022; <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">1/4</code></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1">&#128202; <b>RSI:</b> 41.4</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:11.5px;color:#94a3b8;line-height:1.7">&#128172; Makro yon yukari (Boga %61) ama kisa vadede sikisma var. RSI 41 notr; MACD negatif egilimde, OBV yukari. 14.399 kirilimi hacimle desteklenirse momentum geri gelebilir. 14.008 altina sarkmadikca trend bozulmus sayilmaz.</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:10px;color:#475569;line-height:1.7">&#9888;&#65039; <i>Egitim amaclidir, yatirim tavsiyesi degildir.</i><br><span style="color:#3b82f6">&#8212; PRO uyeler bu hisse icin Detayli Teknik Karti da okudu. Sen de ister misin?</span></div>' +
+    '</div>';
+
+  var PRO_CARD_BODY =
+    '<div style="background:#17212b;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:10px;font-weight:700;color:#64748b;border-bottom:1px solid #1e293b;padding-bottom:6px;margin-bottom:10px">&#127963; SMR Gunluk Bulten &#8212; 18.05.2026</div>' +
+    '<div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">&#128202; <b>#XU100</b> &#8212; 14,029 <span style="color:#ef4444">&#9660;%2.32</span></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128205; <b>Buyuk Ana Trend:</b> &#127834; YUKARI<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; SMA50 ustunde &middot; 1g</span><br>&#127775; <b>Kisa Vade Gorunum:</b> &#128308; ASAGI &#8595;<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; 0/4 sinyal yukari yonde</span></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128737; <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">13,824</code> &#8212; <i style="color:#64748b">ATR Destek</i><br>&#128737; <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">13,516</code> &#8212; <i style="color:#64748b">ATR Destek 4</i><br>&#127919; <b>Direnc 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,234</code> &#8212; <i style="color:#64748b">ATR Direnc</i><br>&#127919; <b>Direnc 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,538</code> &#8212; <i style="color:#64748b">FVG Alt</i></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#10060; <b>OBV Birikim</b> &#8212; Net birikim yok<br>&#10060; <b>BB Sikisma</b> &#8212; Aktif sikisma yok<br>&#10060; <b>Tetikleyici</b> &#8212; Tetik atilmadi | RSI 38<br>&#10022; <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">1/4</code></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1">&#128202; <b>RSI:</b> 38.5</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:11.5px;color:#94a3b8;line-height:1.7">&#128172; Aktif yukselis dalgasi &#8212; SMA50 (13,757) ustunde tutunma suruyor (Boga %59). RSI 38 ve OBV yukari, kurumsal istahin canli oldugunu gosteriyor. 14,234 uzerinde hacimli gecis yeni yon acabilir. Yapi bozulmasi icin referans: 13,824 alti.</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:10px;color:#475569">&#9888;&#65039; <i>Egitim amaclidir, yatirim tavsiyesi degildir.</i></div>' +
+    '</div>';
+
+  var PRO_CARD = PRO_CHART + PRO_CARD_BODY;
+
+  var PRO_KART =
+    '<div style="background:#0f1923;border-top:2px solid #2563eb;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:11px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;margin-bottom:12px">&#129302; AI TEKNIK KART &#8212; #XU100</div>' +
+    '<div style="font-size:11.5px;color:#cbd5e1;line-height:1.85">' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">1&#65039;&#8419; Genel Sentez (Yapi + Bolge Uyumu)</span><br><span style="color:#94a3b8">- Trend Yonu: Dusus kirilimi (BOS &#8212; yapi kirilimi) ile dusus trendi hakim. Son swing tepesi 15.205, en son salinimda dip 14.246,30.<br>- Bolge Uyumu: Fiyat, kurumsal satim bolgesi olan premium (pahali) alanda islem goruyor.</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">2&#65039;&#8419; Yapi &amp; Fiyat Davranisi</span><br><span style="color:#94a3b8">- Trend Yapisi: Dusus kirilimi (BOS) sonrasinda yapi dusus trendi yonunde ilerliyor.<br>- Mum &amp; Fitil (Kapanis Konumu): Son 5 gunun mum kapanis seveleri gunluk araligin alt kisminda &#8212; satici baskisi belirginlesiyor. Son mumda alt banda yakin kapanis goruldu.<br>- OB/FVG: 14.991,70&#8211;15.204,90 araliginda arz bolgesi (Order Block &#8212; kurumsal satim bolgesi); 14.538,40&#8211;14.566,20 araliginda fiyat boslugu (FVG) mevcut.<br>- EQL &amp; Sweep: 14.246,30 seviyesinde esit dipler (EQL &#8212; likidite havuzu). Belirgin likidite avi (Sweep) tespit edilmedi.</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">3&#65039;&#8419; Momentum &amp; Vade Uyumu</span><br><span style="color:#94a3b8">- RSI Slope &amp; MACD: RSI 5 gunluk degisim hizi yatay; MACD histogrami genisliyor &#8212; momentum zayifliyor.<br>- RSI Divergence (Uyumsuzluk): Belirgin uyumsuzluk tespit edilmedi.<br>- MTF Momentum: Kisa ve orta vadeli momentumun zayiflama egiliminde oldugu gozlemleniyor.</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">4&#65039;&#8419; Hacim, Efor ve Akilli Para Izi (VSA)</span><br><span style="color:#94a3b8">- MA &amp; EMA Dizilimi: SMA200 ustunde (ana yapi saglam) ancak SMA20 altinda &#8212; kisa vadeli baski var. EMAlar karisik dizilimde.<br>- Hacim/Mum Uyumu (VSA &#8212; hacim-fiyat analizi): Dusuk hacimle hareket; alim ya da satim eforu belirgin degil. Kumulatif delta son 5 gunde %80 satis baskisina isaret ediyor.<br>- Kurumsal Akis: Fiyat, 20 gunluk VWAP olan 14.643un %4,2 altinda. Bollinger Bandi alt banda yakin. Piyasa Fazi: YUKSELIS (FAZ 2).</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">5&#65039;&#8419; Likidite &amp; Kritik Bantlar</span><br><span style="color:#94a3b8">- Ust Havuz: En yakin kritik direnc 15.205.<br>- Alt Havuz: 14.266 (PDL &#8212; onceki gun dibi kirildi) ve 14.246,30 (EQL &#8212; esit dipler likidite bolgesi).<br>- Range Konumu: Son 20 gunluk araligin alt bandina yakin; son 5 gunluk sert dusus sonrasi tutunma egilimi var.</span></div>' +
+    '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">6&#65039;&#8419; Trend Skoru ve Enerji</span><br><span style="color:#94a3b8">- Enerji Puani: 4/5. Bir sonraki hamle icin enerji birikimi var; ancak sinyaller karisik.</span></div>' +
+    '<div><span style="color:#3b82f6;font-weight:700">7&#65039;&#8419; Teknik Okuma Ozeti</span><br><span style="color:#94a3b8">- Dusus kirilimi (BOS) sonrasi fiyat premium bolgede, dusuk hacimle ve satis baskisiyla islem goruyor. 14.246,30daki EQLe (esit diplere) dogru cekilme ihtimali masada.<br>- Risk Uyarisi: Dusuk hacim ve belirgin satis baskisi, mevcut dususu devam potansiyelini artiriyor.</span></div>' +
+    '</div>' +
+    '<div style="border-top:1px solid #1e293b;margin-top:12px;padding-top:8px;font-size:10px;color:#475569;line-height:1.7">SMR-PRO aboneleri icin Algoritmamin TEKNIK KART ciktisidir. Egitim amaclidir. Yatirim tavsiyesi degildir.<br><span style="color:#94a3b8">#SmartMoneyRadar #XU100</span><br><br><span style="color:#8b5cf6;font-weight:600">&#8212; ELITE uyeler tam uzman analizini de aldi. Farki gormek ister misin?</span></div>' +
+    '</div>';
+
+  var ELITE_CARD_BODY =
+    '<div style="background:#17212b;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:10px;font-weight:700;color:#64748b;border-bottom:1px solid #1e293b;padding-bottom:6px;margin-bottom:10px">&#128197; SMR Pazar Hat&#305;rlatmas&#305; &#8212; 17.05.2026 &nbsp;&#183;&nbsp; <span style="color:#475569">&#128260; Cuma analizinin tekrar&#305;</span></div>' +
+    '<div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">&#128202; <b>#XU100</b> &#8212; 14,367 <span style="color:#ef4444">&#9660;%1.93</span></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#127807; <b>B&#252;y&#252;k Ana Trend:</b> &#128994; YUKARI<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; SMA50 &#252;st&#252;nde &middot; 1g</span><br>&#128301; <b>K&#305;sa Vade G&#246;r&#252;n&#252;m:</b> &#128308; A&#350;A&#286;I &#8595;<br><span style="color:#64748b;font-size:11px;padding-left:16px">&#9492; K&#305;sa vade bug&#252;n&#8211;bu hafta &middot; 0/4 sinyal yukar&#305; y&#246;nde</span></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#128737; <b>Destek 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,169</code> &#8212; <i style="color:#64748b">ATR Destek</i><br>&#128737; <b>Destek 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">13,871</code> &#8212; <i style="color:#64748b">ATR Destek 4</i><br>&#127919; <b>Diren&#231; 1:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,566</code> &#8212; <i style="color:#64748b">ATR Diren&#231;</i><br>&#127919; <b>Diren&#231; 2:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">14,863</code> &#8212; <i style="color:#64748b">ATR Diren&#231; 4</i></div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:12px;color:#cbd5e1;line-height:2">&#9989; <b>OBV Birikim</b> &#8212; 89 OBV aktif al&#305;m<br>&#10060; <b>BB S&#305;k&#305;&#351;ma</b><br>&#10060; <b>Tetikleyici</b> &#8212; Tetik at&#305;lmad&#305; | RSI 49<br>&#10022; <b>Aktif Kriter:</b> <code style="background:#1e293b;padding:1px 5px;border-radius:3px">2/4</code> &nbsp;&#183;&nbsp; &#128200; <b>RSI:</b> 49.1</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:11.5px;color:#94a3b8;line-height:1.75">&#128172; Yukar&#305; y&#246;nl&#252; yap&#305; korunuyor (Bo&#287;a %65) &#8211; k&#305;sa vadede ise bir nefes bekleniyor. RSI 49; MACD negatif e&#287;ilimde, OBV yukar&#305;. 14,566 hacimle geli&#351;irse ivme yenilenebilir. 14,169 alt&#305; yap&#305;sal soru i&#351;areti do&#287;urur.</div>' +
+    '<div style="border-top:1px solid #1e293b;margin:10px 0"></div>' +
+    '<div style="font-size:10px;color:#475569;line-height:1.7">&#9888;&#65039; <i>E&#287;itim ama&#231;l&#305;d&#305;r, yat&#305;r&#305;m tavsiyesi de&#287;ildir.</i></div>' +
+    '</div>';
+
+  var ELITE_KART =
+    '<div style="background:#0d0f1e;border-top:2px solid #7c3aed;padding:14px 16px;font-family:monospace">' +
+    '<div style="font-size:12px;font-weight:800;color:#a78bfa;letter-spacing:0.5px;margin-bottom:2px">&#127963; SMR EL&#304;TE UZMAN ANAL&#304;Z &#8212; #XU100</div>' +
+    '<div style="font-size:9px;color:#64748b;margin-bottom:10px">EL&#304;TE &#8212; Derin Uzman Analiz &nbsp;|&nbsp; 17.05.2026</div>' +
+    '<div style="font-size:11px;color:#94a3b8;line-height:1.75;margin-bottom:12px">XU100, Cuma kapat&#305;&#351;&#305;nda 14,367 puana geriledi (%1.93 d&#252;&#351;&#252;&#351;). K&#305;sa vadeli bask&#305; devam etse de SMA50 &#252;zerindeki pozisyon ana boğa yap&#305;s&#305;n&#305; koruyor. OBV&#8217;nin fiyatla z&#305;t y&#246;nde seyretmesi, arka planda kurumsal birikim izine i&#351;aret ediyor. Kritik e&#351;ikler: 14,566 direnci (ivme tetikleyici) ve 14,169 deste&#287;i (yap&#305;sal savunma hatt&#305;).</div>' +
+    '<div style="font-size:10.5px;font-weight:800;color:#7c3aed;border-bottom:1px solid #2d1b69;padding-bottom:4px;margin-bottom:10px;letter-spacing:0.3px">### 1. GENEL ANAL&#304;Z</div>' +
+    '<div style="font-size:11px;color:#cbd5e1;line-height:1.8">' +
+
+    '<div style="margin-bottom:10px;padding:8px;background:rgba(124,58,237,0.06);border-radius:4px;border-left:2px solid #7c3aed">' +
+    '<div style="margin-bottom:4px"><span style="background:#166534;color:#bbf7d0;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px">&#9989; 9/10</span>' +
+    '<span style="color:#e2e8f0;font-weight:700">Yap&#305; &amp; Ana Trend</span></div>' +
+    '<span style="color:#94a3b8">SMA50 &#252;zerinde g&#252;nde 14,367&#8217;de kapan&#305;&#351;; ana boğa yap&#305;s&#305; bozulmad&#305;. Cuma&#8217;n&#305;n %1.93&#8217;l&#252;k d&#252;&#351;&#252;&#351;&#252; trend k&#305;r&#305;l&#305;m&#305; de&#287;il, olağan d&#252;zeltme dalgas&#305;. Haftan&#305;n kapan&#305;&#351;&#305; 14,169 deste&#287;inin belirgin &#252;zerinde; yap&#305;sal k&#305;r&#305;lma riski d&#252;&#351;&#252;k.</span></div>' +
+
+    '<div style="margin-bottom:10px;padding:8px;background:rgba(124,58,237,0.06);border-radius:4px;border-left:2px solid #7c3aed">' +
+    '<div style="margin-bottom:4px"><span style="background:#166534;color:#bbf7d0;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px">&#9989; 8/10</span>' +
+    '<span style="color:#e2e8f0;font-weight:700">OBV &amp; Ak&#305;ll&#305; Para Birikimi</span></div>' +
+    '<span style="color:#94a3b8">89 OBV aktif al&#305;m sinyali, kurumsal birikim b&#246;lgesine i&#351;aret ediyor. Fiyat gerilerken OBV&#8217;nin yukar&#305; devam etmesi klasik ak&#252;m&#252;lasyon izidir. Bu ayr&#305;&#351;ma k&#305;sa vadede fiyat&#305; desteklemese de orta vadeli g&#246;r&#252;n&#252;m i&#231;in kritik ipucu sunuyor.</span></div>' +
+
+    '<div style="margin-bottom:10px;padding:8px;background:rgba(124,58,237,0.06);border-radius:4px;border-left:2px solid #7c3aed">' +
+    '<div style="margin-bottom:4px"><span style="background:#166534;color:#bbf7d0;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px">&#9989; 7/10</span>' +
+    '<span style="color:#e2e8f0;font-weight:700">Destek B&#246;lgesi Kalitesi</span></div>' +
+    '<span style="color:#94a3b8">14,169 ATR Deste&#287;i birincil savunma hatt&#305;; hacimle test edilmesi durumunda g&#252;&#231;l&#252; tepki olas&#305;l&#305;&#287;&#305; y&#252;ksek. 13,871 ATR Destek 4 ise ikincil kalkan. Bu b&#246;lge k&#305;r&#305;l&#305;rsa yap&#305;sal bozulma tescil edilmi&#351; olur ve orta vadeli g&#246;r&#252;n&#252;m yeniden değerlendirilmeli.</span></div>' +
+
+    '<div style="margin-bottom:10px;padding:8px;background:rgba(124,58,237,0.06);border-radius:4px;border-left:2px solid #7c3aed">' +
+    '<div style="margin-bottom:4px"><span style="background:#166534;color:#bbf7d0;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px">&#9989; 6/10</span>' +
+    '<span style="color:#e2e8f0;font-weight:700">Ana Trend Dayan&#305;kl&#305;l&#305;&#287;&#305;</span></div>' +
+    '<span style="color:#94a3b8">SMA50 &#252;st&#252;nde pozisyon korunuyor. Bo&#287;a senaryosu %65 a&#287;&#305;rl&#305;kla ge&#231;erlili&#287;ini s&#252;rd&#252;r&#252;yor. Ancak 0/4 k&#305;sa vadeli sinyal, yak&#305;n vadede ivmenin olmad&#305;&#287;&#305;na i&#351;aret ediyor. Trend k&#305;r&#305;lmadan sadece d&#252;zeltme senaryosu &#246;ne &#231;&#305;k&#305;yor.</span></div>' +
+
+    '<div style="margin-bottom:10px;padding:8px;background:rgba(100,116,139,0.08);border-radius:4px;border-left:2px solid #475569">' +
+    '<div style="margin-bottom:4px"><span style="background:#1e3a5f;color:#93c5fd;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px">&#128205; 5/10</span>' +
+    '<span style="color:#e2e8f0;font-weight:700">K&#305;sa Vade Momentum</span></div>' +
+    '<span style="color:#94a3b8">MACD histogrami negatif y&#246;nde seyrediyor. 0/4 k&#305;sa vade sinyaliyle momentum bo&#351;; al&#305;m g&#252;d&#252;s&#252; zay&#305;f. 14,566 direncinin hacimle k&#305;r&#305;lmas&#305; olmadan k&#305;sa vadeli yukar&#305; hareket i&#231;in katalizör yok. Sab&#305;rl&#305; bekleyi&#351; senaryosu geçerli.</span></div>' +
+
+    '<div style="margin-bottom:10px;padding:8px;background:rgba(100,116,139,0.08);border-radius:4px;border-left:2px solid #475569">' +
+    '<div style="margin-bottom:4px"><span style="background:#1e3a5f;color:#93c5fd;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px">&#128205; 8/10</span>' +
+    '<span style="color:#e2e8f0;font-weight:700">RSI &amp; F&#305;rsat Penceresi</span></div>' +
+    '<span style="color:#94a3b8">RSI 49.1 ile tam n&#246;tr b&#246;lgede; ne a&#351;&#305;r&#305; sat&#305;m ne a&#351;&#305;r&#305; al&#305;m. Bu seviye esneklik sa&#287;l&#305;yor &#8212; k&#305;sa vadeli bir katalizörle h&#305;zl&#305; hareket m&#252;mk&#252;n. 50 &#252;st&#252;ne ge&#231;i&#351; al&#305;m momentumunu tescil eder; 45 alt&#305; ise bask&#305;n&#305;n derinle&#351;ti&#287;ine i&#351;aret eder.</span></div>' +
+
+    '<div style="margin-bottom:10px;padding:8px;background:rgba(100,116,139,0.08);border-radius:4px;border-left:2px solid #475569">' +
+    '<div style="margin-bottom:4px"><span style="background:#1e3a5f;color:#93c5fd;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px">&#128205; 7/10</span>' +
+    '<span style="color:#e2e8f0;font-weight:700">Diren&#231; Kalitesi &amp; K&#305;r&#305;l&#305;m Ko&#351;ullar&#305;</span></div>' +
+    '<span style="color:#94a3b8">14,566 ATR Direnci kritik e&#351;ik. G&#252;nl&#252;k kapan&#305;&#351;ta bu seviyenin &#252;zerine &#231;&#305;k&#305;lmas&#305; ve hacmin ortalaman&#305;n &#252;st&#252;nde olmas&#305; durumunda ivme yenilenebilir. 14,863 ATR Diren&#231; 4 ise orta vadeli hedef; buraya ula&#351;mak i&#231;in net yap&#305; k&#305;r&#305;l&#305;m&#305; gerekiyor.</span></div>' +
+
+    '<div style="margin-bottom:10px;padding:8px;background:rgba(100,116,139,0.08);border-radius:4px;border-left:2px solid #475569">' +
+    '<div style="margin-bottom:4px"><span style="background:#1e3a5f;color:#93c5fd;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px">&#128205; 6/10</span>' +
+    '<span style="color:#e2e8f0;font-weight:700">Genel Risk/F&#305;rsat Dengesi</span></div>' +
+    '<span style="color:#94a3b8">2/4 aktif kriter ile yap&#305; k&#305;smen haz&#305;r ancak tam sinyal yok. OBV birikimi f&#305;rsat yarat&#305;yor, MACD ve momentum zayıfl&#305;&#287;&#305; ise risk. Risk/&#246;d&#252;l dengesi &#351;u an tarafs&#305;z; net y&#246;n i&#231;in 14,566 k&#305;r&#305;l&#305;m&#305; veya 14,169 k&#305;r&#305;l&#305;m&#305; beklenmeli.</span></div>' +
+
+    '</div>' +
+    '<div style="font-size:10.5px;font-weight:800;color:#7c3aed;border-top:1px solid #2d1b69;border-bottom:1px solid #2d1b69;padding:5px 0;margin:10px 0;letter-spacing:0.3px">### SONU&#199;</div>' +
+    '<div style="font-size:11px;color:#94a3b8;line-height:1.75;margin-bottom:10px">XU100 k&#305;sa vadede bask&#305; alt&#305;nda; ancak ana yap&#305;sal trend henüz bozulmad&#305;. OBV birikimi ve SMA50 &#252;st&#252; pozisyon, orta vadeli bo&#287;a senaryosunu %65 ihtimalle canl&#305; tutuyor. 14,566 hacimli k&#305;r&#305;l&#305;m al&#305;m i&#231;in katalizör; 14,169 kapan&#305;&#351; k&#305;r&#305;l&#305;m&#305; ise yap&#305;sal uyar&#305; sinyali olacak.</div>' +
+    '<div style="font-size:10.5px;font-weight:800;color:#7c3aed;border-top:1px solid #2d1b69;border-bottom:1px solid #2d1b69;padding:5px 0;margin:10px 0;letter-spacing:0.3px">### UYARI</div>' +
+    '<div style="font-size:11px;color:#94a3b8;line-height:1.75;margin-bottom:12px">Bu analiz, Cuma kapan&#305;&#351;&#305; baz al&#305;narak haz&#305;rlanm&#305;&#351; olup piyasa ko&#351;ullar&#305;n&#305;n de&#287;i&#351;mesiyle g&#252;ncelliğini yitirebilir. Yat&#305;r&#305;m kararlar&#305;nda tek ba&#351;&#305;na kullan&#305;lmamal&#305;d&#305;r.</div>' +
+    '<div style="border-top:1px solid #1e293b;padding-top:8px;font-size:10px;color:#475569;line-height:1.7">' +
+    'SMR EL&#304;TE aboneleri i&#231;in Detayl&#305; &#214;zel Analizdir. E&#287;itim ama&#231;l&#305;d&#305;r. Yat&#305;r&#305;m tavsiyesi de&#287;ildir.<br>' +
+    '<span style="color:#64748b">#SmartMoneyRadar #XU100</span></div>' +
+    '</div>';
+
+  document.getElementById('ex-tpl-free').innerHTML  = FREE_HTML;
+  document.getElementById('ex-tpl-pro').innerHTML   = PRO_CARD + PRO_KART;
+  document.getElementById('ex-tpl-elite').innerHTML = ELITE_CHART + ELITE_CARD_BODY + ELITE_KART;
+})();
+
+
+
+function openExampleModal(tier) {
+  var m = EX_META[tier]; if (!m) return;
+  history.pushState({smrModal:'example'},'');
+  document.getElementById('ex-tier-label').textContent = m.label;
+  document.getElementById('ex-tier-label').style.color = m.lc;
+  document.getElementById('ex-tier-badge').textContent = m.badge;
+  document.getElementById('ex-tier-badge').style.background = m.bb;
+  document.getElementById('ex-tier-badge').style.color = m.bc;
+  var tpl = document.getElementById('ex-tpl-' + tier);
+  document.getElementById('ex-content').innerHTML = tpl ? tpl.innerHTML : '';
+  var cta = document.getElementById('ex-cta-' + tier);
+  document.getElementById('ex-cta').innerHTML = cta ? cta.innerHTML : '';
+  document.getElementById('example-modal').style.display = 'block';
+}
+function closeExampleModal() {
+  document.getElementById('example-modal').style.display = 'none';
+}
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeExampleModal(); });
+
+function openPlansModal(){history.pushState({smrModal:'plans'},'');document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';}
+function closePlansModal(){document.getElementById('plans-modal').style.display='none';document.body.style.overflow='';}
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closePlansModal();closeExampleModal();}});
+window.addEventListener('popstate',function(){closePlansModal();closeExampleModal();});
+document.addEventListener('click',function(e){
+  var el=e.target;
+  for(var i=0;i<8;i++){
+    if(!el||el===document.body)break;
+    var cls=(el.className||'').toString();
+    if(cls.indexOf('ict-lock-overlay')>-1||cls.indexOf('rsection-locked')>-1||cls.indexOf('tg-cta-btn')>-1||cls.indexOf('btn-pro')>-1||cls.indexOf('btn-elite')>-1||cls.indexOf('smr-lock')>-1||cls.indexOf('smr-lock')>-1){e.preventDefault();openPlansModal();return;}
+    var oc=(el.getAttribute&&el.getAttribute('onclick'))||'';
+    if(oc.indexOf('openPlansModal')>-1){e.preventDefault();openPlansModal();return;}
+    el=el.parentNode;
+  }
+},true);
+</script>
+
+</body>
+</html>

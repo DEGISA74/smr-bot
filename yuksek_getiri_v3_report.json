@@ -1,0 +1,290 @@
+{
+  "model_version": "2.0.0",
+  "objective": {
+    "description": "T kapanışından T+1 gün içi en yükseğe yüksek hareket",
+    "target_pct": 5.0,
+    "entry_reference": "T günü kapanışı",
+    "exit_reference": "T+1 seansı gün içi en yüksek",
+    "trade_strategy_claim": false
+  },
+  "dataset": {
+    "symbols_read": 597,
+    "symbols_skipped": 16,
+    "rows": 108047,
+    "dates": 191,
+    "raw_dates_before_coverage_gate": 443,
+    "min_universe_per_date": 300,
+    "min_daily_rows": 503,
+    "max_daily_rows": 581,
+    "start": "2025-10-20",
+    "end": "2026-07-30",
+    "target_rate": 0.15343322813220173,
+    "xu_last_date": "2026-08-03"
+  },
+  "validation": {
+    "method": "expanding_walk_forward",
+    "out_of_sample_rows": 40890,
+    "out_of_sample_dates": 71,
+    "out_of_sample_target_rate": 0.15913426265590608,
+    "folds": [
+      {
+        "fold": 1,
+        "train_start": "2025-10-20",
+        "train_end": "2026-04-10",
+        "test_start": "2026-04-13",
+        "test_end": "2026-05-12",
+        "train_rows": 67157,
+        "test_rows": 11428,
+        "train_target_rate": 0.1499620292746847,
+        "test_target_rate": 0.18218410920546027,
+        "top_5": {
+          "days": 20,
+          "selected": 100,
+          "hits": 80,
+          "precision_pct": 80.0,
+          "precision_ci95_low": 71.11690380734977,
+          "precision_ci95_high": 86.66340774409012,
+          "matched_baseline_pct": 18.217135909190116,
+          "lift": 4.391469679909556,
+          "recall_pct": 3.8424591738712777,
+          "days_with_at_least_one_hit_pct": 100.0
+        },
+        "top_10": {
+          "days": 20,
+          "selected": 200,
+          "hits": 156,
+          "precision_pct": 78.0,
+          "precision_ci95_low": 71.76107720803743,
+          "precision_ci95_high": 83.1835464605366,
+          "matched_baseline_pct": 18.217135909190116,
+          "lift": 4.2816829379118175,
+          "recall_pct": 7.492795389048991,
+          "days_with_at_least_one_hit_pct": 100.0
+        },
+        "top_12": {
+          "days": 20,
+          "selected": 240,
+          "hits": 178,
+          "precision_pct": 74.16666666666667,
+          "precision_ci95_low": 68.27865408610609,
+          "precision_ci95_high": 79.29321224023036,
+          "matched_baseline_pct": 18.21713590919012,
+          "lift": 4.071258349082817,
+          "recall_pct": 8.549471661863592,
+          "days_with_at_least_one_hit_pct": 100.0
+        }
+      },
+      {
+        "fold": 2,
+        "train_start": "2025-10-20",
+        "train_end": "2026-05-12",
+        "test_start": "2026-05-13",
+        "test_end": "2026-06-16",
+        "train_rows": 78585,
+        "test_rows": 11561,
+        "train_target_rate": 0.15464783355602213,
+        "test_target_rate": 0.18294265201972149,
+        "top_5": {
+          "days": 20,
+          "selected": 100,
+          "hits": 69,
+          "precision_pct": 69.0,
+          "precision_ci95_low": 59.37376052204429,
+          "precision_ci95_high": 77.22043679386762,
+          "matched_baseline_pct": 18.28830201798873,
+          "lift": 3.7729035714813905,
+          "recall_pct": 3.2624113475177303,
+          "days_with_at_least_one_hit_pct": 100.0
+        },
+        "top_10": {
+          "days": 20,
+          "selected": 200,
+          "hits": 127,
+          "precision_pct": 63.5,
+          "precision_ci95_low": 56.631574058970166,
+          "precision_ci95_high": 69.85958378123517,
+          "matched_baseline_pct": 18.28830201798873,
+          "lift": 3.4721648810009897,
+          "recall_pct": 6.004728132387707,
+          "days_with_at_least_one_hit_pct": 100.0
+        },
+        "top_12": {
+          "days": 20,
+          "selected": 240,
+          "hits": 150,
+          "precision_pct": 62.5,
+          "precision_ci95_low": 56.22331827935879,
+          "precision_ci95_high": 68.3828194756428,
+          "matched_baseline_pct": 18.288302017988727,
+          "lift": 3.417485119095463,
+          "recall_pct": 7.092198581560283,
+          "days_with_at_least_one_hit_pct": 100.0
+        }
+      },
+      {
+        "fold": 3,
+        "train_start": "2025-10-20",
+        "train_end": "2026-06-16",
+        "test_start": "2026-06-17",
+        "test_end": "2026-07-14",
+        "train_rows": 90146,
+        "test_rows": 11548,
+        "train_target_rate": 0.15827657355844962,
+        "test_target_rate": 0.13656044336681677,
+        "top_5": {
+          "days": 20,
+          "selected": 100,
+          "hits": 67,
+          "precision_pct": 67.0,
+          "precision_ci95_low": 57.30516033971139,
+          "precision_ci95_high": 75.43701620610456,
+          "matched_baseline_pct": 13.65889082134671,
+          "lift": 4.905229925060202,
+          "recall_pct": 4.24857324032974,
+          "days_with_at_least_one_hit_pct": 100.0
+        },
+        "top_10": {
+          "days": 20,
+          "selected": 200,
+          "hits": 122,
+          "precision_pct": 61.0,
+          "precision_ci95_low": 54.09361758928832,
+          "precision_ci95_high": 67.49177028050862,
+          "matched_baseline_pct": 13.65889082134671,
+          "lift": 4.46595560341302,
+          "recall_pct": 7.736207989854154,
+          "days_with_at_least_one_hit_pct": 100.0
+        },
+        "top_12": {
+          "days": 20,
+          "selected": 240,
+          "hits": 140,
+          "precision_pct": 58.333333333333336,
+          "precision_ci95_low": 52.01258721069924,
+          "precision_ci95_high": 64.39150462596852,
+          "matched_baseline_pct": 13.658890821346706,
+          "lift": 4.270722571569829,
+          "recall_pct": 8.877615726062142,
+          "days_with_at_least_one_hit_pct": 100.0
+        }
+      },
+      {
+        "fold": 4,
+        "train_start": "2025-10-20",
+        "train_end": "2026-07-14",
+        "test_start": "2026-07-16",
+        "test_end": "2026-07-30",
+        "train_rows": 101694,
+        "test_rows": 6353,
+        "train_target_rate": 0.15581056896178733,
+        "test_target_rate": 0.1153785613096175,
+        "top_5": {
+          "days": 11,
+          "selected": 55,
+          "hits": 35,
+          "precision_pct": 63.63636363636363,
+          "precision_ci95_low": 50.422518148683714,
+          "precision_ci95_high": 75.06965065705916,
+          "matched_baseline_pct": 11.536351276923465,
+          "lift": 5.516160362042503,
+          "recall_pct": 4.774897680763984,
+          "days_with_at_least_one_hit_pct": 100.0
+        },
+        "top_10": {
+          "days": 11,
+          "selected": 110,
+          "hits": 60,
+          "precision_pct": 54.54545454545455,
+          "precision_ci95_low": 45.24389026806324,
+          "precision_ci95_high": 63.540244881126505,
+          "matched_baseline_pct": 11.536351276923465,
+          "lift": 4.728137453179288,
+          "recall_pct": 8.185538881309686,
+          "days_with_at_least_one_hit_pct": 100.0
+        },
+        "top_12": {
+          "days": 11,
+          "selected": 132,
+          "hits": 73,
+          "precision_pct": 55.303030303030305,
+          "precision_ci95_low": 46.790812785495376,
+          "precision_ci95_high": 63.51530846160418,
+          "matched_baseline_pct": 11.536351276923464,
+          "lift": 4.79380602891789,
+          "recall_pct": 9.959072305593452,
+          "days_with_at_least_one_hit_pct": 100.0
+        }
+      }
+    ],
+    "ranked": {
+      "top_5": {
+        "days": 71,
+        "selected": 355,
+        "hits": 251,
+        "precision_pct": 70.70422535211267,
+        "precision_ci95_low": 65.76834881297349,
+        "precision_ci95_high": 75.19680126996005,
+        "matched_baseline_pct": 15.9181188593897,
+        "lift": 4.441745031348727,
+        "recall_pct": 3.8573843553096667,
+        "days_with_at_least_one_hit_pct": 100.0
+      },
+      "top_10": {
+        "days": 71,
+        "selected": 710,
+        "hits": 465,
+        "precision_pct": 65.49295774647888,
+        "precision_ci95_low": 61.92114798225443,
+        "precision_ci95_high": 68.89801413998669,
+        "matched_baseline_pct": 15.9181188593897,
+        "lift": 4.11436541748438,
+        "recall_pct": 7.146150299677271,
+        "days_with_at_least_one_hit_pct": 100.0
+      },
+      "top_12": {
+        "days": 71,
+        "selected": 852,
+        "hits": 541,
+        "precision_pct": 63.497652582159624,
+        "precision_ci95_low": 60.21098536235681,
+        "precision_ci95_high": 66.66314648634042,
+        "matched_baseline_pct": 15.918118859389715,
+        "lift": 3.989017367130909,
+        "recall_pct": 8.314123251882588,
+        "days_with_at_least_one_hit_pct": 100.0
+      }
+    },
+    "calibration": [
+      {
+        "bucket": 1,
+        "n": 8178,
+        "avg_probability_pct": 6.6670223246486096,
+        "actual_target_pct": 5.380288579114699
+      },
+      {
+        "bucket": 2,
+        "n": 8178,
+        "avg_probability_pct": 8.96952948278896,
+        "actual_target_pct": 8.63291758376131
+      },
+      {
+        "bucket": 3,
+        "n": 8178,
+        "avg_probability_pct": 11.717173314972168,
+        "actual_target_pct": 12.362435803374908
+      },
+      {
+        "bucket": 4,
+        "n": 8178,
+        "avg_probability_pct": 16.742135637756718,
+        "actual_target_pct": 17.583761310833946
+      },
+      {
+        "bucket": 5,
+        "n": 8178,
+        "avg_probability_pct": 36.02091496187726,
+        "actual_target_pct": 35.60772805086818
+      }
+    ]
+  }
+}

@@ -66,3 +66,25 @@ tavan_weights_onerilen.json
 
 # Tavan canli takip state (VPS'te birikir)
 tavan_takip.json
+
+# --- 26 Agu 2026: agac temizligi (kasaya alma turu) ---
+# Buyuk veri / gecici dizinler
+veriler_saatlik/
+.tmp.driveupload/
+.codex/
+
+# Yedek kopyalar (lokalde kalir, repoya girmez)
+backups/
+app_backup_*.py
+*_backup_*.py
+*.bak_*
+*.kaldirildi_*
+golden_record.json.pre_*
+
+# Yanlislikla olusmus dosyalar
+=
+borsa
+
+# Uretilen ciktilar
+*.xlsx
+cizgi_yapi_log.jsonl

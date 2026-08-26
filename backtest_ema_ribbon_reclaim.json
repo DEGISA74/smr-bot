@@ -1,0 +1,1734 @@
+{
+  "params": {
+    "TP_PCT": 0.005,
+    "SL_PCT": 0.01,
+    "LOOKBACK_DAYS": 252
+  },
+  "summary": {
+    "TUM_SINYALLER": {
+      "n": 142,
+      "TP": 64,
+      "SL": 76,
+      "FLAT": 2,
+      "win_rate_TP_only": 45.1,
+      "win_rate_TP_or_flat_pos": 45.1,
+      "loss_rate_SL_or_flat_neg": 54.9,
+      "avg_ret_pct": -0.315,
+      "flat_avg_ret_pct": -0.351,
+      "best": 0.5,
+      "worst": -1.0
+    },
+    "REJIM_OK (XU100 > SMA50)": {
+      "n": 106,
+      "TP": 44,
+      "SL": 60,
+      "FLAT": 2,
+      "win_rate_TP_only": 41.5,
+      "win_rate_TP_or_flat_pos": 41.5,
+      "loss_rate_SL_or_flat_neg": 58.5,
+      "avg_ret_pct": -0.365,
+      "flat_avg_ret_pct": -0.351,
+      "best": 0.5,
+      "worst": -1.0
+    },
+    "REJIM_KOTU (XU100 <= SMA50)": {
+      "n": 36,
+      "TP": 20,
+      "SL": 16,
+      "FLAT": 0,
+      "win_rate_TP_only": 55.6,
+      "win_rate_TP_or_flat_pos": 55.6,
+      "loss_rate_SL_or_flat_neg": 44.4,
+      "avg_ret_pct": -0.167,
+      "flat_avg_ret_pct": 0.0,
+      "best": 0.5,
+      "worst": -1.0
+    }
+  },
+  "per_ticker": {
+    "AKBNK": {
+      "total": 3,
+      "with_regime": 2
+    },
+    "ARCLK": {
+      "total": 6,
+      "with_regime": 5
+    },
+    "ASELS": {
+      "total": 5,
+      "with_regime": 4
+    },
+    "BIMAS": {
+      "total": 7,
+      "with_regime": 6
+    },
+    "CCOLA": {
+      "total": 7,
+      "with_regime": 5
+    },
+    "EKGYO": {
+      "total": 4,
+      "with_regime": 2
+    },
+    "ENKAI": {
+      "total": 2,
+      "with_regime": 2
+    },
+    "EREGL": {
+      "total": 3,
+      "with_regime": 2
+    },
+    "FROTO": {
+      "total": 2,
+      "with_regime": 2
+    },
+    "GARAN": {
+      "total": 6,
+      "with_regime": 5
+    },
+    "GUBRF": {
+      "total": 8,
+      "with_regime": 5
+    },
+    "HALKB": {
+      "total": 5,
+      "with_regime": 3
+    },
+    "ISCTR": {
+      "total": 5,
+      "with_regime": 5
+    },
+    "KCHOL": {
+      "total": 7,
+      "with_regime": 6
+    },
+    "KRDMD": {
+      "total": 7,
+      "with_regime": 4
+    },
+    "PETKM": {
+      "total": 4,
+      "with_regime": 2
+    },
+    "PGSUS": {
+      "total": 7,
+      "with_regime": 5
+    },
+    "SAHOL": {
+      "total": 3,
+      "with_regime": 2
+    },
+    "SASA": {
+      "total": 5,
+      "with_regime": 3
+    },
+    "SISE": {
+      "total": 5,
+      "with_regime": 5
+    },
+    "TCELL": {
+      "total": 3,
+      "with_regime": 2
+    },
+    "THYAO": {
+      "total": 3,
+      "with_regime": 2
+    },
+    "TKFEN": {
+      "total": 4,
+      "with_regime": 3
+    },
+    "TOASO": {
+      "total": 5,
+      "with_regime": 3
+    },
+    "TTKOM": {
+      "total": 4,
+      "with_regime": 4
+    },
+    "TTRAK": {
+      "total": 3,
+      "with_regime": 3
+    },
+    "TUPRS": {
+      "total": 5,
+      "with_regime": 3
+    },
+    "VAKBN": {
+      "total": 5,
+      "with_regime": 5
+    },
+    "YKBNK": {
+      "total": 5,
+      "with_regime": 4
+    },
+    "ASTOR": {
+      "total": 4,
+      "with_regime": 2
+    }
+  },
+  "signals": [
+    {
+      "ticker": "AKBNK",
+      "date": "2025-10-01",
+      "entry": 62.2547,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.467,
+      "next_low_pct": -3.502,
+      "next_close_pct": -2.802
+    },
+    {
+      "ticker": "AKBNK",
+      "date": "2025-10-20",
+      "entry": 56.1504,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.69,
+      "next_low_pct": -1.639,
+      "next_close_pct": -0.604
+    },
+    {
+      "ticker": "AKBNK",
+      "date": "2026-01-02",
+      "entry": 71.2175,
+      "regime_ok": true,
+      "outcome": "FLAT",
+      "ret_pct": -0.408,
+      "next_high_pct": 0.068,
+      "next_low_pct": -0.544,
+      "next_close_pct": -0.408
+    },
+    {
+      "ticker": "ARCLK",
+      "date": "2025-10-24",
+      "entry": 111.4,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.269,
+      "next_low_pct": -1.975,
+      "next_close_pct": -1.616
+    },
+    {
+      "ticker": "ARCLK",
+      "date": "2025-12-01",
+      "entry": 109.2,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.733,
+      "next_low_pct": -1.374,
+      "next_close_pct": -0.549
+    },
+    {
+      "ticker": "ARCLK",
+      "date": "2025-12-08",
+      "entry": 108.3,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.462,
+      "next_low_pct": -1.662,
+      "next_close_pct": -1.2
+    },
+    {
+      "ticker": "ARCLK",
+      "date": "2025-12-24",
+      "entry": 107.8,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 0.557,
+      "next_low_pct": -0.835,
+      "next_close_pct": 0.371
+    },
+    {
+      "ticker": "ARCLK",
+      "date": "2026-06-02",
+      "entry": 107.7,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": -0.557,
+      "next_low_pct": -2.136,
+      "next_close_pct": -1.857
+    },
+    {
+      "ticker": "ARCLK",
+      "date": "2026-06-26",
+      "entry": 104.1,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.288,
+      "next_low_pct": -2.498,
+      "next_close_pct": -2.402
+    },
+    {
+      "ticker": "ASELS",
+      "date": "2025-09-04",
+      "entry": 181.7684,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.33,
+      "next_low_pct": -3.846,
+      "next_close_pct": -3.846
+    },
+    {
+      "ticker": "ASELS",
+      "date": "2026-02-10",
+      "entry": 298.25,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.587,
+      "next_low_pct": -1.928,
+      "next_close_pct": -1.425
+    },
+    {
+      "ticker": "ASELS",
+      "date": "2026-04-02",
+      "entry": 336.5,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.594,
+      "next_low_pct": -1.932,
+      "next_close_pct": -1.783
+    },
+    {
+      "ticker": "ASELS",
+      "date": "2026-05-22",
+      "entry": 410.0,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.732,
+      "next_low_pct": -3.415,
+      "next_close_pct": -2.012
+    },
+    {
+      "ticker": "ASELS",
+      "date": "2026-06-02",
+      "entry": 407.75,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.429,
+      "next_low_pct": -6.499,
+      "next_close_pct": -5.947
+    },
+    {
+      "ticker": "BIMAS",
+      "date": "2025-09-15",
+      "entry": 256.6183,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.907,
+      "next_low_pct": -0.572,
+      "next_close_pct": 0.095
+    },
+    {
+      "ticker": "BIMAS",
+      "date": "2025-11-06",
+      "entry": 271.9001,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.995,
+      "next_low_pct": -0.544,
+      "next_close_pct": 0.816
+    },
+    {
+      "ticker": "BIMAS",
+      "date": "2025-11-19",
+      "entry": 272.393,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.448,
+      "next_low_pct": -0.995,
+      "next_close_pct": -0.181
+    },
+    {
+      "ticker": "BIMAS",
+      "date": "2025-11-26",
+      "entry": 268.6954,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 0.917,
+      "next_low_pct": -0.826,
+      "next_close_pct": -0.275
+    },
+    {
+      "ticker": "BIMAS",
+      "date": "2026-01-02",
+      "entry": 270.0933,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.775,
+      "next_low_pct": -0.0,
+      "next_close_pct": 1.934
+    },
+    {
+      "ticker": "BIMAS",
+      "date": "2026-03-31",
+      "entry": 339.7306,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.489,
+      "next_low_pct": 0.805,
+      "next_close_pct": 0.878
+    },
+    {
+      "ticker": "BIMAS",
+      "date": "2026-06-02",
+      "entry": 378.7772,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.182,
+      "next_low_pct": -1.707,
+      "next_close_pct": 0.066
+    },
+    {
+      "ticker": "CCOLA",
+      "date": "2025-09-15",
+      "entry": 47.5916,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.248,
+      "next_low_pct": -2.108,
+      "next_close_pct": -0.331
+    },
+    {
+      "ticker": "CCOLA",
+      "date": "2025-10-01",
+      "entry": 46.5292,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.818,
+      "next_low_pct": -0.296,
+      "next_close_pct": 0.634
+    },
+    {
+      "ticker": "CCOLA",
+      "date": "2025-12-08",
+      "entry": 52.4806,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.937,
+      "next_low_pct": -1.125,
+      "next_close_pct": 0.281
+    },
+    {
+      "ticker": "CCOLA",
+      "date": "2026-04-08",
+      "entry": 69.843,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.408,
+      "next_low_pct": -1.127,
+      "next_close_pct": -0.07
+    },
+    {
+      "ticker": "CCOLA",
+      "date": "2026-05-04",
+      "entry": 75.5976,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 4.88,
+      "next_low_pct": 1.887,
+      "next_close_pct": 3.904
+    },
+    {
+      "ticker": "CCOLA",
+      "date": "2026-06-01",
+      "entry": 81.5,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 4.785,
+      "next_low_pct": 0.491,
+      "next_close_pct": 4.172
+    },
+    {
+      "ticker": "CCOLA",
+      "date": "2026-06-12",
+      "entry": 82.5,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.909,
+      "next_low_pct": 0.0,
+      "next_close_pct": 0.0
+    },
+    {
+      "ticker": "EKGYO",
+      "date": "2025-09-30",
+      "entry": 19.3165,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 4.982,
+      "next_low_pct": -0.252,
+      "next_close_pct": 3.976
+    },
+    {
+      "ticker": "EKGYO",
+      "date": "2025-10-10",
+      "entry": 19.2679,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": -0.858,
+      "next_low_pct": -4.087,
+      "next_close_pct": -3.936
+    },
+    {
+      "ticker": "EKGYO",
+      "date": "2026-05-06",
+      "entry": 20.6289,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.676,
+      "next_low_pct": -0.094,
+      "next_close_pct": 2.262
+    },
+    {
+      "ticker": "EKGYO",
+      "date": "2026-06-12",
+      "entry": 19.3554,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 5.676,
+      "next_low_pct": 3.265,
+      "next_close_pct": 4.771
+    },
+    {
+      "ticker": "ENKAI",
+      "date": "2025-12-26",
+      "entry": 76.8604,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 2.58,
+      "next_low_pct": -1.825,
+      "next_close_pct": -1.699
+    },
+    {
+      "ticker": "ENKAI",
+      "date": "2026-06-15",
+      "entry": 96.1,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.416,
+      "next_low_pct": -2.758,
+      "next_close_pct": -2.029
+    },
+    {
+      "ticker": "EREGL",
+      "date": "2025-09-15",
+      "entry": 27.1311,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.164,
+      "next_low_pct": -0.436,
+      "next_close_pct": 0.436
+    },
+    {
+      "ticker": "EREGL",
+      "date": "2025-12-08",
+      "entry": 23.8359,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.076,
+      "next_low_pct": -1.076,
+      "next_close_pct": 0.331
+    },
+    {
+      "ticker": "EREGL",
+      "date": "2026-06-12",
+      "entry": 39.36,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.76,
+      "next_low_pct": 0.762,
+      "next_close_pct": 2.134
+    },
+    {
+      "ticker": "FROTO",
+      "date": "2025-09-15",
+      "entry": 95.5338,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.944,
+      "next_low_pct": 0.475,
+      "next_close_pct": 2.944
+    },
+    {
+      "ticker": "FROTO",
+      "date": "2026-01-02",
+      "entry": 92.4279,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.307,
+      "next_low_pct": -0.994,
+      "next_close_pct": 0.628
+    },
+    {
+      "ticker": "GARAN",
+      "date": "2025-09-01",
+      "entry": 140.3292,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 2.671,
+      "next_low_pct": -6.849,
+      "next_close_pct": -3.699
+    },
+    {
+      "ticker": "GARAN",
+      "date": "2025-09-10",
+      "entry": 136.3884,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 3.806,
+      "next_low_pct": -2.96,
+      "next_close_pct": -2.889
+    },
+    {
+      "ticker": "GARAN",
+      "date": "2025-10-01",
+      "entry": 140.3292,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.548,
+      "next_low_pct": -4.11,
+      "next_close_pct": -3.767
+    },
+    {
+      "ticker": "GARAN",
+      "date": "2025-11-19",
+      "entry": 127.4496,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.187,
+      "next_low_pct": 0.0,
+      "next_close_pct": 2.187
+    },
+    {
+      "ticker": "GARAN",
+      "date": "2026-05-06",
+      "entry": 136.6,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.757,
+      "next_low_pct": 0.0,
+      "next_close_pct": 0.732
+    },
+    {
+      "ticker": "GARAN",
+      "date": "2026-06-02",
+      "entry": 128.8,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.466,
+      "next_low_pct": -2.329,
+      "next_close_pct": -2.252
+    },
+    {
+      "ticker": "GUBRF",
+      "date": "2025-09-15",
+      "entry": 274.0,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.007,
+      "next_low_pct": -0.821,
+      "next_close_pct": 1.642
+    },
+    {
+      "ticker": "GUBRF",
+      "date": "2025-10-08",
+      "entry": 287.25,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.959,
+      "next_low_pct": -0.174,
+      "next_close_pct": 0.957
+    },
+    {
+      "ticker": "GUBRF",
+      "date": "2025-10-20",
+      "entry": 282.0,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.532,
+      "next_low_pct": -2.039,
+      "next_close_pct": -1.418
+    },
+    {
+      "ticker": "GUBRF",
+      "date": "2025-12-05",
+      "entry": 315.5,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 4.596,
+      "next_low_pct": 0.158,
+      "next_close_pct": 3.328
+    },
+    {
+      "ticker": "GUBRF",
+      "date": "2026-02-26",
+      "entry": 528.0,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 4.167,
+      "next_low_pct": -1.136,
+      "next_close_pct": 0.758
+    },
+    {
+      "ticker": "GUBRF",
+      "date": "2026-03-06",
+      "entry": 523.0,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 2.39,
+      "next_low_pct": -9.273,
+      "next_close_pct": -6.644
+    },
+    {
+      "ticker": "GUBRF",
+      "date": "2026-05-25",
+      "entry": 571.5,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.087,
+      "next_low_pct": -5.162,
+      "next_close_pct": -3.762
+    },
+    {
+      "ticker": "GUBRF",
+      "date": "2026-06-15",
+      "entry": 526.5,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.33,
+      "next_low_pct": -1.709,
+      "next_close_pct": -0.38
+    },
+    {
+      "ticker": "HALKB",
+      "date": "2025-09-15",
+      "entry": 25.8,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.55,
+      "next_low_pct": -0.775,
+      "next_close_pct": 1.085
+    },
+    {
+      "ticker": "HALKB",
+      "date": "2025-10-20",
+      "entry": 26.7,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.524,
+      "next_low_pct": -2.022,
+      "next_close_pct": -1.873
+    },
+    {
+      "ticker": "HALKB",
+      "date": "2025-12-22",
+      "entry": 36.14,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 3.818,
+      "next_low_pct": -1.107,
+      "next_close_pct": 3.708
+    },
+    {
+      "ticker": "HALKB",
+      "date": "2026-03-09",
+      "entry": 47.74,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 9.971,
+      "next_low_pct": 2.849,
+      "next_close_pct": 3.142
+    },
+    {
+      "ticker": "HALKB",
+      "date": "2026-05-25",
+      "entry": 41.88,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.725,
+      "next_low_pct": -0.334,
+      "next_close_pct": 0.525
+    },
+    {
+      "ticker": "ISCTR",
+      "date": "2025-10-01",
+      "entry": 13.9444,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.275,
+      "next_low_pct": -4.883,
+      "next_close_pct": -4.058
+    },
+    {
+      "ticker": "ISCTR",
+      "date": "2025-11-19",
+      "entry": 12.1222,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.899,
+      "next_low_pct": -0.0,
+      "next_close_pct": 1.424
+    },
+    {
+      "ticker": "ISCTR",
+      "date": "2025-12-31",
+      "entry": 13.5128,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.129,
+      "next_low_pct": -0.142,
+      "next_close_pct": 2.058
+    },
+    {
+      "ticker": "ISCTR",
+      "date": "2026-04-30",
+      "entry": 14.34,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.488,
+      "next_low_pct": -3.068,
+      "next_close_pct": -1.813
+    },
+    {
+      "ticker": "ISCTR",
+      "date": "2026-06-02",
+      "entry": 13.63,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.293,
+      "next_low_pct": -1.834,
+      "next_close_pct": -1.761
+    },
+    {
+      "ticker": "KCHOL",
+      "date": "2025-09-15",
+      "entry": 173.416,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.112,
+      "next_low_pct": -1.223,
+      "next_close_pct": 0.723
+    },
+    {
+      "ticker": "KCHOL",
+      "date": "2025-10-01",
+      "entry": 169.6566,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.682,
+      "next_low_pct": -2.045,
+      "next_close_pct": -1.25
+    },
+    {
+      "ticker": "KCHOL",
+      "date": "2025-11-17",
+      "entry": 161.7521,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.847,
+      "next_low_pct": -0.715,
+      "next_close_pct": 0.358
+    },
+    {
+      "ticker": "KCHOL",
+      "date": "2025-11-27",
+      "entry": 163.4872,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.413,
+      "next_low_pct": -1.002,
+      "next_close_pct": -0.708
+    },
+    {
+      "ticker": "KCHOL",
+      "date": "2025-12-24",
+      "entry": 166.6683,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.347,
+      "next_low_pct": -1.388,
+      "next_close_pct": -1.099
+    },
+    {
+      "ticker": "KCHOL",
+      "date": "2026-01-02",
+      "entry": 168.4998,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.146,
+      "next_low_pct": -0.172,
+      "next_close_pct": 2.86
+    },
+    {
+      "ticker": "KCHOL",
+      "date": "2026-06-02",
+      "entry": 193.3,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.207,
+      "next_low_pct": -2.483,
+      "next_close_pct": -2.431
+    },
+    {
+      "ticker": "KRDMD",
+      "date": "2025-09-15",
+      "entry": 27.14,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.769,
+      "next_low_pct": -1.548,
+      "next_close_pct": 1.769
+    },
+    {
+      "ticker": "KRDMD",
+      "date": "2025-11-19",
+      "entry": 25.42,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.944,
+      "next_low_pct": -1.574,
+      "next_close_pct": 0.079
+    },
+    {
+      "ticker": "KRDMD",
+      "date": "2026-03-10",
+      "entry": 31.44,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.209,
+      "next_low_pct": -3.944,
+      "next_close_pct": -1.654
+    },
+    {
+      "ticker": "KRDMD",
+      "date": "2026-03-17",
+      "entry": 31.22,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.089,
+      "next_low_pct": -4.1,
+      "next_close_pct": -3.459
+    },
+    {
+      "ticker": "KRDMD",
+      "date": "2026-03-31",
+      "entry": 30.9,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 4.854,
+      "next_low_pct": 1.23,
+      "next_close_pct": 3.819
+    },
+    {
+      "ticker": "KRDMD",
+      "date": "2026-05-22",
+      "entry": 40.88,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 4.55,
+      "next_low_pct": -2.495,
+      "next_close_pct": -2.104
+    },
+    {
+      "ticker": "KRDMD",
+      "date": "2026-06-01",
+      "entry": 40.58,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.169,
+      "next_low_pct": -0.148,
+      "next_close_pct": 1.084
+    },
+    {
+      "ticker": "PETKM",
+      "date": "2025-10-06",
+      "entry": 18.9,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.598,
+      "next_low_pct": -0.423,
+      "next_close_pct": 2.116
+    },
+    {
+      "ticker": "PETKM",
+      "date": "2025-11-28",
+      "entry": 17.0,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.529,
+      "next_low_pct": -0.176,
+      "next_close_pct": 2.235
+    },
+    {
+      "ticker": "PETKM",
+      "date": "2026-03-12",
+      "entry": 18.9,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 9.947,
+      "next_low_pct": -0.212,
+      "next_close_pct": 6.561
+    },
+    {
+      "ticker": "PETKM",
+      "date": "2026-03-30",
+      "entry": 20.5,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 4.195,
+      "next_low_pct": -2.439,
+      "next_close_pct": 3.512
+    },
+    {
+      "ticker": "PGSUS",
+      "date": "2025-09-15",
+      "entry": 233.8,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.299,
+      "next_low_pct": -1.839,
+      "next_close_pct": -0.556
+    },
+    {
+      "ticker": "PGSUS",
+      "date": "2025-12-08",
+      "entry": 203.3,
+      "regime_ok": true,
+      "outcome": "FLAT",
+      "ret_pct": -0.295,
+      "next_high_pct": 0.295,
+      "next_low_pct": -0.639,
+      "next_close_pct": -0.295
+    },
+    {
+      "ticker": "PGSUS",
+      "date": "2026-01-29",
+      "entry": 201.7,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.289,
+      "next_low_pct": -1.14,
+      "next_close_pct": 0.892
+    },
+    {
+      "ticker": "PGSUS",
+      "date": "2026-04-01",
+      "entry": 179.4,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.0,
+      "next_low_pct": -2.341,
+      "next_close_pct": -0.279
+    },
+    {
+      "ticker": "PGSUS",
+      "date": "2026-05-06",
+      "entry": 184.3,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.116,
+      "next_low_pct": 0.597,
+      "next_close_pct": 1.736
+    },
+    {
+      "ticker": "PGSUS",
+      "date": "2026-06-02",
+      "entry": 172.2,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.581,
+      "next_low_pct": -1.394,
+      "next_close_pct": -1.278
+    },
+    {
+      "ticker": "PGSUS",
+      "date": "2026-06-12",
+      "entry": 172.0,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 6.57,
+      "next_low_pct": 4.593,
+      "next_close_pct": 5.349
+    },
+    {
+      "ticker": "SAHOL",
+      "date": "2025-11-19",
+      "entry": 76.5206,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.572,
+      "next_low_pct": 0.45,
+      "next_close_pct": 2.058
+    },
+    {
+      "ticker": "SAHOL",
+      "date": "2026-04-01",
+      "entry": 90.55,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": -0.166,
+      "next_low_pct": -2.209,
+      "next_close_pct": -0.497
+    },
+    {
+      "ticker": "SAHOL",
+      "date": "2026-05-06",
+      "entry": 100.7,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.092,
+      "next_low_pct": -1.142,
+      "next_close_pct": -0.695
+    },
+    {
+      "ticker": "SASA",
+      "date": "2025-11-19",
+      "entry": 2.97,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 5.387,
+      "next_low_pct": -1.01,
+      "next_close_pct": 1.684
+    },
+    {
+      "ticker": "SASA",
+      "date": "2025-12-01",
+      "entry": 2.97,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.01,
+      "next_low_pct": -0.673,
+      "next_close_pct": 0.337
+    },
+    {
+      "ticker": "SASA",
+      "date": "2025-12-15",
+      "entry": 2.92,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.0,
+      "next_low_pct": -1.712,
+      "next_close_pct": -1.37
+    },
+    {
+      "ticker": "SASA",
+      "date": "2026-04-01",
+      "entry": 2.42,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 4.132,
+      "next_low_pct": -2.066,
+      "next_close_pct": 0.826
+    },
+    {
+      "ticker": "SASA",
+      "date": "2026-06-11",
+      "entry": 2.63,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.901,
+      "next_low_pct": -1.901,
+      "next_close_pct": -1.141
+    },
+    {
+      "ticker": "SISE",
+      "date": "2025-09-15",
+      "entry": 38.3022,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.464,
+      "next_low_pct": -1.546,
+      "next_close_pct": -0.103
+    },
+    {
+      "ticker": "SISE",
+      "date": "2025-12-25",
+      "entry": 39.1709,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": -0.05,
+      "next_low_pct": -3.73,
+      "next_close_pct": -3.024
+    },
+    {
+      "ticker": "SISE",
+      "date": "2026-01-02",
+      "entry": 38.6378,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.38,
+      "next_low_pct": -0.409,
+      "next_close_pct": 0.869
+    },
+    {
+      "ticker": "SISE",
+      "date": "2026-01-16",
+      "entry": 39.1512,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.614,
+      "next_low_pct": 0.252,
+      "next_close_pct": 0.605
+    },
+    {
+      "ticker": "SISE",
+      "date": "2026-02-23",
+      "entry": 46.397,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.255,
+      "next_low_pct": -2.085,
+      "next_close_pct": -1.532
+    },
+    {
+      "ticker": "TCELL",
+      "date": "2025-10-20",
+      "entry": 95.0159,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.568,
+      "next_low_pct": -1.24,
+      "next_close_pct": 0.155
+    },
+    {
+      "ticker": "TCELL",
+      "date": "2025-11-06",
+      "entry": 100.1201,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": -2.843,
+      "next_low_pct": -5.539,
+      "next_close_pct": -5.0
+    },
+    {
+      "ticker": "TCELL",
+      "date": "2026-05-05",
+      "entry": 115.2,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.559,
+      "next_low_pct": 0.0,
+      "next_close_pct": 2.17
+    },
+    {
+      "ticker": "THYAO",
+      "date": "2025-09-22",
+      "entry": 326.0,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.46,
+      "next_low_pct": -1.84,
+      "next_close_pct": -0.383
+    },
+    {
+      "ticker": "THYAO",
+      "date": "2026-03-10",
+      "entry": 297.0,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": -0.253,
+      "next_low_pct": -2.525,
+      "next_close_pct": -0.758
+    },
+    {
+      "ticker": "THYAO",
+      "date": "2026-06-12",
+      "entry": 307.75,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 7.067,
+      "next_low_pct": 5.037,
+      "next_close_pct": 5.849
+    },
+    {
+      "ticker": "TKFEN",
+      "date": "2025-10-23",
+      "entry": 81.2167,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 4.044,
+      "next_low_pct": -0.429,
+      "next_close_pct": 1.716
+    },
+    {
+      "ticker": "TKFEN",
+      "date": "2026-01-02",
+      "entry": 72.85,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.373,
+      "next_low_pct": -1.716,
+      "next_close_pct": -0.961
+    },
+    {
+      "ticker": "TKFEN",
+      "date": "2026-01-22",
+      "entry": 71.85,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.601,
+      "next_low_pct": -1.322,
+      "next_close_pct": -0.487
+    },
+    {
+      "ticker": "TKFEN",
+      "date": "2026-05-25",
+      "entry": 136.4,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 5.572,
+      "next_low_pct": -0.513,
+      "next_close_pct": 3.226
+    },
+    {
+      "ticker": "TOASO",
+      "date": "2025-09-09",
+      "entry": 220.6693,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.755,
+      "next_low_pct": -0.506,
+      "next_close_pct": 1.308
+    },
+    {
+      "ticker": "TOASO",
+      "date": "2025-10-22",
+      "entry": 242.55,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 6.142,
+      "next_low_pct": -0.192,
+      "next_close_pct": 5.662
+    },
+    {
+      "ticker": "TOASO",
+      "date": "2026-04-08",
+      "entry": 271.25,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.304,
+      "next_low_pct": -0.645,
+      "next_close_pct": 2.304
+    },
+    {
+      "ticker": "TOASO",
+      "date": "2026-05-22",
+      "entry": 304.0,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.727,
+      "next_low_pct": -1.48,
+      "next_close_pct": -0.247
+    },
+    {
+      "ticker": "TOASO",
+      "date": "2026-06-02",
+      "entry": 302.5,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.488,
+      "next_low_pct": -1.736,
+      "next_close_pct": -1.157
+    },
+    {
+      "ticker": "TTKOM",
+      "date": "2025-10-01",
+      "entry": 52.5,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.048,
+      "next_low_pct": -0.667,
+      "next_close_pct": 0.381
+    },
+    {
+      "ticker": "TTKOM",
+      "date": "2025-11-05",
+      "entry": 55.0,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 3.091,
+      "next_low_pct": -1.818,
+      "next_close_pct": 0.727
+    },
+    {
+      "ticker": "TTKOM",
+      "date": "2025-12-30",
+      "entry": 57.15,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.05,
+      "next_low_pct": -1.312,
+      "next_close_pct": 0.612
+    },
+    {
+      "ticker": "TTKOM",
+      "date": "2026-05-05",
+      "entry": 62.65,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 5.188,
+      "next_low_pct": 0.638,
+      "next_close_pct": 4.789
+    },
+    {
+      "ticker": "TTRAK",
+      "date": "2025-11-03",
+      "entry": 572.0,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.087,
+      "next_low_pct": -3.147,
+      "next_close_pct": -2.622
+    },
+    {
+      "ticker": "TTRAK",
+      "date": "2025-12-15",
+      "entry": 527.0,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.664,
+      "next_low_pct": -1.044,
+      "next_close_pct": -0.664
+    },
+    {
+      "ticker": "TTRAK",
+      "date": "2025-12-24",
+      "entry": 524.5,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 0.572,
+      "next_low_pct": -0.381,
+      "next_close_pct": 0.095
+    },
+    {
+      "ticker": "TUPRS",
+      "date": "2025-12-01",
+      "entry": 191.1609,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 1.307,
+      "next_low_pct": -0.503,
+      "next_close_pct": -0.503
+    },
+    {
+      "ticker": "TUPRS",
+      "date": "2026-03-02",
+      "entry": 215.9446,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 6.673,
+      "next_low_pct": 2.269,
+      "next_close_pct": 4.537
+    },
+    {
+      "ticker": "TUPRS",
+      "date": "2026-04-22",
+      "entry": 263.0,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.612,
+      "next_low_pct": 1.141,
+      "next_close_pct": 2.281
+    },
+    {
+      "ticker": "TUPRS",
+      "date": "2026-06-01",
+      "entry": 244.9,
+      "regime_ok": false,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 2.185,
+      "next_low_pct": -2.736,
+      "next_close_pct": 2.185
+    },
+    {
+      "ticker": "TUPRS",
+      "date": "2026-06-30",
+      "entry": 227.5,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 4.923,
+      "next_low_pct": -0.659,
+      "next_close_pct": 3.868
+    },
+    {
+      "ticker": "VAKBN",
+      "date": "2025-09-22",
+      "entry": 28.0,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": -0.071,
+      "next_low_pct": -2.357,
+      "next_close_pct": -2.214
+    },
+    {
+      "ticker": "VAKBN",
+      "date": "2025-10-01",
+      "entry": 26.98,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.631,
+      "next_low_pct": -3.706,
+      "next_close_pct": -2.669
+    },
+    {
+      "ticker": "VAKBN",
+      "date": "2025-12-17",
+      "entry": 29.74,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.766,
+      "next_low_pct": 0.403,
+      "next_close_pct": 3.497
+    },
+    {
+      "ticker": "VAKBN",
+      "date": "2026-05-25",
+      "entry": 31.48,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 0.953,
+      "next_low_pct": -2.097,
+      "next_close_pct": -2.033
+    },
+    {
+      "ticker": "VAKBN",
+      "date": "2026-07-01",
+      "entry": 33.28,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 2.043,
+      "next_low_pct": -0.06,
+      "next_close_pct": 0.601
+    },
+    {
+      "ticker": "YKBNK",
+      "date": "2025-09-01",
+      "entry": 33.42,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 2.035,
+      "next_low_pct": -9.396,
+      "next_close_pct": -5.506
+    },
+    {
+      "ticker": "YKBNK",
+      "date": "2025-11-18",
+      "entry": 32.44,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 4.747,
+      "next_low_pct": -0.185,
+      "next_close_pct": 3.884
+    },
+    {
+      "ticker": "YKBNK",
+      "date": "2025-12-31",
+      "entry": 36.22,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 5.687,
+      "next_low_pct": 0.442,
+      "next_close_pct": 5.246
+    },
+    {
+      "ticker": "YKBNK",
+      "date": "2026-01-19",
+      "entry": 37.5,
+      "regime_ok": true,
+      "outcome": "SL",
+      "ret_pct": -1.0,
+      "next_high_pct": 1.707,
+      "next_low_pct": -1.493,
+      "next_close_pct": 0.373
+    },
+    {
+      "ticker": "YKBNK",
+      "date": "2026-05-06",
+      "entry": 37.76,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.284,
+      "next_low_pct": -0.159,
+      "next_close_pct": 2.383
+    },
+    {
+      "ticker": "ASTOR",
+      "date": "2026-03-19",
+      "entry": 187.3,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 3.897,
+      "next_low_pct": -0.16,
+      "next_close_pct": 3.15
+    },
+    {
+      "ticker": "ASTOR",
+      "date": "2026-04-20",
+      "entry": 205.7,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 6.612,
+      "next_low_pct": 0.438,
+      "next_close_pct": 4.278
+    },
+    {
+      "ticker": "ASTOR",
+      "date": "2026-06-01",
+      "entry": 330.5,
+      "regime_ok": false,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 9.985,
+      "next_low_pct": 0.378,
+      "next_close_pct": 9.985
+    },
+    {
+      "ticker": "ASTOR",
+      "date": "2026-07-02",
+      "entry": 301.75,
+      "regime_ok": true,
+      "outcome": "TP",
+      "ret_pct": 0.5,
+      "next_high_pct": 8.285,
+      "next_low_pct": 0.166,
+      "next_close_pct": 5.717
+    }
+  ]
+}

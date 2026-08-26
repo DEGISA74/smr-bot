@@ -1,0 +1,13 @@
+[Unit]
+Description=SMR Gundem timer (Sal-Cmt ~08:30 Istanbul, dun kapanisi)
+
+[Timer]
+# VPS UTC; Istanbul = UTC+3 (DST yok). 05:30 UTC = 08:30 Istanbul.
+# Sal-Cmt: her sabah bir onceki islem gununu ("dun") anlatir.
+# Pzt yok (dun=Pazar, islem yok); Cmt Cuma kapanisini anlatir.
+OnCalendar=Tue,Wed,Thu,Fri,Sat *-*-* 05:30:00
+RandomizedDelaySec=600
+Persistent=false
+
+[Install]
+WantedBy=timers.target

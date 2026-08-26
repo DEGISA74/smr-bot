@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-06-12 19:05",
+  "category": "BIST 500 ",
+  "public_items": [
+    {
+      "ticker": "AEFES",
+      "scenario_id": "C6",
+      "scenario_name": "Piyasa Lideri",
+      "category": "C",
+      "stars": 5,
+      "aging_days": 2
+    },
+    {
+      "ticker": "HATEK",
+      "scenario_id": "A1",
+      "scenario_name": "Dipte Sessizlik",
+      "category": "A",
+      "stars": 5,
+      "aging_days": 2
+    },
+    {
+      "ticker": "SISE",
+      "scenario_id": "A8",
+      "scenario_name": "Ucuz + Hacimli Atak",
+      "category": "A",
+      "stars": 5,
+      "aging_days": 1
+    }
+  ],
+  "locked_count": 246
+}

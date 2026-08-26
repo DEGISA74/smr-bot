@@ -1,0 +1,48 @@
+{
+  "generated": "2026-07-10 10:04",
+  "universe": 612,
+  "eval_days": 130,
+  "note": "OBV bileşeni dual-window yaklaşıklaması (CMF teyidi yok) — panel skorunun yaklaşık kopyası",
+  "labels": {
+    "ALIM BASKISI": {
+      "n": 19085,
+      "avg_5g": 1.04,
+      "avg_10g": 1.99,
+      "med_10g": 0.67,
+      "hit_10g": 52.5,
+      "avg_20g": 4.21
+    },
+    "HAFİF ALIM": {
+      "n": 6884,
+      "avg_5g": 0.93,
+      "avg_10g": 1.87,
+      "med_10g": 0.62,
+      "hit_10g": 52.7,
+      "avg_20g": 3.91
+    },
+    "NÖTR": {
+      "n": 7603,
+      "avg_5g": 0.97,
+      "avg_10g": 1.94,
+      "med_10g": 0.6,
+      "hit_10g": 52.4,
+      "avg_20g": 3.78
+    },
+    "HAFİF SATIŞ": {
+      "n": 8990,
+      "avg_5g": 0.76,
+      "avg_10g": 1.67,
+      "med_10g": 0.48,
+      "hit_10g": 52.3,
+      "avg_20g": 3.55
+    },
+    "SATIŞ BASKISI": {
+      "n": 31844,
+      "avg_5g": 0.75,
+      "avg_10g": 1.83,
+      "med_10g": 0.63,
+      "hit_10g": 53.1,
+      "avg_20g": 3.39
+    }
+  }
+}

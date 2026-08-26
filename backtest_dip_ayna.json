@@ -1,0 +1,249 @@
+{
+  "generated": "2026-07-31 15:15",
+  "universe": 120,
+  "windows": [
+    5,
+    10,
+    20
+  ],
+  "tum_rejim": {
+    "D4_orig": {
+      "5g": {
+        "n": 265,
+        "ort": 2.28,
+        "isabet": 58.1,
+        "alpha": 3.02,
+        "medyan": 1.91
+      },
+      "10g": {
+        "n": 265,
+        "ort": 2.46,
+        "isabet": 55.1,
+        "alpha": 4.01,
+        "medyan": 2.13
+      },
+      "20g": {
+        "n": 265,
+        "ort": 3.35,
+        "isabet": 57.4,
+        "alpha": 5.87,
+        "medyan": 3.41
+      }
+    },
+    "D5_orig": {
+      "5g": {
+        "n": 337,
+        "ort": 2.28,
+        "isabet": 51.3,
+        "alpha": 3.79,
+        "medyan": 0.38
+      },
+      "10g": {
+        "n": 337,
+        "ort": 3.2,
+        "isabet": 56.4,
+        "alpha": 5.45,
+        "medyan": 2.42
+      },
+      "20g": {
+        "n": 337,
+        "ort": 2.85,
+        "isabet": 56.7,
+        "alpha": 6.83,
+        "medyan": 2.14
+      }
+    },
+    "D4_ayna": {
+      "5g": {
+        "n": 564,
+        "ort": 0.77,
+        "isabet": 52.8,
+        "alpha": -0.04,
+        "medyan": 0.51
+      },
+      "10g": {
+        "n": 564,
+        "ort": 1.55,
+        "isabet": 51.1,
+        "alpha": -0.16,
+        "medyan": 0.39
+      },
+      "20g": {
+        "n": 564,
+        "ort": 4.69,
+        "isabet": 52.8,
+        "alpha": 1.57,
+        "medyan": 1.04
+      }
+    },
+    "D5_ayna": {
+      "5g": {
+        "n": 679,
+        "ort": 2.36,
+        "isabet": 58.9,
+        "alpha": 1.86,
+        "medyan": 1.53
+      },
+      "10g": {
+        "n": 679,
+        "ort": 4.36,
+        "isabet": 59.6,
+        "alpha": 3.02,
+        "medyan": 2.73
+      },
+      "20g": {
+        "n": 679,
+        "ort": 8.74,
+        "isabet": 60.4,
+        "alpha": 5.91,
+        "medyan": 5.02
+      }
+    },
+    "D5_gecis": {
+      "5g": {
+        "n": 64,
+        "ort": 0.85,
+        "isabet": 50.0,
+        "alpha": 0.22,
+        "medyan": 0.19
+      },
+      "10g": {
+        "n": 64,
+        "ort": -0.42,
+        "isabet": 45.3,
+        "alpha": -1.71,
+        "medyan": -1.16
+      },
+      "20g": {
+        "n": 64,
+        "ort": 1.88,
+        "isabet": 43.8,
+        "alpha": 0.12,
+        "medyan": -3.13
+      }
+    }
+  },
+  "dusen_rejim": {
+    "D4_orig": {
+      "5g": {
+        "n": 66,
+        "ort": 0.7,
+        "isabet": 43.9,
+        "alpha": 3.25,
+        "medyan": -1.68
+      },
+      "10g": {
+        "n": 66,
+        "ort": 1.52,
+        "isabet": 47.0,
+        "alpha": 5.28,
+        "medyan": -1.51
+      },
+      "20g": {
+        "n": 66,
+        "ort": 1.53,
+        "isabet": 47.0,
+        "alpha": 6.13,
+        "medyan": -0.71
+      }
+    },
+    "D5_orig": {
+      "5g": {
+        "n": 112,
+        "ort": 0.46,
+        "isabet": 31.2,
+        "alpha": 3.34,
+        "medyan": -2.11
+      },
+      "10g": {
+        "n": 112,
+        "ort": -0.28,
+        "isabet": 44.6,
+        "alpha": 3.21,
+        "medyan": -1.38
+      },
+      "20g": {
+        "n": 112,
+        "ort": -0.68,
+        "isabet": 50.0,
+        "alpha": 4.16,
+        "medyan": -0.1
+      }
+    },
+    "D4_ayna": {
+      "5g": {
+        "n": 131,
+        "ort": 1.92,
+        "isabet": 61.1,
+        "alpha": -0.13,
+        "medyan": 2.1
+      },
+      "10g": {
+        "n": 131,
+        "ort": 3.41,
+        "isabet": 61.1,
+        "alpha": -0.25,
+        "medyan": 2.75
+      },
+      "20g": {
+        "n": 131,
+        "ort": 10.06,
+        "isabet": 65.6,
+        "alpha": 3.56,
+        "medyan": 7.98
+      }
+    },
+    "D5_ayna": {
+      "5g": {
+        "n": 190,
+        "ort": 2.25,
+        "isabet": 63.2,
+        "alpha": 0.61,
+        "medyan": 2.78
+      },
+      "10g": {
+        "n": 190,
+        "ort": 5.47,
+        "isabet": 66.8,
+        "alpha": 2.03,
+        "medyan": 4.73
+      },
+      "20g": {
+        "n": 190,
+        "ort": 11.34,
+        "isabet": 65.3,
+        "alpha": 5.91,
+        "medyan": 8.88
+      }
+    },
+    "D5_gecis": {
+      "5g": {
+        "n": 11,
+        "ort": 0.58,
+        "isabet": 63.6,
+        "alpha": -0.91,
+        "medyan": 2.0
+      },
+      "10g": {
+        "n": 11,
+        "ort": -0.11,
+        "isabet": 45.5,
+        "alpha": -1.51,
+        "medyan": -2.26
+      },
+      "20g": {
+        "n": 11,
+        "ort": 1.99,
+        "isabet": 45.5,
+        "alpha": -0.2,
+        "medyan": -3.39
+      }
+    }
+  },
+  "hukum": [
+    "Saf ayna D4: DEĞERLİ — 20g +4.69% / alpha +1.57 (N=564). Kanıtlı LONG adayı.",
+    "Saf ayna D5: DEĞERLİ — 20g +8.74% / alpha +5.91 (N=679). Kanıtlı LONG adayı.",
+    "Geçiş dedektörü: ZAYIF POZİTİF — 20g +1.88% / alpha 0.12 (N=64). Tek başına yetmez, teyitle."
+  ],
+  "note": "TAZE tetik. Baseline short olarak. Tek rejimse (düşüş) ikinci rejimde tekrar koş."
+}

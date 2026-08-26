@@ -1,0 +1,7311 @@
+{
+ "ASTOR.IS": {
+  "an_advanced_levels": {
+   "curr_price": 319.0,
+   "fibs": {
+    "0 (Tepe)": 385.75,
+    "0.236": 326.1482,
+    "0.382": 289.2759,
+    "0.5 (Orta)": 259.475,
+    "0.618 (Golden - Alım)": 229.6741,
+    "1 (Dip)": 133.2,
+    "1.236 (Kırılım Hedefi)": 73.5982,
+    "1.618 (Hedef)": -22.8759
+   },
+   "nearest_res": [
+    "0.236",
+    326.1482
+   ],
+   "nearest_sup": [
+    "0.382",
+    289.2759
+   ],
+   "st_dir": -1,
+   "st_val": 328.972204
+  },
+  "an_breakout": null,
+  "an_er_prompt_text": "📊 ER Kurulum Kalitesi: 0/100 — Toplam 0 senaryo eşleşti\n\n🎯 ANA SENARYO: Yok — bu hisse Erken Radar kriterlerini tetiklemiyor",
+  "an_ict_reversal": "BULLISH_MSS",
+  "an_mtf_alignment": {
+   "bear_cnt": 0,
+   "bull_cnt": 6,
+   "diagnosis_text": "Vadelerin çoğunluğu yukarıyı destekliyor. Momentum alıcı lehine seyrediyor.",
+   "dominant": "YUKARI",
+   "matrix": {
+    "Aylık": {
+     "hacim": 0,
+     "momentum": 1,
+     "trend": 1
+    },
+    "Günlük": {
+     "hacim": 0,
+     "momentum": 1,
+     "trend": 1
+    },
+    "Haftalık": {
+     "hacim": 0,
+     "momentum": 1,
+     "trend": 1
+    }
+   },
+   "overall_pct": 67,
+   "status_color": "#22c55e",
+   "status_pill": "POZİTİF UYUM (%67 Boğa)",
+   "tf_scores": {
+    "Aylık": {
+     "bear": 0,
+     "bull": 2,
+     "dominant": "YUKARI",
+     "pct": 67
+    },
+    "Günlük": {
+     "bear": 0,
+     "bull": 2,
+     "dominant": "YUKARI",
+     "pct": 67
+    },
+    "Haftalık": {
+     "bear": 0,
+     "bull": 2,
+     "dominant": "YUKARI",
+     "pct": 67
+    }
+   },
+   "timeframes": [
+    "Günlük",
+    "Haftalık",
+    "Aylık"
+   ],
+   "total": 9
+  },
+  "an_obv_divergence": [
+   "✅ SAĞLIKLI TREND (Hacim Onaylı)",
+   "#15803d",
+   "5 ve 14 günlük OBV fiyat yükselişini iki periyotta da teyit ediyor. Trendin arkasında tutarlı akıllı para desteği var. | Para Akışı: +0.063 ✓ alış teyitli"
+  ],
+  "an_risk_profile": {
+   "level": "orta",
+   "rows": [
+    [
+     "Oynaklık",
+     "Endeksten %45 daha sert oynuyor (1.4×)",
+     "high"
+    ],
+    [
+     "Volatilite trendi",
+     "Sabit; son dönemde değişmedi",
+     "mid"
+    ],
+    [
+     "Zirveden uzaklık",
+     "Zirvesinin %12 altında",
+     "mid"
+    ],
+    [
+     "Sürpriz yönü",
+     "Dengeli; ani çakılma da sıçrama da eğilimi yok",
+     "mid"
+    ],
+    [
+     "Likidite",
+     "Yüksek; rahat girip çıkarsın",
+     "low"
+    ]
+   ]
+  },
+  "an_roadmap": {
+   "M1": "<b>Günlük Mum:</b> Yeşil (Alıcı momentumu)<br><b>PA Sinyali:</b>  | 📅 Haftalık: Bullish Engulfing (Güçlü)<br><b>EMA Hizalaması:</b> <span style=\"color:#16a34a;font-weight:700;\">▲ Yukarı Hizalı</span><span style=\"color:#64748b;font-size:0.7em;\"> (1 gün)</span>",
+   "M2": "<b>Mevcut Formasyon:</b> Kitabi bir yapı görünmüyor.<br><b>Ana Yapı:</b> İtki (Trend)",
+   "M2_chart_data": null,
+   "M2_scan_price": null,
+   "M3": "<b>VSA Tespiti:</b> ✅ Sağlıklı İtki<br><b>Durum:</b> Geniş gövde ve yüksek hacim. Efor ve Sonuç uyumlu.",
+   "M4": "<div style='margin-bottom:3px;'><div style='background:rgba(74,222,128,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:100%;background:rgba(74,222,128,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Sıkışma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>8/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(251,191,36,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:50%;background:rgba(251,191,36,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Daralma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>4/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(74,222,128,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:74%;background:rgba(74,222,128,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Enerji</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>5.9/8</span></span></div></div>",
+   "M5": "<b>Absorption:</b> Belirgin bir kurumsal emilim yok.<br><b>Akış:</b> Yükselişte agresif kurumsal alım.",
+   "M6": "<div style='background:rgba(100,116,139,0.12);border-radius:4px;height:18px;position:relative;overflow:hidden;margin-bottom:4px;'><div style='width:75%;background:rgba(22,163,74,0.78);height:100%;border-radius:4px 0 0 4px;position:absolute;left:0;top:0;'></div><div style='width:25%;background:rgba(248,113,113,0.75);height:100%;border-radius:0 4px 4px 0;position:absolute;right:0;top:0;'></div><span style='position:absolute;left:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐂 %75</span><span style='position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐻 %25</span></div><div style='font-size:0.65rem;line-height:1.3;'>Alıcılar baskın, momentum güçlü.</div>",
+   "M7": "<b>Boğa Olması İçin:</b> 326.75 yukarı geçilmeli | <b>Sonraki Hedef:</b> 351.39<br><b>Ayı Olması İçin:</b> 262.50 aşağıya kırılmalı | <b>Sonraki Hedef:</b> 237.86",
+   "M8": "<b>Piyasa Sentezi:</b> Makro yapı güçlü olsa da, kısa vadede aşırı ısınma ve yorulma (Dağıtım) emareleri göze çarpıyor. Hacim tarafındaki 'Sağlıklı' durumu kurumsal kâr satışlarına işaret edebilir. Yeni alımlar yüksek riskli olup, 262.50 desteği ana stop hattı olarak izlenmelidir.",
+   "S": [
+    "bull",
+    "neutral",
+    "bull",
+    "warning",
+    "bull",
+    "bull",
+    "neutral",
+    "warning"
+   ],
+   "comp_color": "#16a34a",
+   "comp_decision": "POZİTİF",
+   "composite_score": 82,
+   "factor_scores": {
+    "momentum": 78,
+    "senaryo": 50,
+    "trend": 100,
+    "volume": 100,
+    "yapi": 50
+   },
+   "tp_atr": 16.428571,
+   "tp_curr_price": 319.0,
+   "tp_stop_20g": 262.5,
+   "tp_stop_5g": 271.0,
+   "tp_target_20g": 326.75,
+   "tp_target_atr": 351.857143
+  },
+  "an_scanner_strength": [],
+  "an_scanner_tiers": [],
+  "an_stp": {
+   "data": {
+    "Fark": 7.887152,
+    "Fiyat": 319.0,
+    "Gun": 2,
+    "Hacim": 52809138.748024,
+    "STP": 295.679322,
+    "Sembol": "GLDN.IS"
+   },
+   "type": "trend_up"
+  },
+  "an_synthetic_sentiment": {
+   "__df__": true,
+   "cols": [
+    "Date",
+    "MF_Smooth",
+    "STP",
+    "Price",
+    "Volume",
+    "Vol_Avg20",
+    "Date_Str",
+    "RVOL"
+   ],
+   "last_row": {
+    "Date": "2026-07-03 00:00:00",
+    "Date_Str": "03 Jul",
+    "MF_Smooth": 20.433084,
+    "Price": 319.0,
+    "RVOL": 1.509607,
+    "STP": 295.681859,
+    "Vol_Avg20": 34982052.417839,
+    "Volume": 52809138.748024
+   },
+   "shape": [
+    30,
+    8
+   ]
+  },
+  "an_weekly_frame": {
+   "ai_data": "- uzun vade: yatay/kararsiz, 52H bandında %78, 1y hacim merkezi (POC) 113.00 → fiyat üstünde\n- Dow yapısı: birincil yükseli̇ş; trend iptal seviyesi 262.50\n- bölge: premium (pahalı yarı); üst likidite %21 yukarı / alt likidite %72 aşağı\n- günlük×haftalık: kismi̇ — biri nötr\n- son hafta mumu: yeşil, gövde %63, RVol 1.0x, haftalık RSI 68\n",
+   "align": [
+    "KISMİ — biri nötr",
+    "Bir zaman dilimi net yön verirken diğeri kararsız — geçiş ortamı, acele etme.",
+    "#94a3b8"
+   ],
+   "candle": [
+    "Güçlü yeşil mum",
+    "Son haftalık mum: güçlü yeşil mum (gövde %63). Haftalık RSI 68. Son 8 hafta: 4 yeşil / 4 kırmızı, net %-2.1. Hacim ortalama civarı (RVol 1.0x).",
+    "#10b981"
+   ],
+   "dow": [
+    "Birincil YÜKSELİŞ",
+    "Dow teorisi: yükselen tepe + yükselen dip → birincil trend yukarı. Düzeltmeler alım fırsatı sayılır. Trend iptal seviyesi: 262.50 (haftalık kapanış bu seviyenin altında → yükselen yapı bozulur).",
+    "#10b981"
+   ],
+   "n_weeks": 55,
+   "pos": [
+    "Uzun vade YATAY/KARARSIZ",
+    "Fiyat ile 50-haftalık ortalama net yön vermiyor — denge bölgesi. 52-hafta bandında %78. 1y hacim merkezi (POC) 113.00 — fiyat %182 üstünde, yani yıllık maliyetlenmenin üstünde.",
+    "#f59e0b"
+   ],
+   "pos52": 77.566795,
+   "structure": [
+    "Bant içinde",
+    "Fiyat son salınım tepe/dibi arasında — yapı korunuyor, kırılım yok. Denge çizgisi (EQ %50): 236.97 → fiyat premium (pahalı yarı). Üst likidite (52H zirve) %21 yukarıda, alt likidite (52H dip) %72 aşağıda.",
+    "#94a3b8"
+   ],
+   "wk_rsi": 67.771842
+  },
+  "anchored_vwap_52h_top": {
+   "__series__": true,
+   "len": 24,
+   "tail5": [
+    304.618357,
+    303.877307,
+    302.940155,
+    302.414339,
+    303.225363
+   ]
+  },
+  "breakout_state": [
+   1,
+   0.66,
+   1.5
+  ],
+  "classic_candles": [],
+  "compute_cmf_20g": 0.063347,
+  "compute_cmf_5g": 0.273429,
+  "compute_mfi_14": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    63.994172,
+    67.755748,
+    65.841754,
+    75.423743,
+    74.378691
+   ]
+  },
+  "compute_mfi_5": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    43.79414,
+    48.055083,
+    49.579808,
+    58.174125,
+    78.639931
+   ]
+  },
+  "darvas_box": {
+   "box_age": 9,
+   "box_bottom": 271.0,
+   "box_top": 314.25,
+   "breakout_class": "A",
+   "quality": 55,
+   "status": "breakout",
+   "vol_ratio": 0.82
+  },
+  "er_build_context": {
+   "above_sma20": true,
+   "above_sma50": true,
+   "atr_contracting": false,
+   "bb_squeeze": true,
+   "bb_squeeze_days": 3,
+   "bearish_div": true,
+   "distribution_count_5d": 0,
+   "distribution_day": "<bool> False",
+   "double_bottom": false,
+   "fall_stopped": true,
+   "flag_pattern": false,
+   "index_falling": true,
+   "lateral_10": false,
+   "lateral_20": false,
+   "medium_bull_div": false,
+   "pocket_pivot": "<bool> True",
+   "pos_60": 0.660046,
+   "pos_60_lower_30": false,
+   "pos_60_lower_50": false,
+   "pos_60_mid": true,
+   "pos_60_upper_80": false,
+   "pullback_3_8": false,
+   "pullback_to_sma20": false,
+   "pullback_to_sma50": false,
+   "recent_fall_15": true,
+   "recent_fall_25": false,
+   "rs_20d_pct": -4.653877,
+   "rs_accelerating": false,
+   "rs_crossover": true,
+   "rs_healthy_pullback": false,
+   "rs_negative_60": false,
+   "rs_new_high": true,
+   "rs_persistent_positive": false,
+   "rs_turning": true,
+   "rsi_25_35": false,
+   "rsi_30_45": false,
+   "rsi_30_50": false,
+   "rsi_35_50": false,
+   "rsi_40_55": false,
+   "rsi_42_58": false,
+   "rsi_45_55": false,
+   "rsi_45_60": false,
+   "rsi_45_65": true,
+   "rsi_50_60": false,
+   "rsi_50_65": true,
+   "rsi_now": 61.267606,
+   "sma50_rising": true,
+   "strong_bull_div": true,
+   "triangle": false,
+   "updown_ratio_bullish": false,
+   "vol_dried": false,
+   "vol_rising_slow": "<bool> False",
+   "weak_bull_div": false
+  },
+  "er_evaluate": {
+   "confirmations": [],
+   "context": {
+    "above_sma20": true,
+    "above_sma50": true,
+    "atr_contracting": false,
+    "bb_squeeze": true,
+    "bb_squeeze_days": 3,
+    "bearish_div": true,
+    "distribution_count_5d": 0,
+    "distribution_day": "<bool> False",
+    "double_bottom": false,
+    "fall_stopped": true,
+    "flag_pattern": false,
+    "index_falling": true,
+    "lateral_10": false,
+    "lateral_20": false,
+    "medium_bull_div": false,
+    "pocket_pivot": "<bool> True",
+    "pos_60": 0.660046,
+    "pos_60_lower_30": false,
+    "pos_60_lower_50": false,
+    "pos_60_mid": true,
+    "pos_60_upper_80": false,
+    "pullback_3_8": false,
+    "pullback_to_sma20": false,
+    "pullback_to_sma50": false,
+    "recent_fall_15": true,
+    "recent_fall_25": false,
+    "rs_20d_pct": -4.653877,
+    "rs_accelerating": false,
+    "rs_crossover": true,
+    "rs_healthy_pullback": false,
+    "rs_negative_60": false,
+    "rs_new_high": true,
+    "rs_persistent_positive": false,
+    "rs_turning": true,
+    "rsi_25_35": false,
+    "rsi_30_45": false,
+    "rsi_30_50": false,
+    "rsi_35_50": false,
+    "rsi_40_55": false,
+    "rsi_42_58": false,
+    "rsi_45_55": false,
+    "rsi_45_60": false,
+    "rsi_45_65": true,
+    "rsi_50_60": false,
+    "rsi_50_65": true,
+    "rsi_now": 61.267606,
+    "sma50_rising": true,
+    "strong_bull_div": true,
+    "triangle": false,
+    "updown_ratio_bullish": false,
+    "vol_dried": false,
+    "vol_rising_slow": "<bool> False",
+    "weak_bull_div": false
+   },
+   "deepening": {},
+   "matched_count": 0,
+   "overall_quality": 0,
+   "primary": null,
+   "red_flag_count": 0,
+   "red_flags": [],
+   "verdict": "Anlamlı senaryo yok"
+  },
+  "er_kisa_aciklama_probe": {
+   "A1": "Hisse uzun süredir düşüşte ama son günlerde satıcı baskısı azaldı.",
+   "B8": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı.",
+   "C2": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı.",
+   "D1": "Bugün hacimli bir alım günü oldu ama hisse 50 günlük ortalama altında ve diğer kriterler desteklemiyor."
+  },
+  "fib_levels": {
+   "-0.236 (Kırılım Hedefi)": 453.1398,
+   "-0.618 (Hedef)": 562.2199,
+   "0 (Dip)": 100.2,
+   "0.236": 167.5898,
+   "0.382": 209.2801,
+   "0.5 (Orta)": 242.975,
+   "0.618 (Golden - Satış)": 276.6699,
+   "1 (Tepe)": 385.75
+  },
+  "force_index_dual": {
+   "divergence": null,
+   "fi_long": 258762913.504784,
+   "fi_long_norm": 1.38,
+   "fi_short": 864923328.610806,
+   "fi_short_norm": 4.6,
+   "state": "strong_pos"
+  },
+  "full_volume_profile": {
+   "poc": 293.01875,
+   "vah": 305.86875,
+   "val": 280.16875
+  },
+  "harmonic_confluence": null,
+  "harmonic_patterns": null,
+  "harmonik_52h_strength": [
+   "🟢 GÜÇLÜ",
+   0,
+   77.6
+  ],
+  "harsi": {
+   "change": "<bool> True",
+   "color": "#16a34a",
+   "ha_close": 54.92296,
+   "ha_open": 48.578314,
+   "is_green": "<bool> True",
+   "status": "BOĞA MOMENTUMU"
+  },
+  "ict_deep": {
+   "bias": "bullish",
+   "bottom_line": "Trend yukarı (Bullish) ancak fiyat pahalılık (Premium) bölgesinde. 326.75 ana hedefine doğru ivme sürse de, bu bölgelerde kurumsal kâr satışları (Realizasyon) gelebileceği unutulmamalı. son 20 günün en yakın swing dip seviyesi (iptal noktası) 304.75 kırılırsa trend bozulur.",
+   "curr_price": 319.0,
+   "desc": "İdeal bir setup (Entry) bekleniyor. Mevcut yön mıknatısı takip ediliyor.",
+   "displacement": "🔥 Güçlü Displacement (Hacim Onaylı)",
+   "entry": 0.0,
+   "eqh_eql_txt": "Yok",
+   "fvg_age": 0,
+   "fvg_high_num": 0.0,
+   "fvg_low_num": 0.0,
+   "fvg_txt": "Yok",
+   "last_sh": 314.25,
+   "last_sl": 262.5,
+   "mean_threshold": 283.125,
+   "model_checks": [
+    [
+     "Bias Net",
+     true
+    ],
+    [
+     "Doğru Bölge",
+     false
+    ],
+    [
+     "OB Aktif",
+     true
+    ],
+    [
+     "FVG Açık",
+     false
+    ],
+    [
+     "Displacement",
+     true
+    ]
+   ],
+   "model_score": 3,
+   "ob_age": 15,
+   "ob_high_num": 300.75,
+   "ob_low_num": 265.5,
+   "ob_txt": "265.50 - 300.75 (Talep Bölgesi) [🏦 Kurumsal Hacim | ⚠️ Yıpranmış OB]",
+   "rr": 0.0,
+   "setup_type": "BEKLE",
+   "status": "OK",
+   "stop": 0.0,
+   "struct_age": 9,
+   "structural_target": 361.0,
+   "structure": "BOS (Yükseliş Kırılımı) 🐂 | Güçlü Düşüş Zinciri [⏳ onay bekleniyor (1. gün)]",
+   "sweep_txt": "Yok",
+   "target": 326.75,
+   "zone": "PREMIUM (Pahalı)"
+  },
+  "lazybear_breakout": [
+   "<bool> True",
+   "<bool> True"
+  ],
+  "lazybear_squeeze": true,
+  "liquidity_manip": {
+   "adv_mn": 10280.0,
+   "manip": "yok",
+   "tier": "yüksek"
+  },
+  "market_regime": {
+   "bull_bias": true,
+   "color": "#10b981",
+   "confidence": 0.7,
+   "desc": "Fiyat yapısal olarak yükseliş fazında: SMA üzeri, OBV artıyor, eğim pozitif.",
+   "icon": "🚀",
+   "label": "Yükseliş Fazı",
+   "phase": 2
+  },
+  "master_score": [
+   71,
+   [
+    "🚨 Köpük Riski: Fiyat SMA200'e göre %77 şişkin (+4.7 Puan)",
+    "✅ Kısa Vadeli İvme: Fiyat SMA50 üzerinde (+18.8 Puan)",
+    "✅ Net Para Girişi: Kurumsal duyarlılık pozitif (+21.2 Puan)",
+    "✅ RSI Güçlü: Alım iştahı yüksek (+14.1 Puan)",
+    "✅ Formasyon: Radar-2 Setup Onaylandı (+12.6 Puan)"
+   ],
+   [],
+   {
+    "ict": {
+     "contribution": 0.0,
+     "score": 100,
+     "weight": 0.0
+    },
+    "momentum": {
+     "contribution": 35.3,
+     "score": 100,
+     "weight": 0.352941
+    },
+    "radar2": {
+     "contribution": 12.6,
+     "score": 71,
+     "weight": 0.176471
+    },
+    "trend": {
+     "contribution": 23.5,
+     "score": 50,
+     "weight": 0.470588
+    }
+   }
+  ],
+  "minervini_sepa": null,
+  "multi_tf_pocs": {
+   "confluence": false,
+   "confluence_mid": null,
+   "dist_from_price_pct": {},
+   "poc_20": 293.01875,
+   "poc_250": 112.995833,
+   "poc_60": 295.429,
+   "spread_pct": 78.024735
+  },
+  "naked_poc": [
+   293.01875,
+   334.65625,
+   199.42
+  ],
+  "pa_dna": {
+   "candle": {
+    "desc": " | 📅 Haftalık: Bullish Engulfing (Güçlü)",
+    "title": "Formasyon Tespiti"
+   },
+   "div": {
+    "desc": "RSI ve Fiyat paralel.",
+    "title": "Uyumlu",
+    "type": "neutral"
+   },
+   "loc": {
+    "desc": "Fiyat konsolidasyon içinde.",
+    "title": "Denge Bölgesi"
+   },
+   "obv": {
+    "color": "#15803d",
+    "desc": "OBV her iki pencerede de ortalamasının üzerinde.",
+    "title": "✅ SAĞLIKLI TREND (Hacim Onaylı)"
+   },
+   "obv_direction": 1,
+   "rs": {
+    "alpha": 5.973241
+   },
+   "rsi_val": 61.267606,
+   "sfp": {
+    "desc": "Tepe temizlendi ama tutunamadı.",
+    "title": "⚠️ Bearish SFP (Boğa Tuzağı)"
+   },
+   "sma50_val": 303.05,
+   "smart_volume": {
+    "climax": "Yok",
+    "cum_delta_5": 45048293.152828,
+    "cum_delta_pct": 27.3,
+    "delta": 19399275.458458,
+    "delta_yuzde": 36.734694,
+    "desc": "Büyük oyuncuların yoğun işlem yaptığı POC alanının üstüne çıkıldı ve son 5 günde alım hacmi bunu destekliyor. Trend güçlü görünüyor.",
+    "dort_soru": null,
+    "naked_poc_txt": "334.66 (fiyattan %4.9 yukarıda)",
+    "poc": 293.01875,
+    "rvol": 1.5,
+    "stopping": "Yok",
+    "title": "🚀 POC ALANI (280–306) ÜSTÜNDE — Güçlü Kırılım",
+    "va_pos": "ÜSTÜNDE",
+    "vah": 305.86875,
+    "val": 280.16875
+   },
+   "sq": {
+    "desc": "Oynaklık normal seviyede.",
+    "title": "Normal"
+   },
+   "vol": {
+    "desc": "Fiyat hareketi hacimle destekleniyor.",
+    "title": "🔋 Trend Destekli"
+   },
+   "vwap": {
+    "diff": 8.794862,
+    "val": 293.212377
+   }
+  },
+  "pa_with_context": [
+   "NÖTR",
+   ""
+  ],
+  "pipe_chart_patterns": {
+   "__df__": true,
+   "cols": [],
+   "last_row": {},
+   "shape": [
+    0,
+    0
+   ]
+  },
+  "pipe_golden_agent": {
+   "formations": {
+    "__df__": true,
+    "cols": [],
+    "last_row": {},
+    "shape": [
+     0,
+     0
+    ]
+   },
+   "hazirlik": {
+    "__df__": true,
+    "cols": [],
+    "last_row": {},
+    "shape": [
+     0,
+     0
+    ]
+   }
+  },
+  "pipe_signal_features": {
+   "f_52h_pos": 77.6,
+   "f_adv_tl": 10280.0,
+   "f_at_vwap_minus_2sigma": 0,
+   "f_at_y_open": 0,
+   "f_avwap_test_zone": 0,
+   "f_beta_xu100": 1.45,
+   "f_breaker_block_active": 0,
+   "f_breakout_state": null,
+   "f_buyback_aktif": null,
+   "f_buyback_dip_aliyor": null,
+   "f_cmf_dual": "strong_pos",
+   "f_cum_delta_dual": "strong_pos",
+   "f_dd_zirveden": -12.2,
+   "f_force_index_divergence": null,
+   "f_force_index_dual": "strong_pos",
+   "f_hv_oran": 1.0,
+   "f_ict_model": 3.0,
+   "f_insider_first_buy": null,
+   "f_kurumsal_anchor": null,
+   "f_liquidity_tier": "yüksek",
+   "f_manip_risk": "yok",
+   "f_master_score": 71.0,
+   "f_mfi_dual": "neutral",
+   "f_mom_12_1": 252.33,
+   "f_ms_ict": 100.0,
+   "f_ms_momentum": 100.0,
+   "f_ms_radar2": 71.0,
+   "f_ms_trend": 50.0,
+   "f_near_ifvg": 1,
+   "f_omi_sigma": 0.47,
+   "f_poc_confluence": 0,
+   "f_poc_magnet": 0,
+   "f_rel_obv_divergence": 1,
+   "f_rel_obv_state": "outperform_strong",
+   "f_rsi": 61.3,
+   "f_rsi_dual": "neutral",
+   "f_rsi_mfi_bouquet": 0,
+   "f_sentiment_score": 86.0,
+   "f_sfp_bear": 1,
+   "f_sfp_bull": 0,
+   "f_sharpe_mom": 3.02,
+   "f_skew_60g": -0.03,
+   "f_smart_money_score": 0.0,
+   "f_smart_structural_score": 54.0,
+   "f_smart_tactical_score": 58.0,
+   "f_spike_dominance": 24,
+   "f_squeeze_days": 3,
+   "f_tefas_konsensus_alim": null,
+   "f_tefas_konsensus_satim": null,
+   "f_tefas_yeni_giris": null,
+   "f_threshold_asildi": null,
+   "f_trend_persist": 95.8,
+   "f_udvr_20g": 1.44,
+   "f_udvr_climax": null,
+   "f_udvr_state": "buyer",
+   "f_vol_60g": 78.84,
+   "f_vp_shape": "akumulasyon",
+   "f_yabanci_anchor": null,
+   "f_yabanci_cikis": null,
+   "f_yabanci_giris": null,
+   "f_yabanci_streak": null
+  },
+  "price_chart_struct": {
+   "n_annotations": 39,
+   "n_shapes": 34,
+   "smc": {
+    "avwap": {
+     "high": [
+      301.256787,
+      5.889731
+     ],
+     "low": [
+      197.597627,
+      61.439186
+     ]
+    },
+    "bos": [
+     "BOS",
+     314.25,
+     1.511535
+    ],
+    "fvg": [
+     "bull_inverted",
+     321.375,
+     -0.739012
+    ],
+    "fvg_state": "inverted",
+    "poc": [
+     295.429,
+     7.978567
+    ],
+    "poc_mtf": {
+     "confluence": false,
+     "confluence_mid": null,
+     "dist": {
+      "poc_20": 8.866753,
+      "poc_60": 7.978567
+     },
+     "poc_20": 293.01875,
+     "poc_250": null,
+     "poc_60": 295.429,
+     "spread_pct": 0.819189
+    },
+    "vwap": [
+     181.299101,
+     75.952334
+    ],
+    "zone": [
+     "EQ",
+     "#a78bfa",
+     "➖ denge"
+    ]
+   },
+   "traces": [
+    [
+     "candlestick",
+     "Fiyat",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 50: 303.05",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 100: 247.38",
+     90
+    ],
+    [
+     "scatter",
+     "EMA 144: 228.86",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 200: 179.85",
+     90
+    ],
+    [
+     "bar",
+     "Hacim",
+     90
+    ],
+    [
+     "scatter",
+     "+2σ",
+     90
+    ],
+    [
+     "scatter",
+     "-2σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP +1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP -1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP(Y): 181.30",
+     90
+    ],
+    [
+     "scatter",
+     "aVWAP 52H ZİRVE: 301.26",
+     23
+    ],
+    [
+     "scatter",
+     "⚓ 52H ZİRVE",
+     1
+    ],
+    [
+     "scatter",
+     "aVWAP 52H DİP: 197.60",
+     90
+    ]
+   ]
+  },
+  "relative_obv_state": {
+   "bench_slope_pct": -21.29,
+   "diff_pct": 44.0,
+   "state": "outperform_strong",
+   "stock_slope_pct": 22.71
+  },
+  "risk_profile": {
+   "beta_xu100": 1.45,
+   "dd_max_1y": -27.0,
+   "dd_zirveden": -12.2,
+   "dipten_recovery": 295.1,
+   "hv_oran": 1.0,
+   "skew_60g": -0.03
+  },
+  "sc_accumulation": null,
+  "sc_guclu_donus": null,
+  "sc_ict_setup": null,
+  "sc_nadir_firsat": null,
+  "sc_prelaunch_bos": null,
+  "sc_radar1": {
+   "Detaylar": {
+    "ADX Durumu": [
+     false,
+     6.08679
+    ],
+    "Breakout": false,
+    "Hacim": true,
+    "MACD": true,
+    "Mansfield RS": [
+     true,
+     0.65129
+    ],
+    "RSI Güçlü": [
+     false,
+     61.267606
+    ],
+    "Squeeze": false,
+    "Trend": false
+   },
+   "Fiyat": "319.00",
+   "Nedenler": "🟢 MACD | 🔊 Hacim | 📈 RS Lider",
+   "Sembol": "GLDN.IS",
+   "Skor": 3
+  },
+  "sc_radar2": null,
+  "sentiment_score": {
+   "bar": "【█████████████████░░░】",
+   "is_index": false,
+   "mom": "15/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(RSI>50 + RSI İvme + MACD Al)</span>",
+   "raw_atr": 0,
+   "raw_macd": 0.846881,
+   "raw_obv": 1473070906.251827,
+   "raw_rsi": 61.267606,
+   "rs": "15/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Mansfield+ + RS İvme + Alpha (Lider))</span>",
+   "str": "5/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Gelişen HH+HL Yapısı)</span>",
+   "total": 86,
+   "tr": "16/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Ana Trend+ + Kısa Vade+)</span>",
+   "vol": "20/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Hacim Artışı + OBV>EMA + OBV Eğim+)</span>",
+   "vola": "15/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Alım Hacmi > Satım + Birikim Ağırlıklı (10G))</span>"
+  },
+  "smart_money_score": {
+   "_er_data": {
+    "confirmations": [],
+    "context": {
+     "above_sma20": true,
+     "above_sma50": true,
+     "atr_contracting": false,
+     "bb_squeeze": true,
+     "bb_squeeze_days": 3,
+     "bearish_div": true,
+     "distribution_count_5d": 0,
+     "distribution_day": "<bool> False",
+     "double_bottom": false,
+     "fall_stopped": true,
+     "flag_pattern": false,
+     "index_falling": true,
+     "lateral_10": false,
+     "lateral_20": false,
+     "medium_bull_div": false,
+     "pocket_pivot": "<bool> True",
+     "pos_60": 0.660046,
+     "pos_60_lower_30": false,
+     "pos_60_lower_50": false,
+     "pos_60_mid": true,
+     "pos_60_upper_80": false,
+     "pullback_3_8": false,
+     "pullback_to_sma20": false,
+     "pullback_to_sma50": false,
+     "recent_fall_15": true,
+     "recent_fall_25": false,
+     "rs_20d_pct": -4.653877,
+     "rs_accelerating": false,
+     "rs_crossover": true,
+     "rs_healthy_pullback": false,
+     "rs_negative_60": false,
+     "rs_new_high": true,
+     "rs_persistent_positive": false,
+     "rs_turning": true,
+     "rsi_25_35": false,
+     "rsi_30_45": false,
+     "rsi_30_50": false,
+     "rsi_35_50": false,
+     "rsi_40_55": false,
+     "rsi_42_58": false,
+     "rsi_45_55": false,
+     "rsi_45_60": false,
+     "rsi_45_65": true,
+     "rsi_50_60": false,
+     "rsi_50_65": true,
+     "rsi_now": 61.267606,
+     "sma50_rising": true,
+     "strong_bull_div": true,
+     "triangle": false,
+     "updown_ratio_bullish": false,
+     "vol_dried": false,
+     "vol_rising_slow": "<bool> False",
+     "weak_bull_div": false
+    },
+    "deepening": {},
+    "matched_count": 0,
+    "overall_quality": 0,
+    "primary": null,
+    "red_flag_count": 0,
+    "red_flags": [],
+    "verdict": "Anlamlı senaryo yok"
+   },
+   "criteria": {},
+   "market_note": "BIST puanı: 80/100 — Endeks de destekliyor",
+   "market_score": 80,
+   "pre_launch": false,
+   "score": 0,
+   "score5": null,
+   "score_trend": "",
+   "status": "Senaryo Yok",
+   "status_color": "#94a3b8",
+   "summary_text": "Belirgin Erken Radar senaryosu yok"
+  },
+  "smart_sr_levels": [
+   312.5
+  ],
+  "smc_elements": {
+   "bos_lines": [
+    [
+     265,
+     314.25,
+     "BOS"
+    ]
+   ],
+   "eqh": [
+    [
+     227,
+     230,
+     346.25
+    ]
+   ],
+   "eql": [
+    [
+     229,
+     232,
+     309.125
+    ],
+    [
+     229,
+     241,
+     310.75
+    ]
+   ],
+   "fvg_bear": [
+    [
+     236,
+     312.75,
+     340.5,
+     "inverted"
+    ],
+    [
+     243,
+     328.5,
+     355.0,
+     "fresh"
+    ],
+    [
+     244,
+     320.0,
+     322.75,
+     "inverted"
+    ],
+    [
+     246,
+     299.75,
+     304.75,
+     "inverted"
+    ],
+    [
+     259,
+     290.5,
+     297.25,
+     "inverted"
+    ],
+    [
+     260,
+     281.75,
+     287.75,
+     "inverted"
+    ]
+   ],
+   "fvg_bull": [
+    [
+     221,
+     284.0,
+     288.0,
+     "inverted"
+    ],
+    [
+     223,
+     300.75,
+     305.25,
+     "inverted"
+    ],
+    [
+     225,
+     323.0,
+     331.75,
+     "inverted"
+    ],
+    [
+     240,
+     312.75,
+     331.75,
+     "inverted"
+    ],
+    [
+     241,
+     335.75,
+     355.0,
+     "inverted"
+    ],
+    [
+     263,
+     283.75,
+     302.25,
+     "fresh"
+    ]
+   ],
+   "ob_bear": [
+    [
+     256,
+     308.411,
+     311.5,
+     311.5,
+     308.411,
+     "breaker"
+    ],
+    [
+     249,
+     286.0,
+     295.0,
+     295.0,
+     286.0,
+     "breaker"
+    ],
+    [
+     235,
+     313.5,
+     345.0,
+     345.0,
+     313.5,
+     "breaker"
+    ]
+   ],
+   "ob_bull": [
+    [
+     263,
+     278.712,
+     277.0,
+     278.712,
+     277.0,
+     "breaker"
+    ],
+    [
+     255,
+     297.138,
+     294.75,
+     297.138,
+     294.75,
+     "breaker"
+    ],
+    [
+     250,
+     300.75,
+     265.5,
+     300.75,
+     265.5,
+     "breaker"
+    ]
+   ],
+   "swing_high": 385.75,
+   "swing_low": 262.5
+  },
+  "spike_dom_probe": [
+   0.625,
+   0.0,
+   0.7,
+   0.0
+  ],
+  "split_scores": {
+   "structural_score": 59.0,
+   "structural_signals_neg": [],
+   "structural_signals_pos": [
+    "POC mıknatıs aktif",
+    "Multi-TF POC çakışması"
+   ],
+   "tactical_score": 57.0,
+   "tactical_signals_neg": [],
+   "tactical_signals_pos": [
+    "RSI/MFI çift ekstrem (bilgi — ölçüm bekliyor, skorsuz)",
+    "VWAP -2σ bölgesi (institutional buy zone)"
+   ],
+   "verdict": "Uzun ve kısa pencere nötr"
+  },
+  "supertrend": [
+   328.972204,
+   -1
+  ],
+  "supply_demand_zones": {
+   "Age": 22,
+   "Bottom": 358.5,
+   "Status": "Taze / Beklemede",
+   "Top": 385.75,
+   "Type": "RBD (Rally-Base-Drop) / Arz"
+  },
+  "tech_card_data": {
+   "atr": 16.428571,
+   "close_last": 319.0,
+   "ema144": 228.862887,
+   "risk_pct": 10.300045,
+   "sma100": 247.379,
+   "sma200": 179.849,
+   "sma50": 303.05,
+   "stop_level": 286.142857
+  },
+  "udvr_20g": {
+   "climax": null,
+   "down_vol": 286938888.218662,
+   "ratio": 1.44,
+   "state": "buyer",
+   "up_vol": 412702160.138119
+  },
+  "volume_delta": {
+   "__df__": true,
+   "cols": [
+    "Close",
+    "High",
+    "Low",
+    "Open",
+    "Volume",
+    "Range",
+    "Buying_Pressure",
+    "Selling_Pressure",
+    "Buying_Volume",
+    "Selling_Volume",
+    "Volume_Delta"
+   ],
+   "last_row": {
+    "Buying_Pressure": 0.683673,
+    "Buying_Volume": 36104207.103241,
+    "Close": 319.0,
+    "High": 326.75,
+    "Low": 302.25,
+    "Open": 303.75,
+    "Range": 24.5,
+    "Selling_Pressure": 0.316327,
+    "Selling_Volume": 16704931.644783,
+    "Volume": 52809138.748024,
+    "Volume_Delta": 19399275.458458
+   },
+   "shape": [
+    266,
+    11
+   ]
+  },
+  "volume_profile_poc": 293.01875,
+  "z_score_details": {
+   "atr_multiple": 1.55,
+   "composite": 1.058,
+   "composite_raw": 1.058,
+   "filtered": false,
+   "trend_dir": "→ Nötr",
+   "trend_pct": 0.037,
+   "z20": 1.92,
+   "z252": 0.93,
+   "z60": -0.3
+  },
+  "z_score_live": 1.058
+ },
+ "EREGL.IS": {
+  "an_advanced_levels": {
+   "curr_price": 40.099998,
+   "fibs": {
+    "-0.236 (Kırılım Hedefi)": 47.524766,
+    "-0.618 (Hedef)": 54.63264,
+    "0 (Dip)": 24.526514,
+    "0.236": 28.917766,
+    "0.382": 31.634388,
+    "0.5 (Orta)": 33.830014,
+    "0.618 (Golden - Satış)": 36.02564,
+    "1 (Tepe)": 43.133514
+   },
+   "nearest_res": [
+    "1 (Tepe)",
+    43.133514
+   ],
+   "nearest_sup": [
+    "0.618 (Golden - Satış)",
+    36.02564
+   ],
+   "st_dir": 1,
+   "st_val": 38.300351
+  },
+  "an_breakout": null,
+  "an_er_prompt_text": "📊 ER Kurulum Kalitesi: 65/100 — Toplam 1 senaryo eşleşti\n\n🎯 ANA SENARYO [C2] Ortalama Testi (★★★★ — TREND DEVAMI)\n   → Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı. Bu ortalamalar genellikle alıcıların devreye girdiği yerler — trend muhtemelen devam eder.",
+  "an_ict_reversal": "NÖTR",
+  "an_mtf_alignment": {
+   "bear_cnt": 0,
+   "bull_cnt": 5,
+   "diagnosis_text": "Vadelerin çoğunluğu yukarıyı destekliyor. Momentum alıcı lehine seyrediyor.",
+   "dominant": "YUKARI",
+   "matrix": {
+    "Aylık": {
+     "hacim": 0,
+     "momentum": 1,
+     "trend": 1
+    },
+    "Günlük": {
+     "hacim": 0,
+     "momentum": 0,
+     "trend": 1
+    },
+    "Haftalık": {
+     "hacim": 0,
+     "momentum": 1,
+     "trend": 1
+    }
+   },
+   "overall_pct": 56,
+   "status_color": "#22c55e",
+   "status_pill": "POZİTİF UYUM (%56 Boğa)",
+   "tf_scores": {
+    "Aylık": {
+     "bear": 0,
+     "bull": 2,
+     "dominant": "YUKARI",
+     "pct": 67
+    },
+    "Günlük": {
+     "bear": 0,
+     "bull": 1,
+     "dominant": "YUKARI",
+     "pct": 33
+    },
+    "Haftalık": {
+     "bear": 0,
+     "bull": 2,
+     "dominant": "YUKARI",
+     "pct": 67
+    }
+   },
+   "timeframes": [
+    "Günlük",
+    "Haftalık",
+    "Aylık"
+   ],
+   "total": 9
+  },
+  "an_obv_divergence": [
+   "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)",
+   "#f59e0b",
+   "14 günlük OBV trendi hâlâ yukarı ama 5 günlük eğim aşağıya döndü. Kısa vadede para çıkışı başlamış, orta vade bozulmadan önce erken uyarı. | Para Akışı: -0.081 ✗ satış baskısı"
+  ],
+  "an_risk_profile": {
+   "level": "düşük",
+   "rows": [
+    [
+     "Oynaklık",
+     "Endeksle uyumlu (1.1×)",
+     "mid"
+    ],
+    [
+     "Volatilite trendi",
+     "Azalıyor; sakinleşiyor",
+     "low"
+    ],
+    [
+     "Zirveden uzaklık",
+     "Zirvesine yakın (%5 altında)",
+     "low"
+    ],
+    [
+     "Sürpriz yönü",
+     "Dengeli; ani çakılma da sıçrama da eğilimi yok",
+     "mid"
+    ],
+    [
+     "Likidite",
+     "Yüksek; rahat girip çıkarsın",
+     "low"
+    ]
+   ]
+  },
+  "an_roadmap": {
+   "M1": "<b>Günlük Mum:</b> Kırmızı (Satış baskısı)<br><b>PA Sinyali:</b> SATICI: ⚠️ Düzeltme/Dönüş Bearish Engulfing 🐻 (Güven: 25/100)  | 📍 Güçlü arz bölgesinde oluştu<br><b>EMA Hizalaması:</b> <span style=\"color:#16a34a;font-weight:700;\">▲ Yukarı Hizalı</span><span style=\"color:#64748b;font-size:0.7em;\"> (15 gün)</span>",
+   "M2": "<b>Mevcut Formasyon:</b> Kitabi bir yapı görünmüyor.<br><b>Ana Yapı:</b> İtki (Trend)",
+   "M2_chart_data": null,
+   "M2_scan_price": null,
+   "M3": "<b>VSA Tespiti:</b> Standart Akış<br><b>Durum:</b> Hacim ve fiyat hareketi ortalamalarla uyumlu seyrediyor.",
+   "M4": "<div style='margin-bottom:3px;'><div style='background:rgba(74,222,128,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:100%;background:rgba(74,222,128,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Sıkışma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>8/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(74,222,128,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:88%;background:rgba(74,222,128,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Daralma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>7/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(74,222,128,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:88%;background:rgba(74,222,128,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Enerji</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>7.0/8</span></span></div></div>",
+   "M5": "<b>Absorption:</b> Belirgin bir kurumsal emilim yok.<br><b>Akış:</b> Standart / Pasif işlem hacmi.",
+   "M6": "<div style='background:rgba(100,116,139,0.12);border-radius:4px;height:18px;position:relative;overflow:hidden;margin-bottom:4px;'><div style='width:59%;background:rgba(22,163,74,0.78);height:100%;border-radius:4px 0 0 4px;position:absolute;left:0;top:0;'></div><div style='width:41%;background:rgba(248,113,113,0.75);height:100%;border-radius:0 4px 4px 0;position:absolute;right:0;top:0;'></div><span style='position:absolute;left:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐂 %59</span><span style='position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐻 %41</span></div><div style='font-size:0.65rem;line-height:1.3;'>Alıcılar hafif önde, trend desteği var.</div>",
+   "M7": "<b>Boğa Olması İçin:</b> 42.68 yukarı geçilmeli | <b>Sonraki Hedef:</b> 44.36<br><b>Ayı Olması İçin:</b> 37.86 aşağıya kırılmalı | <b>Sonraki Hedef:</b> 36.18",
+   "M8": "<b>Piyasa Sentezi:</b> Kusursuz bir yükseliş ivmesi! Fiyat 38.55 (SMA50) üzerinde güvenle taşınırken, 7.0/10'luk enerji skoru yeni bir patlamaya işaret ediyor. 42.68 kilit direnci hacimle aşıldığı an 'Fiyat Keşfi' (Price Discovery) fazı tetiklenecektir.",
+   "S": [
+    "bear",
+    "neutral",
+    "neutral",
+    "bull",
+    "neutral",
+    "warning",
+    "neutral",
+    "bull"
+   ],
+   "comp_color": "#16a34a",
+   "comp_decision": "POZİTİF",
+   "composite_score": 73,
+   "factor_scores": {
+    "momentum": 70,
+    "senaryo": 100,
+    "trend": 100,
+    "volume": 50,
+    "yapi": 35
+   },
+   "tp_atr": 1.12,
+   "tp_curr_price": 40.099998,
+   "tp_stop_20g": 37.86,
+   "tp_stop_5g": 39.66,
+   "tp_target_20g": 42.68,
+   "tp_target_atr": 42.339999
+  },
+  "an_scanner_strength": [],
+  "an_scanner_tiers": [],
+  "an_stp": {
+   "data": {
+    "Fark": -1.348013,
+    "Fiyat": 40.099998,
+    "Hacim": 99353754.861434,
+    "Hacim_Kat": 0.757112,
+    "STP": 40.647938,
+    "Sembol": "GLDN.IS"
+   },
+   "type": "cross_down"
+  },
+  "an_synthetic_sentiment": {
+   "__df__": true,
+   "cols": [
+    "Date",
+    "MF_Smooth",
+    "STP",
+    "Price",
+    "Volume",
+    "Vol_Avg20",
+    "Date_Str",
+    "RVOL"
+   ],
+   "last_row": {
+    "Date": "2026-07-03 00:00:00",
+    "Date_Str": "03 Jul",
+    "MF_Smooth": -5.900933,
+    "Price": 40.099998,
+    "RVOL": 0.757112,
+    "STP": 40.647797,
+    "Vol_Avg20": 131227204.929883,
+    "Volume": 99353754.861434
+   },
+   "shape": [
+    30,
+    8
+   ]
+  },
+  "an_weekly_frame": {
+   "ai_data": "- uzun vade: yatay/kararsiz, 52H bandında %85, 1y hacim merkezi (POC) 26.81 → fiyat üstünde\n- Dow yapısı: geçiş / yatay; trend iptal seviyesi 37.86\n- bölge: premium (pahalı yarı); üst likidite %8 yukarı / alt likidite %42 aşağı\n- günlük×haftalık: kismi̇ — biri nötr\n- son hafta mumu: kırmızı, gövde %52, RVol 0.9x, haftalık RSI 79\n",
+   "align": [
+    "KISMİ — biri nötr",
+    "Bir zaman dilimi net yön verirken diğeri kararsız — geçiş ortamı, acele etme.",
+    "#94a3b8"
+   ],
+   "candle": [
+    "Kırmızı — kararsız gövde",
+    "Son haftalık mum: kırmızı — kararsız gövde (gövde %52). Haftalık RSI 79. Son 8 hafta: 4 yeşil / 4 kırmızı, net %-1.5. Hacim ortalama civarı (RVol 0.9x).",
+    "#f59e0b"
+   ],
+   "dow": [
+    "Geçiş / Yatay",
+    "Dow teorisi: tepe-dip yapısı karışık → trend geçiş aşamasında, yön belirsiz.",
+    "#f59e0b"
+   ],
+   "n_weeks": 55,
+   "pos": [
+    "Uzun vade YATAY/KARARSIZ",
+    "Fiyat ile 50-haftalık ortalama net yön vermiyor — denge bölgesi. 52-hafta bandında %85. 1y hacim merkezi (POC) 26.81 — fiyat %50 üstünde, yani yıllık maliyetlenmenin üstünde.",
+    "#f59e0b"
+   ],
+   "pos52": 84.823485,
+   "structure": [
+    "Bant içinde",
+    "Fiyat son salınım tepe/dibi arasında — yapı korunuyor, kırılım yok. Denge çizgisi (EQ %50): 33.14 → fiyat premium (pahalı yarı). Üst likidite (52H zirve) %8 yukarıda, alt likidite (52H dip) %42 aşağıda.",
+    "#94a3b8"
+   ],
+   "wk_rsi": 78.912944
+  },
+  "anchored_vwap_52h_top": {
+   "__series__": true,
+   "len": 6,
+   "tail5": [
+    41.547544,
+    41.423979,
+    41.233016,
+    41.097228,
+    41.037664
+   ]
+  },
+  "breakout_state": [
+   0,
+   0.25,
+   0.74
+  ],
+  "classic_candles": [
+   {
+    "confidence": 85,
+    "context": "t-1 yeşil + bugün kırmızı + gövde kapsıyor | KONUM: ANLAMLI | LOKASYON: 52H %85 tepede + SMA200 +%34.0 stretched",
+    "name": "Bearish Engulfing",
+    "type": "bearish_reversal"
+   }
+  ],
+  "compute_cmf_20g": -0.081418,
+  "compute_cmf_5g": -0.317336,
+  "compute_mfi_14": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    78.103124,
+    74.17493,
+    68.158761,
+    69.008927,
+    62.375569
+   ]
+  },
+  "compute_mfi_5": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    73.37712,
+    65.280545,
+    62.391781,
+    65.098379,
+    44.678033
+   ]
+  },
+  "darvas_box": null,
+  "er_build_context": {
+   "above_sma20": true,
+   "above_sma50": true,
+   "atr_contracting": false,
+   "bb_squeeze": false,
+   "bb_squeeze_days": 0,
+   "bearish_div": false,
+   "distribution_count_5d": 0,
+   "distribution_day": "<bool> False",
+   "double_bottom": true,
+   "fall_stopped": true,
+   "flag_pattern": false,
+   "index_falling": true,
+   "lateral_10": false,
+   "lateral_20": false,
+   "medium_bull_div": true,
+   "pocket_pivot": false,
+   "pos_60": 0.782549,
+   "pos_60_lower_30": false,
+   "pos_60_lower_50": false,
+   "pos_60_mid": false,
+   "pos_60_upper_80": false,
+   "pullback_3_8": true,
+   "pullback_to_sma20": true,
+   "pullback_to_sma50": false,
+   "recent_fall_15": false,
+   "recent_fall_25": false,
+   "rs_20d_pct": -2.884387,
+   "rs_accelerating": false,
+   "rs_crossover": true,
+   "rs_healthy_pullback": false,
+   "rs_negative_60": false,
+   "rs_new_high": false,
+   "rs_persistent_positive": false,
+   "rs_turning": false,
+   "rsi_25_35": false,
+   "rsi_30_45": false,
+   "rsi_30_50": true,
+   "rsi_35_50": true,
+   "rsi_40_55": true,
+   "rsi_42_58": true,
+   "rsi_45_55": true,
+   "rsi_45_60": true,
+   "rsi_45_65": true,
+   "rsi_50_60": false,
+   "rsi_50_65": false,
+   "rsi_now": 49.333323,
+   "sma50_rising": true,
+   "strong_bull_div": false,
+   "triangle": false,
+   "updown_ratio_bullish": false,
+   "vol_dried": false,
+   "vol_rising_slow": "<bool> True",
+   "weak_bull_div": false
+  },
+  "er_evaluate": {
+   "confirmations": [],
+   "context": {
+    "above_sma20": true,
+    "above_sma50": true,
+    "atr_contracting": false,
+    "bb_squeeze": false,
+    "bb_squeeze_days": 0,
+    "bearish_div": false,
+    "distribution_count_5d": 0,
+    "distribution_day": "<bool> False",
+    "double_bottom": true,
+    "fall_stopped": true,
+    "flag_pattern": false,
+    "index_falling": true,
+    "lateral_10": false,
+    "lateral_20": false,
+    "medium_bull_div": true,
+    "pocket_pivot": false,
+    "pos_60": 0.782549,
+    "pos_60_lower_30": false,
+    "pos_60_lower_50": false,
+    "pos_60_mid": false,
+    "pos_60_upper_80": false,
+    "pullback_3_8": true,
+    "pullback_to_sma20": true,
+    "pullback_to_sma50": false,
+    "recent_fall_15": false,
+    "recent_fall_25": false,
+    "rs_20d_pct": -2.884387,
+    "rs_accelerating": false,
+    "rs_crossover": true,
+    "rs_healthy_pullback": false,
+    "rs_negative_60": false,
+    "rs_new_high": false,
+    "rs_persistent_positive": false,
+    "rs_turning": false,
+    "rsi_25_35": false,
+    "rsi_30_45": false,
+    "rsi_30_50": true,
+    "rsi_35_50": true,
+    "rsi_40_55": true,
+    "rsi_42_58": true,
+    "rsi_45_55": true,
+    "rsi_45_60": true,
+    "rsi_45_65": true,
+    "rsi_50_60": false,
+    "rsi_50_65": false,
+    "rsi_now": 49.333323,
+    "sma50_rising": true,
+    "strong_bull_div": false,
+    "triangle": false,
+    "updown_ratio_bullish": false,
+    "vol_dried": false,
+    "vol_rising_slow": "<bool> True",
+    "weak_bull_div": false
+   },
+   "deepening": {},
+   "matched_count": 1,
+   "overall_quality": 65,
+   "primary": {
+    "category": "C",
+    "description": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı. Bu ortalamalar genellikle alıcıların devreye girdiği yerler — trend muhtemelen devam eder.",
+    "id": "C2",
+    "name": "Ortalama Testi",
+    "stars": 4
+   },
+   "red_flag_count": 0,
+   "red_flags": [],
+   "verdict": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı. Bu ortalamalar genellikle alıcıların devreye girdiği yerler — trend muhtemelen devam eder."
+  },
+  "er_kisa_aciklama_probe": {
+   "A1": "Hisse uzun süredir düşüşte ama son günlerde satıcı baskısı azaldı.",
+   "B8": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı.",
+   "C2": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı.",
+   "D1": "Bugün hacimli bir alım günü oldu ama hisse 50 günlük ortalama altında ve diğer kriterler desteklemiyor."
+  },
+  "fib_levels": {
+   "-0.236 (Kırılım Hedefi)": 47.850734,
+   "-0.618 (Hedef)": 55.486235,
+   "0 (Dip)": 23.145292,
+   "0.236": 27.862512,
+   "0.382": 30.780793,
+   "0.5 (Orta)": 33.139403,
+   "0.618 (Golden - Satış)": 35.498013,
+   "1 (Tepe)": 43.133514
+  },
+  "force_index_dual": {
+   "divergence": "bearish",
+   "fi_long": 10570831.90946,
+   "fi_long_norm": 0.21,
+   "fi_short": -35415402.596968,
+   "fi_short_norm": -0.71,
+   "state": "neutral"
+  },
+  "full_volume_profile": {
+   "poc": 40.1495,
+   "vah": 41.1135,
+   "val": 39.1855
+  },
+  "harmonic_confluence": null,
+  "harmonic_patterns": null,
+  "harmonik_52h_strength": [
+   "🟢 GÜÇLÜ",
+   0,
+   84.8
+  ],
+  "harsi": {
+   "change": "<bool> False",
+   "color": "#f87171",
+   "ha_close": 54.935072,
+   "ha_open": 60.536821,
+   "is_green": "<bool> False",
+   "status": "AYI MOMENTUMU"
+  },
+  "ict_deep": {
+   "bias": "bearish_retrace",
+   "bottom_line": "Trend aşağı (Bearish) ve fiyat tam dağıtım (Premium) bölgesinde. Satış baskısı sürüyor; ilk durak olan 39.72 kırıldıktan sonra gözler ana geri çekilme bölgesi olan 37.86 seviyesine çevrilebilir. Dönüş için hemen üstündeki swing tepe 40.50 üzerinde kalıcılık şart.",
+   "curr_price": 40.099998,
+   "desc": "İdeal bir setup (Entry) bekleniyor. Mevcut yön mıknatısı takip ediliyor.",
+   "displacement": "🔥 Güçlü Displacement (Fiyat Hareketi)",
+   "entry": 0.0,
+   "eqh_eql_txt": "EQH (Eşit Tepeler): 40.84",
+   "fvg_age": 0,
+   "fvg_high_num": 0.0,
+   "fvg_low_num": 0.0,
+   "fvg_txt": "Yok",
+   "last_sh": 40.84,
+   "last_sl": 37.86,
+   "mean_threshold": 36.158355,
+   "model_checks": [
+    [
+     "Bias Net",
+     false
+    ],
+    [
+     "Doğru Bölge",
+     true
+    ],
+    [
+     "OB Aktif",
+     false
+    ],
+    [
+     "FVG Açık",
+     false
+    ],
+    [
+     "Displacement",
+     false
+    ]
+   ],
+   "model_score": 1,
+   "ob_age": 0,
+   "ob_high_num": 0.0,
+   "ob_low_num": 0.0,
+   "ob_txt": "Yok",
+   "rr": 0.0,
+   "setup_type": "BEKLE",
+   "status": "OK",
+   "stop": 0.0,
+   "struct_age": 17,
+   "structural_target": 37.86,
+   "structure": "🪤 Sahte Yukarı Kırılım (tuzak olabilir) | Internal Range | Dow: LH (Alçalan Tepe) / HL (Yükselen Dip)",
+   "sweep_txt": "🧹 BSL Sweep (Tepe Avı): 40.84",
+   "target": 39.72,
+   "zone": "PREMIUM (Pahalı)"
+  },
+  "lazybear_breakout": [
+   "<bool> False",
+   "<bool> False"
+  ],
+  "lazybear_squeeze": false,
+  "liquidity_manip": {
+   "adv_mn": 5268.3,
+   "manip": "yok",
+   "tier": "yüksek"
+  },
+  "market_regime": {
+   "bull_bias": true,
+   "color": "#10b981",
+   "confidence": 0.9,
+   "desc": "Fiyat yapısal olarak yükseliş fazında: SMA üzeri, OBV artıyor, eğim pozitif.",
+   "icon": "🚀",
+   "label": "Yükseliş Fazı",
+   "phase": 2
+  },
+  "master_score": [
+   69,
+   [
+    "⚠️ Trend Çok Primli: Ortalamadan %33 koptu (+9.4 Puan)",
+    "✅ Kısa Vadeli İvme: Fiyat SMA50 üzerinde (+18.8 Puan)",
+    "✅ Net Para Girişi: Kurumsal duyarlılık pozitif (+21.2 Puan)",
+    "⚖️ RSI Toparlanıyor: Aşırı satımdan çıkış (+7.1 Puan)",
+    "✅ Formasyon: Radar-2 Setup Onaylandı (+12.6 Puan)"
+   ],
+   [],
+   {
+    "ict": {
+     "contribution": 0.0,
+     "score": 0,
+     "weight": 0.0
+    },
+    "momentum": {
+     "contribution": 28.2,
+     "score": 80,
+     "weight": 0.352941
+    },
+    "radar2": {
+     "contribution": 12.6,
+     "score": 71,
+     "weight": 0.176471
+    },
+    "trend": {
+     "contribution": 28.2,
+     "score": 60,
+     "weight": 0.470588
+    }
+   }
+  ],
+  "minervini_sepa": null,
+  "multi_tf_pocs": {
+   "confluence": false,
+   "confluence_mid": null,
+   "dist_from_price_pct": {},
+   "poc_20": 40.1495,
+   "poc_250": 26.809799,
+   "poc_60": 40.064444,
+   "spread_pct": 37.392732
+  },
+  "naked_poc": [
+   30.813034,
+   27.737848
+  ],
+  "pa_dna": {
+   "candle": {
+    "desc": "SATICI: ⚠️ Düzeltme/Dönüş Bearish Engulfing 🐻 (Güven: 25/100)  | 📍 Güçlü arz bölgesinde oluştu",
+    "title": "Formasyon Tespiti"
+   },
+   "div": {
+    "desc": "RSI ve Fiyat paralel.",
+    "title": "Uyumlu",
+    "type": "neutral"
+   },
+   "loc": {
+    "desc": "Fiyat konsolidasyon içinde.",
+    "title": "Denge Bölgesi"
+   },
+   "obv": {
+    "color": "#f59e0b",
+    "desc": "5g OBV aşağı ama 14g hâlâ pozitif — kısa vadeli zayıflama.",
+    "title": "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)"
+   },
+   "obv_direction": 0,
+   "rs": {
+    "alpha": -1.459102
+   },
+   "rsi_val": 49.333323,
+   "sfp": {
+    "desc": "Önemli bir tuzak tespiti yok.",
+    "title": "Yok"
+   },
+   "sma50_val": 38.550138,
+   "smart_volume": {
+    "climax": "Yok",
+    "cum_delta_5": -230312148.798133,
+    "cum_delta_pct": 31.7,
+    "delta": -99353754.861434,
+    "delta_yuzde": 100.0,
+    "desc": "Piyasa büyük oyuncuların en çok işlem yaptığı POC alanında. Son 5 günde satış ağır basıyor, aşağı kırılım riski var.",
+    "dort_soru": null,
+    "naked_poc_txt": "30.81 (fiyattan %23.2 aşağıda)",
+    "poc": 40.1495,
+    "rvol": 0.74,
+    "stopping": "Yok",
+    "title": "⚖️ POC ALANINDA (39.19–41.11) — Satış Ağırlıklı",
+    "va_pos": "İÇİNDE",
+    "vah": 41.1135,
+    "val": 39.1855
+   },
+   "sq": {
+    "desc": "Oynaklık normal seviyede.",
+    "title": "Normal"
+   },
+   "vol": {
+    "desc": "Hacim ortalama seyrediyor.",
+    "title": "Normal"
+   },
+   "vwap": {
+    "diff": -0.207604,
+    "val": 40.183421
+   }
+  },
+  "pa_with_context": [
+   "PA_BEARISH",
+   "Smart Money Boğa Tuzağı (V-Dönüşü) | Kesişim: PDH (Dünün Tepesi)"
+  ],
+  "pipe_chart_patterns": {
+   "__df__": true,
+   "cols": [],
+   "last_row": {},
+   "shape": [
+    0,
+    0
+   ]
+  },
+  "pipe_golden_agent": {
+   "formations": {
+    "__df__": true,
+    "cols": [],
+    "last_row": {},
+    "shape": [
+     0,
+     0
+    ]
+   },
+   "hazirlik": {
+    "__df__": true,
+    "cols": [],
+    "last_row": {},
+    "shape": [
+     0,
+     0
+    ]
+   }
+  },
+  "pipe_signal_features": {
+   "f_52h_pos": 84.8,
+   "f_adv_tl": 5268.3,
+   "f_at_vwap_minus_2sigma": 0,
+   "f_at_y_open": 0,
+   "f_avwap_test_zone": 1,
+   "f_beta_xu100": 1.05,
+   "f_breaker_block_active": 1,
+   "f_breakout_state": null,
+   "f_buyback_aktif": null,
+   "f_buyback_dip_aliyor": null,
+   "f_cmf_dual": "strong_neg",
+   "f_cum_delta_dual": "strong_neg",
+   "f_dd_zirveden": -4.8,
+   "f_force_index_divergence": "bearish",
+   "f_force_index_dual": "neutral",
+   "f_hv_oran": 0.62,
+   "f_ict_model": 1.0,
+   "f_insider_first_buy": null,
+   "f_kurumsal_anchor": null,
+   "f_liquidity_tier": "yüksek",
+   "f_manip_risk": "yok",
+   "f_master_score": 69.0,
+   "f_mfi_dual": "neutral",
+   "f_mom_12_1": 48.0,
+   "f_ms_ict": 0.0,
+   "f_ms_momentum": 80.0,
+   "f_ms_radar2": 71.0,
+   "f_ms_trend": 60.0,
+   "f_near_ifvg": 1,
+   "f_omi_sigma": 0.49,
+   "f_poc_confluence": 0,
+   "f_poc_magnet": 0,
+   "f_rel_obv_divergence": 1,
+   "f_rel_obv_state": "outperform_strong",
+   "f_rsi": 49.3,
+   "f_rsi_dual": "early_oversold",
+   "f_rsi_mfi_bouquet": 0,
+   "f_sentiment_score": 51.0,
+   "f_sfp_bear": 0,
+   "f_sfp_bull": 0,
+   "f_sharpe_mom": 2.73,
+   "f_skew_60g": 0.19,
+   "f_smart_money_score": 65.0,
+   "f_smart_structural_score": 45.0,
+   "f_smart_tactical_score": 40.0,
+   "f_spike_dominance": 24,
+   "f_squeeze_days": 0,
+   "f_tefas_konsensus_alim": null,
+   "f_tefas_konsensus_satim": null,
+   "f_tefas_yeni_giris": null,
+   "f_threshold_asildi": null,
+   "f_trend_persist": 90.0,
+   "f_udvr_20g": 1.3,
+   "f_udvr_climax": null,
+   "f_udvr_state": "buyer",
+   "f_vol_60g": 43.17,
+   "f_vp_shape": "dagitim",
+   "f_yabanci_anchor": null,
+   "f_yabanci_cikis": null,
+   "f_yabanci_giris": null,
+   "f_yabanci_streak": null
+  },
+  "price_chart_struct": {
+   "n_annotations": 36,
+   "n_shapes": 31,
+   "smc": {
+    "avwap": {
+     "high": [
+      39.731241,
+      0.92813
+     ],
+     "low": [
+      31.92073,
+      25.62369
+     ]
+    },
+    "fvg": [
+     "bull_inverted",
+     40.11,
+     -0.024935
+    ],
+    "fvg_state": "inverted",
+    "poc": [
+     40.064444,
+     0.088744
+    ],
+    "poc_mtf": {
+     "confluence": false,
+     "confluence_mid": null,
+     "dist": {
+      "poc_20": -0.123293,
+      "poc_60": 0.088744
+     },
+     "poc_20": 40.1495,
+     "poc_250": null,
+     "poc_60": 40.064444,
+     "spread_pct": 0.212073
+    },
+    "vwap": [
+     29.046554,
+     38.054237
+    ],
+    "zone": [
+     "EQ",
+     "#a78bfa",
+     "➖ denge"
+    ]
+   },
+   "traces": [
+    [
+     "candlestick",
+     "Fiyat",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 50: 38.55",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 100: 33.93",
+     90
+    ],
+    [
+     "scatter",
+     "EMA 144: 33.29",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 200: 29.93",
+     90
+    ],
+    [
+     "bar",
+     "Hacim",
+     90
+    ],
+    [
+     "scatter",
+     "+2σ",
+     90
+    ],
+    [
+     "scatter",
+     "-2σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP +1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP -1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP(Y): 29.05",
+     90
+    ],
+    [
+     "scatter",
+     "aVWAP 52H ZİRVE: 39.73",
+     39
+    ],
+    [
+     "scatter",
+     "⚓ 52H ZİRVE",
+     1
+    ],
+    [
+     "scatter",
+     "aVWAP 52H DİP: 31.92",
+     90
+    ]
+   ]
+  },
+  "relative_obv_state": {
+   "bench_slope_pct": -21.29,
+   "diff_pct": 53.61,
+   "state": "outperform_strong",
+   "stock_slope_pct": 32.33
+  },
+  "risk_profile": {
+   "beta_xu100": 1.05,
+   "dd_max_1y": -27.1,
+   "dd_zirveden": -4.8,
+   "dipten_recovery": 71.9,
+   "hv_oran": 0.62,
+   "skew_60g": 0.19
+  },
+  "sc_accumulation": {
+   "CMF": -0.081,
+   "Degisim_Raw": -0.005949,
+   "Degisim_Str": "%-0.6",
+   "Fiyat": "40.10",
+   "Gun_Sayisi": "10/10",
+   "Hacim": 99353754.861434,
+   "Kalite": "B KALİTE (Normal)",
+   "MF_Gucu_Goster": "25.7M",
+   "Pivot_Sinyali": "-",
+   "Pocket_Pivot": false,
+   "RS_Durumu": "GÜÇLÜ (Endeks Üstü)",
+   "Sembol": "GLDN.IS",
+   "Skor": 33.0,
+   "Yillik_Konum": 89.0
+  },
+  "sc_guclu_donus": null,
+  "sc_ict_setup": null,
+  "sc_nadir_firsat": null,
+  "sc_prelaunch_bos": null,
+  "sc_radar1": {
+   "Detaylar": {
+    "ADX Durumu": [
+     true,
+     26.547197
+    ],
+    "Breakout": false,
+    "Hacim": false,
+    "MACD": false,
+    "Mansfield RS": [
+     true,
+     0.414146
+    ],
+    "RSI Güçlü": [
+     false,
+     49.333323
+    ],
+    "Squeeze": false,
+    "Trend": true
+   },
+   "Fiyat": "40.10",
+   "Nedenler": "⚡ Trend | 💪 Güçlü Trend | 📈 RS Lider",
+   "Sembol": "GLDN.IS",
+   "Skor": 3
+  },
+  "sc_radar2": null,
+  "sentiment_score": {
+   "bar": "【██████████░░░░░░░░░░】",
+   "is_index": false,
+   "mom": "5/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(📈 OBV Div (Kurumsal Toplama))</span>",
+   "raw_atr": 0,
+   "raw_macd": -0.120746,
+   "raw_obv": 5453812360.39913,
+   "raw_rsi": 49.333323,
+   "rs": "5/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Mansfield+)</span>",
+   "str": "5/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Gelişen HH+HL Yapısı)</span>",
+   "total": 51,
+   "tr": "20/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Ana Trend+ + Kısa Vade+ + Hizalı)</span>",
+   "vol": "8/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(OBV>EMA + OBV Eğim+)</span>",
+   "vola": "8/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Alım Hacmi > Satım)</span>"
+  },
+  "smart_money_score": {
+   "_er_data": {
+    "confirmations": [],
+    "context": {
+     "above_sma20": true,
+     "above_sma50": true,
+     "atr_contracting": false,
+     "bb_squeeze": false,
+     "bb_squeeze_days": 0,
+     "bearish_div": false,
+     "distribution_count_5d": 0,
+     "distribution_day": "<bool> False",
+     "double_bottom": true,
+     "fall_stopped": true,
+     "flag_pattern": false,
+     "index_falling": true,
+     "lateral_10": false,
+     "lateral_20": false,
+     "medium_bull_div": true,
+     "pocket_pivot": false,
+     "pos_60": 0.782549,
+     "pos_60_lower_30": false,
+     "pos_60_lower_50": false,
+     "pos_60_mid": false,
+     "pos_60_upper_80": false,
+     "pullback_3_8": true,
+     "pullback_to_sma20": true,
+     "pullback_to_sma50": false,
+     "recent_fall_15": false,
+     "recent_fall_25": false,
+     "rs_20d_pct": -2.884387,
+     "rs_accelerating": false,
+     "rs_crossover": true,
+     "rs_healthy_pullback": false,
+     "rs_negative_60": false,
+     "rs_new_high": false,
+     "rs_persistent_positive": false,
+     "rs_turning": false,
+     "rsi_25_35": false,
+     "rsi_30_45": false,
+     "rsi_30_50": true,
+     "rsi_35_50": true,
+     "rsi_40_55": true,
+     "rsi_42_58": true,
+     "rsi_45_55": true,
+     "rsi_45_60": true,
+     "rsi_45_65": true,
+     "rsi_50_60": false,
+     "rsi_50_65": false,
+     "rsi_now": 49.333323,
+     "sma50_rising": true,
+     "strong_bull_div": false,
+     "triangle": false,
+     "updown_ratio_bullish": false,
+     "vol_dried": false,
+     "vol_rising_slow": "<bool> True",
+     "weak_bull_div": false
+    },
+    "deepening": {},
+    "matched_count": 1,
+    "overall_quality": 65,
+    "primary": {
+     "category": "C",
+     "description": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı. Bu ortalamalar genellikle alıcıların devreye girdiği yerler — trend muhtemelen devam eder.",
+     "id": "C2",
+     "name": "Ortalama Testi",
+     "stars": 4
+    },
+    "red_flag_count": 0,
+    "red_flags": [],
+    "verdict": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı. Bu ortalamalar genellikle alıcıların devreye girdiği yerler — trend muhtemelen devam eder."
+   },
+   "criteria": {},
+   "market_note": "BIST puanı: 80/100 — Endeks de destekliyor",
+   "market_score": 80,
+   "pre_launch": false,
+   "score": 65,
+   "score5": null,
+   "score_trend": "",
+   "status": "Ortalama Testi",
+   "status_color": "#22c55e",
+   "summary_text": "Ortalama Testi: Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı. Bu ortalamalar genellikle alıcıların devreye girdiği yerler — trend muhtemelen devam eder."
+  },
+  "smart_sr_levels": [
+   27.59
+  ],
+  "smc_elements": {
+   "bos_lines": [],
+   "eqh": [
+    [
+     251,
+     256,
+     40.79
+    ]
+   ],
+   "eql": [],
+   "fvg_bear": [
+    [
+     179,
+     31.156366,
+     31.393147,
+     "inverted"
+    ],
+    [
+     180,
+     29.064804,
+     30.603878,
+     "inverted"
+    ],
+    [
+     183,
+     28.078218,
+     28.413658,
+     "inverted"
+    ],
+    [
+     215,
+     32.616512,
+     33.030876,
+     "inverted"
+    ],
+    [
+     232,
+     34.708073,
+     37.707294,
+     "inverted"
+    ],
+    [
+     256,
+     40.1,
+     40.12,
+     "inverted"
+    ]
+   ],
+   "fvg_bull": [
+    [
+     235,
+     38.16112,
+     38.654415,
+     "inverted"
+    ],
+    [
+     240,
+     39.18,
+     39.77912,
+     "inverted"
+    ],
+    [
+     241,
+     39.641003,
+     40.18,
+     "inverted"
+    ],
+    [
+     249,
+     39.24,
+     39.66,
+     "tested"
+    ],
+    [
+     258,
+     40.1,
+     40.32,
+     "inverted"
+    ],
+    [
+     259,
+     40.56,
+     40.8,
+     "inverted"
+    ]
+   ],
+   "ob_bear": [
+    [
+     260,
+     41.04,
+     42.12,
+     42.12,
+     41.04,
+     "breaker"
+    ],
+    [
+     250,
+     38.900002,
+     39.36,
+     39.36,
+     38.900002,
+     "breaker"
+    ],
+    [
+     246,
+     38.779999,
+     39.02,
+     39.02,
+     38.779999,
+     "breaker"
+    ]
+   ],
+   "ob_bull": [
+    [
+     259,
+     40.349,
+     40.32,
+     40.349,
+     40.32,
+     "breaker"
+    ],
+    [
+     255,
+     40.021,
+     40.02,
+     40.021,
+     40.02,
+     "breaker"
+    ],
+    [
+     249,
+     38.740002,
+     38.4,
+     38.740002,
+     38.4,
+     "mitigation"
+    ]
+   ],
+   "swing_high": 42.68,
+   "swing_low": 37.86
+  },
+  "spike_dom_probe": [
+   0.625,
+   0.0,
+   0.7,
+   0.0
+  ],
+  "split_scores": {
+   "structural_score": 59.0,
+   "structural_signals_neg": [],
+   "structural_signals_pos": [
+    "POC mıknatıs aktif",
+    "Multi-TF POC çakışması"
+   ],
+   "tactical_score": 57.0,
+   "tactical_signals_neg": [],
+   "tactical_signals_pos": [
+    "RSI/MFI çift ekstrem (bilgi — ölçüm bekliyor, skorsuz)",
+    "VWAP -2σ bölgesi (institutional buy zone)"
+   ],
+   "verdict": "Uzun ve kısa pencere nötr"
+  },
+  "supertrend": [
+   38.300351,
+   1
+  ],
+  "supply_demand_zones": {
+   "Age": 29,
+   "Bottom": 38.9504,
+   "Status": "Bölge İçinde (Test Ediliyor)",
+   "Top": 40.154026,
+   "Type": "RBD (Rally-Base-Drop) / Arz"
+  },
+  "tech_card_data": {
+   "atr": 1.12,
+   "close_last": 40.099998,
+   "ema144": 33.290981,
+   "risk_pct": 5.586036,
+   "sma100": 33.925859,
+   "sma200": 29.932975,
+   "sma50": 38.550138,
+   "stop_level": 37.859998
+  },
+  "udvr_20g": {
+   "climax": null,
+   "down_vol": 1101011566.615153,
+   "ratio": 1.3,
+   "state": "buyer",
+   "up_vol": 1432570545.070836
+  },
+  "volume_delta": {
+   "__df__": true,
+   "cols": [
+    "Close",
+    "High",
+    "Low",
+    "Open",
+    "Volume",
+    "Range",
+    "Buying_Pressure",
+    "Selling_Pressure",
+    "Buying_Volume",
+    "Selling_Volume",
+    "Volume_Delta"
+   ],
+   "last_row": {
+    "Buying_Pressure": 0.0,
+    "Buying_Volume": 0.0,
+    "Close": 40.099998,
+    "High": 41.360001,
+    "Low": 40.099998,
+    "Open": 40.900002,
+    "Range": 1.260002,
+    "Selling_Pressure": 1.0,
+    "Selling_Volume": 99353754.861434,
+    "Volume": 99353754.861434,
+    "Volume_Delta": -99353754.861434
+   },
+   "shape": [
+    266,
+    11
+   ]
+  },
+  "volume_profile_poc": 40.1495,
+  "z_score_details": {
+   "atr_multiple": 0.11,
+   "composite": -0.951,
+   "composite_raw": -0.951,
+   "filtered": false,
+   "trend_dir": "→ Nötr",
+   "trend_pct": 0.292,
+   "z20": -1.61,
+   "z252": 1.25,
+   "z60": -1.32
+  },
+  "z_score_live": -0.951
+ },
+ "SAHOL.IS": {
+  "an_advanced_levels": {
+   "curr_price": 94.5,
+   "fibs": {
+    "-0.236 (Kırılım Hedefi)": 119.894217,
+    "-0.618 (Hedef)": 130.759459,
+    "0 (Dip)": 84.73862,
+    "0.236": 91.451177,
+    "0.382": 95.603861,
+    "0.5 (Orta)": 98.96014,
+    "0.618 (Golden - Satış)": 102.316419,
+    "1 (Tepe)": 113.18166
+   },
+   "nearest_res": [
+    "0.382",
+    95.603861
+   ],
+   "nearest_sup": [
+    "0.236",
+    91.451177
+   ],
+   "st_dir": 1,
+   "st_val": 93.168817
+  },
+  "an_breakout": null,
+  "an_er_prompt_text": "📊 ER Kurulum Kalitesi: 25/100 — Toplam 1 senaryo eşleşti\n\n🎯 ANA SENARYO [D2] Karışık Sinyal (★★ — UYARI)\n   → Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli.",
+  "an_ict_reversal": "NÖTR",
+  "an_mtf_alignment": {
+   "bear_cnt": 1,
+   "bull_cnt": 1,
+   "diagnosis_text": "Vadeler arasında belirgin bir konsensüs yok. Piyasa yatay bantta denge arıyor.",
+   "dominant": "KARARSIZ",
+   "matrix": {
+    "Aylık": {
+     "hacim": 0,
+     "momentum": 0,
+     "trend": 1
+    },
+    "Günlük": {
+     "hacim": 0,
+     "momentum": -1,
+     "trend": 0
+    },
+    "Haftalık": {
+     "hacim": 0,
+     "momentum": 0,
+     "trend": 0
+    }
+   },
+   "overall_pct": 11,
+   "status_color": "#94a3b8",
+   "status_pill": "KARARSIZ · VADELER AYRIŞIK",
+   "tf_scores": {
+    "Aylık": {
+     "bear": 0,
+     "bull": 1,
+     "dominant": "YUKARI",
+     "pct": 33
+    },
+    "Günlük": {
+     "bear": 1,
+     "bull": 0,
+     "dominant": "AŞAĞI",
+     "pct": 33
+    },
+    "Haftalık": {
+     "bear": 0,
+     "bull": 0,
+     "dominant": "NÖTR",
+     "pct": 50
+    }
+   },
+   "timeframes": [
+    "Günlük",
+    "Haftalık",
+    "Aylık"
+   ],
+   "total": 9
+  },
+  "an_obv_divergence": [
+   "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)",
+   "#38bdf8",
+   "5 günlük OBV yönünü yukarı çevirdi ancak 14 günlük eğim hâlâ negatif. Kısa vadeli alım baskısı başlamış, orta vade henüz teyit vermedi — erken toparlanma sinyali. | Para Akışı: -0.020 (nötr)"
+  ],
+  "an_risk_profile": {
+   "level": "orta",
+   "rows": [
+    [
+     "Oynaklık",
+     "Endeksten %20 daha sert oynuyor (1.2×)",
+     "high"
+    ],
+    [
+     "Volatilite trendi",
+     "Sabit; son dönemde değişmedi",
+     "mid"
+    ],
+    [
+     "Zirveden uzaklık",
+     "Zirvesinin %15 altında",
+     "mid"
+    ],
+    [
+     "Sürpriz yönü",
+     "Ani yukarı sıçrama eğilimli",
+     "low"
+    ],
+    [
+     "Likidite",
+     "Yüksek; rahat girip çıkarsın",
+     "low"
+    ]
+   ]
+  },
+  "an_roadmap": {
+   "M1": "<b>Günlük Mum:</b> Kırmızı (Satış baskısı)<br><b>PA Sinyali:</b> SATICI: 📉 Trend Yönünde Evening Star (Trend Dönüş Risk) 🌆 (Destekleyici: 📉 Trend Yönünde Marubozu (Güçlü Ayı) 🔻) (Güven: 25/100) <br><b>EMA Hizalaması:</b> <span style=\"color:#f87171;font-weight:700;\">▼ Aşağı Hizalı</span><span style=\"color:#64748b;font-size:0.7em;\"> (1 gün)</span>",
+   "M2": "<b>Mevcut Formasyon:</b> Kitabi bir yapı görünmüyor.<br><b>Ana Yapı:</b> Düzeltme Fazı",
+   "M2_chart_data": null,
+   "M2_scan_price": null,
+   "M3": "<b>VSA Tespiti:</b> Standart Akış<br><b>Durum:</b> Hacim ve fiyat hareketi ortalamalarla uyumlu seyrediyor.",
+   "M4": "<div style='margin-bottom:3px;'><div style='background:rgba(251,191,36,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:50%;background:rgba(251,191,36,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Sıkışma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>4/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(251,191,36,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:50%;background:rgba(251,191,36,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Daralma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>4/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(74,222,128,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:70%;background:rgba(74,222,128,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Enerji</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>5.6/8</span></span></div></div>",
+   "M5": "<b>Absorption:</b> Belirgin bir kurumsal emilim yok.<br><b>Akış:</b> Standart / Pasif işlem hacmi.",
+   "M6": "<div style='background:rgba(100,116,139,0.12);border-radius:4px;height:18px;position:relative;overflow:hidden;margin-bottom:4px;'><div style='width:20%;background:rgba(22,163,74,0.78);height:100%;border-radius:4px 0 0 4px;position:absolute;left:0;top:0;'></div><div style='width:80%;background:rgba(248,113,113,0.75);height:100%;border-radius:0 4px 4px 0;position:absolute;right:0;top:0;'></div><span style='position:absolute;left:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐂 %20</span><span style='position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐻 %80</span></div><div style='font-size:0.65rem;line-height:1.3;'>Satıcılar baskın, momentum zayıf.</div>",
+   "M7": "<b>Boğa Olması İçin:</b> 103.30 yukarı geçilmeli | <b>Sonraki Hedef:</b> 107.06<br><b>Ayı Olması İçin:</b> 88.80 aşağıya kırılmalı | <b>Sonraki Hedef:</b> 85.04",
+   "M8": "<b>Piyasa Sentezi:</b> Fiyat 88.80 ile 103.30 arasında sıkışmış, yön arayışında olan bir testere (Choppy) piyasasında. Ne alıcılar ne de satıcılar tam kontrol sağlayabilmiş değil. Kırılım yönü teknik olarak belirleyici olacaktır.",
+   "S": [
+    "bear",
+    "neutral",
+    "neutral",
+    "warning",
+    "neutral",
+    "bear",
+    "neutral",
+    "warning"
+   ],
+   "comp_color": "#f87171",
+   "comp_decision": "NEGATİF",
+   "composite_score": 36,
+   "factor_scores": {
+    "momentum": 25,
+    "senaryo": 50,
+    "trend": 30,
+    "volume": 50,
+    "yapi": 35
+   },
+   "tp_atr": 2.507143,
+   "tp_curr_price": 94.5,
+   "tp_stop_20g": 88.8,
+   "tp_stop_5g": 94.5,
+   "tp_target_20g": 103.3,
+   "tp_target_atr": 99.514285
+  },
+  "an_scanner_strength": [],
+  "an_scanner_tiers": [],
+  "an_stp": {
+   "data": {
+    "Fark": -2.926165,
+    "Fiyat": 94.5,
+    "Gun": 2,
+    "Hacim": 23599922.875885,
+    "STP": 97.34858,
+    "Sembol": "GLDN.IS"
+   },
+   "type": "trend_down"
+  },
+  "an_synthetic_sentiment": {
+   "__df__": true,
+   "cols": [
+    "Date",
+    "MF_Smooth",
+    "STP",
+    "Price",
+    "Volume",
+    "Vol_Avg20",
+    "Date_Str",
+    "RVOL"
+   ],
+   "last_row": {
+    "Date": "2026-07-03 00:00:00",
+    "Date_Str": "03 Jul",
+    "MF_Smooth": -10.324974,
+    "Price": 94.5,
+    "RVOL": 0.886557,
+    "STP": 97.348414,
+    "Vol_Avg20": 26619754.838577,
+    "Volume": 23599922.875885
+   },
+   "shape": [
+    30,
+    8
+   ]
+  },
+  "an_weekly_frame": {
+   "ai_data": "- uzun vade: yatay/kararsiz, 52H bandında %54, 1y hacim merkezi (POC) 92.28 → fiyat üstünde\n- Dow yapısı: birincil düşüş; trend iptal seviyesi 85.10\n- bölge: premium (pahalı yarı); üst likidite %20 yukarı / alt likidite %23 aşağı\n- günlük×haftalık: kismi̇ — biri nötr\n- son hafta mumu: kırmızı, gövde %69, RVol 0.9x, haftalık RSI 55\n",
+   "align": [
+    "KISMİ — biri nötr",
+    "Bir zaman dilimi net yön verirken diğeri kararsız — geçiş ortamı, acele etme.",
+    "#94a3b8"
+   ],
+   "candle": [
+    "Güçlü kırmızı mum",
+    "Son haftalık mum: güçlü kırmızı mum (gövde %69). Haftalık RSI 55. Son 8 hafta: 3 yeşil / 5 kırmızı, net %-5.5. Hacim ortalama civarı (RVol 0.9x).",
+    "#f87171"
+   ],
+   "dow": [
+    "Birincil DÜŞÜŞ",
+    "Dow teorisi: alçalan tepe + alçalan dip → birincil trend aşağı. Yükselişler satış/tepki sayılır.",
+    "#f87171"
+   ],
+   "n_weeks": 55,
+   "pos": [
+    "Uzun vade YATAY/KARARSIZ",
+    "Fiyat ile 50-haftalık ortalama net yön vermiyor — denge bölgesi. 52-hafta bandında %54. 1y hacim merkezi (POC) 92.28 — fiyat %2 üstünde, yani yıllık maliyetlenmenin üstünde.",
+    "#f59e0b"
+   ],
+   "pos52": 53.815586,
+   "structure": [
+    "Bant içinde",
+    "Fiyat son salınım tepe/dibi arasında — yapı korunuyor, kırılım yok. Denge çizgisi (EQ %50): 92.96 → fiyat premium (pahalı yarı). Üst likidite (52H zirve) %20 yukarıda, alt likidite (52H dip) %23 aşağıda.",
+    "#94a3b8"
+   ],
+   "wk_rsi": 55.318644
+  },
+  "anchored_vwap_52h_top": {
+   "__series__": true,
+   "len": 96,
+   "tail5": [
+    96.226051,
+    96.237215,
+    96.254737,
+    96.266762,
+    96.262885
+   ]
+  },
+  "breakout_state": [
+   0,
+   0.56,
+   0.88
+  ],
+  "classic_candles": [],
+  "compute_cmf_20g": -0.020429,
+  "compute_cmf_5g": -0.117884,
+  "compute_mfi_14": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    57.342909,
+    55.989234,
+    57.726474,
+    55.875354,
+    47.935492
+   ]
+  },
+  "compute_mfi_5": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    22.456973,
+    21.641728,
+    46.680453,
+    66.431385,
+    63.513587
+   ]
+  },
+  "darvas_box": {
+   "box_age": 11,
+   "box_bottom": 94.5,
+   "box_top": 103.3,
+   "breakout_class": null,
+   "quality": 46,
+   "status": "forming",
+   "vol_ratio": 0.97
+  },
+  "er_build_context": {
+   "above_sma20": false,
+   "above_sma50": false,
+   "atr_contracting": false,
+   "bb_squeeze": false,
+   "bb_squeeze_days": 0,
+   "bearish_div": true,
+   "distribution_count_5d": 0,
+   "distribution_day": "<bool> False",
+   "double_bottom": false,
+   "fall_stopped": false,
+   "flag_pattern": false,
+   "index_falling": true,
+   "lateral_10": false,
+   "lateral_20": false,
+   "medium_bull_div": false,
+   "pocket_pivot": false,
+   "pos_60": 0.454106,
+   "pos_60_lower_30": false,
+   "pos_60_lower_50": true,
+   "pos_60_mid": true,
+   "pos_60_upper_80": false,
+   "pullback_3_8": true,
+   "pullback_to_sma20": false,
+   "pullback_to_sma50": true,
+   "recent_fall_15": false,
+   "recent_fall_25": false,
+   "rs_20d_pct": -0.284792,
+   "rs_accelerating": false,
+   "rs_crossover": false,
+   "rs_healthy_pullback": false,
+   "rs_negative_60": true,
+   "rs_new_high": false,
+   "rs_persistent_positive": false,
+   "rs_turning": false,
+   "rsi_25_35": true,
+   "rsi_30_45": true,
+   "rsi_30_50": true,
+   "rsi_35_50": false,
+   "rsi_40_55": false,
+   "rsi_42_58": false,
+   "rsi_45_55": false,
+   "rsi_45_60": false,
+   "rsi_45_65": false,
+   "rsi_50_60": false,
+   "rsi_50_65": false,
+   "rsi_now": 30.294118,
+   "sma50_rising": false,
+   "strong_bull_div": false,
+   "triangle": false,
+   "updown_ratio_bullish": false,
+   "vol_dried": false,
+   "vol_rising_slow": "<bool> True",
+   "weak_bull_div": false
+  },
+  "er_evaluate": {
+   "confirmations": [],
+   "context": {
+    "above_sma20": false,
+    "above_sma50": false,
+    "atr_contracting": false,
+    "bb_squeeze": false,
+    "bb_squeeze_days": 0,
+    "bearish_div": true,
+    "distribution_count_5d": 0,
+    "distribution_day": "<bool> False",
+    "double_bottom": false,
+    "fall_stopped": false,
+    "flag_pattern": false,
+    "index_falling": true,
+    "lateral_10": false,
+    "lateral_20": false,
+    "medium_bull_div": false,
+    "pocket_pivot": false,
+    "pos_60": 0.454106,
+    "pos_60_lower_30": false,
+    "pos_60_lower_50": true,
+    "pos_60_mid": true,
+    "pos_60_upper_80": false,
+    "pullback_3_8": true,
+    "pullback_to_sma20": false,
+    "pullback_to_sma50": true,
+    "recent_fall_15": false,
+    "recent_fall_25": false,
+    "rs_20d_pct": -0.284792,
+    "rs_accelerating": false,
+    "rs_crossover": false,
+    "rs_healthy_pullback": false,
+    "rs_negative_60": true,
+    "rs_new_high": false,
+    "rs_persistent_positive": false,
+    "rs_turning": false,
+    "rsi_25_35": true,
+    "rsi_30_45": true,
+    "rsi_30_50": true,
+    "rsi_35_50": false,
+    "rsi_40_55": false,
+    "rsi_42_58": false,
+    "rsi_45_55": false,
+    "rsi_45_60": false,
+    "rsi_45_65": false,
+    "rsi_50_60": false,
+    "rsi_50_65": false,
+    "rsi_now": 30.294118,
+    "sma50_rising": false,
+    "strong_bull_div": false,
+    "triangle": false,
+    "updown_ratio_bullish": false,
+    "vol_dried": false,
+    "vol_rising_slow": "<bool> True",
+    "weak_bull_div": false
+   },
+   "deepening": {},
+   "matched_count": 1,
+   "overall_quality": 25,
+   "primary": {
+    "category": "D",
+    "description": "Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli.",
+    "id": "D2",
+    "name": "Karışık Sinyal",
+    "stars": 2
+   },
+   "red_flag_count": 0,
+   "red_flags": [],
+   "verdict": "Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli."
+  },
+  "er_kisa_aciklama_probe": {
+   "A1": "Hisse uzun süredir düşüşte ama son günlerde satıcı baskısı azaldı.",
+   "B8": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı.",
+   "C2": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı.",
+   "D1": "Bugün hacimli bir alım günü oldu ama hisse 50 günlük ortalama altında ve diğer kriterler desteklemiyor."
+  },
+  "fib_levels": {
+   "-0.236 (Kırılım Hedefi)": 120.869745,
+   "-0.618 (Hedef)": 133.314017,
+   "0 (Dip)": 80.60503,
+   "0.236": 88.293115,
+   "0.382": 93.049303,
+   "0.5 (Orta)": 96.893345,
+   "0.618 (Golden - Satış)": 100.737387,
+   "1 (Tepe)": 113.18166
+  },
+  "force_index_dual": {
+   "divergence": null,
+   "fi_long": -8167452.270075,
+   "fi_long_norm": -0.5,
+   "fi_short": -49407042.906554,
+   "fi_short_norm": -3.05,
+   "state": "strong_neg"
+  },
+  "full_volume_profile": {
+   "poc": 97.1375,
+   "vah": 102.2125,
+   "val": 96.4125
+  },
+  "harmonic_confluence": null,
+  "harmonic_patterns": null,
+  "harmonik_52h_strength": [
+   "🟡 ORTA",
+   1,
+   53.8
+  ],
+  "harsi": {
+   "change": "<bool> False",
+   "color": "#f87171",
+   "ha_close": 46.059559,
+   "ha_open": 61.825001,
+   "is_green": "<bool> False",
+   "status": "AYI MOMENTUMU"
+  },
+  "ict_deep": {
+   "bias": "bullish_retrace",
+   "bottom_line": "Trend yukarı ancak fiyat 60 günlük aralığın ortasında (denge bölgesi) — ne ucuz ne pahalı. İlk izlenecek seviye 96.45 ana hedefine; iptal noktası son 20 günün en yakın swing dip seviyesi (iptal noktası) 93.00.",
+   "curr_price": 94.5,
+   "desc": "İdeal bir setup (Entry) bekleniyor. Mevcut yön mıknatısı takip ediliyor.",
+   "displacement": "🔥 Güçlü Displacement (Fiyat Hareketi)",
+   "entry": 0.0,
+   "eqh_eql_txt": "Yok",
+   "fvg_age": 14,
+   "fvg_high_num": 99.1,
+   "fvg_low_num": 92.15,
+   "fvg_txt": "Açık FVG var (Destek): 92.15 - 99.10 · test edildi",
+   "last_sh": 103.3,
+   "last_sl": 88.8,
+   "mean_threshold": 91.1,
+   "model_checks": [
+    [
+     "Bias Net",
+     false
+    ],
+    [
+     "Doğru Bölge",
+     false
+    ],
+    [
+     "OB Aktif",
+     true
+    ],
+    [
+     "FVG Açık",
+     true
+    ],
+    [
+     "Displacement",
+     false
+    ]
+   ],
+   "model_score": 2,
+   "ob_age": 20,
+   "ob_high_num": 92.25,
+   "ob_low_num": 89.95,
+   "ob_txt": "89.95 - 92.25 (Talep Bölgesi) [🎯 FVG+OB Çakışma | ⚠️ Yıpranmış OB]",
+   "rr": 0.0,
+   "setup_type": "BEKLE",
+   "status": "OK",
+   "stop": 0.0,
+   "struct_age": 11,
+   "structural_target": 98.07437,
+   "structure": "📦 Boğa Sıkışması — Kırılım Yukarı Olabilir | HH (Yükselen Tepe) / HL (Yükselen Dip)",
+   "sweep_txt": "Yok",
+   "target": 96.45,
+   "zone": "DENGE (Orta Bölge)"
+  },
+  "lazybear_breakout": [
+   "<bool> False",
+   "<bool> False"
+  ],
+  "lazybear_squeeze": false,
+  "liquidity_manip": {
+   "adv_mn": 2590.8,
+   "manip": "yok",
+   "tier": "yüksek"
+  },
+  "market_regime": {
+   "bull_bias": true,
+   "color": "#10b981",
+   "confidence": 0.7,
+   "desc": "Fiyat yapısal olarak yükseliş fazında: SMA üzeri, OBV artıyor, eğim pozitif.",
+   "icon": "🚀",
+   "label": "Yükseliş Fazı",
+   "phase": 2
+  },
+  "master_score": [
+   27,
+   [
+    "✅ Ana Trend: SMA200'e güvenli mesafede (+18.8 Puan)",
+    "⚖️ Momentum Nötr: Net bir yön yok (+8.8 Puan)"
+   ],
+   [
+    "Kısa Vade Zayıf: SMA50 altında baskı var (0 Puan)",
+    "RSI Zayıf: Satış baskısı devam ediyor (0 Puan)",
+    "Formasyon Yok: Radar-2 temiz (0 Puan)"
+   ],
+   {
+    "ict": {
+     "contribution": 0.0,
+     "score": 100,
+     "weight": 0.0
+    },
+    "momentum": {
+     "contribution": 8.8,
+     "score": 25,
+     "weight": 0.352941
+    },
+    "radar2": {
+     "contribution": 0.0,
+     "score": 0,
+     "weight": 0.176471
+    },
+    "trend": {
+     "contribution": 18.8,
+     "score": 40,
+     "weight": 0.470588
+    }
+   }
+  ],
+  "minervini_sepa": null,
+  "multi_tf_pocs": {
+   "confluence": false,
+   "confluence_mid": null,
+   "dist_from_price_pct": {},
+   "poc_20": 97.1375,
+   "poc_250": 92.282421,
+   "poc_60": 99.59,
+   "spread_pct": 7.585462
+  },
+  "naked_poc": [
+   97.1375
+  ],
+  "pa_dna": {
+   "candle": {
+    "desc": "SATICI: 📉 Trend Yönünde Evening Star (Trend Dönüş Risk) 🌆 (Destekleyici: 📉 Trend Yönünde Marubozu (Güçlü Ayı) 🔻) (Güven: 25/100) ",
+    "title": "Formasyon Tespiti"
+   },
+   "div": {
+    "desc": "RSI ve Fiyat paralel.",
+    "title": "Uyumlu",
+    "type": "neutral"
+   },
+   "loc": {
+    "desc": "Fiyat konsolidasyon içinde.",
+    "title": "Denge Bölgesi"
+   },
+   "obv": {
+    "color": "#38bdf8",
+    "desc": "5g OBV yukarı ama 14g hâlâ baskılı — erken toparlanma sinyali.",
+    "title": "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)"
+   },
+   "obv_direction": 1,
+   "rs": {
+    "alpha": -2.870013
+   },
+   "rsi_val": 30.294118,
+   "sfp": {
+    "desc": "Önemli bir tuzak tespiti yok.",
+    "title": "Yok"
+   },
+   "sma50_val": 95.473,
+   "smart_volume": {
+    "climax": "Yok",
+    "cum_delta_5": -17075824.116017,
+    "cum_delta_pct": 11.8,
+    "delta": -23599922.875885,
+    "delta_yuzde": 100.0,
+    "desc": "Fiyat adil değerin altında ve son 5 günde satış baskısı sürüyor. Kırılım onaylanmış gibi görünüyor.",
+    "dort_soru": null,
+    "naked_poc_txt": "97.14 (fiyattan %2.8 yukarıda)",
+    "poc": 97.1375,
+    "rvol": 0.88,
+    "stopping": "Yok",
+    "title": "🔴 POC ALANI (96.41–102) ALTINDA — Baskı Devam",
+    "va_pos": "ALTINDA",
+    "vah": 102.2125,
+    "val": 96.4125
+   },
+   "sq": {
+    "desc": "Oynaklık normal seviyede.",
+    "title": "Normal"
+   },
+   "vol": {
+    "desc": "Hacim ortalama seyrediyor.",
+    "title": "Normal"
+   },
+   "vwap": {
+    "diff": -2.947614,
+    "val": 97.370095
+   }
+  },
+  "pa_with_context": [
+   "NÖTR",
+   ""
+  ],
+  "pipe_chart_patterns": {
+   "__df__": true,
+   "cols": [],
+   "last_row": {},
+   "shape": [
+    0,
+    0
+   ]
+  },
+  "pipe_golden_agent": {
+   "formations": {
+    "__df__": true,
+    "cols": [],
+    "last_row": {},
+    "shape": [
+     0,
+     0
+    ]
+   },
+   "hazirlik": {
+    "__df__": true,
+    "cols": [],
+    "last_row": {},
+    "shape": [
+     0,
+     0
+    ]
+   }
+  },
+  "pipe_signal_features": {
+   "f_52h_pos": 53.8,
+   "f_adv_tl": 2590.8,
+   "f_at_vwap_minus_2sigma": 0,
+   "f_at_y_open": 0,
+   "f_avwap_test_zone": 1,
+   "f_beta_xu100": 1.2,
+   "f_breaker_block_active": 0,
+   "f_breakout_state": null,
+   "f_buyback_aktif": null,
+   "f_buyback_dip_aliyor": null,
+   "f_cmf_dual": "neutral",
+   "f_cum_delta_dual": "neutral",
+   "f_dd_zirveden": -14.7,
+   "f_force_index_divergence": null,
+   "f_force_index_dual": "strong_neg",
+   "f_hv_oran": 0.84,
+   "f_ict_model": 2.0,
+   "f_insider_first_buy": null,
+   "f_kurumsal_anchor": null,
+   "f_liquidity_tier": "yüksek",
+   "f_manip_risk": "yok",
+   "f_master_score": 27.0,
+   "f_mfi_dual": "neutral",
+   "f_mom_12_1": 1.95,
+   "f_ms_ict": 100.0,
+   "f_ms_momentum": 25.0,
+   "f_ms_radar2": 0.0,
+   "f_ms_trend": 40.0,
+   "f_near_ifvg": 1,
+   "f_omi_sigma": 0.83,
+   "f_poc_confluence": 0,
+   "f_poc_magnet": 0,
+   "f_rel_obv_divergence": 1,
+   "f_rel_obv_state": "outperform_strong",
+   "f_rsi": 30.3,
+   "f_rsi_dual": "neutral",
+   "f_rsi_mfi_bouquet": 0,
+   "f_sentiment_score": 38.0,
+   "f_sfp_bear": 0,
+   "f_sfp_bull": 0,
+   "f_sharpe_mom": 0.36,
+   "f_skew_60g": 0.75,
+   "f_smart_money_score": 25.0,
+   "f_smart_structural_score": 50.0,
+   "f_smart_tactical_score": 50.0,
+   "f_spike_dominance": 14,
+   "f_squeeze_days": 0,
+   "f_tefas_konsensus_alim": null,
+   "f_tefas_konsensus_satim": null,
+   "f_tefas_yeni_giris": null,
+   "f_threshold_asildi": null,
+   "f_trend_persist": 60.0,
+   "f_udvr_20g": 1.33,
+   "f_udvr_climax": null,
+   "f_udvr_state": "buyer",
+   "f_vol_60g": 41.03,
+   "f_vp_shape": "dagitim",
+   "f_yabanci_anchor": null,
+   "f_yabanci_cikis": null,
+   "f_yabanci_giris": null,
+   "f_yabanci_streak": null
+  },
+  "price_chart_struct": {
+   "n_annotations": 37,
+   "n_shapes": 32,
+   "smc": {
+    "avwap": {
+     "high": [
+      96.262885,
+      -1.831324
+     ],
+     "low": [
+      93.595764,
+      0.966108
+     ]
+    },
+    "bos": [
+     "CHoCH",
+     96.6,
+     -2.173913
+    ],
+    "fvg": [
+     "bull_inverted",
+     94.25,
+     0.265252
+    ],
+    "fvg_state": "inverted",
+    "poc": [
+     99.59,
+     -5.110955
+    ],
+    "poc_mtf": {
+     "confluence": false,
+     "confluence_mid": null,
+     "dist": {
+      "poc_20": -2.715223,
+      "poc_60": -5.110955
+     },
+     "poc_20": 97.1375,
+     "poc_250": null,
+     "poc_60": 99.59,
+     "spread_pct": 2.493297
+    },
+    "vwap": [
+     91.038381,
+     3.802374
+    ],
+    "zone": [
+     "Geçiş",
+     "#94a3b8",
+     ""
+    ]
+   },
+   "traces": [
+    [
+     "candlestick",
+     "Fiyat",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 50: 95.47",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 100: 96.13",
+     90
+    ],
+    [
+     "scatter",
+     "EMA 144: 93.71",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 200: 90.80",
+     90
+    ],
+    [
+     "bar",
+     "Hacim",
+     90
+    ],
+    [
+     "scatter",
+     "+2σ",
+     90
+    ],
+    [
+     "scatter",
+     "-2σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP +1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP -1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP(Y): 91.04",
+     90
+    ],
+    [
+     "scatter",
+     "aVWAP 52H ZİRVE: 96.26",
+     90
+    ],
+    [
+     "scatter",
+     "aVWAP 52H DİP: 93.60",
+     90
+    ]
+   ]
+  },
+  "relative_obv_state": {
+   "bench_slope_pct": -21.29,
+   "diff_pct": 39.28,
+   "state": "outperform_strong",
+   "stock_slope_pct": 17.99
+  },
+  "risk_profile": {
+   "beta_xu100": 1.2,
+   "dd_max_1y": -24.0,
+   "dd_zirveden": -14.7,
+   "dipten_recovery": 27.7,
+   "hv_oran": 0.84,
+   "skew_60g": 0.75
+  },
+  "sc_accumulation": null,
+  "sc_guclu_donus": null,
+  "sc_ict_setup": null,
+  "sc_nadir_firsat": null,
+  "sc_prelaunch_bos": null,
+  "sc_radar1": {
+   "Detaylar": {
+    "ADX Durumu": [
+     false,
+     12.61197
+    ],
+    "Breakout": false,
+    "Hacim": false,
+    "MACD": false,
+    "Mansfield RS": [
+     false,
+     -0.249891
+    ],
+    "RSI Güçlü": [
+     false,
+     30.294118
+    ],
+    "Squeeze": false,
+    "Trend": false
+   },
+   "Fiyat": "94.50",
+   "Nedenler": "",
+   "Sembol": "GLDN.IS",
+   "Skor": 0
+  },
+  "sc_radar2": null,
+  "sentiment_score": {
+   "bar": "【███████░░░░░░░░░░░░░】",
+   "is_index": false,
+   "mom": "5/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(📈 OBV Div (Kurumsal Toplama))</span>",
+   "raw_atr": 0,
+   "raw_macd": -0.430641,
+   "raw_obv": 715635013.925352,
+   "raw_rsi": 30.294118,
+   "rs": "0/20 ",
+   "str": "5/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Gelişen HH+HL Yapısı)</span>",
+   "total": 38,
+   "tr": "12/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Ana Trend+ + Hizalı)</span>",
+   "vol": "8/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(OBV>EMA + OBV Eğim+)</span>",
+   "vola": "8/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Alım Hacmi > Satım)</span>"
+  },
+  "smart_money_score": {
+   "_er_data": {
+    "confirmations": [],
+    "context": {
+     "above_sma20": false,
+     "above_sma50": false,
+     "atr_contracting": false,
+     "bb_squeeze": false,
+     "bb_squeeze_days": 0,
+     "bearish_div": true,
+     "distribution_count_5d": 0,
+     "distribution_day": "<bool> False",
+     "double_bottom": false,
+     "fall_stopped": false,
+     "flag_pattern": false,
+     "index_falling": true,
+     "lateral_10": false,
+     "lateral_20": false,
+     "medium_bull_div": false,
+     "pocket_pivot": false,
+     "pos_60": 0.454106,
+     "pos_60_lower_30": false,
+     "pos_60_lower_50": true,
+     "pos_60_mid": true,
+     "pos_60_upper_80": false,
+     "pullback_3_8": true,
+     "pullback_to_sma20": false,
+     "pullback_to_sma50": true,
+     "recent_fall_15": false,
+     "recent_fall_25": false,
+     "rs_20d_pct": -0.284792,
+     "rs_accelerating": false,
+     "rs_crossover": false,
+     "rs_healthy_pullback": false,
+     "rs_negative_60": true,
+     "rs_new_high": false,
+     "rs_persistent_positive": false,
+     "rs_turning": false,
+     "rsi_25_35": true,
+     "rsi_30_45": true,
+     "rsi_30_50": true,
+     "rsi_35_50": false,
+     "rsi_40_55": false,
+     "rsi_42_58": false,
+     "rsi_45_55": false,
+     "rsi_45_60": false,
+     "rsi_45_65": false,
+     "rsi_50_60": false,
+     "rsi_50_65": false,
+     "rsi_now": 30.294118,
+     "sma50_rising": false,
+     "strong_bull_div": false,
+     "triangle": false,
+     "updown_ratio_bullish": false,
+     "vol_dried": false,
+     "vol_rising_slow": "<bool> True",
+     "weak_bull_div": false
+    },
+    "deepening": {},
+    "matched_count": 1,
+    "overall_quality": 25,
+    "primary": {
+     "category": "D",
+     "description": "Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli.",
+     "id": "D2",
+     "name": "Karışık Sinyal",
+     "stars": 2
+    },
+    "red_flag_count": 0,
+    "red_flags": [],
+    "verdict": "Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli."
+   },
+   "criteria": {},
+   "market_note": "BIST puanı: 80/100 — Endeks de destekliyor",
+   "market_score": 80,
+   "pre_launch": false,
+   "score": 25,
+   "score5": null,
+   "score_trend": "",
+   "status": "Karışık Sinyal",
+   "status_color": "#94a3b8",
+   "summary_text": "Karışık Sinyal: Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli."
+  },
+  "smart_sr_levels": [
+   96.5,
+   93.14,
+   87.32
+  ],
+  "smc_elements": {
+   "bos_lines": [
+    [
+     265,
+     96.6,
+     "CHoCH"
+    ]
+   ],
+   "eqh": [
+    [
+     224,
+     251,
+     102.25
+    ],
+    [
+     224,
+     254,
+     102.85
+    ],
+    [
+     242,
+     247,
+     93.475
+    ]
+   ],
+   "eql": [
+    [
+     241,
+     246,
+     88.8
+    ]
+   ],
+   "fvg_bear": [
+    [
+     227,
+     96.45,
+     98.95,
+     "inverted"
+    ],
+    [
+     230,
+     93.2,
+     95.3,
+     "inverted"
+    ],
+    [
+     232,
+     87.25,
+     91.2,
+     "inverted"
+    ],
+    [
+     233,
+     90.35,
+     91.2,
+     "inverted"
+    ],
+    [
+     256,
+     100.8,
+     100.9,
+     "inverted"
+    ],
+    [
+     258,
+     97.95,
+     98.1,
+     "inverted"
+    ]
+   ],
+   "fvg_bull": [
+    [
+     223,
+     96.5,
+     99.55,
+     "inverted"
+    ],
+    [
+     234,
+     87.25,
+     88.3,
+     "fresh"
+    ],
+    [
+     236,
+     90.7,
+     92.0,
+     "inverted"
+    ],
+    [
+     248,
+     91.95,
+     93.0,
+     "fresh"
+    ],
+    [
+     249,
+     92.15,
+     99.1,
+     "tested"
+    ],
+    [
+     250,
+     96.45,
+     100.1,
+     "inverted"
+    ]
+   ],
+   "ob_bear": [
+    [
+     258,
+     99.392,
+     99.8,
+     99.8,
+     99.392,
+     "breaker"
+    ],
+    [
+     251,
+     100.5,
+     101.2,
+     101.2,
+     100.5,
+     "breaker"
+    ],
+    [
+     246,
+     88.800003,
+     91.5,
+     91.5,
+     88.800003,
+     "breaker"
+    ]
+   ],
+   "ob_bull": [
+    [
+     253,
+     101.400002,
+     99.8,
+     101.400002,
+     99.8,
+     "breaker"
+    ],
+    [
+     248,
+     91.199997,
+     91.15,
+     91.199997,
+     91.15,
+     "breaker"
+    ],
+    [
+     245,
+     92.050003,
+     90.0,
+     92.050003,
+     90.0,
+     "breaker"
+    ]
+   ],
+   "swing_high": 103.3,
+   "swing_low": 88.8
+  },
+  "spike_dom_probe": [
+   0.625,
+   0.0,
+   0.7,
+   0.0
+  ],
+  "split_scores": {
+   "structural_score": 59.0,
+   "structural_signals_neg": [],
+   "structural_signals_pos": [
+    "POC mıknatıs aktif",
+    "Multi-TF POC çakışması"
+   ],
+   "tactical_score": 57.0,
+   "tactical_signals_neg": [],
+   "tactical_signals_pos": [
+    "RSI/MFI çift ekstrem (bilgi — ölçüm bekliyor, skorsuz)",
+    "VWAP -2σ bölgesi (institutional buy zone)"
+   ],
+   "verdict": "Uzun ve kısa pencere nötr"
+  },
+  "supertrend": [
+   93.168817,
+   1
+  ],
+  "supply_demand_zones": {
+   "Age": 21,
+   "Bottom": 91.199997,
+   "Status": "İhlal Edildi (Kırıldı)",
+   "Top": 92.25,
+   "Type": "DBD (Drop-Base-Drop) / Arz"
+  },
+  "tech_card_data": {
+   "atr": 2.507143,
+   "close_last": 94.5,
+   "ema144": 93.710604,
+   "risk_pct": 5.306122,
+   "sma100": 96.126879,
+   "sma200": 90.803297,
+   "sma50": 95.473,
+   "stop_level": 89.485715
+  },
+  "udvr_20g": {
+   "climax": null,
+   "down_vol": 215635170.042273,
+   "ratio": 1.33,
+   "state": "buyer",
+   "up_vol": 287136404.144387
+  },
+  "volume_delta": {
+   "__df__": true,
+   "cols": [
+    "Close",
+    "High",
+    "Low",
+    "Open",
+    "Volume",
+    "Range",
+    "Buying_Pressure",
+    "Selling_Pressure",
+    "Buying_Volume",
+    "Selling_Volume",
+    "Volume_Delta"
+   ],
+   "last_row": {
+    "Buying_Pressure": 0.0,
+    "Buying_Volume": 0.0,
+    "Close": 94.5,
+    "High": 98.199997,
+    "Low": 94.5,
+    "Open": 98.099998,
+    "Range": 3.699997,
+    "Selling_Pressure": 1.0,
+    "Selling_Volume": 23599922.875885,
+    "Volume": 23599922.875885,
+    "Volume_Delta": -23599922.875885
+   },
+   "shape": [
+    266,
+    11
+   ]
+  },
+  "volume_profile_poc": 97.1375,
+  "z_score_details": {
+   "atr_multiple": 1.11,
+   "composite": -0.817,
+   "composite_raw": -0.817,
+   "filtered": false,
+   "trend_dir": "→ Nötr",
+   "trend_pct": 0.241,
+   "z20": -1.45,
+   "z252": -0.31,
+   "z60": -0.11
+  },
+  "z_score_live": -0.817
+ },
+ "SISE.IS": {
+  "an_advanced_levels": {
+   "curr_price": 44.34,
+   "fibs": {
+    "0 (Tepe)": 53.40589,
+    "0.236": 49.664359,
+    "0.382": 47.349683,
+    "0.5 (Orta)": 45.478918,
+    "0.618 (Golden - Alım)": 43.608152,
+    "1 (Dip)": 37.551945,
+    "1.236 (Kırılım Hedefi)": 33.810414,
+    "1.618 (Hedef)": 27.754207
+   },
+   "nearest_res": [
+    "0.5 (Orta)",
+    45.478918
+   ],
+   "nearest_sup": [
+    "0.618 (Golden - Alım)",
+    43.608152
+   ],
+   "st_dir": -1,
+   "st_val": 48.14539
+  },
+  "an_breakout": null,
+  "an_er_prompt_text": "📊 ER Kurulum Kalitesi: 69/100 — Toplam 2 senaryo eşleşti\n\n🎯 ANA SENARYO [B8] Sıkışma Sonu (★★★★ — SIKIŞMA)\n   → Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı. Sıkışma uzadıkça enerji birikiyor — patlama yakın olabilir.\n\n✅ EK TEYİTLER (1):\n   • [D2] Karışık Sinyal (★★) — Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli.",
+  "an_ict_reversal": "NÖTR",
+  "an_mtf_alignment": {
+   "bear_cnt": 1,
+   "bull_cnt": 3,
+   "diagnosis_text": "Vadelerin çoğunluğu yukarıyı destekliyor. Momentum alıcı lehine seyrediyor.",
+   "dominant": "YUKARI",
+   "matrix": {
+    "Aylık": {
+     "hacim": 0,
+     "momentum": 1,
+     "trend": 1
+    },
+    "Günlük": {
+     "hacim": 0,
+     "momentum": 0,
+     "trend": -1
+    },
+    "Haftalık": {
+     "hacim": 0,
+     "momentum": 0,
+     "trend": 1
+    }
+   },
+   "overall_pct": 33,
+   "status_color": "#22c55e",
+   "status_pill": "POZİTİF UYUM (%33 Boğa)",
+   "tf_scores": {
+    "Aylık": {
+     "bear": 0,
+     "bull": 2,
+     "dominant": "YUKARI",
+     "pct": 67
+    },
+    "Günlük": {
+     "bear": 1,
+     "bull": 0,
+     "dominant": "AŞAĞI",
+     "pct": 33
+    },
+    "Haftalık": {
+     "bear": 0,
+     "bull": 1,
+     "dominant": "YUKARI",
+     "pct": 33
+    }
+   },
+   "timeframes": [
+    "Günlük",
+    "Haftalık",
+    "Aylık"
+   ],
+   "total": 9
+  },
+  "an_obv_divergence": [
+   "⚖️ ZAYIF İVME (Hacimsiz Bölge)",
+   "#64748B",
+   "OBV 20 günlük ortalamasının altında; 5 ve 14 günlük pencerede net yön yok. Fiyat hareketini destekleyecek kararlı bir para akışı görünmüyor. | Para Akışı: -0.229 ✗ satış baskısı"
+  ],
+  "an_risk_profile": {
+   "level": "orta",
+   "rows": [
+    [
+     "Oynaklık",
+     "Endeksten %24 daha sert oynuyor (1.2×)",
+     "high"
+    ],
+    [
+     "Volatilite trendi",
+     "Sabit; son dönemde değişmedi",
+     "mid"
+    ],
+    [
+     "Zirveden uzaklık",
+     "Zirvesinin %14 altında",
+     "mid"
+    ],
+    [
+     "Sürpriz yönü",
+     "Dengeli; ani çakılma da sıçrama da eğilimi yok",
+     "mid"
+    ],
+    [
+     "Likidite",
+     "Yüksek; rahat girip çıkarsın",
+     "low"
+    ]
+   ]
+  },
+  "an_roadmap": {
+   "M1": "<b>Günlük Mum:</b> Konsolidasyon / Kararsız<br><b>PA Sinyali:</b> SATICI: 📉 Trend Yönünde Evening Star (Trend Dönüş Risk) 🌆 (Güven: 25/100) <br><b>EMA Hizalaması:</b> <span style=\"color:#f87171;font-weight:700;\">▼ Aşağı Hizalı</span><span style=\"color:#64748b;font-size:0.7em;\"> (7 gün)</span>",
+   "M2": "<b>Mevcut Formasyon:</b> Kitabi bir yapı görünmüyor.<br><b>Ana Yapı:</b> Düzeltme Fazı",
+   "M2_chart_data": null,
+   "M2_scan_price": null,
+   "M3": "<b>VSA Tespiti:</b> Standart Akış<br><b>Durum:</b> Hacim ve fiyat hareketi ortalamalarla uyumlu seyrediyor.",
+   "M4": "<div style='margin-bottom:3px;'><div style='background:rgba(74,222,128,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:100%;background:rgba(74,222,128,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Sıkışma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>8/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(251,191,36,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:50%;background:rgba(251,191,36,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Daralma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>4/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(74,222,128,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:74%;background:rgba(74,222,128,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Enerji</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>5.9/8</span></span></div></div>",
+   "M5": "<b>Absorption:</b> Belirgin bir kurumsal emilim yok.<br><b>Akış:</b> Standart / Pasif işlem hacmi.",
+   "M6": "<div style='background:rgba(100,116,139,0.12);border-radius:4px;height:18px;position:relative;overflow:hidden;margin-bottom:4px;'><div style='width:15%;background:rgba(22,163,74,0.78);height:100%;border-radius:4px 0 0 4px;position:absolute;left:0;top:0;'></div><div style='width:85%;background:rgba(248,113,113,0.75);height:100%;border-radius:0 4px 4px 0;position:absolute;right:0;top:0;'></div><span style='position:absolute;left:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐂 %15</span><span style='position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐻 %85</span></div><div style='font-size:0.65rem;line-height:1.3;'>Satıcılar baskın, momentum zayıf.</div>",
+   "M7": "<b>Boğa Olması İçin:</b> 48.14 yukarı geçilmeli | <b>Sonraki Hedef:</b> 50.10<br><b>Ayı Olması İçin:</b> 42.94 aşağıya kırılmalı | <b>Sonraki Hedef:</b> 40.98",
+   "M8": "<b>Piyasa Sentezi:</b> Fiyat 42.94 ile 48.14 arasında sıkışmış, yön arayışında olan bir testere (Choppy) piyasasında. Ne alıcılar ne de satıcılar tam kontrol sağlayabilmiş değil. Kırılım yönü teknik olarak belirleyici olacaktır.",
+   "S": [
+    "neutral",
+    "neutral",
+    "neutral",
+    "warning",
+    "neutral",
+    "bear",
+    "neutral",
+    "warning"
+   ],
+   "comp_color": "#d97706",
+   "comp_decision": "BEKLEMEDE",
+   "composite_score": 40,
+   "factor_scores": {
+    "momentum": 35,
+    "senaryo": 50,
+    "trend": 30,
+    "volume": 50,
+    "yapi": 50
+   },
+   "tp_atr": 1.305714,
+   "tp_curr_price": 44.34,
+   "tp_stop_20g": 42.94,
+   "tp_stop_5g": 43.86,
+   "tp_target_20g": 48.14,
+   "tp_target_atr": 46.951429
+  },
+  "an_scanner_strength": [],
+  "an_scanner_tiers": [],
+  "an_stp": {
+   "data": {
+    "Fark": -0.908004,
+    "Fiyat": 44.34,
+    "Gun": 5,
+    "Hacim": 44328261.049879,
+    "STP": 44.746298,
+    "Sembol": "GLDN.IS"
+   },
+   "type": "trend_down"
+  },
+  "an_synthetic_sentiment": {
+   "__df__": true,
+   "cols": [
+    "Date",
+    "MF_Smooth",
+    "STP",
+    "Price",
+    "Volume",
+    "Vol_Avg20",
+    "Date_Str",
+    "RVOL"
+   ],
+   "last_row": {
+    "Date": "2026-07-03 00:00:00",
+    "Date_Str": "03 Jul",
+    "MF_Smooth": -3.936664,
+    "Price": 44.34,
+    "RVOL": 0.884966,
+    "STP": 44.746258,
+    "Vol_Avg20": 50090328.599431,
+    "Volume": 44328261.049879
+   },
+   "shape": [
+    30,
+    8
+   ]
+  },
+  "an_weekly_frame": {
+   "ai_data": "- uzun vade: yatay/kararsiz, 52H bandında %58, 1y hacim merkezi (POC) 45.92 → fiyat altında\n- Dow yapısı: geçiş / yatay; trend iptal seviyesi 42.94\n- bölge: premium (pahalı yarı); üst likidite %20 yukarı / alt likidite %28 aşağı\n- günlük×haftalık: kismi̇ — biri nötr\n- son hafta mumu: kırmızı, gövde %51, RVol 0.8x, haftalık RSI 50\n",
+   "align": [
+    "KISMİ — biri nötr",
+    "Bir zaman dilimi net yön verirken diğeri kararsız — geçiş ortamı, acele etme.",
+    "#94a3b8"
+   ],
+   "candle": [
+    "Kırmızı — kararsız gövde",
+    "Son haftalık mum: kırmızı — kararsız gövde (gövde %51). Haftalık RSI 50. Son 8 hafta: 2 yeşil / 6 kırmızı, net %-13.3. Hacim ortalamanın altında (RVol 0.8x) — sığ piyasa, gövde büyük olsa da teyit zayıf.",
+    "#f59e0b"
+   ],
+   "dow": [
+    "Geçiş / Yatay",
+    "Dow teorisi: tepe-dip yapısı karışık → trend geçiş aşamasında, yön belirsiz.",
+    "#f59e0b"
+   ],
+   "n_weeks": 55,
+   "pos": [
+    "Uzun vade YATAY/KARARSIZ",
+    "Fiyat ile 50-haftalık ortalama net yön vermiyor — denge bölgesi. 52-hafta bandında %58. 1y hacim merkezi (POC) 45.92 — fiyat %3 altında, yani yıllık maliyetlenmenin altında.",
+    "#f59e0b"
+   ],
+   "pos52": 57.600559,
+   "structure": [
+    "Bant içinde",
+    "Fiyat son salınım tepe/dibi arasında — yapı korunuyor, kırılım yok. Denge çizgisi (EQ %50): 42.71 → fiyat premium (pahalı yarı). Üst likidite (52H zirve) %20 yukarıda, alt likidite (52H dip) %28 aşağıda.",
+    "#94a3b8"
+   ],
+   "wk_rsi": 50.082746
+  },
+  "anchored_vwap_52h_top": {
+   "__series__": true,
+   "len": 39,
+   "tail5": [
+    46.520536,
+    46.47088,
+    46.426517,
+    46.383272,
+    46.339612
+   ]
+  },
+  "breakout_state": [
+   0,
+   0.4,
+   0.89
+  ],
+  "classic_candles": [],
+  "compute_cmf_20g": -0.229055,
+  "compute_cmf_5g": -0.425779,
+  "compute_mfi_14": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    51.029685,
+    50.015244,
+    50.519732,
+    48.786233,
+    42.21136
+   ]
+  },
+  "compute_mfi_5": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    40.498408,
+    37.850522,
+    37.206252,
+    59.930251,
+    41.944049
+   ]
+  },
+  "darvas_box": {
+   "box_age": 10,
+   "box_bottom": 43.86,
+   "box_top": 48.14,
+   "breakout_class": null,
+   "quality": 65,
+   "status": "forming",
+   "vol_ratio": 0.94
+  },
+  "er_build_context": {
+   "above_sma20": false,
+   "above_sma50": false,
+   "atr_contracting": false,
+   "bb_squeeze": true,
+   "bb_squeeze_days": 18,
+   "bearish_div": true,
+   "distribution_count_5d": 0,
+   "distribution_day": "<bool> False",
+   "double_bottom": false,
+   "fall_stopped": true,
+   "flag_pattern": false,
+   "index_falling": true,
+   "lateral_10": false,
+   "lateral_20": false,
+   "medium_bull_div": true,
+   "pocket_pivot": false,
+   "pos_60": 0.23213,
+   "pos_60_lower_30": true,
+   "pos_60_lower_50": true,
+   "pos_60_mid": false,
+   "pos_60_upper_80": false,
+   "pullback_3_8": true,
+   "pullback_to_sma20": true,
+   "pullback_to_sma50": false,
+   "recent_fall_15": true,
+   "recent_fall_25": false,
+   "rs_20d_pct": -6.311577,
+   "rs_accelerating": false,
+   "rs_crossover": false,
+   "rs_healthy_pullback": false,
+   "rs_negative_60": true,
+   "rs_new_high": false,
+   "rs_persistent_positive": false,
+   "rs_turning": false,
+   "rsi_25_35": false,
+   "rsi_30_45": true,
+   "rsi_30_50": true,
+   "rsi_35_50": true,
+   "rsi_40_55": true,
+   "rsi_42_58": false,
+   "rsi_45_55": false,
+   "rsi_45_60": false,
+   "rsi_45_65": false,
+   "rsi_50_60": false,
+   "rsi_50_65": false,
+   "rsi_now": 40.115163,
+   "sma50_rising": false,
+   "strong_bull_div": true,
+   "triangle": false,
+   "updown_ratio_bullish": false,
+   "vol_dried": false,
+   "vol_rising_slow": "<bool> True",
+   "weak_bull_div": false
+  },
+  "er_evaluate": {
+   "confirmations": [
+    {
+     "category": "D",
+     "description": "Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli.",
+     "id": "D2",
+     "name": "Karışık Sinyal",
+     "stars": 2
+    }
+   ],
+   "context": {
+    "above_sma20": false,
+    "above_sma50": false,
+    "atr_contracting": false,
+    "bb_squeeze": true,
+    "bb_squeeze_days": 18,
+    "bearish_div": true,
+    "distribution_count_5d": 0,
+    "distribution_day": "<bool> False",
+    "double_bottom": false,
+    "fall_stopped": true,
+    "flag_pattern": false,
+    "index_falling": true,
+    "lateral_10": false,
+    "lateral_20": false,
+    "medium_bull_div": true,
+    "pocket_pivot": false,
+    "pos_60": 0.23213,
+    "pos_60_lower_30": true,
+    "pos_60_lower_50": true,
+    "pos_60_mid": false,
+    "pos_60_upper_80": false,
+    "pullback_3_8": true,
+    "pullback_to_sma20": true,
+    "pullback_to_sma50": false,
+    "recent_fall_15": true,
+    "recent_fall_25": false,
+    "rs_20d_pct": -6.311577,
+    "rs_accelerating": false,
+    "rs_crossover": false,
+    "rs_healthy_pullback": false,
+    "rs_negative_60": true,
+    "rs_new_high": false,
+    "rs_persistent_positive": false,
+    "rs_turning": false,
+    "rsi_25_35": false,
+    "rsi_30_45": true,
+    "rsi_30_50": true,
+    "rsi_35_50": true,
+    "rsi_40_55": true,
+    "rsi_42_58": false,
+    "rsi_45_55": false,
+    "rsi_45_60": false,
+    "rsi_45_65": false,
+    "rsi_50_60": false,
+    "rsi_50_65": false,
+    "rsi_now": 40.115163,
+    "sma50_rising": false,
+    "strong_bull_div": true,
+    "triangle": false,
+    "updown_ratio_bullish": false,
+    "vol_dried": false,
+    "vol_rising_slow": "<bool> True",
+    "weak_bull_div": false
+   },
+   "deepening": {},
+   "matched_count": 2,
+   "overall_quality": 69,
+   "primary": {
+    "category": "B",
+    "description": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı. Sıkışma uzadıkça enerji birikiyor — patlama yakın olabilir.",
+    "id": "B8",
+    "name": "Sıkışma Sonu",
+    "stars": 4
+   },
+   "red_flag_count": 0,
+   "red_flags": [],
+   "verdict": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı. Sıkışma uzadıkça enerji birikiyor — patlama yakın olabilir."
+  },
+  "er_kisa_aciklama_probe": {
+   "A1": "Hisse uzun süredir düşüşte ama son günlerde satıcı baskısı azaldı.",
+   "B8": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı.",
+   "C2": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı.",
+   "D1": "Bugün hacimli bir alım günü oldu ama hisse 50 günlük ortalama altında ve diğer kriterler desteklemiyor."
+  },
+  "fib_levels": {
+   "-0.236 (Kırılım Hedefi)": 57.194016,
+   "-0.618 (Hedef)": 63.325643,
+   "0 (Dip)": 37.35451,
+   "0.236": 41.142636,
+   "0.382": 43.486137,
+   "0.5 (Orta)": 45.3802,
+   "0.618 (Golden - Satış)": 47.274263,
+   "1 (Tepe)": 53.40589
+  },
+  "force_index_dual": {
+   "divergence": null,
+   "fi_long": -3908384.790165,
+   "fi_long_norm": -0.16,
+   "fi_short": -7655832.040955,
+   "fi_short_norm": -0.31,
+   "state": "neutral"
+  },
+  "full_volume_profile": {
+   "poc": 45.15,
+   "vah": 45.93,
+   "val": 44.11
+  },
+  "harmonic_confluence": null,
+  "harmonic_patterns": null,
+  "harmonik_52h_strength": [
+   "🟡 ORTA",
+   1,
+   57.6
+  ],
+  "harsi": {
+   "change": "<bool> False",
+   "color": "#f87171",
+   "ha_close": 45.369051,
+   "ha_open": 50.622939,
+   "is_green": "<bool> False",
+   "status": "AYI MOMENTUMU"
+  },
+  "ict_deep": {
+   "bias": "bullish_retrace",
+   "bottom_line": "Trend yukarı (Bullish) ve fiyat cazip (Discount) bölgesinde. Kurumsal alım iştahı ivmeleniyor. İlk olarak 44.82 ana hedefine doğru hareket, ardından güçlü 47.52 direncine yürüyüşü izlenebilir. Sermaye koruması için hemen dibindeki swing dip 43.94 yakından takip edilmeli.",
+   "curr_price": 44.34,
+   "desc": "İdeal bir setup (Entry) bekleniyor. Mevcut yön mıknatısı takip ediliyor.",
+   "displacement": "Zayıf (Dar Hareket)",
+   "entry": 0.0,
+   "eqh_eql_txt": "Yok",
+   "fvg_age": 29,
+   "fvg_high_num": 44.79777,
+   "fvg_low_num": 42.34959,
+   "fvg_txt": "Açık FVG var (Destek): 42.35 - 44.80 · test edildi",
+   "last_sh": 48.14,
+   "last_sl": 42.94,
+   "mean_threshold": 47.502615,
+   "model_checks": [
+    [
+     "Bias Net",
+     false
+    ],
+    [
+     "Doğru Bölge",
+     true
+    ],
+    [
+     "OB Aktif",
+     false
+    ],
+    [
+     "FVG Açık",
+     true
+    ],
+    [
+     "Displacement",
+     false
+    ]
+   ],
+   "model_score": 2,
+   "ob_age": 0,
+   "ob_high_num": 0.0,
+   "ob_low_num": 0.0,
+   "ob_txt": "Yok",
+   "rr": 0.0,
+   "setup_type": "BEKLE",
+   "status": "OK",
+   "stop": 0.0,
+   "struct_age": 10,
+   "structural_target": 47.52,
+   "structure": "📦 Boğa Sıkışması — Kırılım Yukarı Olabilir | HH (Yükselen Tepe) / HL (Yükselen Dip)",
+   "sweep_txt": "Yok",
+   "target": 44.82,
+   "zone": "DISCOUNT (Ucuz)"
+  },
+  "lazybear_breakout": [
+   "<bool> True",
+   "<bool> True"
+  ],
+  "lazybear_squeeze": true,
+  "liquidity_manip": {
+   "adv_mn": 2262.4,
+   "manip": "yok",
+   "tier": "yüksek"
+  },
+  "market_regime": {
+   "bull_bias": false,
+   "color": "#f87171",
+   "confidence": 0.3,
+   "desc": "Fiyat yapısal olarak düşüş fazında: SMA altı, OBV geriliyor, eğim negatif.",
+   "icon": "🔻",
+   "label": "Düşüş Fazı",
+   "phase": 4
+  },
+  "master_score": [
+   21,
+   [
+    "✅ Ana Trend: SMA200'e güvenli mesafede (+18.8 Puan)",
+    "⚠️ Zayıf Formasyon: Radar-2 Sinyali Eksik (+2.5 Puan)"
+   ],
+   [
+    "Kısa Vade Zayıf: SMA50 altında baskı var (0 Puan)",
+    "Para Çıkışı: Kurumsal duyarlılık zayıf (0 Puan)",
+    "RSI Zayıf: Satış baskısı devam ediyor (0 Puan)"
+   ],
+   {
+    "ict": {
+     "contribution": 0.0,
+     "score": 100,
+     "weight": 0.0
+    },
+    "momentum": {
+     "contribution": 0.0,
+     "score": 0,
+     "weight": 0.352941
+    },
+    "radar2": {
+     "contribution": 2.5,
+     "score": 14,
+     "weight": 0.176471
+    },
+    "trend": {
+     "contribution": 18.8,
+     "score": 40,
+     "weight": 0.470588
+    }
+   }
+  ],
+  "minervini_sepa": null,
+  "multi_tf_pocs": {
+   "confluence": false,
+   "confluence_mid": null,
+   "dist_from_price_pct": {},
+   "poc_20": 45.15,
+   "poc_250": 45.922156,
+   "poc_60": 46.558091,
+   "spread_pct": 3.069291
+  },
+  "naked_poc": [
+   45.15
+  ],
+  "pa_dna": {
+   "candle": {
+    "desc": "SATICI: 📉 Trend Yönünde Evening Star (Trend Dönüş Risk) 🌆 (Güven: 25/100) ",
+    "title": "Formasyon Tespiti"
+   },
+   "div": {
+    "desc": "RSI ve Fiyat paralel.",
+    "title": "Uyumlu",
+    "type": "neutral"
+   },
+   "loc": {
+    "desc": "Fiyat konsolidasyon içinde.",
+    "title": "Denge Bölgesi"
+   },
+   "obv": {
+    "color": "#64748B",
+    "desc": "Hacim akışı ortalamanın altında.",
+    "title": "⚖️ ZAYIF İVME (Hacimsiz Bölge)"
+   },
+   "obv_direction": 0,
+   "rs": {
+    "alpha": -0.102962
+   },
+   "rsi_val": 40.115163,
+   "sfp": {
+    "desc": "Önemli bir tuzak tespiti yok.",
+    "title": "Yok"
+   },
+   "sma50_val": 46.121912,
+   "smart_volume": {
+    "climax": "Yok",
+    "cum_delta_5": -103048302.098319,
+    "cum_delta_pct": 42.6,
+    "delta": -8865652.209976,
+    "delta_yuzde": 20.0,
+    "desc": "Piyasa büyük oyuncuların en çok işlem yaptığı POC alanında. Son 5 günde satış ağır basıyor, aşağı kırılım riski var.",
+    "dort_soru": null,
+    "naked_poc_txt": "45.15 (fiyattan %1.8 yukarıda)",
+    "poc": 45.15,
+    "rvol": 0.89,
+    "stopping": "Yok",
+    "title": "⚖️ POC ALANINDA (44.11–45.93) — Satış Ağırlıklı",
+    "va_pos": "İÇİNDE",
+    "vah": 45.93,
+    "val": 44.11
+   },
+   "sq": {
+    "desc": "Fiyat yay gibi gerildi. Patlama yakın.",
+    "title": "⏳ SÜPER SIKIŞMA (Coil)"
+   },
+   "vol": {
+    "desc": "Hacim ortalama seyrediyor.",
+    "title": "Normal"
+   },
+   "vwap": {
+    "diff": -2.015849,
+    "val": 45.252216
+   }
+  },
+  "pa_with_context": [
+   "NÖTR",
+   ""
+  ],
+  "pipe_chart_patterns": {
+   "__df__": true,
+   "cols": [],
+   "last_row": {},
+   "shape": [
+    0,
+    0
+   ]
+  },
+  "pipe_golden_agent": {
+   "formations": {
+    "__df__": true,
+    "cols": [],
+    "last_row": {},
+    "shape": [
+     0,
+     0
+    ]
+   },
+   "hazirlik": {
+    "__df__": true,
+    "cols": [],
+    "last_row": {},
+    "shape": [
+     0,
+     0
+    ]
+   }
+  },
+  "pipe_signal_features": {
+   "f_52h_pos": 57.6,
+   "f_adv_tl": 2262.4,
+   "f_at_vwap_minus_2sigma": 0,
+   "f_at_y_open": 0,
+   "f_avwap_test_zone": 1,
+   "f_beta_xu100": 1.24,
+   "f_breaker_block_active": 1,
+   "f_breakout_state": null,
+   "f_buyback_aktif": null,
+   "f_buyback_dip_aliyor": null,
+   "f_cmf_dual": "strong_neg",
+   "f_cum_delta_dual": "strong_neg",
+   "f_dd_zirveden": -14.2,
+   "f_force_index_divergence": null,
+   "f_force_index_dual": "neutral",
+   "f_hv_oran": 0.81,
+   "f_ict_model": 2.0,
+   "f_insider_first_buy": null,
+   "f_kurumsal_anchor": null,
+   "f_liquidity_tier": "yüksek",
+   "f_manip_risk": "yok",
+   "f_master_score": 21.0,
+   "f_mfi_dual": "neutral",
+   "f_mom_12_1": 30.33,
+   "f_ms_ict": 100.0,
+   "f_ms_momentum": 0.0,
+   "f_ms_radar2": 14.0,
+   "f_ms_trend": 40.0,
+   "f_near_ifvg": 1,
+   "f_omi_sigma": -1.33,
+   "f_poc_confluence": 0,
+   "f_poc_magnet": 0,
+   "f_rel_obv_divergence": 0,
+   "f_rel_obv_state": "underperform_mild",
+   "f_rsi": 40.1,
+   "f_rsi_dual": "neutral",
+   "f_rsi_mfi_bouquet": 0,
+   "f_sentiment_score": 26.0,
+   "f_sfp_bear": 0,
+   "f_sfp_bull": 0,
+   "f_sharpe_mom": 0.83,
+   "f_skew_60g": 0.38,
+   "f_smart_money_score": 69.0,
+   "f_smart_structural_score": 45.0,
+   "f_smart_tactical_score": 40.0,
+   "f_spike_dominance": 8,
+   "f_squeeze_days": 4,
+   "f_tefas_konsensus_alim": null,
+   "f_tefas_konsensus_satim": null,
+   "f_tefas_yeni_giris": null,
+   "f_threshold_asildi": null,
+   "f_trend_persist": 60.8,
+   "f_udvr_20g": 0.59,
+   "f_udvr_climax": null,
+   "f_udvr_state": "seller",
+   "f_vol_60g": 42.3,
+   "f_vp_shape": "akumulasyon",
+   "f_yabanci_anchor": null,
+   "f_yabanci_cikis": null,
+   "f_yabanci_giris": null,
+   "f_yabanci_streak": null
+  },
+  "price_chart_struct": {
+   "n_annotations": 35,
+   "n_shapes": 30,
+   "smc": {
+    "avwap": {
+     "high": [
+      46.339612,
+      -4.315125
+     ],
+     "low": [
+      43.629227,
+      1.629121
+     ]
+    },
+    "fvg": [
+     "bull_inverted",
+     43.830345,
+     1.16279
+    ],
+    "fvg_state": "inverted",
+    "poc": [
+     46.558091,
+     -4.764136
+    ],
+    "poc_mtf": {
+     "confluence": false,
+     "confluence_mid": null,
+     "dist": {
+      "poc_20": -1.79402,
+      "poc_60": -4.764136
+     },
+     "poc_20": 45.15,
+     "poc_250": null,
+     "poc_60": 46.558091,
+     "spread_pct": 3.070811
+    },
+    "vwap": [
+     41.939451,
+     5.723846
+    ],
+    "zone": [
+     "DISCOUNT",
+     "#26a69a",
+     "✅ fırsat"
+    ]
+   },
+   "traces": [
+    [
+     "candlestick",
+     "Fiyat",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 50: 46.12",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 100: 45.43",
+     90
+    ],
+    [
+     "scatter",
+     "EMA 144: 43.66",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 200: 41.63",
+     90
+    ],
+    [
+     "bar",
+     "Hacim",
+     90
+    ],
+    [
+     "scatter",
+     "+2σ",
+     90
+    ],
+    [
+     "scatter",
+     "-2σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP +1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP -1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP(Y): 41.94",
+     90
+    ],
+    [
+     "scatter",
+     "aVWAP 52H ZİRVE: 46.34",
+     39
+    ],
+    [
+     "scatter",
+     "⚓ 52H ZİRVE",
+     1
+    ],
+    [
+     "scatter",
+     "aVWAP 52H DİP: 43.63",
+     90
+    ]
+   ]
+  },
+  "relative_obv_state": {
+   "bench_slope_pct": -21.29,
+   "diff_pct": -3.45,
+   "state": "underperform_mild",
+   "stock_slope_pct": -24.73
+  },
+  "risk_profile": {
+   "beta_xu100": 1.24,
+   "dd_max_1y": -24.7,
+   "dd_zirveden": -14.2,
+   "dipten_recovery": 40.0,
+   "hv_oran": 0.81,
+   "skew_60g": 0.38
+  },
+  "sc_accumulation": null,
+  "sc_guclu_donus": null,
+  "sc_ict_setup": null,
+  "sc_nadir_firsat": null,
+  "sc_prelaunch_bos": null,
+  "sc_radar1": {
+   "Detaylar": {
+    "ADX Durumu": [
+     false,
+     6.958478
+    ],
+    "Breakout": false,
+    "Hacim": false,
+    "MACD": false,
+    "Mansfield RS": [
+     false,
+     -0.483028
+    ],
+    "RSI Güçlü": [
+     false,
+     40.115163
+    ],
+    "Squeeze": true,
+    "Trend": false
+   },
+   "Fiyat": "44.34",
+   "Nedenler": "🚀 Squeeze",
+   "Sembol": "GLDN.IS",
+   "Skor": 1
+  },
+  "sc_radar2": null,
+  "sentiment_score": {
+   "bar": "【█████░░░░░░░░░░░░░░░】",
+   "is_index": false,
+   "mom": "0/20 ",
+   "raw_atr": 0,
+   "raw_macd": -0.075699,
+   "raw_obv": 1233590653.398723,
+   "raw_rsi": 40.115163,
+   "rs": "0/20 ",
+   "str": "10/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(HH+HL Zinciri (Güçlü Yapı))</span>",
+   "total": 26,
+   "tr": "8/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Ana Trend+)</span>",
+   "vol": "0/20 ",
+   "vola": "8/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Alım Hacmi > Satım)</span>"
+  },
+  "smart_money_score": {
+   "_er_data": {
+    "confirmations": [
+     {
+      "category": "D",
+      "description": "Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli.",
+      "id": "D2",
+      "name": "Karışık Sinyal",
+      "stars": 2
+     }
+    ],
+    "context": {
+     "above_sma20": false,
+     "above_sma50": false,
+     "atr_contracting": false,
+     "bb_squeeze": true,
+     "bb_squeeze_days": 18,
+     "bearish_div": true,
+     "distribution_count_5d": 0,
+     "distribution_day": "<bool> False",
+     "double_bottom": false,
+     "fall_stopped": true,
+     "flag_pattern": false,
+     "index_falling": true,
+     "lateral_10": false,
+     "lateral_20": false,
+     "medium_bull_div": true,
+     "pocket_pivot": false,
+     "pos_60": 0.23213,
+     "pos_60_lower_30": true,
+     "pos_60_lower_50": true,
+     "pos_60_mid": false,
+     "pos_60_upper_80": false,
+     "pullback_3_8": true,
+     "pullback_to_sma20": true,
+     "pullback_to_sma50": false,
+     "recent_fall_15": true,
+     "recent_fall_25": false,
+     "rs_20d_pct": -6.311577,
+     "rs_accelerating": false,
+     "rs_crossover": false,
+     "rs_healthy_pullback": false,
+     "rs_negative_60": true,
+     "rs_new_high": false,
+     "rs_persistent_positive": false,
+     "rs_turning": false,
+     "rsi_25_35": false,
+     "rsi_30_45": true,
+     "rsi_30_50": true,
+     "rsi_35_50": true,
+     "rsi_40_55": true,
+     "rsi_42_58": false,
+     "rsi_45_55": false,
+     "rsi_45_60": false,
+     "rsi_45_65": false,
+     "rsi_50_60": false,
+     "rsi_50_65": false,
+     "rsi_now": 40.115163,
+     "sma50_rising": false,
+     "strong_bull_div": true,
+     "triangle": false,
+     "updown_ratio_bullish": false,
+     "vol_dried": false,
+     "vol_rising_slow": "<bool> True",
+     "weak_bull_div": false
+    },
+    "deepening": {},
+    "matched_count": 2,
+    "overall_quality": 69,
+    "primary": {
+     "category": "B",
+     "description": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı. Sıkışma uzadıkça enerji birikiyor — patlama yakın olabilir.",
+     "id": "B8",
+     "name": "Sıkışma Sonu",
+     "stars": 4
+    },
+    "red_flag_count": 0,
+    "red_flags": [],
+    "verdict": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı. Sıkışma uzadıkça enerji birikiyor — patlama yakın olabilir."
+   },
+   "criteria": {},
+   "market_note": "BIST puanı: 80/100 — Endeks de destekliyor",
+   "market_score": 80,
+   "pre_launch": false,
+   "score": 69,
+   "score5": null,
+   "score_trend": "",
+   "status": "Sıkışma Sonu",
+   "status_color": "#22c55e",
+   "summary_text": "Sıkışma Sonu: Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı. Sıkışma uzadıkça enerji birikiyor — patlama yakın olabilir. | + Karışık Sinyal: Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli."
+  },
+  "smart_sr_levels": [
+   42.36,
+   43.95
+  ],
+  "smc_elements": {
+   "bos_lines": [],
+   "eqh": [
+    [
+     236,
+     251,
+     46.657339
+    ]
+   ],
+   "eql": [
+    [
+     241,
+     253,
+     44.97
+    ],
+    [
+     259,
+     263,
+     43.97
+    ]
+   ],
+   "fvg_bear": [
+    [
+     229,
+     48.470043,
+     49.180805,
+     "fresh"
+    ],
+    [
+     230,
+     47.91723,
+     48.312096,
+     "tested"
+    ],
+    [
+     231,
+     45.72571,
+     47.285442,
+     "inverted"
+    ],
+    [
+     232,
+     42.34959,
+     45.3111,
+     "inverted"
+    ],
+    [
+     243,
+     45.78,
+     46.1,
+     "inverted"
+    ],
+    [
+     256,
+     45.54,
+     46.06,
+     "tested"
+    ]
+   ],
+   "fvg_bull": [
+    [
+     223,
+     48.09492,
+     48.114662,
+     "inverted"
+    ],
+    [
+     225,
+     50.19759,
+     51.086044,
+     "inverted"
+    ],
+    [
+     234,
+     42.34959,
+     44.79777,
+     "tested"
+    ],
+    [
+     235,
+     44.935974,
+     45.212383,
+     "inverted"
+    ],
+    [
+     240,
+     45.799999,
+     45.92,
+     "inverted"
+    ],
+    [
+     249,
+     44.64,
+     45.9,
+     "inverted"
+    ]
+   ],
+   "ob_bear": [
+    [
+     260,
+     44.607,
+     45.32,
+     45.32,
+     44.607,
+     "breaker"
+    ],
+    [
+     254,
+     46.361,
+     47.4,
+     47.4,
+     46.361,
+     "breaker"
+    ],
+    [
+     250,
+     44.34,
+     44.76,
+     44.76,
+     44.34,
+     "breaker"
+    ]
+   ],
+   "ob_bull": [
+    [
+     253,
+     46.099998,
+     44.9,
+     46.099998,
+     44.9,
+     "breaker"
+    ],
+    [
+     249,
+     44.220001,
+     43.66,
+     44.220001,
+     43.66,
+     "mitigation"
+    ],
+    [
+     241,
+     45.66,
+     45.5,
+     45.66,
+     45.5,
+     "breaker"
+    ]
+   ],
+   "swing_high": 48.14,
+   "swing_low": 42.94
+  },
+  "spike_dom_probe": [
+   0.625,
+   0.0,
+   0.7,
+   0.0
+  ],
+  "split_scores": {
+   "structural_score": 59.0,
+   "structural_signals_neg": [],
+   "structural_signals_pos": [
+    "POC mıknatıs aktif",
+    "Multi-TF POC çakışması"
+   ],
+   "tactical_score": 57.0,
+   "tactical_signals_neg": [],
+   "tactical_signals_pos": [
+    "RSI/MFI çift ekstrem (bilgi — ölçüm bekliyor, skorsuz)",
+    "VWAP -2σ bölgesi (institutional buy zone)"
+   ],
+   "verdict": "Uzun ve kısa pencere nötr"
+  },
+  "supertrend": [
+   48.14539,
+   -1
+  ],
+  "supply_demand_zones": {
+   "Age": 32,
+   "Bottom": 45.5875,
+   "Status": "Taze / Beklemede",
+   "Top": 45.72571,
+   "Type": "DBD (Drop-Base-Drop) / Arz"
+  },
+  "tech_card_data": {
+   "atr": 1.305714,
+   "close_last": 44.34,
+   "ema144": 43.65681,
+   "risk_pct": 5.889555,
+   "sma100": 45.432394,
+   "sma200": 41.634024,
+   "sma50": 46.121912,
+   "stop_level": 41.728571
+  },
+  "udvr_20g": {
+   "climax": null,
+   "down_vol": 628813776.130587,
+   "ratio": 0.59,
+   "state": "seller",
+   "up_vol": 372992795.858039
+  },
+  "volume_delta": {
+   "__df__": true,
+   "cols": [
+    "Close",
+    "High",
+    "Low",
+    "Open",
+    "Volume",
+    "Range",
+    "Buying_Pressure",
+    "Selling_Pressure",
+    "Buying_Volume",
+    "Selling_Volume",
+    "Volume_Delta"
+   ],
+   "last_row": {
+    "Buying_Pressure": 0.4,
+    "Buying_Volume": 17731304.419952,
+    "Close": 44.34,
+    "High": 44.82,
+    "Low": 44.02,
+    "Open": 44.68,
+    "Range": 0.8,
+    "Selling_Pressure": 0.6,
+    "Selling_Volume": 26596956.629928,
+    "Volume": 44328261.049879,
+    "Volume_Delta": -8865652.209976
+   },
+   "shape": [
+    266,
+    11
+   ]
+  },
+  "volume_profile_poc": 45.15,
+  "z_score_details": {
+   "atr_multiple": 0.57,
+   "composite": -0.617,
+   "composite_raw": -0.617,
+   "filtered": false,
+   "trend_dir": "→ Nötr",
+   "trend_pct": -0.029,
+   "z20": -0.68,
+   "z252": -0.94,
+   "z60": -0.3
+  },
+  "z_score_live": -0.617
+ },
+ "TUPRS.IS": {
+  "an_advanced_levels": {
+   "curr_price": 248.199997,
+   "fibs": {
+    "-0.236 (Kırılım Hedefi)": 299.418546,
+    "-0.618 (Hedef)": 331.659583,
+    "0 (Dip)": 195.09938,
+    "0.236": 215.017926,
+    "0.382": 227.340417,
+    "0.5 (Orta)": 237.29969,
+    "0.618 (Golden - Satış)": 247.258963,
+    "1 (Tepe)": 279.5
+   },
+   "nearest_res": [
+    "1 (Tepe)",
+    279.5
+   ],
+   "nearest_sup": [
+    "0.618 (Golden - Satış)",
+    247.258963
+   ],
+   "st_dir": 1,
+   "st_val": 222.251304
+  },
+  "an_breakout": {
+   "Fiyat": "248.20",
+   "Hacim": 26165213.774206,
+   "Hacim Durumu": "İlgi Artıyor 📈 · OMI ⚡",
+   "RSI": "65",
+   "Sembol_Display": "GLDN.IS",
+   "Sembol_Raw": "GLDN.IS",
+   "SortKey": 1.230162,
+   "Trend Durumu": "✅EMA | ❌SMA",
+   "Zirveye Yakınlık": "%90.1 (Hazırlık)"
+  },
+  "an_er_prompt_text": "📊 ER Kurulum Kalitesi: 0/100 — Toplam 0 senaryo eşleşti\n\n🎯 ANA SENARYO: Yok — bu hisse Erken Radar kriterlerini tetiklemiyor",
+  "an_ict_reversal": "BULLISH_MSS",
+  "an_mtf_alignment": {
+   "bear_cnt": 0,
+   "bull_cnt": 5,
+   "diagnosis_text": "Vadelerin çoğunluğu yukarıyı destekliyor. Momentum alıcı lehine seyrediyor.",
+   "dominant": "YUKARI",
+   "matrix": {
+    "Aylık": {
+     "hacim": 0,
+     "momentum": 1,
+     "trend": 1
+    },
+    "Günlük": {
+     "hacim": 0,
+     "momentum": 1,
+     "trend": 1
+    },
+    "Haftalık": {
+     "hacim": 0,
+     "momentum": 0,
+     "trend": 1
+    }
+   },
+   "overall_pct": 56,
+   "status_color": "#22c55e",
+   "status_pill": "POZİTİF UYUM (%56 Boğa)",
+   "tf_scores": {
+    "Aylık": {
+     "bear": 0,
+     "bull": 2,
+     "dominant": "YUKARI",
+     "pct": 67
+    },
+    "Günlük": {
+     "bear": 0,
+     "bull": 2,
+     "dominant": "YUKARI",
+     "pct": 67
+    },
+    "Haftalık": {
+     "bear": 0,
+     "bull": 1,
+     "dominant": "YUKARI",
+     "pct": 33
+    }
+   },
+   "timeframes": [
+    "Günlük",
+    "Haftalık",
+    "Aylık"
+   ],
+   "total": 9
+  },
+  "an_obv_divergence": [
+   "✅ SAĞLIKLI TREND (Hacim Onaylı)",
+   "#15803d",
+   "5 ve 14 günlük OBV fiyat yükselişini iki periyotta da teyit ediyor. Trendin arkasında tutarlı akıllı para desteği var. | Para Akışı: +0.015 (nötr)"
+  ],
+  "an_risk_profile": {
+   "level": "düşük",
+   "rows": [
+    [
+     "Oynaklık",
+     "Endeksten daha sakin (0.0×)",
+     "low"
+    ],
+    [
+     "Volatilite trendi",
+     "Sabit; son dönemde değişmedi",
+     "mid"
+    ],
+    [
+     "Zirveden uzaklık",
+     "Zirvesine yakın (%10 altında)",
+     "low"
+    ],
+    [
+     "Sürpriz yönü",
+     "Dengeli; ani çakılma da sıçrama da eğilimi yok",
+     "mid"
+    ],
+    [
+     "Likidite",
+     "Yüksek; rahat girip çıkarsın",
+     "low"
+    ]
+   ]
+  },
+  "an_roadmap": {
+   "M1": "<b>Günlük Mum:</b> Yeşil (Alıcı momentumu)<br><b>PA Sinyali:</b> ALICI: 🔥 Trend Yönünde 3 White Soldiers ⚔️ (Hacimli!) (Güven: 50/100)  | 📍 Güçlü arz bölgesinde oluştu | 📅 Haftalık: Güçlü Boğa Mumu<br><b>EMA Hizalaması:</b> <span style=\"color:#16a34a;font-weight:700;\">▲ Yukarı Hizalı</span><span style=\"color:#64748b;font-size:0.7em;\"> (2 gün)</span>",
+   "M2": "<b>Mevcut Formasyon:</b> Kitabi bir yapı görünmüyor.<br><b>Ana Yapı:</b> İtki (Trend)",
+   "M2_chart_data": null,
+   "M2_scan_price": null,
+   "M3": "<b>VSA Tespiti:</b> ✅ Sağlıklı İtki<br><b>Durum:</b> Geniş gövde ve yüksek hacim. Efor ve Sonuç uyumlu.",
+   "M4": "<div style='margin-bottom:3px;'><div style='background:rgba(251,191,36,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:50%;background:rgba(251,191,36,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Sıkışma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>4/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(251,191,36,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:50%;background:rgba(251,191,36,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Daralma</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>4/8</span></span></div></div><div style='margin-bottom:3px;'><div style='background:rgba(74,222,128,0.13);border-radius:3px;height:16px;position:relative;overflow:hidden;'><div style='width:70%;background:rgba(74,222,128,0.78);height:100%;border-radius:3px;box-shadow:inset 0 0 4px rgba(255,255,255,0.18);'></div><span style='position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-sizing:border-box;'><span style='font-size:0.66rem;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);'>Enerji</span><span style='font-size:0.7rem;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 3px rgba(0,0,0,0.7);font-family:\"JetBrains Mono\",monospace;'>5.6/8</span></span></div></div>",
+   "M5": "<b>Absorption:</b> Belirgin bir kurumsal emilim yok.<br><b>Akış:</b> Standart / Pasif işlem hacmi.",
+   "M6": "<div style='background:rgba(100,116,139,0.12);border-radius:4px;height:18px;position:relative;overflow:hidden;margin-bottom:4px;'><div style='width:77%;background:rgba(22,163,74,0.78);height:100%;border-radius:4px 0 0 4px;position:absolute;left:0;top:0;'></div><div style='width:23%;background:rgba(248,113,113,0.75);height:100%;border-radius:0 4px 4px 0;position:absolute;right:0;top:0;'></div><span style='position:absolute;left:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐂 %77</span><span style='position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:0.62rem;font-weight:800;color:#fff;'>🐻 %23</span></div><div style='font-size:0.65rem;line-height:1.3;'>Alıcılar baskın, momentum güçlü.</div>",
+   "M7": "<b>Boğa Olması İçin:</b> 249.60 yukarı geçilmeli | <b>Sonraki Hedef:</b> 259.16<br><b>Ayı Olması İçin:</b> 215.10 aşağıya kırılmalı | <b>Sonraki Hedef:</b> 205.54",
+   "M8": "<b>Piyasa Sentezi:</b> Makro yapı güçlü olsa da, kısa vadede aşırı ısınma ve yorulma (Dağıtım) emareleri göze çarpıyor. Hacim tarafındaki 'Sağlıklı' durumu kurumsal kâr satışlarına işaret edebilir. Yeni alımlar yüksek riskli olup, 215.10 desteği ana stop hattı olarak izlenmelidir.",
+   "S": [
+    "bull",
+    "neutral",
+    "bull",
+    "warning",
+    "neutral",
+    "bull",
+    "neutral",
+    "warning"
+   ],
+   "comp_color": "#16a34a",
+   "comp_decision": "POZİTİF",
+   "composite_score": 77,
+   "factor_scores": {
+    "momentum": 78,
+    "senaryo": 50,
+    "trend": 100,
+    "volume": 75,
+    "yapi": 50
+   },
+   "tp_atr": 6.371429,
+   "tp_curr_price": 248.199997,
+   "tp_stop_20g": 215.1,
+   "tp_stop_5g": 217.3,
+   "tp_target_20g": 249.600006,
+   "tp_target_atr": 260.942855
+  },
+  "an_scanner_strength": [],
+  "an_scanner_tiers": [],
+  "an_stp": {
+   "data": {
+    "Fark": 6.165943,
+    "Fiyat": 248.199997,
+    "Gun": 4,
+    "Hacim": 26165213.774206,
+    "STP": 233.784951,
+    "Sembol": "GLDN.IS"
+   },
+   "type": "trend_up"
+  },
+  "an_synthetic_sentiment": {
+   "__df__": true,
+   "cols": [
+    "Date",
+    "MF_Smooth",
+    "STP",
+    "Price",
+    "Volume",
+    "Vol_Avg20",
+    "Date_Str",
+    "RVOL"
+   ],
+   "last_row": {
+    "Date": "2026-07-03 00:00:00",
+    "Date_Str": "03 Jul",
+    "MF_Smooth": 24.068783,
+    "Price": 248.199997,
+    "RVOL": 1.212897,
+    "STP": 233.78578,
+    "Vol_Avg20": 21572492.683055,
+    "Volume": 26165213.774206
+   },
+   "shape": [
+    30,
+    8
+   ]
+  },
+  "an_weekly_frame": {
+   "ai_data": "- uzun vade: yatay/kararsiz, 52H bandında %79, 1y hacim merkezi (POC) 190.48 → fiyat üstünde\n- Dow yapısı: birincil yükseli̇ş; trend iptal seviyesi 204.23\n- bölge: premium (pahalı yarı); üst likidite %13 yukarı / alt likidite %48 aşağı\n- günlük×haftalık: kismi̇ — biri nötr\n- son hafta mumu: yeşil, gövde %88, RVol 0.8x, haftalık RSI 53\n",
+   "align": [
+    "KISMİ — biri nötr",
+    "Bir zaman dilimi net yön verirken diğeri kararsız — geçiş ortamı, acele etme.",
+    "#94a3b8"
+   ],
+   "candle": [
+    "Güçlü yeşil mum",
+    "Son haftalık mum: güçlü yeşil mum (gövde %88). Haftalık RSI 53. Son 8 hafta: 2 yeşil / 6 kırmızı, net %-4.0. Hacim ortalama civarı (RVol 0.8x).",
+    "#10b981"
+   ],
+   "dow": [
+    "Birincil YÜKSELİŞ",
+    "Dow teorisi: yükselen tepe + yükselen dip → birincil trend yukarı. Düzeltmeler alım fırsatı sayılır. Trend iptal seviyesi: 204.23 (haftalık kapanış bu seviyenin altında → yükselen yapı bozulur).",
+    "#10b981"
+   ],
+   "n_weeks": 55,
+   "pos": [
+    "Uzun vade YATAY/KARARSIZ",
+    "Fiyat ile 50-haftalık ortalama net yön vermiyor — denge bölgesi. 52-hafta bandında %79. 1y hacim merkezi (POC) 190.48 — fiyat %30 üstünde, yani yıllık maliyetlenmenin üstünde.",
+    "#f59e0b"
+   ],
+   "pos52": 79.106719,
+   "structure": [
+    "Bant içinde",
+    "Fiyat son salınım tepe/dibi arasında — yapı korunuyor, kırılım yok. Denge çizgisi (EQ %50): 204.60 → fiyat premium (pahalı yarı). Üst likidite (52H zirve) %13 yukarıda, alt likidite (52H dip) %48 aşağıda.",
+    "#94a3b8"
+   ],
+   "wk_rsi": 53.079999
+  },
+  "anchored_vwap_52h_top": {
+   "__series__": true,
+   "len": 46,
+   "tail5": [
+    243.884605,
+    243.239073,
+    242.915345,
+    242.807861,
+    242.884969
+   ]
+  },
+  "breakout_state": [
+   1,
+   0.08,
+   1.23
+  ],
+  "classic_candles": [],
+  "compute_cmf_20g": 0.014743,
+  "compute_cmf_5g": 0.587883,
+  "compute_mfi_14": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    35.087872,
+    37.390145,
+    40.636087,
+    48.361963,
+    58.268114
+   ]
+  },
+  "compute_mfi_5": {
+   "__series__": true,
+   "len": 266,
+   "tail5": [
+    51.755183,
+    75.297185,
+    90.56167,
+    90.445331,
+    100.0
+   ]
+  },
+  "darvas_box": {
+   "box_age": 16,
+   "box_bottom": 215.1,
+   "box_top": 238.9,
+   "breakout_class": "B",
+   "quality": 60,
+   "status": "breakout",
+   "vol_ratio": 1.05
+  },
+  "er_build_context": {
+   "above_sma20": true,
+   "above_sma50": true,
+   "atr_contracting": false,
+   "bb_squeeze": false,
+   "bb_squeeze_days": 0,
+   "bearish_div": false,
+   "distribution_count_5d": 0,
+   "distribution_day": "<bool> False",
+   "double_bottom": false,
+   "fall_stopped": true,
+   "flag_pattern": false,
+   "index_falling": true,
+   "lateral_10": false,
+   "lateral_20": false,
+   "medium_bull_div": false,
+   "pocket_pivot": "<bool> True",
+   "pos_60": 0.513975,
+   "pos_60_lower_30": false,
+   "pos_60_lower_50": false,
+   "pos_60_mid": true,
+   "pos_60_upper_80": false,
+   "pullback_3_8": false,
+   "pullback_to_sma20": false,
+   "pullback_to_sma50": true,
+   "recent_fall_15": false,
+   "recent_fall_25": false,
+   "rs_20d_pct": -2.211703,
+   "rs_accelerating": true,
+   "rs_crossover": true,
+   "rs_healthy_pullback": false,
+   "rs_negative_60": true,
+   "rs_new_high": true,
+   "rs_persistent_positive": false,
+   "rs_turning": true,
+   "rsi_25_35": false,
+   "rsi_30_45": false,
+   "rsi_30_50": false,
+   "rsi_35_50": false,
+   "rsi_40_55": false,
+   "rsi_42_58": false,
+   "rsi_45_55": false,
+   "rsi_45_60": false,
+   "rsi_45_65": true,
+   "rsi_50_60": false,
+   "rsi_50_65": true,
+   "rsi_now": 64.89945,
+   "sma50_rising": false,
+   "strong_bull_div": false,
+   "triangle": false,
+   "updown_ratio_bullish": true,
+   "vol_dried": false,
+   "vol_rising_slow": "<bool> False",
+   "weak_bull_div": false
+  },
+  "er_evaluate": {
+   "confirmations": [],
+   "context": {
+    "above_sma20": true,
+    "above_sma50": true,
+    "atr_contracting": false,
+    "bb_squeeze": false,
+    "bb_squeeze_days": 0,
+    "bearish_div": false,
+    "distribution_count_5d": 0,
+    "distribution_day": "<bool> False",
+    "double_bottom": false,
+    "fall_stopped": true,
+    "flag_pattern": false,
+    "index_falling": true,
+    "lateral_10": false,
+    "lateral_20": false,
+    "medium_bull_div": false,
+    "pocket_pivot": "<bool> True",
+    "pos_60": 0.513975,
+    "pos_60_lower_30": false,
+    "pos_60_lower_50": false,
+    "pos_60_mid": true,
+    "pos_60_upper_80": false,
+    "pullback_3_8": false,
+    "pullback_to_sma20": false,
+    "pullback_to_sma50": true,
+    "recent_fall_15": false,
+    "recent_fall_25": false,
+    "rs_20d_pct": -2.211703,
+    "rs_accelerating": true,
+    "rs_crossover": true,
+    "rs_healthy_pullback": false,
+    "rs_negative_60": true,
+    "rs_new_high": true,
+    "rs_persistent_positive": false,
+    "rs_turning": true,
+    "rsi_25_35": false,
+    "rsi_30_45": false,
+    "rsi_30_50": false,
+    "rsi_35_50": false,
+    "rsi_40_55": false,
+    "rsi_42_58": false,
+    "rsi_45_55": false,
+    "rsi_45_60": false,
+    "rsi_45_65": true,
+    "rsi_50_60": false,
+    "rsi_50_65": true,
+    "rsi_now": 64.89945,
+    "sma50_rising": false,
+    "strong_bull_div": false,
+    "triangle": false,
+    "updown_ratio_bullish": true,
+    "vol_dried": false,
+    "vol_rising_slow": "<bool> False",
+    "weak_bull_div": false
+   },
+   "deepening": {},
+   "matched_count": 0,
+   "overall_quality": 0,
+   "primary": null,
+   "red_flag_count": 0,
+   "red_flags": [],
+   "verdict": "Anlamlı senaryo yok"
+  },
+  "er_kisa_aciklama_probe": {
+   "A1": "Hisse uzun süredir düşüşte ama son günlerde satıcı baskısı azaldı.",
+   "B8": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı.",
+   "C2": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı.",
+   "D1": "Bugün hacimli bir alım günü oldu ama hisse 50 günlük ortalama altında ve diğer kriterler desteklemiyor."
+  },
+  "fib_levels": {
+   "-0.236 (Kırılım Hedefi)": 304.111307,
+   "-0.618 (Hedef)": 343.948254,
+   "0 (Dip)": 175.2148,
+   "0.236": 199.826107,
+   "0.382": 215.051746,
+   "0.5 (Orta)": 227.3574,
+   "0.618 (Golden - Satış)": 239.663054,
+   "1 (Tepe)": 279.5
+  },
+  "force_index_dual": {
+   "divergence": "bullish",
+   "fi_long": 84296990.582081,
+   "fi_long_norm": 2.47,
+   "fi_short": 191840783.898688,
+   "fi_short_norm": 5.63,
+   "state": "strong_pos"
+  },
+  "full_volume_profile": {
+   "poc": 226.312502,
+   "vah": 234.937504,
+   "val": 219.412501
+  },
+  "harmonic_confluence": null,
+  "harmonic_patterns": null,
+  "harmonik_52h_strength": [
+   "🟢 GÜÇLÜ",
+   0,
+   79.1
+  ],
+  "harsi": {
+   "change": "<bool> True",
+   "color": "#16a34a",
+   "ha_close": 54.162022,
+   "ha_open": 43.424594,
+   "is_green": "<bool> True",
+   "status": "BOĞA MOMENTUMU"
+  },
+  "ict_deep": {
+   "bias": "bearish_retrace",
+   "bottom_line": "Trend aşağı ve fiyat denge bölgesinde — satıcılar baskın ama fiyat ne pahalı ne ucuz. 239.20 altına sarkma düşüşü derinleştirir; dönüş için hemen üstündeki swing tepe 250.19 üzeri kapanış gerekir.",
+   "curr_price": 248.199997,
+   "desc": "İdeal bir setup (Entry) bekleniyor. Mevcut yön mıknatısı takip ediliyor.",
+   "displacement": "🔥 Güçlü Displacement (Hacim Onaylı)",
+   "entry": 0.0,
+   "eqh_eql_txt": "Yok",
+   "fvg_age": 0,
+   "fvg_high_num": 0.0,
+   "fvg_low_num": 0.0,
+   "fvg_txt": "Yok",
+   "last_sh": 252.75,
+   "last_sl": 215.1,
+   "mean_threshold": 247.3,
+   "model_checks": [
+    [
+     "Bias Net",
+     false
+    ],
+    [
+     "Doğru Bölge",
+     false
+    ],
+    [
+     "OB Aktif",
+     false
+    ],
+    [
+     "FVG Açık",
+     false
+    ],
+    [
+     "Displacement",
+     true
+    ]
+   ],
+   "model_score": 1,
+   "ob_age": 0,
+   "ob_high_num": 0.0,
+   "ob_low_num": 0.0,
+   "ob_txt": "Yok",
+   "rr": 0.0,
+   "setup_type": "BEKLE",
+   "status": "OK",
+   "stop": 0.0,
+   "struct_age": 6,
+   "structural_target": 234.0,
+   "structure": "📦 Ayı Sıkışması — Dikkatli Ol | LH (Alçalan Tepe) / LL (Alçalan Dip)",
+   "sweep_txt": "Yok",
+   "target": 239.199997,
+   "zone": "DENGE (Orta Bölge)"
+  },
+  "lazybear_breakout": [
+   "<bool> False",
+   "<bool> False"
+  ],
+  "lazybear_squeeze": false,
+  "liquidity_manip": {
+   "adv_mn": 4953.0,
+   "manip": "yok",
+   "tier": "yüksek"
+  },
+  "market_regime": {
+   "bull_bias": true,
+   "color": "#10b981",
+   "confidence": 0.7,
+   "desc": "Fiyat yapısal olarak yükseliş fazında: SMA üzeri, OBV artıyor, eğim pozitif.",
+   "icon": "🚀",
+   "label": "Yükseliş Fazı",
+   "phase": 2
+  },
+  "master_score": [
+   80,
+   [
+    "✅ Ana Trend: SMA200'e güvenli mesafede (+18.8 Puan)",
+    "✅ Kısa Vadeli İvme: Fiyat SMA50 üzerinde (+18.8 Puan)",
+    "✅ Net Para Girişi: Kurumsal duyarlılık pozitif (+21.2 Puan)",
+    "✅ RSI Güçlü: Alım iştahı yüksek (+14.1 Puan)",
+    "⚠️ Zayıf Formasyon: Radar-2 Sinyali Eksik (+7.6 Puan)"
+   ],
+   [],
+   {
+    "ict": {
+     "contribution": 0.0,
+     "score": 0,
+     "weight": 0.0
+    },
+    "momentum": {
+     "contribution": 35.3,
+     "score": 100,
+     "weight": 0.352941
+    },
+    "radar2": {
+     "contribution": 7.6,
+     "score": 42,
+     "weight": 0.176471
+    },
+    "trend": {
+     "contribution": 37.6,
+     "score": 80,
+     "weight": 0.470588
+    }
+   }
+  ],
+  "minervini_sepa": null,
+  "multi_tf_pocs": {
+   "confluence": false,
+   "confluence_mid": null,
+   "dist_from_price_pct": {},
+   "poc_20": 226.312502,
+   "poc_250": 190.478641,
+   "poc_60": 255.028,
+   "spread_pct": 28.824436
+  },
+  "naked_poc": [
+   226.312502,
+   266.7275
+  ],
+  "pa_dna": {
+   "candle": {
+    "desc": "ALICI: 🔥 Trend Yönünde 3 White Soldiers ⚔️ (Hacimli!) (Güven: 50/100)  | 📍 Güçlü arz bölgesinde oluştu | 📅 Haftalık: Güçlü Boğa Mumu",
+    "title": "Formasyon Tespiti"
+   },
+   "div": {
+    "desc": "RSI ve Fiyat paralel.",
+    "title": "Uyumlu",
+    "type": "neutral"
+   },
+   "loc": {
+    "desc": "Son 20 günün zirvesi aşıldı.",
+    "title": "📈 Zirve Kırılımı (BOS)"
+   },
+   "obv": {
+    "color": "#15803d",
+    "desc": "OBV her iki pencerede de ortalamasının üzerinde.",
+    "title": "✅ SAĞLIKLI TREND (Hacim Onaylı)"
+   },
+   "obv_direction": 1,
+   "rs": {
+    "alpha": 3.759506
+   },
+   "rsi_val": 64.89945,
+   "sfp": {
+    "desc": "Önemli bir tuzak tespiti yok.",
+    "title": "Yok"
+   },
+   "sma50_val": 243.576,
+   "smart_volume": {
+    "climax": "Yok",
+    "cum_delta_5": 74815956.063873,
+    "cum_delta_pct": 58.8,
+    "delta": 19120693.276837,
+    "delta_yuzde": 73.076771,
+    "desc": "Büyük oyuncuların yoğun işlem yaptığı POC alanının üstüne çıkıldı ve son 5 günde alım hacmi bunu destekliyor. Trend güçlü görünüyor.",
+    "dort_soru": null,
+    "naked_poc_txt": "266.73 (fiyattan %7.5 yukarıda)",
+    "poc": 226.312502,
+    "rvol": 1.23,
+    "stopping": "Yok",
+    "title": "🚀 POC ALANI (219–235) ÜSTÜNDE — Güçlü Kırılım",
+    "va_pos": "ÜSTÜNDE",
+    "vah": 234.937504,
+    "val": 219.412501
+   },
+   "sq": {
+    "desc": "Oynaklık normal seviyede.",
+    "title": "Normal"
+   },
+   "vol": {
+    "desc": "Hacim ortalama seyrediyor.",
+    "title": "Normal"
+   },
+   "vwap": {
+    "diff": 8.18783,
+    "val": 229.415819
+   }
+  },
+  "pa_with_context": [
+   "NÖTR",
+   ""
+  ],
+  "pipe_chart_patterns": {
+   "__df__": true,
+   "cols": [],
+   "last_row": {},
+   "shape": [
+    0,
+    0
+   ]
+  },
+  "pipe_golden_agent": {
+   "formations": {
+    "__df__": true,
+    "cols": [],
+    "last_row": {},
+    "shape": [
+     0,
+     0
+    ]
+   },
+   "hazirlik": {
+    "__df__": true,
+    "cols": [
+     "Sembol",
+     "RSI",
+     "Mansfield",
+     "Hacim_Kat",
+     "Durum",
+     "is_nadir"
+    ],
+    "last_row": {
+     "Durum": "⏳ Hazırlık",
+     "Hacim_Kat": 1.2,
+     "Mansfield": 0.1,
+     "RSI": 64.9,
+     "Sembol": "GLDN.IS",
+     "is_nadir": "<bool> True"
+    },
+    "shape": [
+     1,
+     6
+    ]
+   }
+  },
+  "pipe_signal_features": {
+   "f_52h_pos": 79.1,
+   "f_adv_tl": 4953.0,
+   "f_at_vwap_minus_2sigma": 0,
+   "f_at_y_open": 0,
+   "f_avwap_test_zone": 1,
+   "f_beta_xu100": 0.04,
+   "f_breaker_block_active": 1,
+   "f_breakout_state": null,
+   "f_buyback_aktif": null,
+   "f_buyback_dip_aliyor": null,
+   "f_cmf_dual": "neutral",
+   "f_cum_delta_dual": "neutral",
+   "f_dd_zirveden": -9.9,
+   "f_force_index_divergence": "bullish",
+   "f_force_index_dual": "strong_pos",
+   "f_hv_oran": 0.93,
+   "f_ict_model": 1.0,
+   "f_insider_first_buy": null,
+   "f_kurumsal_anchor": null,
+   "f_liquidity_tier": "yüksek",
+   "f_manip_risk": "yok",
+   "f_master_score": 80.0,
+   "f_mfi_dual": "early_overbought",
+   "f_mom_12_1": 85.54,
+   "f_ms_ict": 0.0,
+   "f_ms_momentum": 100.0,
+   "f_ms_radar2": 42.0,
+   "f_ms_trend": 80.0,
+   "f_near_ifvg": 1,
+   "f_omi_sigma": 1.15,
+   "f_poc_confluence": 0,
+   "f_poc_magnet": 0,
+   "f_rel_obv_divergence": 1,
+   "f_rel_obv_state": "outperform_strong",
+   "f_rsi": 64.9,
+   "f_rsi_dual": "neutral",
+   "f_rsi_mfi_bouquet": 0,
+   "f_sentiment_score": 91.0,
+   "f_sfp_bear": 0,
+   "f_sfp_bull": 0,
+   "f_sharpe_mom": 1.48,
+   "f_skew_60g": -0.24,
+   "f_smart_money_score": 0.0,
+   "f_smart_structural_score": 50.0,
+   "f_smart_tactical_score": 58.0,
+   "f_spike_dominance": 0,
+   "f_squeeze_days": 0,
+   "f_tefas_konsensus_alim": null,
+   "f_tefas_konsensus_satim": null,
+   "f_tefas_yeni_giris": null,
+   "f_threshold_asildi": null,
+   "f_trend_persist": 70.8,
+   "f_udvr_20g": 1.24,
+   "f_udvr_climax": null,
+   "f_udvr_state": "balanced",
+   "f_vol_60g": 36.96,
+   "f_vp_shape": "dagitim",
+   "f_yabanci_anchor": null,
+   "f_yabanci_cikis": null,
+   "f_yabanci_giris": null,
+   "f_yabanci_streak": null
+  },
+  "price_chart_struct": {
+   "n_annotations": 36,
+   "n_shapes": 31,
+   "smc": {
+    "avwap": {
+     "high": [
+      243.592107,
+      1.891642
+     ],
+     "low": [
+      210.776349,
+      17.755146
+     ]
+    },
+    "bos": [
+     "CHoCH",
+     238.9,
+     3.892841
+    ],
+    "fvg": [
+     "bull_inverted",
+     247.3,
+     0.363929
+    ],
+    "fvg_state": "inverted",
+    "poc": [
+     255.028,
+     -2.677354
+    ],
+    "poc_mtf": {
+     "confluence": false,
+     "confluence_mid": null,
+     "dist": {
+      "poc_20": 9.671359,
+      "poc_60": -2.677354
+     },
+     "poc_20": 226.312502,
+     "poc_250": null,
+     "poc_60": 255.028,
+     "spread_pct": 11.93147
+    },
+    "vwap": [
+     205.589032,
+     20.726283
+    ],
+    "zone": [
+     "Geçiş",
+     "#94a3b8",
+     ""
+    ]
+   },
+   "traces": [
+    [
+     "candlestick",
+     "Fiyat",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 50: 243.58",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 100: 241.45",
+     90
+    ],
+    [
+     "scatter",
+     "EMA 144: 226.58",
+     90
+    ],
+    [
+     "scatter",
+     "SMA 200: 215.93",
+     90
+    ],
+    [
+     "bar",
+     "Hacim",
+     90
+    ],
+    [
+     "scatter",
+     "+2σ",
+     90
+    ],
+    [
+     "scatter",
+     "-2σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP +1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP -1σ",
+     90
+    ],
+    [
+     "scatter",
+     "VWAP(Y): 205.59",
+     90
+    ],
+    [
+     "scatter",
+     "aVWAP 52H ZİRVE: 243.59",
+     47
+    ],
+    [
+     "scatter",
+     "⚓ 52H ZİRVE",
+     1
+    ],
+    [
+     "scatter",
+     "aVWAP 52H DİP: 210.78",
+     90
+    ]
+   ]
+  },
+  "relative_obv_state": {
+   "bench_slope_pct": -21.29,
+   "diff_pct": 24.33,
+   "state": "outperform_strong",
+   "stock_slope_pct": 3.05
+  },
+  "risk_profile": {
+   "beta_xu100": 0.04,
+   "dd_max_1y": -21.3,
+   "dd_zirveden": -9.9,
+   "dipten_recovery": 101.0,
+   "hv_oran": 0.93,
+   "skew_60g": -0.24
+  },
+  "sc_accumulation": null,
+  "sc_guclu_donus": {
+   "Aciklama": "⚡ stop avı · RSI 65 · 6/7 kriter · EMA13↑ + EMA eğimi↑ + RSI ivme + OBV↑ + Hacim 5/10g + VWAP↑ · eksik: RS(-2.2%) · haftalık ↑",
+   "CMF": 0.015,
+   "Dusen_Rejim": false,
+   "Fiyat": 248.199997,
+   "Hacim_10g": 5,
+   "Hacim_Kat": 1.21,
+   "Missed": [
+    "RS(-2.2%)"
+   ],
+   "Para_Teyit": true,
+   "Passed": [
+    "EMA13↑",
+    "EMA eğimi↑",
+    "RSI ivme",
+    "OBV↑",
+    "Hacim 5/10g",
+    "VWAP↑"
+   ],
+   "RSI": 64.9,
+   "RSI_Div": "✅",
+   "RS_Pct": -2.2,
+   "Sembol": "GLDN.IS",
+   "Skor": 6,
+   "Sweep_Ay": true,
+   "ToplamSkor": 7.5,
+   "Weekly_Up": true,
+   "Z-Score": 0.0,
+   "Z_Cheap": false
+  },
+  "sc_ict_setup": null,
+  "sc_nadir_firsat": null,
+  "sc_prelaunch_bos": null,
+  "sc_radar1": {
+   "Detaylar": {
+    "ADX Durumu": [
+     false,
+     22.823864
+    ],
+    "Breakout": true,
+    "Hacim": false,
+    "MACD": true,
+    "Mansfield RS": [
+     true,
+     0.05866
+    ],
+    "RSI Güçlü": [
+     true,
+     64.89945
+    ],
+    "Squeeze": false,
+    "Trend": true
+   },
+   "Fiyat": "248.20",
+   "Nedenler": "⚡ Trend | 🟢 MACD | 🔨 Breakout | ⚓ RSI Güçlü | 📈 RS Lider",
+   "Sembol": "GLDN.IS",
+   "Skor": 5
+  },
+  "sc_radar2": null,
+  "sentiment_score": {
+   "bar": "【██████████████████░░】",
+   "is_index": false,
+   "mom": "15/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(RSI>50 + RSI İvme + MACD Al)</span>",
+   "raw_atr": 0,
+   "raw_macd": 3.339084,
+   "raw_obv": 1294989176.420701,
+   "raw_rsi": 64.89945,
+   "rs": "15/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Mansfield+ + RS İvme + Alpha (Lider))</span>",
+   "str": "10/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(HH+HL Zinciri (Güçlü Yapı))</span>",
+   "total": 91,
+   "tr": "16/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Ana Trend+ + Kısa Vade+)</span>",
+   "vol": "20/20 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Hacim Artışı + OBV>EMA + OBV Eğim+)</span>",
+   "vola": "15/10 <span style='font-size:0.7rem; color:#94a3b8; font-style:italic; font-weight:300;'>(Alım Hacmi > Satım + Birikim Ağırlıklı (10G))</span>"
+  },
+  "smart_money_score": {
+   "_er_data": {
+    "confirmations": [],
+    "context": {
+     "above_sma20": true,
+     "above_sma50": true,
+     "atr_contracting": false,
+     "bb_squeeze": false,
+     "bb_squeeze_days": 0,
+     "bearish_div": false,
+     "distribution_count_5d": 0,
+     "distribution_day": "<bool> False",
+     "double_bottom": false,
+     "fall_stopped": true,
+     "flag_pattern": false,
+     "index_falling": true,
+     "lateral_10": false,
+     "lateral_20": false,
+     "medium_bull_div": false,
+     "pocket_pivot": "<bool> True",
+     "pos_60": 0.513975,
+     "pos_60_lower_30": false,
+     "pos_60_lower_50": false,
+     "pos_60_mid": true,
+     "pos_60_upper_80": false,
+     "pullback_3_8": false,
+     "pullback_to_sma20": false,
+     "pullback_to_sma50": true,
+     "recent_fall_15": false,
+     "recent_fall_25": false,
+     "rs_20d_pct": -2.211703,
+     "rs_accelerating": true,
+     "rs_crossover": true,
+     "rs_healthy_pullback": false,
+     "rs_negative_60": true,
+     "rs_new_high": true,
+     "rs_persistent_positive": false,
+     "rs_turning": true,
+     "rsi_25_35": false,
+     "rsi_30_45": false,
+     "rsi_30_50": false,
+     "rsi_35_50": false,
+     "rsi_40_55": false,
+     "rsi_42_58": false,
+     "rsi_45_55": false,
+     "rsi_45_60": false,
+     "rsi_45_65": true,
+     "rsi_50_60": false,
+     "rsi_50_65": true,
+     "rsi_now": 64.89945,
+     "sma50_rising": false,
+     "strong_bull_div": false,
+     "triangle": false,
+     "updown_ratio_bullish": true,
+     "vol_dried": false,
+     "vol_rising_slow": "<bool> False",
+     "weak_bull_div": false
+    },
+    "deepening": {},
+    "matched_count": 0,
+    "overall_quality": 0,
+    "primary": null,
+    "red_flag_count": 0,
+    "red_flags": [],
+    "verdict": "Anlamlı senaryo yok"
+   },
+   "criteria": {},
+   "market_note": "BIST puanı: 80/100 — Endeks de destekliyor",
+   "market_score": 80,
+   "pre_launch": false,
+   "score": 0,
+   "score5": null,
+   "score_trend": "",
+   "status": "Senaryo Yok",
+   "status_color": "#94a3b8",
+   "summary_text": "Belirgin Erken Radar senaryosu yok"
+  },
+  "smart_sr_levels": [
+   206.95
+  ],
+  "smc_elements": {
+   "bos_lines": [
+    [
+     264,
+     238.9,
+     "CHoCH"
+    ]
+   ],
+   "eqh": [],
+   "eql": [
+    [
+     244,
+     247,
+     228.1
+    ]
+   ],
+   "fvg_bear": [
+    [
+     232,
+     241.7,
+     250.0,
+     "inverted"
+    ],
+    [
+     233,
+     246.0,
+     248.6,
+     "inverted"
+    ],
+    [
+     234,
+     239.0,
+     241.7,
+     "inverted"
+    ],
+    [
+     235,
+     236.4,
+     239.0,
+     "inverted"
+    ],
+    [
+     251,
+     228.7,
+     229.0,
+     "inverted"
+    ],
+    [
+     255,
+     223.3,
+     224.2,
+     "inverted"
+    ]
+   ],
+   "fvg_bull": [
+    [
+     215,
+     258.75,
+     266.0,
+     "inverted"
+    ],
+    [
+     216,
+     264.25,
+     270.25,
+     "inverted"
+    ],
+    [
+     240,
+     236.199997,
+     238.2,
+     "inverted"
+    ],
+    [
+     261,
+     222.7,
+     226.0,
+     "fresh"
+    ],
+    [
+     262,
+     227.6,
+     235.0,
+     "fresh"
+    ],
+    [
+     263,
+     238.7,
+     239.199997,
+     "fresh"
+    ]
+   ],
+   "ob_bear": [
+    [
+     255,
+     225.949,
+     226.9,
+     226.9,
+     225.949,
+     "breaker"
+    ],
+    [
+     245,
+     233.0,
+     240.8,
+     240.8,
+     233.0,
+     "breaker"
+    ],
+    [
+     242,
+     241.800003,
+     250.25,
+     250.25,
+     241.800003,
+     "breaker"
+    ]
+   ],
+   "ob_bull": [
+    [
+     247,
+     236.899994,
+     229.5,
+     236.899994,
+     229.5,
+     "breaker"
+    ],
+    [
+     244,
+     239.0,
+     232.2,
+     239.0,
+     232.2,
+     "breaker"
+    ],
+    [
+     236,
+     238.100006,
+     234.1,
+     238.100006,
+     234.1,
+     "breaker"
+    ]
+   ],
+   "swing_high": 263.25,
+   "swing_low": 215.1
+  },
+  "spike_dom_probe": [
+   0.625,
+   0.0,
+   0.7,
+   0.0
+  ],
+  "split_scores": {
+   "structural_score": 59.0,
+   "structural_signals_neg": [],
+   "structural_signals_pos": [
+    "POC mıknatıs aktif",
+    "Multi-TF POC çakışması"
+   ],
+   "tactical_score": 57.0,
+   "tactical_signals_neg": [],
+   "tactical_signals_pos": [
+    "RSI/MFI çift ekstrem (bilgi — ölçüm bekliyor, skorsuz)",
+    "VWAP -2σ bölgesi (institutional buy zone)"
+   ],
+   "verdict": "Uzun ve kısa pencere nötr"
+  },
+  "supertrend": [
+   222.251304,
+   1
+  ],
+  "supply_demand_zones": {
+   "Age": 32,
+   "Bottom": 250.0,
+   "Status": "Taze / Beklemede",
+   "Top": 253.75,
+   "Type": "DBD (Drop-Base-Drop) / Arz"
+  },
+  "tech_card_data": {
+   "atr": 6.371429,
+   "close_last": 248.199997,
+   "ema144": 226.578492,
+   "risk_pct": 5.134109,
+   "sma100": 241.445585,
+   "sma200": 215.931367,
+   "sma50": 243.576,
+   "stop_level": 235.457138
+  },
+  "udvr_20g": {
+   "climax": null,
+   "down_vol": 187862151.709782,
+   "ratio": 1.24,
+   "state": "balanced",
+   "up_vol": 232367880.694013
+  },
+  "volume_delta": {
+   "__df__": true,
+   "cols": [
+    "Close",
+    "High",
+    "Low",
+    "Open",
+    "Volume",
+    "Range",
+    "Buying_Pressure",
+    "Selling_Pressure",
+    "Buying_Volume",
+    "Selling_Volume",
+    "Volume_Delta"
+   ],
+   "last_row": {
+    "Buying_Pressure": 0.865384,
+    "Buying_Volume": 22642953.525522,
+    "Close": 248.199997,
+    "High": 249.600006,
+    "Low": 239.199997,
+    "Open": 240.0,
+    "Range": 10.400009,
+    "Selling_Pressure": 0.134616,
+    "Selling_Volume": 3522260.248685,
+    "Volume": 26165213.774206,
+    "Volume_Delta": 19120693.276837
+   },
+   "shape": [
+    266,
+    11
+   ]
+  },
+  "volume_profile_poc": 226.312502,
+  "z_score_details": {
+   "atr_multiple": 3.02,
+   "composite": 1.851,
+   "composite_raw": 1.851,
+   "filtered": false,
+   "trend_dir": "→ Nötr",
+   "trend_pct": -0.037,
+   "z20": 2.39,
+   "z252": -0.88,
+   "z60": 2.77
+  },
+  "z_score_live": 1.851
+ },
+ "__DB_LAYER__": {
+  "mkk_bos": {
+   "f_yabanci_anchor": 0,
+   "f_yabanci_cikis": 0,
+   "f_yabanci_giris": 0,
+   "f_yabanci_streak": 0,
+   "in_days": 0,
+   "out_days": 0,
+   "streak_days": 0
+  },
+  "mkk_cikis": {
+   "f_yabanci_anchor": 0,
+   "f_yabanci_cikis": 1,
+   "f_yabanci_giris": 0,
+   "f_yabanci_streak": 0,
+   "in_days": 0,
+   "out_days": 1,
+   "streak_days": 0
+  },
+  "mkk_giris_streak": {
+   "f_yabanci_anchor": 1,
+   "f_yabanci_cikis": 0,
+   "f_yabanci_giris": 1,
+   "f_yabanci_streak": 1,
+   "in_days": 1,
+   "out_days": 0,
+   "streak_days": 4
+  },
+  "scenario_age": {
+   "('GLDN.IS', 'A1')": 1
+  },
+  "schema": [
+   "CREATE INDEX idx_kap_sym ON kap_events(symbol, event_date)",
+   "CREATE INDEX idx_mkk_sym ON mkk_yabanci(symbol, report_date)",
+   "CREATE INDEX idx_rsi_journeys_resolution ON rsi_journeys(resolution, signal_date)",
+   "CREATE INDEX idx_scan_signals_event_start ON scan_signals(is_event_start, scan_date, scan_type)",
+   "CREATE INDEX idx_scan_signals_lifecycle ON scan_signals(symbol, scan_type, scan_date)",
+   "CREATE INDEX idx_tefas_sym ON tefas_holdings(stock_symbol, snapshot_date)",
+   "CREATE TABLE analysis_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, scan_date TEXT NOT NULL, symbol TEXT NOT NULL, kanit_skoru REAL, guven REAL, master_score REAL, risk_level TEXT, liquidity_tier TEXT, manip_risk TEXT, UNIQUE(scan_date, symbol) )",
+   "CREATE TABLE goldmine_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, scan_date TEXT NOT NULL, symbol TEXT NOT NULL, rank INTEGER, score REAL, scanner TEXT, confluence_count INTEGER, unmeasured INTEGER DEFAULT 0, category TEXT, UNIQUE(scan_date, symbol) )",
+   "CREATE TABLE kap_events ( event_date TEXT NOT NULL, symbol TEXT NOT NULL, event_type TEXT NOT NULL, -- 'buyback' | 'ownership_change' | 'insider_buy' event_subtype TEXT, -- 'new_program' | 'threshold_5pct' vs amount_tl REAL, -- tutar (TL) amount_lots REAL, -- adet (varsa) price REAL, -- ortalama fiyat actor TEXT NOT NULL DEFAULT '', -- alıcı/satıcı (yönetici/holding adı) meta_json TEXT, -- ham JSON detay PRIMARY KEY (event_date, symbol, event_type, actor) )",
+   "CREATE TABLE mkk_yabanci ( report_date TEXT NOT NULL, -- YYYY-MM-DD symbol TEXT NOT NULL, -- BIST kodu direction TEXT NOT NULL, -- 'in' | 'out' | 'streak' bps_change REAL, -- baz puan (sadece in/out için) streak_days INTEGER, -- üst üste artış günü (sadece streak için) PRIMARY KEY (report_date, symbol, direction) )",
+   "CREATE TABLE rsi_journeys ( signal_id INTEGER PRIMARY KEY, symbol TEXT NOT NULL, signal_date TEXT NOT NULL, entry_status TEXT, entry_date TEXT, entry_price REAL, stop_price REAL, risk_value REAL, one_r_price REAL, two_r_price REAL, one_r_day INTEGER, two_r_day INTEGER, stop_day INTEGER, ambiguous_day INTEGER, peak_day INTEGER, peak_date TEXT, max_gain_pct REAL, max_r REAL, days_observed INTEGER, resolution TEXT, journey_stage TEXT, updated_at TEXT )",
+   "CREATE TABLE scan_runs ( scan_date TEXT NOT NULL, scan_type TEXT NOT NULL, row_count INTEGER NOT NULL DEFAULT 0, category TEXT, recorded_at TEXT, PRIMARY KEY (scan_date, scan_type) )",
+   "CREATE TABLE scan_signals ( id INTEGER PRIMARY KEY AUTOINCREMENT, scan_date TEXT NOT NULL, symbol TEXT NOT NULL, scan_type TEXT NOT NULL, score REAL, bias TEXT DEFAULT 'bullish', entry_price REAL, stop_level REAL, category TEXT, event_id INTEGER, event_start_date TEXT, event_day INTEGER, is_event_start INTEGER DEFAULT 1, quality_score REAL, quality_label TEXT, quality_detail TEXT, journey_stage TEXT, journey_age INTEGER, journey_key TEXT, obv_status TEXT, f_52h_pos REAL, f_rsi REAL, f_cmf_dual TEXT, f_omi_sigma REAL, f_squeeze_days INTEGER, f_vp_shape TEXT, f_master_score REAL, f_poc_magnet INTEGER, f_poc_confluence INTEGER, f_avwap_test_zone INTEGER, f_ms_trend REAL, f_ms_momentum REAL, f_ms_ict REAL, f_ms_radar2 REAL, f_cum_delta_dual TEXT, f_rsi_dual TEXT, f_breakout_state INTEGER, f_at_vwap_minus_2sigma INTEGER, f_at_y_open INTEGER, f_near_ifvg INTEGER, f_breaker_block_active INTEGER, f_tefas_konsensus_alim INTEGER, f_tefas_konsensus_satim INTEGER, f_tefas_yeni_giris INTEGER, f_buyback_aktif INTEGER, f_buyback_dip_aliyor INTEGER, f_threshold_asildi INTEGER, f_insider_first_buy INTEGER, f_kurumsal_anchor INTEGER, f_tavan_skor REAL, f_tavan_kat TEXT, f_tavan_confluence_n INTEGER, f_beta_xu100 REAL, f_dd_zirveden REAL, f_hv_oran REAL, f_skew_60g REAL, f_mom_12_1 REAL, f_vol_60g REAL, f_sharpe_mom REAL, f_trend_persist REAL, f_sentiment_score REAL, f_ict_model REAL, f_smart_money_score REAL, f_adv_tl REAL, f_liquidity_tier TEXT, f_manip_risk TEXT, f_mfi_dual TEXT, f_rsi_mfi_bouquet INTEGER, f_yabanci_giris INTEGER, f_yabanci_cikis INTEGER, f_yabanci_streak INTEGER, f_yabanci_anchor INTEGER, f_rel_obv_state TEXT, f_rel_obv_divergence INTEGER, f_smart_structural_score REAL, f_smart_tactical_score REAL, f_udvr_20g REAL, f_udvr_state TEXT, f_udvr_climax TEXT, f_force_index_dual TEXT, f_force_index_divergence TEXT, f_spike_dominance INTEGER, f_sfp_bull INTEGER, f_sfp_bear INTEGER, UNIQUE(scan_date, symbol, scan_type) )",
+   "CREATE TABLE signal_returns ( id INTEGER PRIMARY KEY AUTOINCREMENT, signal_id INTEGER NOT NULL, scan_type TEXT NOT NULL, symbol TEXT NOT NULL, signal_date TEXT NOT NULL, entry_price REAL, day_offset INTEGER NOT NULL, close_price REAL, return_pct REAL, category TEXT, UNIQUE(signal_id, day_offset) )",
+   "CREATE TABLE sqlite_sequence(name,seq)",
+   "CREATE TABLE tefas_holdings ( snapshot_date TEXT NOT NULL, -- YYYY-MM-DD fund_code TEXT NOT NULL, -- ör. AAK, GZL, PYL fund_aum_mn REAL, -- fonun AUM, milyon TL stock_symbol TEXT NOT NULL, -- BIST hisse kodu (örn. XBANK) weight_pct REAL, -- fon portföyündeki yüzde PRIMARY KEY (snapshot_date, fund_code, stock_symbol) )",
+   "CREATE TABLE watchlist (symbol TEXT PRIMARY KEY)"
+  ],
+  "watchlist_add": [
+   "GOLDEN.IS"
+  ],
+  "watchlist_remove": []
+ },
+ "__GLOBALS__": {
+  "ERKEN_RADAR_SCENARIOS": {
+   "A1": {
+    "category": "A",
+    "description": "Hisse uzun süredir düşüşte ama son günlerde satıcı baskısı azaldı. Aynı zamanda fiyat dipler yapsa da iç güç (momentum) artıyor — bu klasik bir dipten dönüş zemini.",
+    "detect": "<callable <lambda>>",
+    "name": "Dipte Sessizlik",
+    "stars": 5
+   },
+   "A2": {
+    "category": "A",
+    "description": "Hisse orta seviyede düşüş (RSI 45-50) sonrası bugün son 10 günün en büyük satış gününden yüksek hacimle yeşil kapattı. Düşüşten sonra net kurumsal tepki sinyali.",
+    "detect": "<callable <lambda>>",
+    "name": "Hacimli Tepki",
+    "stars": 4
+   },
+   "A3": {
+    "category": "A",
+    "description": "Hisse aynı dip seviyesini ikinci kez test etti ama bu sefer satıcı baskısı belirgin şekilde daha düşük. Çift dip, klasik dönüş örüntülerinden biri.",
+    "detect": "<callable <lambda>>",
+    "name": "İkili Dip / İkinci Test",
+    "stars": 4
+   },
+   "A4": {
+    "category": "A",
+    "description": "BIST endeksi düşerken bu hisse direnç gösteriyor ve endeksten daha iyi performans göstermeye başladı. Akıllı para sessizce sahipleniyor olabilir.",
+    "detect": "<callable <lambda>>",
+    "name": "Yön Değiştiriyor",
+    "stars": 4
+   },
+   "A5": {
+    "category": "A",
+    "description": "Hisse düşüş hızını kaybetti, yatayda durdu ve hafif alım sinyalleri var. Henüz güçlü teyit yok ama ilk pozitif işaretler beliriyor.",
+    "detect": "<callable <lambda>>",
+    "name": "Toparlanma Başlıyor",
+    "stars": 3
+   },
+   "A6": {
+    "category": "A",
+    "description": "Hisse dipte sıkışmış, volatilitesi düşmüş. Düşüş tükendi gibi ama yön henüz belli değil — yakında bir taraf belirleyecek.",
+    "detect": "<callable <lambda>>",
+    "name": "Dipte Sıkışma",
+    "stars": 4
+   },
+   "A7": {
+    "category": "A",
+    "description": "Son 20 günde yeşil mum günlerinin toplam hacmi kırmızı mum günlerinden belirgin fazla. Alıcı baskısı satıcıdan ağır basıyor.",
+    "detect": "<callable <lambda>>",
+    "name": "Hacimli Toparlanma",
+    "stars": 4
+   },
+   "A8": {
+    "category": "A",
+    "description": "Hisse düşüş bölgesinde (RSI 30-45) iken bugün son 10 günün en büyük satış gününden yüksek hacimle yeşil kapattı. Düşüşten sonra net kurumsal alım sinyali.",
+    "detect": "<callable <lambda>>",
+    "name": "Ucuz + Hacimli Atak",
+    "stars": 5
+   },
+   "A9": {
+    "category": "A",
+    "description": "Hisse aşırı satım bölgesinde ve hacim kurudu (satıcı kalmadı). Henüz dönüş tetiği yok ama zemin oluşmuş — sabırlı izleme aşaması.",
+    "detect": "<callable <lambda>>",
+    "name": "Ucuz Bölgede Bekleyiş",
+    "stars": 3
+   },
+   "B1": {
+    "category": "B",
+    "description": "Fiyatın hareket bandı 5+ gündür belirgin daraldı, hacim azaldı, RSI nötr ve hisse endeksten güçlü. Tüm kriterler aynı anda \"yay gibi geriliyor\" diyor — sert hareket pencereye yakın.",
+    "detect": "<callable <lambda>>",
+    "name": "Mükemmel Sıkışma",
+    "stars": 5
+   },
+   "B10": {
+    "category": "B",
+    "description": "Fiyat 20 gündür yatay ama momentum (RSI) içeride güçleniyor. Görünen sakinliğe rağmen iç güç birikiyor — dönüş yakın olabilir.",
+    "detect": "<callable <lambda>>",
+    "name": "Yatay + Momentum Çelişkisi",
+    "stars": 5
+   },
+   "B11": {
+    "category": "B",
+    "description": "Hisse 60 günlük zirvesinin yakınında sıkışıyor ve endekse karşı güçlü. Tepe yakını sıkışmalar genellikle yukarı kırılımla sonuçlanır.",
+    "detect": "<callable <lambda>>",
+    "name": "Tepede Yay Geriliyor",
+    "stars": 4
+   },
+   "B2": {
+    "category": "B",
+    "description": "Fiyat 20 gündür yatay seyrediyor ama hacim sessizce artıyor ve hisse endekse karşı güç kazanıyor. Klasik \"kalabalık fark etmeden büyük alıcılar pozisyon alıyor\" örüntüsü.",
+    "detect": "<callable <lambda>>",
+    "name": "Sessiz Birikim",
+    "stars": 5
+   },
+   "B3": {
+    "category": "B",
+    "description": "Fiyat 20+ gündür dar bantta, hacim azalmış, volatilite düşmüş. Kırılım için klasik baz zemini — yön hangi tarafa kırılırsa hızlı gidebilir.",
+    "detect": "<callable <lambda>>",
+    "name": "Klasik Sıkışma",
+    "stars": 4
+   },
+   "B4": {
+    "category": "B",
+    "description": "Hisse yatay seyrediyordu ama bugün son 10 günün en büyük satış gününden bile yüksek hacimle yeşil kapattı. Yatay seyrin sonu — büyük alıcı belirdi.",
+    "detect": "<callable <lambda>>",
+    "name": "Yatayda Hacim Patlaması",
+    "stars": 5
+   },
+   "B5": {
+    "category": "B",
+    "description": "Tepe seviyeleri alçalırken dip seviyeleri yükseliyor — fiyat üçgen içinde sıkışıyor. Üçgenler genellikle kırılımla sonuçlanır, yön yakında belli olacak.",
+    "detect": "<callable <lambda>>",
+    "name": "Üçgen Daralma",
+    "stars": 4
+   },
+   "B6": {
+    "category": "B",
+    "description": "BIST endeksi düşerken bu hisse yatay duruyor ve endeksten net daha iyi performans gösteriyor. Piyasa baskısına direnç = güçlü hisse işareti.",
+    "detect": "<callable <lambda>>",
+    "name": "Yatay + Endekse Direnç",
+    "stars": 4
+   },
+   "B7": {
+    "category": "B",
+    "description": "Hisse genel yatay seyrinde son birkaç günde hafif geri çekildi. Yapı bozulmamış, sadece soluklanıyor — küçük pullback alım fırsatı olabilir.",
+    "detect": "<callable <lambda>>",
+    "name": "Yatay + Hafif Pullback",
+    "stars": 3
+   },
+   "B8": {
+    "category": "B",
+    "description": "Hisse 10+ gündür çok dar bantta sıkışıyor ama son 3 günde hacim canlanmaya başladı. Sıkışma uzadıkça enerji birikiyor — patlama yakın olabilir.",
+    "detect": "<callable <lambda>>",
+    "name": "Sıkışma Sonu",
+    "stars": 4
+   },
+   "B9": {
+    "category": "B",
+    "description": "Yatay seyirde fiyat alt sınıra dokundu ve oradan toparlandı. Alıcılar bu seviyeyi savundu — destek teyit edildi.",
+    "detect": "<callable <lambda>>",
+    "name": "Alt Sınır Testi",
+    "stars": 3
+   },
+   "C1": {
+    "category": "C",
+    "description": "Hisse yukarı trendde devam ediyor (50 günlük ortalama yukarı eğimli, fiyat üstünde). Şu an %3-7 arası sağlıklı bir düzeltme yaşıyor ve hacim düşük. Trend devamı için klasik alım fırsatı.",
+    "detect": "<callable <lambda>>",
+    "name": "İdeal Pullback",
+    "stars": 5
+   },
+   "C10": {
+    "category": "C",
+    "description": "Yukarı trendde fiyat 10+ gündür dar bantta sıkışıyor. Trend bozulmadı, sadece nefes alıyor — kırılım yukarı yönde olma olasılığı yüksek.",
+    "detect": "<callable <lambda>>",
+    "name": "Trendde Sıkışma",
+    "stars": 4
+   },
+   "C11": {
+    "category": "C",
+    "description": "Yukarı trendde geri çekilmede iç momentum (RSI) düşmedi — yapı sağlam. Trend devam etme olasılığı yüksek.",
+    "detect": "<callable <lambda>>",
+    "name": "Trendde Momentum Sağlam",
+    "stars": 4
+   },
+   "C2": {
+    "category": "C",
+    "description": "Hisse yukarı trendde devam ediyor. Fiyat geri çekildi ve 20 veya 50 günlük hareketli ortalamadan destek aldı. Bu ortalamalar genellikle alıcıların devreye girdiği yerler — trend muhtemelen devam eder.",
+    "detect": "<callable <lambda>>",
+    "name": "Ortalama Testi",
+    "stars": 4
+   },
+   "C3": {
+    "category": "C",
+    "description": "Hisse yukarı trendde, son günlerde geri çekildi ama bugün son 10 günün en büyük satış gününden yüksek hacimle yeşil kapattı. Düzeltme bitti, kurumsal alım geri döndü — klasik devam sinyali.",
+    "detect": "<callable <lambda>>",
+    "name": "Pullback + Hacimli Alım",
+    "stars": 5
+   },
+   "C4": {
+    "category": "C",
+    "description": "Trend yukarı, fiyat 50 günlük ortalama üstünde ve ortalama yukarı eğimli. Son 3-5 gün yatay seyrediyor — kısa süreli dinlenme, trend devam ediyor.",
+    "detect": "<callable <lambda>>",
+    "name": "Soluklanma",
+    "stars": 4
+   },
+   "C5": {
+    "category": "C",
+    "description": "Hisse son 10 günde sert yükseldi (%10+), ardından son 5 günde dar bir konsolidasyona girdi. Bayrak formasyonu — devam beklentisi yüksek.",
+    "detect": "<callable <lambda>>",
+    "name": "Bayrak Formasyonu",
+    "stars": 4
+   },
+   "C6": {
+    "category": "C",
+    "description": "Hisse endekse karşı son 20 günün zirvesinde — piyasada lider konumda. Şu an hafif sağlıklı bir geri çekilme yaşıyor — yeniden ivme kazanabilir.",
+    "detect": "<callable <lambda>>",
+    "name": "Piyasa Lideri",
+    "stars": 5
+   },
+   "C7": {
+    "category": "C",
+    "description": "Tüm hareketli ortalamalar düzgün hizalı (fiyat > 20 > 50 günlük) ve tüm zaman dilimlerinde hisse endeksi yeniyor. Çok temiz, profesyonel trend görünümü.",
+    "detect": "<callable <lambda>>",
+    "name": "Sağlam Trend Yapısı",
+    "stars": 4
+   },
+   "C8": {
+    "category": "C",
+    "description": "Hisse yukarı trendde, fiyat 20 günlük ortalamaya kadar geri çekildi ve oradan toparlandı. Kanal içinde sağlıklı düzeltme — yukarı devam beklenebilir.",
+    "detect": "<callable <lambda>>",
+    "name": "Yukarı Kanal Testi",
+    "stars": 4
+   },
+   "C9": {
+    "category": "C",
+    "description": "Yukarı trend var ama henüz net bir geri çekilme testi olmadı. Pullback yeni başlıyor — pozisyon almak için biraz sabır gerekebilir.",
+    "detect": "<callable <lambda>>",
+    "name": "Pullback Var",
+    "stars": 3
+   },
+   "D1": {
+    "category": "D",
+    "description": "Bugün hacimli bir alım günü oldu ama hisse 50 günlük ortalama altında ve diğer kriterler desteklemiyor. Tek başına güçlü sinyal ama riskli — temkinli yaklaş.",
+    "detect": "<callable <lambda>>",
+    "name": "Tek Güçlü Sinyal",
+    "stars": 3
+   },
+   "D2": {
+    "category": "D",
+    "description": "Bazı pozitif sinyaller var ama bunun yanında zayıflama belirtileri de görünüyor. Tablo kararsız — net karar için daha fazla teyit beklemeli.",
+    "detect": "<callable <lambda>>",
+    "name": "Karışık Sinyal",
+    "stars": 2
+   },
+   "D3": {
+    "category": "D",
+    "description": "Hisse ucuz bölgede ve hacim kurudu, ama henüz dönüş için yeterli teyit yok. Sabırlı izleme aşaması — beklemeli.",
+    "detect": "<callable <lambda>>",
+    "name": "Erken Aşama",
+    "stars": 2
+   },
+   "D4": {
+    "category": "D",
+    "description": "Son 5 günde 2+ defa yüksek hacimli kırmızı kapanış gördük. Bu, kurumların pozisyon küçülttüğüne işaret eder — alımdan kaçın, mevcut pozisyonda dikkatli ol.",
+    "detect": "<callable <lambda>>",
+    "name": "Kurumsal Satış Riski",
+    "stars": "KIRMIZI"
+   },
+   "D5": {
+    "category": "D",
+    "description": "Fiyat 50 günlük ortalama altına düştü, bugün yüksek hacimli kırmızı kapanış var ve hisse endekse karşı uzun süredir zayıf. Yapı bozulmuş — alım için uygun değil.",
+    "detect": "<callable <lambda>>",
+    "name": "Trend Bozuldu",
+    "stars": "KIRMIZI"
+   }
+  },
+  "ER_ELIT_SCORE_MIN": 45,
+  "SCANNER_PLAIN_DESC": {
+   "altin": "Borsanın genelinden daha iyi gidiyor ve işlem hacmi artıyor; üstelik fiyatı henüz son ayların ucuz bölgesinde.",
+   "erken": "Hisse asıl harekete geçmeden önce, hareketin ilk küçük işaretlerini verdi.",
+   "gizli": "Fiyat sakin dururken işlem hacmi sessizce artıyor — birileri belli etmeden topluyor olabilir.",
+   "harmonik": "Fiyat bir grafik kalıbının dönüş bölgesine ulaştı; geçmiş karne zayıf olduğu için bu yalnız gözlem bilgisidir.",
+   "minervini": "Hisse istikrarlı bir yükseliş trendinde; kısa ve uzun vadeli fiyat ortalamalarının hepsinin üstünde.",
+   "platin": "Hem borsadan güçlü, hem yükseliş trendinde, hem de henüz aşırı pahalı değil — sistemin en seçici, en nadir sinyali.",
+   "prelaunch": "Uzun süre dar bir bantta sıkıştıktan sonra önemli bir direnç seviyesini yukarı kırdı — büyük hareket yeni başlıyor olabilir.",
+   "rs": "Son dönemde borsa endeksinden belirgin daha çok kazandırdı — piyasanın önünde gidiyor.",
+   "vip": "Borsadan güçlü bir hissede tanınmış bir formasyon (fincan-kulp, üçgen gibi) oluştu."
+  },
+  "SCANNER_TIER_MAP": {
+   "er_A2": [
+    "TIER_3_ORTA",
+    46.7,
+    0.82,
+    "🔄 Erken Radar A2 (Hacimli Tepki)",
+    "20g · hit %47 ret %+0.8 · N=90 · 18 Tem: TIER_1→3 (eski %70/+6.6 iddiası temiz veride erimiş; Tem 10g N=8 hit %0)"
+   ],
+   "er_A3": [
+    "TIER_3_ORTA",
+    43.8,
+    1.73,
+    "🔄 Erken Radar A3 (İkili Dip)",
+    "20g · hit %44 ret %+1.7 · N=575"
+   ],
+   "er_A4": [
+    "TIER_3_ORTA",
+    47.0,
+    0.82,
+    "🔄 Erken Radar A4 (Yön Değiştiriyor)",
+    "20g · hit %47 ret %+0.8 · N=824 · 18 Tem: TIER_2→3"
+   ],
+   "er_A5": [
+    "TIER_3_ORTA",
+    34.8,
+    0.29,
+    "🔄 Erken Radar A5 (Toparlanma Başlıyor)",
+    "20g · hit %35 ret %+0.3 · N=276 · 18 Tem: TIER_2→3 (sınırda pozitif)"
+   ],
+   "er_A7": [
+    "TIER_3_ORTA",
+    44.8,
+    1.44,
+    "🔄 Erken Radar A7 (Hacimli Toparlanma)",
+    "20g · hit %45 ret %+1.4 · N=614"
+   ],
+   "er_B11": [
+    "TIER_2_GUVENILIR",
+    48.6,
+    4.52,
+    "📐 Tepede Yay Geriliyor",
+    "20g · hit %49 ret %+4.5 · N=529 · eksi piyasada +4.5 getiren tek büyük-örnekli tarama; hit köprü eşiğinin 1.4p altında ama piyasa hit'i ~%37 iken — rejim payıyla TIER_2"
+   ],
+   "er_B5": [
+    "TIER_3_ORTA",
+    40.8,
+    1.47,
+    "📐 Erken Radar B5 (Üçgen Daralma)",
+    "20g · hit %41 ret %+1.5 · N=360"
+   ],
+   "er_B8": [
+    "TIER_3_ORTA",
+    50.5,
+    1.09,
+    "📐 Erken Radar B8 (Sıkışma Sonu)",
+    "20g · hit %51 ret %+1.1 · N=91 · 18 Tem: TIER_1→3 (eski %71/+4.9 iddiası temiz veride erimiş)"
+   ],
+   "er_C11": [
+    "TIER_3_ORTA",
+    41.4,
+    2.05,
+    "🚀 Erken Radar C11 (Trendde Momentum)",
+    "20g · hit %41 ret %+2.1 · N=302"
+   ],
+   "er_C2": [
+    "TIER_3_ORTA",
+    44.6,
+    1.83,
+    "🚀 Erken Radar C2 (Ortalama Testi)",
+    "20g · hit %45 ret %+1.8 · N=1319 · en büyük örnek, istikrarlı pozitif"
+   ],
+   "er_C6": [
+    "TIER_3_ORTA",
+    43.8,
+    2.16,
+    "🚀 Erken Radar C6 (Piyasa Lideri)",
+    "20g · hit %44 ret %+2.2 · N=105 · 10g'de belirgin güçlü (%55/+2.4 N=132, her ay piyasa üstü) — kısa vade karakterli"
+   ],
+   "er_C8": [
+    "TIER_3_ORTA",
+    44.9,
+    2.44,
+    "🚀 Erken Radar C8 (Yukarı Kanal Testi)",
+    "20g · hit %45 ret %+2.4 · N=352"
+   ],
+   "minervini": [
+    "TIER_2_GUVENILIR",
+    75.0,
+    40.18,
+    "🏔 Minervini SEPA",
+    "20g · hit %75 ret %+40.2 · ⚠ N=20 KÜÇÜK (10g: %81/+17.2 N=37; ideal 18g: %+30.1 N=26) · sonuç güçlü, uzun vade örneği TIER_1 için yetersiz"
+   ]
+  },
+  "_guc_plain_probe": {
+   "🔴": [
+    "şu an zayıf/dipte konumda",
+    "#ef4444"
+   ],
+   "🟡": [
+    "şu an orta konumda",
+    "#f59e0b"
+   ],
+   "🟢": [
+    "şu an güçlü konumda",
+    "#22c55e"
+   ]
+  }
+ },
+ "__PIPELINE__": {
+  "written": [
+   [
+    "GLDN",
+    "golden_probe",
+    77.0,
+    123.45,
+    "BIST 500",
+    48.2,
+    0.66,
+    58.0
+   ]
+  ]
+ },
+ "__TERAZI__": {
+  "ayi_formasyonu_ve_bayrak": {
+   "result": {
+    "ayi": 5.5,
+    "best": "",
+    "boga": 0.0,
+    "celiski": false,
+    "guven": 100,
+    "label": "kanıt yok",
+    "n_scanner": 0,
+    "skor": null,
+    "tek_sinyal": false,
+    "terazi": {
+     "ayi_w": 5.5,
+     "boga_w": 0.0,
+     "celiski": false,
+     "endeks_notu": "",
+     "guven": 100,
+     "karsi": null,
+     "n_votes": 10,
+     "sistemik": null,
+     "sok_serit": "Bugün +3.5% sert yukarı hareket. Buradaki kanıtlar yavaş sinyaller; bugünü henüz sindirmemiş olabilir.",
+     "tek_sinyal": false,
+     "votes": [
+      {
+       "ad": "Bearish SFP (boğa tuzağı)",
+       "agirlik": 0.5,
+       "family": null,
+       "olculmus": false,
+       "prio": 9,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Şemsiye: kurumsal satış izi",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 8,
+       "semsiye": true,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Şemsiye: trend bozuldu",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 8,
+       "semsiye": true,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Ayı formasyonu",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 8,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Para akışı güçlü negatif",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 7,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Satış hacmi baskın",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "OBV dağıtım izi",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Yapı bozuluyor",
+       "agirlik": 0.5,
+       "family": null,
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "MFI erken aşırı alım",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Endeksten sıyrılıyor",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      }
+     ],
+     "yon": "asagi"
+    }
+   },
+   "session_reads": [
+    "_formasyon_chart_data",
+    "_formasyon_ticker",
+    "accum_data",
+    "bist_market_status",
+    "erken_radar_data",
+    "prelaunch_bos_data"
+   ]
+  },
+  "cap5_bilinen_kusur_6_aday": {
+   "result": {
+    "ayi": 0.0,
+    "best": "Erken Radar A1",
+    "boga": 1.5,
+    "celiski": false,
+    "guven": 100,
+    "label": "kanıtlı",
+    "n_scanner": 1,
+    "skor": 90,
+    "tek_sinyal": false,
+    "terazi": {
+     "ayi_w": 0.0,
+     "boga_w": 1.5,
+     "celiski": false,
+     "endeks_notu": "",
+     "guven": 100,
+     "karsi": null,
+     "n_votes": 2,
+     "sistemik": null,
+     "sok_serit": "Bugün +3.5% sert yukarı hareket. Buradaki kanıtlar yavaş sinyaller; bugünü henüz sindirmemiş olabilir.",
+     "tek_sinyal": false,
+     "votes": [
+      {
+       "ad": "Pozitif karneli tarama ailesi",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 7,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Endeksten sıyrılıyor",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      }
+     ],
+     "yon": "yukari"
+    }
+   },
+   "session_reads": [
+    "_er_single_cache",
+    "_formasyon_chart_data",
+    "_formasyon_ticker",
+    "accum_data",
+    "bist_market_status",
+    "erken_radar_data",
+    "prelaunch_bos_data"
+   ]
+  },
+  "celiski": {
+   "result": {
+    "ayi": 3.5,
+    "best": "Erken Radar A1",
+    "boga": 4.0,
+    "celiski": true,
+    "guven": 53,
+    "label": "kanıtlı",
+    "n_scanner": 1,
+    "skor": 90,
+    "tek_sinyal": false,
+    "terazi": {
+     "ayi_w": 3.5,
+     "boga_w": 4.0,
+     "celiski": true,
+     "endeks_notu": "",
+     "guven": 53,
+     "karsi": {
+      "ad": "Bearish SFP (boğa tuzağı)",
+      "agirlik": 0.5,
+      "family": null,
+      "olculmus": false,
+      "prio": 9,
+      "semsiye": false,
+      "yon": "ayi"
+     },
+     "n_votes": 9,
+     "sistemik": null,
+     "sok_serit": "Bugün +3.5% sert yukarı hareket. Buradaki kanıtlar yavaş sinyaller; bugünü henüz sindirmemiş olabilir.",
+     "tek_sinyal": false,
+     "votes": [
+      {
+       "ad": "Bearish SFP (boğa tuzağı)",
+       "agirlik": 0.5,
+       "family": null,
+       "olculmus": false,
+       "prio": 9,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Şemsiye: kurumsal satış izi",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 8,
+       "semsiye": true,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Ayı formasyonu",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 8,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "RSI uç aşırı satım",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 8,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Pozitif karneli tarama ailesi",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 7,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Başarısız kırılım",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 7,
+       "semsiye": false,
+       "yon": "ayi"
+      },
+      {
+       "ad": "Para akışı güçlü pozitif",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 7,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Yapı yükseliyor",
+       "agirlik": 0.5,
+       "family": null,
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Endeksten sıyrılıyor",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      }
+     ],
+     "yon": "yukari"
+    }
+   },
+   "session_reads": [
+    "_formasyon_chart_data",
+    "_formasyon_ticker",
+    "accum_data",
+    "bist_market_status",
+    "erken_radar_data",
+    "prelaunch_bos_data"
+   ]
+  },
+  "guclu_boga": {
+   "result": {
+    "ayi": 0.0,
+    "best": "Erken Radar A1",
+    "boga": 5.5,
+    "celiski": false,
+    "guven": 100,
+    "label": "kanıtlı",
+    "n_scanner": 1,
+    "skor": 90,
+    "tek_sinyal": false,
+    "terazi": {
+     "ayi_w": 0.0,
+     "boga_w": 5.5,
+     "celiski": false,
+     "endeks_notu": "",
+     "guven": 100,
+     "karsi": null,
+     "n_votes": 10,
+     "sistemik": null,
+     "sok_serit": "Bugün +3.5% sert yukarı hareket. Buradaki kanıtlar yavaş sinyaller; bugünü henüz sindirmemiş olabilir.",
+     "tek_sinyal": false,
+     "votes": [
+      {
+       "ad": "Bullish SFP (ayı tuzağı)",
+       "agirlik": 0.5,
+       "family": null,
+       "olculmus": false,
+       "prio": 9,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "RSI uç aşırı satım",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 8,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Pozitif karneli tarama ailesi",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 7,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Para akışı güçlü pozitif",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 7,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Yabancı 3+ gün alıcı",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 6,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Alım hacmi baskın",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "OBV birikim izi",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Yapı yükseliyor",
+       "agirlik": 0.5,
+       "family": null,
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "MFI aşırı satım",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Endeksten sıyrılıyor",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      }
+     ],
+     "yon": "yukari"
+    }
+   },
+   "session_reads": [
+    "_er_single_cache",
+    "_formasyon_chart_data",
+    "_formasyon_ticker",
+    "accum_data",
+    "bist_market_status",
+    "erken_radar_data",
+    "prelaunch_bos_data"
+   ]
+  },
+  "sistemik_gun": {
+   "result": {
+    "ayi": 0.0,
+    "best": "Erken Radar A1",
+    "boga": 2.5,
+    "celiski": false,
+    "guven": 100,
+    "label": "kanıtlı",
+    "n_scanner": 1,
+    "skor": 90,
+    "tek_sinyal": false,
+    "terazi": {
+     "ayi_w": 0.0,
+     "boga_w": 2.5,
+     "celiski": false,
+     "endeks_notu": "",
+     "guven": 100,
+     "karsi": null,
+     "n_votes": 3,
+     "sistemik": "Bugün piyasa geneli şok günü: hisselerin %92'i düştü, piyasa medyanı -4.1%. Böyle genişlikte günler son 15 ayda 9 kez görüldü — bugün düşüş hisseye özel değil, piyasa geneli. Hisse kanıtları bu gürültüde ayırt edici olmaz; hüküm askıda.",
+     "sok_serit": "Bugün +3.5% sert yukarı hareket. Buradaki kanıtlar yavaş sinyaller; bugünü henüz sindirmemiş olabilir.",
+     "tek_sinyal": false,
+     "votes": [
+      {
+       "ad": "RSI uç aşırı satım",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 8,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Pozitif karneli tarama ailesi",
+       "agirlik": 1.0,
+       "family": null,
+       "olculmus": true,
+       "prio": 7,
+       "semsiye": false,
+       "yon": "boga"
+      },
+      {
+       "ad": "Endeksten sıyrılıyor",
+       "agirlik": 0.5,
+       "family": "akis_destek",
+       "olculmus": true,
+       "prio": 5,
+       "semsiye": false,
+       "yon": "boga"
+      }
+     ],
+     "yon": "yukari"
+    }
+   },
+   "session_reads": [
+    "_er_single_cache",
+    "_formasyon_chart_data",
+    "_formasyon_ticker",
+    "accum_data",
+    "bist_market_status",
+    "erken_radar_data",
+    "prelaunch_bos_data"
+   ]
+  }
+ },
+ "__TOPLU_TERAZI__": {
+  "as_of": "2026-07-30T18:20:00+03:00",
+  "candidate_count": 1,
+  "data_as_of": "2026-07-03T00:00:00",
+  "error_count": 0,
+  "formation_vote": true,
+  "missing_data_guard": true,
+  "module_closes": {
+   "analysis_core": 248.199997,
+   "data_layer": 248.199997,
+   "ict_core": 248.199997,
+   "scan_pipeline": 248.199997
+  },
+  "old_cache_guard": true,
+  "ready_count": 1,
+  "result": {
+   "ayi": 1.0,
+   "best": "Erken Radar A1",
+   "boga": 4.0,
+   "celiski": true,
+   "guven": 80,
+   "label": "kanıtlı",
+   "n_scanner": 1,
+   "skor": 90,
+   "tek_sinyal": false,
+   "terazi": {
+    "ayi_w": 1.0,
+    "boga_w": 4.0,
+    "celiski": true,
+    "endeks_notu": "",
+    "guven": 80,
+    "karsi": {
+     "ad": "Ayı formasyonu",
+     "agirlik": 1.0,
+     "family": null,
+     "olculmus": true,
+     "prio": 8,
+     "semsiye": false,
+     "yon": "ayi"
+    },
+    "n_votes": 9,
+    "sistemik": null,
+    "sok_serit": "Bugün +3.5% sert yukarı hareket. Buradaki kanıtlar yavaş sinyaller; bugünü henüz sindirmemiş olabilir.",
+    "tek_sinyal": false,
+    "votes": [
+     {
+      "ad": "Ayı formasyonu",
+      "agirlik": 1.0,
+      "family": null,
+      "olculmus": true,
+      "prio": 8,
+      "semsiye": false,
+      "yon": "ayi"
+     },
+     {
+      "ad": "RSI uç aşırı satım",
+      "agirlik": 1.0,
+      "family": null,
+      "olculmus": true,
+      "prio": 8,
+      "semsiye": false,
+      "yon": "boga"
+     },
+     {
+      "ad": "Pozitif karneli tarama ailesi",
+      "agirlik": 1.0,
+      "family": null,
+      "olculmus": true,
+      "prio": 7,
+      "semsiye": false,
+      "yon": "boga"
+     },
+     {
+      "ad": "Para akışı güçlü pozitif",
+      "agirlik": 1.0,
+      "family": null,
+      "olculmus": true,
+      "prio": 7,
+      "semsiye": false,
+      "yon": "boga"
+     },
+     {
+      "ad": "Alım hacmi baskın",
+      "agirlik": 0.5,
+      "family": "akis_destek",
+      "olculmus": true,
+      "prio": 5,
+      "semsiye": false,
+      "yon": "boga"
+     },
+     {
+      "ad": "OBV birikim izi",
+      "agirlik": 0.5,
+      "family": "akis_destek",
+      "olculmus": true,
+      "prio": 5,
+      "semsiye": false,
+      "yon": "boga"
+     },
+     {
+      "ad": "Yapı yükseliyor",
+      "agirlik": 0.5,
+      "family": null,
+      "olculmus": true,
+      "prio": 5,
+      "semsiye": false,
+      "yon": "boga"
+     },
+     {
+      "ad": "MFI aşırı satım",
+      "agirlik": 0.5,
+      "family": "akis_destek",
+      "olculmus": true,
+      "prio": 5,
+      "semsiye": false,
+      "yon": "boga"
+     },
+     {
+      "ad": "Endeksten sıyrılıyor",
+      "agirlik": 0.5,
+      "family": "akis_destek",
+      "olculmus": true,
+      "prio": 5,
+      "semsiye": false,
+      "yon": "boga"
+     }
+    ],
+    "yon": "yukari"
+   }
+  },
+  "same_data_parity": true,
+  "schema_version": 1,
+  "snapshot_reads": [
+   "GLDN.IS:1d",
+   "XU100.IS:1d"
+  ],
+  "sources": [
+   "goldmine",
+   "rsi_pozitif_uyumsuzluk"
+  ],
+  "status": "ready"
+ }
+}

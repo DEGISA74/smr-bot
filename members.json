@@ -1,0 +1,4 @@
+{
+  "test@pro.com": { "tier": "PRO", "expires": "2027-12-31" },
+  "test@elite.com": { "tier": "ELITE", "expires": "2027-12-31" }
+}

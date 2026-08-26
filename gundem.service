@@ -1,0 +1,12 @@
+[Unit]
+Description=SMR Gundem (dun BIST fotografi -> admin Telegram taslagi)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=wm11tr
+WorkingDirectory=/home/wm11tr/smr
+ExecStart=/home/wm11tr/smr/venv/bin/python /home/wm11tr/smr/gundem_tweet.py
+StandardOutput=append:/home/wm11tr/smr/logs/gundem.log
+StandardError=append:/home/wm11tr/smr/logs/gundem.log

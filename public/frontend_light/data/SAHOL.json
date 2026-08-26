@@ -1,0 +1,397 @@
+{
+  "meta": {
+    "tarih": "2026-06-13",
+    "guncelleme": "18:27",
+    "versiyon": "light-1.0",
+    "kaynak": "Önceki kapanış verisi · Eğitim / veri analitiği amaçlıdır"
+  },
+  "xu100": {
+    "ticker": "SAHOL",
+    "kapanis": 95.95,
+    "degisim_pct": 4.75,
+    "sma50": 94.88,
+    "sma200": 89.96,
+    "rsi": 57.1,
+    "rejim": "Boğa Trendi",
+    "rejim_renk": "green",
+    "yillik_yuksek": 113.18,
+    "yillik_dusuk": 72.73,
+    "pozisyon_pct": 57.4,
+    "genel_skor": 80
+  },
+  "xu100_grafik": [
+    {
+      "date": "30 Apr",
+      "mf": -0.3081,
+      "stp": 97.3825,
+      "price": 95.65
+    },
+    {
+      "date": "4 May",
+      "mf": -0.3403,
+      "stp": 96.5732,
+      "price": 93.7
+    },
+    {
+      "date": "5 May",
+      "mf": -0.2041,
+      "stp": 96.1475,
+      "price": 95.3
+    },
+    {
+      "date": "6 May",
+      "mf": 1.0579,
+      "stp": 97.2435,
+      "price": 100.7
+    },
+    {
+      "date": "7 May",
+      "mf": 0.9325,
+      "stp": 98.1596,
+      "price": 100.0
+    },
+    {
+      "date": "8 May",
+      "mf": 0.6768,
+      "stp": 98.6521,
+      "price": 100.0
+    },
+    {
+      "date": "11 May",
+      "mf": 0.4889,
+      "stp": 98.9039,
+      "price": 99.35
+    },
+    {
+      "date": "12 May",
+      "mf": -0.1457,
+      "stp": 98.2218,
+      "price": 95.2
+    },
+    {
+      "date": "13 May",
+      "mf": -0.2752,
+      "stp": 97.4299,
+      "price": 95.25
+    },
+    {
+      "date": "14 May",
+      "mf": -0.111,
+      "stp": 97.0785,
+      "price": 95.85
+    },
+    {
+      "date": "15 May",
+      "mf": -0.5836,
+      "stp": 96.0132,
+      "price": 93.05
+    },
+    {
+      "date": "18 May",
+      "mf": -0.6886,
+      "stp": 94.9332,
+      "price": 92.3
+    },
+    {
+      "date": "20 May",
+      "mf": -0.5252,
+      "stp": 94.2285,
+      "price": 92.65
+    },
+    {
+      "date": "21 May",
+      "mf": -0.9708,
+      "stp": 92.7632,
+      "price": 87.25
+    },
+    {
+      "date": "22 May",
+      "mf": -1.2603,
+      "stp": 91.4594,
+      "price": 89.15
+    },
+    {
+      "date": "25 May",
+      "mf": -0.5901,
+      "stp": 90.9758,
+      "price": 90.3
+    },
+    {
+      "date": "26 May",
+      "mf": -0.3362,
+      "stp": 91.016,
+      "price": 92.0
+    },
+    {
+      "date": "27 May",
+      "mf": -0.2751,
+      "stp": 91.2972,
+      "price": 92.0
+    },
+    {
+      "date": "28 May",
+      "mf": -0.225,
+      "stp": 91.498,
+      "price": 92.0
+    },
+    {
+      "date": "29 May",
+      "mf": -0.1841,
+      "stp": 91.6414,
+      "price": 92.0
+    },
+    {
+      "date": "1 Jun",
+      "mf": -0.7938,
+      "stp": 91.2486,
+      "price": 89.0
+    },
+    {
+      "date": "2 Jun",
+      "mf": 0.1598,
+      "stp": 91.6585,
+      "price": 93.3
+    },
+    {
+      "date": "3 Jun",
+      "mf": -0.163,
+      "stp": 91.5847,
+      "price": 90.7
+    },
+    {
+      "date": "4 Jun",
+      "mf": -0.1379,
+      "stp": 91.5271,
+      "price": 92.0
+    },
+    {
+      "date": "5 Jun",
+      "mf": -0.2303,
+      "stp": 91.3003,
+      "price": 90.0
+    },
+    {
+      "date": "8 Jun",
+      "mf": -0.1858,
+      "stp": 91.1431,
+      "price": 91.5
+    },
+    {
+      "date": "9 Jun",
+      "mf": 0.0788,
+      "stp": 91.3498,
+      "price": 91.2
+    },
+    {
+      "date": "10 Jun",
+      "mf": -0.0545,
+      "stp": 91.2737,
+      "price": 91.15
+    },
+    {
+      "date": "11 Jun",
+      "mf": -0.0273,
+      "stp": 91.2479,
+      "price": 91.6
+    },
+    {
+      "date": "12 Jun",
+      "mf": 1.1055,
+      "stp": 92.358,
+      "price": 95.95
+    }
+  ],
+  "piyasa_ozeti": {
+    "taranan": 150,
+    "sma200_ustu": 115,
+    "sma200_ustu_pct": 76.7,
+    "sma50_ustu": 131,
+    "rsi_50_ustu": 94,
+    "guclu_sinyal": 28,
+    "genel_skor": 60.9,
+    "one_cikanlar": [
+      {
+        "ticker": "ALFAS",
+        "close": 51.05,
+        "degisim_pct": 9.93,
+        "rsi": 88.8,
+        "sma200_pct": 19.0,
+        "hacim_x": 1.3
+      },
+      {
+        "ticker": "KRDMD",
+        "close": 44.16,
+        "degisim_pct": 8.98,
+        "rsi": 86.5,
+        "sma200_pct": 51.2,
+        "hacim_x": 1.98
+      },
+      {
+        "ticker": "AKENR",
+        "close": 12.21,
+        "degisim_pct": 1.58,
+        "rsi": 84.8,
+        "sma200_pct": 12.7,
+        "hacim_x": 3.45
+      },
+      {
+        "ticker": "EREGL",
+        "close": 40.86,
+        "degisim_pct": -0.97,
+        "rsi": 83.7,
+        "sma200_pct": 45.8,
+        "hacim_x": 1.48
+      },
+      {
+        "ticker": "ALTNY",
+        "close": 19.37,
+        "degisim_pct": -0.56,
+        "rsi": 80.3,
+        "sma200_pct": 19.4,
+        "hacim_x": 1.92
+      },
+      {
+        "ticker": "BVSAN",
+        "close": 146.5,
+        "degisim_pct": -2.66,
+        "rsi": 76.4,
+        "sma200_pct": 30.7,
+        "hacim_x": 2.52
+      },
+      {
+        "ticker": "EGGUB",
+        "close": 142.2,
+        "degisim_pct": 9.89,
+        "rsi": 72.5,
+        "sma200_pct": 33.0,
+        "hacim_x": 2.32
+      },
+      {
+        "ticker": "BRKSN",
+        "close": 9.43,
+        "degisim_pct": 1.4,
+        "rsi": 72.4,
+        "sma200_pct": 11.4,
+        "hacim_x": 1.42
+      },
+      {
+        "ticker": "ERBOS",
+        "close": 224.1,
+        "degisim_pct": 4.33,
+        "rsi": 71.6,
+        "sma200_pct": 18.1,
+        "hacim_x": 2.32
+      },
+      {
+        "ticker": "AKSEN",
+        "close": 88.2,
+        "degisim_pct": 1.73,
+        "rsi": 71.4,
+        "sma200_pct": 47.4,
+        "hacim_x": 1.28
+      },
+      {
+        "ticker": "ARSAN",
+        "close": 4.19,
+        "degisim_pct": 7.44,
+        "rsi": 70.8,
+        "sma200_pct": 24.2,
+        "hacim_x": 2.36
+      },
+      {
+        "ticker": "AEFES",
+        "close": 21.2,
+        "degisim_pct": 3.62,
+        "rsi": 70.6,
+        "sma200_pct": 26.4,
+        "hacim_x": 1.41
+      },
+      {
+        "ticker": "ANHYT",
+        "close": 119.3,
+        "degisim_pct": 2.58,
+        "rsi": 68.2,
+        "sma200_pct": 24.0,
+        "hacim_x": 1.31
+      },
+      {
+        "ticker": "CWENE",
+        "close": 40.0,
+        "degisim_pct": 6.38,
+        "rsi": 67.2,
+        "sma200_pct": 51.7,
+        "hacim_x": 1.27
+      },
+      {
+        "ticker": "ALKIM",
+        "close": 20.82,
+        "degisim_pct": 1.86,
+        "rsi": 66.1,
+        "sma200_pct": 12.6,
+        "hacim_x": 1.53
+      },
+      {
+        "ticker": "BAGFS",
+        "close": 38.08,
+        "degisim_pct": 6.31,
+        "rsi": 65.8,
+        "sma200_pct": 17.1,
+        "hacim_x": 1.94
+      },
+      {
+        "ticker": "FADE",
+        "close": 16.21,
+        "degisim_pct": 1.63,
+        "rsi": 64.3,
+        "sma200_pct": 10.6,
+        "hacim_x": 1.93
+      },
+      {
+        "ticker": "BIZIM",
+        "close": 30.94,
+        "degisim_pct": -7.31,
+        "rsi": 63.7,
+        "sma200_pct": 10.9,
+        "hacim_x": 4.74
+      },
+      {
+        "ticker": "SISE",
+        "close": 52.35,
+        "degisim_pct": 1.06,
+        "rsi": 63.4,
+        "sma200_pct": 28.2,
+        "hacim_x": 1.48
+      },
+      {
+        "ticker": "SASA",
+        "close": 3.54,
+        "degisim_pct": 0.57,
+        "rsi": 63.3,
+        "sma200_pct": 16.4,
+        "hacim_x": 10.0
+      }
+    ]
+  },
+  "kilitli": {
+    "ict_bottomline": {
+      "baslik": "ICT Bottom Line",
+      "teaser": "Likidite yönü, kritik OB bölgesi ve kurumsal ayak izi analizi",
+      "plan": "PRO"
+    },
+    "teknik_seviyeler": {
+      "baslik": "Teknik Seviyeler",
+      "teaser": "Destek / direnç matrisi — 5 kritik fiyat seviyesi",
+      "plan": "PRO"
+    },
+    "smc_hacim": {
+      "baslik": "SMC Hacim Analizi",
+      "teaser": "Para akışı anomalisi ve kurumsal hacim izleri",
+      "plan": "ELITE"
+    },
+    "risk_haritasi": {
+      "baslik": "Risk & Volatilite Haritası",
+      "teaser": "ATR bazlı risk bölgeleri ve volatilite yapısı",
+      "plan": "ELITE"
+    }
+  }
+}

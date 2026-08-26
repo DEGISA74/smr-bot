@@ -1,0 +1,35 @@
+{
+  "generated": "2026-07-22 11:59",
+  "universe": 612,
+  "eval_days": 130,
+  "n_conflict": 6377,
+  "horizons": {
+    "5g": {
+      "n": 6377,
+      "follow10_avg": 0.31,
+      "follow10_hit": 50.5
+    },
+    "10g": {
+      "n": 6377,
+      "follow10_avg": 0.4,
+      "follow10_hit": 50.6
+    },
+    "20g": {
+      "n": 6377,
+      "follow10_avg": -0.28,
+      "follow10_hit": 46.7
+    }
+  },
+  "sub_5g_alici_10g_satici": {
+    "n": 2898,
+    "follow10_avg": -1.26,
+    "follow10_hit": 48.1
+  },
+  "sub_5g_satici_10g_alici": {
+    "n": 3479,
+    "follow10_avg": 1.79,
+    "follow10_hit": 52.7
+  },
+  "verdict": "AYIRT EDİCİ DEĞİL → rozet kalsın, ağırlık değiştirme (yazı-tura bandı)",
+  "note": "follow10 = dir10*fwd; >0 → çelişkide konsensüs yönü daha kârlıydı. Tek rejimde koşulduysa yeniden koş."
+}
