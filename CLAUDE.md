@@ -431,4 +431,4 @@ Commits: `cecf58a` (faz_X) · `8926ee7` (3 flag fix) · `2a3c432` (/bulten + lea
 - ⏳ **base_powers reranking** — `eval_20g ≥ 30` eşiği bekleniyor. Şu an Royal Flush 11/71. Eylül 2026 itibariyle olgunlaşır.
 - ⏳ **Hayalet Bar Plan B** — `_strip_holiday_bars` ortadaki V=0 barları da silsin (2-3 hafta backtest sonrası karar)
 - ⏳ **CMF Dual-Window Phase 3** — `get_obv_divergence_status` + `calculate_price_action_dna` + `process_single_accumulation` + Tile 6'ya yay
-- ⏳ **GitHub PAT yenileme** — 31 Ağustos 2026 (Ağustos başında hatırlat)
+- ⏳ **GitHub PAT yenileme** — 24 Kasım 2026 (26 Ağu 2026'da yenilendi; Kasım başında hatırlat)

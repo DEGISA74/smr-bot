@@ -1,37 +1,37 @@
 {
-  "generated_at": "2026-08-21 21:29",
+  "generated_at": "2026-08-25 20:18",
   "category": "BIST 500 ",
   "public_items": [
     {
-      "ticker": "CEMAS",
-      "scenario_id": "B4",
-      "scenario_name": "Yatayda Hacim Patlaması",
-      "category": "B",
-      "stars": 5,
-      "aging_days": 2,
-      "event_day": 2,
-      "first_seen": "2026-08-20"
-    },
-    {
-      "ticker": "FROTO",
-      "scenario_id": "B4",
-      "scenario_name": "Yatayda Hacim Patlaması",
+      "ticker": "AAGYO",
+      "scenario_id": "B2",
+      "scenario_name": "Sessiz Birikim",
       "category": "B",
       "stars": 5,
       "aging_days": 1,
       "event_day": 1,
-      "first_seen": "2026-08-21"
+      "first_seen": "2026-08-25"
     },
     {
-      "ticker": "TCELL",
-      "scenario_id": "B4",
-      "scenario_name": "Yatayda Hacim Patlaması",
+      "ticker": "ATAGY",
+      "scenario_id": "B10",
+      "scenario_name": "Yatay + Momentum Çelişkisi",
       "category": "B",
       "stars": 5,
       "aging_days": 1,
       "event_day": 1,
-      "first_seen": "2026-08-21"
+      "first_seen": "2026-08-25"
+    },
+    {
+      "ticker": "GARFA",
+      "scenario_id": "B10",
+      "scenario_name": "Yatay + Momentum Çelişkisi",
+      "category": "B",
+      "stars": 5,
+      "aging_days": 1,
+      "event_day": 1,
+      "first_seen": "2026-08-25"
     }
   ],
-  "locked_count": 47
+  "locked_count": 54
 }

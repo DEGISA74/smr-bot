@@ -165,6 +165,27 @@ except ImportError:
     _AREFE_RATIO = 0.3125
     _BIST_CAL_OK = False
 
+# ── ⏳ SEANS İLERLEMESİ (26 Ağu 2026) — kısmi bar düzeltmesi ─────────────────
+# Panel bitmiş gün varsayıyordu: 26 Ağu 11:53'te XU100 cirosu 20g ortalamasının
+# %39'uydu, sistem "hacim düşük" dedi — oysa seansın 2 saati geçmişti. Tek düzeltme
+# arefe katsayısıydı; "seansın kaçta kaçı geçti" kavramı yoktu.
+# `seans_profili.gun_katsayisi` arefe + gün-içi payı BİRLİKTE döner → çağıran taraf
+# `_bist_rvol_factor`'ı AYRICA uygulamamalı (çifte düzeltme olur).
+# Master Scan 19:55 / watchdog 22:15 → o saatlerde katsayı 1.0, DB yazımı etkilenmez.
+try:
+    from seans_profili import (
+        gun_katsayisi     as _seans_gun_katsayisi,
+        kismi_bar_durumu  as _seans_kismi_bar,
+    )
+    _SEANS_PROFIL_OK = True
+except ImportError:
+    def _seans_gun_katsayisi(_bar_dt=None, _now=None):
+        return _bist_rvol_factor(_bar_dt)          # eski davranış: yalnız arefe
+    def _seans_kismi_bar(_bar_dt=None, _now=None):
+        return {"kismi": False, "katsayi": 1.0, "pay": 1.0,
+                "yeterli": True, "rozet": "", "aciklama": ""}
+    _SEANS_PROFIL_OK = False
+
 
 def _veri_bugunun_mu_app() -> bool:
     """Elimizdeki günlük veri BUGÜNÜN seansına mı ait? (17 Ağu 2026)
@@ -5453,6 +5474,10 @@ def render_smart_volume_panel(ticker):
                 _vma20c = _df_rvc['Volume'].rolling(20).mean()
                 _vd_c   = float(_df_rvc['Volume'].iloc[-1])
                 _va_c   = float(_vma20c.iloc[-1])
+                # ⚠ GÜN-İÇİ DÜZELTME BURAYA YAZILMAZ (26 Ağu 2026 dersi): hacim zaten
+                # `data_layer.apply_volume_projection` tarafından tam güne PROJEKTE
+                # edilmiş halde geliyor (df.attrs['vol_projected']). Payda da küçültülürse
+                # çifte düzeltme olur — XU100'de 1,28x yerine 2,86x çıktı. Yalnız arefe.
                 _af_c   = _bist_rvol_factor(_df_rvc.index[-1].date())
                 if _va_c > 0 and _vd_c > 0:
                     rvol = min(_vd_c / (_va_c * _af_c), 3.0)   # 5G bar son değeriyle bire-bir aynı formül
@@ -6340,7 +6365,8 @@ def render_smart_volume_panel(ticker):
                 for _bi5 in range(4, -1, -1):
                     _vd5  = float(_df_rv5['Volume'].iloc[-(1 + _bi5)])
                     _va5  = float(_vma20_5.iloc[-(1 + _bi5)])
-                    # Tarih bazlı arefe normalizer — o günün takvim faktörünü uygula
+                    # Tarih bazlı arefe normalizer — o günün takvim faktörünü uygula.
+                    # (Gün-içi düzeltme YOK: hacim zaten projekte edilmiş geliyor.)
                     try:
                         _bar_dt5 = _df_rv5.index[-(1 + _bi5)].date()
                         _af5     = _bist_rvol_factor(_bar_dt5)
@@ -7014,13 +7040,36 @@ def render_smart_volume_panel(ticker):
     # Bu bölüm yalnızca yukarıda hesaplanmış değerleri sade başlıklara yerleştirir.
     # smart_volume verisi, dört-soru hesabı ve AI prompt'a giden alanlar değiştirilmez.
     _session_tag = "SON SEANS"
+    # 26 Ağu 2026 — KISMİ BAR ROZETİ. Bitmemiş günü "SON SEANS" diye etiketlemek
+    # yarım günü bitmiş seans gibi sunuyordu. Seans sürerken tarihin yanına
+    # "seansın %X'i" yazılır; kapanınca eski etikete döner.
+    _kismi = {"kismi": False, "rozet": "", "aciklama": "", "yeterli": True}
     try:
-        if _last_sess_str:
-            _session_tag = f"{_last_sess_str} SON SEANS"
-        elif _df_chg is not None and len(_df_chg) > 0:
-            _session_tag = f"{_df_chg.index[-1].strftime('%d.%m')} SON SEANS"
+        _bar_dt_tag = None
+        if _df_chg is not None and len(_df_chg) > 0:
+            _bar_dt_tag = _df_chg.index[-1].date()
+        if _bar_dt_tag is not None:
+            # Oranın TEK KAYNAĞI projeksiyonun kendi damgası; damga yoksa ölçülmüş
+            # profile düşülür (attrs dilimlemede kaybolabiliyor).
+            _pj_ok, _pj_pay = is_last_bar_projected(_df_chg)
+            _kismi = _seans_kismi_bar(
+                _bar_dt_tag, pay_override=(_pj_pay if _pj_ok else None))
     except Exception:
         pass
+    try:
+        _tag_tarih = _last_sess_str or (
+            _df_chg.index[-1].strftime('%d.%m')
+            if (_df_chg is not None and len(_df_chg) > 0) else "")
+        if _kismi.get("kismi"):
+            _session_tag = (f"{_tag_tarih} · {_kismi['rozet']}".strip(" ·")
+                            if _tag_tarih else _kismi['rozet'])
+        elif _tag_tarih:
+            _session_tag = f"{_tag_tarih} SON SEANS"
+    except Exception:
+        pass
+    # Kısmi barda rozet kehribar + tooltip; tam barda eski sade görünüm.
+    _session_tag_title = str(_kismi.get("aciklama", "")).replace('"', '&quot;')
+    _session_tag_hl = bool(_kismi.get("kismi"))
 
     _last_status = "ALICI TEPKİSİ" if delta_val > 0 else ("SATICI BASKISI" if delta_val < 0 else "DENGE")
     _last_icon = "&#8593;" if delta_val > 0 else ("&#8595;" if delta_val < 0 else "&#8212;")
@@ -7445,8 +7494,13 @@ def render_smart_volume_panel(ticker):
         f'<div style="padding:8px 12px;border-bottom:1px solid {divider};display:flex;align-items:center;gap:8px;">'
         f'<span style="font-weight:900;font-size:1.0rem;color:{bc};white-space:nowrap;">&#128202; SMART MONEY HACİM ANALİZİ</span>'
         f'<span style="flex:1;"></span><span style="{_badge_css}">{display_ticker} {_cp_str}</span>{_chg_html}'
-        f'<span style="font-size:0.66rem;color:{text_sub};font-weight:800;border:1px solid {divider};'
-        f'padding:3px 7px;border-radius:4px;white-space:nowrap;">{_session_tag}</span></div>'
+        f'<span title="{_session_tag_title}" style="font-size:0.66rem;'
+        f'color:{"#f59e0b" if _session_tag_hl else text_sub};font-weight:800;'
+        f'border:1px solid {"#f59e0b66" if _session_tag_hl else divider};'
+        f'background:{"rgba(245,158,11,0.10)" if _session_tag_hl else "transparent"};'
+        f'padding:3px 7px;border-radius:4px;white-space:nowrap;'
+        f'{"cursor:help;" if _session_tag_hl else ""}">'
+        f'{"&#9203; " if _session_tag_hl else ""}{_session_tag}</span></div>'
 
         # 1+2) SOL istif (4 tile + akıllı para durumu) | SAĞ tam-boy GENEL OKUMA
         # 14 Ağu 2026 — sol daraldı / sağ genişledi (grafik hak ettiği yeri alsın).
@@ -16949,6 +17003,32 @@ if st.session_state.generate_prompt:
         _ai_session_context = "SEANS DURUMU BELİRSİZ"
     if _ai_today_closed:
         _ai_session_context = f"PİYASA KAPALI — {_ai_last_sess_str or data_timestamp_txt} SON SEANS — hacim FINAL"
+    # 26 Ağu 2026 — KISMİ BAR, etiketten ÖNCE gelir. Eskiden endeks (XU100) NON_BIST
+    # sayılıp "kaynak piyasanın son verisi" diyordu; seans ortasında AI'ya yarım günü
+    # bitmiş gün gibi sunuyordu. Artık son bar bugünse ve seans sürüyorsa gerçek söylenir.
+    try:
+        _ai_bar_dt_ctx = _last_bar_dt.date() if (_last_bar_dt is not None
+                                                 and hasattr(_last_bar_dt, 'date')) else None
+        _ai_pj_ok, _ai_pj_pay = is_last_bar_projected(df_hist)
+        _ai_kismi = (_seans_kismi_bar(_ai_bar_dt_ctx,
+                                      pay_override=(_ai_pj_pay if _ai_pj_ok else None))
+                     if _ai_bar_dt_ctx else {"kismi": False})
+        if _ai_kismi.get("kismi"):
+            _yuzde_ctx = int(round(_ai_kismi.get("pay", 0) * 100))
+            try:
+                from seans_profili import yuzde_eki as _yz_ek
+                _ek_ctx = _yz_ek(_yuzde_ctx)
+            except Exception:
+                _ek_ctx = "i"
+            _ai_session_context = (
+                f"SEANS SÜRÜYOR — bugünün mumu KAPANMADI (seansın ~%{_yuzde_ctx}'{_ek_ctx} geçti). "
+                "Hacim rakamları gün sonuna göre düzeltilmiş TAHMİNDİR; "
+                + ("kesin ifade kullanma, kapanışta değişebilir."
+                   if _ai_kismi.get("yeterli") else
+                   "seans çok erken — hacmi yoruma KATMA.")
+            )
+    except Exception:
+        pass
     _ai_market_state_txt = (_ai_today_label if (_ai_today_closed and _ai_today_label)
                             else _ai_session_context)
 
@@ -24264,15 +24344,15 @@ def _render_right_col():
             if _h_stp_type in ("cross_up", "cross_down"):
                 _h_stp_day = 1
         if _h_stp_type in ("trend_up", "cross_up"):
-            _h_stp_color = _SO_GREEN; _h_stp_title = "Fiyat EMA 6 üzerinde"
-            _h_stp_note = (f"Son {_h_stp_day} gündür kısa vadeli EMA 6 çizgisinin üzerinde."
-                           if _h_stp_day else "Fiyat kısa vadeli EMA 6 çizgisinin üzerinde.")
+            _h_stp_color = _SO_GREEN; _h_stp_title = "Fiyat STP üzerinde"
+            _h_stp_note = (f"Son {_h_stp_day} gündür kısa vadeli STP çizgisinin üzerinde."
+                           if _h_stp_day else "Fiyat kısa vadeli STP çizgisinin üzerinde.")
         elif _h_stp_type in ("trend_down", "cross_down"):
-            _h_stp_color = _SO_RED; _h_stp_title = "Fiyat EMA 6 altında"
-            _h_stp_note = (f"Son {_h_stp_day} gündür kısa vadeli EMA 6 çizgisinin altında."
-                           if _h_stp_day else "Fiyat kısa vadeli EMA 6 çizgisinin altında.")
+            _h_stp_color = _SO_RED; _h_stp_title = "Fiyat STP altında"
+            _h_stp_note = (f"Son {_h_stp_day} gündür kısa vadeli STP çizgisinin altında."
+                           if _h_stp_day else "Fiyat kısa vadeli STP çizgisinin altında.")
         else:
-            _h_stp_color = _SO_NEUTRAL; _h_stp_title = "EMA 6 için veri yok"
+            _h_stp_color = _SO_NEUTRAL; _h_stp_title = "STP için veri yok"
             _h_stp_note = "Kısa vadeli çizgiyi hesaplamak için yeterli fiyat verisi yok."
         _h_stp_circle = str(_h_stp_day) if _h_stp_day is not None else "—"
 
@@ -24283,9 +24363,14 @@ def _render_right_col():
             _h_risk_note = ("Kısa vadeli toparlanma var; orta vadeli kayıp henüz telafi edilmedi."
                             if _h_mom20 < 0 else
                             "Son 20 gündeki fiyat değişimi pozitif; yönün kalıcılığı hacimle desteklenmeli.")
+            _h_risk_val_txt = f"{_h_risk_sign}%{abs(_h_mom20):.1f}"
         else:
             _h_risk_col = _SO_NEUTRAL; _h_risk_title = "20 günlük fiyat değişimi: veri yok"
             _h_risk_note = "Orta vadeli fiyat değişimini hesaplamak için yeterli veri yok."
+            # 21 bardan kısa seride _h_risk_sign hiç tanımlanmıyordu; HUD kartı
+            # abs(None) ile patlıyordu. Tek metin değişkeni iki dalda da var.
+            _h_risk_sign = ""
+            _h_risk_val_txt = "—"
         _h_risk_bars = "".join(
             f"<i style='display:block;width:4px;height:{height}px;border-radius:2px;"
             f"background:{_h_risk_col};opacity:{opacity};'></i>"
@@ -24395,19 +24480,19 @@ def _render_right_col():
             "<div style='padding:8px 9px;border:1px solid #29465f;border-radius:10px;background:#0c1b2c;'>"
             "<div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;'>"
             # Kart 1: Hacim
-            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
-            f"<div style='display:inline-block;padding:1px 4px;background:{_h_vol_visual_col}22;border:1px solid {_h_vol_visual_col}55;border-radius:4px;color:{_h_vol_visual_col};font-size:0.60rem;font-weight:900;'>📊 {_h_vol_pct} HACİM</div>"
-            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_vol_label}</div>"
+            + f"<div style='padding:7px 4px 6px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
+            f"<div style='color:{_h_vol_visual_col};font-size:1.05rem;font-weight:900;line-height:1.05;letter-spacing:-0.03em;white-space:nowrap;'>{_h_vol_pct}</div>"
+            f"<div style='margin-top:4px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_vol_label}</div>"
             f"</div>"
-            # Kart 2: EMA 6
-            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
-            f"<div style='display:inline-block;padding:1px 4px;background:{_h_stp_color}22;border:1px solid {_h_stp_color}55;border-radius:4px;color:{_h_stp_color};font-size:0.60rem;font-weight:900;'>📈 EMA 6: {_h_stp_circle}G</div>"
-            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_stp_title}</div>"
+            # Kart 2: STP
+            + f"<div style='padding:7px 4px 6px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
+            f"<div style='color:{_h_stp_color};font-size:1.05rem;font-weight:900;line-height:1.05;letter-spacing:-0.03em;white-space:nowrap;'>{_h_stp_circle}G</div>"
+            f"<div style='margin-top:4px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>{_h_stp_title}</div>"
             f"</div>"
             # Kart 3: 20G Değişim
-            + f"<div style='padding:5px 4px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
-            f"<div style='display:inline-block;padding:1px 4px;background:{_h_risk_col}22;border:1px solid {_h_risk_col}55;border-radius:4px;color:{_h_risk_col};font-size:0.60rem;font-weight:900;'>⚡ {_h_risk_sign}%{abs(_h_mom20):.1f} (20G)</div>"
-            f"<div style='margin-top:3px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>20G Değişim</div>"
+            + f"<div style='padding:7px 4px 6px;background:rgba(2,6,17,0.50);border:1px solid #29465f;border-radius:6px;text-align:center;'>"
+            f"<div style='color:{_h_risk_col};font-size:1.05rem;font-weight:900;line-height:1.05;letter-spacing:-0.03em;white-space:nowrap;'>{_h_risk_val_txt}</div>"
+            f"<div style='margin-top:4px;color:#cbd5e1;font-size:0.56rem;font-weight:700;line-height:1.2;'>20G Değişim</div>"
             f"</div>"
             "</div>"
             + f"<div style='margin-top:6px;padding:5px 7px;border-left:2px solid {_h_vol_visual_col};border-radius:0 4px 4px 0;background:rgba(2,6,17,0.60);color:#cbd5e1;font-size:0.58rem;line-height:1.3;'>{_h_vol_note}</div>"

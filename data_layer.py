@@ -1028,13 +1028,26 @@ def apply_volume_projection(df, ticker=""):
             # İlk 60 dk: çarpan >5x — güvenilmez, projeksiyon yapma
             if elapsed < 60:
                 return df
-            # U-Şeklinde Ağırlık: İlk 120 dk %40 | Orta 260 dk %20 | Son 120 dk %40
-            if elapsed <= 120:
-                progress = (elapsed / 120) * 0.40
-            elif elapsed <= 380:
-                progress = 0.40 + ((elapsed - 120) / 260) * 0.20
-            else:
-                progress = 0.60 + ((elapsed - 380) / 120) * 0.40
+            # 26 Ağu 2026 — ÖLÇÜLMÜŞ PROFİL. Aşağıdaki U-şekilli ağırlıklar ELLE
+            # yazılmıştı ve hiç ölçülmemişti; "ağır kapanış" (son 2 saat %40)
+            # varsayıyordu. 267 hisse / 11.565 hisse-gün ölçümü son 2 saati %25,4
+            # buldu → harita öğleden sonra hacmi şişiriyordu (16:00'da ~%27).
+            # Ölçüm: `seans_profili.olcum_yap()` · geri alma: SMR_OLCULMUS_PROFIL=0
+            progress = 0.0
+            if os.environ.get("SMR_OLCULMUS_PROFIL", "1") == "1":
+                try:
+                    from seans_profili import normal_gun_payi
+                    progress = float(normal_gun_payi(now.hour, now.minute))
+                except Exception:
+                    progress = 0.0
+            if progress <= 0.0:
+                # Eski elle-yazılmış harita (modül yoksa / bayrak kapalıysa)
+                if elapsed <= 120:
+                    progress = (elapsed / 120) * 0.40
+                elif elapsed <= 380:
+                    progress = 0.40 + ((elapsed - 120) / 260) * 0.20
+                else:
+                    progress = 0.60 + ((elapsed - 380) / 120) * 0.40
 
     # Güvenlik kilidi: çarpan çok uçuk çıkmasın
     progress = max(0.05, min(progress, 1.0))
