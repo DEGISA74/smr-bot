@@ -5948,7 +5948,9 @@ def render_smart_volume_panel(ticker):
                                 _v_seans = (
                                     f'<span style="font-size:0.55rem;color:{text_muted};'
                                     f'font-weight:800;border:1px solid {divider};padding:1px 5px;'
-                                    f'white-space:nowrap;">{_v_seans_txt}</span>'
+                                    # 26 Ağu 2026: nowrap idi → uzun sürüm ("gün kapanışlarından
+                                    # hesaplandı (…)") 341 px olup 305 px'lik satırı 36 px aşıyordu.
+                                    f'max-width:100%;">{_v_seans_txt}</span>'
                                 ) if _v_seans_txt else ''
                                 _obv_verdict_html = (
                                     f'<div style="background:{_v_bg};border-left:3px solid {_v_clr};'
