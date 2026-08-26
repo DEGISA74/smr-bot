@@ -6858,8 +6858,11 @@ def render_smart_volume_panel(ticker):
                     _d_chg = len(_lbls) - 1 - _chg_idx
                     _chg_txt = (f"değişim {_d_chg}g önce "
                                 f"({_lbl_short_map.get(_lbls[_chg_idx], '?')} → {_lbl_short_map.get(_last_l, '?')})")
+            # 26 Ağu 2026: şerit tek parça inline-flex'ti, dar kutuda sarılamıyor,
+            # 10 nokta + değişim yazısı kutunun kenarlığını 20 px aşıyordu.
             _cs_hist_strip = (
-                f'<span style="display:inline-flex;align-items:center;gap:3.5px;">'
+                f'<span style="display:inline-flex;align-items:center;gap:3.5px;'
+                f'flex-wrap:wrap;max-width:100%;">'
                 f'<span style="font-size:0.60rem;color:{text_muted};font-weight:800;letter-spacing:0.4px;">SKOR 10G</span>'
                 f'{_dots}'
                 + (f'<span style="font-size:0.64rem;color:{text_muted};font-weight:700;margin-left:4px;">{_chg_txt}</span>' if _chg_txt else '')
@@ -7229,7 +7232,6 @@ def render_smart_volume_panel(ticker):
     _reading_compact_blocks = "".join(
         f'<span style="display:block;">{_p}</span>' for _p in _reading_parts
     )
-    _general_reading = " ".join(_reading_parts)
 
     # GENEL OKUMA ROZETİ — PUAN TOPLAMI DEĞİL, ÜÇ AYRI TEYİT.
     # Eski rozet, birbiriyle ilişkili artı işaretlerini topladığı için normal
@@ -7350,8 +7352,11 @@ def render_smart_volume_panel(ticker):
             f'justify-content:flex-start;padding:4px 6px;border-radius:6px;border:1px solid {divider};'
             f'border-left:3px solid {color};background:rgba(15,23,42,0.50);">'
             f'<div style="font-size:0.48rem;color:{text_muted};font-weight:900;letter-spacing:0.48px;text-transform:uppercase;">{label}</div>'
-            f'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:4px;margin-top:1px;">'
-            f'<span style="font-size:0.70rem;color:{color};font-weight:900;line-height:1.08;">{main}</span>'
+            # 26 Ağu 2026: satır sarılmıyordu → uzun durum yazısı + nowrap değer
+            # kutunun kenarlığını 25 px aşıyordu. Sığmazsa değer alt satıra iner.
+            f'<div style="display:flex;align-items:baseline;justify-content:space-between;'
+            f'flex-wrap:wrap;gap:0 4px;margin-top:1px;">'
+            f'<span style="min-width:0;font-size:0.70rem;color:{color};font-weight:900;line-height:1.08;">{main}</span>'
             f'<span style="font:800 0.68rem JetBrains Mono;color:{color};white-space:nowrap;">{value}</span>'
             f'</div><div style="font-size:0.55rem;color:{text_sub};line-height:1.20;margin-top:2px;">{note}</div></div>'
         )

@@ -363,7 +363,7 @@ def _decision_box(df, d, ms):
     _body = (f"<div style='font-size:11px;line-height:1.45;color:{TXT};"
              f"max-width:100%;'>{_summary}</div>")
     return (f"<div style='background:{CARD};border:1px solid {INFO}66;border-radius:10px;"
-            f"padding:9px 11px;margin-bottom:10px;width:100%;'>"
+            f"padding:9px 11px;margin-bottom:10px;width:100%;box-sizing:border-box;'>"
             f"<div style='font-size:12px;font-weight:800;color:{INFO};margin-bottom:5px;'>"
             f"SMART MONEY RADAR · ALGORİTMİK ÖZET</div>"
             f"{_body}</div>")
