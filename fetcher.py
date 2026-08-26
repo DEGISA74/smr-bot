@@ -13,6 +13,7 @@ Production: cron / systemd ile 10dk'da bir tetiklenir.
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 import json
@@ -26,7 +27,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yfinance as yf
 from data_policy import AUTO_ADJUST  # 3 Tem 2026 — veri politikası TEK KAYNAK (app.py ile aynı)
-from bist_data_store import promote_batch
+from bist_data_store import promote_batch, read_active
 from isyatirim_gateway import robust_isyatirim
 
 # --------------------------------------------------------------------
@@ -323,7 +324,7 @@ def override_index_ciro():
 # --------------------------------------------------------------------
 # Ana akış
 # --------------------------------------------------------------------
-def run(source_override: str | None = None):
+def run(source_override: str | None = None, candidate_filter=None):
     source  = source_override or get_next_source()
     tickers = load_bist_tickers()
     log.info(f"=== FETCHER START ===  Kaynak: {source}  |  {len(tickers)} ticker")
@@ -354,6 +355,13 @@ def run(source_override: str | None = None):
                 log.info(f"  Progress: {i}/{len(tickers)}  ok={results['ok']} fail={results['fail']}")
 
     dur = time.time() - start
+    # Süzgeç kancası: adaylar sürüm kapısına GİTMEDEN önce son bir denetim.
+    # Şu an yalnız kapanis_final kullanıyor (borsapy konsensüs kapısı).
+    if candidate_filter is not None:
+        try:
+            candidates = candidate_filter(candidates)
+        except Exception as _exc:
+            log.warning(f"[konsensus] süzgeç hatası, adaylar dokunulmadan geçti: {_exc}")
     promotion = promote_batch(
         candidates, reason=f"fetcher_{source}",
         source_run={"source": source, "total": len(tickers),
@@ -553,6 +561,120 @@ def run_kapanis():
     log.info("=== KAPANIS PENCERESİ DONE ===")
 
 
+# ── borsapy KONSENSÜS KAPISI — kapanis_final turu (26 Ağu 2026) ──────────────
+# Ölçüldü (settle_report, 21 gün): borsapy ile İş Yatırım'ın NİHAİ kapanışı 73/73
+# (%100) aynı; borsapy 71 kez ERKEN oturuyor, HİÇ geç kalmıyor. Kapanış ise medyan
+# 18:36'da, %95 gün 19:49'da, en kötü gün 20:58'de oturuyor — bu tur 19:05'te
+# koştuğu için Yahoo'nun son barı PROVİZYON olabilir ve depodaki satırı ezerdi.
+#
+# Kural — YALNIZ EZME VETO EDİLİR, yeni gün engellenmez:
+#   depoda o gün YOKSA           → dokunma (bar olmaması provizyon bardan kötü;
+#                                  21:30/22:15 turları ve sabah incremental düzeltir)
+#   depodaki kapanış AYNI ise    → ezme yok, borsapy'ye SORULMAZ (asıl tasarruf)
+#   FARKLI + borsapy doğruluyor  → aday kalır
+#   FARKLI + borsapy çelişiyor   → yalnız SON BAR düşer, önceki günler kalır
+#   borsapy veri vermiyor/hata   → eski davranış (Yahoo'ya güven)
+#
+# ⚠ price_source etiketi DEĞİŞTİRİLMEZ: bist_data_store.PRICE_SOURCES bir BEYAZ
+# LİSTE; listede olmayan ad adayı BÜTÜNÜYLE reddettirir. Konsensüs log'a yazılır.
+# ⚠ Sembol aday sözlüğünden SİLİNMEZ / spec boş bırakılmaz: promote_batch boş
+# spec'i fail sayıp max_reject_ratio'yu tetikleyebilir. Veto satır siler, sembol değil.
+# Kapatma: SMR_KAPANIS_KONSENSUS=0
+KAPANIS_KONSENSUS = os.environ.get("SMR_KAPANIS_KONSENSUS", "1") != "0"
+KONSENSUS_TOLERANS = 0.0015        # %0,15 — ölçümde birebir uyuyorlar, pay yuvarlama için
+KONSENSUS_SURE_BUTCESI = 900.0     # sn (5 thread × ~0,6 sn/sembol → geniş pay)
+
+
+def _borsapy_kapanis(symbol: str, gun):
+    """Verilen günün borsapy kapanışı (yoksa None). borsapy WebSocket'i arada bir
+    boş dönüyor → tek tekrar. Tekrar da tutmazsa çağıran eski davranışa düşer."""
+    for _k in range(2):
+        try:
+            from provider_traffic import acquire_slot, record_success, record_failure
+            acquire_slot("borsapy", priority="post_close", max_wait=30)
+            import borsapy as _bp
+            h = _bp.Ticker(symbol.replace('.IS', '')).history(period="3d")
+            if h is not None and not h.empty and "Close" in h.columns:
+                idx = pd.DatetimeIndex([
+                    pd.Timestamp(t).tz_localize(None).normalize()
+                    if pd.Timestamp(t).tz else pd.Timestamp(t).normalize()
+                    for t in h.index])
+                h = h.set_axis(idx)
+                if gun in h.index:
+                    record_success("borsapy")
+                    return float(h.at[gun, "Close"])
+            record_failure("borsapy", kind="empty", error=f"{symbol} empty")
+        except Exception:
+            pass
+        if _k == 0:
+            time.sleep(0.6)
+    return None
+
+
+def _kapanis_konsensus_suz(candidates: dict) -> dict:
+    """Adayları borsapy ile teyit eder; teyit edilemeyen EZME satırını düşürür."""
+    if not KAPANIS_KONSENSUS or not candidates:
+        return candidates
+
+    sorulacak = []                      # (sym, gun, yahoo_close)
+    for sym, spec in candidates.items():
+        pdf = (spec or {}).get("price_df")
+        if pdf is None or getattr(pdf, "empty", True):
+            continue
+        if sym.startswith('X'):
+            continue                    # endeks fiyatı borsapy referansı değil
+        try:
+            gun = pd.Timestamp(pdf.index[-1]).normalize()
+            yc = float(pdf["Close"].iloc[-1])
+            old = read_active(sym)
+            if old is None or old.empty or gun not in old.index:
+                continue                # yeni gün → veto yok
+            oc = float(old.at[gun, "Close"])
+            if abs(oc - yc) <= max(1e-8, abs(oc) * 1e-6):
+                continue                # depodakiyle aynı → ezme yok, sorma
+            sorulacak.append((sym, gun, yc))
+        except Exception:
+            continue
+
+    if not sorulacak:
+        log.info("[konsensus] ezilecek kapanış yok — borsapy'ye sorulmadı")
+        return candidates
+
+    baslangic = time.time()
+    teyitli = veto = sorulmayan = 0
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS_BORSAPY) as ex:
+        futs = {ex.submit(_borsapy_kapanis, sym, gun): (sym, gun, yc)
+                for sym, gun, yc in sorulacak}
+        for f in as_completed(futs):
+            sym, gun, yc = futs[f]
+            if time.time() - baslangic > KONSENSUS_SURE_BUTCESI:
+                sorulmayan += 1
+                continue
+            try:
+                bp = f.result()
+            except Exception:
+                bp = None
+            if bp is None:
+                sorulmayan += 1
+                continue
+            if abs(bp - yc) <= max(0.005, abs(bp) * KONSENSUS_TOLERANS):
+                teyitli += 1
+                continue
+            try:                        # ÇELİŞKİ → yalnız son bar düşer
+                kirpik = candidates[sym]["price_df"].iloc[:-1]
+                if kirpik.empty:
+                    continue            # tek satırlık aday → dokunma
+                candidates[sym]["price_df"] = kirpik
+                veto += 1
+            except Exception:
+                pass
+
+    log.info(f"[konsensus] ezilecek {len(sorulacak)} kapanış -> borsapy teyitli {teyitli}"
+             f" · veto {veto} (son bar düşürüldü) · sorulmayan {sorulmayan}"
+             f" · {time.time() - baslangic:.0f}sn")
+    return candidates
+
+
 def run_kapanis_final():
     """KAPANIŞ SONRASI KESİN FİYAT TURU (18 Ağu 2026).
 
@@ -562,7 +684,7 @@ def run_kapanis_final():
     Bu tur pencere kapandıktan SONRA tek sefer tüm evreni süre kutusuz çeker;
     Yahoo günlük barı o saatte kesinleşmiş olur."""
     log.info("=== KAPANIS FINAL (kesin fiyat turu) ===")
-    run('yfinance')
+    run('yfinance', candidate_filter=_kapanis_konsensus_suz)
 
 
 if __name__ == "__main__":

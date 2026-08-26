@@ -42,7 +42,8 @@ VER = ROOT / "veriler"
 # payı kapatan şey saat değil, İKİNCİ BİR KAYNAĞIN TEYİDİ.
 #
 # Kural: yalnız DEĞİŞECEK satırlar (tipik ~40 hisse) borsapy'ye sorulur.
-#   borsapy aynı günü aynı fiyatla doğruluyorsa  → aday kalır (konsensüs)
+#   borsapy aynı günü aynı fiyatla doğruluyorsa  → aday kalır (konsensüs; etiket
+#                                                  "yahoo_settled" KALIR — beyaz liste)
 #   borsapy farklı söylüyorsa                    → aday DÜŞER (biri henüz oturmamış;
 #                                                  bir sonraki tur veya sabah
 #                                                  incremental'ı düzeltir)
@@ -107,7 +108,11 @@ def _konsensus_sug(candidates):
             continue
         pay_sinir = max(0.005, abs(bp_close) * KONSENSUS_TOLERANS)
         if abs(bp_close - yahoo_close) <= pay_sinir:
-            pay["price_source"] = "yahoo_borsapy_konsensus"
+            # ⚠ price_source ETİKETİ DEĞİŞTİRİLMEZ. bist_data_store.PRICE_SOURCES
+            # bir BEYAZ LİSTE ({yahoo, yahoo_settled, borsapy_gapfill, repair_yahoo});
+            # listede olmayan ad "yetkisiz fiyat kaynağı" sayılıp adayı BÜTÜNÜYLE
+            # reddettiriyor. Yani teyit ettiğimiz satırlar sessizce çöpe giderdi.
+            # Konsensüs bilgisi etikete değil LOG'a yazılır.
             kalan[sym] = pay; teyitli += 1
         else:
             dusen += 1                                  # biri henüz oturmamış → paketleme
