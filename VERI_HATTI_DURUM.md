@@ -323,3 +323,41 @@ değil (~1,8 sn/hisse, İş Yatırım kadar yavaş) — 625 hisselik turda kulla
 **Açık:** VPS'in `fetcher.py kapanis_final` turu **19:05 TR**'de koşuyor, yani o da
 %95 oturma çizgisinin (19:49) altında. Lokal 19:50 turu sonradan düzeltiyor; aynı
 konsensüs kapısını VPS turuna da koymak ayrı bir iş.
+
+### 9c. AYNI KAPI VPS TURUNA DA KONDU (26 Ağu 2026)
+
+§9b'nin sonundaki açık kapatıldı: `fetcher.py kapanis_final` (VPS cron **19:05 TR**)
+de aynı konsensüs kapısından geçiyor. Kanca: `run()` fonksiyonuna `candidate_filter`
+parametresi eklendi — adaylar sürüm kapısına gitmeden önce süzülüyor. Yalnız
+`kapanis_final` kullanıyor; diğer turlar `None` ile eski yoldan geçiyor. Süzgeç
+patlarsa adaylar **dokunulmadan** geçer (try/except).
+
+**Ölçek sorunu nasıl çözüldü:** tur 615 sembol çekiyor, borsapy ~1,8 sn/sembol —
+hepsini sormak imkânsız. Kural: **depodaki kapanışla AYNI olan sembol borsapy'ye
+SORULMAZ.** Yalnız gerçekten *ezilecek* satırlar sorulur (5 thread, süre bütçesi
+900 sn). Endeksler atlanır (borsapy endeks fiyatı referans değil).
+
+**Veto biçimi:** sembol aday listesinden SİLİNMEZ, yalnız **son bar düşürülür**;
+önceki günler paketlenmeye devam eder. Sebep: `promote_batch` boş spec'i "fail"
+sayıyor ve `max_reject_ratio=0.20` turun tamamını reddettirebilir.
+
+**Yeni gün engellenmez:** depoda o gün hiç yoksa dokunulmaz. Bar olmaması provizyon
+bardan kötüdür (kapsama kapısını da düşürür); 21:30/22:15 turları ve sabah
+incremental'ı zaten düzeltiyor. Kapı yalnız **EZME** işlemini veto eder.
+
+Kapatma: `SMR_KAPANIS_KONSENSUS=0`.
+
+**🔴 BEYAZ LİSTE TUZAĞI (yakalandı, düzeltildi).** `bist_data_store.PRICE_SOURCES`
+bir **beyaz liste**: `{yahoo, yahoo_settled, borsapy_gapfill, repair_yahoo}`.
+Listede olmayan bir `price_source` adı "yetkisiz fiyat kaynağı" sayılıp adayı
+**bütünüyle** reddettiriyor. 9b'nin ilk hâlinde teyitli adaylara
+`price_source="yahoo_borsapy_konsensus"` yazılıyordu → teyit ettiğimiz satırların
+hepsi sessizce çöpe giderdi. Etiket `yahoo_settled`/`yahoo` olarak bırakıldı,
+konsensüs bilgisi **log'a** yazılıyor. Yeni bir kaynak adı gerekirse
+`bist_data_store.py`'nin beyaz listesi de güncellenip **VPS'e gönderilmeli**
+(o dosya `deploy.sh` DOSYALAR listesinde YOK).
+
+**Test — VPS'in kendisinde koşuldu** (Py3.10, borsapy 0.10.0): depoyla aynı olan
+sembol **sorulmadı** · %0,05 farklı **teyitlendi** · %3 farklı (provizyon taklidi)
+**veto** yedi (12→11 satır) · endeks **atlandı** · sembol kaybı yok, geçersiz etiket
+yok. 2 sn. Aynı test lokalde de aynı sonucu verdi.
