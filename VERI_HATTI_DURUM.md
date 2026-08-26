@@ -289,3 +289,37 @@ hesaplandı, bu zincirin sıra kuralını bilmiyor. 21:08'e çekilen bir fiyat t
 hacim turuyla ve 20:00 taramasıyla çakışırdı. Kapsanan: günlerin ~%95'i. Kalan ~%5
 (20:58'e kadar sarkan günler) için zincirin tamamının geceye kaydırılması gerekir —
 ayrı karar.
+
+### 9b. borsapy KONSENSÜS KAPISI BAĞLANDI (26 Ağu 2026)
+
+Saat kaydırma günlerin ~%95'ini kapatıyor ama kalan payı kapatan şey saat değil,
+**ikinci bir kaynağın teyidi**. Ölçüm bunu destekliyor: borsapy ↔ İş Yatırım nihai
+kapanış **73/73 (%100)** aynı, borsapy **71 kez ERKEN** oturuyor, **hiç geç kalmıyor**.
+
+**Nereye bağlandı:** `settle_kapanis.py` — o ana kadar depodaki satırı ezmeye aday
+göstermek için **yalnız Yahoo'ya** bakıyordu.
+
+**Kural (yalnız DEĞİŞECEK satırlara sorulur, tipik ~40 hisse):**
+
+| borsapy ne diyor | Sonuç | Kaynak etiketi |
+|---|---|---|
+| Aynı günü aynı fiyatla doğruluyor (±%0,15) | aday **kalır** | `yahoo_borsapy_konsensus` |
+| Farklı söylüyor | aday **DÜŞER** — biri henüz oturmamış, paketlenmez | — |
+| Veri yok / hata (tek tekrar sonrası) | **eski davranış** (Yahoo'ya güven) | `yahoo_settled` |
+
+Süre bütçesi **120 sn**; aşılırsa kalan adaylar eski davranışla geçer. Görev limiti
+PT8M → **PT12M**. Kapatma: `SMR_SETTLE_KONSENSUS=0`.
+
+**Test (izole, yan etkisiz):** 8 likit hissede borsapy ↔ depo **7/7 birebir**
+(fark 0,000), 1 anlık boş dönüş → tek tekrar eklendi (aynı hisse ardından 3/3
+doğru). 5 sahte adayla üç dal da doğrulandı: birebir uyan 2 + tolerans içi 1
+**teyitli**, %3 sapmalı (provizyon taklidi) **düştü**, borsapy'de olmayan sembol
+**eski davranışa** geçti. Hız ~1,8 sn/hisse.
+
+**Kapsam sınırı — bilerek:** borsapy yalnız bu teyit kapısına bağlandı, genel
+çekim kaynağı yapılmadı. Ölçüm borsapy'nin *doğruluğunu* kanıtlıyor, *hızını*
+değil (~1,8 sn/hisse, İş Yatırım kadar yavaş) — 625 hisselik turda kullanılamaz.
+
+**Açık:** VPS'in `fetcher.py kapanis_final` turu **19:05 TR**'de koşuyor, yani o da
+%95 oturma çizgisinin (19:49) altında. Lokal 19:50 turu sonradan düzeltiyor; aynı
+konsensüs kapısını VPS turuna da koymak ayrı bir iş.
