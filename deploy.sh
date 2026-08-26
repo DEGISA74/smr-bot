@@ -22,6 +22,12 @@ UZAK="~/smr"
 SERVISLER="patron-radar free-showcase"
 SAGLIK="http://127.0.0.1/patron/"
 
+# 26 Ağu 2026 — SESSİZ AYRIŞMA KAPATILDI. Aşağıdaki ikinci öbek, deploy edilen
+# dosyaların import ettiği ama listede OLMAYAN modüllerdi: VPS'e bir kez elle
+# kopyalanmış, sonra hiç senkronlanmamışlardı. Ölçüm: 22 modülün 20'si aynıydı,
+# ikisi (compass_panel, ekran_v2) VPS'te ESKİ kalmıştı. Beyaz-liste tuzağı da
+# buradan çıktı: bist_data_store.py listede olmadığı için PRICE_SOURCES
+# güncellemesi lokalde geçer, VPS'te reddedilirdi.
 DOSYALAR="app.py data_layer.py indicators.py db_layer.py evidence.py scanners.py
 pattern_core.py ict_core.py scoring_core.py scan_pipeline.py charts.py
 analysis_core.py terazi_core.py veri_bekcisi.py saatlik_kapi.py saatlik_uzlasma.py zamanlama_core.py depo_tazelik.py
@@ -29,7 +35,13 @@ seans_profili.py
 formasyon_core.py formasyon_v2.py cizgi_yapi.py cizgi_alarm.py
 formasyon_v2_app.py sampiyonlar_ligi.py smr_core.py infografik_build.py fetcher.py
 data_policy.py bist_calendar.py master_scan_progress.py master_scan_giris_senaryolari.py
-trajectory_tarama_merkezi.py tarama_merkezi.py pusula_engine.py"
+trajectory_tarama_merkezi.py tarama_merkezi.py pusula_engine.py
+bist_data_store.py bist_exchange.py provider_traffic.py isyatirim_gateway.py
+kapanis_master_otomasyon.py veri_saglik_audit.py signal_policy.py deepening_policy.py
+radar_core.py zirve_taramalari.py stp_uyanis_core.py rsi_divergence_scanner.py
+compass_panel.py clean_chart_plotly.py infographic.py ekran_v2.py
+smr_tickers.py ticker_short_names.py market_cap_cache.py patron_db_guard.py
+kurumsal_takvim.py temettu_takvimi.py intraday_4s.py"
 
 GO=0; BOT=0; FORCE=0; ONLY=""
 for a in "$@"; do
