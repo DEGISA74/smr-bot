@@ -1,0 +1,50 @@
+{
+  "tz": "Europe/Istanbul",
+  "admin_chat_id": "1034525990",
+  "havuz_path": "../tweet_havuzu.json",
+  "seri_baslik": "Küçük Yatırımcı Notları",
+  "start_date": null,
+  "min_gap_hours": 2,
+  "oranlar": {
+    "ayna": 37,
+    "ters_kose": 20,
+    "manset": 10,
+    "ikilem": 11,
+    "risk": 11,
+    "efsane": 8,
+    "ciplak_gercek": 3
+  },
+  "state": {
+    "last_sent_ts": null,
+    "seri_no": 26,
+    "recent_ids": [],
+    "recent_units": [],
+    "last_kategori": null,
+    "mit_seri_no": 1,
+    "recent_mitler": [],
+    "efsane_seri_no": 1,
+    "recent_ikilem": [],
+    "recent_risk": [],
+    "recent_efsane": [],
+    "recent_konumlama": [],
+    "recent_manset": [],
+    "recent_aci": []
+  },
+  "mit_seri_baslik": "Yanlış Bilinenler",
+  "mit_gunler": [
+    5,
+    6
+  ],
+  "mit_saat_siniri": 14,
+  "konumlama_gunler": [
+    1
+  ],
+  "konumlama_saat_siniri": 14,
+  "aci_gunler": [
+    2,
+    4,
+    5,
+    6
+  ],
+  "aci_saat_min": 14
+}

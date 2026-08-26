@@ -1,0 +1,15 @@
+[Unit]
+Description=SMR Aforizma timer (gunde 2: Istanbul ~12:45 ve ~15:45)
+
+[Timer]
+# VPS UTC; Istanbul = UTC+3 (kalici, DST yok).
+# 09:45 UTC = 12:45 Istanbul · 12:45 UTC = 15:45 Istanbul
+# (aksam 20:30 kaldirildi: kullanici aksamlari analiz gonderiyor)
+OnCalendar=*-*-* 09:45:00
+OnCalendar=*-*-* 12:45:00
+# ±15 dk rastgele oynatma (max 15:45->16:00; takvimli icerik siniri 14 -> guvenli)
+RandomizedDelaySec=900
+Persistent=false
+
+[Install]
+WantedBy=timers.target

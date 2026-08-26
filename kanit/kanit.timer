@@ -1,0 +1,12 @@
+[Unit]
+Description=SMR Kanit timer (haftada 3: Pzt/Car/Cum ~10:15 Istanbul)
+
+[Timer]
+# VPS UTC; Istanbul = UTC+3 (kalici, DST yok). 07:15 UTC = 10:15 Istanbul (BIST acilisi taze).
+OnCalendar=Mon,Wed,Fri *-*-* 07:15:00
+# ±15 dk rastgele oynatma
+RandomizedDelaySec=900
+Persistent=false
+
+[Install]
+WantedBy=timers.target

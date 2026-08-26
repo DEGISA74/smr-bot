@@ -1,0 +1,13 @@
+[Unit]
+Description=SMR Hikaye (gunluk etkilesim hikayesi taslagi -> admin Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=wm11tr
+WorkingDirectory=/home/wm11tr/hikaye
+EnvironmentFile=/home/wm11tr/aforizma/.env
+ExecStart=/home/wm11tr/insider/venv/bin/python /home/wm11tr/hikaye/hikaye_tweet.py
+StandardOutput=append:/home/wm11tr/hikaye/hikaye.log
+StandardError=append:/home/wm11tr/hikaye/hikaye.log

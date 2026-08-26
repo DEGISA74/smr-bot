@@ -1,0 +1,13 @@
+[Unit]
+Description=SMR Aforizma (etkilesim/aforizma tweet taslagi -> admin Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=wm11tr
+WorkingDirectory=/home/wm11tr/aforizma
+EnvironmentFile=/home/wm11tr/aforizma/.env
+ExecStart=/home/wm11tr/insider/venv/bin/python /home/wm11tr/aforizma/aforizma_tweet.py
+StandardOutput=append:/home/wm11tr/aforizma/aforizma.log
+StandardError=append:/home/wm11tr/aforizma/aforizma.log

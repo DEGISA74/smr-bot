@@ -1,0 +1,14 @@
+{
+  "tz": "Europe/Istanbul",
+  "admin_chat_id": "1034525990",
+  "db_path": "../patron.db",
+  "min_gap_hours": 12,
+  "min_matur_gun": 5,
+  "makbuz_esik_ret5": 5.0,
+  "makbuz_esik_ret10": 8.0,
+  "karne_her_n_gonderim": 6,
+  "karne_min_cagri": 5,
+  "state": {
+    "last_sent_ts": null
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "status": "research_only",
+  "observation_unit": "unique symbol + T0",
+  "decision_timing": "T+3 kapanis; sonuc T+4 acilis sonrasi 20 islem gunu",
+  "events_joined": 8474,
+  "months": [
+    "2026-01",
+    "2026-02",
+    "2026-04",
+    "2026-05",
+    "2026-06",
+    "2026-07"
+  ],
+  "speed_vs_vol_cutoffs_descriptive": {
+    "low": -0.7965,
+    "high": 0.4348
+  },
+  "baseline": {
+    "n": 8474,
+    "unique_symbols": 606,
+    "hit30": 0.0768,
+    "clean30": 0.0734,
+    "mean_return": -3.5655,
+    "mean_alpha": -2.4672,
+    "mean_mfe": 11.6194,
+    "mean_mae": -11.4714,
+    "win_rate": 0.2845,
+    "payoff_ratio": 1.3122,
+    "profit_factor": 0.5254
+  },
+  "decision_proxy": {
+    "n": 2775,
+    "unique_symbols": 560,
+    "hit30": 0.1103,
+    "clean30": 0.1031,
+    "mean_return": -2.5757,
+    "mean_alpha": -1.6166,
+    "mean_mfe": 13.6418,
+    "mean_mae": -12.5522,
+    "win_rate": 0.3236,
+    "payoff_ratio": 1.4223,
+    "profit_factor": 0.6823
+  },
+  "missed_right_tail": {
+    "tail_events": 651,
+    "missed_events": 345,
+    "missed_share": 0.53,
+    "note": "Bu, mevcut T+3 proxy esiginin firsat maliyetidir; tek basina esik degistirme emri degildir."
+  },
+  "guardrail": "Hicbir bulgu otomatik tarama esigi veya agirligi degistirmez. En az farkli rejimlerde ileri donuk tekrar aranir."
+}

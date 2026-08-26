@@ -1,0 +1,16 @@
+{
+  "tz": "Europe/Istanbul",
+  "admin_chat_id": "1034525990",
+  "havuz_path": "hikaye_havuzu.json",
+  "seri_baslik": "Küçük Yatırımcı Notları - Feridun Abi",
+  "start_date": null,
+  "min_gap_hours": 20,
+  "dongu": true,
+  "state": {
+    "last_sent_ts": null,
+    "sonraki_index": 4,
+    "tur": 1,
+    "gonderilen_id": ["altin_borc", "araba_nakit_2020", "poset_10tl", "kuyumcu_torun_altin"],
+    "not": "14 Agu: tam Turkce surum + ilk 4 elle atildi, sira Gun 5'ten (market_sabirsiz) devam."
+  }
+}

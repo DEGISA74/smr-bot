@@ -1,0 +1,18 @@
+{
+  "asof": "2026-08-26",
+  "mature_counts": {
+    "5": 1651,
+    "10": 0,
+    "20": 0
+  },
+  "decision_events": 2954,
+  "rule_status": "Yeterli canlı örnek oluşmadan eşik/ağırlık değiştirilemez.",
+  "ready_vs_all_20": {
+    "karar_hazir": [],
+    "tum_havuz": []
+  },
+  "missed_right_tail_20": {
+    "status": "not_ready",
+    "horizon": 20
+  }
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=SMR Kanit (er_B11 izleme cagri/makbuz taslagi -> admin Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=wm11tr
+WorkingDirectory=/home/wm11tr/kanit
+EnvironmentFile=/home/wm11tr/kanit/.env
+ExecStart=/home/wm11tr/insider/venv/bin/python /home/wm11tr/kanit/kanit_tweet.py
+StandardOutput=append:/home/wm11tr/kanit/kanit.log
+StandardError=append:/home/wm11tr/kanit/kanit.log

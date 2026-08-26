@@ -1,0 +1,62 @@
+{
+  "baz_hit30": 7.68,
+  "gruplar": {
+    "1_zayiflayan": {
+      "N": 5156,
+      "post_ret": -3.9,
+      "post_alpha": -2.67,
+      "hit30": 6.5,
+      "clean30": 6.3,
+      "mfe": 10.9,
+      "mae": -11.2,
+      "vol20": 3.46
+    },
+    "2_sabit": {
+      "N": 2297,
+      "post_ret": -3.33,
+      "post_alpha": -2.34,
+      "hit30": 8.5,
+      "clean30": 7.9,
+      "mfe": 12.3,
+      "mae": -11.7,
+      "vol20": 3.47
+    },
+    "3_buyuyen": {
+      "N": 1021,
+      "post_ret": -2.41,
+      "post_alpha": -1.71,
+      "hit30": 11.9,
+      "clean30": 11.4,
+      "mfe": 13.8,
+      "mae": -12.1,
+      "vol20": 3.48
+    }
+  },
+  "walk_forward": {
+    "2026-05": {
+      "N_top": 280,
+      "hit30_top": 13.6,
+      "hit30_baz": 9.0,
+      "lift": 1.5
+    },
+    "2026-06": {
+      "N_top": 668,
+      "hit30_top": 11.4,
+      "hit30_baz": 7.6,
+      "lift": 1.51
+    },
+    "2026-07": {
+      "N_top": 73,
+      "hit30_top": 11.0,
+      "hit30_baz": 6.8,
+      "lift": 1.61
+    }
+  },
+  "N": 8474,
+  "atlanan": {
+    "no_pq": 0,
+    "no_decision": 1913,
+    "not_matured": 5413,
+    "short_hist": 8
+  }
+}

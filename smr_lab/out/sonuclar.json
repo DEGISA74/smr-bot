@@ -1,0 +1,1034 @@
+{
+  "satir": 174701,
+  "sembol": 605,
+  "maliyet_bps": 20.0,
+  "H0_frekans": {
+    "trend_durum": {
+      "Belirgin Trend Yok": {
+        "n": 42140,
+        "oran_%": 24.12,
+        "test_edilebilir": true
+      },
+      "None": {
+        "n": 28800,
+        "oran_%": 16.49,
+        "test_edilebilir": true
+      },
+      "Düşüş Aktif": {
+        "n": 24319,
+        "oran_%": 13.92,
+        "test_edilebilir": true
+      },
+      "Güçlü Düşüş": {
+        "n": 23408,
+        "oran_%": 13.4,
+        "test_edilebilir": true
+      },
+      "Güçlü Yükseliş": {
+        "n": 22771,
+        "oran_%": 13.03,
+        "test_edilebilir": true
+      },
+      "Yükseliş Aktif": {
+        "n": 17917,
+        "oran_%": 10.26,
+        "test_edilebilir": false
+      },
+      "Dönüş Oluşuyor ▼": {
+        "n": 3778,
+        "oran_%": 2.16,
+        "test_edilebilir": false
+      },
+      "Dönüş Oluşuyor ▲": {
+        "n": 3497,
+        "oran_%": 2.0,
+        "test_edilebilir": false
+      },
+      "Gizli Eğilim ▲": {
+        "n": 2539,
+        "oran_%": 1.45,
+        "test_edilebilir": false
+      },
+      "Gizli Eğilim ▼": {
+        "n": 2083,
+        "oran_%": 1.19,
+        "test_edilebilir": false
+      },
+      "Dönüş Onaylandı ▲": {
+        "n": 1750,
+        "oran_%": 1.0,
+        "test_edilebilir": false
+      },
+      "Dönüş Onaylandı ▼": {
+        "n": 1445,
+        "oran_%": 0.83,
+        "test_edilebilir": false
+      },
+      "nan": {
+        "n": 254,
+        "oran_%": 0.15,
+        "test_edilebilir": false
+      }
+    },
+    "kanaat": {
+      "nan": {
+        "n": 100751,
+        "oran_%": 57.67,
+        "test_edilebilir": true
+      },
+      "ORTA": {
+        "n": 35240,
+        "oran_%": 20.17,
+        "test_edilebilir": true
+      },
+      "DÜŞÜK": {
+        "n": 19893,
+        "oran_%": 11.39,
+        "test_edilebilir": false
+      },
+      "YÜKSEK": {
+        "n": 18817,
+        "oran_%": 10.77,
+        "test_edilebilir": false
+      }
+    },
+    "verim_etiket": {
+      "None": {
+        "n": 83895,
+        "oran_%": 48.02,
+        "test_edilebilir": true
+      },
+      "Normal": {
+        "n": 45157,
+        "oran_%": 25.85,
+        "test_edilebilir": true
+      },
+      "Zayıf": {
+        "n": 21956,
+        "oran_%": 12.57,
+        "test_edilebilir": true
+      },
+      "Güçlü": {
+        "n": 17914,
+        "oran_%": 10.25,
+        "test_edilebilir": false
+      },
+      "Aşırı": {
+        "n": 5779,
+        "oran_%": 3.31,
+        "test_edilebilir": false
+      }
+    },
+    "trend_verim_durum": {
+      "None": {
+        "n": 83895,
+        "oran_%": 48.02,
+        "test_edilebilir": true
+      },
+      "Normal Hareket": {
+        "n": 16076,
+        "oran_%": 9.2,
+        "test_edilebilir": false
+      },
+      "Kararsız": {
+        "n": 15000,
+        "oran_%": 8.59,
+        "test_edilebilir": false
+      },
+      "Aktif Düşüş": {
+        "n": 14921,
+        "oran_%": 8.54,
+        "test_edilebilir": false
+      },
+      "Aktif Yükseliş": {
+        "n": 13731,
+        "oran_%": 7.86,
+        "test_edilebilir": false
+      },
+      "Teyitli Yükseliş": {
+        "n": 8240,
+        "oran_%": 4.72,
+        "test_edilebilir": false
+      },
+      "Teyitli Düşüş": {
+        "n": 8044,
+        "oran_%": 4.6,
+        "test_edilebilir": false
+      },
+      "Boğa Dalgası": {
+        "n": 2942,
+        "oran_%": 1.68,
+        "test_edilebilir": false
+      },
+      "Ayı Dalgası": {
+        "n": 2719,
+        "oran_%": 1.56,
+        "test_edilebilir": false
+      },
+      "Düşüş Duraksıyor": {
+        "n": 2648,
+        "oran_%": 1.52,
+        "test_edilebilir": false
+      },
+      "Yükseliş Duraksıyor": {
+        "n": 2180,
+        "oran_%": 1.25,
+        "test_edilebilir": false
+      },
+      "Gürültü": {
+        "n": 2128,
+        "oran_%": 1.22,
+        "test_edilebilir": false
+      },
+      "Güçlü Hareket (yönsüz)": {
+        "n": 1621,
+        "oran_%": 0.93,
+        "test_edilebilir": false
+      },
+      "Hafif Direnç (boğada)": {
+        "n": 253,
+        "oran_%": 0.14,
+        "test_edilebilir": false
+      },
+      "Hafif Direnç (ayıda)": {
+        "n": 176,
+        "oran_%": 0.1,
+        "test_edilebilir": false
+      },
+      "Aşırı Hareket (yönsüz)": {
+        "n": 118,
+        "oran_%": 0.07,
+        "test_edilebilir": false
+      },
+      "Satış Baskısı (boğada)": {
+        "n": 7,
+        "oran_%": 0.0,
+        "test_edilebilir": false
+      },
+      "Alış Baskısı (ayıda)": {
+        "n": 2,
+        "oran_%": 0.0,
+        "test_edilebilir": false
+      }
+    },
+    "hacim_bolge": {
+      "None": {
+        "n": 73496,
+        "oran_%": 42.07,
+        "test_edilebilir": true
+      },
+      "Orta": {
+        "n": 45853,
+        "oran_%": 26.25,
+        "test_edilebilir": true
+      },
+      "Çok Düşük": {
+        "n": 30803,
+        "oran_%": 17.63,
+        "test_edilebilir": true
+      },
+      "Yüksek": {
+        "n": 17365,
+        "oran_%": 9.94,
+        "test_edilebilir": false
+      },
+      "Patlayıcı": {
+        "n": 7184,
+        "oran_%": 4.11,
+        "test_edilebilir": false
+      }
+    },
+    "hacim_senaryo": {
+      "None": {
+        "n": 83895,
+        "oran_%": 48.02,
+        "test_edilebilir": true
+      },
+      "S19 Dengeli Akış": {
+        "n": 20028,
+        "oran_%": 11.46,
+        "test_edilebilir": true
+      },
+      "S16 Sessiz Dağıtım": {
+        "n": 14377,
+        "oran_%": 8.23,
+        "test_edilebilir": false
+      },
+      "S2 Sağlıklı Destek": {
+        "n": 12028,
+        "oran_%": 6.88,
+        "test_edilebilir": false
+      },
+      "S3 Zayıf Destek": {
+        "n": 11200,
+        "oran_%": 6.41,
+        "test_edilebilir": false
+      },
+      "S15 Sessiz Toplama": {
+        "n": 7830,
+        "oran_%": 4.48,
+        "test_edilebilir": false
+      },
+      "S5 Baskı Artıyor": {
+        "n": 5754,
+        "oran_%": 3.29,
+        "test_edilebilir": false
+      },
+      "S4 Büyük Karşı Hacim": {
+        "n": 5050,
+        "oran_%": 2.89,
+        "test_edilebilir": false
+      },
+      "S10 Adil Değer Mıknatısı": {
+        "n": 4609,
+        "oran_%": 2.64,
+        "test_edilebilir": false
+      },
+      "S1 Tam Alış/Satış Onayı": {
+        "n": 2590,
+        "oran_%": 1.48,
+        "test_edilebilir": false
+      },
+      "S12 Arz Dağıtımı": {
+        "n": 2488,
+        "oran_%": 1.42,
+        "test_edilebilir": false
+      },
+      "S17 Baskı Birikiyor": {
+        "n": 1711,
+        "oran_%": 0.98,
+        "test_edilebilir": false
+      },
+      "S6 Normal Düzeltme": {
+        "n": 1492,
+        "oran_%": 0.85,
+        "test_edilebilir": false
+      },
+      "S11 Talep Emilimi": {
+        "n": 1458,
+        "oran_%": 0.83,
+        "test_edilebilir": false
+      },
+      "S14 Alış Tükenmesi": {
+        "n": 132,
+        "oran_%": 0.08,
+        "test_edilebilir": false
+      },
+      "S13 Satış Kapitülasyonu": {
+        "n": 42,
+        "oran_%": 0.02,
+        "test_edilebilir": false
+      },
+      "S18 Yüksek Hacimli Çekişme": {
+        "n": 14,
+        "oran_%": 0.01,
+        "test_edilebilir": false
+      },
+      "S8 Ölü Piyasa": {
+        "n": 3,
+        "oran_%": 0.0,
+        "test_edilebilir": false
+      }
+    },
+    "saglik_durum": {
+      "ZAYIFLIYOR": {
+        "n": 80347,
+        "oran_%": 45.99,
+        "test_edilebilir": true
+      },
+      "ÇELİŞKİLİ": {
+        "n": 40360,
+        "oran_%": 23.1,
+        "test_edilebilir": true
+      },
+      "None": {
+        "n": 29749,
+        "oran_%": 17.03,
+        "test_edilebilir": true
+      },
+      "KORUNUYOR": {
+        "n": 22622,
+        "oran_%": 12.95,
+        "test_edilebilir": true
+      },
+      "TEYİTLİ": {
+        "n": 1623,
+        "oran_%": 0.93,
+        "test_edilebilir": false
+      }
+    }
+  },
+  "H1_uyum_kanaat": {
+    "5g": {
+      "kosul": "uyum_skoru >= +5 ve kanaat = YÜKSEK",
+      "grup": {
+        "n": 6191,
+        "etkin_n_gun": 210,
+        "ort_alfa": 0.758,
+        "ort_alfa_gun_kumeli": 0.304,
+        "gua_alt_%95": -0.377,
+        "gua_ust_%95": 0.951,
+        "medyan_alfa": -0.342,
+        "ort_getiri": 0.22,
+        "isabet_%": 45.3,
+        "ort_kazanc_%": 9.81,
+        "ort_kayip_%": 8.08,
+        "rr": 1.21,
+        "beklenen_getiri_%": 0.02,
+        "kar_faktoru": 1.0,
+        "en_kotu_%5": -16.51,
+        "durum": "ölçüldü"
+      },
+      "kiyas_ayni_gun_tum_evren": {
+        "n": 126322,
+        "etkin_n_gun": 211,
+        "ort_alfa": -0.027,
+        "ort_alfa_gun_kumeli": -0.027,
+        "gua_alt_%95": -0.317,
+        "gua_ust_%95": 0.258,
+        "medyan_alfa": -0.915,
+        "ort_getiri": 0.603,
+        "isabet_%": 47.2,
+        "ort_kazanc_%": 6.9,
+        "ort_kayip_%": 5.41,
+        "rr": 1.28,
+        "beklenen_getiri_%": 0.403,
+        "kar_faktoru": 1.14,
+        "en_kotu_%5": -11.19,
+        "durum": "ölçüldü"
+      },
+      "asagi_yon": {
+        "n": 7204,
+        "etkin_n_gun": 166,
+        "ort_alfa": -0.303,
+        "ort_alfa_gun_kumeli": -0.674,
+        "gua_alt_%95": -1.428,
+        "gua_ust_%95": 0.034,
+        "medyan_alfa": -0.91,
+        "ort_getiri": 0.643,
+        "isabet_%": 49.6,
+        "ort_kazanc_%": 5.5,
+        "ort_kayip_%": 4.54,
+        "rr": 1.21,
+        "beklenen_getiri_%": 0.443,
+        "kar_faktoru": 1.19,
+        "en_kotu_%5": -9.35,
+        "durum": "ölçüldü"
+      },
+      "likidite_dilimleri": {
+        "Q4": {
+          "n": 1342,
+          "etkin_n_gun": 119,
+          "ort_alfa": 2.465,
+          "ort_alfa_gun_kumeli": 1.559,
+          "gua_alt_%95": 0.429,
+          "gua_ust_%95": 2.644,
+          "medyan_alfa": -0.123,
+          "ort_getiri": 1.905,
+          "isabet_%": 46.6,
+          "ort_kazanc_%": 12.95,
+          "ort_kayip_%": 8.13,
+          "rr": 1.59,
+          "beklenen_getiri_%": 1.705,
+          "kar_faktoru": 1.39,
+          "en_kotu_%5": -16.73,
+          "durum": "ölçüldü"
+        },
+        "Q5 en yüksek": {
+          "n": 1314,
+          "etkin_n_gun": 195,
+          "ort_alfa": 1.191,
+          "ort_alfa_gun_kumeli": 1.241,
+          "gua_alt_%95": 0.416,
+          "gua_ust_%95": 2.019,
+          "medyan_alfa": 0.745,
+          "ort_getiri": 0.751,
+          "isabet_%": 53.4,
+          "ort_kazanc_%": 7.74,
+          "ort_kayip_%": 7.69,
+          "rr": 1.01,
+          "beklenen_getiri_%": 0.551,
+          "kar_faktoru": 1.15,
+          "en_kotu_%5": -15.59,
+          "durum": "ölçüldü"
+        },
+        "Q1 en düşük": {
+          "n": 1156,
+          "etkin_n_gun": 167,
+          "ort_alfa": -0.267,
+          "ort_alfa_gun_kumeli": -0.969,
+          "gua_alt_%95": -1.779,
+          "gua_ust_%95": -0.128,
+          "medyan_alfa": -1.147,
+          "ort_getiri": -0.917,
+          "isabet_%": 39.8,
+          "ort_kazanc_%": 8.86,
+          "ort_kayip_%": 7.72,
+          "rr": 1.15,
+          "beklenen_getiri_%": -1.117,
+          "kar_faktoru": 0.76,
+          "en_kotu_%5": -16.02,
+          "durum": "ölçüldü"
+        },
+        "Q3": {
+          "n": 1134,
+          "etkin_n_gun": 119,
+          "ort_alfa": -0.356,
+          "ort_alfa_gun_kumeli": -0.053,
+          "gua_alt_%95": -0.985,
+          "gua_ust_%95": 0.894,
+          "medyan_alfa": -1.096,
+          "ort_getiri": -0.67,
+          "isabet_%": 42.9,
+          "ort_kazanc_%": 8.95,
+          "ort_kayip_%": 8.24,
+          "rr": 1.09,
+          "beklenen_getiri_%": -0.87,
+          "kar_faktoru": 0.82,
+          "en_kotu_%5": -16.54,
+          "durum": "ölçüldü"
+        },
+        "Q2": {
+          "n": 1245,
+          "etkin_n_gun": 114,
+          "ort_alfa": 0.43,
+          "ort_alfa_gun_kumeli": -0.525,
+          "gua_alt_%95": -1.571,
+          "gua_ust_%95": 0.508,
+          "medyan_alfa": -0.417,
+          "ort_getiri": -0.309,
+          "isabet_%": 42.0,
+          "ort_kazanc_%": 10.68,
+          "ort_kayip_%": 8.61,
+          "rr": 1.24,
+          "beklenen_getiri_%": -0.509,
+          "kar_faktoru": 0.9,
+          "en_kotu_%5": -17.88,
+          "durum": "ölçüldü"
+        }
+      }
+    },
+    "10g": {
+      "kosul": "uyum_skoru >= +5 ve kanaat = YÜKSEK",
+      "grup": {
+        "n": 6008,
+        "etkin_n_gun": 203,
+        "ort_alfa": 1.811,
+        "ort_alfa_gun_kumeli": 0.577,
+        "gua_alt_%95": -0.389,
+        "gua_ust_%95": 1.514,
+        "medyan_alfa": -0.115,
+        "ort_getiri": 1.556,
+        "isabet_%": 46.6,
+        "ort_kazanc_%": 14.11,
+        "ort_kayip_%": 9.8,
+        "rr": 1.44,
+        "beklenen_getiri_%": 1.356,
+        "kar_faktoru": 1.26,
+        "en_kotu_%5": -19.79,
+        "durum": "ölçüldü"
+      },
+      "kiyas_ayni_gun_tum_evren": {
+        "n": 123099,
+        "etkin_n_gun": 206,
+        "ort_alfa": -0.034,
+        "ort_alfa_gun_kumeli": -0.036,
+        "gua_alt_%95": -0.462,
+        "gua_ust_%95": 0.373,
+        "medyan_alfa": -1.486,
+        "ort_getiri": 1.349,
+        "isabet_%": 48.8,
+        "ort_kazanc_%": 9.85,
+        "ort_kayip_%": 7.14,
+        "rr": 1.38,
+        "beklenen_getiri_%": 1.149,
+        "kar_faktoru": 1.31,
+        "en_kotu_%5": -14.42,
+        "durum": "ölçüldü"
+      },
+      "asagi_yon": {
+        "n": 6757,
+        "etkin_n_gun": 161,
+        "ort_alfa": -0.72,
+        "ort_alfa_gun_kumeli": -0.813,
+        "gua_alt_%95": -1.901,
+        "gua_ust_%95": 0.329,
+        "medyan_alfa": -1.782,
+        "ort_getiri": 0.553,
+        "isabet_%": 45.2,
+        "ort_kazanc_%": 8.01,
+        "ort_kayip_%": 5.97,
+        "rr": 1.34,
+        "beklenen_getiri_%": 0.353,
+        "kar_faktoru": 1.11,
+        "en_kotu_%5": -11.38,
+        "durum": "ölçüldü"
+      },
+      "likidite_dilimleri": {
+        "Q4": {
+          "n": 1304,
+          "etkin_n_gun": 114,
+          "ort_alfa": 5.176,
+          "ort_alfa_gun_kumeli": 3.684,
+          "gua_alt_%95": 2.179,
+          "gua_ust_%95": 5.319,
+          "medyan_alfa": 0.742,
+          "ort_getiri": 4.826,
+          "isabet_%": 50.5,
+          "ort_kazanc_%": 19.13,
+          "ort_kayip_%": 10.19,
+          "rr": 1.88,
+          "beklenen_getiri_%": 4.626,
+          "kar_faktoru": 1.92,
+          "en_kotu_%5": -20.04,
+          "durum": "ölçüldü"
+        },
+        "Q5 en yüksek": {
+          "n": 1270,
+          "etkin_n_gun": 190,
+          "ort_alfa": 1.943,
+          "ort_alfa_gun_kumeli": 1.46,
+          "gua_alt_%95": 0.307,
+          "gua_ust_%95": 2.59,
+          "medyan_alfa": 1.299,
+          "ort_getiri": 1.875,
+          "isabet_%": 54.5,
+          "ort_kazanc_%": 11.29,
+          "ort_kayip_%": 9.84,
+          "rr": 1.15,
+          "beklenen_getiri_%": 1.675,
+          "kar_faktoru": 1.37,
+          "en_kotu_%5": -19.74,
+          "durum": "ölçüldü"
+        },
+        "Q1 en düşük": {
+          "n": 1119,
+          "etkin_n_gun": 160,
+          "ort_alfa": 0.148,
+          "ort_alfa_gun_kumeli": -0.852,
+          "gua_alt_%95": -1.937,
+          "gua_ust_%95": 0.251,
+          "medyan_alfa": -1.823,
+          "ort_getiri": -0.216,
+          "isabet_%": 41.3,
+          "ort_kazanc_%": 12.09,
+          "ort_kayip_%": 9.21,
+          "rr": 1.31,
+          "beklenen_getiri_%": -0.416,
+          "kar_faktoru": 0.92,
+          "en_kotu_%5": -18.06,
+          "durum": "ölçüldü"
+        },
+        "Q3": {
+          "n": 1102,
+          "etkin_n_gun": 114,
+          "ort_alfa": -0.332,
+          "ort_alfa_gun_kumeli": 0.209,
+          "gua_alt_%95": -1.047,
+          "gua_ust_%95": 1.506,
+          "medyan_alfa": -1.32,
+          "ort_getiri": -0.175,
+          "isabet_%": 42.8,
+          "ort_kazanc_%": 11.86,
+          "ort_kayip_%": 9.54,
+          "rr": 1.24,
+          "beklenen_getiri_%": -0.375,
+          "kar_faktoru": 0.93,
+          "en_kotu_%5": -20.36,
+          "durum": "ölçüldü"
+        },
+        "Q2": {
+          "n": 1213,
+          "etkin_n_gun": 109,
+          "ort_alfa": 1.538,
+          "ort_alfa_gun_kumeli": 0.313,
+          "gua_alt_%95": -1.027,
+          "gua_ust_%95": 1.66,
+          "medyan_alfa": -0.456,
+          "ort_getiri": 0.928,
+          "isabet_%": 42.1,
+          "ort_kazanc_%": 15.72,
+          "ort_kayip_%": 10.19,
+          "rr": 1.54,
+          "beklenen_getiri_%": 0.728,
+          "kar_faktoru": 1.12,
+          "en_kotu_%5": -20.4,
+          "durum": "ölçüldü"
+        }
+      }
+    },
+    "20g": {
+      "kosul": "uyum_skoru >= +5 ve kanaat = YÜKSEK",
+      "grup": {
+        "n": 5750,
+        "etkin_n_gun": 192,
+        "ort_alfa": 3.022,
+        "ort_alfa_gun_kumeli": 1.283,
+        "gua_alt_%95": -0.174,
+        "gua_ust_%95": 2.688,
+        "medyan_alfa": -1.433,
+        "ort_getiri": 2.785,
+        "isabet_%": 44.2,
+        "ort_kazanc_%": 21.99,
+        "ort_kayip_%": 12.76,
+        "rr": 1.72,
+        "beklenen_getiri_%": 2.585,
+        "kar_faktoru": 1.36,
+        "en_kotu_%5": -25.59,
+        "durum": "ölçüldü"
+      },
+      "kiyas_ayni_gun_tum_evren": {
+        "n": 116729,
+        "etkin_n_gun": 196,
+        "ort_alfa": 0.182,
+        "ort_alfa_gun_kumeli": 0.178,
+        "gua_alt_%95": -0.439,
+        "gua_ust_%95": 0.831,
+        "medyan_alfa": -2.536,
+        "ort_getiri": 2.465,
+        "isabet_%": 48.2,
+        "ort_kazanc_%": 14.88,
+        "ort_kayip_%": 9.47,
+        "rr": 1.57,
+        "beklenen_getiri_%": 2.265,
+        "kar_faktoru": 1.46,
+        "en_kotu_%5": -18.86,
+        "durum": "ölçüldü"
+      },
+      "asagi_yon": {
+        "n": 5031,
+        "etkin_n_gun": 150,
+        "ort_alfa": -0.495,
+        "ort_alfa_gun_kumeli": -0.022,
+        "gua_alt_%95": -1.477,
+        "gua_ust_%95": 1.559,
+        "medyan_alfa": -2.922,
+        "ort_getiri": 0.738,
+        "isabet_%": 42.4,
+        "ort_kazanc_%": 12.62,
+        "ort_kayip_%": 8.34,
+        "rr": 1.51,
+        "beklenen_getiri_%": 0.538,
+        "kar_faktoru": 1.11,
+        "en_kotu_%5": -15.94,
+        "durum": "ölçüldü"
+      },
+      "likidite_dilimleri": {
+        "Q4": {
+          "n": 1251,
+          "etkin_n_gun": 104,
+          "ort_alfa": 10.187,
+          "ort_alfa_gun_kumeli": 7.895,
+          "gua_alt_%95": 5.562,
+          "gua_ust_%95": 10.292,
+          "medyan_alfa": 0.763,
+          "ort_getiri": 10.076,
+          "isabet_%": 50.4,
+          "ort_kazanc_%": 32.54,
+          "ort_kayip_%": 13.11,
+          "rr": 2.48,
+          "beklenen_getiri_%": 9.876,
+          "kar_faktoru": 2.52,
+          "en_kotu_%5": -24.36,
+          "durum": "ölçüldü"
+        },
+        "Q5 en yüksek": {
+          "n": 1193,
+          "etkin_n_gun": 180,
+          "ort_alfa": 2.059,
+          "ort_alfa_gun_kumeli": 1.658,
+          "gua_alt_%95": -0.319,
+          "gua_ust_%95": 3.614,
+          "medyan_alfa": -0.35,
+          "ort_getiri": 1.902,
+          "isabet_%": 48.7,
+          "ort_kazanc_%": 18.27,
+          "ort_kayip_%": 14.03,
+          "rr": 1.3,
+          "beklenen_getiri_%": 1.702,
+          "kar_faktoru": 1.24,
+          "en_kotu_%5": -30.38,
+          "durum": "ölçüldü"
+        },
+        "Q1 en düşük": {
+          "n": 1083,
+          "etkin_n_gun": 149,
+          "ort_alfa": 0.451,
+          "ort_alfa_gun_kumeli": 0.236,
+          "gua_alt_%95": -1.158,
+          "gua_ust_%95": 1.646,
+          "medyan_alfa": -2.791,
+          "ort_getiri": 0.223,
+          "isabet_%": 40.0,
+          "ort_kazanc_%": 16.76,
+          "ort_kayip_%": 11.13,
+          "rr": 1.51,
+          "beklenen_getiri_%": 0.023,
+          "kar_faktoru": 1.0,
+          "en_kotu_%5": -22.14,
+          "durum": "ölçüldü"
+        },
+        "Q3": {
+          "n": 1043,
+          "etkin_n_gun": 104,
+          "ort_alfa": 0.106,
+          "ort_alfa_gun_kumeli": 1.847,
+          "gua_alt_%95": -0.12,
+          "gua_ust_%95": 3.945,
+          "medyan_alfa": -2.152,
+          "ort_getiri": 0.126,
+          "isabet_%": 41.4,
+          "ort_kazanc_%": 17.05,
+          "ort_kayip_%": 12.18,
+          "rr": 1.4,
+          "beklenen_getiri_%": -0.074,
+          "kar_faktoru": 0.99,
+          "en_kotu_%5": -25.63,
+          "durum": "ölçüldü"
+        },
+        "Q2": {
+          "n": 1180,
+          "etkin_n_gun": 100,
+          "ort_alfa": 1.339,
+          "ort_alfa_gun_kumeli": -0.393,
+          "gua_alt_%95": -2.27,
+          "gua_ust_%95": 1.424,
+          "medyan_alfa": -2.284,
+          "ort_getiri": 0.778,
+          "isabet_%": 39.0,
+          "ort_kazanc_%": 22.3,
+          "ort_kayip_%": 13.3,
+          "rr": 1.68,
+          "beklenen_getiri_%": 0.578,
+          "kar_faktoru": 1.07,
+          "en_kotu_%5": -27.22,
+          "durum": "ölçüldü"
+        }
+      }
+    }
+  },
+  "H4_saglik": {
+    "5g": {
+      "TEYİTLİ": {
+        "n": 1554,
+        "etkin_n_gun": 231,
+        "ort_alfa": -1.374,
+        "ort_alfa_gun_kumeli": -2.288,
+        "gua_alt_%95": -3.622,
+        "gua_ust_%95": -1.031,
+        "medyan_alfa": -2.395,
+        "ort_getiri": -0.86,
+        "isabet_%": 42.0,
+        "ort_kazanc_%": 11.03,
+        "ort_kayip_%": 9.8,
+        "rr": 1.13,
+        "beklenen_getiri_%": -1.06,
+        "kar_faktoru": 0.81,
+        "en_kotu_%5": -20.91,
+        "durum": "ölçüldü"
+      },
+      "KORUNUYOR": {
+        "n": 21673,
+        "etkin_n_gun": 265,
+        "ort_alfa": -0.539,
+        "ort_alfa_gun_kumeli": -0.757,
+        "gua_alt_%95": -1.171,
+        "gua_ust_%95": -0.326,
+        "medyan_alfa": -1.341,
+        "ort_getiri": 0.123,
+        "isabet_%": 45.3,
+        "ort_kazanc_%": 7.35,
+        "ort_kayip_%": 6.22,
+        "rr": 1.18,
+        "beklenen_getiri_%": -0.077,
+        "kar_faktoru": 0.98,
+        "en_kotu_%5": -13.44,
+        "durum": "ölçüldü"
+      },
+      "ZAYIFLIYOR": {
+        "n": 76839,
+        "etkin_n_gun": 280,
+        "ort_alfa": -0.26,
+        "ort_alfa_gun_kumeli": -0.233,
+        "gua_alt_%95": -0.536,
+        "gua_ust_%95": 0.057,
+        "medyan_alfa": -1.14,
+        "ort_getiri": 0.448,
+        "isabet_%": 46.5,
+        "ort_kazanc_%": 6.55,
+        "ort_kayip_%": 5.23,
+        "rr": 1.25,
+        "beklenen_getiri_%": 0.248,
+        "kar_faktoru": 1.09,
+        "en_kotu_%5": -10.86,
+        "durum": "ölçüldü"
+      },
+      "ÇELİŞKİLİ": {
+        "n": 38526,
+        "etkin_n_gun": 278,
+        "ort_alfa": -0.222,
+        "ort_alfa_gun_kumeli": -0.16,
+        "gua_alt_%95": -0.474,
+        "gua_ust_%95": 0.168,
+        "medyan_alfa": -1.101,
+        "ort_getiri": 0.396,
+        "isabet_%": 45.6,
+        "ort_kazanc_%": 6.58,
+        "ort_kayip_%": 5.16,
+        "rr": 1.28,
+        "beklenen_getiri_%": 0.196,
+        "kar_faktoru": 1.07,
+        "en_kotu_%5": -10.66,
+        "durum": "ölçüldü"
+      }
+    },
+    "10g": {
+      "TEYİTLİ": {
+        "n": 1506,
+        "etkin_n_gun": 226,
+        "ort_alfa": -0.443,
+        "ort_alfa_gun_kumeli": -1.91,
+        "gua_alt_%95": -3.675,
+        "gua_ust_%95": -0.128,
+        "medyan_alfa": -2.803,
+        "ort_getiri": 0.605,
+        "isabet_%": 43.1,
+        "ort_kazanc_%": 16.58,
+        "ort_kayip_%": 11.84,
+        "rr": 1.4,
+        "beklenen_getiri_%": 0.405,
+        "kar_faktoru": 1.06,
+        "en_kotu_%5": -24.22,
+        "durum": "ölçüldü"
+      },
+      "KORUNUYOR": {
+        "n": 21314,
+        "etkin_n_gun": 260,
+        "ort_alfa": -0.96,
+        "ort_alfa_gun_kumeli": -1.235,
+        "gua_alt_%95": -1.81,
+        "gua_ust_%95": -0.652,
+        "medyan_alfa": -2.296,
+        "ort_getiri": 0.224,
+        "isabet_%": 44.7,
+        "ort_kazanc_%": 10.05,
+        "ort_kayip_%": 8.08,
+        "rr": 1.24,
+        "beklenen_getiri_%": 0.024,
+        "kar_faktoru": 1.01,
+        "en_kotu_%5": -16.96,
+        "durum": "ölçüldü"
+      },
+      "ZAYIFLIYOR": {
+        "n": 74965,
+        "etkin_n_gun": 275,
+        "ort_alfa": -0.426,
+        "ort_alfa_gun_kumeli": -0.551,
+        "gua_alt_%95": -0.943,
+        "gua_ust_%95": -0.161,
+        "medyan_alfa": -1.832,
+        "ort_getiri": 0.93,
+        "isabet_%": 47.1,
+        "ort_kazanc_%": 9.34,
+        "ort_kayip_%": 6.93,
+        "rr": 1.35,
+        "beklenen_getiri_%": 0.73,
+        "kar_faktoru": 1.2,
+        "en_kotu_%5": -14.01,
+        "durum": "ölçüldü"
+      },
+      "ÇELİŞKİLİ": {
+        "n": 37569,
+        "etkin_n_gun": 273,
+        "ort_alfa": -0.448,
+        "ort_alfa_gun_kumeli": -0.257,
+        "gua_alt_%95": -0.698,
+        "gua_ust_%95": 0.197,
+        "medyan_alfa": -1.837,
+        "ort_getiri": 0.596,
+        "isabet_%": 44.9,
+        "ort_kazanc_%": 9.17,
+        "ort_kayip_%": 6.76,
+        "rr": 1.36,
+        "beklenen_getiri_%": 0.396,
+        "kar_faktoru": 1.11,
+        "en_kotu_%5": -13.67,
+        "durum": "ölçüldü"
+      }
+    },
+    "20g": {
+      "TEYİTLİ": {
+        "n": 1432,
+        "etkin_n_gun": 216,
+        "ort_alfa": 0.572,
+        "ort_alfa_gun_kumeli": -1.913,
+        "gua_alt_%95": -4.3,
+        "gua_ust_%95": 0.413,
+        "medyan_alfa": -5.01,
+        "ort_getiri": 2.499,
+        "isabet_%": 43.6,
+        "ort_kazanc_%": 24.29,
+        "ort_kayip_%": 14.67,
+        "rr": 1.66,
+        "beklenen_getiri_%": 2.299,
+        "kar_faktoru": 1.28,
+        "en_kotu_%5": -29.12,
+        "durum": "ölçüldü"
+      },
+      "KORUNUYOR": {
+        "n": 20085,
+        "etkin_n_gun": 250,
+        "ort_alfa": -0.921,
+        "ort_alfa_gun_kumeli": -0.985,
+        "gua_alt_%95": -1.736,
+        "gua_ust_%95": -0.212,
+        "medyan_alfa": -3.412,
+        "ort_getiri": 1.34,
+        "isabet_%": 45.4,
+        "ort_kazanc_%": 14.95,
+        "ort_kayip_%": 10.36,
+        "rr": 1.44,
+        "beklenen_getiri_%": 1.14,
+        "kar_faktoru": 1.2,
+        "en_kotu_%5": -21.01,
+        "durum": "ölçüldü"
+      },
+      "ZAYIFLIYOR": {
+        "n": 71328,
+        "etkin_n_gun": 265,
+        "ort_alfa": -0.792,
+        "ort_alfa_gun_kumeli": -1.002,
+        "gua_alt_%95": -1.651,
+        "gua_ust_%95": -0.418,
+        "medyan_alfa": -3.266,
+        "ort_getiri": 1.731,
+        "isabet_%": 46.6,
+        "ort_kazanc_%": 13.85,
+        "ort_kayip_%": 9.22,
+        "rr": 1.5,
+        "beklenen_getiri_%": 1.531,
+        "kar_faktoru": 1.31,
+        "en_kotu_%5": -18.47,
+        "durum": "ölçüldü"
+      },
+      "ÇELİŞKİLİ": {
+        "n": 36105,
+        "etkin_n_gun": 263,
+        "ort_alfa": -0.913,
+        "ort_alfa_gun_kumeli": -0.278,
+        "gua_alt_%95": -0.994,
+        "gua_ust_%95": 0.423,
+        "medyan_alfa": -3.349,
+        "ort_getiri": 1.507,
+        "isabet_%": 45.4,
+        "ort_kazanc_%": 13.86,
+        "ort_kayip_%": 9.14,
+        "rr": 1.52,
+        "beklenen_getiri_%": 1.307,
+        "kar_faktoru": 1.26,
+        "en_kotu_%5": -18.26,
+        "durum": "ölçüldü"
+      }
+    }
+  }
+}
