@@ -8,6 +8,7 @@ app.py `from evidence import ...` ile kullanır.
 
 İçerik:
   • SCANNER_TIER_MAP   — scan_type → (tier, hit, ret, ad, vade notu). 20g bazlı.
+  • SCANNER_VADE_POLICY — tarama → karar masası, seans vadesi, etiket ve son kullanma kuralı
   • ER_ELIT_SCORE_MIN  — ELİT panel gösterim eşiği
   • SCANNER_PLAIN_DESC — taramaların jargonsuz açıklamaları
   • _guc_plain         — güç etiketinin kullanıcıya dönük sade karşılığı
@@ -15,6 +16,16 @@ app.py `from evidence import ...` ile kullanır.
 Kalibrasyon günlüğü tabloların üzerindeki yorumlarda. Güncelleme kuralı:
 sayı DEĞİŞTİRMEDEN önce signal_results ölçümü (bkz. memory/project_scoring_roadmap.md).
 """
+
+from datetime import date, datetime, timedelta
+
+try:
+    from bist_calendar import is_trading_day as _is_bist_trading_day
+except ImportError:  # yalnız bağımsız test ortamı için güvenli geri dönüş
+    def _is_bist_trading_day(value=None):
+        if value is None:
+            return True
+        return getattr(value, "weekday", lambda: 0)() < 5
 
 # ===============================================================
 # 6 Haz 2026 — SCANNER TIER MAP (signal_results backtest)
@@ -150,7 +161,6 @@ ZAYIF_SCANNERS = frozenset({
     'er_B5',                 # -1,33 (t -1,67) ⚠ istatistiksel olarak BELIRSIZ
     # 26 Agu 2026 — karar yuzeyinden yumusak cekildi; olcum/scan_signals surer.
     'radar1',
-    'radar2',
     'altin_setup',
     'platin_setup',
     'guclu_donus',
@@ -162,10 +172,218 @@ GUCLU_SCANNERS = frozenset({'zirve_devam', 'zirve_sikisma'})
 # TEK REJIM — sadece yukselen tape'te pozitif (rejim kapisi TARTISILIYOR:
 # CLAUDE.md "piyasa rejimi scanner filtresi olarak kullanilmaz" yasagiyla cakisiyor)
 TEK_REJIM_SCANNERS = frozenset({
-    'tavan_top30', 'tavan_alarm', 'liderlik_aday', 'er_C2', 'er_C8', 'prelaunch_bos',
+    'tavan_top30', 'er_C2', 'er_C8',
     'nadir_firsat', 'er_C3', 'er_C5', 'er_C7', 'er_C9', 'er_C11',
     'er_D2', 'er_D4', 'er_D5', 'er_D1', 'er_A5', 'er_A7', 'er_C1',
 })
+
+
+# ===============================================================
+# 27 AGU 2026 — IS 4: VADE + SON KULLANMA + KARAR MASASI
+#
+# Bu tablo tarama filtresi degildir. Bir sinyalin hangi masada okunacagini,
+# kac seans acik kalacagini ve hangi ihtiyat notuyla tasinacagini tek yerde
+# tutar. Radar 2 burada "zayif" diye susturulmaz: 3-5 gunluk masadan cekilir,
+# T+20 sabir masasinda aday olarak tutulur. Karne degil, vade etiketi degisir.
+#
+# `vade_gun` islem seansi sayisidir; takvim gunu degildir. `rozet` yalniz
+# olcum esigi gecilmis ve etikete izin verilen hallerde True olabilir. Tavan
+# Alarm'in iki rejim sonucu pozitif gorunse de N=65/124 oldugu icin False'tur.
+# ===============================================================
+SCANNER_VADE_POLICY = {
+    # Kisa vade: Minervini 3 seanslik, C6 5 seanslik gecici adaydir.
+    'minervini': {
+        'vade_gun': 3,
+        'masa': 'KISA',
+        'durum': 'KISA_GECICI_ADAY',
+        'etiket': '🟡 KISA MASASI · T+3',
+        'rozet': False,
+        'minimum_olay': None,
+        'not': '3 seanslik kisa vade; mevcut orneklem cekirdek etiketi icin yeterli degil.',
+    },
+    'er_C6': {
+        'vade_gun': 5,
+        'masa': 'KISA',
+        'durum': 'BIRINCI_SIRADA_GECICI_ADAY',
+        'etiket': '🟡 KISA MASASI · T+5 GEÇİCİ ADAY',
+        'rozet': False,
+        'minimum_olay': 300,
+        'not': 'Birinci siradaki gecici aday; yeni cetvelde T+5 dusen rejim negatiftir, 300 bagimsiz olay kapisi bekleniyor.',
+    },
+    # Sabir masasi: Tavan ailesi 20 seansliktir; iki yeni bulgu da burada.
+    'tavan_top30': {
+        'vade_gun': 20,
+        'masa': 'SABIR',
+        'durum': 'TEK_REJIM_BELIRSIZ',
+        'etiket': '🟡 SABIR MASASI · T+20 TEK REJIM',
+        'rozet': False,
+        'minimum_olay': 150,
+        'not': 'T+20 yukselen rejimde pozitif, dusen rejimde negatif; rozet yok.',
+    },
+    'tavan_alarm': {
+        'vade_gun': 20,
+        'masa': 'SABIR',
+        'durum': 'BELIRSIZ_ORNEKLEM',
+        'etiket': '⚪ SABIR MASASI · T+20 BİLMİYORUZ',
+        'rozet': False,
+        'minimum_olay': 150,
+        'not': 'T+20 alfa iki rejimde de pozitif gorunuyor; rejim N=65/124 esigin altinda, rozet verilmez.',
+    },
+    'prelaunch_bos': {
+        'vade_gun': 20,
+        'masa': 'SABIR',
+        'durum': 'NEGATIF_KARNE',
+        'etiket': '⚪ SABIR MASASI · T+20 NEGATİF KARNE',
+        'rozet': False,
+        'minimum_olay': 150,
+        'not': 'Kisa masadan tasindi; yeni acilis cetvelinde T+20 alfa iki rejimde de negatif, aday rozeti yok.',
+    },
+    'radar2': {
+        'vade_gun': 20,
+        'masa': 'SABIR',
+        'durum': 'YANLIS_VADE_ADAYI',
+        'etiket': '🟡 SABIR MASASI · T+20 ADAY',
+        'rozet': False,
+        'minimum_olay': 150,
+        'not': '3-5 seansta negatif; T+20 iki rejimde pozitif. Zayif diye susturulmaz, kisa masaya girmez.',
+    },
+    'liderlik_aday': {
+        'vade_gun': 20,
+        'masa': 'SABIR',
+        'durum': 'ADAY',
+        'etiket': '🟡 SABIR MASASI · T+20 ADAY',
+        'rozet': False,
+        'minimum_olay': 150,
+        'not': 'T+20 alfa iki rejimde pozitif; sabir masasinda aday olarak izlenir.',
+    },
+    'er_B11': {
+        'vade_gun': 20,
+        'masa': 'SABIR',
+        'durum': 'BELIRSIZ_ORNEKLEM',
+        'etiket': '⚪ SABIR MASASI · T+20 BİLMİYORUZ',
+        'rozet': False,
+        'minimum_olay': 150,
+        'not': 'T+20 iki rejimde pozitif gorunuyor; rejim N=73/118 esigin altinda, rozet verilmez.',
+    },
+}
+
+# Radar 2'nin durumu "zayif" degil, "yanlis vade"dir. Pipeline ve scan_signals
+# aynen calisir; yalnizca KISA masasina alinmaz.
+YANLIS_VADE_SCANNERS = frozenset({'radar2'})
+
+# Karar katmanina girmeyen diger taramalar icin 20 seanslik genel kapanma
+# siniri kullanilir. Bu, "ideal karar vadesi" degil, sinyalin sonsuza kadar
+# tasinmamasi icin katalog/olcum alanindaki emniyet son kullanmasidir.
+SCANNER_VADE_DEFAULT = {
+    'vade_gun': 20,
+    'masa': 'KATALOG',
+    'durum': 'VADE_OLCUMU_BEKLIYOR',
+    'etiket': '⚪ KATALOG · T+20 GÖZLEM · VADE BEKLİYOR',
+    'rozet': False,
+    'minimum_olay': None,
+    'vade_kaynagi': 'GENEL_GOZLEM_SINIRI',
+    'not': 'Karar vadesi bu turda muhurlenmedi; T+20 yalniz katalog son kullanma siniridir.',
+}
+
+
+def _coerce_date(value):
+    """Tarih benzeri girdiyi timezone'dan bagimsiz date nesnesine cevirir."""
+    if value is None:
+        return None
+    if hasattr(value, 'to_pydatetime'):
+        try:
+            value = value.to_pydatetime()
+        except Exception:
+            pass
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def scanner_vade_metadata(scan_type, signal_date=None, session_dates=None) -> dict:
+    """Taramanin vade/masa/etiket alanlarini ve varsa son kullanma tarihini doner.
+
+    `session_dates` verilirse tam fiyat kasasinin seans takvimi kullanilir;
+    verilmezse BIST takvimindeki acik seanslar sayilir. Tarih verilmeden de
+    alanlar doner, fakat son kullanma tarihi bilincli olarak None kalir.
+    """
+    key = str(scan_type or '').strip()
+    policy = dict(SCANNER_VADE_POLICY.get(key, SCANNER_VADE_DEFAULT))
+    horizon = policy.get('vade_gun')
+    out = {
+        'scan_type': key,
+        **policy,
+        'vade': f"T+{int(horizon)}" if horizon is not None else None,
+        'son_kullanma_tarihi': scanner_son_kullanma_tarihi(
+            key, signal_date, session_dates=session_dates
+        ),
+    }
+    # Ingilizce anahtar, dis veri/gelecek UI baglantilarinda ayni alanin
+    # yanlis adla tekrar hesaplanmasini onlemek icin yalnizca takma addir.
+    out['expiry_date'] = out['son_kullanma_tarihi']
+    out['alanlar_dolu'] = (
+        out['vade_gun'] is not None
+        and (signal_date is None or out['son_kullanma_tarihi'] is not None)
+    )
+    return out
+
+
+def scanner_vade_gun(scan_type):
+    """Taramanin muhurlu karar vadesini seans olarak doner; yoksa None."""
+    return scanner_vade_metadata(scan_type).get('vade_gun')
+
+
+def scanner_son_kullanma_tarihi(scan_type, signal_date, session_dates=None):
+    """Sinyal tarihinden sonra muhurlu vadedeki seans tarihini ISO olarak doner."""
+    key = str(scan_type or '').strip()
+    horizon = SCANNER_VADE_POLICY.get(key, SCANNER_VADE_DEFAULT).get('vade_gun')
+    base = _coerce_date(signal_date)
+    if horizon is None or base is None:
+        return None
+    if session_dates is not None:
+        dates = sorted({d for d in (_coerce_date(x) for x in session_dates) if d and d > base})
+        if len(dates) >= int(horizon):
+            return dates[int(horizon) - 1].isoformat()
+        return None
+    current = base
+    remaining = int(horizon)
+    while remaining:
+        current += timedelta(days=1)
+        if _is_bist_trading_day(current):
+            remaining -= 1
+    return current.isoformat()
+
+
+def scanner_karar_masasi(scan_type):
+    """Taramanin KISA/SABIR/KATALOG yerini doner."""
+    return scanner_vade_metadata(scan_type).get('masa', 'KATALOG')
+
+
+def scanner_vade_etiketi(scan_type):
+    """Taramanin olcumle uyumlu, rozet iddiasi icermeyen vade etiketini doner."""
+    return scanner_vade_metadata(scan_type).get('etiket', '')
+
+
+def is_short_horizon_scanner(scan_type) -> bool:
+    """Yalniz muhurlu KISA masasindaki taramalar icin True."""
+    key = str(scan_type or '').strip()
+    return key not in YANLIS_VADE_SCANNERS and scanner_karar_masasi(key) == 'KISA'
+
+
+def is_patience_candidate(scan_type) -> bool:
+    """SABIR masasinda aday olarak tasinacak taramalar icin True."""
+    meta = scanner_vade_metadata(scan_type)
+    return meta.get('masa') == 'SABIR' and meta.get('durum') in {
+        'ADAY', 'YANLIS_VADE_ADAYI', 'BELIRSIZ_ORNEKLEM', 'TEK_REJIM_BELIRSIZ'
+    }
 
 
 # Olculmus T+20 alfa degerleri (panel rozetinde gosterilir). Kaynak: alfa_karne.py
@@ -196,6 +414,10 @@ def is_ai_suppressed(scan_type) -> bool:
 
 def alfa_etiketi(scan_type) -> str:
     """Panelde/logda gosterilebilir kisa etiket. Bilinmiyorsa ''."""
+    # Vade reformu: ayni tarama yanlis masada oldugu icin zayif sayilmaz.
+    # Ozel etiketler eski tek-rejim/negatif rozetlerin onune gecmelidir.
+    if scan_type in SCANNER_VADE_POLICY:
+        return scanner_vade_etiketi(scan_type)
     if scan_type in GUCLU_SCANNERS:      return "🟢 IKI REJIMDE POZITIF"
     if scan_type in DAHA_ZAYIF_SCANNERS: return "⛔ DAHA ZAYIF"
     if scan_type in ZAYIF_SCANNERS:      return "🔴 ZAYIF"

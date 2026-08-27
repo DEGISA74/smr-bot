@@ -22,6 +22,7 @@ from pathlib import Path
 import pandas as pd
 
 from bist_data_store import active_version_id, read_active
+from evidence import scanner_vade_metadata
 from signal_policy import (
     MEASUREMENT_REGIME_FALLING,
     MEASUREMENT_REGIME_RISING,
@@ -177,6 +178,7 @@ def _olc(vadeler: tuple[int, ...], lookback_days: int):
             continue
 
         yon = _yon_carpani(str(kayit.scan_type), str(kayit.bias or ""))
+        vade_meta = scanner_vade_metadata(str(kayit.scan_type), kayit.scan_date)
         for gun in vadeler:
             eski_cikis = sinyal_pos + gun
             eski_endeks_cikis = endeks_sinyal_pos + gun
@@ -225,6 +227,10 @@ def _olc(vadeler: tuple[int, ...], lookback_days: int):
                     "yeni_alfa": yeni_ret - yeni_bench,
                     "rejim": str(rejim),
                     "entry_status": giris_durumu,
+                    "karar_vade_gun": vade_meta.get("vade_gun"),
+                    "karar_masasi": vade_meta.get("masa"),
+                    "vade_etiketi": vade_meta.get("etiket"),
+                    "son_kullanma_tarihi": vade_meta.get("son_kullanma_tarihi"),
                 }
             )
 
@@ -269,6 +275,7 @@ def _ozet(sonuclar: pd.DataFrame, taramalar: list[str], vadeler: tuple[int, ...]
                         "dusen_eski_alfa": None,
                         "dusen_yeni_alfa": None,
                         "dusen_isaret_degisti": False,
+                        **_vade_ozet_alanlari(tarama),
                     }
                 )
                 continue
@@ -307,6 +314,7 @@ def _ozet(sonuclar: pd.DataFrame, taramalar: list[str], vadeler: tuple[int, ...]
                     "delta": yeni_alfa - eski_alfa,
                     "isaret_degisti": _isaret(eski_alfa) != _isaret(yeni_alfa),
                     **rejim_ozeti,
+                    **_vade_ozet_alanlari(tarama),
                 }
             )
     return pd.DataFrame(rows)
@@ -318,6 +326,16 @@ def _yuzde(deger) -> str:
 
 def _gecis(eski, yeni) -> str:
     return f"{_yuzde(eski)}→{_yuzde(yeni)}"
+
+
+def _vade_ozet_alanlari(scan_type: str) -> dict:
+    """Özet satırına İş 4'ün tek kaynaklı vade/masa etiketlerini ekler."""
+    meta = scanner_vade_metadata(scan_type)
+    return {
+        "karar_vade_gun": meta.get("vade_gun"),
+        "karar_masasi": meta.get("masa"),
+        "vade_etiketi": meta.get("etiket"),
+    }
 
 
 def _rejim_hukmu(r) -> str:
@@ -375,6 +393,33 @@ def _rapor(
     ]
     for ad, n in sorted(durumlar.items()):
         L.append(f"| {ad} | {n} |")
+
+    _expiry_count = 0
+    if "son_kullanma_tarihi" in sonuclar.columns:
+        _expiry_count = int(sonuclar["son_kullanma_tarihi"].notna().sum())
+    L += [
+        "",
+        "## İş 4 — vade, son kullanma ve karar masası etiketleri",
+        "",
+        f"- Olay satırlarında son kullanma alanı dolu: **{_expiry_count}/{len(sonuclar)}**; tarih, sinyal gününden sonraki muhurlu BIST seans sayısıyla hesaplanır.",
+        "- Radar 2: kısa masadan çıkarıldı; T+20 **SABIR MASASI · ADAY**. Bu, ölçümü susturmak değil yanlış vadeyi düzeltmektir.",
+        "- Liderlik Adayı: T+20 **SABIR MASASI · ADAY**.",
+        "- Pre-Launch BOS: kısa masadan çıkarıldı; T+20 **SABIR MASASI · NEGATİF KARNE**, aday rozeti yok.",
+        "- Tavan Alarm: T+20 **BİLMİYORUZ**; rejim N=65/124 < 150 olduğu için rozet yok.",
+        "- Erken Radar C6: T+5 **birinci sıradaki geçici aday**; yeni cetvelde düşen rejim negatiftir ve 300 bağımsız olay kapısı dolmadan çekirdek değildir.",
+        "- KATALOG satırlarındaki T+20, karar vadesi değil; sinyalin taşınmadan kapanacağı genel gözlem sınırıdır.",
+        "",
+        "| Tarama | Vade / kapanma | Masa | Etiket |",
+        "|---|---:|---|---|",
+    ]
+    for tarama in sorted(taramalar):
+        _meta = scanner_vade_metadata(tarama)
+        _vade = f"T+{int(_meta['vade_gun'])}" if _meta.get("vade_gun") is not None else "—"
+        if _meta.get("masa") == "KATALOG":
+            _vade += "*"
+        L.append(
+            f"| {tarama} | {_vade} | {_meta.get('masa', 'KATALOG')} | {_meta.get('etiket', '—')} |"
+        )
 
     L += [
         "",
