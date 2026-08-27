@@ -335,6 +335,46 @@ Kabul kapısı:
 
 ---
 
+## B7b. AÇIK KONU — SABİT VADE vs GERÇEK HAREKET SÜRESİ (kullanıcı itirazı, 27 Ağu)
+
+**İtiraz:** "Sabit vadeler içime sinmiyor. Her hissenin, her yukarı çıkışın süresi
+farklı. Bazısı 5-6 günlük tepki verir, bazısı 12 gün sürer, bazısı dinlene
+dinlene 50 gün çıkar."
+
+**İtiraz haklı — ama iki ayrı şey karışıyor:**
+
+| | Vade | Neden |
+|---|---|---|
+| **ÖLÇMEK** (taramaları kıyaslamak) | **SABİT** | Vadeyi sonradan seçmek hiledir. `ideal_day`'in 1–28 gün içinden en iyisini seçmesi tam bu — her taramaya kendi en parlak gününü verirsen hepsi kazanan çıkar. Sabit vade = aynı terazi. |
+| **TUTMAK** (pozisyon yönetmek) | **DEĞİŞKEN** | 6 günlük tepkiyle 50 günlük trend aynı süreyle yönetilemez. |
+
+Sabit vade "pozisyonu 5 günde kapat" demek DEĞİL; "taramaları kıyaslarken
+herkese aynı cetveli uygula" demek.
+
+### Değişken süreyi dürüstçe ölçmenin yolu
+
+**İlke: süre değişebilir, KURAL önceden konur.**
+
+1. **Üç sınır yöntemi:** kâr hedefi + zarar sınırı + azami bekleme önceden
+   belirlenir, sonra "hangisine önce değdi" sorulur. Biri 4 günde hedefe gider,
+   öteki 23 günde — ikisi de aynı kuralla ölçülmüştür. Kimse sonradan
+   "aslında 27. güne baksaydık" diyemez.
+   → Bu yöntem D5'in kabul kapısında (madde 3) ZATEN VAR ama oraya sıkışmış.
+     Bütün taramalara yayılması gerekiyor.
+2. **En iyi/en kötü nokta kaydı:** her sinyalin yolda gördüğü en yüksek ve en
+   düşük seviye ayrı kaydedilir. Ortalama +%1 yapan ama yolda −%9 gören bir
+   tarama, sabit vadenin göstermediği bir karaktere sahiptir.
+
+### KARAR
+
+- **İş 2 sabit vadeyle (T+3/T+5/T+20) devam eder** — orada amaç taramaları
+  kıyaslamak, cetvel tek olmalı.
+- **Değişken vade AYRI BİR İŞ PAKETİ** (İş 8 adayı). Önce kural yazılır,
+  sonra ölçülür. Asla tersi.
+- `ideal_day` mantığı bu paket tamamlanana kadar karar üretmez.
+
+---
+
 ## B8. ÖLÇÜM SINIRI
 
 Tüm bulgular **67 işlem gününden** (Mayıs–Ağustos 2026; 30 yükselen, 37 düşen). C6'nın yükselen-rejim örneği 29, Pre-Launch'ın düşen-rejim örneği 47. Tavan ailesinin rakamları tavan kilidi uygulanmadığı için hâlâ iyimser.
