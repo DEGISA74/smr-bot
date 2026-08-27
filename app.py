@@ -1389,12 +1389,12 @@ def log_goldmine_selection(category="", top_n=20):
             try:
                 c.execute(
                     "INSERT OR IGNORE INTO goldmine_log "
-                    "(scan_date, symbol, rank, score, scanner, confluence_count, unmeasured, category) "
-                    "VALUES (?,?,?,?,?,?,?,?)",
+                    "(scan_date, symbol, rank, score, scanner, confluence_count, unmeasured, category, skor_kaynagi) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
                     (today, str(e.get('sembol', e['sym'])), i + 1,
                      None if e.get('unmeasured') else float(e.get('score', 0)),
                      str(e.get('scanner', '')), int(e.get('family_count', 1)),
-                     1 if e.get('unmeasured') else 0, category)
+                     1 if e.get('unmeasured') else 0, category, 'ideal_day_v1')
                 )
             except Exception as write_error:
                 write_errors += 1

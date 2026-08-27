@@ -407,6 +407,68 @@ söyleyene kadar.
 
 ---
 
+## B7d. 28 AĞUSTOS SABAHI — BURADAN DEVAM (27 Ağu gecesi yazıldı)
+
+Master Scan reformu (İş 1-7) **BİTTİ ve CANLIDA**. Aşağıdakiler sonrasında
+açılan yeni işler.
+
+### ✅ BİTEN: İş 8 Aşama 1 (değişken vade laboratuvarı)
+`variable_horizon_lab.py` · 36.275 olay · rapor `logs/degisken_vade_asama1.md`.
+En önemli çıktı **EVREN TABANI**: 20 günde hisselerin yalnız %34,9'u XU100'ü
+yeniyor, ortanca hisse −%4,10. → Alfayı SIFIRA göre okumak yanlış.
+Detay: `memory/project_evren_tabani_mercegi.md`
+
+### ✅ BİTEN + DOĞRULANDI: İş B (goldmine_log yöntem damgası)
+`db_layer.py` idempotent `skor_kaynagi TEXT` kolonu + `app.py` her yeni satıra
+`'ideal_day_v1'` yazıyor. **Claude `init_db()` koşturdu, kolon patron.db'de
+OLUŞTU**, 779 eski satır NULL kaldı (geriye dönük bozulma yok).
+⚠ VPS'e GİTMEDİ — `db_layer.py` VPS'te 7 satır farklı. Deploy ayrı karar.
+
+### ⏳ YARIM: İş A (short fizibilitesi)
+`short_feasibility_lab.py` yazıldı (464 satır), **sözdizimi temiz ama HİÇ
+KOŞULMADI** — self-test otomatik incelemede reddedildi, ardından limit doldu.
+
+**⭐ Codex'in koşmadan önce bulduğu ve fikri değiştiren araştırma sonucu:**
+- **VİOP'ta 47 tek-hisse dayanak var** (güncel).
+- **Spot açığa satış resmî metinde BIST 50 ile SINIRLI** — VİOP'tan geniş,
+  ayrı bir "açığa satış listesi" YOK.
+- BIST 50 bileşimi Mayıs-Haziran ve Temmuz-Ağustos için iki resmî dönem
+  değişikliğinden geriye kuruldu → o evrende **ileriye bakma yok**.
+- Geçmiş tarihli VİOP sözleşme listesi BULUNAMADI → bugünkü 47 isimle
+  ölçülecek, ileriye bakma riski raporda damgalanacak.
+
+**Bu neyi değiştiriyor:** Claude'un "açığa satış listesi VIOP'tan çok daha
+geniştir, kenar orada yaşayabilir" hipotezi **YANLIŞ**. Spot da BIST 50 ile
+sınırlı. Yani Claude'un zaten yaptığı BIST50 ölçümü esasen DOĞRU EVRENDİ:
+
+| Küme | N | Ortanca | Ortalama | İsabet |
+|---|---|---|---|---|
+| Tüm evren | 948 | +%5,21 | +%2,95 | %67 |
+| **BIST50 içi** | **79** | **+%1,11** | **−%0,57** | **%57** |
+
+Kenar likit evrende çöküyor. N=79 eşiğin altında, ama gerçek listelerle
+tekrar ölçüm bunu ya mühürleyecek ya çürütecek. **İlk iş: betiği koş.**
+
+### 📋 SIRADAKİ KUYRUK (yapılmadı, kaybolmasın)
+1. **İş A'yı koş** — betik hazır, sadece çalıştırılıp raporlanacak.
+   `birlesik_dtri`'yi ATLAMA (en kötü olayı −%21,5, D4/D5'te −%95..−%98).
+2. **İş 8 Aşama 2** — üç sınır / stop kalibrasyonu. Hangi evren kazanırsa
+   kazansın %35-38'lik "%10'dan fazla aleyhe gitme" oranı stop'suz taşınamaz.
+3. **Gold Mine neyle beslenecek** — `ideal_day` geçersiz sayıldı ama yerine
+   koyacak sağlam BOĞA puanı YOK (yeni ölçütle Tavan Top30 ve Tekli Altın
+   bile geçmiyor). VIOP sonucu bunu da netleştirir. Vitrin V2 altında zaten
+   gizli, acil değil.
+4. **er_B2/B3/B4/B10** — politika kaydı yok, KATALOG varsayılanına düşüyor,
+   er_B2 hâlâ Gold Mine puanı alıyor (`ideal_day=7`, N=38). Madde 3'le
+   birlikte çözülür.
+5. **Tekli Altın rejime bağımlı olabilir** — susturduk ama yükselen tapede
+   tabandan +2,45 iyi. Radar 2'yle aynı hikâye; onu kurtardık, bunu gözden
+   kaçırdık.
+6. **Karneyi taban merceğiyle yeniden okuma** — İş 3 karnesi ortalama-tabanlı
+   ve sıfıra göre. Sayılar doğru, yorumu eksik.
+
+---
+
 ## B8. ÖLÇÜM SINIRI
 
 Tüm bulgular **67 işlem gününden** (Mayıs–Ağustos 2026; 30 yükselen, 37 düşen). C6'nın yükselen-rejim örneği 29, Pre-Launch'ın düşen-rejim örneği 47. Tavan ailesinin rakamları tavan kilidi uygulanmadığı için hâlâ iyimser.

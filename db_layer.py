@@ -84,8 +84,15 @@ def init_db():
         confluence_count INTEGER,
         unmeasured       INTEGER DEFAULT 0,
         category         TEXT,
+        skor_kaynagi     TEXT,
         UNIQUE(scan_date, symbol)
     )''')
+    # 27 Ağu 2026 — Gold Mine puanı eski ``ideal_day`` seçimine dayanıyor.
+    # Satırın hangi karne yöntemiyle üretildiğini ayırmadan meta-backtest yapmak
+    # yanıltıcı olur; eski satırlar NULL kalır ve geriye dönük kayıt bozulmaz.
+    _goldmine_cols = {row[1] for row in c.execute('PRAGMA table_info(goldmine_log)').fetchall()}
+    if 'skor_kaynagi' not in _goldmine_cols:
+        c.execute('ALTER TABLE goldmine_log ADD COLUMN skor_kaynagi TEXT')
     # 19 Haz 2026 Faz 3 — ANALİZ LOG: hisse analiz edilince birleşik verdict snapshot (kanıt+risk).
     # Sonra forward getiriyle "yüksek kanıt-skorlu + düşük riskli analizler tuttu mu" ölçülür (ürün isabeti).
     c.execute('''CREATE TABLE IF NOT EXISTS analysis_log (
