@@ -265,8 +265,21 @@ def _compute_volume_quality_label(ticker, df=None, vol_missing=False):
     except Exception:
         return "FINAL"  # Hata varsa muhafazakar
 
-@st.cache_data(ttl=600)
 def calculate_synthetic_sentiment(ticker):
+    """Sarmalayici — veri parmak izini cache anahtarina ekler (imza degismedi).
+
+    27 Agu 2026 — IKI SAAT SORUNU: bu hesap ttl=600 + yalniz ticker anahtariyla
+    cache'leniyordu. Seans ici otomatik yenileme get_safe_historical_data.clear()
+    diyor ama BU cache'e dokunmuyor → depo tazelenince fiyat kutusu (ttl=60)
+    yeni kapanisi gosterirken grafik 10 dakikaya kadar ESKI fotografta kaliyordu
+    (KLGYO: kutu 5,17 · grafik 4,99 = deponun 14:00 surumu). _data_token son mum
+    tarihi+kapanis+hacmi anahtara koyar → depo degisen ilk rerun'da grafik de
+    yeniden hesaplanir. get_obv_divergence_status ile ayni kalip."""
+    return _calculate_synthetic_sentiment_cached(ticker, _data_token(ticker))
+
+
+@st.cache_data(ttl=600)
+def _calculate_synthetic_sentiment_cached(ticker, dtok):
     try:
         df = get_safe_historical_data(ticker, period="6mo")
         if df is None or df.empty: return None
@@ -328,6 +341,12 @@ def calculate_synthetic_sentiment(ticker):
         plot_df['RVOL'] = (plot_df['Volume'] / plot_df['Vol_Avg20']).replace([np.inf, -np.inf], np.nan)
         return plot_df
     except Exception: return None
+
+
+# app.py bozuk/None sonucta calculate_synthetic_sentiment.clear() cagiriyor —
+# sarmalayici artik duz fonksiyon oldugu icin .clear'i govdeden odunc aliyoruz.
+calculate_synthetic_sentiment.clear = _calculate_synthetic_sentiment_cached.clear
+
 
 def _data_token(ticker):
     """CACHE TUTARLILIK PARMAK İZİ (13 Tem 2026) — son mum tarihi+kapanış+hacim.
