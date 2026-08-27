@@ -17,6 +17,7 @@ import sys, io, json
 from pathlib import Path
 import numpy as np
 import pandas as pd
+from signal_policy import MEASUREMENT_REGIME_RISING, measurement_regime_series
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -62,8 +63,7 @@ def run_backtest():
     xu = load("XU100")
     if xu is None or len(xu) < 60:
         print("XU100 verisi yok"); return
-    xu["sma50"] = xu["Close"].rolling(50).mean()
-    xu_close = xu["Close"]; xu_sma50 = xu["sma50"]
+    xu_regime = measurement_regime_series(xu)
 
     all_signals = []
     per_ticker = {}
@@ -103,17 +103,17 @@ def run_backtest():
 
             # Rejim filtresi: XU100 > SMA50 (bugünün tarihinde)
             d = idxs[i]
-            if d not in xu_close.index:
+            if d not in xu_regime.index:
                 # en yakın geçmiş tarih
-                xu_pos = xu_close.index.get_indexer([d], method="ffill")[0]
+                xu_pos = xu_regime.index.get_indexer([d], method="ffill")[0]
                 if xu_pos < 0:
                     continue
-                xu_c = float(xu_close.iloc[xu_pos]); xu_s = float(xu_sma50.iloc[xu_pos])
+                market_state = xu_regime.iloc[xu_pos]
             else:
-                xu_c = float(xu_close.loc[d]); xu_s = float(xu_sma50.loc[d])
-            if pd.isna(xu_s):
+                market_state = xu_regime.loc[d]
+            if pd.isna(market_state):
                 continue
-            regime_ok = xu_c > xu_s
+            regime_ok = market_state == MEASUREMENT_REGIME_RISING
 
             entry = float(today["Close"])
             tp_price = entry * (1 + TP_PCT)

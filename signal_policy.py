@@ -10,6 +10,34 @@ from typing import Iterable
 import pandas as pd
 
 
+# Karne ve backtestlerde kullanilacak TEK piyasa rejimi tanimi.
+# Bu tanim yalniz olcumleri iki piyasa kosuluna ayirmak icindir; canli tarama
+# acip kapatmak, skor veya sinyal agirligi degistirmek icin kullanilamaz.
+MEASUREMENT_REGIME_WINDOW = 50
+MEASUREMENT_REGIME_RISING = "YUKSELEN"
+MEASUREMENT_REGIME_FALLING = "DUSEN"
+MEASUREMENT_REGIME_RULE = "XU100_CLOSE_VS_SMA50"
+
+
+def measurement_regime_series(data: pd.DataFrame | pd.Series) -> pd.Series:
+    """XU100 kapanisi SMA50 ustundeyse yukselen, degilse dusen rejim.
+
+    Ilk 49 seans yeterli ortalama olmadigi icin rejimsiz birakilir. Esitlik
+    dusen tarafa yazilir. Sonuc yalniz olcum segmentidir, tarama filtresi degildir.
+    """
+    close = data["Close"] if isinstance(data, pd.DataFrame) else data
+    close = pd.to_numeric(close, errors="coerce")
+    average = close.rolling(
+        MEASUREMENT_REGIME_WINDOW,
+        min_periods=MEASUREMENT_REGIME_WINDOW,
+    ).mean()
+    result = pd.Series(pd.NA, index=close.index, dtype="object")
+    valid = close.notna() & average.notna()
+    result.loc[valid & (close > average)] = MEASUREMENT_REGIME_RISING
+    result.loc[valid & (close <= average)] = MEASUREMENT_REGIME_FALLING
+    return result
+
+
 # Aynı ekonomik hikâyeyi farklı adlarla anlatan taramalar tek bağımsız oy sayılır.
 # Özellikle B11 + C5 + Zirve Sıkışma aynı "sıkışma/birikim" ailesidir.
 _FAMILY_BY_SCAN = {

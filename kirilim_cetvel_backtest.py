@@ -9,8 +9,8 @@ Yöntem — scan_signals'a HİÇ bakmaz, doğrudan fiyat verisinden yeniden kura
   B cetveli (ATR)   : (kapanış - seviye) / ATR >= eşik + hacim > 1.5x
   Her ikisinde de "YENİ kırılım" şartı: önceki bar seviyenin üstünde değildi.
 
-Sonra T+5 / T+10 / T+20 getirileri ölçülür ve REJİME göre ayrılır
-(XU100 20 günlük eğimi + / -), çünkü tek rejimde ölçüm yanıltır.
+Sonra T+5 / T+10 / T+20 getirileri ölçülür ve mühürlü REJİME göre ayrılır
+(XU100 kapanışı > SMA50), çünkü tek rejimde ölçüm yanıltır.
 
 Çıktı: konsol + logs/kirilim_cetvel_backtest.md
 ⚠ Bu araç sadece ÖLÇER. Sonuç kural olmadan koda girmez.
@@ -25,6 +25,11 @@ except Exception:
 
 import numpy as np
 import pandas as pd
+from signal_policy import (
+    MEASUREMENT_REGIME_FALLING,
+    MEASUREMENT_REGIME_RISING,
+    measurement_regime_series,
+)
 
 VERI = Path(__file__).with_name("veriler")
 OUT = Path(__file__).with_name("logs") / "kirilim_cetvel_backtest.md"
@@ -47,15 +52,18 @@ def _atr(h, l, c, n=ATR_LEN):
 
 
 def _xu100_rejim():
-    """tarih → +1 (yükselen) / -1 (düşen); XU100 20g değişimine göre."""
+    """tarih → +1 (yükselen) / -1 (düşen); mühürlü XU100/SMA50 tanımı."""
     f = VERI / "XU100.IS_1d.parquet"
     if not f.exists():
         return None
     d = pd.read_parquet(f)
     d.index = pd.to_datetime(d.index)
-    chg = d["Close"].pct_change(20)
-    return {ts.normalize(): (1 if v > 0 else -1)
-            for ts, v in chg.items() if pd.notna(v)}
+    regimes = measurement_regime_series(d)
+    return {
+        ts.normalize(): (1 if state == MEASUREMENT_REGIME_RISING else -1)
+        for ts, state in regimes.dropna().items()
+        if state in (MEASUREMENT_REGIME_RISING, MEASUREMENT_REGIME_FALLING)
+    }
 
 
 def _olaylar(df, rejim):
@@ -160,7 +168,7 @@ def main():
            f"- Evren: {len(dosyalar)} BIST hissesi · günlük",
            f"- Toplam kırılım olayı: **{len(df)}**",
            f"- Hacim şartı her iki cetvelde AYNI (>{HACIM_ESIK}x) — tek değişken cetvel.",
-           "- Rejim: XU100 20 günlük değişimi (+ yükselen / − düşen).", ""]
+           "- Rejim: mühürlü XU100 kapanışı > SMA50 (yükselen / düşen).", ""]
 
     # 1) A cetveli (mevcut sabit yüzde)
     sat += ["## 1) Mevcut cetvel — sabit yüzde (seviye × 1.01)", ""]

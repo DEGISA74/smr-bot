@@ -9,6 +9,11 @@ Soru: master_score CMF gibi rejim-DAYANIKLI mı, yoksa obv_slope gibi boğa sera
 Çıktı: konsol + app_score_report.md
 """
 import sqlite3, os, sys, numpy as np, pandas as pd
+from signal_policy import (
+    MEASUREMENT_REGIME_FALLING,
+    MEASUREMENT_REGIME_RISING,
+    measurement_regime_series,
+)
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 except Exception:
@@ -22,8 +27,12 @@ def xu100_regime():
     for cand in (f"{VERILER}/XU100.IS_1d.parquet", f"{VERILER}/XU100_1d.parquet"):
         if os.path.exists(cand):
             x = pd.read_parquet(cand).sort_index()
-            sma = x['Close'].rolling(50).mean()
-            reg = pd.Series(np.where(x['Close'] > sma, 'boğa', 'ayı'), index=x.index.strftime('%Y-%m-%d'))
+            reg = measurement_regime_series(x).map({
+                MEASUREMENT_REGIME_RISING: 'boğa',
+                MEASUREMENT_REGIME_FALLING: 'ayı',
+            })
+            reg.index = pd.to_datetime(reg.index).strftime('%Y-%m-%d')
+            reg = reg.dropna()
             return reg[~reg.index.duplicated()]
     return None
 

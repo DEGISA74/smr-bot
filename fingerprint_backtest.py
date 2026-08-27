@@ -27,6 +27,7 @@ except Exception:
     pass
 import numpy as np, pandas as pd
 import backtest_runner as B
+from signal_policy import measurement_regime_series
 
 SLOPE_N  = 5     # eğim: değer(D) − değer(D−5)
 MIN_HIST = 60    # sinyal öncesi min bar (stabil indikatör)
@@ -56,12 +57,12 @@ SLOPE_COLS=['cmf','rsi','rvol','squeeze']
 
 def main():
     xu=B.load_xu100()
-    xu_ret20=(xu['Close']/xu['Close'].shift(20)-1)
+    xu_regime=measurement_regime_series(xu)
     def regime(ts):
         i=xu.index.get_indexer([ts],method='pad')
         if i[0]<0: return None
-        r=xu_ret20.iloc[i[0]]
-        return None if pd.isna(r) else ('BOGA' if r>0 else 'AYI')
+        r=xu_regime.iloc[i[0]]
+        return None if pd.isna(r) else ('BOGA' if r=='YUKSELEN' else 'AYI')
 
     c=sqlite3.connect('patron.db').cursor()
     sig=defaultdict(list)

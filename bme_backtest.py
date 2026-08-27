@@ -30,6 +30,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from signal_policy import (
+    MEASUREMENT_REGIME_FALLING,
+    MEASUREMENT_REGIME_RISING,
+    measurement_regime_series,
+)
 
 warnings.filterwarnings("ignore")
 try:
@@ -280,11 +285,13 @@ def _market_regime() -> dict[str, str]:
     source = _clean_ohlcv(pd.read_parquet(path))
     if source is None or len(source) < 60:
         return {}
-    ema50 = source["Close"].ewm(span=50, adjust=False).mean()
+    regimes = measurement_regime_series(source)
     return {
-        str(pd.Timestamp(timestamp).date()): ("BOĞA" if close > avg else "AYI/YATAY")
-        for timestamp, close, avg in zip(source.index, source["Close"], ema50)
-        if pd.notna(avg)
+        str(pd.Timestamp(timestamp).date()): (
+            "BOĞA" if state == MEASUREMENT_REGIME_RISING else "AYI/YATAY"
+        )
+        for timestamp, state in regimes.dropna().items()
+        if state in (MEASUREMENT_REGIME_RISING, MEASUREMENT_REGIME_FALLING)
     }
 
 

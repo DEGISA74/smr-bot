@@ -37,6 +37,7 @@ except Exception:
 
 import numpy as np
 import pandas as pd
+from signal_policy import MEASUREMENT_REGIME_RISING, measurement_regime_series
 
 VERI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "veriler")
 OUT_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backtest_dip_ayna.json")
@@ -66,8 +67,9 @@ def load_xu100():
     if not os.path.exists(p):
         return None, {}
     x = pd.read_parquet(p)
-    sma = x["Close"].rolling(50).mean()
-    reg = {d: (1 if c > s else -1) for d, c, s in zip(x.index, x["Close"], sma) if pd.notna(s)}
+    states = measurement_regime_series(x)
+    reg = {d: (1 if state == MEASUREMENT_REGIME_RISING else -1)
+           for d, state in states.dropna().items()}
     return x["Close"], reg
 
 

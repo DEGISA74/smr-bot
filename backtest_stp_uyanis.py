@@ -31,6 +31,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from signal_policy import (
+    MEASUREMENT_REGIME_FALLING,
+    MEASUREMENT_REGIME_RISING,
+    measurement_regime_series,
+)
 
 warnings.filterwarnings("ignore")
 try:
@@ -79,8 +84,10 @@ def _bullish_candle(o, h, l, c, i) -> str:
 
 
 def _regime_series(xu: pd.DataFrame) -> pd.Series:
-    sma50 = xu["Close"].rolling(50).mean()
-    return pd.Series(np.where(xu["Close"] > sma50, "boğa", "ayı"), index=xu.index)
+    return measurement_regime_series(xu).map({
+        MEASUREMENT_REGIME_RISING: "boğa",
+        MEASUREMENT_REGIME_FALLING: "ayı",
+    })
 
 
 def _collect_events(regime: pd.Series) -> tuple[list[dict], list[float]]:

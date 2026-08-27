@@ -1960,7 +1960,6 @@ def _toplu_terazi_candidate_pool():
         _add(_entry.get('sembol', _entry.get('sym')), 'goldmine')
 
     for _state_key, _source in (
-            ('guclu_donus_data', 'guclu_donus'),
             ('wilder_divergence_data', 'rsi_pozitif_uyumsuzluk'),
             ('minervini_data', 'minervini')):
         _df = st.session_state.get(_state_key)
@@ -2040,8 +2039,7 @@ def _compute_toplu_terazi_snapshot(
         'as_of': _as_of,
         'category': str(category or ''),
         'candidate_policy': [
-            'goldmine', 'guclu_donus',
-            'rsi_pozitif_uyumsuzluk', 'minervini',
+            'goldmine', 'rsi_pozitif_uyumsuzluk', 'minervini',
         ],
         'items': {},
         'errors': [],

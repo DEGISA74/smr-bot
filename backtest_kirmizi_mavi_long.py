@@ -32,6 +32,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from indicators import compute_flow_momentum, compute_obv_series
+from signal_policy import MEASUREMENT_REGIME_RISING, measurement_regime_series
 
 VERI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "veriler")
 OUT_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backtest_kirmizi_mavi_long.json")
@@ -76,9 +77,9 @@ def xu100_regime():
         if os.path.exists(p):
             try:
                 x = pd.read_parquet(p)
-                sma = x["Close"].rolling(50).mean()
-                reg = np.where(x["Close"] > sma, 1, -1)
-                return {d: int(r) for d, r in zip(x.index, reg)}
+                states = measurement_regime_series(x)
+                return {d: (1 if state == MEASUREMENT_REGIME_RISING else -1)
+                        for d, state in states.dropna().items()}
             except Exception:
                 pass
     return {}

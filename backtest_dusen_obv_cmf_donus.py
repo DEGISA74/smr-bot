@@ -36,6 +36,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from indicators import compute_obv_series
+from signal_policy import MEASUREMENT_REGIME_FALLING, measurement_regime_series
 
 VERI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "veriler")
 OUT_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backtest_dusen_obv_cmf_donus.json")
@@ -76,17 +77,17 @@ def xu100_regime_and_episodes():
     if not os.path.exists(p):
         return {}, []
     x = pd.read_parquet(p)
-    sma = x["Close"].rolling(50).mean()
-    reg = np.where(x["Close"] > sma, 1, -1)
-    reg_map = {d: int(r) for d, r in zip(x.index, reg)}
+    states = measurement_regime_series(x)
+    reg_map = {d: (1 if state != MEASUREMENT_REGIME_FALLING else -1)
+               for d, state in states.dropna().items()}
     # Düşen episodları çıkar (SMA hazır olduktan sonra)
     episodes = []
     cur_start = None
     dates = list(x.index)
     for k in range(len(dates)):
-        if pd.isna(sma.iloc[k]):
+        if pd.isna(states.iloc[k]):
             continue
-        if reg[k] == -1:
+        if states.iloc[k] == MEASUREMENT_REGIME_FALLING:
             if cur_start is None:
                 cur_start = dates[k]
             last = dates[k]
