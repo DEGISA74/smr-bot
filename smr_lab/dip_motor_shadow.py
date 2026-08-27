@@ -320,6 +320,48 @@ def _stats(rows: list[dict], horizon: int) -> dict:
     }
 
 
+def _pooled_alpha_stats(rows: list[dict]) -> dict:
+    """Dört sabit vadeyi birlikte okuyarak kesitin dağılımını özetler."""
+    alphas = np.array(
+        [
+            row[f"alpha_{horizon}g"]
+            for row in rows
+            for horizon in HORIZONS
+            if row.get(f"alpha_{horizon}g") is not None
+        ],
+        dtype=float,
+    )
+    if not len(alphas):
+        return {"n": 0, "median_alpha_pct": None, "mean_alpha_pct": None}
+    return {
+        "n": int(len(alphas)),
+        "median_alpha_pct": round(float(np.median(alphas)), 4),
+        "mean_alpha_pct": round(float(np.mean(alphas)), 4),
+    }
+
+
+def _distribution_cuts(
+    all_rows: list[dict], train_rows: list[dict], validation_rows: list[dict]
+) -> dict:
+    """Tüm/eğitim/doğrulama × yükselen/düşen altı kesitin dağılımı."""
+    cuts = {}
+    for period, rows in (
+        ("all", all_rows),
+        ("train", train_rows),
+        ("validation", validation_rows),
+    ):
+        for regime in (MEASUREMENT_REGIME_RISING, MEASUREMENT_REGIME_FALLING):
+            subset = [row for row in rows if row.get("regime") == regime]
+            pooled = _pooled_alpha_stats(subset)
+            cuts[f"{period}_{regime}"] = {
+                "period": period,
+                "regime": regime,
+                "events": len(subset),
+                **pooled,
+            }
+    return cuts
+
+
 def _barrier_stats(rows: list[dict]) -> dict:
     counts = Counter(r.get("barrier_status") for r in rows)
     resolved = counts.get("target_first", 0) + counts.get("stop_first", 0)
@@ -423,6 +465,16 @@ def _gate_report(
 
 def _markdown(report: dict) -> str:
     p = report["parameters"]
+    data = report["data"]
+    cuts = report["distribution"]["cuts"]
+    cut_labels = (
+        ("Tüm × yükselen", "all_YUKSELEN"),
+        ("Tüm × düşen", "all_DUSEN"),
+        ("Eğitim × yükselen", "train_YUKSELEN"),
+        ("Eğitim × düşen", "train_DUSEN"),
+        ("Doğrulama × yükselen", "validation_YUKSELEN"),
+        ("Doğrulama × düşen", "validation_DUSEN"),
+    )
     gate_rows = []
     for key, value in report["gates"].items():
         status = "GEÇTİ" if value.get("pass") else "KALDI"
@@ -430,13 +482,21 @@ def _markdown(report: dict) -> str:
     lines = [
         "# İş 5 — Yeni Dip Motoru Gölge Testi",
         "",
-        f"**Genel hüküm:** {'EKRANA ALINABİLİR DEĞİL — laboratuvarda kaldı' if not report['passed'] else 'TÜM KAPILAR GEÇTİ — ürün kararı bekliyor'}.",
+        f"**Genel hüküm:** {'EKRANA ALINAMAZ KANITLANDI · FİKİR ÇÜRÜTÜLMEDİ' if not report['passed'] else 'TÜM KAPILAR GEÇTİ — ürün kararı bekliyor'}.",
         "",
-        f"- Veri: {report['data']['symbols_with_daily']} günlük dosya · {report['data']['symbols_with_four_hour']} dosyada 4S doğrulama",
-        f"- Dönem: {report['data']['start']} → {report['data']['end']} · doğrulama başlangıcı: {p['validation_start']}",
-        f"- Ham aday: {report['data']['raw_candidates']} · bağımsız ve olgun olay: **{report['data']['mature_events']}**",
+        f"- Veri: {data['symbols_with_daily']} günlük dosya · {data['symbols_with_four_hour']} dosyada 4S doğrulama · {data['four_hour_uncovered']} dosya ({data['four_hour_uncovered_pct']:.1f}%) 4S kapsamı dışında kaldı",
+        f"- Dönem: {data['start']} → {data['end']} · doğrulama başlangıcı: {p['validation_start']}",
+        f"- Ham aday: {data['raw_candidates']} · bağımsız ve olgun olay: **{data['mature_events']}**",
         f"- Giriş: ertesi işlem yapılabilir açılış; tavan kilidi en fazla 3 seans atlandı; hisse ve XU100 aynı giriş gününde ölçüldü.",
-        f"- Rejim: `{report['data']['regime_rule']}`; yalnız ölçüm bölmesi, canlı tarama filtresi değil.",
+        f"- Rejim: XU100_CLOSE_VS_SMA50; yalnız ölçüm bölmesi, canlı tarama filtresi değil.",
+        "",
+        "## Ana bulgu — dağılım",
+        "",
+        "Dört sabit vadenin birlikte okunduğu altı bağımsız dönem×rejim kesitinin tamamında XU100'e karşı alfa ortancası negatiftir. Bu dağılım, birkaç uç getirinin şişirdiği ortalamalardan daha güçlü kanıttır:",
+        "",
+        "| Kesit | Alfa ortancası |",
+        "|---|---:|",
+        *[f"| {label} | {cuts[key]['median_alpha_pct']:+.2f}% |" for label, key in cut_labels],
         "",
         "## Sabitlenen hipotez eşikleri",
         "",
@@ -500,6 +560,8 @@ def _markdown(report: dict) -> str:
         "",
         "Bu betik patron.db'ye, scan_signals'a, app.py'ye ve canlı ekrana yazmaz. Kapı geçmediyse hipotez yalnız laboratuvar çıktısıdır; eşikler gevşetilmez.",
         "",
+        "**Yeniden koşma şartı:** 4S/saatlik veri deposunun kapsamı düzeltildiğinde aynı sabit eşiklerle test yeniden çalıştırılacak. Mevcut sonuç, evrenin yaklaşık üçte ikisi 4S verisi olmadığı için fikri çürütmez.",
+        "",
     ]
     return "\n".join(lines)
 
@@ -550,6 +612,10 @@ def run(validation_start: date = VALIDATION_START, json_out: Path = DEFAULT_JSON
     train = [r for r in events if date.fromisoformat(r["signal_date"]) < validation_start]
     validation = [r for r in events if date.fromisoformat(r["signal_date"]) >= validation_start]
     gate = _gate_report(events, train, validation, validation_start)
+    four_hour_uncovered = max(0, symbols_daily - symbols_four_hour)
+    four_hour_uncovered_pct = (
+        100.0 * four_hour_uncovered / symbols_daily if symbols_daily else 0.0
+    )
     report = {
         "generated_at": pd.Timestamp.now().isoformat(),
         "passed": gate["passed"],
@@ -569,6 +635,8 @@ def run(validation_start: date = VALIDATION_START, json_out: Path = DEFAULT_JSON
         "data": {
             "symbols_with_daily": symbols_daily,
             "symbols_with_four_hour": symbols_four_hour,
+            "four_hour_uncovered": four_hour_uncovered,
+            "four_hour_uncovered_pct": round(four_hour_uncovered_pct, 4),
             "start": min(data_dates).isoformat() if data_dates else None,
             "end": max(data_dates).isoformat() if data_dates else None,
             "raw_candidates": raw_candidates,
@@ -577,13 +645,14 @@ def run(validation_start: date = VALIDATION_START, json_out: Path = DEFAULT_JSON
             "is_event_start_rule": f"raw sinyal araligi >= {EVENT_GAP_SESSIONS} seans; rapora giren her olay is_event_start=1",
         },
         "gates": gate["gates"],
+        "distribution": {"cuts": _distribution_cuts(events, train, validation)},
         "groups": {
             "all": {"rows": _group_stats(events)},
             "train": {"rows": _group_stats(train)},
             "validation": {"rows": _group_stats(validation)},
         },
         "events": events,
-        "note": "Kapı geçmezse canlı ekrana alınmaz; bu rapor laboratuvar çıktısıdır.",
+        "note": "EKRANA ALINAMAZ KANITLANDI · FİKİR ÇÜRÜTÜLMEDİ. 4S veri kapsamı düzeltildiğinde aynı sabit eşiklerle yeniden koşulacak; mevcut hüküm sınanamayan evren için fikri çürütmez.",
     }
     json_out.parent.mkdir(parents=True, exist_ok=True)
     md_out.parent.mkdir(parents=True, exist_ok=True)

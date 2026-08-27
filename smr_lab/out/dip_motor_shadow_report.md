@@ -1,12 +1,25 @@
 # İş 5 — Yeni Dip Motoru Gölge Testi
 
-**Genel hüküm:** EKRANA ALINABİLİR DEĞİL — laboratuvarda kaldı.
+**Genel hüküm:** EKRANA ALINAMAZ KANITLANDI · FİKİR ÇÜRÜTÜLMEDİ.
 
-- Veri: 627 günlük dosya · 229 dosyada 4S doğrulama
+- Veri: 627 günlük dosya · 229 dosyada 4S doğrulama · 398 dosya (63.5%) 4S kapsamı dışında kaldı
 - Dönem: 2025-01-24 → 2026-08-27 · doğrulama başlangıcı: 2026-06-01
 - Ham aday: 79 · bağımsız ve olgun olay: **72**
 - Giriş: ertesi işlem yapılabilir açılış; tavan kilidi en fazla 3 seans atlandı; hisse ve XU100 aynı giriş gününde ölçüldü.
-- Rejim: `XU100_CLOSE_VS_SMA50`; yalnız ölçüm bölmesi, canlı tarama filtresi değil.
+- Rejim: XU100_CLOSE_VS_SMA50; yalnız ölçüm bölmesi, canlı tarama filtresi değil.
+
+## Ana bulgu — dağılım
+
+Dört sabit vadenin birlikte okunduğu altı bağımsız dönem×rejim kesitinin tamamında XU100'e karşı alfa ortancası negatiftir. Bu dağılım, birkaç uç getirinin şişirdiği ortalamalardan daha güçlü kanıttır:
+
+| Kesit | Alfa ortancası |
+|---|---:|
+| Tüm × yükselen | -2.83% |
+| Tüm × düşen | -3.58% |
+| Eğitim × yükselen | -2.76% |
+| Eğitim × düşen | -3.14% |
+| Doğrulama × yükselen | -5.68% |
+| Doğrulama × düşen | -6.20% |
 
 ## Sabitlenen hipotez eşikleri
 
@@ -49,3 +62,5 @@
 ## Güvenlik hükmü
 
 Bu betik patron.db'ye, scan_signals'a, app.py'ye ve canlı ekrana yazmaz. Kapı geçmediyse hipotez yalnız laboratuvar çıktısıdır; eşikler gevşetilmez.
+
+**Yeniden koşma şartı:** 4S/saatlik veri deposunun kapsamı düzeltildiğinde aynı sabit eşiklerle test yeniden çalıştırılacak. Mevcut sonuç, evrenin yaklaşık üçte ikisi 4S verisi olmadığı için fikri çürütmez.

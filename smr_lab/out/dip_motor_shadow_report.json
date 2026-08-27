@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-27T15:32:45.187920",
+  "generated_at": "2026-08-27T16:05:36.386425",
   "passed": false,
   "parameters": {
     "dip_lookback_sessions": 15,
@@ -22,6 +22,8 @@
   "data": {
     "symbols_with_daily": 627,
     "symbols_with_four_hour": 229,
+    "four_hour_uncovered": 398,
+    "four_hour_uncovered_pct": 63.4769,
     "start": "2025-01-24",
     "end": "2026-08-27",
     "raw_candidates": 79,
@@ -316,6 +318,58 @@
             "alpha_positive_rate_pct": 20.0
           }
         }
+      }
+    }
+  },
+  "distribution": {
+    "cuts": {
+      "all_YUKSELEN": {
+        "period": "all",
+        "regime": "YUKSELEN",
+        "events": 44,
+        "n": 176,
+        "median_alpha_pct": -2.8338,
+        "mean_alpha_pct": -1.5549
+      },
+      "all_DUSEN": {
+        "period": "all",
+        "regime": "DUSEN",
+        "events": 22,
+        "n": 88,
+        "median_alpha_pct": -3.5804,
+        "mean_alpha_pct": 4.0035
+      },
+      "train_YUKSELEN": {
+        "period": "train",
+        "regime": "YUKSELEN",
+        "events": 41,
+        "n": 164,
+        "median_alpha_pct": -2.7554,
+        "mean_alpha_pct": -1.3005
+      },
+      "train_DUSEN": {
+        "period": "train",
+        "regime": "DUSEN",
+        "events": 17,
+        "n": 68,
+        "median_alpha_pct": -3.1441,
+        "mean_alpha_pct": 5.9658
+      },
+      "validation_YUKSELEN": {
+        "period": "validation",
+        "regime": "YUKSELEN",
+        "events": 3,
+        "n": 12,
+        "median_alpha_pct": -5.6849,
+        "mean_alpha_pct": -5.0317
+      },
+      "validation_DUSEN": {
+        "period": "validation",
+        "regime": "DUSEN",
+        "events": 5,
+        "n": 20,
+        "median_alpha_pct": -6.1964,
+        "mean_alpha_pct": -2.6682
       }
     }
   },
@@ -2867,5 +2921,5 @@
       "alpha_20g": -6.797946
     }
   ],
-  "note": "Kapı geçmezse canlı ekrana alınmaz; bu rapor laboratuvar çıktısıdır."
+  "note": "EKRANA ALINAMAZ KANITLANDI · FİKİR ÇÜRÜTÜLMEDİ. 4S veri kapsamı düzeltildiğinde aynı sabit eşiklerle yeniden koşulacak; mevcut hüküm sınanamayan evren için fikri çürütmez."
 }
