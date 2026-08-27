@@ -375,6 +375,35 @@ herkese aynı cetveli uygula" demek.
 
 ---
 
+## B7c. İŞ 9 ADAYI — YENİ TARAMA ARAŞTIRMASI (27 Ağu, karne sonrası)
+
+Mühürlü karne (İş 3 çıktısı) yön verdi. Detay: `memory/project_yukselis_adayi_arastirma.md`.
+
+**Bulgu: kısa vade boş.** T+3'te eşiği geçen ~25 hücrede **iki rejimde de pozitif tek bir
+BOĞA taraması yok**. Eşiği geçen iki boğa taraması var, ikisi de T+20'de:
+`radar2` +%2,00/+%0,24 (N 218/396) · `liderlik_aday` +%1,46/+%0,29 (N 200/402).
+İkisi de ilk beş günde para kaybettiriyor.
+
+⚠ `er_D4`/`er_D5` T+3-T+5'te "iki rejimde pozitif" görünür — **AYI yönlüdürler**,
+getirileri sinyal yönüne çevrilmiştir. Yükseliş adayı değildirler.
+
+**Yorum:** ayakta kalan iki taramanın ikisi de liderlik/göreli güç ailesinden. Sistem
+kendi verisiyle çapraz kesit momentumunu yeniden keşfetmiş — bankaların en çok
+kullandığı faktör. Batan taraflar dip avı ve tepki yakalama.
+
+**Sıradaki 3 aday (öncelik sırasıyla):**
+1. **Bilanço sonrası sürüklenme** — hiç test edilmedi, literatürde en dayanıklı anomali,
+   vadesi 1-60 gün. Takvim var; "sürpriz" verisi yok ama açıklama günü fiyat+hacim
+   tepkisi meşru vekil.
+2. **`liderlik_aday` derinleştirme** — zaten kazanıyor, üstünde kimse çalışmamış.
+3. **Endeks giriş-çıkış olayları** — tarihli, önceden duyurulu, mekanik.
+
+**Kural:** üçü de aynı kapıdan — üç vade + iki rejim + ertesi açılış (tavan kilitli) +
+rejim başına ≥150 olay. **Yeni 3 günlük tarama aramaya girilmeyecek**, veri aksini
+söyleyene kadar.
+
+---
+
 ## B8. ÖLÇÜM SINIRI
 
 Tüm bulgular **67 işlem gününden** (Mayıs–Ağustos 2026; 30 yükselen, 37 düşen). C6'nın yükselen-rejim örneği 29, Pre-Launch'ın düşen-rejim örneği 47. Tavan ailesinin rakamları tavan kilidi uygulanmadığı için hâlâ iyimser.
