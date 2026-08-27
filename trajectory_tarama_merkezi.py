@@ -183,6 +183,45 @@ def _attach_vade_metadata(candidate: dict[str, Any], as_of: object,
     })
     return candidate
 
+
+def _card_scan_types(candidate: dict[str, Any]) -> list[str]:
+    """Kartta yalnız susturulmamış kaynakları gösterir.
+
+    Master Scan ham üyelikleri ölçüm için korunur. KISA kartında KATALOG'a
+    alınmış ve AI/karar yüzeyinden susturulmuş kaynakların yazılması, emekli
+    taramayı kısa vade kurulumu gibi gösteriyordu. Masa fark etmeksizin
+    susturulmamış Radar2/Liderlik kaynakları korunur.
+    """
+    raw_types = [
+        str(value).strip()
+        for value in (candidate.get("scan_types") or [])
+        if str(value).strip()
+    ]
+    records = candidate.get("vade_kayitlari") or []
+    if records:
+        visible = [
+            str(record.get("raw") or record.get("key") or "").strip()
+            for record in records
+            if not evidence.is_ai_suppressed(str(record.get("key") or "").strip())
+        ]
+    else:
+        visible = [
+            value for value in raw_types
+            if not evidence.is_ai_suppressed(_canonical_scan_type(value))
+        ]
+    visible = [value for value in visible if value]
+    return visible
+
+
+def _card_story(candidate: dict[str, Any]) -> str:
+    """Kart hikâyesini görünür, susturulmamış kaynaklardan kurar."""
+    story = str(candidate.get("story") or "📊 Algoritmik Güçlü Kurulum")
+    if not candidate.get("vade_kayitlari"):
+        return story
+    visible_story = _story_for_scans(_card_scan_types(candidate))
+    return visible_story or "📊 Algoritmik Güçlü Kurulum"
+
+
 BUCKET_READY = "karar_hazir"
 BUCKET_GROWING = "guclenen"
 BUCKET_NEW = "yeni_aday"
@@ -628,9 +667,9 @@ def build_trajectory_desk(payload: object, session_dates: list[object] | None = 
 def _card_html(candidate: dict[str, Any], *, is_showcase: bool = False) -> str:
     meta = BUCKET_META[candidate["bucket"]]
     symbol = html.escape(candidate["sym"])
-    story = html.escape(candidate["story"])
+    story = html.escape(_card_story(candidate))
     note = html.escape(candidate["note"])
-    source_text = " · ".join(_display_scan(x) for x in candidate["scan_types"][:3]) or "—"
+    source_text = " · ".join(_display_scan(x) for x in _card_scan_types(candidate)[:3]) or "—"
     source_text = html.escape(source_text)
     day = candidate["event_day"]
     current = "T0 (Yeni)" if day == 0 else f"T+{day} (Takipte)"
@@ -865,9 +904,10 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         _vade = str(candidate.get("vade") or "T+20")
         _expiry = str(candidate.get("son_kullanma_tarihi") or "hesaplanamadı")[:10]
         _karne = str(candidate.get("gecmis_karne") or "BİLMİYORUZ · ölçüm kaydı yok")
+        _story = _card_story(candidate)
         st.markdown(
             f"<div style='font-size:0.68rem;font-weight:800;color:{meta['color']};'>{meta['tag']} · DETAY</div>"
-            f"<div style='font-size:1.25rem;font-weight:900;'>{html.escape(candidate['sym'])} — {html.escape(candidate['story'])}</div>",
+            f"<div style='font-size:1.25rem;font-weight:900;'>{html.escape(candidate['sym'])} — {html.escape(_story)}</div>",
             unsafe_allow_html=True,
         )
         st.markdown(
@@ -882,7 +922,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             f"- RSI hızı: {'olumlu' if candidate['rsi_up'] else 'henüz olumlu değil'}\n"
             f"- BIST100'e göre güç: {'olumlu' if candidate['rs_up'] else 'henüz olumlu değil'}\n"
             f"- Israr: {candidate['israr']} gün\n"
-            f"- Kaynaklar: {', '.join(_display_scan(scan) for scan in candidate['scan_types']) or '—'}"
+            f"- Kaynaklar: {', '.join(_display_scan(scan) for scan in _card_scan_types(candidate)) or '—'}"
         )
         if candidate["crowded"]:
             st.warning(f"Kalabalık uyarısı: {candidate['scan_count']} taramada görünmüş. Bu bilgi puan değildir.")
