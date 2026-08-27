@@ -150,14 +150,21 @@ def _attach_vade_metadata(candidate: dict[str, Any], as_of: object,
     records = _vade_records(candidate.get("scan_types") or [], signal_date, session_dates)
     as_of_day = _date_only(as_of)
     active = []
+    suppressed = []
     expired = []
     for record in records:
         expiry = record.get("son_kullanma_tarihi")
         # Son gün dahildir; sonraki kapanışta sinyal kapanır.
         if expiry and as_of_day and as_of_day > str(expiry)[:10]:
             expired.append(record)
+        elif evidence.is_ai_suppressed(str(record.get("key") or "").strip()):
+            suppressed.append(record)
         else:
             active.append(record)
+    # Kaynağın tamamı susturulduysa kaynak satırını boş bırakıp iddialı genel
+    # hikâye üretmek yerine aday, süresi dolmuş sinyal gibi karar masasından
+    # çıkarılır. Karışık adaylarda yalnız görünür ve süresi dolmamış kaynaklar
+    # korunur; masa seçimi hâlâ bu görünür kaynakların vade sırasındadır.
     if not active:
         return None
     # Bir adayın farklı kaynakları varsa en kısa açık vade, sonra masa sırası.
@@ -178,8 +185,9 @@ def _attach_vade_metadata(candidate: dict[str, Any], as_of: object,
         "son_kullanma_tarihi": chosen.get("son_kullanma_tarihi"),
         "gecmis_karne": chosen.get("karne") or "BİLMİYORUZ · ölçüm kaydı yok",
         "vade_kaynak": chosen.get("key") or chosen.get("raw"),
-        "vade_kayitlari": records,
+        "vade_kayitlari": active,
         "suresi_dolmus_kaynaklar": [record.get("key") for record in expired],
+        "susturulmus_kaynaklar": [record.get("key") for record in suppressed],
     })
     return candidate
 
@@ -217,8 +225,11 @@ def _card_story(candidate: dict[str, Any]) -> str:
     """Kart hikâyesini görünür, susturulmamış kaynaklardan kurar."""
     story = str(candidate.get("story") or "📊 Algoritmik Güçlü Kurulum")
     if not candidate.get("vade_kayitlari"):
-        return story
-    visible_story = _story_for_scans(_card_scan_types(candidate))
+        return ""
+    visible_sources = _card_scan_types(candidate)
+    if not visible_sources:
+        return ""
+    visible_story = _story_for_scans(visible_sources)
     return visible_story or "📊 Algoritmik Güçlü Kurulum"
 
 
