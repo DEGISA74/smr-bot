@@ -427,7 +427,13 @@ def alfa_etiketi(scan_type) -> str:
     if scan_type in DAHA_ZAYIF_SCANNERS: return _with_vade("⛔ DAHA ZAYIF")
     if scan_type in ZAYIF_SCANNERS:      return _with_vade("🔴 ZAYIF")
     if scan_type in GUCLU_SCANNERS:      return _with_vade("🟢 IKI REJIMDE POZITIF")
-    if scan_type in TEK_REJIM_SCANNERS:  return _with_vade("🟡 SADECE YUKSELEN TAPE'TE")
+    if scan_type in TEK_REJIM_SCANNERS:
+        # Tavan gibi taramalarda politika zaten tek-rejim hükmünü taşıyor.
+        # Eski liste uyarısını tekrar eklemek aynı bilgiyi iki sarı rozetle yazıyordu.
+        _policy = SCANNER_VADE_POLICY.get(scan_type) or {}
+        if _policy.get("durum") == "TEK_REJIM_BELIRSIZ" and _vade:
+            return _vade
+        return _with_vade("🟡 SADECE YUKSELEN TAPE'TE")
     return _vade
 
 

@@ -24,6 +24,7 @@ from typing import Any
 import pandas as pd
 
 import tarama_merkezi
+import evidence
 
 
 ROOT = Path(__file__).resolve().parent
@@ -32,6 +33,155 @@ SNAPSHOT_PATH = ROOT / "gelişmiş tarama" / "trajectory_forward_snapshots.csv"
 KARNE_PATH = ROOT / "gelişmiş tarama" / "trajectory_live_karne.json"
 FORWARD_START_DATE = "2026-08-07"
 CROWDING_WARNING_MIN = 5
+
+# Vade, karar sekmelerinin ikinci eksenidir; aday birden fazla kaynak taşısa da
+# yalnız tek masada görünür. Sıra kanıtlı kısa vade → sabır → katalogdur.
+_VADE_MASA_ORDER = ("KISA", "SABIR", "KATALOG")
+_VADE_MASA_LABELS = {
+    "KISA": "⏱ KISA MASASI · T+3 / T+5",
+    "SABIR": "⏳ SABIR MASASI · T+20",
+    "KATALOG": "📚 KATALOG · GÖZLEM",
+}
+_VADE_MASA_RANK = {name: index for index, name in enumerate(_VADE_MASA_ORDER)}
+
+
+def _canonical_scan_type(value: object) -> str:
+    """Ham kaynak adını evidence.py'deki politika anahtarına bağlar."""
+    import re
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text in evidence.SCANNER_VADE_POLICY:
+        return text
+    lowered = text.lower()
+    normalized = re.sub(r"[^a-z0-9]+", "_", lowered).strip("_")
+    aliases = {
+        "radar_1": "radar1", "radar1": "radar1",
+        "radar_2": "radar2", "radar2": "radar2",
+        "altin_setup": "altin_setup", "platin_setup": "platin_setup",
+        "tekli_altin": "tekli_altin", "guclu_donus": "guclu_donus",
+        "minervini": "minervini", "minervini_sepa": "minervini",
+        "tavan_top30": "tavan_top30", "tavan_alarm": "tavan_alarm",
+        "prelaunch_bos": "prelaunch_bos", "pre_launch_bos": "prelaunch_bos",
+        "liderlik_adayi": "liderlik_aday", "liderlik_aday": "liderlik_aday",
+    }
+    if normalized in aliases:
+        return aliases[normalized]
+    # Best alanı çoğunlukla "Erken Radar C6 (… )" biçiminde gelir.
+    scenario = re.search(r"\b([abcd]\d{1,2})\b", lowered)
+    if scenario and ("radar" in lowered or "erken" in lowered or normalized.startswith("er_")):
+        return f"er_{scenario.group(1).upper()}"
+    if "pre" in normalized and "launch" in normalized and "bos" in normalized:
+        return "prelaunch_bos"
+    if "liderlik" in normalized and "aday" in normalized:
+        return "liderlik_aday"
+    if normalized in {key.lower() for key in evidence.SCANNER_VADE_POLICY}:
+        return next(key for key in evidence.SCANNER_VADE_POLICY if key.lower() == normalized)
+    return text
+
+
+def _date_only(value: object) -> str | None:
+    """Tarih benzeri değeri ISO gününe çevirir; hatalı değerleri taşımaz."""
+    try:
+        parsed = pd.to_datetime(value, errors="coerce")
+        if pd.isna(parsed):
+            return None
+        return parsed.date().isoformat()
+    except Exception:
+        return None
+
+
+def _session_dates_from_payload(payload: object) -> list[object] | None:
+    """Fiyat kasasının seans listesi payload'a eklenmişse onu kullanır."""
+    if not isinstance(payload, dict):
+        return None
+    for key in ("session_dates", "price_session_dates", "bist_session_dates"):
+        values = payload.get(key)
+        if isinstance(values, (list, tuple, set)):
+            clean = [value for value in values if _date_only(value)]
+            if clean:
+                return clean
+    return None
+
+
+def _scanner_karne_text(scan_keys: list[str]) -> str:
+    """Kartta geçmiş ölçümü gösterir; ölçülmemişse bunu açıkça söyler."""
+    for key in scan_keys:
+        tier_row = evidence.SCANNER_TIER_MAP.get(key)
+        if tier_row:
+            _tier, hit, ret, _name, _note = tier_row
+            return f"T+20 hit %{float(hit):.1f} · ort. getiri %{float(ret):+.1f}"
+        alpha = evidence.alfa_deger(key)
+        if alpha is not None:
+            return f"T+20 alfa %{float(alpha):+.2f}"
+    return "BİLMİYORUZ · ölçüm kaydı yok"
+
+
+def _vade_records(scan_types: list[str], signal_date: object,
+                  session_dates: list[object] | None) -> list[dict[str, Any]]:
+    """Adayın kaynaklarını tek tek policy/expiry kayıtlarına çevirir."""
+    raw_types = [str(value).strip() for value in (scan_types or []) if str(value).strip()]
+    if not raw_types:
+        raw_types = ["KATALOG"]
+    records = []
+    for raw in raw_types:
+        key = _canonical_scan_type(raw)
+        metadata = evidence.scanner_vade_metadata(key, signal_date, session_dates=session_dates)
+        records.append({
+            "raw": raw,
+            "key": key,
+            "masa": metadata.get("masa", "KATALOG"),
+            "vade": metadata.get("vade"),
+            "vade_gun": metadata.get("vade_gun"),
+            "etiket": metadata.get("etiket") or "",
+            "son_kullanma_tarihi": metadata.get("son_kullanma_tarihi"),
+            "karne": _scanner_karne_text([key]),
+        })
+    return records
+
+
+def _attach_vade_metadata(candidate: dict[str, Any], as_of: object,
+                          session_dates: list[object] | None) -> dict[str, Any] | None:
+    """Vade eksenini karta bağlar; bütün kaynaklar kapanmışsa kartı düşürür."""
+    signal_date = candidate.get("event_start_date")
+    if str(signal_date or "").strip() in {"", "—", "nan", "None"}:
+        signal_date = None
+    records = _vade_records(candidate.get("scan_types") or [], signal_date, session_dates)
+    as_of_day = _date_only(as_of)
+    active = []
+    expired = []
+    for record in records:
+        expiry = record.get("son_kullanma_tarihi")
+        # Son gün dahildir; sonraki kapanışta sinyal kapanır.
+        if expiry and as_of_day and as_of_day > str(expiry)[:10]:
+            expired.append(record)
+        else:
+            active.append(record)
+    if not active:
+        return None
+    # Bir adayın farklı kaynakları varsa en kısa açık vade, sonra masa sırası.
+    chosen = min(
+        active,
+        key=lambda record: (
+            _VADE_MASA_RANK.get(record.get("masa", "KATALOG"), 99),
+            int(record.get("vade_gun") or 999),
+            str(record.get("key") or ""),
+        ),
+    )
+    candidate = dict(candidate)
+    candidate.update({
+        "vade_masasi": chosen.get("masa", "KATALOG"),
+        "vade": chosen.get("vade") or "T+20",
+        "vade_gun": chosen.get("vade_gun"),
+        "vade_etiketi": chosen.get("etiket") or "",
+        "son_kullanma_tarihi": chosen.get("son_kullanma_tarihi"),
+        "gecmis_karne": chosen.get("karne") or "BİLMİYORUZ · ölçüm kaydı yok",
+        "vade_kaynak": chosen.get("key") or chosen.get("raw"),
+        "vade_kayitlari": records,
+        "suresi_dolmus_kaynaklar": [record.get("key") for record in expired],
+    })
+    return candidate
 
 BUCKET_READY = "karar_hazir"
 BUCKET_GROWING = "guclenen"
@@ -354,12 +504,27 @@ def _sort_candidates(bucket: str, values: list[dict[str, Any]]) -> list[dict[str
     return sorted(values, key=lambda item: (item["story"], item["sym"]))
 
 
-def build_trajectory_desk(payload: object) -> dict[str, Any]:
-    """Kapanış trajectory çıktısı + Terazi uyarıları → ekran bölümleri."""
+def group_candidates_by_vade(candidates: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Karar sekmesi içindeki adayları tek vade masasına ayırır."""
+    groups = {masa: [] for masa in _VADE_MASA_ORDER}
+    for candidate in candidates or []:
+        masa = str(candidate.get("vade_masasi") or "KATALOG")
+        groups.setdefault(masa, []).append(candidate)
+    return {masa: groups.get(masa, []) for masa in _VADE_MASA_ORDER}
+
+
+def build_trajectory_desk(payload: object, session_dates: list[object] | None = None) -> dict[str, Any]:
+    """Kapanış trajectory çıktısı + Terazi uyarıları → ekran bölümleri.
+
+    ``session_dates`` fiyat kasasının gerçek işlem günleri olabilir. Verilmezse
+    evidence.py içindeki BIST takvimi kullanılır; takvim günü sayılmaz.
+    """
     out: dict[str, Any] = {bucket: [] for bucket in BUCKETS}
     out.update({"as_of": None, "source": "snapshot", "catalog_only": False, "counts": {}})
     rows, as_of = _load_snapshot_rows()
     payload_items = _payload_lookup(payload)
+    if session_dates is None:
+        session_dates = _session_dates_from_payload(payload)
     out["as_of"] = as_of
 
     if rows.empty:
@@ -448,8 +613,14 @@ def build_trajectory_desk(payload: object) -> dict[str, Any]:
         for candidate in _choose_one_per_symbol(candidates):
             out[candidate["bucket"]].append(candidate)
 
+    expiry_as_of = out.get("as_of") or (payload.get("as_of") if isinstance(payload, dict) else None)
     for bucket in BUCKETS:
-        out[bucket] = _sort_candidates(bucket, out[bucket])
+        active_candidates = []
+        for candidate in out[bucket]:
+            enriched = _attach_vade_metadata(candidate, expiry_as_of, session_dates)
+            if enriched is not None:
+                active_candidates.append(enriched)
+        out[bucket] = _sort_candidates(bucket, active_candidates)
     out["counts"] = {bucket: len(out[bucket]) for bucket in BUCKETS}
     return out
 
@@ -463,6 +634,20 @@ def _card_html(candidate: dict[str, Any], *, is_showcase: bool = False) -> str:
     source_text = html.escape(source_text)
     day = candidate["event_day"]
     current = "T0 (Yeni)" if day == 0 else f"T+{day} (Takipte)"
+    masa = str(candidate.get("vade_masasi") or "KATALOG")
+    masa_label = html.escape(_VADE_MASA_LABELS.get(masa, masa))
+    vade = html.escape(str(candidate.get("vade") or "T+20"))
+    expiry = candidate.get("son_kullanma_tarihi")
+    expiry_text = html.escape(str(expiry)[:10] if expiry else "hesaplanamadı")
+    karne = html.escape(str(candidate.get("gecmis_karne") or "BİLMİYORUZ · ölçüm kaydı yok"))
+    vade_html = (
+        f"<div style='font-size:0.68rem;color:#cbd5e1;margin:3px 0 2px 0;'>"
+        f"<b>Vade:</b> {masa_label} · {vade}</div>"
+        f"<div style='font-size:0.66rem;color:#94a3b8;margin:1px 0 2px 0;'>"
+        f"<b>Son kullanma:</b> {expiry_text}</div>"
+        f"<div style='font-size:0.66rem;color:#94a3b8;margin:1px 0 4px 0;'>"
+        f"<b>Geçmiş karne:</b> {karne}</div>"
+    )
     
     # Rozetler
     badges = []
@@ -502,6 +687,7 @@ def _card_html(candidate: dict[str, Any], *, is_showcase: bool = False) -> str:
             f"border:1px solid {meta['color']}55;border-radius:4px;padding:2px 7px;'>{meta['tag']} · {current}</span>"
             "</div>"
             f"<div style='font-size:0.80rem;font-weight:700;color:#7dd3fc;margin-bottom:6px;'>{story}</div>"
+            f"{vade_html}"
             f"<div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;'>{badge_html}</div>"
             f"{crowded}"
             "<div style='background:#090d1680;border-radius:6px;padding:5px 8px;font-size:0.68rem;color:#94a3b8;border-left:2px solid #38bdf880;margin-top:4px;'>"
@@ -519,6 +705,7 @@ def _card_html(candidate: dict[str, Any], *, is_showcase: bool = False) -> str:
         f"<span style='font-size:0.60rem;font-weight:700;color:{meta['color']};'>{current}</span>"
         "</div>"
         f"<div style='font-size:0.72rem;font-weight:700;color:#93c5fd;margin:2px 0 4px 0;'>{story}</div>"
+        f"{vade_html}"
         f"<div style='margin-bottom:4px;'>{badge_html}</div>"
         f"{crowded}"
         f"<div style='font-size:0.62rem;color:#64748b;margin-top:4px;border-top:1px solid #ffffff0a;padding-top:3px;'>"
@@ -646,7 +833,16 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         st.info(f"⏳ {message}")
         return
 
-    desk = build_trajectory_desk(payload)
+    _session_dates = _session_dates_from_payload(payload)
+    if _session_dates is None:
+        for _session_key in ("price_session_dates", "session_dates", "bist_session_dates"):
+            try:
+                _session_dates = _session_dates_from_payload({_session_key: session_getter(_session_key)})
+            except Exception:
+                _session_dates = None
+            if _session_dates:
+                break
+    desk = build_trajectory_desk(payload, session_dates=_session_dates)
     catalog = tarama_merkezi.build_catalog(session_getter)
     counts = desk["counts"]
     as_of = desk.get("as_of") or str(payload.get("as_of") or "")[:10]
@@ -665,10 +861,19 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     @st.dialog("🔍 Kurulum Detayı", width="large")
     def open_detail(candidate: dict[str, Any]) -> None:
         meta = BUCKET_META[candidate["bucket"]]
+        _masa = str(candidate.get("vade_masasi") or "KATALOG")
+        _vade = str(candidate.get("vade") or "T+20")
+        _expiry = str(candidate.get("son_kullanma_tarihi") or "hesaplanamadı")[:10]
+        _karne = str(candidate.get("gecmis_karne") or "BİLMİYORUZ · ölçüm kaydı yok")
         st.markdown(
             f"<div style='font-size:0.68rem;font-weight:800;color:{meta['color']};'>{meta['tag']} · DETAY</div>"
             f"<div style='font-size:1.25rem;font-weight:900;'>{html.escape(candidate['sym'])} — {html.escape(candidate['story'])}</div>",
             unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"**Vade / masa:** {html.escape(_masa)} · {html.escape(_vade)}  \n"
+            f"**Son kullanma:** {html.escape(_expiry)}  \n"
+            f"**Geçmiş karne:** {html.escape(_karne)}"
         )
         st.markdown("**Takip özeti**")
         st.markdown(
@@ -708,9 +913,21 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     for tab, bucket in bucket_tabs:
         with tab:
             _render_header(st, bucket, counts[bucket])
-            if desk[bucket]:
-                _render_grid(st, desk[bucket], open_detail, key_prefix=bucket)
-            else:
+            _groups = group_candidates_by_vade(desk[bucket])
+            for masa in _VADE_MASA_ORDER:
+                _values = _groups[masa]
+                if not _values:
+                    continue
+                st.markdown(
+                    f"<div style='font-size:0.78rem;font-weight:800;color:#cbd5e1;"
+                    f"margin:8px 0 3px 2px;'>{_VADE_MASA_LABELS[masa]} · {len(_values)}</div>",
+                    unsafe_allow_html=True,
+                )
+                _render_grid(
+                    st, _values, open_detail,
+                    key_prefix=f"{bucket}_{masa.lower()}",
+                )
+            if not desk[bucket]:
                 empty_text = {
                     BUCKET_READY: "Henüz T+3 karar kontrolünü geçen aday yok.",
                     BUCKET_GROWING: "Takipte güçlenen aday yok.",
