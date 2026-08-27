@@ -414,15 +414,21 @@ def is_ai_suppressed(scan_type) -> bool:
 
 def alfa_etiketi(scan_type) -> str:
     """Panelde/logda gosterilebilir kisa etiket. Bilinmiyorsa ''."""
-    # Vade reformu: ayni tarama yanlis masada oldugu icin zayif sayilmaz.
-    # Ozel etiketler eski tek-rejim/negatif rozetlerin onune gecmelidir.
-    if scan_type in SCANNER_VADE_POLICY:
-        return scanner_vade_etiketi(scan_type)
-    if scan_type in GUCLU_SCANNERS:      return "🟢 IKI REJIMDE POZITIF"
-    if scan_type in DAHA_ZAYIF_SCANNERS: return "⛔ DAHA ZAYIF"
-    if scan_type in ZAYIF_SCANNERS:      return "🔴 ZAYIF"
-    if scan_type in TEK_REJIM_SCANNERS:  return "🟡 SADECE YUKSELEN TAPE'TE"
-    return ""
+    # Zayiflik uyarisi vade etiketinden daha onceliklidir. Ayni tarama
+    # ileride iki listeye de girerse uyarinin kaybolmamasi icin iki bilgi
+    # birlikte gosterilir.
+    _vade = scanner_vade_etiketi(scan_type) if scan_type in SCANNER_VADE_POLICY else ""
+
+    def _with_vade(_uyari):
+        if _vade and _uyari:
+            return f"{_uyari} · {_vade}"
+        return _uyari or _vade
+
+    if scan_type in DAHA_ZAYIF_SCANNERS: return _with_vade("⛔ DAHA ZAYIF")
+    if scan_type in ZAYIF_SCANNERS:      return _with_vade("🔴 ZAYIF")
+    if scan_type in GUCLU_SCANNERS:      return _with_vade("🟢 IKI REJIMDE POZITIF")
+    if scan_type in TEK_REJIM_SCANNERS:  return _with_vade("🟡 SADECE YUKSELEN TAPE'TE")
+    return _vade
 
 
 ER_ELIT_SCORE_MIN = 45   # Güncel vitrin gösterim eşiği; puanın kendisi backtest özetinden gelir.

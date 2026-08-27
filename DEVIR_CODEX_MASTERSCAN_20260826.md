@@ -332,6 +332,9 @@ Kabul kapısı:
    çıkmış olur. Kaldırma sırasında bu altısının gerçekten görünmez olduğunu
    DOĞRULA; olmuyorsa yeni ekrana çizim-anı süzgeci ekle (`is_ai_suppressed`).
 9. **İş 7** — D2: vade masaları, Tarama Merkezi'nin sekmelerinin içine
+   → Ekran kartları son kullanma tarihini `evidence.py` içindeki
+   `SCANNER_VADE_POLICY` tek kaynağından okumalı; politika yalnız tanımlı
+   kalmamalı, her kartın vade/masa/etiket alanını ve kapanma tarihini beslemeli.
 
 ---
 
