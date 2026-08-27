@@ -30,15 +30,19 @@ def _disp_name(t):
 # 15 Tem 2026 — TEK uyarı kaldı. Öncesi 3 kez uyarıyorduk: soldaki gri
 # DISCLAIMER_PANEL + bu rozet + en alttaki minik satır. Üçü görselin ~%10'unu
 # yiyordu, ikisi silindi; kazanılan yer içeriğe gitti.
-# Sağ kolonun tam genişliğini kaplar (yanında boşluk kalmaz).
-NOTICE_BADGE = (
-    f"<div style='background:{CARD2};border:1px solid {GOLD}44;border-radius:10px;"
-    f"padding:10px 13px;flex:1;display:flex;align-items:center;'>"
-    f"<span style='font-size:17px;line-height:1.55;color:{MUT};letter-spacing:0.2px;'>"
-    f"<b style='color:{GOLD};'>DİKKAT.</b> BU GÖRSELİN HER HAKKI MAHFUZDUR. #SMARTMONEYRADAR EĞİTİM AMAÇLIDIR, YATIRIM TAVSİYESİ DEĞİLDİR. "
-    f"YAPAY ZEKA ÜRETİMİ DEĞİLDİR. 52.000 SATIRLIK ALGORİTMAMIN ÇIKTISIDIR. "
-    f"<b style='color:{INFO};'>#SMARTMONEYRADAR</b></span></div>"
-)
+# 27 Ağu 2026 — rozet SAYFANIN DİBİNDEN SOL KOLONUN DİBİNE taşındı: metin aynı,
+# yalnız punto dar kolona göre küçüldü. Fonksiyona çevrildi ki punto çağrıdan gelsin.
+def _notice_badge(fs=17):
+    return (
+        f"<div style='background:{CARD2};border:1px solid {GOLD}44;border-radius:10px;"
+        f"padding:10px 13px;flex:1;display:flex;align-items:center;'>"
+        f"<span style='font-size:{fs}px;line-height:1.5;color:{MUT};letter-spacing:0.2px;'>"
+        f"<b style='color:{GOLD};'>DİKKAT.</b> BU GÖRSELİN HER HAKKI MAHFUZDUR. #SMARTMONEYRADAR EĞİTİM AMAÇLIDIR, YATIRIM TAVSİYESİ DEĞİLDİR. "
+        f"YAPAY ZEKA ÜRETİMİ DEĞİLDİR. 52.000 SATIRLIK ALGORİTMAMIN ÇIKTISIDIR. "
+        f"<b style='color:{INFO};'>#SMARTMONEYRADAR</b></span></div>"
+    )
+
+NOTICE_BADGE = _notice_badge()   # geriye uyum (dışarıdan import edenler için)
 
 
 # 20 Tem 2026 — KALEİDO İZOLE RENDER. Kök sorun: kaleido 1.3 + Chrome 150 + Windows'ta uzun süren
@@ -196,11 +200,16 @@ def _fig_b64(fig):
     return base64.b64encode(_render_figs_batch({'f': fig}, 2)['f']).decode()
 
 
+# 27 Ağu 2026 — ana grafik yüksekliği (eski 300). Sol kolon daraldı + bu büyüdü →
+# "asıl önemli grafik" olan mum grafiği görselin merkezine oturdu (kullanıcı).
+_CHART_H = 470
+
+
 def _figs_b64_3lu(ticker):
     """İnfografiğin 3 figürünü (ana grafik + ivme + momentum) TEK Chrome açılışıyla render eder.
     Döner: (chart_b64, ivme_b64, harsi_block_html). Eski yol 3 ayrı render = 3 kat yavaş + kırılgandı."""
     _figs = _render_figs_batch({
-        'chart': cc.build_fig(ticker),
+        'chart': cc.build_fig(ticker, height=_CHART_H),
         'ivme':  cc.build_ivme_fig(ticker),
         'harsi': cc.build_harsi_fig(ticker),
     })
@@ -213,7 +222,7 @@ def _figs_b64_3lu(ticker):
 
 def _market_stats(ticker, df):
     """RS Gücü (vs XU100) + Beta + RVOL — XU100 parquet ile."""
-    out = dict(rs=None, beta=None, rvol=None)
+    out = dict(rs=None, beta=None, rvol=None, rs_hist=None)
     try:
         v = df['Volume']; m = float(v.tail(20).mean())
         out['rvol'] = float(v.iloc[-1] / m) if m > 0 else None
@@ -231,6 +240,15 @@ def _market_stats(ticker, df):
                 _rsv = _rsr(sc.values, ic.values, window=10)
                 if _rsv is not None:
                     out['rs'] = _rsv
+                # 27 Ağu 2026 — RS üst şeritten SOL KOLONA indi (20g mini bar şeridi).
+                # Seri aynı TEK KAYNAK formülle üretilir: her gün için o güne kadarki
+                # 10 günlük pencere → tek değer ile şerit ASLA ayrışamaz (son bar = out['rs']).
+                _sv = sc.values; _iv = ic.values
+                if len(_sv) >= 30:
+                    _hist = [_rsr(_sv[:len(_sv) - _k + 1], _iv[:len(_iv) - _k + 1], window=10)
+                             for _k in range(20, 0, -1)]
+                    if any(x is not None for x in _hist):
+                        out['rs_hist'] = _hist
             if len(common) >= 60:
                 sr = sc.pct_change().dropna(); ir = ic.pct_change().dropna()
                 k = min(len(sr), len(ir), 252)
@@ -258,18 +276,6 @@ def _statbox(d, ms):
         return (f"<div style='text-align:center;padding:2px 14px;{br}'>"
                 f"<div style='font-size:10px;color:{MUT};letter-spacing:0.3px;'>{lbl}</div>"
                 f"<div style='font-size:16px;font-weight:800;color:{clr};'>{val}</div></div>")
-    rs = ms['rs']; rs_v = f"{rs:.2f}×" if rs else "—"; rs_c = UP if (rs or 1) >= 1 else DN
-    mom5 = d.get('mom_5'); mom20 = d.get('mom_20')
-    if mom5 is not None and mom20 is not None:
-        _m5a = '▲' if mom5 >= 0 else '▼'
-        _m20a = '▲' if mom20 >= 0 else '▼'
-        mom_v = f"{_m5a}%{abs(mom5):.1f} · {_m20a}%{abs(mom20):.1f}"
-        mom_c = UP if mom5 >= 0 and mom20 >= 0 else (DN if mom5 < 0 and mom20 < 0 else GOLD)
-        mom_lbl = 'MOMENTUM <span style="font-size:8px;opacity:0.65;">5g · 20g</span>'
-    else:
-        mom = d.get('mom'); mom_v = f"%{abs(mom):.1f}" if mom is not None else "—"
-        mom_c = UP if (mom or 0) >= 0 else DN
-        mom_lbl = 'MOMENTUM'
     sa = ms.get('stp_above'); sd = ms.get('stp_days'); sx = ms.get('stp_crossed')
     if sa is None:
         stp_v = '—'; stp_c = TXT
@@ -277,9 +283,10 @@ def _statbox(d, ms):
         ar = '↑' if sa else '↓'; stp_c = UP if sa else DN
         stp_v = f"{ar} kesti" if sx else f"{ar} {sd}g"
     # 29 Tem 2026 — sadeleştirme ("nokta atışı"): RSI + BETA hücreleri KALDIRILDI.
-    # HACİM yalnızca ortalamadan ±%20+ SAPARSA gösterilir (o değilse gürültü) →
-    # sadece "1.4×" (yorum yok). Sapma yoksa hücre hiç basılmaz.
-    items = [('RS GÜCÜ <span style="font-size:8px;opacity:0.65;">10g</span>', rs_v, rs_c), (mom_lbl, mom_v, mom_c)]
+    # 27 Ağu 2026 — üst şerit TEK SATIR oldu (isim · fiyat · vade · rakam · özet):
+    # RS GÜCÜ sol kolona 20g mini şerit olarak indi (_rs_mini_bars), MOMENTUM kaldırıldı.
+    # Üst şeritte yalnız HACİM + STP kalır.
+    items = []
     _rv = ms.get('rvol')
     if _rv is None:
         items.append(('HACİM', '—', TXT))
@@ -292,8 +299,12 @@ def _statbox(d, ms):
             f"background:{CARD2};padding:4px 2px;'>{cells}</div>")
 
 
-def _decision_box(df, d, ms):
-    """Görseldeki verilerden kısa-vade karar özeti üretir; AL/SAT emri değildir."""
+def _decision_box(df, d, ms, compact=False):
+    """Görseldeki verilerden kısa-vade karar özeti üretir; AL/SAT emri değildir.
+
+    compact=True (27 Ağu 2026): kutu ÜST ŞERİDİN son hücresi olarak basılır
+    (eskiden sağ kolonun tepesinde tam genişlikteydi) → alt boşluk yok, kolonun
+    boyuna uzar, punto bir tık küçük."""
     try:
         from smr_core import _genel_ozet_verdict_sc
         _v = _genel_ozet_verdict_sc(df, detail=True) or {}
@@ -360,12 +371,14 @@ def _decision_box(df, d, ms):
                   ' Seans alıcı tarafında kapandı.' if _close == 'Alıcı tarafında' else '')
     _summary = (f"{_headline} {_buyer_txt}; {_flow_txt} ve {_volume_txt.lower()}."
                 f"{_close_txt} {_risk}")
-    _body = (f"<div style='font-size:11px;line-height:1.45;color:{TXT};"
+    _fs = '10.5px' if compact else '11px'
+    _body = (f"<div style='font-size:{_fs};line-height:1.45;color:{TXT};"
              f"max-width:100%;'>{_summary}</div>")
-    return (f"<div style='background:{CARD};border:1px solid {INFO}66;border-radius:10px;"
-            f"padding:9px 11px;margin-bottom:10px;width:100%;box-sizing:border-box;'>"
-            f"<div style='font-size:12px;font-weight:800;color:{INFO};margin-bottom:5px;'>"
-            f"SMART MONEY RADAR · ALGORİTMİK ÖZET</div>"
+    _outer = ("padding:8px 11px;height:100%;box-sizing:border-box;" if compact
+              else "padding:9px 11px;margin-bottom:10px;width:100%;box-sizing:border-box;")
+    return (f"<div style='background:{CARD};border:1px solid {INFO}66;border-radius:10px;{_outer}'>"
+            f"<div style='font-size:11px;font-weight:800;color:{INFO};margin-bottom:4px;"
+            f"letter-spacing:0.02em;'>SMART MONEY RADAR · ALGORİTMİK ÖZET</div>"
             f"{_body}</div>")
 
 
@@ -384,7 +397,45 @@ def _card_warn(title, body):
             f"<div style='font-size:15px;line-height:1.5;color:{TXT};'>{body}</div></div>")
 
 
-def _signal_box(df, d):
+def _rs_mini_bars(hist):
+    """RS GÜCÜ · 20g mini bar şeridi (27 Ağu 2026 — üst şeritten sol kolona indi).
+
+    Taban kesikli çizgi = 1.00× (endeksle başa baş): üstü endeksi geçiyor, altı geride.
+    Son gün barı diğerlerinden %30 GENİŞ + tam opak → "bugün ne oldu" ilk bakışta okunur.
+    Seri _market_stats['rs_hist']'ten gelir (aynı tek-kaynak RS formülü)."""
+    LBL = '#94a3b8'
+    try:
+        vals = [float(x) for x in (hist or []) if x is not None and x == x]
+        if len(vals) < 5:
+            return ""
+        n = len(vals); W, H = 220, 60; mid = H / 2
+        lim = max(1e-9, max(abs(v - 1.0) for v in vals) * 1.15)
+        bw = W / n
+        p = [f"<line x1='0' y1='{mid}' x2='{W}' y2='{mid}' stroke='#475569' "
+             f"stroke-width='1' stroke-dasharray='3,3'/>"]
+        for i, v in enumerate(vals):
+            dv = v - 1.0
+            bh = max(abs(dv) / lim * (mid - 3), 0.8)
+            clr = UP if dv >= 0 else DN
+            last = (i == n - 1)
+            bxw = bw * min(0.7 * 1.30, 0.96) if last else bw * 0.7   # son gün %30 geniş
+            bx = i * bw + (bw - bxw) / 2
+            by = mid - bh if dv >= 0 else mid
+            p.append(f"<rect x='{bx:.1f}' y='{by:.1f}' width='{bxw:.1f}' height='{bh:.1f}' "
+                     f"fill='{clr}' opacity='{'1' if last else '0.72'}' rx='1'/>")
+        _lv = vals[-1]; _lc = UP if _lv >= 1 else DN
+        return (f"<div style='flex:1;min-width:0;'>"
+                f"<div style='display:flex;justify-content:space-between;font-size:9px;"
+                f"color:{LBL};margin-bottom:1px;gap:4px;'>"
+                f"<span style='white-space:nowrap;'>RS gücü · 20g</span>"
+                f"<span style='color:{_lc};font-weight:800;white-space:nowrap;'>bugün: {_lv:.2f}×</span></div>"
+                f"<svg width='100%' height='{H}' viewBox='0 0 {W} {H}' preserveAspectRatio='none' "
+                f"style='display:block;'>" + "".join(p) + "</svg></div>")
+    except Exception:
+        return ""
+
+
+def _signal_box(df, d, ms=None):
     """GENEL ÖZET üst doğrulama bandı — 13 Tem 2026 V10 senkronu.
     ESKİ standalone 4-oy kopyası SİLİNDİ (backtest'te ters çalışıyordu, app ile
     çelişiyordu) → TEK KAYNAK: smr_core._genel_ozet_verdict_sc (app pack ile
@@ -418,15 +469,7 @@ def _signal_box(df, d):
                   f"📊 Bu dağılımın geçmiş karnesi{_karne.replace(' · geçmiş karnesi', '')}</div>"
                   if _karne else "")
 
-    def _cell(lbl, sig):
-        if sig > 0:   ar, clr = "▲", UP
-        elif sig < 0: ar, clr = "▼", DN
-        else:         ar, clr = "→", NEU
-        return (f"<div style='padding:3px 8px;background:{clr}1a;border:1px solid {clr}4d;"
-                f"border-radius:5px;display:flex;align-items:center;justify-content:space-between;"
-                f"gap:8px;line-height:1.1;min-width:74px;'>"
-                f"<span style='font-size:9px;color:{LBL};font-weight:700;letter-spacing:0.04em;'>{lbl}</span>"
-                f"<span style='font-size:13px;color:{clr};font-weight:900;'>{ar}</span></div>")
+    # 27 Ağu 2026 — _cell() (YAPI/RSI çipi) SİLİNDİ: tek tüketicisi DESTEKLEYİCİ TEKNİK bloğuydu.
     # ── 3 BAĞIMSIZ AİLE (7 Ağu 2026 — kanıt aile reformu) ─────────────
     # A fiyat-hacim (hacim/obv/cmf/mfi) · B efor-sonuç (UDVR+Force Index) ·
     # C gerçek akış (yabancı net alım). Hüküm = çoğunluk yönü (beraberlik→nötr);
@@ -519,51 +562,12 @@ def _signal_box(df, d):
         f"<div style='font-size:9.5px;color:{MUT};margin-top:1px;'>{alt}</div></div>"
         for fd, trm, alt, vt in _fam)
 
-    # RSI + YAPI — aile değil, mevcut çip görselleriyle + açıklama (destekleyici teknik)
-    _yapi_txt = ("Fiyat yapısı yukarı eğimli" if sig_yapi > 0 else
-                 "Fiyat yapısı aşağı eğimli" if sig_yapi < 0 else "Yapı yatay/kararsız")
-    _rsi_txt = ("Momentum güçlü (güç devamı)" if sig_rsi > 0 else
-                "Dip görüntüsü (tuzak riski)" if sig_rsi < 0 else "Momentum nötr (kısa + orta)")
-    support_html = (
-        f"<div style='font-size:8.5px;color:{NEU};letter-spacing:0.05em;margin-bottom:4px;'>"
-        f"DESTEKLEYİCİ TEKNİK · aile değil</div>"
-        f"<div style='display:flex;flex-direction:column;gap:4px;'>"
-        f"<div style='display:flex;align-items:center;gap:7px;'>{_cell('YAPI', sig_yapi)}"
-        f"<span style='font-size:9.5px;color:{MUT};'>{_yapi_txt}</span></div>"
-        f"<div style='display:flex;align-items:center;gap:7px;'>{_cell('RSI ×2', sig_rsi)}"
-        f"<span style='font-size:9.5px;color:{MUT};'>{_rsi_txt}</span></div></div>")
+    # 27 Ağu 2026 — "DESTEKLEYİCİ TEKNİK" (YAPI + RSI×2 çipleri) KALDIRILDI.
+    # Yerine üst şeritten inen RS GÜCÜ 20g mini şeridi geçti (kullanıcı kararı).
+    support_html = _rs_mini_bars((ms or {}).get('rs_hist'))
 
-    # ── 5 mumluk mini şerit (son 5 OHLC) ──────────────────────────────
-    mini = ""
-    try:
-        _d5f = df.tail(5)
-        hs = _d5f['High'].astype(float).values; ls = _d5f['Low'].astype(float).values
-        oo = _d5f['Open'].astype(float).values; cc = _d5f['Close'].astype(float).values
-        pmax = float(hs.max()); rng = max(pmax - float(ls.min()), 1e-9)
-        W, H = 110, 80; cw = W / 5; bw = cw * 0.42; parts = []
-        for i in range(5):
-            o, h, l, c = float(oo[i]), float(hs[i]), float(ls[i]), float(cc[i])
-            xc = i * cw + cw / 2
-            yh = (pmax - h) / rng * H; yl = (pmax - l) / rng * H
-            yo = (pmax - o) / rng * H; yc = (pmax - c) / rng * H
-            _cc = UP if c >= o else DN
-            parts.append(f"<line x1='{xc:.1f}' y1='{yh:.1f}' x2='{xc:.1f}' y2='{yl:.1f}' stroke='{_cc}' stroke-width='1.4'/>")
-            bt = min(yo, yc); bh = max(abs(yc - yo), 1.5)
-            parts.append(f"<rect x='{xc - bw/2:.1f}' y='{bt:.1f}' width='{bw:.1f}' height='{bh:.1f}' fill='{_cc}'/>")
-        # 13 Tem 2026 — tazelik etiketi (app paneli ile aynı): son mum tarihi
-        _lc = ""
-        try:
-            _ld = _d5f.index[-1]
-            _lc = (f"<div style='font-size:9px;color:{NEU};text-align:center;"
-                   f"margin-top:1px;'>son mum: {_ld.day:02d}.{_ld.month:02d}</div>")
-        except Exception:
-            pass
-        mini = (f"<div style='display:flex;flex-direction:column;align-items:center;'>"
-                f"<div style='font-size:9px;color:{NEU};margin-bottom:1px;letter-spacing:0.03em;'>son 5 mum</div>"
-                f"<svg width='100%' height='{H}' viewBox='0 0 {W} {H}' preserveAspectRatio='xMidYMid meet' "
-                f"style='max-width:110px;'>" + "".join(parts) + "</svg>" + _lc + "</div>")
-    except Exception:
-        pass
+    # 27 Ağu 2026 — "son 5 mum" mini şeridi SİLİNDİ (kullanıcı): sol kolon daraldı,
+    # yeri iki bar şeridine ve dipteki uyarı rozetine gitti.
 
     # ── AKILLI PARA İZLERİ — 3 sparkline (20 Tem 2026: çizgi→BAR + 3. sinyal CMF) ──
     # Sıfır-merkezli günlük histogram (GENEL ÖZET diliyle uyumlu; MACD-histogram mantığı).
@@ -573,7 +577,9 @@ def _signal_box(df, d):
         try:
             if not vals or len(vals) < 5:
                 return ""
-            n = len(vals); w, h = 220, 40; mid = h / 2
+            # 27 Ağu 2026 — tek şerit kaldı (Kapanış gücü) → yüksekliği %50 arttı (40→60):
+            # barların gücü iyice belli olsun (kullanıcı).
+            n = len(vals); w, h = 220, 60; mid = h / 2
             lim = max(1e-9, max(abs(x) for x in vals) * 1.1)
             bw = w / n
             p = [f"<line x1='0' y1='{mid}' x2='{w}' y2='{mid}' stroke='#475569' "
@@ -593,28 +599,19 @@ def _signal_box(df, d):
                     f"color:{LBL};margin-bottom:1px;gap:4px;'><span style='white-space:nowrap;overflow:hidden;"
                     f"text-overflow:ellipsis;'>{title} · 20g</span>"
                     f"<span style='color:{lc2};font-weight:800;white-space:nowrap;'>bugün: {son}</span></div>"
-                    f"<svg width='100%' height='40' viewBox='0 0 220 40' preserveAspectRatio='none' "
+                    f"<svg width='100%' height='{h}' viewBox='0 0 {w} {h}' preserveAspectRatio='none' "
                     f"style='display:block;'>" + "".join(p) + "</svg></div>")
         except Exception:
             return ""
 
     gidisat = ""
     try:
-        from indicators import compute_flow_momentum
-        _mf, _ = compute_flow_momentum(df)
-        _mvals = []
-        if _mf is not None:
-            _mfl = [float(x) for x in _mf.tail(21) if x == x]
-            _mvals = [_mfl[i] - _mfl[i - 1] for i in range(1, len(_mfl))]
-        _ovals = _cvals = []
+        _cvals = []
         if 'Volume' in df.columns and {'High', 'Low', 'Close'}.issubset(df.columns):
             _vv = df['Volume'].fillna(0).astype(float)
             _cc2 = df['Close'].astype(float)
             _oa = float(_vv.rolling(20).mean().iloc[-1])
             if _oa > 0:
-                # OBV deltası (close yönü × hacim)
-                _osm = (np.sign(_cc2.diff()).fillna(0) * _vv).cumsum().ewm(span=5, adjust=False).mean()
-                _ovals = [float(x) / _oa for x in _osm.diff().tail(20) if x == x]
                 # CMF günlük (close'un gün-içi range konumu × hacim) — hacme normalize, sıfır-merkezli
                 _hl = (df['High'].astype(float) - df['Low'].astype(float))
                 _mfm = np.where(_hl > 0,
@@ -622,15 +619,14 @@ def _signal_box(df, d):
                                 0.0)
                 _mfv = _vv * _mfm   # Series × np-array = Series (pozisyonel, _vv indeksinde); pd import gerekmez
                 _cvals = [float(x) / _oa for x in _mfv.tail(20) if x == x]
-        _l1 = _delta_bars(_mvals, "#5B84C4", "#ef4444", "Momentum ivmesi", "güçleniyor", "zayıflıyor")
-        _l2 = _delta_bars(_ovals, "#4ade80", "#f59e0b", "OBV gidişatı", "birikim", "dağıtım")
+        # 27 Ağu 2026 — "Momentum ivmesi" + "OBV gidişatı" şeritleri KALDIRILDI (kullanıcı):
+        # sol kolonda yalnız Kapanış gücü kalır, buna karşılık barlar %50 daha yüksek.
         # "Kapanış gücü" (para akışı DEĞİL): metin zaten "para akışı" = 20g CMF toplamını kullanıyor;
         # bu sparkline BUGÜNKÜ günün range-içi kapanışı → aynı isim iki yönde çelişki görünüyordu.
         _l3 = _delta_bars(_cvals, "#22d3ee", "#fb7185", "Kapanış gücü", "alıcı baskın", "satıcı baskın")
-        if _l1 or _l2 or _l3:
-            # ALT ALTA (dar sol kolonda yan yana 3'ü başlığı kırpıyordu) → her biri tam genişlik
+        if _l3:
             gidisat = (f"<div style='display:flex;flex-direction:column;gap:6px;margin-top:8px;'>"
-                       + _l1 + _l2 + _l3 + "</div>")
+                       + _l3 + "</div>")
     except Exception:
         gidisat = ""
 
@@ -653,7 +649,9 @@ def _signal_box(df, d):
                          f"<span style='font-size:9px;color:{LBL};font-weight:700;'>{lbl}</span>"
                          f"<span style='display:inline-block;width:9px;height:9px;border-radius:50%;"
                          f"background:{tc};box-shadow:0 0 4px {tc}99;'></span></div>")
-        tf = ("<div style='display:flex;flex-direction:column;gap:3px;flex:0 0 auto;justify-content:center;'>"
+        # 27 Ağu 2026 — 5 mum silinince ışıklar tek başına kaldı: DİKEY→YATAY şerit
+        # (dar kolonda dikey sıra boşuna 3 satır yer yiyordu).
+        tf = ("<div style='display:flex;flex-direction:row;gap:4px;justify-content:center;'>"
               + "".join(cells) + "</div>")
     except Exception:
         pass
@@ -674,9 +672,10 @@ def _signal_box(df, d):
             f"{_verdict_html}"
             f"{karne_html}"
             f"{family_cards}"
-            f"<div style='display:flex;gap:8px;margin-top:6px;align-items:flex-start;'>"
-            f"<div style='flex:1;'>{support_html}</div>"
-            f"<div style='display:flex;justify-content:center;align-items:flex-start;'>{mini}</div>{tf}</div>"
+            f"<div style='margin-top:6px;'>{tf}</div>"
+            # 27 Ağu 2026 — RS şeridi TAM GENİŞLİK: dar hücrede 20 bar okunmuyordu,
+            # alttaki "Kapanış gücü" ile aynı ölçüde olsun (iki şerit tek dil).
+            f"<div style='margin-top:8px;display:flex;'>{support_html}</div>"
             f"{gidisat}"
             f"</div>")
 
@@ -721,31 +720,41 @@ def build_html(ticker):
     stats = _statbox(d, _ms)
     cards = "".join(_card(_HDR.get(k, k), g[k]) for k in _CARD_ORDER if k in g)
     if 'UYARI' in g: cards += _card_warn('⚠ UYARI', g['UYARI'])
-    decision = _decision_box(df, d, _ms)
+    decision = _decision_box(df, d, _ms, compact=True)
     levels = ''
-    sbox = _signal_box(df, d)
+    sbox = _signal_box(df, d, _ms)
+    notice = _notice_badge(fs=12)   # dar sol kolon → punto 17'den 12'ye
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}}
 body{{background:{BG};}}
 img{{display:block;border-radius:8px;}}
 </style></head><body>
 <div id="infografik" style="width:980px;background:{BG};padding:16px;color:{TXT};">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
-    <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
-      <div><div style="font-size:24px;font-weight:800;">{tk} · Teknik Görünüm</div>
-      <div style="font-size:14px;color:{MUT};letter-spacing:0.5px;">SMART MONEY RADAR · ALGORİTMİK ÖZET</div></div>
+  <!-- 27 Ağu 2026 — ÜST ŞERİT TEK SATIR: isim · fiyat · rakamlar · algoritmik özet.
+       Özet buraya çıktı (eskiden sağ kolonun tepesindeydi) → sağ kolon doğrudan
+       grafikle başlar, görsel bir grafik boyu kısalır. Eski mavi hook barı da
+       kaldırıldı (ekran sürümünde 23 Tem'de kalkmıştı; ikisi ayrışmasın). -->
+  <div style="display:flex;align-items:stretch;gap:10px;margin-bottom:12px;">
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:23px;font-weight:800;line-height:1.05;white-space:nowrap;">{tk}</div>
+      <div style="font-size:11px;color:{MUT};letter-spacing:0.06em;white-space:nowrap;">TEKNİK GÖRÜNÜM</div>
     </div>
-    <div style="flex:0 0 auto;">{stats}</div>
-    <div style="background:#0c2238;border:1px solid {LINE};border-radius:10px;padding:11px 22px;text-align:right;display:flex;flex-direction:column;justify-content:center;">
-      <div style="font-size:34px;font-weight:800;line-height:1.04;">{d['last']:.2f}</div>
-      <div style="font-size:20px;font-weight:700;color:{chg_clr};margin-top:2px;">{arrow} %{abs(d['chg']):.2f}</div>
+    <div style="flex:0 0 auto;background:#0c2238;border:1px solid {LINE};border-radius:10px;padding:8px 16px;text-align:right;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:29px;font-weight:800;line-height:1.04;white-space:nowrap;">{d['last']:.2f}</div>
+      <div style="font-size:16px;font-weight:700;color:{chg_clr};white-space:nowrap;">{arrow} %{abs(d['chg']):.2f}</div>
     </div>
+    <div style="flex:0 0 auto;display:flex;align-items:center;">{stats}</div>
+    <div style="flex:1;min-width:0;">{decision}</div>
   </div>
-  <div style="background:{INFO}1a;border:1px solid {INFO}55;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-weight:700;color:{INFO};font-size:14px;">{g['hook']}</div>
-  <div style="display:grid;grid-template-columns:330px 1fr;gap:12px;align-items:stretch;">
-    <div>{compass}<div style="height:8px;"></div>{sbox}</div>
-    <div style="display:flex;flex-direction:column;">
-      {decision}
+  <!-- 27 Ağu 2026: sol kolon 330→248 daraldı, kazanılan yer SAĞDAKİ GRAFİKLERE gitti.
+       Uyarı rozeti sayfanın dibinden sol kolonun dibine indi (margin-top:auto). -->
+  <div style="display:grid;grid-template-columns:248px 1fr;gap:12px;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;">{compass}<div style="height:8px;"></div>{sbox}
+      <div style="margin-top:auto;padding-top:8px;display:flex;">{notice}</div>
+    </div>
+    <!-- 27 Ağu 2026: ozet ust serite cikinca sag kolon kisaldi ve dipte delik kaldi.
+         space-between → artan bosluk 3 grafik arasina esit dagilir (delik yerine nefes). -->
+    <div style="display:flex;flex-direction:column;justify-content:space-between;">
       <div style="background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Teknik yapı · mumlar + SMA50/EMA144/SMA100/SMA200 + POC + VWAP</div>
         <img src="data:image/png;base64,{chart}" style="width:100%;"/>
@@ -758,7 +767,7 @@ img{{display:block;border-radius:8px;}}
       </div>
     </div>
   </div>
-  <div style="margin-top:12px;display:flex;">{NOTICE_BADGE}</div>
+
 </div>
 </body></html>"""
 
@@ -787,9 +796,10 @@ def build_widget_html(ticker):
     stats = _statbox(d, _ms)
     cards = "".join(_card(_HDR.get(k, k), g[k]) for k in _CARD_ORDER if k in g)
     if 'UYARI' in g: cards += _card_warn('⚠ UYARI', g['UYARI'])
-    decision = _decision_box(df, d, _ms)
+    decision = _decision_box(df, d, _ms, compact=True)
     levels = ''
-    sbox = _signal_box(df, d)
+    sbox = _signal_box(df, d, _ms)
+    notice = _notice_badge(fs=12)   # dar sol kolon → punto 17'den 12'ye
     # 23 Tem 2026 — ANA KART parçaları buraya ENJEKTE edilir (app.py, ana thread).
     # Bu fonksiyon arka planda/terazisiz koştuğu için burada YALNIZ yer tutucu var;
     # terazi verisiyle doldurma _render_infografik_inapp'te yapılır (tek kaynak).
@@ -797,24 +807,32 @@ def build_widget_html(ticker):
     #   <!--EKRANV2_GECERSIZLIK--> → fiyatın yanı (ince geçersizlik şeridi)
     #   <!--EKRANV2_OYLAR-->      → başlık altı (aşağı/yukarı diyenler + ne değişti)
     return f"""<div style="background:{BG};padding:16px;color:{TXT};font-family:'Segoe UI',Arial,sans-serif;border-radius:12px;">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
-    <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0;">
-      <div><div style="font-size:24px;font-weight:800;">{tk} · Teknik Görünüm</div>
-      <div style="font-size:14px;color:{MUT};">SMART MONEY RADAR · ALGORİTMİK ÖZET</div></div>
+  <!-- 27 Ağu 2026 — ÜST ŞERİT TEK SATIR (PNG sürümüyle AYNI iskelet):
+       isim · fiyat · vade kutusu · rakamlar · algoritmik özet. -->
+  <div style="display:flex;align-items:stretch;gap:10px;margin-bottom:12px;">
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:23px;font-weight:800;line-height:1.05;white-space:nowrap;">{tk}</div>
+      <div style="font-size:11px;color:{MUT};letter-spacing:0.06em;white-space:nowrap;">TEKNİK GÖRÜNÜM</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;"><!--EKRANV2_YON--><!--EKRANV2_GECERSIZLIK--></div>
-    <div style="flex:0 0 auto;">{stats}</div>
-    <div style="background:#0c2238;border:1px solid {LINE};border-radius:10px;padding:11px 22px;text-align:right;display:flex;flex-direction:column;justify-content:center;">
-      <div style="font-size:34px;font-weight:800;line-height:1.04;">{d['last']:.2f}</div>
-      <div style="font-size:20px;font-weight:700;color:{chg_clr};margin-top:2px;">{arrow} %{abs(d['chg']):.2f}</div>
+    <div style="flex:0 0 auto;background:#0c2238;border:1px solid {LINE};border-radius:10px;padding:8px 16px;text-align:right;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:29px;font-weight:800;line-height:1.04;white-space:nowrap;">{d['last']:.2f}</div>
+      <div style="font-size:16px;font-weight:700;color:{chg_clr};white-space:nowrap;">{arrow} %{abs(d['chg']):.2f}</div>
     </div>
+    <div style="flex:0 0 auto;display:flex;align-items:center;gap:10px;"><!--EKRANV2_YON--><!--EKRANV2_GECERSIZLIK--></div>
+    <div style="flex:0 0 auto;display:flex;align-items:center;">{stats}</div>
+    <div style="flex:1;min-width:0;">{decision}</div>
   </div>
   <!--EKRANV2_OYLAR-->
-  <!-- 23 Tem 2026: hook barı ({{g['hook']}}) kaldırıldı — "okunan bir bar değildi" (kullanıcı). -->
-  <div style="display:grid;grid-template-columns:330px 1fr;gap:12px;align-items:stretch;">
-    <div>{compass}<div style="height:8px;"></div>{sbox}</div>
-    <div style="display:flex;flex-direction:column;">
-      {decision}
+  <!-- 23 Tem 2026: hook barı kaldırıldı — "okunan bir bar değildi" (kullanıcı). -->
+  <!-- 27 Ağu 2026: sol kolon 330→248 daraldı, kazanılan yer SAĞDAKİ GRAFİKLERE gitti.
+       Uyarı rozeti sayfanın dibinden sol kolonun dibine indi (margin-top:auto). -->
+  <div style="display:grid;grid-template-columns:248px 1fr;gap:12px;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;">{compass}<div style="height:8px;"></div>{sbox}
+      <div style="margin-top:auto;padding-top:8px;display:flex;">{notice}</div>
+    </div>
+    <!-- 27 Ağu 2026: ozet ust serite cikinca sag kolon kisaldi ve dipte delik kaldi.
+         space-between → artan bosluk 3 grafik arasina esit dagilir (delik yerine nefes). -->
+    <div style="display:flex;flex-direction:column;justify-content:space-between;">
       <div style="background:{CARD};border:1px solid {LINE};border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:700;color:{MUT};margin-bottom:5px;">Teknik yapı · mumlar + SMA50/EMA144/SMA100/SMA200 + POC + VWAP</div><img src="data:image/png;base64,{chart}" style="width:100%;display:block;border-radius:8px;"/>
       </div>
@@ -825,7 +843,7 @@ def build_widget_html(ticker):
       </div>
     </div>
   </div>
-  <div style="margin-top:12px;display:flex;">{NOTICE_BADGE}</div>
+
 </div>"""
 
 

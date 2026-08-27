@@ -51,7 +51,9 @@ def _wk_rangebreaks(idx):
     return [dict(bounds=['sat', 'mon'])]
 
 
-def build_fig(ticker, nbar=120):
+def build_fig(ticker, nbar=120, height=300):
+    # 27 Ağu 2026 — height parametreye çıktı (varsayılan ESKİ değer: hiçbir çağıran etkilenmez).
+    # İnfografik ana grafiği "asıl önemli grafik" olduğu için oradan daha büyük geçilir.
     df = load(ticker)
     if df is None or len(df) < 60: return None
     full = df['Close']
@@ -81,7 +83,7 @@ def build_fig(ticker, nbar=120):
     fig.update_layout(paper_bgcolor='#0d1623', plot_bgcolor='#0d1623', font=dict(color='#8aa0bb', size=11),
                       xaxis_rangeslider_visible=False, margin=dict(l=8, r=58, t=8, b=22),
                       legend=dict(orientation='h', y=1.03, x=0, font=dict(size=11), bgcolor='rgba(0,0,0,0)'),
-                      width=720, height=300)
+                      width=720, height=height)
     fig.update_xaxes(gridcolor='#162234', showgrid=True, rangebreaks=_wk_rangebreaks(seg.index))
     fig.update_yaxes(gridcolor='#162234', side='right', tickformat='.1f')
     return fig
