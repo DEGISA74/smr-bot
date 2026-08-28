@@ -41,6 +41,7 @@ OUT_EVENTS = ROOT / "logs" / "short_tarama_fizibilite_events.csv"
 SCAN_TYPES = ("er_D4", "er_D5", "birlesik_dtri")
 HORIZONS = (3, 5, 10, 20)
 MIN_REGIME_N = 150
+BASELINE_HORIZON = 20
 
 # Borsa İstanbul, VİOP piyasa işleyişi sayfasında 27 Ağustos 2026'da yayımlanan
 # üç grup pay vadeli dayanakları. Geçmiş tarihli sözleşme listesi bulunamadığı
@@ -212,6 +213,16 @@ def _status(n: int) -> str:
     return "YETERLİ ÖRNEKLEM" if n >= MIN_REGIME_N else "BELİRSİZ"
 
 
+def _return_summary(values: list[float]) -> dict[str, float | int | None]:
+    """Yalnız yön-çevrilmiş kapanış getirilerinin özetini üretir."""
+    return {
+        "n": len(values),
+        "median": _median(values),
+        "mean": _mean(values),
+        "win_rate": _win_rate(values),
+    }
+
+
 def _empty_cell() -> dict[str, list[float]]:
     return {"return": [], "adverse": []}
 
@@ -243,6 +254,7 @@ def run() -> dict[str, Any]:
     status_counts: dict[str, Counter[str]] = defaultdict(Counter)
     event_rows: list[dict[str, Any]] = []
     data_cache: dict[str, pd.DataFrame | None] = {}
+    baseline_entry_dates: dict[str, set[pd.Timestamp]] = defaultdict(set)
 
     for row in events.itertuples(index=False):
         symbol = _symbol(row.symbol)
@@ -281,6 +293,11 @@ def run() -> dict[str, Any]:
                 continue
             valid_events[universe] += 1
             entry_price = float(entry["entry_price"])
+            if stock_entry + BASELINE_HORIZON <= len(stock):
+                # Aynı giriş gününde, seçili tarama yerine evrendeki her payı
+                # kısa sayacağımız tabanın tarih kümesi. Aynı gün tekrar eden
+                # sinyaller tabana ağırlık kazandırmaz.
+                baseline_entry_dates[universe].add(pd.Timestamp(entry["entry_date"]).normalize())
             for horizon in HORIZONS:
                 if stock_entry + horizon > len(stock):
                     status_counts[universe][f"T{horizon}_ileri_veri_yok"] += 1
@@ -307,7 +324,84 @@ def run() -> dict[str, Any]:
                         "short_close_return": float(close_return),
                         "worst_adverse_return": adverse_return,
                     }
-                )
+                    )
+
+    candidate_t20: dict[str, list[float]] = defaultdict(list)
+    for event_row in event_rows:
+        if event_row["horizon_sessions"] == BASELINE_HORIZON:
+            candidate_t20[event_row["universe"]].append(event_row["short_close_return"])
+
+    # Seçicilik denetimi işlem simülasyonu değildir: sinyalin geldiği aynı
+    # işlem günlerinde evrendeki HER dayanak payı o günün açılışından kısa
+    # sayılır. Böylece 50/47 üyeli tam kesit korunur; tavan kilidi yalnız
+    # gerçek adayın işlem yapılabilir giriş kuralında uygulanır.
+    baseline_t20: dict[str, dict[str, Any]] = {}
+    for universe in UNIVERSE_META:
+        baseline_returns: list[float] = []
+        baseline_status = Counter()
+        entry_dates = sorted(baseline_entry_dates[universe])
+        for entry_date in entry_dates:
+            symbols = (
+                VIOP_PAY_FUTURES_20260827
+                if universe == "VIOP_TEK_HISSE"
+                else _bist50_members_on(entry_date)
+            )
+            for symbol in symbols:
+                if symbol not in data_cache:
+                    data_cache[symbol] = _prepare(read_active(symbol, version))
+                stock = data_cache[symbol]
+                if stock is None or stock.empty:
+                    baseline_status["hisse_verisi_yok"] += 1
+                    continue
+                entry_pos = _exact_pos(stock.index, entry_date)
+                if entry_pos is None:
+                    baseline_status["ayni_gun_verisi_yok"] += 1
+                    continue
+                if entry_pos + BASELINE_HORIZON > len(stock):
+                    baseline_status["T20_ileri_veri_yok"] += 1
+                    continue
+                entry_price = float(stock["Open"].iloc[entry_pos])
+                if entry_price <= 0:
+                    baseline_status["gecersiz_acilis"] += 1
+                    continue
+                close_price = float(stock["Close"].iloc[entry_pos + BASELINE_HORIZON - 1])
+                baseline_returns.append((close_price / entry_price - 1.0) * -100.0)
+        baseline_t20[universe] = {
+            "horizon_sessions": BASELINE_HORIZON,
+            "unique_entry_dates": [date.date().isoformat() for date in entry_dates],
+            "candidate": _return_summary(candidate_t20[universe]),
+            "universe_baseline": _return_summary(baseline_returns),
+            "status_counts": dict(sorted(baseline_status.items())),
+        }
+
+    # DTRI'nin kuyruk görünümünü D4/D5'in bütün tarihleriyle değil, DTRI'nin
+    # gerçekten görüldüğü ortak giriş günleriyle karşılaştır. Bu test, tek bir
+    # piyasa anını uzun dönemdeki uçlarla kıyaslayıp sahte rahatlık üretmez.
+    common_window_tail_audit: dict[str, dict[str, Any]] = {}
+    for universe in UNIVERSE_META:
+        t20_rows = [
+            row for row in event_rows
+            if row["universe"] == universe and row["horizon_sessions"] == BASELINE_HORIZON
+        ]
+        dtri_rows = [row for row in t20_rows if row["scan_type"] == "birlesik_dtri"]
+        dtri_dates = {row["entry_date"] for row in dtri_rows}
+        d4_d5_rows = [
+            row for row in t20_rows
+            if row["scan_type"] in {"er_D4", "er_D5"} and row["entry_date"] in dtri_dates
+        ]
+        def tail_summary(rows: list[dict[str, Any]]) -> dict[str, float | int | None]:
+            adverse = [float(row["worst_adverse_return"]) for row in rows]
+            n = len(adverse)
+            return {
+                "n": n,
+                "adverse_gt_10_rate": float(sum(value < -10.0 for value in adverse) / n * 100.0) if n else None,
+                "worst_single_adverse": min(adverse) if adverse else None,
+            }
+        common_window_tail_audit[universe] = {
+            "dtri_entry_dates": sorted(dtri_dates),
+            "dtri": tail_summary(dtri_rows),
+            "d4_d5_same_dates": tail_summary(d4_d5_rows),
+        }
 
     rows: list[dict[str, Any]] = []
     for universe in UNIVERSE_META:
@@ -353,6 +447,7 @@ def run() -> dict[str, Any]:
             "min_regime_n": MIN_REGIME_N,
             "return_definition": "short direction-adjusted Close return from executable next open",
             "adverse_definition": "minimum short return from High over fixed horizon",
+            "baseline_definition": "same candidate entry dates; every universe member from that date Open; cross-sectional selection control, not executable trade simulation",
             "thresholds_selected": False,
             "policy_changed": False,
         },
@@ -373,6 +468,8 @@ def run() -> dict[str, Any]:
             "status_counts": {universe: dict(sorted(counts.items())) for universe, counts in status_counts.items()},
             "event_row_count": len(event_rows),
         },
+        "baseline_t20": baseline_t20,
+        "common_window_tail_audit": common_window_tail_audit,
         "rows": rows,
     }
     OUT_EVENTS.parent.mkdir(parents=True, exist_ok=True)
@@ -425,6 +522,44 @@ def _make_report(payload: dict[str, Any]) -> str:
             f"{_fmt(row['adverse_gt_10_rate'])} | {_fmt(row['adverse_gt_20_rate'])} | {_fmt(row['worst_single_adverse'])} |"
         )
     lines += [
+        "",
+        "## T+20 evren tabanı — seçicilik denetimi",
+        "",
+        "Taramanın mutlak getirisi tek başına yeterli değildir. Her evrende, tarama olaylarının aynı giriş günlerinde o evrendeki bütün paylar o günün açılışından kısa sayıldı. Bu bir işlem-simülasyonu değil, 50/47 üyeli tam kesitle yapılan seçicilik kontrolüdür; tavan kilidi gerçek adayın giriş cetvelinde kalır. Böylece soru ‘piyasa düştü mü’ değil, ‘tarama rastgele evrenden daha iyi mi’ olur.",
+        "",
+        "| Evren | Tarama N | Tarama ortanca | Tarama ortalama | Tarama isabet | Evren N | Evren ortanca | Evren ortalama | Evren isabet |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for universe, row in payload["baseline_t20"].items():
+        candidate = row["candidate"]
+        baseline = row["universe_baseline"]
+        lines.append(
+            f"| {universe} | {candidate['n']} | {_fmt(candidate['median'])} | {_fmt(candidate['mean'])} | "
+            f"{_fmt(candidate['win_rate'])} | {baseline['n']} | {_fmt(baseline['median'])} | "
+            f"{_fmt(baseline['mean'])} | {_fmt(baseline['win_rate'])} |"
+        )
+    lines += [
+        "",
+        "İki evrende de tarama ortancası ve isabeti, aynı günlerdeki evren tabanının altında kaldı. Bu nedenle görülen pozitif mutlak getiri seçicilik kanıtı değil; kısa yönün o günlerdeki genel piyasa hareketinden daha zayıf yararlanımıdır.",
+        "",
+        "## DTRI ortak-zaman kuyruk denetimi",
+        "",
+        "DTRI'nin T+20 örnekleri tek bir kısa piyasa anına sıkışmıştır. D4/D5'in aylar içindeki en kötü olayıyla kıyaslamak DTRI'yi yapay biçimde sakin gösterir; aşağıdaki karşılaştırma yalnız DTRI'nin aynı giriş günlerindedir.",
+        "",
+        "| Evren | DTRI giriş günleri | DTRI N | DTRI >%10 aleyhte | DTRI en kötü | Aynı gün D4+D5 N | D4+D5 >%10 aleyhte | D4+D5 en kötü |",
+        "|---|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for universe, row in payload["common_window_tail_audit"].items():
+        dtri = row["dtri"]
+        d4_d5 = row["d4_d5_same_dates"]
+        lines.append(
+            f"| {universe} | {', '.join(row['dtri_entry_dates']) or '—'} | {dtri['n']} | "
+            f"{_fmt(dtri['adverse_gt_10_rate'])} | {_fmt(dtri['worst_single_adverse'])} | "
+            f"{d4_d5['n']} | {_fmt(d4_d5['adverse_gt_10_rate'])} | {_fmt(d4_d5['worst_single_adverse'])} |"
+        )
+    lines += [
+        "",
+        "Ortak pencerede DTRI kuyruğu daha kötüdür; yedi satır dört takvim gününden geldiği için yedi bağımsız piyasa gözlemi değildir. DTRI için ‘daha yaşanabilir kuyruk’ iddiası geri çekilmiştir.",
         "",
         "## Evrensel sınırlar",
         "",
