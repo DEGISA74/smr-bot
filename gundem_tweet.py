@@ -168,7 +168,7 @@ def manset_adaylari(f, hafta=None, pazartesi=False, cuma=False):
     if len(sek) >= 2:
         lider = max(sek, key=lambda k: sek[k]); geri = min(sek, key=lambda k: sek[k])
         fark = sek[lider] - sek[geri]
-        if fark >= 1.5:
+        if fark >= 1.0:
             a.append(("sektor", 60 + fark * 4,
                       f"{ilgi(lider, ozel=False).capitalize()} günü",
                       f"{lider} %{sek[lider]:+.1f}, {geri} %{sek[geri]:+.1f} — para taraf seçti"))
@@ -331,8 +331,14 @@ def fis_metni(f, hafta, manset, zaman, ikinci=None, soru_tipi=None):
         L.append(f"Bu günden önce {f['dusen_seri']} gün üst üste düşülmüştü")
     if f["yukselen_seri"] >= 2:
         L.append(f"Bu günden önce {f['yukselen_seri']} gün üst üste yükselinmişti")
-    for k, v in sek.items():
-        L.append(f"SEKTÖR {k}: {yz(v)}")
+    if len(sek) >= 2:
+        lider = max(sek, key=lambda k: sek[k]); geri = min(sek, key=lambda k: sek[k])
+        # Model iki sektörü ters yazabiliyor (28 Ağu vakası). Sonucu AÇIKÇA söyle.
+        L.append(f"SEKTÖR: {lider} {yz(sek[lider])} · {geri} {yz(sek[geri])}"
+                 f"  → ÖNDE OLAN: {lider}. Bunu ters yazma.")
+    else:
+        for k, v in sek.items():
+            L.append(f"SEKTÖR {k}: {yz(v)}")
     L.append(f"GÜNÜN ŞEKLİ: {', '.join(f['gun_ici']) if f['gun_ici'] else 'belirgin bir şekil yok'}")
 
     L.append("")
@@ -354,6 +360,16 @@ def fis_metni(f, hafta, manset, zaman, ikinci=None, soru_tipi=None):
     L.append("")
     L.append("⚠ SAAT BİLGİN YOK: zirvenin/dibin günün hangi saatinde olduğu ölçülmedi."
              " 'öğleden sonra', 'sabah saatlerinde', 'kapanışa dakikalar kala' YAZMA.")
+    dc = [q for q in (f.get("dikkat") or [])
+          if q["kod"] not in {b["kod"] for b in f["buyukler"][:3]}]
+    if dc:
+        L.append("")
+        L.append("DİKKAT ÇEKENLER — bunları raporun SONUNDA tek kısa cümlede, "
+                 "etiketleriyle an (en fazla 3, yorum yapma, sadece 'dikkat çekenler' de):")
+        for q in dc:
+            L.append(f"  - {etiket(q['kod'])}: %{q['pct']:+.1f}, "
+                     f"hacmi normalinin {q['rvol']:.1f} katı")
+
     yon = ("ARTI (yeşil)" if f["x"] > 0.15
            else "EKSİ (kırmızı)" if f["x"] < -0.15 else "YATAY")
     L.append(f"GÜNÜN YÖNÜ: {yon} — metinde ve soruda buna ters bir şey söyleme.")
@@ -383,6 +399,11 @@ def izinli_sayilar(fis, f, hafta):
         for k in ("pct", "rvol", "tl_mn"):
             ekle(b[k])
         ekle(b["tl_mn"] / 1000.0)          # "15 milyar TL" gibi birim çevirisi
+        # "hacmi normalinin 0.4 katı" = "normalinin %40'ı" — AYNI ŞEY.
+        # 28 Ağu sabahı bu yüzden sağlam bir taslak reddedilip cılız şablona
+        # düşüldü. Oranın yüzde hâli de izinli olmalı.
+        ekle(b["rvol"] * 100.0)
+        ekle(abs(b["rvol"] - 1.0) * 100.0)  # "normalinden %60 az/fazla"
     if hafta:
         for k in ("getiri", "en_iyi_gun", "en_kotu_gun", "yesil_gun", "kirmizi_gun"):
             ekle(hafta.get(k))
@@ -424,11 +445,35 @@ def saat_kapisi(metin):
     return [m.group(0) for m in _SAAT_RE.finditer(metin)]
 
 
+def sektor_kapisi(metin, f):
+    """Sektör adının yanına YANLIŞ rakam yazılmış mı?
+
+    'sanayi %-0.1, bankalar %+0.4' — iki rakam da gerçek ama yerleri ters.
+    Sayı kapısı bunu göremez; adın hemen ardındaki yüzdeyi gerçekle kıyaslarız.
+    """
+    sek = f.get("sektor") or {}
+    sorunlu = []
+    for adi, gercek in sek.items():
+        kok = adi[:5]                       # "banka" / "sanay" — ek almış hâlleri de yakalar
+        for m in re.finditer(rf"{kok}\w*[^.;\n%]{{0,30}}%\s*([-+]?\d+[.,]?\d*)",
+                             metin, re.IGNORECASE):
+            try:
+                v = float(m.group(1).replace(",", "."))
+            except ValueError:
+                continue
+            # işaret ya da değer tutmuyorsa bildir (0.1 tolerans yuvarlama payı)
+            if abs(abs(v) - abs(gercek)) > 0.15 or (v * gercek < 0 and abs(gercek) > 0.05):
+                sorunlu.append(f"{adi}→%{v}")
+    return sorunlu
+
+
 def isim_kapisi(metin, f):
     """Verilmeyen hisse kodu/etiketi geçmiş mi?"""
     temiz = [q for q in f["buyukler"] if not q.get("artefakt")][:8]   # kapı geniş kalsın
     izinli = {b["kod"] for b in temiz}
     izinli |= {ad(b["kod"], b["ad"]).lower() for b in temiz}
+    # DİKKAT ÇEKENLER BIST100'den gelir, BIST50 listesinde yoktur — onlar da izinli
+    izinli |= {q["kod"] for q in (f.get("dikkat") or [])}
     sorunlu = []
     for h in re.findall(r"#([A-Za-zÇĞİÖŞÜçğıöşü0-9]{3,8})", metin):
         if h.upper() not in izinli and h.lower() not in ("bist100", "bist", "borsa"):
@@ -459,6 +504,10 @@ SES:
 - Sakin, zeki, hafif espirili. Ukala değil, "neşeli abi" hiç değil.
 - "biz" ve "sen" dili. ASLA "siz/sizin" deme — samimiyet kaçar.
 - Kısa cümle, tek fikir. Uzun bağlaç zinciri yok.
+- Endeksten söz ederken #bist100 etiketini kullan. "Ekran", "tabela", "piyasa
+  genelinde" gibi bulanık özneler yerine doğrudan #bist100 yaz.
+- Rapor SABAH okunuyor: ileriye bakarken "bugün" de. "Bir sonraki gün",
+  "yarın", "önümüzdeki seans" deme — okuyucu için o gün BUGÜN.
 
 YAPI:
 - İlk satır: ☕️ Küçük Yatırımcı Notları · <alt başlık>
@@ -469,7 +518,17 @@ YAPI:
 - Sonra TEK CÜMLELİK giriş: günün hükmü. Rakam YOK, yorum VAR. Alt başlıkla aynı
   şeyi söyleme — alt başlık konuyu verir, giriş cümlesi tadı/çelişkiyi verir.
 - Sonra 3-4 kısa paragraf. TOPLAM 130 KELİMEYİ GEÇME. Manşetin etrafında kur.
-- Endeksin kapanışı bir yerde geçsin. Gerisi senin seçimin — her şeyi anlatma.
+- HER RAPORDA MUTLAKA olacak üç şey (bunlar "başka konu" sayılmaz):
+    (1) endeksin kapanışı,
+    (2) PİYASA ÖZETİ: kaç hisse yükseldi / kaç hisse düştü,
+    (3) SEKTÖR AYRIMI: fişte iki sektör arasında fark varsa tek cümleyle söyle
+        (küçük fark bile olsa "para her yere aynı hızda gitmedi" cinsinden).
+  Bunlar dışında sadece manşeti ve verilen ikinci konuyu işle.
+- METİN GÖVDESİNDE EN FAZLA 2 HİSSE ANABİLİRSİN (manşetteki + bir tane daha).
+  Kalabalık liste yapma.
+- Fişte "DİKKAT ÇEKENLER" varsa, isim paragrafının SONUNA tek kısa cümle ekle ve
+  o etiketleri say. Örnek biçim (kelimeleri değiştir): "... diğer dikkat çeken
+  hisselerdi." Bu isimler hakkında YORUM YAPMA, sadece an.
 - İkinci katman olarak şunlardan SADECE BİRİNİ seç ve anlat: ısrar oranı
   (yükselenlerin kaçı önceki gün de yükselmişti — düşükse "yer değiştirme",
   yüksekse "gerçek devam"), gün içi hikâye (açılış/dip/zirve ile kapanışın farkı),
@@ -606,40 +665,73 @@ def gemini_yaz(fis, kacinilacak):
 
 # ─────────────────────── ŞABLON YAZAR (yedek) ───────────────────────
 def sablon_yaz(f, hafta, manset, zaman, rng):
-    """Gemini yoksa/reddedilirse: gerçeklerden düz ama dürüst bir not."""
+    """SON ÇARE yedeği: Gemini hiç metin veremezse.
+
+    28 Ağu 2026: eski hâli utanç vericiydi — sektör satırı eşiğe takılıp
+    düşüyordu, tek isim anıyordu, gün içi hikâye yoktu. Artık en kötü ihtimalde
+    bile RAPOR gibi görünmeli: gün şekli + genişlik + sektör + iki isim +
+    tavan/taban + soru.
+    """
     sek = f.get("sektor") or {}
+    z = zaman.capitalize()
     P = [f"☕️ Küçük Yatırımcı Notları · {manset[2]}", ""]
     P.append(rng.choice([
-        "Rakamlar bir şey söylüyor, tabelanın altı başka bir şey.",
-        "Dünü anlamak için kapanışa bakmak yetmiyor.",
         "Ekranın rengiyle altında olan biten hep aynı şey değil.",
+        "Kapanış rakamı günün tamamını anlatmıyor.",
+        "Rakamlar bir şey söylüyor, tabelanın altı başka bir şey.",
     ]))
-    P.append(f"{zaman.capitalize()} endeks {yz(f['x'])} kapattı; "
-             f"{f['yesil']} hisse yükseldi, {f['kirmizi']} hisse düştü.")
-    if "boslukla_acildi" in f["gun_ici"]:
-        P.append(f"Gün {yz(f['acilis'])} ile açtı; gün içinde en dip {yz(f['dip'])}, "
-                 f"en zirve {yz(f['zirve'])} görüldü.")
-    elif "zirveden_verdi" in f["gun_ici"]:
-        P.append(f"Gün içinde {yz(f['zirve'])}'e kadar çıkıldı ama kapanış {yz(f['x'])} oldu.")
-    elif "dipten_topladi" in f["gun_ici"]:
-        P.append(f"Gün içinde {yz(f['dip'])}'e kadar düşüldü, kapanışa doğru toparlandı.")
+
+    # gün içi hikâye — kapanış tek başına yetmez
+    gi = f["gun_ici"]
+    if "boslukla_acildi" in gi:
+        P.append(f"{z} endeks {yz(f['acilis'])} ile açtı, gün içinde {yz(f['dip'])} dibini "
+                 f"gördü ve {yz(f['x'])} kapattı.")
+    elif "dipten_topladi" in gi and "zirveden_verdi" in gi:
+        P.append(f"{z} iki yönlü bir gündü: endeks {yz(f['zirve'])} zirvesini de "
+                 f"{yz(f['dip'])} dibini de gördü, kapanış {yz(f['x'])} oldu.")
+    elif "dipten_topladi" in gi:
+        P.append(f"{z} endeks gün içinde {yz(f['dip'])}'e kadar düştü ama kapanışta "
+                 f"{yz(f['x'])}'e toparladı.")
+    elif "zirveden_verdi" in gi:
+        P.append(f"{z} endeks {yz(f['zirve'])}'i gördü ama kazancını koruyamadı, "
+                 f"{yz(f['x'])} kapattı.")
+    elif "hic_eksiye_dusmedi" in gi:
+        P.append(f"{z} endeks gün boyunca bir kez bile eksiye düşmedi ve "
+                 f"{yz(f['x'])} kapattı.")
+    else:
+        P.append(f"{z} endeks {yz(f['x'])} kapattı.")
+
+    # genişlik + asimetri
+    P.append(f"{f['yesil']} hisse yükseldi, {f['kirmizi']} hisse düştü. "
+             f"Yükselenlerin ortalaması {yz(f['yesil_ort'])}, düşenlerinki "
+             f"{yz(f['kirmizi_ort'])}.")
+
+    # sektör — eşik düşürüldü (0.4). Eskiden 1.0'dı ve çoğu gün satır düşüyordu.
     if len(sek) >= 2:
         lider = max(sek, key=lambda k: sek[k]); geri = min(sek, key=lambda k: sek[k])
-        if sek[lider] - sek[geri] >= 1.0:
-            P.append(f"{lider.capitalize()} %{sek[lider]:+.1f}, {geri} %{sek[geri]:+.1f} — "
+        if sek[lider] - sek[geri] >= 0.4:
+            P.append(f"{lider.capitalize()} {yz(sek[lider])}, {geri} {yz(sek[geri])} — "
                      f"para her yere aynı hızda gitmedi.")
-    if f["buyukler"]:
-        b = f["buyukler"][0]
-        P.append(f"{ad(b['kod'], b['ad'])} %{b['pct']:+.1f} ile ayrıştı; "
-                 f"hacmi normalinin {b['rvol']:.1f} katıydı.")
-    if f["yesil"] >= 60 and f["x"] > 0.4:
-        P.append(f"Yükselen {f['yesil']} hissenin {f['israr']}'i önceki gün de yükselmişti.")
-    if f["x"] < -0.5 and f["sig_tavan"] >= 4:
-        P.append(f"Endeks düşerken {f['tavan']} hisse tavan yaptı; {f['sig_tavan']}'inin "
-                 f"işlem derinliği çok zayıftı. İsim vermiyoruz.")
+
+    # isimler: en fazla iki tane, hacim notuyla
+    temiz = [b for b in f["buyukler"] if not b.get("artefakt")]
+    if temiz:
+        b = temiz[0]
+        tavan_mi = b["pct"] >= gv.TAVAN_ESIK
+        P.append(f"{etiket(b['kod'])} {yz(b['pct'])} ile ayrıştı" +
+                 (" ve tavan yaptı." if tavan_mi else
+                  f"; hacmi normalinin {b['rvol']:.1f} katıydı."))
+        if len(temiz) > 1:
+            b2 = temiz[1]
+            P.append(f"Diğer uçta {etiket(b2['kod'])} vardı: {yz(b2['pct'])}.")
+
+    if f["tavan"] >= 3 or f["taban"] >= 3:
+        P.append(f"Gün {f['tavan']} tavan, {f['taban']} tabanla kapandı.")
+
     if hafta and manset[0] == "hafta_basi":
-        P.append(f"Geçen hafta endeks %{hafta['getiri']:+.1f} kapattı; "
+        P.append(f"Geçen hafta endeks {yz(hafta['getiri'])} kapattı; "
                  f"{hafta['yesil_gun']} gün yeşil, {hafta['kirmizi_gun']} gün kırmızıydı.")
+
     P.append(rng.choice([
         "Böyle bir günde senin ilk refleksin ne olur: beklemek mi, azaltmak mı?",
         "Bunun devam ettiğini anlamak için sen neye bakarsın?",
@@ -790,11 +882,12 @@ def main():
         # Kapı reddi çoğu zaman tek bir kaçak rakamdan olur; hemen şablona
         # düşmek yerine hatayı söyleyip BİR KEZ daha yazdırırız (denemede
         # 5 günün 1'i boşuna şablona düşmüştü).
-        for _deneme in range(1):
+        for _deneme in range(2):
             if not metin:
                 break
             _izin = izinli_sayilar(fis, f, hafta)
-            _kotu = sayi_kapisi(metin, _izin) + isim_kapisi(metin, f) + saat_kapisi(metin)
+            _kotu = (sayi_kapisi(metin, _izin) + isim_kapisi(metin, f)
+                     + saat_kapisi(metin) + sektor_kapisi(metin, f))
             if not _kotu:
                 break
             print("[gundem] ilk taslak reddedildi, yeniden yazdiriliyor:", _kotu[:5])
@@ -806,12 +899,18 @@ def main():
             kotu_sayi = sayi_kapisi(metin, izin)
             kotu_isim = isim_kapisi(metin, f)
             kotu_saat = saat_kapisi(metin)
+            kotu_isim = kotu_isim + sektor_kapisi(metin, f)
+            # ⚠ 28 Ağu dersi: taslağı ÇÖPE ATMAK yanlış. Şablon yedeği AI metninin
+            # yanına bile yaklaşmıyor; kullanıcı zaten atmadan önce okuyup
+            # düzenliyor. Doğru davranış: metni KORU, şüpheliyi İŞARETLE.
+            govde, kaynak = metin, model
             if kotu_sayi or kotu_isim or kotu_saat:
-                uyari = (f"AI taslağı REDDEDİLDİ (şablona düşüldü) — sayı: "
-                         f"{kotu_sayi[:5]} · isim: {kotu_isim[:3]} · saat: {kotu_saat[:3]}")
-                print("[gundem] kapi reddetti:", kotu_sayi[:8], kotu_isim[:5], kotu_saat[:3])
-            else:
-                govde, kaynak = metin, model
+                parcalar = []
+                if kotu_sayi: parcalar.append(f"doğrula → {', '.join(kotu_sayi[:5])}")
+                if kotu_isim: parcalar.append(f"isim → {', '.join(kotu_isim[:3])}")
+                if kotu_saat: parcalar.append(f"saat → {', '.join(kotu_saat[:3])}")
+                uyari = "ŞÜPHELİ: " + " · ".join(parcalar) + "  (metin korundu, kontrol et)"
+                print("[gundem] kapi isaretledi:", kotu_sayi[:8], kotu_isim[:5], kotu_saat[:3])
         else:
             print("[gundem] gemini yok/hata:", model)
     if govde is None:
