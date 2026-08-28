@@ -23,6 +23,8 @@ KENDİSİNİN canlı olduğunun kanıtıdır (sessizlik = her şey yolunda DEĞ�
 bekçi de ölmüş olabilir; günlük yeşil tik bunu ayırt ettirir).
 """
 import os
+import pathlib
+import sys
 import json
 import urllib.request
 import urllib.parse
@@ -177,6 +179,34 @@ def veri_kapilarini_denetle(day):
     return satirlar, arizalar
 
 
+# -- TARAMA KARNESI SAGLIGI (28 Agu 2026) --------------------------------
+# Sebep: backtest_results.json VPS'te HIC yoktu; app.py ve smr_core.py'deki iki
+# tuketici de sessizce bos kume dondu; PRO bulteni 11+ gun eksik gitti ve kimse
+# fark etmedi. Karne canliya baglanmadan ONCE bu nobetci kuruluyor ki ayni sinif
+# hata bir daha SESSIZCE yasayamasin. Karne yoksa/bayatsa/bozuksa alarm.
+KARNE_DEADLINE_SAAT = (20, 30)      # aksam olcum zinciri bittikten sonra bakilir
+
+
+def karne_saglik_denetle(day):
+    """(ozet_satirlari, yeni_ariza_metinleri). Kapi basina gunde 1 uyarir."""
+    try:
+        if BASE not in sys.path:
+            sys.path.insert(0, BASE)
+        import tarama_karne as _tk
+        rapor = _tk.saglik(pathlib.Path(BASE) / 'logs' / 'tarama_karne.json')
+    except Exception as e:
+        return ['⚠️ Tarama karnesi denetlenemedi (%s)' % type(e).__name__], []
+    if rapor['saglikli']:
+        return ['✅ 📋 Tarama karnesi (%d kayit)' % rapor['kayit']], []
+    satir = ['🔴 📋 Tarama karnesi: %s' % rapor['sorun']]
+    arizalar = []
+    if now >= slot(*KARNE_DEADLINE_SAAT) and 'tarama_karne' not in day['alerted']:
+        arizalar.append('📋 Tarama karnesi SAGLIKSIZ -> %s' % rapor['sorun']
+                        + chr(10) + 'Web ve bot ayni fotografi okuyamaz.'
+                        + chr(10) + 'Elle: cd ~/smr && venv/bin/python tarama_karne.py')
+        day['alerted'].append('tarama_karne')
+    return satir, arizalar
+
 def load_state():
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
@@ -215,6 +245,8 @@ def main():
             day["alerted"].append(ad)
 
     veri_satirlari, veri_arizalari = veri_kapilarini_denetle(day)
+    karne_satirlari, karne_arizalari = karne_saglik_denetle(day)
+    veri_arizalari += karne_arizalari
 
     # ── VERİ ARIZASI uyarısı (kapı başına günde 1) ──
     if veri_arizalari:
@@ -249,6 +281,8 @@ def main():
             L += ["• " + g for g in eksik]
         if veri_satirlari:
             L += ["", "BIST VERİSİ:"] + veri_satirlari
+        if karne_satirlari:
+            L += ["", "ÖLÇÜM:"] + karne_satirlari
         tg("\n".join(L))
         day["summary_sent"] = True
 
