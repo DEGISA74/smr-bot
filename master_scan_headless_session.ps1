@@ -80,7 +80,24 @@ try {
         if (Test-Path -LiteralPath $completionPath) {
             try {
                 $record = Get-Content -LiteralPath $completionPath -Raw | ConvertFrom-Json
-                if ($record.day -eq $today -and $record.status -in @('completed', 'partial')) { break }
+                # 28 Agu 2026 — BAYAT KAYIT TUZAGI KAPATILDI.
+                # Eskiden yalnizca 'gun bugun mu' diye bakiliyordu. Her Master Scan
+                # (elle olsun otomatik olsun) bitiste mark_scan_completed cagirip
+                # dosyaya BUGUNUN tarihini yaziyor. Gun icinde elle bir tur kosulursa
+                # aksam otomasyonu tarayiciyi aciyor, ILK 20 SANIYELIK YOKLAMADA o
+                # bayat kaydi goruyor, donguden cikiyor ve tarayiciyi olduruyor —
+                # tarama hic baslamiyor, ustelik gorev sonuc kodu 0 donuyor (sessiz).
+                # Artik kayit, aksam penceresi ($openAt) BASLADIKTAN SONRA yazilmissa
+                # gecerli sayilir. completed_at okunamazsa eski davranisa dusulur.
+                $kayitGecerli = $true
+                if ($record.completed_at) {
+                    try {
+                        $kayitZamani = [datetimeoffset]::Parse([string]$record.completed_at)
+                        if ($kayitZamani.LocalDateTime -lt $openAt) { $kayitGecerli = $false }
+                    } catch { }
+                }
+                if ($kayitGecerli -and $record.day -eq $today -and
+                    $record.status -in @('completed', 'partial')) { break }
             } catch { }
         }
     } while ((Get-Date) -lt $deadline -and -not $browserProcess.HasExited)
