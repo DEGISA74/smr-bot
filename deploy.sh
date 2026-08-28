@@ -28,6 +28,11 @@ SAGLIK="http://127.0.0.1/patron/"
 # ikisi (compass_panel, ekran_v2) VPS'te ESKİ kalmıştı. Beyaz-liste tuzağı da
 # buradan çıktı: bist_data_store.py listede olmadığı için PRICE_SOURCES
 # güncellemesi lokalde geçer, VPS'te reddedilirdi.
+# 28 Agu 2026 — uc dosya eklendi. likidite_siralama.py TAM BU TUZAGIN ornegiydi:
+# app.py onu import ediyor ama listede yoktu; deploy.sh kossaydi app.py yeni,
+# modul yok olurdu ve vitrin siralamasi SESSIZCE calismayi birakirdi (import
+# try/except icinde -> cokme yok, sadece ozellik olur). tarama_karne.py ve
+# gorev_bekcisi.py de ayni sebeple: biri karneyi uretir, digeri saglığını denetler.
 DOSYALAR="app.py data_layer.py indicators.py db_layer.py evidence.py scanners.py
 pattern_core.py ict_core.py scoring_core.py scan_pipeline.py charts.py
 analysis_core.py terazi_core.py veri_bekcisi.py saatlik_kapi.py saatlik_uzlasma.py zamanlama_core.py depo_tazelik.py
@@ -41,7 +46,8 @@ kapanis_master_otomasyon.py veri_saglik_audit.py signal_policy.py deepening_poli
 radar_core.py zirve_taramalari.py stp_uyanis_core.py rsi_divergence_scanner.py
 compass_panel.py clean_chart_plotly.py infographic.py ekran_v2.py
 smr_tickers.py ticker_short_names.py market_cap_cache.py patron_db_guard.py
-kurumsal_takvim.py temettu_takvimi.py intraday_4s.py"
+kurumsal_takvim.py temettu_takvimi.py intraday_4s.py
+likidite_siralama.py tarama_karne.py gorev_bekcisi.py"
 
 GO=0; BOT=0; FORCE=0; ONLY=""
 for a in "$@"; do
