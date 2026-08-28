@@ -418,6 +418,8 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
             idx = int(_entry_info['entry_pos'])
             _entry_date_obj = pd.to_datetime(_entry_info['entry_date']).date()
             _ca_sym = str(sig['symbol']).replace('.IS', '').replace('.is', '').upper()
+            # Son ~4 işlem gününde signal_returns yalnız T+1 taşıyabilir; bu normaldir.
+            # Sinyal 5 seansa ulaşınca gece betiği geri dönerek derin vadeleri de yazar.
             if idx + min_fwd - 1 >= len(df_hist):
                 pending += 1
                 db_rows.append(_blank_db_row)
