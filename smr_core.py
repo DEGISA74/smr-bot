@@ -4355,6 +4355,11 @@ _ER_INFO = {
     'C4':  ("Soluklanma", "yukarı trendde 50 günlük ortalama üstünde, son 3-5 gün yatay", "olumlu"),
     'C8':  ("Yukarı Kanal Testi", "yukarı trendde 20 günlük ortalamaya çekilip toparlandı", "olumlu"),
     'C10': ("Trendde Sıkışma", "yukarı trendde 10+ gündür dar bantta, trend bozulmadı", "olumlu"),
+    # 28 Agu 2026 — D4/D5 elemeden cikarildi; tabloya da eklendi ki bot metninde
+    # SESSIZCE dusmesinler (bu sabah B/C senaryolarinda ayni bosluk vardi).
+    # Tip "uyari": bunlar ayi yonlu kirmizi bayrak, olumlu bulgu DEGIL.
+    'D4': ("Kurumsal Satış Riski", "son 5 günde 2+ kez yüksek hacimli kırmızı kapanış — kurumlar pozisyon küçültüyor", "uyarı"),
+    'D5': ("Trend Bozuldu", "50 günlük ortalama altına düştü, hacimli kırmızı kapanış, endekse karşı uzun süredir zayıf", "uyarı"),
     'D1': ("Tek Güçlü Sinyal", "hacimli alım günü ama 50 günlük ortalama altında — tek başına riskli", "uyarı"),
     'D2': ("Karışık Sinyal", "hem pozitif hem zayıflama işaretleri var, tablo kararsız", "uyarı"),
 }

@@ -22142,6 +22142,50 @@ def _render_left_col():
                         ]['Sembol'].nunique())
                 else:
                     _er_count = 0
+                # ── 📉 OLASI SHORT — er_D4 / er_D5 (28 Agu 2026) ─────────────────
+                # Bu ikisi 17 Agu'da elenmisti; 28 Agu'da kullanici karariyla geri
+                # acildi. Gerekce: evren tabanina gore olculdugunde sistemdeki EN
+                # GUCLU iki sinyal (dort kesitte de tabanin 6-10 puan ustu, kazanma
+                # %61-74). ⚠ Ama islem yapilabilir evrende (VIOP 47 / BIST50) kenar
+                # COKUYOR ve orneklem esigin altinda — bu yuzden panel bir ALIM/SATIM
+                # tavsiyesi degil, UYARI + izleme listesidir. Siralama: en likit 4
+                # (olculdu: birlesik havuzda +1,29 puan, p=0,004).
+                try:
+                    if (_er_df is not None and hasattr(_er_df, "empty") and not _er_df.empty
+                            and "ScenarioId" in _er_df.columns):
+                        _sh = _er_df[_er_df["ScenarioId"].astype(str).isin(["D4", "D5"])]
+                        if not _sh.empty:
+                            import likidite_siralama as _ls_sh
+                            _sh_map = {}
+                            for _, _r in _sh.iterrows():
+                                _sy = str(_r.get("Sembol", "")).replace(".IS", "").upper()
+                                if _sy:
+                                    _sh_map.setdefault(_sy, set()).add(str(_r.get("ScenarioId")))
+                            _sh_top = _ls_sh.sirala(list(_sh_map.keys()), scan_type="er_D4")
+                            st.markdown(
+                                "<div style='background:linear-gradient(135deg,#7f1d1d22,#1c191706);"
+                                "border:1px solid #dc262655;border-radius:8px;padding:6px 10px;"
+                                "margin-bottom:5px;'>"
+                                "<span style='font-size:0.78rem;font-weight:900;color:#fca5a5;'>"
+                                f"📉 OLASI SHORT — {len(_sh_map)} hisse</span>"
+                                "<div style='font-size:0.62rem;color:#d6d3d1;line-height:1.25;margin-top:2px;'>"
+                                "Kurumsal satış riski / trend bozuldu · en likit 4 üstte<br>"
+                                "<b>Uyarı listesidir, işlem tavsiyesi değil</b> — işlem yapılabilir "
+                                "evrende (VİOP 47 / BIST 50) kenar ölçümde çöküyor.</div></div>",
+                                unsafe_allow_html=True)
+                            for _i_sh, _sy in enumerate(_sh_top):
+                                _kod = " + ".join(sorted(_sh_map.get(_sy, [])))
+                                if st.button(f"💧 {_i_sh+1}. {_sy} · {_kod}",
+                                             key=f"olasi_short_{_sy}", width="stretch"):
+                                    on_scan_result_click(_sy); st.rerun()
+                            _kalan = len(_sh_map) - len(_sh_top)
+                            if _kalan > 0:
+                                st.markdown(
+                                    "<div style='font-size:0.64rem;color:#94a3b8;margin:-4px 0 6px 6px;'>"
+                                    f"+{_kalan} hisse daha (likidite sırasının altında)</div>",
+                                    unsafe_allow_html=True)
+                except Exception:
+                    pass
                 st.markdown(f"<div style='background:linear-gradient(135deg,#3b82f618,#3b82f606);"
                             f"border:1px solid #3b82f650;border-radius:8px;padding:6px 10px;margin-bottom:5px;'>"
                             f"<span style='font-size:0.78rem;font-weight:900;color:#7dd3fc;'>"

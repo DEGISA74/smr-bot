@@ -124,7 +124,16 @@ ELENEN_ER_SENARYO = frozenset({
     'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9',
     'B1', 'B5',
     'C1', 'C3', 'C5', 'C7', 'C9', 'C11',
-    'D1', 'D3', 'D4', 'D5',
+    'D1', 'D3',
+    # 28 Agu 2026 — D4 ve D5 ELEMEDEN CIKARILDI (kullanici karari).
+    # Gerekce: evren tabanina gore olculdugunde sistemdeki EN GUCLU iki sinyal
+    # bunlar — dort kesitin dordunde de tabanin 6-10 puan ustunde, kazanma
+    # %61-74. Alim icin kullanilamazlar (ayi yonlu) ve islem yapilabilir
+    # evrende kenar cokuyor (short fizibilitesi, 28 Agu) — ama UYARI/VETO
+    # katmani olarak degerliler: 'bu hisse D4 isaretli, alma'.
+    # Acilinca uc yuzeyi besliyorlar: OLASI SHORT paneli · Kanit Terazisi
+    # ayi oyu (app.py ~1770 red_flag yolu) · PRO/ELITE uyari satiri.
+    # Kapatmak icin ikisini bu listeye geri koymak yeterli.
 })
 
 ELENEN_TARAMALAR = ELENEN_KLASIK | frozenset(f"er_{_x}" for _x in ELENEN_ER_SENARYO)
