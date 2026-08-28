@@ -53,30 +53,49 @@ def _muhurleri_dogrula(veri: dict[str, Any]) -> None:
         _red("evren tabanı aynı giriş günlerinin ortancası değil")
 
 
-def _aktif_kasa_surumu() -> str | None:
-    """Kasadaki aktif fiyat surumu. Okunamazsa None — kapi o zaman uygulanmaz."""
+def _kasa_son_kapanmis_seans() -> str | None:
+    """Kasadaki son KAPANMIS seansin tarihi (YYYY-AA-GG). Okunamazsa None.
+
+    Bugunun bari seans bitene kadar YARIMDIR; onu 'kapanmis' saymayiz.
+    Bu yuzden son bar bugunse bir onceki bara bakariz.
+    """
     try:
-        from bist_data_store import active_version_id
-        return active_version_id()
+        import datetime as _dt
+        import pandas as _pd
+        from bist_data_store import active_version_id, read_active
+        df = read_active("XU100.IS", active_version_id())
+        if df is None or getattr(df, "empty", True):
+            return None
+        idx = _pd.to_datetime(df.index).normalize().sort_values()
+        bugun = _pd.Timestamp(_dt.date.today())
+        if len(idx) and idx[-1] == bugun:
+            idx = idx[:-1]                      # bugunun yarim bari sayilmaz
+        return idx[-1].date().isoformat() if len(idx) else None
     except Exception:
         return None
 
 
-def _veri_surumu_kapisi(veri: dict[str, Any], zorla: bool = False) -> None:
-    """Kaynak laboratuvarin veri surumu AKTIF kasa surumuyle ayni degilse uretme.
+def _veri_kapsami_kapisi(veri: dict[str, Any], zorla: bool = False) -> None:
+    """Kaynak laboratuvar, kasadaki son KAPANMIS seansi kapsamiyorsa uretme.
 
-    28 Agu 2026 — bu kapinin sebebi: karnenin tek amaci 'web ve bot ayni fotografi
-    okusun'. Fotografin hangi ana ait oldugu belirsizse amacini yitirir. O gun
-    karne v-…161259 ile uretilmisti, aktif kasa v-…192300'du; fark uc saatlikti
-    ama sessizce gecmisti. Bilerek eski kaynaktan uretmek icin --surum-atla.
+    28 Agu 2026 — ilk surumde bu kapi 'veri surumu kimligi ayni mi' diye
+    bakiyordu ve YANLISTI: fetcher 10 dakikada bir kosuyor, surum kimligi gun
+    icinde surekli degisiyor (v-…0828T104035 -> v-…0828T104533 birkac dakikada).
+    Oyle bir kapi neredeyse her zaman reddeder, herkes --surum-atla'ya alisir ve
+    kapi anlamini yitirir. Dogru olcut kimlik degil, VERININ KAPSADIGI SON SEANS:
+    laboratuvar son kapanmis seansi iceriyorsa web ve bot ayni fotografi okur.
     """
-    kaynak = (veri.get("meta") or {}).get("active_version")
-    aktif = _aktif_kasa_surumu()
-    if aktif is None or zorla:
+    if zorla:
         return
-    if kaynak != aktif:
-        _red(f"kaynak veri surumu aktif kasadan farkli: kaynak={kaynak} aktif={aktif} "
-             f"(bilerek eski kaynaktan uretiyorsan --surum-atla)")
+    kapsam = (veri.get("meta") or {}).get("last_scan_date")
+    kasa = _kasa_son_kapanmis_seans()
+    if kasa is None or kapsam is None:
+        return                                   # olculemiyorsa kilitleme
+    if str(kapsam) < str(kasa):
+        _red(f"kaynak laboratuvar bayat: son kapsanan seans={kapsam}, "
+             f"kasadaki son kapanmis seans={kasa} "
+             f"(once variable_horizon_lab.py'yi yeniden kos; bilerek eski "
+             f"kaynaktan uretiyorsan --surum-atla)")
 
 
 def _gun_satiri(rejim_egrisi: dict[str, Any], vade: int) -> dict[str, Any]:
@@ -127,7 +146,7 @@ def tarama_karnesi(veri: dict[str, Any], surum_atla: bool = False) -> dict[str, 
     gün başına getiri ve vade seçimi bu modülün dışında bırakılmıştır.
     """
     _muhurleri_dogrula(veri)
-    _veri_surumu_kapisi(veri, zorla=surum_atla)
+    _veri_kapsami_kapisi(veri, zorla=surum_atla)
     egriler = veri.get("curves")
     if not isinstance(egriler, dict):
         _red("tarama eğrileri yok")
