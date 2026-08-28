@@ -22,6 +22,7 @@ CIKTI_VARSAYILAN = Path("logs/tarama_karne.json")
 VADELER = (3, 5, 20)
 REJIMLER = ("YUKSELEN", "DUSEN")
 MIN_REJIM_N = 150
+BAYATLIK_GUN = 7          # tuketici bu yastan eski karneyi SAGLIKLI saymaz
 
 
 def _red(neden: str) -> None:
@@ -50,6 +51,32 @@ def _muhurleri_dogrula(veri: dict[str, Any]) -> None:
         "all stock paths with matching XU100 session; close_alpha median"
     ):
         _red("evren tabanı aynı giriş günlerinin ortancası değil")
+
+
+def _aktif_kasa_surumu() -> str | None:
+    """Kasadaki aktif fiyat surumu. Okunamazsa None — kapi o zaman uygulanmaz."""
+    try:
+        from bist_data_store import active_version_id
+        return active_version_id()
+    except Exception:
+        return None
+
+
+def _veri_surumu_kapisi(veri: dict[str, Any], zorla: bool = False) -> None:
+    """Kaynak laboratuvarin veri surumu AKTIF kasa surumuyle ayni degilse uretme.
+
+    28 Agu 2026 — bu kapinin sebebi: karnenin tek amaci 'web ve bot ayni fotografi
+    okusun'. Fotografin hangi ana ait oldugu belirsizse amacini yitirir. O gun
+    karne v-…161259 ile uretilmisti, aktif kasa v-…192300'du; fark uc saatlikti
+    ama sessizce gecmisti. Bilerek eski kaynaktan uretmek icin --surum-atla.
+    """
+    kaynak = (veri.get("meta") or {}).get("active_version")
+    aktif = _aktif_kasa_surumu()
+    if aktif is None or zorla:
+        return
+    if kaynak != aktif:
+        _red(f"kaynak veri surumu aktif kasadan farkli: kaynak={kaynak} aktif={aktif} "
+             f"(bilerek eski kaynaktan uretiyorsan --surum-atla)")
 
 
 def _gun_satiri(rejim_egrisi: dict[str, Any], vade: int) -> dict[str, Any]:
@@ -92,7 +119,7 @@ def _durum(
     return "KANITLI_TABAN_USTU"
 
 
-def tarama_karnesi(veri: dict[str, Any]) -> dict[str, Any]:
+def tarama_karnesi(veri: dict[str, Any], surum_atla: bool = False) -> dict[str, Any]:
     """Tek kaynaktan sürümlü tarama×vade cetveli üretir.
 
     Her kayıtta bilinçli olarak yalnız tarama, vade, iki rejimin N'i, iki
@@ -100,6 +127,7 @@ def tarama_karnesi(veri: dict[str, Any]) -> dict[str, Any]:
     gün başına getiri ve vade seçimi bu modülün dışında bırakılmıştır.
     """
     _muhurleri_dogrula(veri)
+    _veri_surumu_kapisi(veri, zorla=surum_atla)
     egriler = veri.get("curves")
     if not isinstance(egriler, dict):
         _red("tarama eğrileri yok")
@@ -133,20 +161,63 @@ def tarama_karnesi(veri: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def dosyadan_uret(girdi: Path = KAYNAK_VARSAYILAN) -> dict[str, Any]:
+def dosyadan_uret(girdi: Path = KAYNAK_VARSAYILAN, surum_atla: bool = False) -> dict[str, Any]:
     if not girdi.exists():
         raise FileNotFoundError(f"Mühürlü değişken-vade çıktısı yok: {girdi}")
-    return tarama_karnesi(json.loads(girdi.read_text(encoding="utf-8")))
+    return tarama_karnesi(json.loads(girdi.read_text(encoding="utf-8")), surum_atla=surum_atla)
+
+
+def karne_oku(yol: Path = CIKTI_VARSAYILAN,
+              azami_gun: int = BAYATLIK_GUN) -> tuple[list[dict[str, Any]], str | None]:
+    """TUKETICI KAPISI — web ve bot bunu cagirir. ASLA sessizce bos donmez.
+
+    Donus: (kayitlar, sorun). `sorun` None ise karne saglikli. Degilse cagiran
+    onu KULLANICIYA GORUNUR sekilde basmak zorundadir; bos liste gibi davranmak
+    yasak.
+
+    28 Agu 2026 — bu kapinin sebebi: backtest_results.json VPS'te hic yoktu,
+    iki tuketici de sessizce bos kume dondu ve PRO bulteni 11+ gun eksik gitti.
+    Kimse fark etmedi. Ayni tuzagi karne icin bastan kapatiyoruz.
+    """
+    try:
+        if not yol.exists():
+            return [], f"Tarama karnesi dosyasi YOK ({yol}) — tarama katmani gosterilemiyor."
+        paket = json.loads(yol.read_text(encoding="utf-8"))
+        kayitlar = paket.get("kayitlar") or []
+        if not kayitlar:
+            return [], "Tarama karnesi BOS — uretim basarisiz olmus olabilir."
+        if paket.get("karne_surumu") != KARNE_SURUMU:
+            return kayitlar, (f"Tarama karnesi surumu beklenenden farkli "
+                              f"({paket.get('karne_surumu')} != {KARNE_SURUMU}).")
+        damga = paket.get("uretim_tarihi_utc")
+        try:
+            yas = (datetime.now(timezone.utc) - datetime.fromisoformat(damga)).days
+        except Exception:
+            return kayitlar, "Tarama karnesinde okunabilir uretim tarihi yok."
+        if yas > azami_gun:
+            return kayitlar, f"Tarama karnesi BAYAT — {yas} gunluk (sinir {azami_gun})."
+        return kayitlar, None
+    except Exception as hata:
+        return [], f"Tarama karnesi okunamadi: {type(hata).__name__}: {hata}"
+
+
+def saglik(yol: Path = CIKTI_VARSAYILAN) -> dict[str, Any]:
+    """gorev_bekcisi.py icin: {'saglikli': bool, 'sorun': str|None, 'kayit': int}."""
+    kayitlar, sorun = karne_oku(yol)
+    return {"saglikli": sorun is None, "sorun": sorun, "kayit": len(kayitlar)}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=KAYNAK_VARSAYILAN)
     parser.add_argument("--output", type=Path, default=CIKTI_VARSAYILAN)
+    parser.add_argument("--surum-atla", action="store_true",
+                        dest="surum_atla",
+                        help="Veri surumu kapisini atla (bilerek eski kaynaktan uret)")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
-    sonuc = dosyadan_uret(args.input)
+    sonuc = dosyadan_uret(args.input, surum_atla=args.surum_atla)
     beklenen = len({satir["tarama"] for satir in sonuc["kayitlar"]}) * len(VADELER)
     if len(sonuc["kayitlar"]) != beklenen:
         _red("tarama×vade kayıt sayısı tutmuyor")
