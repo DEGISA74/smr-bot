@@ -4311,6 +4311,26 @@ _ER_GOOD = {scan_type[3:] for scan_type in _POSITIVE_SCANNER_TYPES
 # ⚠️ KRİTİK: 'D' kategorisi UYARI'dır, olumlu sinyal DEĞİL. Eski metin hepsini
 # "izlenen senaryo / DESTEKLEYİCİ işaret" diye sunuyordu — D1 (temiz backtest -1.93)
 # olumlu bir bulgu sanılıyordu. Artık tip'e göre ayrı sunulur.
+# 28 Ağu 2026 — ELENEN TARAMA KAPISI. PRO/ELITE tarama katmanı artık bozuk Gold Mine
+# puanına değil, evidence.py'deki ÖLÇÜLMÜŞ eleme listesine bakar. evidence.py yoksa
+# hiçbir şey elenmez (fail-open) — metin yine düz gerçeği yazar, iddia üretmez.
+try:
+    from evidence import ELENEN_ER_SENARYO as _ELENEN_ER, ELENEN_TARAMALAR as _ELENEN_TARAMA
+    _ELENEN_ER = {str(x).upper() for x in _ELENEN_ER}
+    _ELENEN_TARAMA = {str(x) for x in _ELENEN_TARAMA}
+except Exception:
+    _ELENEN_ER, _ELENEN_TARAMA = set(), set()
+
+
+def _tarama_gecerli(scan_type) -> bool:
+    """Ölçümle elenmiş taramayı metne sokma. Puan/iddia KAPISI DEĞİL — sadece
+    'geri çekilmiş taramayı anma' kuralı."""
+    t = str(scan_type or "")
+    if t.startswith("er_"):
+        return t[3:].upper() not in _ELENEN_ER
+    return t not in _ELENEN_TARAMA
+
+
 _ER_INFO = {
     'A1': ("Dipte Sessizlik", "uzun düşüş sonrası satıcı baskısı azaldı, iç güç artıyor", "olumlu"),
     'A2': ("Hacimli Tepki", "düşüş sonrası yüksek hacimle yeşil kapanış — kurumsal tepki", "olumlu"),
@@ -4320,6 +4340,21 @@ _ER_INFO = {
     'C2': ("Ortalama Testi", "yukarı trendde geri çekilip ortalamadan destek aldı", "olumlu"),
     'C5': ("Bayrak Formasyonu", "sert yükseliş sonrası dar konsolidasyon — devam beklentisi", "olumlu"),
     'C6': ("Piyasa Lideri", "endekse karşı 20 günün zirvesinde, sağlıklı geri çekilmede", "olumlu"),
+    # 28 Ağu 2026 — TABLO TAMAMLANDI. Son 14 günde sinyal üreten 14 elenmemiş ER
+    # senaryosunun 10'u burada TANIMLI DEĞİLDİ ve metinden sessizce düşüyordu
+    # (er_B11 dahil — mühürlü karnenin tek sağlam boğa taraması). Adlar ve
+    # açıklamalar scanners.py ERKEN_RADAR tablosundan kısaltılarak taşındı; uydurma YOK.
+    # B3 'nötr': kaynak metni "yön hangi tarafa kırılırsa" diyor (B5 ile aynı mantık).
+    'B2':  ("Sessiz Birikim", "20 gündür yatay ama hacim sessizce artıyor, endekse karşı güç kazanıyor", "olumlu"),
+    'B3':  ("Klasik Sıkışma", "20+ gündür dar bantta, hacim ve volatilite düşük — yön henüz belli değil", "nötr"),
+    'B4':  ("Yatayda Hacim Patlaması", "yatay seyirde son 10 günün en yüksek hacmiyle yeşil kapanış", "olumlu"),
+    'B7':  ("Yatay + Hafif Pullback", "yatay seyirde son birkaç günde hafif geri çekilme, yapı bozulmadı", "olumlu"),
+    'B9':  ("Alt Sınır Testi", "yatay bandın alt sınırına dokunup toparlandı, destek savunuldu", "olumlu"),
+    'B10': ("Yatay + Momentum Çelişkisi", "fiyat 20 gündür yatay ama momentum içeride güçleniyor", "olumlu"),
+    'B11': ("Tepede Yay Geriliyor", "60 günlük zirve yakınında sıkışıyor ve endekse karşı güçlü", "olumlu"),
+    'C4':  ("Soluklanma", "yukarı trendde 50 günlük ortalama üstünde, son 3-5 gün yatay", "olumlu"),
+    'C8':  ("Yukarı Kanal Testi", "yukarı trendde 20 günlük ortalamaya çekilip toparlandı", "olumlu"),
+    'C10': ("Trendde Sıkışma", "yukarı trendde 10+ gündür dar bantta, trend bozulmadı", "olumlu"),
     'D1': ("Tek Güçlü Sinyal", "hacimli alım günü ama 50 günlük ortalama altında — tek başına riskli", "uyarı"),
     'D2': ("Karışık Sinyal", "hem pozitif hem zayıflama işaretleri var, tablo kararsız", "uyarı"),
 }
@@ -4397,18 +4432,28 @@ def _db_evidence_hits(ticker: str):
         con.close()
         if not rows:
             return None, None, None   # son 7 günde kayıt yok (bayat/yok) → sus
-        types = {r[0] for r in rows}
+        # 28 Ağu 2026 — GOLD MINE PUAN KAPISI KALDIRILDI.
+        # Eskiden hem er_ hem klasik taramalar _ER_GOOD / _POSITIVE_SCANNER_TYPES
+        # kümelerinden geçmek zorundaydı. O kümeler backtest_results.json'dan
+        # türüyordu; dosya VPS'te YOK -> kümeler boş -> hits hep boş -> types hiç
+        # teslim edilmiyordu ve PRO/ELITE'teki "bu hisseyi işaretleyen taramalar"
+        # maddesi en az 17 Ağustos'tan beri SESSİZCE düşüyordu.
+        # Ayrıca o puan geçersiz: vadesi sonradan seçiliyor (alfa zirve günü),
+        # getiriyi güne bölüyor, N kapısı 30 (mühür 150), rejim ve evren tabanı yok.
+        # Yeni kural: düz gerçek yazılır — hisse hangi taramalarda çıktıysa o.
+        # Performans iddiası YOK; yalnız ölçümle ELENMİŞ taramalar anılmaz.
+        types = {r[0] for r in rows if _tarama_gecerli(r[0])}
+        if not types:
+            return None, None, None
         last = max(r[1] for r in rows)
         hits = []
         for t in types:
             if str(t).startswith("er_"):
                 code = str(t)[3:]
-                if code in _ER_GOOD:
-                    hits.append(f"Erken Radar {code} (izlenen senaryo)")
-            elif t in _SCANNER_NAMES_EV and t in _POSITIVE_SCANNER_TYPES:
+                if code in _ER_INFO:
+                    hits.append(f"Erken Radar {code}")
+            elif t in _SCANNER_NAMES_EV:
                 hits.append(_SCANNER_NAMES_EV[t])
-        if not hits:
-            return None, None, None
         return hits, last, types
     except Exception:
         return None, None, None
