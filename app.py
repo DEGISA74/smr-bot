@@ -1268,6 +1268,17 @@ def get_scanner_scores():
     return out
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _goldmine_likidite(semboller: tuple) -> dict:
+    """Vitrin adaylarinin 20 gunluk ortalama TL hacmi. Hesap likidite_siralama.py'de
+    (saf modul); burada yalnizca onbelleklenir — 200+ sembol icin parquet okuma pahali."""
+    try:
+        import likidite_siralama as _ls
+        return {s: _ls.likidite(s) for s in semboller}
+    except Exception:
+        return {}
+
+
 def _compute_goldmine_entries():
     """Güncel backtest puanı olan pozitif taramaları hisse bazında sıralar."""
     try:
@@ -1278,6 +1289,12 @@ def _compute_goldmine_entries():
             _sc = str(sembol).replace('.IS', '')
             if not _sc:
                 return
+            try:                       # endeks vitrine girmez (XU100/XUSIN taramalarda cikiyordu)
+                import likidite_siralama as _ls_chk
+                if not _ls_chk.hisse_mi(_sc):
+                    return
+            except Exception:
+                pass
             _family = scanner_family(scan_type or scanner)
             _cur = entries.get(_sc)
             if _cur is None:
@@ -1352,7 +1369,28 @@ def _compute_goldmine_entries():
         def _grank(g):
             g = str(g or '')
             return 0 if '🟢' in g else (2 if '🔴' in g else 1)
-        _ranked = sorted(entries.values(), key=lambda e: (-e.get('score', 0), _grank(e.get('guc')), e['sym']))
+        # ── 28 Agu 2026 — SIRALAMA LIKIDITEYE GECTI ─────────────────────────────
+        # Eski birincil anahtar backtest puaniydi; o puan gecersiz sayildi (vadesi
+        # sonradan seciliyordu = alfa zirve gunu, getiriyi gune boluyordu, N kapisi
+        # 30 iken muhur 150, rejim ve evren tabani yoktu).
+        # Yerine OLCULMUS siralama: ayni gunun birlesik vitrin havuzunda isimleri
+        # 20 gunluk ortalama TL hacme gore siralayip en likit 4'u almak, havuzun
+        # tamamina gore +1,29 puan (66 gun, gunlerin %68'i, p=0,004). Havuzun kendisi
+        # -0,34 iken en likit 4 +0,95. Top-10 zayif kaliyor (p=0,064) -> adet 4.
+        # Olcum: memory/project_gun_ici_siralama.md · logs/likidite_genel.csv
+        # ⚠ TEK DONEM (May-Agu 2026). Puan tie-breaker olarak KALDI, birincil degil.
+        _lik = _goldmine_likidite(tuple(sorted(entries.keys())))
+
+        def _likval(e):
+            v = _lik.get(e['sym'])
+            return -v if isinstance(v, float) and v == v else 1.0   # NaN -> sona
+
+        _ranked = sorted(entries.values(),
+                         key=lambda e: (_likval(e), -e.get('score', 0),
+                                        _grank(e.get('guc')), e['sym']))
+        for _i, _e in enumerate(_ranked):     # ilk 4 = olculmus kesim
+            _e['en_likit'] = (_i < 4)
+            _e['likidite_tl'] = _lik.get(_e['sym'])
         return _ranked
     except Exception:
         return []
@@ -1449,7 +1487,10 @@ def render_gold_mine_showcase():
         st.markdown(
             "<div style='background:linear-gradient(90deg,#422006,#1c1917);border:1px solid #a16207;"
             "border-radius:8px;padding:6px 11px;margin:6px 0 5px 0;font-size:0.82rem;font-weight:900;"
-            "color:#fbbf24;letter-spacing:0.03em;'>🏆 GOLD MINE — Güncel Pozitif Karneli Sinyaller</div>",
+            "color:#fbbf24;letter-spacing:0.03em;'>🏆 GOLD MINE — Güncel Pozitif Karneli Sinyaller"
+            "<div style='font-size:0.63rem;font-weight:600;color:#d6d3d1;letter-spacing:0;margin-top:2px;'>"
+            "Sıra: 20 günlük ortalama işlem hacmi (en likit üstte) · 💧 işaretli ilk 4, ölçülmüş kesim"
+            "</div></div>",
             unsafe_allow_html=True
         )
 
@@ -1468,7 +1509,8 @@ def render_gold_mine_showcase():
                 return
             with st.container(height=320, border=False):
                 for _i, e in enumerate(items):
-                    if st.button(f"{_i+1}. {e['icon']} {e['sym']} · {e['scanner']}",
+                    _lk = "💧 " if e.get('en_likit') else ""
+                    if st.button(f"{_lk}{_i+1}. {e['icon']} {e['sym']} · {e['scanner']}",
                                  key=f"gm_{side}_{e['sym']}_{_i}", width='stretch'):
                         on_scan_result_click(e['sembol']); st.rerun()
                     _d = e['plain']
