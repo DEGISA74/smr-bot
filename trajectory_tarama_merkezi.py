@@ -521,6 +521,39 @@ def _payload_scan_types(item: dict[str, Any]) -> list[str]:
     return sorted(set(str(source).strip() for source in sources if str(source).strip()))
 
 
+def _flow_alignment(candidate: dict[str, Any]) -> dict[str, str] | None:
+    """Mevcut Toplu Terazi oylarından CMF + OBV uyumunu okur.
+
+    Yeni gösterge hesabı yapmaz. Aynı kapanış fotoğrafında üretilmiş ölçülmüş
+    ``Para akışı`` ve ``OBV birikim izi`` oyları birlikte varsa, kartta yalnızca
+    bilgi rozeti göstermek için küçük bir açıklama döndürür. Tek bir oy veya
+    ölçülmemiş oy, rozet için yeterli sayılmaz.
+    """
+    item = candidate.get("payload_item") or {}
+    result = item.get("result") or {}
+    terazi = result.get("terazi") or {}
+    votes = terazi.get("votes") or []
+    cmf_positive = False
+    obv_positive = False
+    for vote in votes:
+        if not isinstance(vote, dict):
+            continue
+        if vote.get("yon") != "boga" or not vote.get("olculmus"):
+            continue
+        name = str(vote.get("ad") or "").strip().lower()
+        if "para akışı" in name and "pozitif" in name:
+            cmf_positive = True
+        if name == "obv birikim izi":
+            obv_positive = True
+    if not (cmf_positive and obv_positive):
+        return None
+    return {
+        "label": "💧 CMF + OBV olumlu",
+        "detail": "CMF20 pozitif · OBV yönü pozitif",
+        "title": "Aynı kapanış fotoğrafında ölçülmüş CMF20 ve OBV olumlu. Bilgi rozetidir; puan veya eylem hükmü değildir.",
+    }
+
+
 def _trajectory_is_strong(row: pd.Series) -> bool:
     """Araştırmada kullanılan mevcut tetik: v1≥3 veya cur_core≥2.
 
@@ -765,6 +798,7 @@ def build_trajectory_desk(payload: object, session_dates: list[object] | None = 
         for candidate in out[bucket]:
             enriched = _attach_vade_metadata(candidate, expiry_as_of, session_dates)
             if enriched is not None:
+                enriched["flow_alignment"] = _flow_alignment(enriched)
                 active_candidates.append(enriched)
         out[bucket] = _sort_candidates(bucket, active_candidates)
     out["counts"] = {bucket: len(out[bucket]) for bucket in BUCKETS}
@@ -856,6 +890,21 @@ def _card_html(candidate: dict[str, Any], *, is_showcase: bool = False) -> str:
         badges.append("<span style='background:#38bdf81a;color:#38bdf8;border:1px solid #38bdf844;padding:3px 7px;border-radius:4px;font-size:0.66rem;font-weight:700;'>🔎 T0 · İLK GÜN SİNYALİ</span>")
     elif candidate["bucket"] not in (BUCKET_READY, BUCKET_GROWING):
         badges.append(f"<span style='background:#f59e0b1a;color:#fbbf24;border:1px solid #f59e0b44;padding:3px 7px;border-radius:4px;font-size:0.66rem;font-weight:700;'>↔️ {meta['tag']}</span>")
+
+    flow = candidate.get("flow_alignment")
+    if flow:
+        flow_title = str(flow.get("title") or "")
+        flow_detail = str(flow.get("detail") or "")
+        flow_tip = html.escape(
+            " · ".join(part for part in (flow_title, flow_detail) if part),
+            quote=True,
+        )
+        badges.append(
+            f"<span title='{flow_tip}' "
+            "style='background:#06b6d41a;color:#67e8f9;border:1px solid #06b6d466;"
+            "padding:3px 7px;border-radius:4px;font-size:0.66rem;font-weight:800;cursor:help;'>"
+            f"{html.escape(str(flow.get('label') or '💧 CMF + OBV olumlu'))}</span>"
+        )
 
     badge_html = "".join(badges)
     crowded = ""
@@ -983,11 +1032,18 @@ def _render_compact_rows(
                     unsafe_allow_html=True,
                 )
             with cols[1]:
+                _flow_html = ""
+                if candidate.get("flow_alignment"):
+                    _flow_html = (
+                        "<div title='CMF20 pozitif · OBV yönü pozitif; bilgi rozetidir.' "
+                        "style='font-size:0.58rem;color:#67e8f9;font-weight:800;margin-top:3px;'>"
+                        "💧 CMF + OBV olumlu</div>"
+                    )
                 st.markdown(
                     f"<div style='font-size:0.68rem;color:#7dd3fc;font-weight:800;line-height:1.2;'>"
                     f"{html.escape(story)}</div>"
                     f"<div style='font-size:0.58rem;color:#64748b;margin-top:3px;'>"
-                    f"{html.escape(sources)}</div>",
+                    f"{html.escape(sources)}</div>{_flow_html}",
                     unsafe_allow_html=True,
                 )
             with cols[2]:
@@ -1554,6 +1610,11 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             f"- Israr: {candidate['israr']} gün\n"
             f"- Kaynaklar: {', '.join(_display_scan(scan) for scan in _card_scan_types(candidate)) or '—'}"
         )
+        if candidate.get("flow_alignment"):
+            st.info(
+                "💧 CMF + OBV olumlu — CMF20 pozitif ve OBV yönü pozitif. "
+                "Bu yalnızca bilgi rozetidir; puan, vade veya eylem hükmü değildir."
+            )
         if candidate["crowded"]:
             st.warning(f"Kalabalık uyarısı: {candidate['scan_count']} taramada görünmüş. Bu bilgi puan değildir.")
         if candidate["bucket"] in (BUCKET_WATCH, BUCKET_RISK):

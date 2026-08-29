@@ -50,6 +50,9 @@ OUTCOME_HORIZONS = (5, 10, 20)
 HOLD_DAYS = max(OUTCOME_HORIZONS)
 TARGET_PCT = 30.0
 NOISE_SCAN_TYPES = {"radar1"}
+SWING_LEFT_BARS = 2
+SWING_RIGHT_BARS = 2
+SWING_LOOKBACK_BARS = 60
 
 STORED_FEATURES = [
     "f_smart_money_score", "f_smart_structural_score",
@@ -278,6 +281,126 @@ def previous_date(index: pd.DatetimeIndex, day: str) -> str | None:
     return days[pos - 1] if pos > 0 else None
 
 
+def confirmed_swing_lows(
+    low_series: pd.Series,
+    *,
+    left: int = SWING_LEFT_BARS,
+    right: int = SWING_RIGHT_BARS,
+    lookback: int = SWING_LOOKBACK_BARS,
+) -> list[dict[str, object]]:
+    """Kapanmış sağ komşularla doğrulanmış salınım diplerini bulur.
+
+    Bir dip, iki sol ve iki sağ bardaki Low değerlerinin tamamından kesinlikle
+    düşükse pivot kabul edilir. Son ``right`` bar, henüz sağ komşu olmadığı
+    için hiçbir zaman pivot olarak kullanılmaz; böylece as-of tarihinde ileri
+    bilgi sızmaz. Eşit dipler tek bir salınım dibi diye zorla birleştirilmez.
+    """
+    if left < 1 or right < 1 or lookback < left + right + 1:
+        return []
+    if not isinstance(low_series, pd.Series):
+        low_series = pd.Series(low_series)
+    values = pd.to_numeric(low_series, errors="coerce").dropna()
+    if len(values) < left + right + 1:
+        return []
+    values = values.iloc[-lookback:]
+    array = values.to_numpy(dtype=float)
+    lows: list[dict[str, object]] = []
+    start = left
+    stop = len(array) - right
+    for position in range(start, stop):
+        value = array[position]
+        if not np.isfinite(value):
+            continue
+        neighbours = np.concatenate((
+            array[position - left:position],
+            array[position + 1:position + right + 1],
+        ))
+        if not np.isfinite(neighbours).all() or not value < float(neighbours.min()):
+            continue
+        pivot_date = pd.Timestamp(values.index[position])
+        confirmation_date = pd.Timestamp(values.index[position + right])
+        lows.append({
+            "position": position,
+            "date": pivot_date.date().isoformat(),
+            "confirmation_date": confirmation_date.date().isoformat(),
+            "low": float(value),
+        })
+    return lows
+
+
+def higher_low_state(
+    daily: pd.DataFrame,
+    as_of: object = None,
+    *,
+    lookback: int = SWING_LOOKBACK_BARS,
+    left: int = SWING_LEFT_BARS,
+    right: int = SWING_RIGHT_BARS,
+) -> dict[str, object]:
+    """Son iki doğrulanmış salınım dibinin yapısını raporlar.
+
+    Bu yalnızca gözlem alanıdır; tarama puanına, vade kararına veya eylem
+    hükmüne bağlanmaz. ``as_of`` kesimi, son sağ komşu oluşmadan pivotun
+    kullanılmasını engeller.
+    """
+    empty: dict[str, object] = {
+        "state": "insufficient",
+        "confirmed": False,
+        "pivot_count": 0,
+        "previous_low": None,
+        "latest_low": None,
+        "delta_pct": None,
+        "previous_pivot_date": None,
+        "latest_pivot_date": None,
+        "latest_confirmation_date": None,
+    }
+    if not isinstance(daily, pd.DataFrame) or "Low" not in daily.columns:
+        return empty
+    frame = daily.loc[:, ["Low"]].copy()
+    index = pd.to_datetime(frame.index, errors="coerce")
+    valid_index = ~index.isna()
+    frame = frame.loc[valid_index].copy()
+    frame.index = index[valid_index]
+    frame = frame[~frame.index.duplicated(keep="last")].sort_index()
+    if as_of is not None:
+        cutoff = pd.to_datetime(as_of, errors="coerce")
+        if pd.isna(cutoff):
+            return empty
+        cutoff = pd.Timestamp(cutoff)
+        if cutoff.tzinfo is not None:
+            cutoff = cutoff.tz_localize(None)
+        frame = frame.loc[frame.index <= cutoff]
+    pivots = confirmed_swing_lows(
+        frame["Low"], left=left, right=right, lookback=lookback,
+    )
+    result = dict(empty)
+    result["pivot_count"] = len(pivots)
+    if len(pivots) < 2:
+        return result
+    previous, latest = pivots[-2], pivots[-1]
+    previous_low = float(previous["low"])
+    latest_low = float(latest["low"])
+    delta_pct = (latest_low / previous_low - 1.0) * 100.0 if previous_low > 0 else None
+    if delta_pct is None:
+        state = "insufficient"
+    elif delta_pct > 0:
+        state = "higher_low"
+    elif delta_pct < 0:
+        state = "lower_low"
+    else:
+        state = "flat_low"
+    result.update({
+        "state": state,
+        "confirmed": state == "higher_low",
+        "previous_low": previous_low,
+        "latest_low": latest_low,
+        "delta_pct": float(delta_pct) if delta_pct is not None else None,
+        "previous_pivot_date": previous["date"],
+        "latest_pivot_date": latest["date"],
+        "latest_confirmation_date": latest["confirmation_date"],
+    })
+    return result
+
+
 def latest_hour_before(df: pd.DataFrame, cutoff: pd.Timestamp) -> tuple[pd.Timestamp, pd.Series] | None:
     part = df[df.index <= cutoff]
     if part.empty:
@@ -477,6 +600,7 @@ def make_snapshot(
         source = "live_intraday"
     if state.get("error"):
         return None
+    structure = higher_low_state(daily, actual_snapshot_date)
     scans = event_rows[
         (event_rows["symbol"] == symbol)
         & (event_rows["event_start_date"] == t0)
@@ -560,6 +684,18 @@ def make_snapshot(
         "sma20_value": round(float(state.get("sma20")), 6) if pd.notna(state.get("sma20")) else None,
         "rs_start": round(float(state.get("rs_start")), 8) if pd.notna(state.get("rs_start")) else None,
         "rs_now": round(float(state.get("rs_now")), 8) if pd.notna(state.get("rs_now")) else None,
+        # Yüksek dip yalnızca iki sağ komşusu kapanmış gerçek pivotlardan
+        # okunur; şimdilik UI rozeti veya tarama kararı değildir.
+        "higher_low_state": structure["state"],
+        "higher_low_confirmed": int(bool(structure["confirmed"])),
+        "higher_low_pivot_count": structure["pivot_count"],
+        "higher_low_previous": structure["previous_low"],
+        "higher_low_latest": structure["latest_low"],
+        "higher_low_delta_pct": round(float(structure["delta_pct"]), 4)
+        if structure["delta_pct"] is not None else None,
+        "higher_low_previous_date": structure["previous_pivot_date"],
+        "higher_low_latest_date": structure["latest_pivot_date"],
+        "higher_low_confirmation_date": structure["latest_confirmation_date"],
         "price_positive_count": price_positive_count,
         "rs_up": comp["rs"], "ma20": comp["ma20"], "atr_move": comp["atr_move"],
         "rsi_up": comp["rsi"], "israr": comp["israr"], "genislik": comp["genislik"],
