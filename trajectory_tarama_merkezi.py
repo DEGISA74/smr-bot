@@ -1455,11 +1455,31 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         for category in catalog
         for symbol in category.get("symbols", [])
     })
+    # 29 Agu 2026 — 5. sutun: OLASI SHORT (er_D4 / er_D5).
+    # Ayni kaynak app.py'deki OLASI SHORT paneliyle: erken_radar_data'daki
+    # D4/D5 satirlari, tekil hisse sayisi, endeksler haric.
+    # ⚠ Bu bir ALIM/SATIM tavsiyesi degil, uyari/veto katmanidir: islem
+    # yapilabilir evrende (VIOP 47 / BIST50) kenar olcumde cokuyor.
+    _short_count = 0
+    try:
+        _er_sh = session_getter('erken_radar_data')
+        if _er_sh is not None and hasattr(_er_sh, 'empty') and not _er_sh.empty \
+                and 'ScenarioId' in _er_sh.columns and 'Sembol' in _er_sh.columns:
+            import likidite_siralama as _ls_sc
+            _sh_rows = _er_sh[_er_sh['ScenarioId'].astype(str).isin(['D4', 'D5'])]
+            _short_count = len({
+                str(_x).replace('.IS', '').upper()
+                for _x in _sh_rows['Sembol'].dropna()
+                if _ls_sc.hisse_mi(_x)
+            })
+    except Exception:
+        _short_count = 0
     _summary_items = (
         ("🎯 Karar hazır aday", counts[BUCKET_READY], "#22c55e"),
         ("⏳ Takip / teyit havuzu", counts[BUCKET_GROWING] + counts[BUCKET_WATCH], "#f59e0b"),
         ("🌱 Yeni sinyal", counts[BUCKET_NEW], "#38bdf8"),
         ("⚠️ Risk masası", counts[BUCKET_RISK], "#ef4444"),
+        ("📉 Olası short", _short_count, "#fca5a5"),
     )
     _summary_html = "".join(
         f"<div style='background:#0f172acc;border:1px solid #263b5d;border-radius:8px;"
@@ -1475,7 +1495,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         f"<div style='font-size:0.72rem;color:#e2e8f0;text-align:right;white-space:nowrap;'>📅 {html.escape(as_of)} kapanışı"
         "<div style='font-size:0.64rem;color:#64748b;margin-top:2px;'>Master Scan fotoğrafı</div></div>"
         "</div>"
-        f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px 0;'>"
+        f"<div style='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:0 0 12px 0;'>"
         f"{_summary_html}</div>",
         unsafe_allow_html=True,
     )
