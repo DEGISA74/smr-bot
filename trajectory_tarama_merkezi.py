@@ -1333,15 +1333,34 @@ def _render_short_warning(
     on_click: Any,
     *,
     as_of: object = None,
+    show_empty: bool = False,
 ) -> None:
-    """OLASI SHORT uyarısını Risk Masası'nda, işlem aracına çevirmeden gösterir."""
+    """OLASI SHORT uyarısını ayrı görünümde, işlem aracına çevirmeden gösterir."""
     short_map = _short_candidates(session_getter)
     if not short_map:
+        if show_empty:
+            st.markdown(
+                "<div style='background:linear-gradient(135deg,#7f1d1d22,#1c191706);"
+                "border:1px solid #dc262655;border-radius:8px;padding:10px 12px;"
+                "margin:2px 0 8px 0;'>"
+                "<span style='font-size:0.82rem;font-weight:900;color:#fca5a5;'>"
+                "📉 OLASI SHORT — 0 hisse</span>"
+                "<div style='font-size:0.68rem;color:#d6d3d1;line-height:1.35;margin-top:4px;'>"
+                "Erken Radar D4/D5 satırı yok. İlk gerçek liste, D4/D5 açık Master Scan sonrasında burada görünecek."
+                "</div></div>",
+                unsafe_allow_html=True,
+            )
         return
     top, measured = _liquidity_top(
         list(short_map),
         as_of=as_of,
         scan_type="er_D4",
+    )
+    display_top = top if measured else list(short_map)[:4]
+    short_order_note = (
+        "en likit 4 üstte"
+        if measured
+        else "likidite ölçümü yok; kaynak sırası gösteriliyor"
     )
     st.markdown(
         "<div style='background:linear-gradient(135deg,#7f1d1d22,#1c191706);"
@@ -1350,7 +1369,7 @@ def _render_short_warning(
         "<span style='font-size:0.78rem;font-weight:900;color:#fca5a5;'>"
         f"📉 OLASI SHORT — {len(short_map)} hisse</span>"
         "<div style='font-size:0.63rem;color:#d6d3d1;line-height:1.3;margin-top:2px;'>"
-        "er_D4 / er_D5 düşüş uyarısı · en likit 4 üstte<br>"
+        f"er_D4 / er_D5 düşüş uyarısı · {short_order_note}<br>"
         "<b>Uyarı listesidir, işlem tavsiyesi değil.</b> İşlem yapılabilir evrende "
         "(VİOP 47 / BIST 50) kenar ölçümü sınırlıdır."
         "</div></div>",
@@ -1358,8 +1377,7 @@ def _render_short_warning(
     )
     if not measured:
         st.caption("Likidite ölçümü hazır değil; EN LİKİT sırası gösterilmedi.")
-        return
-    for index, symbol in enumerate(top):
+    for index, symbol in enumerate(display_top):
         scenarios = " + ".join(sorted(short_map.get(symbol, [])))
         if st.button(
             f"💧 {index + 1}. {symbol} · {scenarios}",
@@ -1369,7 +1387,7 @@ def _render_short_warning(
         ):
             on_click(symbol)
             st.rerun(scope="app")
-    remaining = len(short_map) - len(top)
+    remaining = len(short_map) - len(display_top)
     if remaining > 0:
         st.markdown(
             "<div style='font-size:0.64rem;color:#94a3b8;margin:-3px 0 6px 6px;'>"
@@ -1545,15 +1563,16 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             st.session_state["_tm_scroll_top"] = True
             st.rerun(scope="app")
 
-    # 🗂️ KARAR YÜZEYİ — ürünce onaylı beş sekme.
+    # 🗂️ KARAR YÜZEYİ — ürünce onaylı altı sekme.
     # Yaşam döngüsünün iki ara durumu aynı sekmede kalır; içeride ayrı masalara
     # bölünerek geniş ara havuzun işlem listesi gibi görünmesi engellenir.
-    tab_long, tab_confirm, tab_new, tab_risk, tab_catalog = st.tabs([
+    tab_long, tab_confirm, tab_new, tab_risk, tab_catalog, tab_short = st.tabs([
         f"🎯 Karar Hazır ({counts[BUCKET_READY]} aday)",
         f"⏳ Takip / Teyit ({counts[BUCKET_GROWING] + counts[BUCKET_WATCH]} aday)",
         f"🌱 Yeni Sinyaller ({counts[BUCKET_NEW]})",
         f"⚠️ Risk Masası ({counts[BUCKET_RISK]})",
         f"📚 Katalog ({_catalog_count})",
+        f"📉 Olası Short ({_short_count})",
     ])
 
     def _render_decision_groups(
@@ -1637,10 +1656,12 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     _render_decision_groups(
         tab_risk,
         [BUCKET_RISK],
-        leading=lambda: _render_short_warning(
-            st, session_getter, on_click, as_of=as_of
-        ),
     )
+
+    with tab_short:
+        _render_short_warning(
+            st, session_getter, on_click, as_of=as_of, show_empty=True
+        )
 
     with tab_catalog:
         _render_goldmine_liquidity(st, desk, on_click)
