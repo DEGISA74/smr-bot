@@ -21578,42 +21578,6 @@ def _render_left_col():
     if _MM_MEMBER_VIEW:
         return None, None
 
-    # ---------------------------------------------------------
-    # 🏆 TARAMA MERKEZİ — TİERELİ DÜZEN (YENİ)
-    # ---------------------------------------------------------
-    
-    # Session state başlatmaları
-    for _k in ['ict_scan_data','nadir_firsat_scan_data','guclu_donus_data',
-                'wilder_divergence_data',
-                'harmonic_confluence_data','accum_data','minervini_data',
-                'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data',
-                'golden_pattern_data','toplu_terazi_data']:
-        if _k not in st.session_state: st.session_state[_k] = None
-    
-    # ── STARTUP CACHE RESTORE (piyasa dışı saatlerde otomatik yükle) ─────────
-    # Sayfa ilk açıldığında veya yenilendiğinde, son kapanış sonrası yapılmış
-    # master scan cache varsa tüm sonuçları session_state'e geri yükler.
-    if '_scan_cache_restored' not in st.session_state:
-        st.session_state['_scan_cache_restored'] = True   # Bu oturumda bir kez çalış
-        _cat_restore = st.session_state.get('category', 'S&P 500')
-        _master_restore = load_scan_result("master_scan", _cat_restore)
-        if _master_restore is not None:
-            for _rk, _rv in _master_restore.items():
-                # Sadece henüz None olan key'leri doldur (elle değiştirilen kalıcı olsun)
-                if st.session_state.get(_rk) is None or st.session_state.get(_rk) == [] or st.session_state.get(_rk) is False:
-                    st.session_state[_rk] = _rv
-            _close_str = _scan_last_close_dt().strftime('%d.%m %H:%M')
-            st.session_state['_cache_toast_msg'] = f"📦 {_close_str} kapanışı tarama sonuçları yüklendi"
-    elif st.session_state.get('stp_uyanis_data') is None:
-        # Eski disk fotoğrafları STP listesini içermiyordu. Tam sonuçları tekrar
-        # yüklemeden yalnız bu eksik listeyi mevcut kapanış fotoğrafından al.
-        _stp_restore = load_scan_result(
-            "master_scan", st.session_state.get('category', 'S&P 500')
-        )
-        if isinstance(_stp_restore, dict) and 'stp_uyanis_data' in _stp_restore:
-            st.session_state.stp_uyanis_data = _stp_restore['stp_uyanis_data']
-    # ─────────────────────────────────────────────────────────────────────────
-    
     # Skor kartı başlığı — gradient progress bar + puan badge
     def _darken(hex_color, factor=0.65):
         h = hex_color.lstrip('#')
@@ -21648,8 +21612,60 @@ def _render_left_col():
                 f"<div style='background:{color};height:4px;border-radius:3px;width:{pct}%;'></div></div>"
                 f"<div style='margin-top:3px;'>{stars} {bottom}</div>{_karne_html}</div>")
     
+    # 30 Tem 2026 EKRAN REFORMU 4 — TARAMA MERKEZİ (bayrak-korumalı · VARSAYILAN AÇIK).
+    # Tek-hisse panelleri bittikten sonra, toplu tarama akışının başladığı yerde görünür.
+    _tm_v2_enabled = str(os.getenv("TARAMA_MERKEZI_V2", "1")).lower() in ("1", "true", "on")
+    if _tm_v2_enabled:
+        try:
+            # Session state başlatmaları
+            for _k in ['ict_scan_data','nadir_firsat_scan_data','guclu_donus_data',
+                        'wilder_divergence_data',
+                        'harmonic_confluence_data','accum_data','minervini_data',
+                        'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data',
+                        'golden_pattern_data','toplu_terazi_data']:
+                if _k not in st.session_state: st.session_state[_k] = None
+
+            # ── STARTUP CACHE RESTORE (piyasa dışı saatlerde otomatik yükle) ─────
+            # Sayfa ilk açıldığında veya yenilendiğinde, son kapanış sonrası yapılmış
+            # master scan cache varsa tüm sonuçları session_state'e geri yükle.
+            if '_scan_cache_restored' not in st.session_state:
+                st.session_state['_scan_cache_restored'] = True   # Bu oturumda bir kez çalış
+                _cat_restore = st.session_state.get('category', 'S&P 500')
+                _master_restore = load_scan_result("master_scan", _cat_restore)
+                if _master_restore is not None:
+                    for _rk, _rv in _master_restore.items():
+                        # Sadece henüz None olan key'leri doldur (elle değiştirilen kalıcı olsun)
+                        if st.session_state.get(_rk) is None or st.session_state.get(_rk) == [] or st.session_state.get(_rk) is False:
+                            st.session_state[_rk] = _rv
+                    _close_str = _scan_last_close_dt().strftime('%d.%m %H:%M')
+                    st.session_state['_cache_toast_msg'] = f"📦 {_close_str} kapanışı tarama sonuçları yüklendi"
+            elif st.session_state.get('stp_uyanis_data') is None:
+                # Eski disk fotoğrafları STP listesini içermiyordu. Tam sonuçları tekrar
+                # yüklemeden yalnız bu eksik listeyi mevcut kapanış fotoğrafından al.
+                _stp_restore = load_scan_result(
+                    "master_scan", st.session_state.get('category', 'S&P 500')
+                )
+                if isinstance(_stp_restore, dict) and 'stp_uyanis_data' in _stp_restore:
+                    st.session_state.stp_uyanis_data = _stp_restore['stp_uyanis_data']
+
+            @st.fragment
+            def _tm_fragment():
+                # 30 Tem 2026 — FRAGMENT: "Kurulumu aç" popup'ı SADECE bu bölümü yeniler
+                # (tüm sayfa reload'u yok, hızlı hisseder). Hisse seçimi modül içinde
+                # st.rerun(scope="app") ile tüm sayfayı yeniler → üstteki paneller güncel.
+                trajectory_tarama_merkezi.render_trajectory_tarama_merkezi(
+                    st.session_state.get, _validate_toplu_terazi_payload,
+                    on_scan_result_click)
+                _master_scan_giris_senaryolari.render_master_scan_entry_scenarios()
+            _tm_fragment()
+            st.markdown(
+                "<div style='height:1px;background:#1e293b;margin:12px 0;'></div>",
+                unsafe_allow_html=True)
+        except Exception as _tm_exc:
+            log_error("render_tarama_merkezi", _tm_exc, "")
+
     # ══════════════════════════════════════════════════════════
-    # ⓪ BUGÜN — BİRLEŞİK AL-İZLE LİSTESİ (render redesign, 11 Ağu 2026) — EN TEPE
+    # ⓪ BUGÜN — BİRLEŞİK AL-İZLE LİSTESİ (render redesign, 11 Ağu 2026)
     # ══════════════════════════════════════════════════════════
     _render_bugun_listesi()
 
@@ -21683,30 +21699,38 @@ def _render_left_col():
                         f"<span style='font-size:0.78rem;font-weight:900;color:#7c3aed;'>"
                         f"🔥 CONFLUENCE — {_conf_count} Hisse</span></div>", unsafe_allow_html=True)
             if _hits:
-                with st.container(height=320, border=False):
-                    for _ci, _ch in enumerate(_hits):
-                        _cs = _ch['Sembol'].replace('.IS','')
-                        _cp = _ch.get('price', 0)
-                        _cp_s = f"{int(_cp)}" if _cp >= 1000 else f"{_cp:.2f}"
-                        _gc = _ch.get('group_count', 0)
-                        _ws = _ch.get('weighted_score', 0)
-                        _icon = "🔥🔥" if _gc == 4 else "🔥" if _gc == 3 else "⚡"
-                        # Açıklama: hangi metodoloji grupları ve scanner'lar buldu
-                        _hg = _ch.get('hit_groups', [])
-                        _conf_desc_parts = []
-                        for _hg_item in _hg:
-                            _scanners_str = " + ".join(_hg_item.get('scanners', []))
-                            _conf_desc_parts.append(f"{_hg_item['label']}: {_scanners_str}")
-                        _conf_desc = " | ".join(_conf_desc_parts)
-                        if st.button(f"{_icon} {_cs} ({_cp_s}) · {_ws}pt", key=f"conf_top_{_cs}_{_ci}", width='stretch'):
-                            st.session_state.ticker = _ch['Sembol']
-                            on_scan_result_click(_ch['Sembol']); st.rerun()
-                        if _conf_desc:
-                            st.markdown(
-                                f"<div style='font-size:0.72rem;color:#cbd5e1;font-weight:500;"
-                                f"margin:-4px 0 6px 4px;line-height:1.4;'>{_conf_desc}</div>",
-                                unsafe_allow_html=True
-                            )
+                _conf_items = []
+                for _ch in _hits:
+                    _cs = _ch['Sembol'].replace('.IS','')
+                    _cp = _ch.get('price', 0)
+                    _cp_s = f"{int(_cp)}" if _cp >= 1000 else f"{_cp:.2f}"
+                    _gc = _ch.get('group_count', 0)
+                    _ws = _ch.get('weighted_score', 0)
+                    _icon = "🔥🔥" if _gc == 4 else "🔥" if _gc == 3 else "⚡"
+                    _hg = _ch.get('hit_groups', [])
+                    _conf_desc_parts = []
+                    for _hg_item in _hg:
+                        _scanners_str = " + ".join(_hg_item.get('scanners', []))
+                        _conf_desc_parts.append(f"{_hg_item['label']}: {_scanners_str}")
+                    _conf_items.append({
+                        'symbol': _cs,
+                        'target': _ch['Sembol'],
+                        'price': _cp_s,
+                        'rank': f"{_ws}pt",
+                        'icon': _icon,
+                        'label': f"{_gc} bağımsız metodoloji grubu",
+                        'detail': " | ".join(_conf_desc_parts),
+                    })
+                trajectory_tarama_merkezi.render_standard_scan_list(
+                    st,
+                    _conf_items,
+                    lambda _item: (st.session_state.__setitem__('ticker', _item['target']),
+                                   on_scan_result_click(_item['target']), st.rerun()),
+                    key_prefix="confluence",
+                    priority_title="🔥 ÖNCELİKLİ 0–5",
+                    priority_note="Mevcut confluence sırası korunur; çakışma tek başına getiri garantisi değildir.",
+                    priority_color="#a78bfa",
+                )
             else:
                 st.markdown(f"<div style='border:1px dashed #7c3aed50;border-radius:7px;"
                             f"padding:18px 10px;text-align:center;color:#94a3b8;font-size:0.8rem;'>"
@@ -21719,27 +21743,36 @@ def _render_left_col():
                         f"<span style='font-size:0.78rem;font-weight:900;color:#7c3aed;'>"
                         f"🔬 GÖZLEM: HARMONİK CONF — {_hc_count} Hisse</span></div>", unsafe_allow_html=True)
             if _hc_count > 0:
-                with st.container(height=320, border=False):
-                    for _hci, _hcr in _hc_df.iterrows():
-                        _hcs = str(_hcr.get('Sembol','')).replace('.IS','')
-                        _hcp = _hcr.get('Fiyat', 0)
-                        _hcp_s = f"{int(_hcp)}" if _hcp >= 1000 else f"{_hcp:.2f}"
-                        _cyon = str(_hcr.get('Yön',''))
-                        _cyon_lbl = "🟢" if ('Bullish' in _cyon or 'LONG' in _cyon) else "🔴"
-                        _hc_badges = _hcr.get('Badges', '')
-                        _hc_badge_suffix = f" | {_hc_badges}" if _hc_badges else ""
-                        _hc_tooltip = _hcr.get('Aciklama', 'Harmonik PRZ teyitli')
-                        _hc_durum = str(_hcr.get('Durum', ''))
-                        if st.button(f"⚡{_cyon_lbl} {_hcs} ({_hcp_s}) | {_hcr.get('Pattern','')}{_hc_badge_suffix}", key=f"hctop_{_hcs}_{_hci}", width='stretch'):
-                            st.session_state.ticker = _hcr.get('Sembol', _hcs)
-                            on_scan_result_click(_hcr.get('Sembol', _hcs)); st.rerun()
-                        _hc_inline = f"{_hc_tooltip}" + (f" · {_hc_durum}" if _hc_durum else "")
-                        if _hc_inline:
-                            st.markdown(
-                                f"<div style='font-size:0.72rem;color:#cbd5e1;font-weight:500;"
-                                f"margin:-4px 0 6px 4px;line-height:1.4;'>{_hc_inline}</div>",
-                                unsafe_allow_html=True
-                            )
+                _hc_items = []
+                for _hci, _hcr in _hc_df.iterrows():
+                    _hcs = str(_hcr.get('Sembol','')).replace('.IS','')
+                    _hcp = _hcr.get('Fiyat', 0)
+                    _hcp_s = f"{int(_hcp)}" if _hcp >= 1000 else f"{_hcp:.2f}"
+                    _cyon = str(_hcr.get('Yön',''))
+                    _cyon_lbl = "🟢" if ('Bullish' in _cyon or 'LONG' in _cyon) else "🔴"
+                    _hc_badges = _hcr.get('Badges', '')
+                    _hc_badge_suffix = f" | {_hc_badges}" if _hc_badges else ""
+                    _hc_tooltip = _hcr.get('Aciklama', 'Harmonik PRZ teyitli')
+                    _hc_durum = str(_hcr.get('Durum', ''))
+                    _hc_items.append({
+                        'symbol': _hcs,
+                        'target': _hcr.get('Sembol', _hcs),
+                        'price': _hcp_s,
+                        'icon': f"⚡{_cyon_lbl}",
+                        'label': f"{_hcr.get('Pattern','')}{_hc_badge_suffix}",
+                        'detail': str(_hc_tooltip),
+                        'status': _hc_durum,
+                    })
+                trajectory_tarama_merkezi.render_standard_scan_list(
+                    st,
+                    _hc_items,
+                    lambda _item: (st.session_state.__setitem__('ticker', _item['target']),
+                                   on_scan_result_click(_item['target']), st.rerun()),
+                    key_prefix="harmonic_confluence",
+                    priority_title="🔬 İLK BAKILACAK 5",
+                    priority_note="Bu panel gözlem listesidir; harmonik eşleşme tek başına teyit değildir.",
+                    priority_color="#a78bfa",
+                )
             else:
                 st.markdown(f"<div style='border:1px dashed #7c3aed50;border-radius:7px;"
                             f"padding:18px 10px;text-align:center;color:#94a3b8;font-size:0.8rem;'>"
@@ -21779,7 +21812,6 @@ def _render_left_col():
     _elit_x_er5_syms = _elit_syms_clean & _er_5star_syms_clean   # .IS olmadan
     # ─────────────────────────────────────────────────────────────────────────
     
-    _tm_v2_enabled = str(os.getenv("TARAMA_MERKEZI_V2", "1")).lower() in ("1", "true", "on")
     if not _tm_v2_enabled:
         with _c_right:
             # 18 Tem 2026 (reform 3a): uydurma "88/100" çipi kaldırıldı — temiz karne (10g):
@@ -22013,16 +22045,30 @@ def _render_left_col():
                 'ADV20_Mn_TL': 'Likidite (Mn TL)',
             }
         )
-        st.dataframe(
-            _wd_show[
-                [
-                    'Durum', 'Sembol', 'Tetik', 'RSI Dönüş', 'Fiyat',
-                    'Stop', 'Hedef', 'Risk/Ödül', 'Likidite (Mn TL)',
-                ]
-            ],
-            hide_index=True,
-            width='stretch',
-            height=min(420, 70 + len(_wd_show) * 35),
+        _wd_items = []
+        for _wdi, _wdr in _wd_show.iterrows():
+            _wd_target = _wd_df.loc[_wdi].get('Sembol', _wdr.get('Sembol'))
+            _wd_status = str(_wdr.get('Durum', ''))
+            _wd_items.append({
+                'symbol': str(_wdr.get('Sembol', '—')),
+                'target': _wd_target,
+                'icon': '✅' if 'ONAYLI' in _wd_status else '⏳',
+                'label': f"{_wd_status} · {_wdr.get('Tetik', '')}",
+                'detail': (
+                    f"RSI {_wdr.get('RSI Dönüş', '—')} · Stop {_wdr.get('Stop', '—')} · "
+                    f"Hedef {_wdr.get('Hedef', '—')} · R/Ö {_wdr.get('Risk/Ödül', '—')} · "
+                    f"Likidite {_wdr.get('Likidite (Mn TL)', '—')} Mn TL"
+                ),
+                'status': 'Onaylı tetik' if 'ONAYLI' in _wd_status else 'İzleme / teyit bekliyor',
+            })
+        trajectory_tarama_merkezi.render_standard_scan_list(
+            st,
+            _wd_items,
+            lambda _item: (on_scan_result_click(_item['target']), st.rerun()),
+            key_prefix="rsi_pozitif_uyumsuzluk",
+            priority_title="🧭 ÖNCELİKLİ 0–5",
+            priority_note="Önce mevcut ONAYLI/izleme sırası korunur; RSI uyumsuzluğu tek başına alım teyidi değildir.",
+            priority_color="#f59e0b",
         )
     else:
         st.markdown(
@@ -22075,27 +22121,6 @@ def _render_left_col():
         pass
     st.caption(_rsi_history_caption)
     st.markdown("<hr style='margin:10px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
-
-    # 30 Tem 2026 EKRAN REFORMU 4 — TARAMA MERKEZİ (bayrak-korumalı · VARSAYILAN AÇIK).
-    # TARAMA_MERKEZI_V2=1 iken toplu tarama KARAR MASASI bu bölümün ÜSTÜNDE çıkar;
-    # kapalıyken (varsayılan) mevcut render HİÇ değişmez. Tek-hisse ekranına dokunmaz.
-    if _tm_v2_enabled:
-        try:
-            @st.fragment
-            def _tm_fragment():
-                # 30 Tem 2026 — FRAGMENT: "Kurulumu aç" popup'ı SADECE bu bölümü yeniler
-                # (tüm sayfa reload'u yok, hızlı hisseder). Hisse seçimi modül içinde
-                # st.rerun(scope="app") ile tüm sayfayı yeniler → üstteki paneller güncel.
-                trajectory_tarama_merkezi.render_trajectory_tarama_merkezi(
-                    st.session_state.get, _validate_toplu_terazi_payload,
-                    on_scan_result_click)
-                _master_scan_giris_senaryolari.render_master_scan_entry_scenarios()
-            _tm_fragment()
-            st.markdown(
-                "<div style='height:1px;background:#1e293b;margin:12px 0;'></div>",
-                unsafe_allow_html=True)
-        except Exception as _tm_exc:
-            log_error("render_tarama_merkezi", _tm_exc, "")
 
     if not _tm_v2_enabled:
         # ══════════════════════════════════════════════════════════
@@ -22243,7 +22268,6 @@ def _render_left_col():
                     for _eri, _err in _er_clean.iterrows():
                         _ersym = str(_err.get('Sembol', '')).replace('.IS', '')
                         if _ersym in _shown_syms: continue
-                        if len(_shown_syms) >= 20: break
                         _shown_syms.add(_ersym)
                         _erprice   = _err.get('Fiyat', 0)
                         _erprice_s = f"{int(_erprice)}" if _erprice >= 1000 else f"{_erprice:.2f}"
@@ -22289,11 +22313,21 @@ def _render_left_col():
                     )
                     st.markdown(f"<style>{_er_css}</style>", unsafe_allow_html=True)
 
-                    # 2 kolonlu grid
+                    st.markdown(
+                        f"<div style='font-size:0.80rem;font-weight:900;color:#4ade80;"
+                        f"margin:8px 0 2px 0;'>🚀 ÖNCELİKLİ 0–5 · {len(_er_cards_data)} sonuç</div>"
+                        "<div style='font-size:0.64rem;color:#64748b;margin:0 0 6px 2px;'>"
+                        "Erken Radar'ın mevcut backtest sırası korunur; yıldız/karne tek başına teyit değildir.</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    # Üstte yalnızca ilk beş görünür; tüm diğer hisseler açılır ham listede.
+                    _er_priority_data = _er_cards_data[:5]
+                    _er_remaining_data = _er_cards_data[5:]
                     with st.container(height=320, border=False):
-                        for _ci in range(0, len(_er_cards_data), 2):
+                        for _ci in range(0, len(_er_priority_data), 2):
                             _gc1, _gc2 = st.columns(2)
-                            for _gc, _cd in zip([_gc1, _gc2], _er_cards_data[_ci:_ci+2]):
+                            for _gc, _cd in zip([_gc1, _gc2], _er_priority_data[_ci:_ci+2]):
                                 with _gc:
                                     # Rozetler
                                     _age_badge = (
@@ -22320,6 +22354,16 @@ def _render_left_col():
                                     _key = f"er_card_{_cd['sym']}_{_cd['eri']}"
                                     if st.button(_lbl, key=_key, width='stretch'):
                                         on_scan_result_click(_cd['sembol']); st.rerun()
+                    if _er_remaining_data:
+                        with st.expander(f"🔽 Kalan {len(_er_remaining_data)} Erken Radar sonucunu kompakt göster"):
+                            for _eci, _ecd in enumerate(_er_remaining_data, start=5):
+                                _ecompact = (
+                                    f"{_ecd['cat_icon']} {_ecd['sym']} · {_ecd['name']}"
+                                    f" · {_ecd['price']}"
+                                    + (f" · {_ecd['desc']}" if _ecd.get('desc') else "")
+                                )
+                                if st.button(_ecompact, key=f"er_compact_{_ecd['sym']}_{_eci}", width='stretch'):
+                                    on_scan_result_click(_ecd['sembol']); st.rerun()
                 else:
                     st.markdown(f"<div style='border:1px dashed #3b82f650;border-radius:7px;"
                                 f"padding:18px 10px;text-align:center;color:#94a3b8;font-size:0.8rem;'>"
@@ -22347,8 +22391,17 @@ def _render_left_col():
                             f"color:#38bdf8;margin-bottom:3px;'>{_day_str.strip()}</div>",
                             unsafe_allow_html=True
                         )
+                    st.markdown(
+                        f"<div style='font-size:0.80rem;font-weight:900;color:#4ade80;"
+                        f"margin:8px 0 2px 0;'>⚡ ÖNCELİKLİ 0–5 · {len(df_pb)} sonuç</div>"
+                        "<div style='font-size:0.64rem;color:#64748b;margin:0 0 6px 2px;'>"
+                        "Pre-Launch sırası ve mevcut skor korunur; kırılım sonrası teyit ayrıca izlenir.</div>",
+                        unsafe_allow_html=True,
+                    )
+                    _pb_priority = df_pb.head(5)
+                    _pb_remaining = df_pb.iloc[5:]
                     with st.container(height=320, border=False):
-                        for i, (_, row) in enumerate(df_pb.iterrows()):
+                        for i, (_, row) in enumerate(_pb_priority.iterrows()):
                             sym        = row['Sembol']
                             day_icon   = ["⚡", "🕐", "⏳", "⏳"][int(row.get('BOS_Day', 0))]
                             skor_v     = row.get('Skor', 0)
@@ -22371,6 +22424,15 @@ def _render_left_col():
                                             f"margin:-4px 0 4px 4px;line-height:1.3;'>"
                                             f"Vol:{vol_k:.1f}x · {rs_str} · {_pb_ac}</div>",
                                             unsafe_allow_html=True)
+                    if not _pb_remaining.empty:
+                        with st.expander(f"🔽 Kalan {len(_pb_remaining)} Pre-Launch sonucunu kompakt göster"):
+                            for _pbi, (_, _pbr) in enumerate(_pb_remaining.iterrows(), start=5):
+                                _pbs = str(_pbr.get('Sembol', '')).replace('.IS', '')
+                                _pbd = int(_pbr.get('BOS_Day', 0))
+                                _pbd_icon = ["⚡", "🕐", "⏳", "⏳"][min(_pbd, 3)]
+                                _pbl = f"{_pbd_icon} {_pbs} · Skor:{_pbr.get('Skor', 0)} · RSI:{float(_pbr.get('RSI', 0)):.0f}"
+                                if st.button(_pbl, key=f"pb_compact_{_pbs}_{_pbi}", width='stretch'):
+                                    on_scan_result_click(_pbr['Sembol']); st.rerun()
                 else:
                     _pb_msg = "Master Scan çalıştırın" if df_pb is None else "Bugün eşleşme yok"
                     st.markdown(f"<div style='border:1px dashed #3b82f650;border-radius:7px;"
@@ -22399,8 +22461,18 @@ def _render_left_col():
                     st.session_state.minervini_data = scan_minervini_batch(current_assets)
             if st.session_state.minervini_data is not None:
                 if len(st.session_state.minervini_data) > 0:
-                    with st.container(height=150, border=True):
-                        for i, row in st.session_state.minervini_data.iterrows():
+                    _sepa_data = st.session_state.minervini_data
+                    st.markdown(
+                        f"<div style='font-size:0.80rem;font-weight:900;color:#4ade80;"
+                        f"margin:8px 0 2px 0;'>🦁 ÖNCELİKLİ 0–5 · {len(_sepa_data)} sonuç</div>"
+                        "<div style='font-size:0.64rem;color:#64748b;margin:0 0 6px 2px;'>"
+                        "SEPA taramasının mevcut sırası korunur; dar bant ve trend koşulları tek başına teyit değildir.</div>",
+                        unsafe_allow_html=True,
+                    )
+                    _sepa_priority = _sepa_data.head(5)
+                    _sepa_remaining = _sepa_data.iloc[5:]
+                    with st.container(height=180, border=True):
+                        for i, row in _sepa_priority.iterrows():
                             sym = row['Sembol']
                             icon = "💎💎" if "SÜPER" in row['Durum'] else "🔥"
                             if st.button(f"{icon} {sym} ({row['Fiyat']}) | {row['Durum']}", key=f"sepa_{sym}_{i}", width='stretch'):
@@ -22409,6 +22481,16 @@ def _render_left_col():
                             if _sepa_detay:
                                 st.markdown(f"<div style='font-size:0.72rem;color:#cbd5e1;font-weight:500;margin:-6px 0 4px 4px;"
                                             f"line-height:1.3;'>{_sepa_detay}</div>", unsafe_allow_html=True)
+                    if not _sepa_remaining.empty:
+                        with st.expander(f"🔽 Kalan {len(_sepa_remaining)} Minervini sonucunu kompakt göster"):
+                            for _sei, (_, _ser) in enumerate(_sepa_remaining.iterrows(), start=5):
+                                _ses = str(_ser.get('Sembol', '')).replace('.IS', '')
+                                _sei_icon = "💎💎" if "SÜPER" in str(_ser.get('Durum', '')) else "🔥"
+                                if st.button(
+                                    f"{_sei_icon} {_ses} · {_ser.get('Durum', '')} · {_ser.get('Fiyat', '')}",
+                                    key=f"sepa_compact_{_ses}_{_sei}", width='stretch'
+                                ):
+                                    on_scan_result_click(_ser['Sembol']); st.rerun()
                 else:
                     st.warning("Bu zorlu kriterlere uyan hisse bulunamadı.")
 
@@ -22428,8 +22510,17 @@ def _render_left_col():
             desc="Boyun/sınır çizgisine yaklaşan ya da yeni kıran formasyonlar (en yakın üstte)",
             karne="Aşama makinesi çizgiye mesafeyi ölçer; kırılım teyidi ve getiri garantisi değildir."),
             unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='font-size:0.80rem;font-weight:900;color:#4ade80;"
+            f"margin:8px 0 2px 0;'>🔥 ÖNCELİKLİ 0–5 · {len(_ky)} sonuç</div>"
+            "<div style='font-size:0.64rem;color:#64748b;margin:0 0 6px 2px;'>"
+            "Önce kırılanlar, ardından mesafesi en yakın olanlar gösterilir; bu bölüm işlem teyidi değildir.</div>",
+            unsafe_allow_html=True,
+        )
+        _ky_priority = _ky.head(5)
+        _ky_remaining = _ky.iloc[5:]
         with st.container(height=180, border=True):
-            for _kyi, _kyr in _ky.head(15).iterrows():
+            for _kyi, _kyr in _ky_priority.iterrows():
                 _kys = str(_kyr.get('Sembol', ''))
                 _kdur = _kyr.get('Durum')
                 _kicon = "🚨" if _kdur == 'KIRILDI' else "🔥"
@@ -22438,6 +22529,19 @@ def _render_left_col():
                 if st.button(f"{_kicon} {_kys.replace('.IS','')} {_kyr.get('Yon','')} · {_kname} · {_kmes_txt}",
                              key=f"kyf_{_kys}_{_kyi}", width='stretch'):
                     on_scan_result_click(_kys); st.rerun()
+        if not _ky_remaining.empty:
+            with st.expander(f"🔽 Kalan {len(_ky_remaining)} formasyonu kompakt göster"):
+                for _kyci, (_, _kycr) in enumerate(_ky_remaining.iterrows(), start=5):
+                    _kycs = str(_kycr.get('Sembol', '')).replace('.IS', '')
+                    _kycd = _kycr.get('Durum')
+                    _kyci_icon = "🚨" if _kycd == 'KIRILDI' else "🔥"
+                    _kyct = "kırılım bölgesi" if _kycd == 'KIRILDI' else f"%{_kycr.get('Mesafe')} kaldı"
+                    _kycn = str(_kycr.get('Formasyon', '')).split('—')[0].strip()
+                    if st.button(
+                        f"{_kyci_icon} {_kycs} · {_kycn} · {_kyct}",
+                        key=f"kyf_compact_{_kycs}_{_kyci}", width='stretch'
+                    ):
+                        on_scan_result_click(_kycr.get('Sembol', _kycs)); st.rerun()
         st.markdown("<hr style='margin:12px 0;border-color:rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
@@ -22466,28 +22570,59 @@ def _render_left_col():
         with _frc1:
             st.markdown("<div style='text-align:center;font-weight:800;color:#22c55e;padding:4px;'>🌱 HAZIRLANIYOR</div>"
                         "<div style='text-align:center;font-size:0.7rem;color:#94a3b8;margin-bottom:4px;'>Taban kuruyor, daha kırmadı</div>", unsafe_allow_html=True)
-            with st.container(height=240, border=True):
-                if not _frh: st.caption("yok")
-                for _r in _frh[:15]:
-                    if st.button(f"{_r['tk']} · {_TT.get(_r['type'], _r['type'])} — boyna %{_r['dist']}", key=f"frh_{_r['tk']}", width='stretch'):
-                        on_scan_result_click(_r['tk'] + '.IS'); st.rerun()
+            _frh_items = [
+                {
+                    'symbol': _r['tk'], 'target': _r['tk'] + '.IS', 'icon': '🌱',
+                    'label': _TT.get(_r['type'], _r['type']),
+                    'detail': f"Boyun çizgisine %{_r['dist']} kaldı",
+                }
+                for _r in _frh
+            ]
+            trajectory_tarama_merkezi.render_standard_scan_list(
+                st, _frh_items,
+                lambda _item: (on_scan_result_click(_item['target']), st.rerun()),
+                key_prefix="firsat_hazirlaniyor",
+                priority_title="🌱 ÖNCELİKLİ 0–5",
+                priority_note="Formasyon yakınlığına göre mevcut sıra; getiri karnesi henüz ölçülmedi.",
+                priority_color="#22c55e",
+            )
         with _frc2:
             st.markdown("<div style='text-align:center;font-weight:800;color:#eab308;padding:4px;'>🤏 SIKIŞTI</div>"
                         "<div style='text-align:center;font-size:0.7rem;color:#94a3b8;margin-bottom:4px;'>Yay gerildi, kırılma yakın</div>", unsafe_allow_html=True)
-            with st.container(height=240, border=True):
-                if not _frs: st.caption("yok")
-                for _r in _frs[:15]:
-                    if st.button(f"{_r['tk']} · {_TT.get(_r['type'], _r['type'])} — boyna %{_r['dist']} · sıkıştı", key=f"frs_{_r['tk']}", width='stretch'):
-                        on_scan_result_click(_r['tk'] + '.IS'); st.rerun()
+            _frs_items = [
+                {
+                    'symbol': _r['tk'], 'target': _r['tk'] + '.IS', 'icon': '🤏',
+                    'label': _TT.get(_r['type'], _r['type']),
+                    'detail': f"Boyun çizgisine %{_r['dist']} kaldı · sıkıştı",
+                }
+                for _r in _frs
+            ]
+            trajectory_tarama_merkezi.render_standard_scan_list(
+                st, _frs_items,
+                lambda _item: (on_scan_result_click(_item['target']), st.rerun()),
+                key_prefix="firsat_sikisti",
+                priority_title="🤏 ÖNCELİKLİ 0–5",
+                priority_note="Sıkışma aşamasındaki mevcut sıra; kırılım teyidi ve getiri karnesi yok.",
+                priority_color="#eab308",
+            )
         with _frc3:
             st.markdown("<div style='text-align:center;font-weight:800;color:#a855f7;padding:4px;'>🚀 KIRDI</div>"
                         "<div style='text-align:center;font-size:0.7rem;color:#94a3b8;margin-bottom:4px;'>Boyun kırıldı / geri test</div>", unsafe_allow_html=True)
-            with st.container(height=240, border=True):
-                if not _kirdi_show: st.caption("yok")
-                for _r in _kirdi_show[:15]:
-                    _tag = "🔄 geri test" if _r.get('durum') == 'retest' else f"{_r.get('Q', 0)}/5 işaret"
-                    if st.button(f"{_r['tk']} · {_TT.get(_r['type'], _r['type'])} — {_tag}", key=f"frk_{_r['tk']}", width='stretch'):
-                        on_scan_result_click(_r['tk'] + '.IS'); st.rerun()
+            _frk_items = []
+            for _r in _kirdi_show:
+                _tag = "🔄 geri test" if _r.get('durum') == 'retest' else f"{_r.get('Q', 0)}/5 işaret"
+                _frk_items.append({
+                    'symbol': _r['tk'], 'target': _r['tk'] + '.IS', 'icon': '🚀',
+                    'label': _TT.get(_r['type'], _r['type']), 'detail': _tag,
+                })
+            trajectory_tarama_merkezi.render_standard_scan_list(
+                st, _frk_items,
+                lambda _item: (on_scan_result_click(_item['target']), st.rerun()),
+                key_prefix="firsat_kirdi",
+                priority_title="🚀 ÖNCELİKLİ 0–5",
+                priority_note="Kırılım/retest aşamasındaki mevcut sıra; getiri karnesi henüz ölçülmedi.",
+                priority_color="#a855f7",
+            )
         if _frd is not None:
             st.caption(f"📅 {_frd.date()} · formasyon-önce + 5 kalite işareti · Telegram radar botuyla aynı motor")
 
@@ -22558,19 +22693,26 @@ def _render_left_col():
                     f"<div style='text-align:center;font-weight:800;color:{_renk};padding:4px;'>{_bas}</div>"
                     f"<div style='text-align:center;font-size:0.68rem;color:#94a3b8;margin-bottom:4px;'>{_alt}</div>",
                     unsafe_allow_html=True)
-                with st.container(height=240, border=True):
-                    if not _liste:
-                        st.caption("yok")
-                    for _r in _liste[:15]:
-                        if _r.get('kirilim_tarih'):
-                            _etk = _r['kirilim_tarih'][5:].replace('-', '.')
-                        elif _r.get('mesafe') is not None:
-                            _etk = f"%{_r['mesafe']:.1f} kaldı"
-                        else:
-                            _etk = ""
-                        if st.button(f"{_r['kisa']} · {_r['ad']} · {_r['bar']}g — {_etk}",
-                                     key=f"{_pfx}_{_r['sembol']}", width='stretch'):
-                            on_scan_result_click(_r['sembol']); st.rerun()
+                _cy_items = []
+                for _r in _liste:
+                    if _r.get('kirilim_tarih'):
+                        _etk = _r['kirilim_tarih'][5:].replace('-', '.')
+                    elif _r.get('mesafe') is not None:
+                        _etk = f"%{_r['mesafe']:.1f} kaldı"
+                    else:
+                        _etk = ""
+                    _cy_items.append({
+                        'symbol': _r['kisa'], 'target': _r['sembol'], 'icon': '📐',
+                        'label': _r['ad'], 'detail': f"{_r['bar']}g · {_etk}".strip(' ·'),
+                    })
+                trajectory_tarama_merkezi.render_standard_scan_list(
+                    st, _cy_items,
+                    lambda _item: (on_scan_result_click(_item['target']), st.rerun()),
+                    key_prefix=_pfx,
+                    priority_title=f"{_bas} · İLK 5",
+                    priority_note="Mevcut aşama sırası korunur; çizgi kırılımı tek başına işlem teyidi değildir.",
+                    priority_color=_renk,
+                )
         _cy_gizli = len(_cyl) - (len(_cy_o) + len(_cy_y) + len(_cy_k))
         st.caption(
             f"📐 {len(_cyl)} yapı bulundu · likidite tabanı 25 mn TL/gün (BIST) · "
@@ -22722,20 +22864,40 @@ def _render_flow_leaders_panel():
     if not _rows:
         st.caption("Para akışı listesi henüz üretilmedi (her gece güncellenir).")
         return
-    _items = ""
-    for _rank, _sym, _cmf, _mom in _rows:
-        _items += (
-            f'<div style="display:flex; align-items:center; gap:8px; padding:5px 10px;'
-            f'border-bottom:1px solid rgba(255,255,255,0.05);">'
-            f'<span style="color:#475569; font-size:0.72rem; width:18px; font-weight:700;">{_rank}</span>'
-            f'<span style="color:#e2e8f0; font-weight:800; font-size:0.86rem; width:66px;">{_sym.replace(".IS","")}</span>'
-            f'<span style="background:rgba(6,182,212,0.15); color:#22d3ee; border-radius:5px;'
-            f'padding:1px 7px; font-size:0.7rem; font-weight:700;">akış {_cmf:.0f}</span>'
-            f'<span style="color:#10b981; font-size:0.72rem; font-weight:700;">trend +%{_mom:.0f}</span>'
-            f'</div>'
-        )
+    def _flow_rows_html(_flow_rows):
+        _items = ""
+        for _rank, _sym, _cmf, _mom in _flow_rows:
+            _items += (
+                f'<div style="display:flex; align-items:center; gap:8px; padding:5px 10px;'
+                f'border-bottom:1px solid rgba(255,255,255,0.05);">'
+                f'<span style="color:#475569; font-size:0.72rem; width:18px; font-weight:700;">{_rank}</span>'
+                f'<span style="color:#e2e8f0; font-weight:800; font-size:0.86rem; width:66px;">{_sym.replace(".IS","")}</span>'
+                f'<span style="background:rgba(6,182,212,0.15); color:#22d3ee; border-radius:5px;'
+                f'padding:1px 7px; font-size:0.7rem; font-weight:700;">akış {_cmf:.0f}</span>'
+                f'<span style="color:#10b981; font-size:0.72rem; font-weight:700;">trend +%{_mom:.0f}</span>'
+                f'</div>'
+            )
+        return _items
+
+    _flow_priority = _rows[:5]
+    _flow_remaining = _rows[5:]
     st.markdown(
-        f'<div style="background:#0a0f1a; border:1px solid rgba(6,182,212,0.20); border-radius:8px; overflow:hidden;">{_items}</div>'
+        f'<div style="font-size:0.80rem;font-weight:900;color:#22d3ee;margin:8px 0 4px 2px;">'
+        f'💧 ÖNCELİKLİ 0–5 · {len(_rows)} sonuç</div>'
+        f'<div style="font-size:0.64rem;color:#64748b;margin:0 0 6px 2px;">'
+        f'Para akışı sırası korunur; tek faktör gözlemidir, al-sat sinyali değildir.</div>'
+        f'<div style="background:#0a0f1a; border:1px solid rgba(6,182,212,0.20); border-radius:8px; overflow:hidden;">'
+        f'{_flow_rows_html(_flow_priority)}</div>',
+        unsafe_allow_html=True
+    )
+    if _flow_remaining:
+        with st.expander(f"🔽 Kalan {len(_flow_remaining)} para akışı sonucunu göster"):
+            st.markdown(
+                f'<div style="background:#0a0f1a; border:1px solid rgba(6,182,212,0.20); border-radius:8px; overflow:hidden;">'
+                f'{_flow_rows_html(_flow_remaining)}</div>',
+                unsafe_allow_html=True,
+            )
+    st.markdown(
         f'<div style="font-size:0.66rem; color:#64748b; font-style:italic; margin-top:6px; padding:0 4px;">'
         f'Tek faktör listesi (al-sat sinyali değil); haftalık karne birikiyor. CMF = tek rejim-dayanıklı sinyal.</div>',
         unsafe_allow_html=True
@@ -22822,7 +22984,9 @@ def _render_tavan_adaylari_panel():
         alarm = df[df['skor'] >= 150]
         if not alarm.empty:
             _alarm_rows = ""
-            for _, r in alarm.iterrows():
+            _alarm_priority = alarm.head(5)
+            _alarm_remaining = alarm.iloc[5:]
+            for _, r in _alarm_priority.iterrows():
                 _ic, _knm, _col = _TAV_KAT_INFO[r['kat']]
                 _ht = _tav_hikaye(r)
                 _alarm_rows += (
@@ -22838,13 +23002,33 @@ def _render_tavan_adaylari_panel():
                 f'<div style="background:linear-gradient(135deg,rgba(239,68,68,0.10) 0%,rgba(239,68,68,0.03) 100%);'
                 f'border-left:3px solid #ef4444;border-radius:6px;padding:6px 8px;margin-bottom:8px;">'
                 f'<div style="font-weight:700;color:#ef4444;font-size:0.82rem;padding-left:4px;margin-bottom:4px;">'
-                f'🚨 ALARM — Skor ≥150 ({len(alarm)} hisse) · '
-                f'<span style="font-weight:400;color:#94a3b8;font-size:0.7rem;font-style:italic;">backtest %11.2 hit · random×3.44 · günlük ort 12</span>'
+                    f'🚨 ÖNCELİKLİ 0–5 — ALARM · Skor ≥150 ({len(alarm)} hisse) · '
+                    f'<span style="font-weight:400;color:#94a3b8;font-size:0.7rem;font-style:italic;">backtest %11.2 hit · random×3.44 · günlük ort 12</span>'
                 f'</div>'
                 f'<div style="max-height:240px;overflow-y:auto;padding-right:4px;">{_alarm_rows}</div>'
                 f'</div>'
             )
             st.markdown(_alarm_html, unsafe_allow_html=True)
+            if not _alarm_remaining.empty:
+                _alarm_remaining_rows = ""
+                for _, r in _alarm_remaining.iterrows():
+                    _ic, _knm, _col = _TAV_KAT_INFO[r['kat']]
+                    _ht = _tav_hikaye(r)
+                    _alarm_remaining_rows += (
+                        f'<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:0.76rem;border-bottom:1px solid rgba(239,68,68,0.10);">'
+                        f'<div style="font-weight:800;color:{_col};min-width:58px;">{r["tk"]}</div>'
+                        f'<div style="color:#94a3b8;min-width:50px;font-family:monospace;font-size:0.7rem;">{r["fiyat"]}</div>'
+                        f'<div style="background:{_col}22;border-radius:4px;padding:1px 5px;font-size:0.66rem;color:{_col};">{_ic} {_knm}</div>'
+                        f'<div style="font-weight:800;color:#ef4444;min-width:42px;">⭐ {r["skor"]:.0f}</div>'
+                        f'<div style="color:#94a3b8;font-style:italic;font-size:0.7rem;flex:1;">{_ht}</div>'
+                        f'</div>'
+                    )
+                with st.expander(f"🔽 Kalan {_alarm_remaining.shape[0]} alarm sonucunu göster"):
+                    st.markdown(
+                        f'<div style="background:rgba(239,68,68,0.04);border:1px solid rgba(239,68,68,0.16);border-radius:6px;overflow:hidden;">'
+                        f'{_alarm_remaining_rows}</div>',
+                        unsafe_allow_html=True,
+                    )
         else:
             st.markdown(
                 '<div style="background:rgba(100,116,139,0.05);border-left:3px solid #64748b;'

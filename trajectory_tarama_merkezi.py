@@ -17,6 +17,7 @@ ana parquet'ler veya uygulama cache'lerine yazmaz; salt-okurdur.
 from __future__ import annotations
 
 import html
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "patron.db"
 SNAPSHOT_PATH = ROOT / "gelişmiş tarama" / "trajectory_forward_snapshots.csv"
 KARNE_PATH = ROOT / "gelişmiş tarama" / "trajectory_live_karne.json"
+SCAN_KARNE_PATH = ROOT / "logs" / "tarama_karne.json"
 FORWARD_START_DATE = "2026-08-07"
 CROWDING_WARNING_MIN = 5
 
@@ -116,6 +118,72 @@ def _scanner_karne_text(scan_keys: list[str]) -> str:
         if alpha is not None:
             return f"T+20 alfa %{float(alpha):+.2f}"
     return "BİLMİYORUZ · ölçüm kaydı yok"
+
+
+_SCAN_KARNE_CACHE: dict[str, Any] = {"mtime": None, "rows": []}
+
+
+def _load_scan_karne_rows() -> list[dict[str, Any]]:
+    """Mühürlü tarama×vade geçmiş ölçümünü kartların okuyacağı satırlara çevirir."""
+    try:
+        mtime = SCAN_KARNE_PATH.stat().st_mtime_ns
+    except OSError:
+        return []
+    if _SCAN_KARNE_CACHE.get("mtime") == mtime:
+        return _SCAN_KARNE_CACHE.get("rows", [])
+    try:
+        package = json.loads(SCAN_KARNE_PATH.read_text(encoding="utf-8"))
+        rows = package.get("kayitlar", []) if isinstance(package, dict) else []
+        clean_rows = [row for row in rows if isinstance(row, dict)]
+    except (OSError, ValueError, TypeError):
+        clean_rows = []
+    _SCAN_KARNE_CACHE["mtime"] = mtime
+    _SCAN_KARNE_CACHE["rows"] = clean_rows
+    return clean_rows
+
+
+def _fmt_metric(value: object) -> str:
+    try:
+        return f"{float(value):+.2f}".replace(".", ",")
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _history_karne(candidate: dict[str, Any], horizon: int = 5) -> tuple[str, str, str]:
+    """Kart için vade geçmişini seçer: değer, durum etiketi ve durum rengi."""
+    source_rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for source in _card_scan_types(candidate):
+        key = _canonical_scan_type(source)
+        for row in _load_scan_karne_rows():
+            if str(row.get("tarama") or "") != key or str(row.get("vade") or "") != f"T+{horizon}":
+                continue
+            if key not in seen:
+                source_rows.append({"source": source, **row})
+                seen.add(key)
+            break
+    if not source_rows:
+        fallback = str(candidate.get("gecmis_karne") or "BİLMİYORUZ · ölçüm kaydı yok")
+        return fallback, "BİLMİYORUZ", "#fbbf24"
+
+    rendered = []
+    statuses = []
+    for row in source_rows:
+        source = html.escape(_display_scan(row.get("source")))
+        rendered.append(
+            f"{source}: ↑ {_fmt_metric(row.get('yukselen_taban_farki'))} "
+            f"(N={row.get('yukselen_n', '—')}) · ↓ {_fmt_metric(row.get('dusen_taban_farki'))} "
+            f"(N={row.get('dusen_n', '—')})"
+        )
+        statuses.append(str(row.get("durum") or "BELİRSİZ").replace("_", " "))
+    status = " / ".join(dict.fromkeys(statuses))
+    if all(item.get("durum") == "KANITLI_TABAN_USTU" for item in source_rows):
+        color = "#4ade80"
+    elif any(item.get("durum") == "EVREN_TABANI_ALTI" for item in source_rows):
+        color = "#f87171"
+    else:
+        color = "#fbbf24"
+    return "<br>".join(rendered), status, color
 
 
 def _vade_records(scan_types: list[str], signal_date: object,
@@ -680,7 +748,8 @@ def _card_html(candidate: dict[str, Any], *, is_showcase: bool = False) -> str:
     symbol = html.escape(candidate["sym"])
     story = html.escape(_card_story(candidate))
     note = html.escape(candidate["note"])
-    source_text = " · ".join(_display_scan(x) for x in _card_scan_types(candidate)[:3]) or "—"
+    visible_sources = _card_scan_types(candidate)
+    source_text = " · ".join(_display_scan(x) for x in visible_sources) or "—"
     source_text = html.escape(source_text)
     day = candidate["event_day"]
     current = "T0 (Yeni)" if day == 0 else f"T+{day} (Takipte)"
@@ -689,77 +758,99 @@ def _card_html(candidate: dict[str, Any], *, is_showcase: bool = False) -> str:
     vade = html.escape(str(candidate.get("vade") or "T+20"))
     expiry = candidate.get("son_kullanma_tarihi")
     expiry_text = html.escape(str(expiry)[:10] if expiry else "hesaplanamadı")
-    karne = html.escape(str(candidate.get("gecmis_karne") or "BİLMİYORUZ · ölçüm kaydı yok"))
-    vade_html = (
-        f"<div style='font-size:0.68rem;color:#cbd5e1;margin:3px 0 2px 0;'>"
-        f"<b>Vade:</b> {masa_label} · {vade}</div>"
-        f"<div style='font-size:0.66rem;color:#94a3b8;margin:1px 0 2px 0;'>"
-        f"<b>Son kullanma:</b> {expiry_text}</div>"
-        f"<div style='font-size:0.66rem;color:#94a3b8;margin:1px 0 4px 0;'>"
-        f"<b>Geçmiş karne:</b> {karne}</div>"
+
+    if candidate["bucket"] == BUCKET_READY:
+        _ready_day = f"T+{day} kontrolü tamamlandı"
+        if candidate.get("trajectory_v1", 0) >= 3:
+            _strength = f"Güç teyidi {candidate.get('trajectory_v1', 0)}/5"
+        else:
+            _strength = f"Çekirdek güç teyidi {candidate.get('cur_core', 0)}/3"
+        reason_text = f"{_ready_day} · {_strength} · risk vetosu yok"
+    elif candidate["bucket"] == BUCKET_GROWING:
+        reason_text = f"{current} · önceki kapanışa göre güçlendi"
+    elif candidate["bucket"] == BUCKET_NEW:
+        reason_text = "T0 · ilk gün aday, takip başlıyor"
+    else:
+        reason_text = str(candidate.get("note") or "İzleme koşulu oluştu")
+
+    history_text, history_status, history_color = _history_karne(candidate, horizon=5)
+    if history_status == "KANITLI TABAN USTU":
+        history_badge = "✅ Kanıtlı"
+    elif "EVREN TABANI ALTI" in history_status:
+        history_badge = "⚠️ Evren tabanının altında"
+    elif history_status == "BİLMİYORUZ":
+        history_badge = "⚪ Ölçüm yok"
+    else:
+        history_badge = "⚪ Belirsiz örneklem"
+
+    info_html = (
+        "<div style='display:grid;grid-template-columns:1.15fr 0.85fr;gap:8px;"
+        "margin:10px 0 0 0;'>"
+        "<div style='background:#0b1220;border:1px solid #1e3a5f;border-radius:6px;"
+        "padding:7px 8px;min-height:58px;'>"
+        "<div style='font-size:0.61rem;font-weight:900;color:#38bdf8;margin-bottom:4px;'>"
+        "NEDEN BU LİSTEDE?</div>"
+        f"<div style='font-size:0.69rem;color:#e2e8f0;line-height:1.35;'>{html.escape(reason_text)}</div>"
+        "</div>"
+        "<div style='background:#0b1220;border:1px solid #1e3a5f;border-radius:6px;"
+        "padding:7px 8px;min-height:58px;'>"
+        "<div style='font-size:0.61rem;font-weight:900;color:#38bdf8;margin-bottom:4px;'>"
+        "GEÇTİĞİ TARAMALAR</div>"
+        f"<div style='font-size:0.69rem;color:#e2e8f0;line-height:1.35;'>{source_text}</div>"
+        "</div></div>"
     )
-    
-    # Rozetler
+    history_html = (
+        "<div style='background:#0b1220;border:1px solid #1e3a5f;border-radius:6px;"
+        "padding:7px 8px;margin:8px 0 0 0;'>"
+        "<div style='font-size:0.61rem;font-weight:900;color:#38bdf8;margin-bottom:4px;'>"
+        "GEÇMİŞ KARNE · T+5 · XU100 / EVREN FARKI</div>"
+        f"<div style='font-size:0.68rem;color:#e2e8f0;line-height:1.4;'>{history_text}</div>"
+        f"<div style='font-size:0.64rem;color:{history_color};font-weight:800;margin-top:4px;'>"
+        f"{history_badge}</div></div>"
+    )
+    vade_html = (
+        "<div style='display:grid;grid-template-columns:1.15fr 0.85fr;gap:8px;"
+        "border-top:1px solid #334155;padding-top:7px;margin-top:8px;'>"
+        f"<div><div style='font-size:0.60rem;color:#94a3b8;'>Vade</div>"
+        f"<div style='font-size:0.69rem;color:#e2e8f0;margin-top:2px;'>{masa_label} · {vade}</div></div>"
+        f"<div><div style='font-size:0.60rem;color:#94a3b8;'>Son kullanma</div>"
+        f"<div style='font-size:0.69rem;color:#e2e8f0;margin-top:2px;'>{expiry_text}</div></div>"
+        "</div>"
+    )
+
+    # Hazır/güçlenen kartlarda güç zaten 'Neden bu listede' satırında görünür;
+    # aynı rozeti ikinci kez basmayarak kartın yüksekliğini koruruz.
     badges = []
     is_ext = "aşırı uzamış" in note.lower() or "fomo" in note.lower()
     if is_ext:
-        badges.append("<span style='background:#ef44441a;color:#f87171;border:1px solid #ef444444;padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:800;'>⚠️ AŞIRI UZAMIŞ (FOMO RİSKİ)</span>")
-    elif candidate["bucket"] in (BUCKET_READY, BUCKET_GROWING):
-        score_val = candidate.get('trajectory_v1', 0)
-        core_val = candidate.get('cur_core', 0)
-        badges.append(f"<span style='background:#22c55e1a;color:#4ade80;border:1px solid #22c55e44;padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:800;'>⚡ {score_val}/5 GÜÇ ONAYI</span>")
-        if candidate.get("rs_up"):
-            badges.append("<span style='background:#38bdf81a;color:#38bdf8;border:1px solid #38bdf844;padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:700;'>📊 Endeksten Güçlü (RS)</span>")
-        if candidate.get("rsi_up"):
-            badges.append("<span style='background:#a855f71a;color:#c084fc;border:1px solid #a855f744;padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:700;'>📈 RSI İvmesi Pozitif</span>")
+        badges.append("<span style='background:#ef44441a;color:#f87171;border:1px solid #ef444444;padding:3px 7px;border-radius:4px;font-size:0.66rem;font-weight:800;'>⚠️ AŞIRI UZAMIŞ · FOMO RİSKİ</span>")
     elif candidate["bucket"] == BUCKET_NEW:
-        badges.append(f"<span style='background:#38bdf81a;color:#38bdf8;border:1px solid #38bdf844;padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:700;'>🔎 T0 İlk Gün Sinyali</span>")
-    else:
-        badges.append(f"<span style='background:#f59e0b1a;color:#fbbf24;border:1px solid #f59e0b44;padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:700;'>↔️ {meta['tag']}</span>")
+        badges.append("<span style='background:#38bdf81a;color:#38bdf8;border:1px solid #38bdf844;padding:3px 7px;border-radius:4px;font-size:0.66rem;font-weight:700;'>🔎 T0 · İLK GÜN SİNYALİ</span>")
+    elif candidate["bucket"] not in (BUCKET_READY, BUCKET_GROWING):
+        badges.append(f"<span style='background:#f59e0b1a;color:#fbbf24;border:1px solid #f59e0b44;padding:3px 7px;border-radius:4px;font-size:0.66rem;font-weight:700;'>↔️ {meta['tag']}</span>")
 
-    badge_html = " ".join(badges)
+    badge_html = "".join(badges)
     crowded = ""
     if candidate.get("crowded"):
         crowded = (
-            "<div style='color:#fbbf24;font-size:0.65rem;margin-top:3px;'>"
+            "<div style='color:#fbbf24;font-size:0.64rem;margin-top:5px;'>"
             f"⚠ Kalabalık: {candidate['scan_count']} taramada çıktı (güç puanı değildir)</div>"
         )
 
-    # Vitrin kartı tasarımı (Daha ferah ve göz alıcı)
-    if is_showcase:
-        return (
-            f"<div style='background:linear-gradient(145deg, #0f172a 0%, #1e293b 100%);"
-            f"border:1px solid #334155;border-top:3px solid {meta['color']};"
-            "border-radius:10px;padding:12px 14px;min-height:165px;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.25);'>"
-            "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;'>"
-            f"<span style='font-weight:900;font-size:1.18rem;color:#f8fafc;letter-spacing:0.5px;'>{symbol}</span>"
-            f"<span style='font-size:0.65rem;font-weight:800;color:{meta['color']};background:{meta['color']}18;"
-            f"border:1px solid {meta['color']}55;border-radius:4px;padding:2px 7px;'>{meta['tag']} · {current}</span>"
-            "</div>"
-            f"<div style='font-size:0.80rem;font-weight:700;color:#7dd3fc;margin-bottom:6px;'>{story}</div>"
-            f"{vade_html}"
-            f"<div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;'>{badge_html}</div>"
-            f"{crowded}"
-            "<div style='background:#090d1680;border-radius:6px;padding:5px 8px;font-size:0.68rem;color:#94a3b8;border-left:2px solid #38bdf880;margin-top:4px;'>"
-            f"<b style='color:#cbd5e1;'>Kaynak:</b> {source_text}"
-            "</div>"
-            "</div>"
-        )
-
-    # Kompakt standart kart tasarımı
     return (
-        f"<div style='background:#0f172a;border:1px solid #1e293b;border-left:3px solid {meta['color']};"
-        "border-radius:8px;padding:8px 10px;min-height:120px;margin-bottom:4px;'>"
-        "<div style='display:flex;justify-content:space-between;align-items:center;'>"
-        f"<span style='font-weight:800;font-size:0.95rem;color:#e2e8f0;'>{symbol}</span>"
-        f"<span style='font-size:0.60rem;font-weight:700;color:{meta['color']};'>{current}</span>"
+        f"<div style='padding:9px 10px 7px 10px;'>"
+        f"<div style='height:3px;background:{meta['color']};border-radius:2px;margin-bottom:9px;'></div>"
+        "<div style='display:flex;justify-content:space-between;align-items:flex-start;gap:8px;'>"
+        f"<span style='font-weight:900;font-size:1.28rem;color:#f8fafc;letter-spacing:0.4px;'>{symbol}</span>"
+        f"<span style='font-size:0.66rem;font-weight:800;color:{meta['color']};background:{meta['color']}18;"
+        f"border:1px solid {meta['color']}55;border-radius:4px;padding:4px 6px;text-align:right;'>{meta['tag']}<br>{current}</span>"
         "</div>"
-        f"<div style='font-size:0.72rem;font-weight:700;color:#93c5fd;margin:2px 0 4px 0;'>{story}</div>"
+        f"<div style='font-size:0.88rem;font-weight:800;color:#7dd3fc;line-height:1.25;margin:9px 0 0 0;'>{story}</div>"
+        f"{info_html}"
+        f"{history_html}"
         f"{vade_html}"
-        f"<div style='margin-bottom:4px;'>{badge_html}</div>"
+        f"<div style='margin:7px 0 0 0;'>{badge_html}</div>"
         f"{crowded}"
-        f"<div style='font-size:0.62rem;color:#64748b;margin-top:4px;border-top:1px solid #ffffff0a;padding-top:3px;'>"
-        f"<b>Kaynak:</b> {source_text}</div>"
         "</div>"
     )
 
@@ -767,52 +858,302 @@ def _card_html(candidate: dict[str, Any], *, is_showcase: bool = False) -> str:
 def _render_grid(st: Any, candidates: list[dict[str, Any]], open_detail: Any, *, key_prefix: str) -> None:
     if not candidates:
         return
-    
-    total = len(candidates)
-    
-    # 🌟 1. VİTRİN BÖLÜMÜ: İlk 3 Aday Büyük Vitrin Kartı Olarak Gösterilir
-    showcase_count = min(3, total)
-    showcase_items = candidates[:showcase_count]
-    
-    st.markdown("<div style='font-size:0.78rem;font-weight:800;color:#94a3b8;margin:6px 0 4px 2px;'>"
-                "⭐ ÖNE ÇIKAN EN GÜÇLÜ VİTRİN ADAYLARI</div>", unsafe_allow_html=True)
-    
-    cols = st.columns(showcase_count)
-    for idx, candidate in enumerate(showcase_items):
-        with cols[idx]:
-            st.markdown(_card_html(candidate, is_showcase=True), unsafe_allow_html=True)
-            if st.button("🔍 Kurulumu Aç", width="stretch", key=f"traj_showcase_{key_prefix}_{candidate['sym']}_{idx}"):
-                open_detail(candidate)
-                
-    # 📋 2. DİĞER ADAYLAR BÖLÜMÜ: Kalanlar Temiz Kompakt Tablo / Grid Olarak Gösterilir
-    remaining = candidates[showcase_count:]
-    if remaining:
-        st.markdown(f"<div style='font-size:0.78rem;font-weight:800;color:#94a3b8;margin:12px 0 6px 2px;'>"
-                    f"📋 DİĞER TAKİP ADAYLARI ({len(remaining)} Hisse)</div>", unsafe_allow_html=True)
-        
-        # İlk 8 tanesini 4 kolonlu kompakt kutularda göster
-        compact_preview = remaining[:8]
-        for start in range(0, len(compact_preview), 4):
-            row = compact_preview[start:start + 4]
-            cols_c = st.columns(4)
+
+    def _render_rows(items: list[dict[str, Any]], row_prefix: str) -> None:
+        for start in range(0, len(items), 3):
+            row = items[start:start + 3]
+            cols = st.columns(3)
             for offset, candidate in enumerate(row):
-                with cols_c[offset]:
-                    st.markdown(_card_html(candidate, is_showcase=False), unsafe_allow_html=True)
-                    if st.button("🔍 İncele", width="stretch", key=f"traj_comp_{key_prefix}_{candidate['sym']}_{start+offset}"):
-                        open_detail(candidate)
-                        
-        # 8'den fazlası varsa temiz bir açılır liste içinde ver
-        if len(remaining) > 8:
-            with st.expander(f"🔽 Tüm Kalan Adayları Gör (+{len(remaining) - 8} hisse)"):
-                more_items = remaining[8:]
-                for start in range(0, len(more_items), 4):
-                    row = more_items[start:start + 4]
-                    cols_m = st.columns(4)
-                    for offset, candidate in enumerate(row):
-                        with cols_m[offset]:
-                            st.markdown(_card_html(candidate, is_showcase=False), unsafe_allow_html=True)
-                            if st.button("🔍 İncele", width="stretch", key=f"traj_more_{key_prefix}_{candidate['sym']}_{start+offset}"):
-                                open_detail(candidate)
+                with cols[offset]:
+                    with st.container(border=True):
+                        st.markdown(_card_html(candidate, is_showcase=True), unsafe_allow_html=True)
+                        if st.button(
+                            "🔍 Kurulumu Aç",
+                            width="stretch",
+                            key=f"traj_card_{row_prefix}_{start + offset}_{candidate['sym']}",
+                        ):
+                            open_detail(candidate)
+
+    # İlk 9 kart aynı seviyede görünür; büyük listeler tek bir açılır alanda tutulur.
+    visible = candidates[:9]
+    _render_rows(visible, key_prefix)
+    remaining = candidates[9:]
+    if remaining:
+        with st.expander(f"🔽 Kalan {len(remaining)} adayı göster"):
+            _render_rows(remaining, f"{key_prefix}_remaining")
+
+
+def _order_candidates_by_liquidity(
+    candidates: list[dict[str, Any]],
+    *,
+    as_of: object = None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Adayları mevcut 20 günlük TL likidite sırasına dizer."""
+    values = list(candidates or [])
+    if not values:
+        return [], False
+    symbols = [str(candidate.get("sym") or "") for candidate in values]
+    ordered_symbols, measured = _liquidity_top(
+        symbols,
+        as_of=as_of,
+        limit=len(values),
+    )
+    by_symbol = {str(candidate.get("sym") or ""): candidate for candidate in values}
+    ordered = []
+    seen = set()
+    for symbol in ordered_symbols:
+        candidate = by_symbol.get(symbol)
+        if candidate is not None:
+            ordered.append(candidate)
+            seen.add(symbol)
+    ordered.extend(candidate for candidate in values if candidate.get("sym") not in seen)
+    return ordered, measured
+
+
+def _compact_reason(candidate: dict[str, Any]) -> str:
+    bucket = candidate.get("bucket")
+    day = int(candidate.get("event_day") or 0)
+    if bucket == BUCKET_READY:
+        return f"T+{day} tamamlandı · güç {candidate.get('trajectory_v1', 0)}/5 · çekirdek {candidate.get('cur_core', 0)}/3"
+    if bucket == BUCKET_GROWING:
+        return f"T+{day} · önceki kapanışa göre güçlendi"
+    return str(candidate.get("note") or "İzleme koşulu oluştu")
+
+
+def _compact_history_status(candidate: dict[str, Any]) -> tuple[str, str]:
+    _history_text, history_status, history_color = _history_karne(candidate, horizon=5)
+    if history_status == "KANITLI TABAN USTU":
+        return "✅ Kanıtlı", history_color
+    if "EVREN TABANI ALTI" in history_status:
+        return "⚠️ Evren altı", history_color
+    if history_status == "BİLMİYORUZ":
+        return "⚪ Ölçüm yok", history_color
+    return "⚪ Belirsiz", history_color
+
+
+def _render_compact_rows(
+    st: Any,
+    candidates: list[dict[str, Any]],
+    open_detail: Any,
+    *,
+    key_prefix: str,
+) -> None:
+    """Büyük kart yerine taranabilir, tek satırlık aday listesi çizer."""
+    for index, candidate in enumerate(candidates or []):
+        sources = " · ".join(_display_scan(source) for source in _card_scan_types(candidate)[:2]) or "Kaynak yok"
+        story = _card_story(candidate) or "Algoritmik kurulum"
+        reason = _compact_reason(candidate)
+        if len(reason) > 78:
+            reason = reason[:75] + "..."
+        history_badge, history_color = _compact_history_status(candidate)
+        with st.container(border=True):
+            cols = st.columns([0.72, 1.65, 1.85, 1.30, 0.52])
+            with cols[0]:
+                st.markdown(
+                    f"<div style='font-size:0.94rem;font-weight:900;color:#f8fafc;'>"
+                    f"{html.escape(str(candidate.get('sym') or '—'))}</div>",
+                    unsafe_allow_html=True,
+                )
+            with cols[1]:
+                st.markdown(
+                    f"<div style='font-size:0.68rem;color:#7dd3fc;font-weight:800;line-height:1.2;'>"
+                    f"{html.escape(story)}</div>"
+                    f"<div style='font-size:0.58rem;color:#64748b;margin-top:3px;'>"
+                    f"{html.escape(sources)}</div>",
+                    unsafe_allow_html=True,
+                )
+            with cols[2]:
+                st.markdown(
+                    f"<div style='font-size:0.63rem;color:#cbd5e1;line-height:1.25;'>"
+                    f"{html.escape(reason)}</div>",
+                    unsafe_allow_html=True,
+                )
+            with cols[3]:
+                st.markdown(
+                    f"<div style='font-size:0.58rem;color:#64748b;'>GEÇMİŞ T+5</div>"
+                    f"<div style='font-size:0.64rem;color:{history_color};font-weight:800;margin-top:2px;'>"
+                    f"{html.escape(history_badge)}</div>",
+                    unsafe_allow_html=True,
+                )
+            with cols[4]:
+                if st.button(
+                    "Aç",
+                    key=f"trajectory_compact_{key_prefix}_{index}_{candidate['sym']}",
+                    width="stretch",
+                ):
+                    open_detail(candidate)
+
+
+def render_standard_scan_list(
+    st: Any,
+    items: list[dict[str, Any]],
+    open_detail: Any,
+    *,
+    key_prefix: str,
+    priority_title: str = "🔎 İLK BAKILACAK 5",
+    priority_note: str = "Mevcut taramanın sırası korunur; bu bölüm tek başına alım teyidi değildir.",
+    priority_color: str = "#4ade80",
+    empty_text: str = "Bu taramada sonuç yok.",
+) -> None:
+    """Aday üreten farklı taramaları aynı, dar liste hiyerarşisinde gösterir.
+
+    Bu yardımcı puan hesaplamaz ve sıralama yapmaz. Çağıran panelin ürettiği
+    sıralamayı korur; yalnızca ilk beşi görünür öncelik, geri kalanı kompakt
+    takip listesi ve açılır ham sonuçlar olarak çizer.
+    """
+    clean_items = [item for item in (items or []) if isinstance(item, dict)]
+    if not clean_items:
+        st.markdown(
+            f"<div style='border:1px dashed {priority_color}55;border-radius:7px;"
+            f"padding:14px 10px;text-align:center;color:#94a3b8;font-size:0.76rem;'>"
+            f"{html.escape(empty_text)}</div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    priority = clean_items[:5]
+    remaining = clean_items[5:]
+    st.markdown(
+        f"<div style='font-size:0.80rem;font-weight:900;color:{priority_color};"
+        f"margin:8px 0 2px 0;'>{html.escape(priority_title)} · {len(clean_items)} sonuç</div>"
+        f"<div style='font-size:0.64rem;color:#64748b;margin:0 0 6px 2px;'>"
+        f"{html.escape(priority_note)}</div>",
+        unsafe_allow_html=True,
+    )
+
+    def _draw_row(item: dict[str, Any], index: int, *, prominent: bool) -> None:
+        symbol = str(item.get("symbol") or "—")
+        label = str(item.get("label") or item.get("title") or "Algoritmik aday")
+        detail = str(item.get("detail") or "")
+        status = str(item.get("status") or "")
+        button_text = f"{item.get('icon', '•')} {symbol}"
+        if item.get("price") not in (None, "", "—"):
+            button_text += f" · {item.get('price')}"
+        if item.get("rank") not in (None, "", "—"):
+            button_text += f" · {item.get('rank')}"
+        with st.container(border=True):
+            cols = st.columns([0.92, 2.55, 1.10])
+            with cols[0]:
+                st.markdown(
+                    f"<div style='font-size:{'0.94' if prominent else '0.82'}rem;"
+                    f"font-weight:900;color:#f8fafc;'>{html.escape(symbol)}</div>",
+                    unsafe_allow_html=True,
+                )
+            with cols[1]:
+                st.markdown(
+                    f"<div style='font-size:{'0.71' if prominent else '0.64'}rem;"
+                    f"color:#7dd3fc;font-weight:800;line-height:1.25;'>"
+                    f"{html.escape(label)}</div>"
+                    f"<div style='font-size:0.59rem;color:#cbd5e1;line-height:1.3;"
+                    f"margin-top:3px;'>{html.escape(detail)}</div>"
+                    + (f"<div style='font-size:0.57rem;color:#fbbf24;margin-top:2px;'>"
+                       f"{html.escape(status)}</div>" if status else ""),
+                    unsafe_allow_html=True,
+                )
+            with cols[2]:
+                if st.button(
+                    "Aç",
+                    key=f"standard_scan_{key_prefix}_{index}_{symbol}",
+                    width="stretch",
+                ):
+                    open_detail(item)
+
+    for index, item in enumerate(priority):
+        _draw_row(item, index, prominent=True)
+    if remaining:
+        with st.expander(f"🔽 Kalan {len(remaining)} sonucu kompakt göster"):
+            for offset, item in enumerate(remaining, start=len(priority)):
+                _draw_row(item, offset, prominent=False)
+
+
+def _render_ready_priority(
+    st: Any,
+    candidates: list[dict[str, Any]],
+    open_detail: Any,
+    *,
+    as_of: object = None,
+) -> None:
+    ordered, measured = _order_candidates_by_liquidity(candidates, as_of=as_of)
+    priority = ordered[:5]
+    remaining = ordered[5:]
+    if not priority:
+        return
+    st.markdown(
+        "<div style='font-size:0.82rem;font-weight:900;color:#4ade80;margin:8px 0 2px 0;'>"
+        f"💧 İLK BAKILACAK {len(priority)} · {len(ordered)} karar hazır aday içinden</div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "20 günlük ortalama TL işlem hacmine göre sıralandı."
+        if measured
+        else "Likidite ölçümü hazır değil; mevcut güç sırası korunuyor."
+    )
+    _render_grid(st, priority, open_detail, key_prefix="karar_hazir_likidite")
+    if remaining:
+        with st.expander(f"🔽 Kalan {len(remaining)} karar hazır adayı kompakt göster"):
+            _render_compact_rows(
+                st,
+                remaining,
+                open_detail,
+                key_prefix="karar_hazir_kalan",
+            )
+
+
+def _render_confirm_pool(
+    st: Any,
+    desk: dict[str, Any],
+    open_detail: Any,
+    *,
+    as_of: object = None,
+) -> None:
+    """206'lık ara havuzu güçlenme ve izleme masalarına ayırır."""
+    group_specs = (
+        (
+            BUCKET_GROWING,
+            "📈 Takipte güçlenenler",
+            "T+1/T+2'de güç kazananlar; T+3 karar kontrolü henüz tamamlanmadı.",
+        ),
+        (
+            BUCKET_WATCH,
+            "↔ İzleme / teyit eksik",
+            "Çelişki, aşırı uzama veya güçlenme teyidi eksik olanlar; işlem listesi değildir.",
+        ),
+    )
+    for bucket, title, note in group_specs:
+        values, measured = _order_candidates_by_liquidity(
+            desk.get(bucket, []),
+            as_of=as_of,
+        )
+        st.markdown(
+            f"<div style='font-size:0.80rem;font-weight:900;color:{BUCKET_META[bucket]['color']};"
+            f"margin:12px 0 1px 0;'>{title} · {len(values)} aday</div>"
+            f"<div style='font-size:0.65rem;color:#64748b;margin:0 0 6px 2px;'>{note}</div>",
+            unsafe_allow_html=True,
+        )
+        if not values:
+            st.caption("Bu alt grupta aday yok.")
+            continue
+        visible = values[:10]
+        st.caption(
+            "Sıra: 20 günlük ortalama TL işlem hacmi."
+            if measured
+            else "Likidite ölçümü hazır değil; mevcut takip sırası korunuyor."
+        )
+        _render_compact_rows(
+            st,
+            visible,
+            open_detail,
+            key_prefix=f"{bucket}_visible",
+        )
+        remaining = values[10:]
+        if remaining:
+            with st.expander(f"🔽 Kalan {len(remaining)} adayı kompakt göster"):
+                _render_compact_rows(
+                    st,
+                    remaining,
+                    open_detail,
+                    key_prefix=f"{bucket}_remaining",
+                )
 
 
 def _render_header(st: Any, bucket: str, count: int) -> None:
@@ -823,6 +1164,191 @@ def _render_header(st: Any, bucket: str, count: int) -> None:
         f"<div style='font-size:0.68rem;color:#64748b;margin:0 0 8px 2px;'>{meta['note']}</div>",
         unsafe_allow_html=True,
     )
+
+
+def _payload_sources(candidate: dict[str, Any]) -> set[str]:
+    """Toplu Terazi adayının ölçümdeki ham kaynaklarını döndürür."""
+    item = candidate.get("payload_item") or {}
+    return {
+        str(source).strip().lower()
+        for source in (item.get("sources") or [])
+        if str(source).strip()
+    }
+
+
+def _goldmine_candidates(desk: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Toplu Terazi payload'ındaki Gold Mine üyelerini tekilleştirir."""
+    found: dict[str, dict[str, Any]] = {}
+    for bucket in BUCKETS:
+        for candidate in desk.get(bucket, []):
+            if "goldmine" not in _payload_sources(candidate):
+                continue
+            symbol = _clean_symbol(candidate.get("sym"))
+            if symbol:
+                found.setdefault(symbol, candidate)
+    return found
+
+
+def _liquidity_top(
+    symbols: list[str],
+    *,
+    as_of: object = None,
+    scan_type: str | None = None,
+    limit: int = 4,
+) -> tuple[list[str], bool]:
+    """Mevcut likidite kuralını kullanır; ölçüm yoksa 'en likit' iddiası kurmaz."""
+    clean = list(dict.fromkeys(_clean_symbol(symbol) for symbol in (symbols or []) if _clean_symbol(symbol)))
+    if not clean:
+        return [], False
+    try:
+        import likidite_siralama as liquidity
+
+        ordered = liquidity.sirala(
+            clean,
+            tarih=as_of,
+            adet=limit,
+            scan_type=scan_type,
+        )
+        if not ordered:
+            return [], False
+        measured = [
+            symbol for symbol in ordered
+            if pd.notna(liquidity.likidite(symbol, tarih=as_of))
+        ]
+        return ordered[:limit], bool(measured)
+    except Exception:
+        return [], False
+
+
+def _render_goldmine_liquidity(
+    st: Any,
+    desk: dict[str, Any],
+    on_click: Any,
+) -> None:
+    """Gold Mine'ın 28 Ağustos'ta ölçülen EN LİKİT 4 seçimini Katalog'a taşır."""
+    goldmine = _goldmine_candidates(desk)
+    if not goldmine:
+        return
+    as_of = desk.get("as_of")
+    top, measured = _liquidity_top(
+        list(goldmine),
+        as_of=as_of,
+        scan_type="goldmine",
+    )
+    st.markdown(
+        "<div style='font-size:0.86rem;font-weight:900;color:#fbbf24;"
+        "margin:4px 0 4px 0;'>💧 GOLD MINE · EN LİKİT 4</div>"
+        "<div style='font-size:0.66rem;color:#94a3b8;margin:0 0 6px 2px;'>"
+        "20 günlük ortalama TL işlem hacmiyle seçilir; puan veya 'en iyi' sırası değildir."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    if not measured:
+        st.markdown(
+            "<div style='border:1px dashed #f59e0b55;border-radius:7px;padding:10px;"
+            "text-align:center;color:#94a3b8;font-size:0.72rem;'>"
+            "Gold Mine üyeleri var; likidite ölçümü hazır olmadığı için sıralama gösterilmedi."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        return
+    with st.container(border=True):
+        for index, symbol in enumerate(top):
+            candidate = goldmine.get(symbol) or {}
+            story = _card_story(candidate) or "📊 Algoritmik Güçlü Kurulum"
+            sources = " · ".join(
+                "Gold Mine" if str(source).strip().lower() == "goldmine"
+                else _display_scan(source)
+                for source in _card_scan_types(candidate)[:3]
+            ) or "Gold Mine"
+            if st.button(
+                f"💧 {index + 1}. {symbol} · {story}",
+                key=f"trajectory_goldmine_{symbol}_{index}",
+                width="stretch",
+                help=f"EN LİKİT seçim · {sources}",
+            ):
+                on_click(candidate.get("ticker") or f"{symbol}.IS")
+                st.rerun(scope="app")
+            st.markdown(
+                f"<div style='font-size:0.66rem;color:#94a3b8;margin:-6px 0 4px 8px;'>"
+                f"{html.escape(sources)} · Gold Mine üyeliği · bağımsız karar puanı değil"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+
+def _short_candidates(session_getter: Any) -> dict[str, list[str]]:
+    """Erken Radar D4/D5 satırlarını hisse bazında toplar."""
+    try:
+        early = session_getter("erken_radar_data")
+    except Exception:
+        return {}
+    if early is None or not hasattr(early, "empty") or early.empty:
+        return {}
+    if not {"Sembol", "ScenarioId"}.issubset(early.columns):
+        return {}
+    found: dict[str, list[str]] = {}
+    short_rows = early[early["ScenarioId"].astype(str).isin(("D4", "D5"))]
+    for _, row in short_rows.iterrows():
+        symbol = _clean_symbol(row.get("Sembol"))
+        scenario = str(row.get("ScenarioId") or "").strip()
+        if symbol and scenario:
+            found.setdefault(symbol, [])
+            if scenario not in found[symbol]:
+                found[symbol].append(scenario)
+    return found
+
+
+def _render_short_warning(
+    st: Any,
+    session_getter: Any,
+    on_click: Any,
+    *,
+    as_of: object = None,
+) -> None:
+    """OLASI SHORT uyarısını Risk Masası'nda, işlem aracına çevirmeden gösterir."""
+    short_map = _short_candidates(session_getter)
+    if not short_map:
+        return
+    top, measured = _liquidity_top(
+        list(short_map),
+        as_of=as_of,
+        scan_type="er_D4",
+    )
+    st.markdown(
+        "<div style='background:linear-gradient(135deg,#7f1d1d22,#1c191706);"
+        "border:1px solid #dc262655;border-radius:8px;padding:7px 10px;"
+        "margin:2px 0 8px 0;'>"
+        "<span style='font-size:0.78rem;font-weight:900;color:#fca5a5;'>"
+        f"📉 OLASI SHORT — {len(short_map)} hisse</span>"
+        "<div style='font-size:0.63rem;color:#d6d3d1;line-height:1.3;margin-top:2px;'>"
+        "er_D4 / er_D5 düşüş uyarısı · en likit 4 üstte<br>"
+        "<b>Uyarı listesidir, işlem tavsiyesi değil.</b> İşlem yapılabilir evrende "
+        "(VİOP 47 / BIST 50) kenar ölçümü sınırlıdır."
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
+    if not measured:
+        st.caption("Likidite ölçümü hazır değil; EN LİKİT sırası gösterilmedi.")
+        return
+    for index, symbol in enumerate(top):
+        scenarios = " + ".join(sorted(short_map.get(symbol, [])))
+        if st.button(
+            f"💧 {index + 1}. {symbol} · {scenarios}",
+            key=f"trajectory_short_{symbol}_{index}",
+            width="stretch",
+            help="D4/D5 uyarısı · işlem tavsiyesi değildir",
+        ):
+            on_click(symbol)
+            st.rerun(scope="app")
+    remaining = len(short_map) - len(top)
+    if remaining > 0:
+        st.markdown(
+            "<div style='font-size:0.64rem;color:#94a3b8;margin:-3px 0 6px 6px;'>"
+            f"+{remaining} hisse daha (EN LİKİT 4 dışında)"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _load_karne_summary() -> dict[str, Any]:
@@ -896,17 +1422,37 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     catalog = tarama_merkezi.build_catalog(session_getter)
     counts = desk["counts"]
     as_of = desk.get("as_of") or str(payload.get("as_of") or "")[:10]
-    
+    _catalog_count = len({
+        symbol
+        for category in catalog
+        for symbol in category.get("symbols", [])
+    })
+    _summary_items = (
+        ("🎯 Karar hazır aday", counts[BUCKET_READY], "#22c55e"),
+        ("⏳ Takip / teyit havuzu", counts[BUCKET_GROWING] + counts[BUCKET_WATCH], "#f59e0b"),
+        ("🌱 Yeni sinyal", counts[BUCKET_NEW], "#38bdf8"),
+        ("⚠️ Risk masası", counts[BUCKET_RISK], "#ef4444"),
+    )
+    _summary_html = "".join(
+        f"<div style='background:#0f172acc;border:1px solid #263b5d;border-radius:8px;"
+        f"padding:9px 11px;'><div style='font-size:0.66rem;color:#94a3b8;'>"
+        f"{label}</div><div style='font-size:1.18rem;font-weight:900;color:{color};"
+        f"margin-top:2px;'>{count}</div></div>"
+        for label, count, color in _summary_items
+    )
     st.markdown(
-        "<div style='display:flex;justify-content:space-between;align-items:center;margin:6px 0 2px 0;'>"
-        "<span style='font-size:1.10rem;font-weight:900;color:#38bdf8;'>🧭 Tarama Merkezi & Karar Masası</span>"
-        f"<span style='font-size:0.72rem;color:#94a3b8;'>📅 {html.escape(as_of)} Kapanış Fotoğrafı</span>"
-        "</div>",
+        "<div style='display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin:6px 0 12px 0;'>"
+        "<div><div style='font-size:1.10rem;font-weight:900;color:#38bdf8;'>🎯 Tarama Merkezi</div>"
+        "<div style='font-size:0.72rem;color:#94a3b8;margin-top:3px;'>Bugün karar verilecek adayları tek bakışta ayır.</div></div>"
+        f"<div style='font-size:0.72rem;color:#e2e8f0;text-align:right;white-space:nowrap;'>📅 {html.escape(as_of)} kapanışı"
+        "<div style='font-size:0.64rem;color:#64748b;margin-top:2px;'>Master Scan fotoğrafı</div></div>"
+        "</div>"
+        f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px 0;'>"
+        f"{_summary_html}</div>",
         unsafe_allow_html=True,
     )
     if desk["catalog_only"]:
         st.caption("Kapanış takip fotoğrafı henüz oluşmadı; bu görünüm yalnızca T0 aday havuzudur.")
-    _render_live_karne(st)
 
     @st.dialog("🔍 Kurulum Detayı", width="large")
     def open_detail(candidate: dict[str, Any]) -> None:
@@ -944,64 +1490,125 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             st.session_state["_tm_scroll_top"] = True
             st.rerun(scope="app")
 
-    # 🗂️ ŞIK SEKMELİ YAPI (Dikey sonsuz kaydırmayı bitirir)
-    tab_ready, tab_growing, tab_new, tab_watch, tab_risk = st.tabs([
-        f"🎯 Karar Hazır ({counts[BUCKET_READY]})",
-        f"📈 Güçlenenler ({counts[BUCKET_GROWING]})",
-        f"🔎 Yeni Adaylar ({counts[BUCKET_NEW]})",
-        f"↔️ İzleme Masası ({counts[BUCKET_WATCH]})",
+    # 🗂️ KARAR YÜZEYİ — ürünce onaylı beş sekme.
+    # Yaşam döngüsünün iki ara durumu aynı sekmede kalır; içeride ayrı masalara
+    # bölünerek geniş ara havuzun işlem listesi gibi görünmesi engellenir.
+    tab_long, tab_confirm, tab_new, tab_risk, tab_catalog = st.tabs([
+        f"🎯 Karar Hazır ({counts[BUCKET_READY]} aday)",
+        f"⏳ Takip / Teyit ({counts[BUCKET_GROWING] + counts[BUCKET_WATCH]} aday)",
+        f"🌱 Yeni Sinyaller ({counts[BUCKET_NEW]})",
         f"⚠️ Risk Masası ({counts[BUCKET_RISK]})",
+        f"📚 Katalog ({_catalog_count})",
     ])
 
-    bucket_tabs = [
-        (tab_ready, BUCKET_READY),
-        (tab_growing, BUCKET_GROWING),
-        (tab_new, BUCKET_NEW),
-        (tab_watch, BUCKET_WATCH),
-        (tab_risk, BUCKET_RISK),
-    ]
-
-    for tab, bucket in bucket_tabs:
+    def _render_decision_groups(
+        tab: Any,
+        groups: list[str],
+        leading: Any = None,
+    ) -> None:
         with tab:
-            _render_header(st, bucket, counts[bucket])
-            _groups = group_candidates_by_vade(desk[bucket])
-            for masa in _VADE_MASA_ORDER:
-                _values = _groups[masa]
-                if not _values:
-                    continue
-                st.markdown(
-                    f"<div style='font-size:0.78rem;font-weight:800;color:#cbd5e1;"
-                    f"margin:8px 0 3px 2px;'>{_VADE_MASA_LABELS[masa]} · {len(_values)}</div>",
-                    unsafe_allow_html=True,
+            values = [candidate for bucket in groups for candidate in desk[bucket]]
+            view_meta = {
+                (BUCKET_READY,): (
+                    "🎯 Karar Hazır Adaylar",
+                    "T+3 kontrolü tamamlanan; ilk bakışta likiditesi yüksek 5 aday öne çıkar",
+                ),
+                (BUCKET_GROWING, BUCKET_WATCH): (
+                    "⏳ Takip / Teyit Havuzu",
+                    "Tek tarama sonucu değil; farklı taramalardan birleşen ara yaşam döngüsü adayları",
+                ),
+                (BUCKET_NEW,): (
+                    "🌱 Yeni Sinyaller",
+                    "İlk kez yakalananlar; geçmiş teyit süreci henüz oluşmadı",
+                ),
+                (BUCKET_RISK,): (
+                    "⚠️ Risk Masası",
+                    "Veto, zayıflama ve düşüş uyarıları; işlem listesi değildir",
+                ),
+            }
+            title, note = view_meta.get(tuple(groups), ("Tarama listesi", ""))
+            color = BUCKET_META[groups[0]]["color"]
+            st.markdown(
+                f"<div style='font-size:0.98rem;font-weight:900;color:{color};margin:2px 0 1px 0;'>"
+                f"{title} · {len(values)} aday</div>"
+                f"<div style='font-size:0.68rem;color:#64748b;margin:0 0 12px 2px;'>{note}</div>",
+                unsafe_allow_html=True,
+            )
+            if leading is not None:
+                leading()
+            if values:
+                if tuple(groups) == (BUCKET_READY,):
+                    _render_ready_priority(
+                        st,
+                        values,
+                        open_detail,
+                        as_of=as_of,
+                    )
+                elif tuple(groups) == (BUCKET_GROWING, BUCKET_WATCH):
+                    _render_confirm_pool(
+                        st,
+                        desk,
+                        open_detail,
+                        as_of=as_of,
+                    )
+                else:
+                    _render_grid(
+                        st,
+                        values,
+                        open_detail,
+                        key_prefix="_".join(groups),
+                    )
+            else:
+                empty_text = (
+                    "Takip veya teyit bekleyen kurulum yok."
+                    if len(groups) > 1
+                    else {
+                        BUCKET_READY: "Henüz T+3 karar kontrolünü geçen aday yok.",
+                        BUCKET_GROWING: "Takipte güçlenen aday yok.",
+                        BUCKET_NEW: "Yeni aday yok.",
+                        BUCKET_WATCH: "İzleme gerektiren aday yok.",
+                        BUCKET_RISK: "Sert risk vetosu alan hisse yok.",
+                    }[groups[0]]
                 )
-                _render_grid(
-                    st, _values, open_detail,
-                    key_prefix=f"{bucket}_{masa.lower()}",
-                )
-            if not desk[bucket]:
-                empty_text = {
-                    BUCKET_READY: "Henüz T+3 karar kontrolünü geçen aday yok.",
-                    BUCKET_GROWING: "Takipte güçlenen aday yok.",
-                    BUCKET_NEW: "Yeni aday yok.",
-                    BUCKET_WATCH: "İzleme gerektiren aday yok.",
-                    BUCKET_RISK: "Sert risk vetosu alan hisse yok.",
-                }[bucket]
                 st.markdown(
                     "<div style='border:1px dashed #334155;border-radius:6px;padding:12px;text-align:center;"
                     f"color:#94a3b8;font-size:0.75rem;margin:10px 0;'>{empty_text}</div>",
                     unsafe_allow_html=True,
                 )
 
-    st.markdown(
-        "<div style='font-size:0.92rem;font-weight:900;color:#e2e8f0;margin:16px 0 2px 0;'>📚 Tarama Kataloğu</div>"
-        "<div style='font-size:0.66rem;color:#64748b;margin:0 0 6px 2px;'>Ham sonuçlar denetim alanıdır; karar listesine puan taşımaz.</div>",
-        unsafe_allow_html=True,
+    _render_decision_groups(tab_long, [BUCKET_READY])
+    _render_decision_groups(tab_confirm, [BUCKET_GROWING, BUCKET_WATCH])
+    _render_decision_groups(tab_new, [BUCKET_NEW])
+    _render_decision_groups(
+        tab_risk,
+        [BUCKET_RISK],
+        leading=lambda: _render_short_warning(
+            st, session_getter, on_click, as_of=as_of
+        ),
     )
-    for category in catalog:
-        if not category["count"]:
-            continue
-        with st.expander(f"{category['name']} · {category['count']} sonuç · {category['family']}"):
-            for index, symbol in enumerate(category["symbols"]):
-                if st.button(symbol, key=f"trajectory_catalog_{category['key']}_{symbol}_{index}", width="stretch"):
-                    on_click(symbol + ".IS" if "." not in symbol else symbol)
-                    st.rerun(scope="app")
+
+    with tab_catalog:
+        _render_goldmine_liquidity(st, desk, on_click)
+        st.markdown(
+            "<div style='font-size:0.92rem;font-weight:900;color:#e2e8f0;margin:16px 0 2px 0;'>"
+            "📚 Tarama Kataloğu</div>"
+            "<div style='font-size:0.66rem;color:#64748b;margin:0 0 6px 2px;'>"
+            "Ham sonuçlar denetim alanıdır; karar listesine puan taşımaz.</div>",
+            unsafe_allow_html=True,
+        )
+        for category in catalog:
+            if not category["count"]:
+                continue
+            with st.expander(
+                f"{category['name']} · {category['count']} sonuç · {category['family']}"
+            ):
+                for index, symbol in enumerate(category["symbols"]):
+                    if st.button(
+                        symbol,
+                        key=f"trajectory_catalog_{category['key']}_{symbol}_{index}",
+                        width="stretch",
+                    ):
+                        on_click(symbol + ".IS" if "." not in symbol else symbol)
+                        st.rerun(scope="app")
+
+    _render_live_karne(st)
