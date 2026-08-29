@@ -120,7 +120,12 @@ def _scanner_karne_text(scan_keys: list[str]) -> str:
     return "BİLMİYORUZ · ölçüm kaydı yok"
 
 
-_SCAN_KARNE_CACHE: dict[str, Any] = {"mtime": None, "rows": []}
+_SCAN_KARNE_CACHE: dict[str, Any] = {
+    "loaded": False,
+    "mtime": None,
+    "rows": [],
+    "sorun": None,
+}
 
 
 def _load_scan_karne_rows() -> list[dict[str, Any]]:
@@ -128,18 +133,41 @@ def _load_scan_karne_rows() -> list[dict[str, Any]]:
     try:
         mtime = SCAN_KARNE_PATH.stat().st_mtime_ns
     except OSError:
-        return []
-    if _SCAN_KARNE_CACHE.get("mtime") == mtime:
+        mtime = None
+    if _SCAN_KARNE_CACHE.get("loaded") and _SCAN_KARNE_CACHE.get("mtime") == mtime:
         return _SCAN_KARNE_CACHE.get("rows", [])
+
+    clean_rows: list[dict[str, Any]] = []
+    sorun: str | None = None
     try:
-        package = json.loads(SCAN_KARNE_PATH.read_text(encoding="utf-8"))
-        rows = package.get("kayitlar", []) if isinstance(package, dict) else []
-        clean_rows = [row for row in rows if isinstance(row, dict)]
-    except (OSError, ValueError, TypeError):
-        clean_rows = []
+        import tarama_karne
+    except Exception:
+        # Tüketici kapısı yoksa ekranı düşürme; eski salt-okur davranışı korunur.
+        try:
+            package = json.loads(SCAN_KARNE_PATH.read_text(encoding="utf-8"))
+            rows = package.get("kayitlar", []) if isinstance(package, dict) else []
+            clean_rows = [row for row in rows if isinstance(row, dict)]
+        except (OSError, ValueError, TypeError):
+            clean_rows = []
+    else:
+        try:
+            rows, sorun = tarama_karne.karne_oku(SCAN_KARNE_PATH, azami_gun=7)
+            clean_rows = [row for row in (rows or []) if isinstance(row, dict)]
+        except Exception as exc:
+            clean_rows = []
+            sorun = f"Tarama karnesi okunamadı: {type(exc).__name__}: {exc}"
+    _SCAN_KARNE_CACHE["loaded"] = True
     _SCAN_KARNE_CACHE["mtime"] = mtime
     _SCAN_KARNE_CACHE["rows"] = clean_rows
+    _SCAN_KARNE_CACHE["sorun"] = sorun
     return clean_rows
+
+
+def _scan_karne_issue() -> str | None:
+    """Karne kapısının sorununu kartların üstünde görünür kılmak için döndürür."""
+    _load_scan_karne_rows()
+    issue = _SCAN_KARNE_CACHE.get("sorun")
+    return str(issue) if issue else None
 
 
 def _fmt_metric(value: object) -> str:
@@ -1453,6 +1481,13 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     )
     if desk["catalog_only"]:
         st.caption("Kapanış takip fotoğrafı henüz oluşmadı; bu görünüm yalnızca T0 aday havuzudur.")
+
+    _scan_karne_sorun = _scan_karne_issue()
+    if _scan_karne_sorun:
+        st.warning(
+            f"⚠ Tarama karnesi doğrulama uyarısı: {_scan_karne_sorun} "
+            "Kartlardaki geçmiş ölçüm güncel kabul edilmemeli."
+        )
 
     @st.dialog("🔍 Kurulum Detayı", width="large")
     def open_detail(candidate: dict[str, Any]) -> None:
