@@ -8,7 +8,7 @@ fotoğraflarını okuyup adayın sonraki günlerdeki davranışını sınıfland
 
     T0              → Bugün yeni yakalanan aday
     T+1 / T+2        → Takipte güçlenen aday
-    T+3              → Karar hazır aday
+    T+3              → T+3 teyitli aday
 
 Kalabalıklaşma yalnızca uyarıdır; sıralama puanı değildir. Sert risk vetosu ve
 boğa-ayı çelişkisi, mevcut Kanıt Terazisi çıktısından okunur. Bu modül patron.db,
@@ -339,22 +339,22 @@ BUCKETS = (BUCKET_READY, BUCKET_GROWING, BUCKET_NEW, BUCKET_WATCH, BUCKET_RISK)
 
 BUCKET_META = {
     BUCKET_READY: {
-        "title": "🎯 Karar Hazır Adaylar",
+        "title": "🎯 T+3 Teyitli Adaylar",
         "note": "T+3 tamamlandı; fiyat davranışı güç sinyalini korudu.",
         "color": "#22c55e",
-        "tag": "KARAR HAZIR",
+        "tag": "T+3 TEYİTLİ",
     },
     BUCKET_GROWING: {
-        "title": "📈 Takipte Güçlenenler",
-        "note": "T+1 / T+2: fiyat davranışı olumlu; henüz karar aşaması değil.",
+        "title": "📈 T+1 & T+2 Onaylılar",
+        "note": "T+1 / T+2: fiyat davranışı olumlu ve güçlenme koşulu onaylandı.",
         "color": "#f59e0b",
-        "tag": "GÜÇLENİYOR",
+        "tag": "T+1 & T+2 ONAYLI",
     },
     BUCKET_NEW: {
-        "title": "🔎 Bugün Yeni Yakalanan Adaylar",
+        "title": "🔎 Yeni Sinyal T+0",
         "note": "T0: takip başladı. İlk gün hiçbir hisseye güçlü LONG etiketi verilmez.",
         "color": "#38bdf8",
-        "tag": "YENİ ADAY",
+        "tag": "YENİ SİNYAL T+0",
     },
     BUCKET_WATCH: {
         "title": "↔ Karşı Sinyalli / İzleme Gerekli",
@@ -1108,7 +1108,7 @@ def _render_ready_priority(
         return
     st.markdown(
         "<div style='font-size:0.82rem;font-weight:900;color:#4ade80;margin:8px 0 2px 0;'>"
-        f"💧 İLK BAKILACAK {len(priority)} · {len(ordered)} karar hazır aday içinden</div>",
+        f"💧 İLK BAKILACAK {len(priority)} · {len(ordered)} T+3 teyitli aday içinden</div>",
         unsafe_allow_html=True,
     )
     st.caption(
@@ -1118,7 +1118,7 @@ def _render_ready_priority(
     )
     _render_grid(st, priority, open_detail, key_prefix="karar_hazir_likidite")
     if remaining:
-        with st.expander(f"🔽 Kalan {len(remaining)} karar hazır adayı kompakt göster"):
+        with st.expander(f"🔽 Kalan {len(remaining)} T+3 teyitli adayı kompakt göster"):
             _render_compact_rows(
                 st,
                 remaining,
@@ -1426,7 +1426,7 @@ def _render_live_karne(st: Any) -> None:
         left, right = st.columns(2)
         ready_row, base_row = ready[0], baseline[0]
         with left:
-            st.markdown("**T+3 karar hazır**")
+            st.markdown("**T+3 teyitli**")
             st.markdown(
                 f"N: {ready_row.get('n', 0)} · Win rate: %{float(ready_row.get('win_rate') or 0) * 100:.1f} · "
                 f"%30+ kuyruk: %{float(ready_row.get('sag_kuyruk_30') or 0) * 100:.1f}\n\n"
@@ -1493,9 +1493,9 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     except Exception:
         _short_count = 0
     _summary_items = (
-        ("🎯 Karar hazır aday", counts[BUCKET_READY], "#22c55e"),
-        ("⏳ Takip / teyit havuzu", counts[BUCKET_GROWING] + counts[BUCKET_WATCH], "#f59e0b"),
-        ("🌱 Yeni sinyal", counts[BUCKET_NEW], "#38bdf8"),
+        ("🎯 T+3 Teyitli", counts[BUCKET_READY], "#22c55e"),
+        ("⏳ T+1 & T+2 Onaylılar", counts[BUCKET_GROWING] + counts[BUCKET_WATCH], "#f59e0b"),
+        ("🌱 Yeni Sinyal T+0", counts[BUCKET_NEW], "#38bdf8"),
         ("⚠️ Risk masası", counts[BUCKET_RISK], "#ef4444"),
         ("📉 Olası short", _short_count, "#fca5a5"),
     )
@@ -1567,9 +1567,9 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     # Yaşam döngüsünün iki ara durumu aynı sekmede kalır; içeride ayrı masalara
     # bölünerek geniş ara havuzun işlem listesi gibi görünmesi engellenir.
     tab_long, tab_confirm, tab_new, tab_risk, tab_catalog, tab_short = st.tabs([
-        f"🎯 Karar Hazır ({counts[BUCKET_READY]} aday)",
-        f"⏳ Takip / Teyit ({counts[BUCKET_GROWING] + counts[BUCKET_WATCH]} aday)",
-        f"🌱 Yeni Sinyaller ({counts[BUCKET_NEW]})",
+        f"🎯 T+3 Teyitli ({counts[BUCKET_READY]} aday)",
+        f"⏳ T+1 & T+2 Onaylılar ({counts[BUCKET_GROWING] + counts[BUCKET_WATCH]} aday)",
+        f"🌱 Yeni Sinyal T+0 ({counts[BUCKET_NEW]})",
         f"⚠️ Risk Masası ({counts[BUCKET_RISK]})",
         f"📚 Katalog ({_catalog_count})",
         f"📉 Olası Short ({_short_count})",
@@ -1584,15 +1584,15 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             values = [candidate for bucket in groups for candidate in desk[bucket]]
             view_meta = {
                 (BUCKET_READY,): (
-                    "🎯 Karar Hazır Adaylar",
+                    "🎯 T+3 Teyitli Adaylar",
                     "T+3 kontrolü tamamlanan; ilk bakışta likiditesi yüksek 5 aday öne çıkar",
                 ),
                 (BUCKET_GROWING, BUCKET_WATCH): (
-                    "⏳ Takip / Teyit Havuzu",
-                    "Tek tarama sonucu değil; farklı taramalardan birleşen ara yaşam döngüsü adayları",
+                    "⏳ T+1 & T+2 Onaylılar",
+                    "T+1/T+2'de güçlenenler üstte; teyit eksiği olanlar içeride ayrı izleme grubunda tutulur",
                 ),
                 (BUCKET_NEW,): (
-                    "🌱 Yeni Sinyaller",
+                    "🌱 Yeni Sinyal T+0",
                     "İlk kez yakalananlar; geçmiş teyit süreci henüz oluşmadı",
                 ),
                 (BUCKET_RISK,): (
