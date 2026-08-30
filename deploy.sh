@@ -38,7 +38,7 @@ pattern_core.py ict_core.py scoring_core.py scan_pipeline.py charts.py
 analysis_core.py terazi_core.py veri_bekcisi.py saatlik_kapi.py saatlik_uzlasma.py zamanlama_core.py depo_tazelik.py
 seans_profili.py
 formasyon_core.py formasyon_v2.py cizgi_yapi.py cizgi_alarm.py
-formasyon_v2_app.py sampiyonlar_ligi.py smr_core.py infografik_build.py fetcher.py
+formasyon_v2_app.py sampiyonlar_ligi.py smr_core.py infografik_build.py fetcher.py finalize_volume.py
 data_policy.py bist_calendar.py master_scan_progress.py master_scan_giris_senaryolari.py
 trajectory_tarama_merkezi.py tarama_merkezi.py pusula_engine.py
 bist_data_store.py bist_exchange.py provider_traffic.py isyatirim_gateway.py

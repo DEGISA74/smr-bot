@@ -30,6 +30,8 @@ import urllib.request
 import urllib.parse
 from datetime import datetime, timezone, timedelta
 
+from bist_data_store import VOLUME_CONTROLLED_SOURCES, VOLUME_OFFICIAL_SOURCES
+
 BASE = os.path.expanduser("~/smr")
 HEALTH = os.path.join(BASE, "health")
 os.makedirs(HEALTH, exist_ok=True)
@@ -110,12 +112,8 @@ TASKS = [
 # manifestini SALT OKUR (fetcher'a dokunmaz; bekcinin bug'i veriyi bozamaz) ve
 # esigin altindaysa gunde bir kez Telegram atar.
 STORE_DIR = os.path.join(BASE, "health", "bist_store")
-# "Kesin hacim" = Is Yatirim kokenli. yahoo_provisional = gecici, BIST'te bozuk.
-VOL_KESIN = {"isyatirim", "isyatirim_cache", "repair_isyatirim", "index_ciro"}
-
-
 def _veri_ozeti():
-    """(toplam_sembol, bugunun_bari_olan, kesin_hacimli) - okunamazsa None."""
+    """Aktif manifestte güncel, resmî ve kontrollü hacim kapsamını döndürür."""
     try:
         with open(os.path.join(STORE_DIR, "active.json"), encoding="utf-8") as f:
             vid = json.load(f)["version_id"]
@@ -125,14 +123,21 @@ def _veri_ozeti():
         print("[bekci] manifest okunamadi:", e)
         return None
     bugun = str(today)
-    guncel = kesin = 0
+    guncel = official = controlled = 0
     for meta in syms.values():
         if (meta.get("last") or "") != bugun:
             continue
         guncel += 1
-        if ((meta.get("field_sources") or {}).get("Volume") or "") in VOL_KESIN:
-            kesin += 1
-    return len(syms), guncel, kesin
+        source = ((meta.get("field_sources") or {}).get("Volume") or "").lower()
+        if source in VOLUME_OFFICIAL_SOURCES:
+            official += 1
+        elif source in VOLUME_CONTROLLED_SOURCES:
+            controlled += 1
+    return {
+        "total": len(syms), "current": guncel,
+        "official": official, "controlled": controlled,
+        "usable": official + controlled,
+    }
 
 
 def _islem_gunu():
@@ -148,8 +153,8 @@ def _islem_gunu():
 VERI_KAPILARI = [
     ("veri_fiyat", "\U0001F4B0 Kapanis fiyati (tum evren)", slot(19, 30), "guncel", 0.92,
      "venv/bin/python fetcher.py kapanis_final"),
-    ("veri_hacim", "\U0001F4CA Kesin hacim (Is Yatirim)", slot(22, 45), "kesin", 0.80,
-     "venv/bin/python fetcher.py isyatirim"),
+    ("veri_hacim", "\U0001F4CA Hacim kapsamı (İş Yatırım + kontrollü borsapy)", slot(23, 15), "kesin", 0.80,
+     "venv/bin/python finalize_volume.py"),
 ]
 
 
@@ -161,14 +166,17 @@ def veri_kapilarini_denetle(day):
     ozet = _veri_ozeti()
     if ozet is None:
         return ["\u26A0\uFE0F Veri deposu okunamadi (manifest yok?)"], []
-    toplam, guncel, kesin = ozet
+    toplam = ozet["total"]
+    guncel = ozet["current"]
+    usable = ozet["usable"]
     for ad, gad, deadline, olcut, esik, komut in VERI_KAPILARI:
         if olcut == "guncel":
             deger, payda = guncel, toplam
             detay = "%d/%d hissede bugunun bari var" % (guncel, toplam)
         else:
-            deger, payda = kesin, guncel
-            detay = "%d/%d hissede kesin hacim var" % (kesin, guncel)
+            deger, payda = usable, guncel
+            detay = ("%d/%d hissede kullanılabilir hacim var (%d resmî + %d kontrollü borsapy yedeği)"
+                     % (usable, guncel, ozet["official"], ozet["controlled"]))
         oran = (deger / payda) if payda else 0.0
         ok = oran >= esik
         satirlar.append("%s %s (%%%.0f)" % ("\u2705" if ok else "\U0001F534", gad, oran * 100))

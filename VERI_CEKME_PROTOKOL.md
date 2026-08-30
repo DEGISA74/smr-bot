@@ -132,7 +132,7 @@ BIST günlük okuma yolu ağ erişimi, dosya silme ve parquet yazma yapmaz. Akti
 
 ## 9. Final hacim ve delik onarımı
 
-`finalize_volume.py` aktif sürümdeki tüm BIST hisselerini ortak İş Yatırım bütçesiyle tarar. En az yüzde 85 kapsama oluşmadan yeni sürüm veya “final hacim” işareti üretmez.
+`finalize_volume.py` aktif sürümdeki tüm BIST hisselerini önce İş Yatırım bütçesiyle tarar. Sağlayıcı hedef gün için cevap vermezse, yalnızca beklenen son işlem günü için borsapy/TradingView günlük verisiyle kontrollü yedek aday üretir. Hedef gün, aktif kapanış ve bariz hacim ölçek anomalisi kapıları geçilmedikçe aday alınmaz. Borsapy adayı aktif manifestte `controlled_fallback` olarak kalır; resmî `verified` hacim sayılmaz ve tarihsel backtest ana kaynağına dönüştürülmez. En az yüzde 85 kapsama oluşmadan yeni sürüm veya “final hacim” işareti üretmez.
 
 `delik_alarmi.py`:
 

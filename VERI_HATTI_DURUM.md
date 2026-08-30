@@ -143,7 +143,7 @@ PC'yle ilgisi olmayan **iki VPS arızası** da çıktı, ikisi de aylardır sess
 3. **VERİ BEKÇİSİ** (`gorev_bekcisi.py` içinde `VERI_KAPILARI`) — onaylı sürümün
    manifestini SALT OKUR, eşiğin altındaysa **Telegram**:
    - 💰 *Kapanış fiyatı*: bugünün barı olan hisse ≥ **%92** (deadline 19:30 TR)
-   - 📊 *Kesin hacim*: `Volume=isyatirim` oranı ≥ **%80** (deadline 22:45 TR)
+   - 📊 *Hacim kapsamı*: `Volume=isyatirim` resmî ana kaynak, `Volume=borsapy` kontrollü yedek; birlikte kullanılabilir oran ≥ **%80** (deadline 23:15 TR)
    - Gün sonu özetine "BIST VERİSİ" satırları eklendi (yeşil tik = bekçi canlı).
 
 **20:00 OTOMATİK MASTER SCAN İLE İLİŞKİSİ (okumadan dokunma):**
@@ -243,7 +243,7 @@ Doğrulama: oturum açıldı, tarama **20:17'de** başladı.
 
 **AKŞAM SIRASI (19 Ağu itibarıyla):**
 `18:35 saatlik son tur` → `19:05 kapanis_final (fiyat)` → `20:00 Master Scan` →
-`21:30 hacim` → `22:15 hacim` → `22:50 finalize_volume (kesin hacim)`.
+`21:30 hacim` → `22:15 hacim` → `22:50 finalize_volume (İş Yatırım + kontrollü borsapy yedeği)`.
 Fiyat turu hacmi `yahoo_provisional`'a düşürdüğü için **hacim işleri en sonda** kalır.
 
 ## 9. AKŞAM SAATLERİ ÖLÇÜME GÖRE YENİDEN KURULDU (26 Ağu 2026)
@@ -361,3 +361,113 @@ konsensüs bilgisi **log'a** yazılıyor. Yeni bir kaynak adı gerekirse
 sembol **sorulmadı** · %0,05 farklı **teyitlendi** · %3 farklı (provizyon taklidi)
 **veto** yedi (12→11 satır) · endeks **atlandı** · sembol kaybı yok, geçersiz etiket
 yok. 2 sn. Aynı test lokalde de aynı sonucu verdi.
+
+### 9d. CLAUDE HANDOFF — CUMA HACİM KURTARMA (29 AĞU 2026)
+
+**Olay:** 28 Ağu Cuma akşamı İş Yatırım hacim turu 21:30 ve 22:15 TR'de
+623 adayın yalnızca 5'ini tamamladı; 618'i timeout/circuit-breaker nedeniyle
+başarısız oldu. Fiyat kanalı sağlamdı. Bu nedenle hacim eksikliği veri yokluğu
+değil, tek sağlayıcıya bağlılık arızasıydı.
+
+**İstenen sınır:** Geçmiş tarama sonuçları, sinyal getirileri ve Telegram çıktıları
+yeniden hesaplanmadı veya değiştirilmedi. Yalnızca ham veri deposunun ileriye dönük
+hacim katmanı ve bekçi/otomasyon akışı düzeltildi.
+
+**Yapılan değişiklikler:**
+
+- `finalize_volume.py`: önce İş Yatırım deneniyor; eksik veya başarısızsa yalnızca
+  beklenen son işlem günü için doğrudan TradingView sağlayıcısı üzerinden borsapy
+  deneniyor. Hedef gün, kapanış yakınlığı ve bariz ölçek anomalisi geçilmeden aday
+  kabul edilmiyor; mevcut ölçek kapısı son 20 pozitif hacim medyanının 0,125x–8x
+  dışını reddediyor. Bu kapı kaynak doğrulaması değil, bariz ölçek hatası sigortasıdır.
+- `bist_data_store.py`: `borsapy` kontrollü yedek olarak tanınıyor; aktif manifestte
+  resmî `verified` ile karıştırılmıyor.
+- `gorev_bekcisi.py`: alarm etiketi İş Yatırım/borsapy yedeğini gösteriyor,
+  bekleme penceresi 23:15 TR'ye taşındı ve manuel kurtarma da aynı finalizer'ı
+  kullanıyor.
+- `VERI_CEKME_PROTOKOL.md`: İş Yatırım → borsapy/TradingView sıralaması ve
+  aynı gün/kapanış doğrulaması belgelendi.
+- VPS'e hafta içi her gün 22:50 TR'de, aynı kilitle çalışan otomatik finalizer
+  cron'u eklendi. 23:15 TR bekçi kontrolü başarısızlığı alarm olarak bırakıyor;
+  sessizce düşük kaliteli veriyi kesinleştirmiyor.
+
+**Canlı Cuma doğrulaması:**
+
+- Aktif sürüm: `v-20260829T195804-954b8b54`.
+- 613 adayın 613'ü kabul edildi; 611 kayıt değişti, 0 kayıt reddedildi.
+- Kapsama **%98,4** oldu; kaynak turunda 17 İş Yatırım + 596 borsapy sonucu
+  kullanıldı, 10 sembol çözümsüz kaldı.
+- Cuma fiyat barı bulunan hisselerde 611/611 hacim pozitif ve hedef gün/kapanış
+  kapısından geçti; bunların 594'ü borsapy kontrollü yedeği olduğu için resmî
+  doğrulanmış sayılmıyor. 12 sembolde Cuma fiyat barı olmadığı için yalnız hacim enjekte edilmedi;
+  bu semboller bilerek açık bırakıldı.
+- Aktif Cuma kayıtlarının kaynak dağılımı: 16 İş Yatırım, 594 borsapy,
+  1 Yahoo provizyonu. Bekçi testi 611/616 = **%99,2** verdi.
+- VPS modül derleme, bütünlük, HTTP 200 ve timer kontrolleri geçti. `gorev-bekcisi`
+  oneshot servisinin çalışıp kapanması normal; timer aktif ve bekliyor.
+
+**Claude için karar özeti:** Cuma hacim kurtarma tamamlandı. İş Yatırım ana yol
+olarak kaldı; borsapy/TradingView yalnız kontrollü yedek. Resmî
+Borsa İstanbul DataStore erişimi mümkün hâle gelirse uzun vadeli birincil tarihsel
+kaynak olarak ayrıca değerlendirilmeli. Geçmiş sonuçlara dokunulmayacak; düzeltilen
+ham hacimler yalnız bundan sonraki analiz ve taramalarda kullanılacak.
+
+**İlgili dosyalar:** `bist_data_store.py`, `finalize_volume.py`,
+`gorev_bekcisi.py`, `kapanis_master_otomasyon.py`, `analysis_core.py`, `app.py`,
+`smr_core.py`, `deploy.sh`, `VERI_CEKME_PROTOKOL.md`, `VERI_HATTI_DURUM.md`,
+`DOSYA_HARITASI.md`.
+İlk handoff sırasında git commit'i yapılmamıştı; canlı VPS yedekleri deploy sırasında alındı.
+
+### 9e. BORSAPY HACİM DENETİMİ — HÜKÜM (30 AĞU 2026)
+
+**Denetim tasarımı:** Canlı sürümün borsapy yedeği devreye girmeden hemen önceki
+değişmez parquet sürümü kontrol grubu yapıldı; böylece yeni borsapy değerleri
+kendi kendini doğrulamadı. 20 likit + sabit tohumla seçilmiş 30 rastgele hisse,
+son 120 işlem günü, borsapy + canlı İş Yatırım + parquet üçgeninde karşılaştırıldı.
+Toplam 50/50 sembol ve 5.886 pozitif hacim satırı canlı iki-kaynak kıyasına girdi.
+
+**Ölçülen sonuçlar:**
+
+- Borsapy ↔ canlı İş Yatırım: 5.886 satırın 5.330'u (%90,55) ±%1 içinde,
+  5.724'ü (%97,25) ±%5 içinde, 5.854'ü (%99,46) ±%10 içinde kaldı.
+- 162 satır ±%5'i, 32 satır ±%10'u aştı. 4 sembolde %25 üzeri, 2 sembolde
+  %100 üzeri fark görüldü. En büyük fark SKBNK 27.07.2026'da %906,6,
+  BRSAN 15.04.2026'da %118,5 oldu.
+- Parquet ↔ canlı İş Yatırım kıyası da kusursuz değildi: ±%5 uyum %96,33,
+  ±%10 uyum %98,34; en büyük fark SASA'da %4.070 oldu. Önceki kontrol
+  manifestinde 628 sembolün 617'si `yahoo_provisional` etiketliydi; bu nedenle
+  parquet tek başına altın referans kabul edilemez.
+- SASA parquet'inde 12.03–17.06 arasında 50 sıfır hacimli gün bulundu; aynı
+  günlerde borsapy ↔ İş Yatırım kıyası en fazla %2,9 fark gösterdi. Bu, borsapy'nin
+  bazı bozuk parquet satırlarını yakalayabildiğini gösterir; tek başına her zaman
+  doğru olduğunu göstermez.
+- Sabit oranlı farklar da görüldü: ULKER'de yaklaşık %5,15, TOASO'da %7,40,
+  AFYON'da %10,01 gibi. Bunlar rastgele gürültü değil, kaynakların düzeltme/
+  serileştirme kuralının farklı olabileceğini gösteren yapısal farklardır.
+
+**Cuma özel kontrolü:** 28.08.2026 Cuma için mevcut İş Yatırım önbelleği bulunan
+50 örnek hissenin 23'ünde aktif sürüm borsapy değeri İş Yatırım ile ±%1 içinde
+kaldı; en büyük fark %0,18 oldu. Bu olumlu bir işarettir, fakat 623 hissenin
+tamamı için aynı gün bağımsız ikinci kaynak doğrulaması değildir.
+
+**Kesin hüküm:** Borsapy/TradingView hacmi **genel yön ve günlük oran analizinde
+iyi bir kontrollü yedek**, fakat **tarihsel hacim için kesin/resmî kaynak değildir**.
+Mevcut tarih/kapanış kapısı hacim rakamındaki %100–900 arası uç sapmaları tek
+başına yakalayamaz. Bu nedenle:
+
+1. İş Yatırım veya resmî Borsa İstanbul DataStore bulunan günlerde borsapy onun
+   yerine geçmez.
+2. İş Yatırım cevap vermezse borsapy yalnız güncel gün için aday kalır; eklenen
+   ölçek anomali kapısından geçse bile aktif manifestte `controlled_fallback`
+   olarak kalır, `verified` sayılmaz ve backtest geçmişine sessizce yazılmaz.
+3. Borsapy’nin tarihsel backtest ana kaynağı yapılması reddedildi. Eklenen kapı
+   bariz ölçek hatalarını yakalar; kaynaklar arası küçük/yapısal farkları garanti
+   etmez.
+4. Resmî Borsa İstanbul DataStore erişimi açılırsa son hakem olarak onunla
+   yeniden karşılaştırılmalı; Borsa İstanbul tarihsel günlük işlem hacmi ve
+   işlem miktarını DataStore üzerinden sunduğunu belirtir.
+
+Denetim çıktısı: `logs/volume_source_audit_20260830.json`. Denetim sırasında
+aktif sürüm, eski sinyaller ve Telegram sonuçları değiştirilmedi; yalnızca
+okuma amaçlı rapor aracı ve bu handoff notu eklendi. Bundan sonra kaynak kalitesi
+aktif manifestte `official` / `controlled_fallback` olarak ayrıca görünür.

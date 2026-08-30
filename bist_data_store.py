@@ -41,7 +41,11 @@ for _p in (OBJECTS, MANIFESTS, STAGING, QUARANTINE, INBOX, OUTBOX, EVENT_LOG.par
 
 PRICE_SOURCES = {"yahoo", "yahoo_settled", "borsapy_gapfill", "repair_yahoo"}
 VOLUME_SOURCES = {"isyatirim", "isyatirim_cache", "yahoo_provisional",
-                  "repair_isyatirim", "index_ciro"}
+                  "repair_isyatirim", "index_ciro", "borsapy"}
+VOLUME_OFFICIAL_SOURCES = frozenset({
+    "isyatirim", "isyatirim_cache", "repair_isyatirim", "index_ciro",
+})
+VOLUME_CONTROLLED_SOURCES = frozenset({"borsapy"})
 CRITICAL = {"XU100.IS", "XU030.IS", "XBANK.IS", "XTUMY.IS", "XUSIN.IS"}
 OHLC = ["Open", "High", "Low", "Close"]
 # Bir bar kaç işlem günü boyunca normal turlarla düzeltilebilir kalır; sonrası kilitli.
@@ -136,6 +140,32 @@ def load_manifest(version_id: str | None = None) -> dict[str, Any] | None:
         return data if isinstance(data.get("symbols"), dict) else None
     except Exception:
         return None
+
+
+def volume_source_quality(source: str | None) -> str:
+    """Hacim kaynağını bütün tüketiciler için tek kalite sınıfına çevirir."""
+    value = str(source or "").lower()
+    if value in VOLUME_OFFICIAL_SOURCES:
+        return "official"
+    if value in VOLUME_CONTROLLED_SOURCES:
+        return "controlled_fallback"
+    if value == "yahoo_provisional":
+        return "provisional"
+    return "unknown"
+
+
+def active_volume_meta(symbol: str, version_id: str | None = None) -> dict[str, str]:
+    """Aktif manifestten sembolün hacim kaynağını salt-okur olarak döndürür."""
+    manifest = load_manifest(version_id)
+    if not manifest:
+        return {"source": "", "quality": "unknown", "last": ""}
+    entry = (manifest.get("symbols", {}) or {}).get(_symbol(symbol), {}) or {}
+    source = str((entry.get("field_sources", {}) or {}).get("Volume") or "").lower()
+    return {
+        "source": source,
+        "quality": volume_source_quality(source),
+        "last": str(entry.get("last") or "")[:10],
+    }
 
 
 def resolve_active_path(symbol: str, version_id: str | None = None) -> Path:
@@ -405,6 +435,12 @@ def _merge_candidate(old: pd.DataFrame | None, spec: dict[str, Any],
                 if pd.isna(old_v) or abs(float(old_v) - float(row["Volume"])) > max(1.0, abs(float(old_v)) * 1e-6):
                     report["rejected_days"].append({"date": str(d), "field": "Volume", "reason": "eski_bar_kilitli"})
                 continue
+            if volume_source == "borsapy" and d != max(mutable):
+                report["rejected_days"].append({
+                    "date": str(d), "field": "Volume",
+                    "reason": "borsapy_hacmi_yalniz_son_islem_gunu",
+                })
+                continue
             if volume_source == "yahoo_provisional" and d != max(mutable):
                 report["rejected_days"].append({"date": str(d), "field": "Volume", "reason": "yahoo_hacim_yalniz_bugun_gecici"})
                 continue
@@ -418,6 +454,7 @@ def _merge_candidate(old: pd.DataFrame | None, spec: dict[str, Any],
                 continue
             base.at[ts, "Volume"] = new_v
         report["field_sources"]["Volume"] = volume_source
+        report["volume_quality"] = volume_source_quality(volume_source)
 
     if base.empty or not set(OHLC).issubset(base.columns):
         report["warnings"].append("birleştirilecek sağlam fiyat serisi yok")
@@ -456,7 +493,11 @@ def _merge_candidate(old: pd.DataFrame | None, spec: dict[str, Any],
         if bad_zero.tail(4).any():
             report["warnings"].append("son günlerde fiyat değiştiği halde hacim yok; fiyat korunup hacim geçici sayıldı")
     report["accepted"] = True
-    report["status"] = "provisional" if report["field_sources"].get("Volume") == "yahoo_provisional" else "verified"
+    report["status"] = (
+        "provisional" if report["field_sources"].get("Volume") == "yahoo_provisional"
+        else "controlled_fallback" if report["field_sources"].get("Volume") == "borsapy"
+        else "verified"
+    )
     return base, report
 
 
@@ -522,6 +563,7 @@ def promote_batch(candidates: dict[str, dict[str, Any]], *, reason: str,
                 symbols[sym] = _frame_meta(
                     merged, digest, rel, sources,
                     {"status": report.get("status", "verified"),
+                     "volume_quality": report.get("volume_quality", volume_source_quality(sources.get("Volume"))),
                      "warnings": report.get("warnings", []),
                      "run_id": run_id})
                 changed_objects[sym] = obj

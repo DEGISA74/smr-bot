@@ -22,7 +22,8 @@ from typing import Any
 import pytz
 
 from bist_calendar import is_trading_day
-from bist_data_store import active_version_id, load_manifest
+from bist_data_store import (VOLUME_CONTROLLED_SOURCES, VOLUME_OFFICIAL_SOURCES,
+                              active_version_id, load_manifest)
 from veri_saglik_audit import _beklenen_son_seans, collect_audit
 
 
@@ -214,10 +215,15 @@ def _manifest_snapshot(version_id: str, expected: str) -> dict[str, Any]:
         if sym not in stale_symbols
     ]
     volume_entries = [(sym, entry) for sym, entry in fresh_entries if not _entry_is_index(sym)]
-    final_volume = [
-        sym for sym, entry in volume_entries
-        if str((entry or {}).get("field_sources", {}).get("Volume") or "") == "isyatirim"
-    ]
+    official_volume = []
+    controlled_volume = []
+    for sym, entry in volume_entries:
+        source = str((entry or {}).get("field_sources", {}).get("Volume") or "").lower()
+        if source in VOLUME_OFFICIAL_SOURCES:
+            official_volume.append(sym)
+        elif source in VOLUME_CONTROLLED_SOURCES:
+            controlled_volume.append(sym)
+    usable_volume = official_volume + controlled_volume
     total = len(symbols) + len(rejected_symbols - set(symbols))
     min_scannable = math.ceil(total * MIN_SCANNABLE_RATIO)
     return {
@@ -228,7 +234,11 @@ def _manifest_snapshot(version_id: str, expected: str) -> dict[str, Any]:
         "critical_rejected": critical_rejected,
         "fresh_count": len(fresh_entries),
         "price_ready": not critical_rejected and len(fresh_entries) >= min_scannable,
-        "final_volume_count": len(final_volume),
+        # Eski tüketiciler için final_volume_count kullanılabilir toplamı taşır;
+        # resmî ve kontrollü yedek ayrımı ayrıca açıkça yayınlanır.
+        "final_volume_count": len(usable_volume),
+        "official_volume_count": len(official_volume),
+        "controlled_volume_count": len(controlled_volume),
         "volume_total": len(volume_entries),
     }
 
@@ -246,7 +256,7 @@ def collect_close_health(now: datetime | None = None) -> dict[str, Any]:
 
     if audit is None:
         # Derin kontrol bitene dek Scan kapalıdır; buna rağmen manifestteki bayat
-        # fiyat ve eksik resmî hacim için talep hemen ve yalnız bir kez yapılabilir.
+        # fiyat ve yetersiz hacim kapsamı için talep hemen ve yalnız bir kez yapılabilir.
         blocked = sorted({*(sym for sym, _ in manifest["stale"]), *(sym for sym, _ in manifest["rejected"])})
         return {
             "version_id": version_id,
@@ -261,6 +271,8 @@ def collect_close_health(now: datetime | None = None) -> dict[str, Any]:
             "price_refresh_needed": bool(manifest["stale"]),
             "volume_ready": volume_ready,
             "final_volume_count": manifest["final_volume_count"],
+            "official_volume_count": manifest["official_volume_count"],
+            "controlled_volume_count": manifest["controlled_volume_count"],
             "volume_total": volume_total,
             "volume_ratio": volume_ratio,
             "audit_pending": audit_pending,
@@ -290,6 +302,8 @@ def collect_close_health(now: datetime | None = None) -> dict[str, Any]:
         "price_refresh_needed": bool(stale),
         "volume_ready": volume_ready,
         "final_volume_count": manifest["final_volume_count"],
+        "official_volume_count": manifest["official_volume_count"],
+        "controlled_volume_count": manifest["controlled_volume_count"],
         "volume_total": volume_total,
         "volume_ratio": volume_ratio,
         "audit_pending": False,
@@ -319,7 +333,7 @@ def request_missing_data(price_needed: bool, volume_needed: bool) -> dict[str, b
         )
     else:
         # VPS'te yeni tam Yahoo turu açılmaz. Mevcut acil-liste fiyat turu ile
-        # resmî hacim kesinleştiricisi, cron'daki AYNI kilitlerle çağrılır.
+        # hacim kesinleştiricisi, cron'daki AYNI kilitlerle çağrılır.
         jobs = (
             ("price_requested", price_needed,
              ["/usr/bin/flock", "-n", str(ROOT / "fetcher-price.lock"),

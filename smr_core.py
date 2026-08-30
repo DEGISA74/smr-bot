@@ -490,6 +490,25 @@ def _read_parquet_cache(yf_sym: str) -> "pd.DataFrame | None":
         return None
 
 
+def _volume_source_note(ticker: str) -> str:
+    """Telegram AI bloğuna hacim kaynağının güven seviyesini taşır."""
+    try:
+        from bist_data_store import active_volume_meta
+        meta = active_volume_meta(_yf_ticker(ticker))
+        quality = meta.get("quality")
+        if quality == "official":
+            return "İş Yatırım (resmî ana kaynak)"
+        if quality == "controlled_fallback":
+            return ("borsapy/TradingView (kontrollü yedek) — oran gözlemi yapılabilir; "
+                    "resmî/kesin hacim veya kurum niyeti kanıtı değildir")
+        if quality == "provisional":
+            return "Yahoo geçici hacim — kesin hacim yorumu yapılamaz"
+        return "Kaynak etiketi yok — hacim kesinliği varsayılmayacak"
+    except Exception as exc:
+        log.debug("Hacim kaynak etiketi okunamadı [%s]: %s", ticker, exc)
+        return "Kaynak etiketi okunamadı — hacim kesinliği varsayılmayacak"
+
+
 def _strip_holiday_bars(df: "pd.DataFrame", sym: str = "") -> "pd.DataFrame":
     """SONDAKİ tatil/kapalı-gün 'hayalet barları'nı söker (30 May 2026).
 
@@ -2023,6 +2042,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     low    = df["Low"]
     open_  = df["Open"]
     curr   = float(close.iloc[-1])
+    volume_source_note = _volume_source_note(ticker)
 
     def _fmt(v): return f"{int(round(v)):,}" if abs(v) >= 1000 else f"{v:.2f}"
 
@@ -2865,6 +2885,7 @@ def _base_data_block(ticker: str, ict: dict, info: dict, df: pd.DataFrame) -> tu
     data_block = f"""═══════════════════════════════════════
 📊 {'ENDEKS' if _is_index else 'HİSSE'}: {ticker} | Fiyat: {fiyat_str}
 📅 Veri Tarihi: {data_timestamp_txt}
+📦 Hacim Kaynağı: {volume_source_note}
 ═══════════════════════════════════════
 🔬 ICT YAPI ANALİZİ
 • Yapı   : {ict.get('structure', '-')}

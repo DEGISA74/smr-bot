@@ -3086,10 +3086,12 @@ def _close_kapanis_master_soft_notice():
            on_dismiss=_close_kapanis_master_soft_notice)
 def _kapanis_master_soft_notice(health, remaining_seconds):
     dakika = max(1, int((remaining_seconds + 59) // 60))
+    _controlled = int(health.get("controlled_volume_count", 0) or 0)
     _volume_note = (
-        "Resmî hacim kontrolü de geçti."
+        (f"Hacim kapsamı da geçti; {_controlled} hisse kontrollü borsapy yedeğiyle tamamlandı."
+         if _controlled else "Hacim kapsamı da geçti; resmî hacim kaynağı kullanıldı.")
         if health.get("volume_ready") else
-        "Resmî hacim kesinleştirmesi arka planda sürüyor; bu gecikme Master Scan'i durdurmayacak."
+        "Hacim kesinleştirmesi arka planda sürüyor; bu gecikme Master Scan'i durdurmayacak."
     )
     st.markdown(
         f"""### Veri kasası hazır
@@ -3113,7 +3115,7 @@ def _kapanis_master_final_notice(health, remaining_seconds):
     _volume_note = (
         ""
         if health.get("volume_ready") else
-        " Resmî hacim kesinleştirmesi sürüyor; ekran bu bilgiyi sarı uyarı olarak taşıyacak."
+        " Hacim kesinleştirmesi sürüyor; ekran bu bilgiyi sarı uyarı olarak taşıyacak."
     )
     st.markdown(
         f"""### Tarama için son uyarı
@@ -3169,7 +3171,7 @@ def _run_kapanis_master_automation():
             if _requested["price_requested"]:
                 _parts.append("kapanış fiyatı düzeltmesi")
             if _requested["volume_requested"]:
-                _parts.append("resmî hacim tamamlaması")
+                _parts.append("hacim kapsamı tamamlaması")
             if _parts:
                 _next = (
                     "Fiyat kapısı açılana kadar Master Scan bekleyecek."
@@ -3211,7 +3213,7 @@ def _run_kapanis_master_automation():
             st.session_state._kapanis_master_soft_closed = False
             if not _health.get("volume_ready"):
                 st.toast(
-                    "Resmî hacim kesinleşmesi eksik; Master Scan mevcut onaylı fiyat verisiyle başlıyor.",
+                    "Hacim kapsamı henüz yeterli değil; Master Scan mevcut onaylı fiyat verisiyle başlıyor.",
                     icon="⚠️",
                 )
             return True
@@ -14941,7 +14943,7 @@ if _MM_MEMBER_VIEW and st.session_state.get("_mm_quota_block"):
     )
 
 # ── 20:00 BIST VERİ KAPISI + OTOMATİK MASTER SCAN ────────────────────────
-# Veri kasası hem fiyat hem de resmî hacim açısından onaylanmadan tarama
+# Veri kasası fiyat açısından onaylanmadan tarama
 # başlamaz. Ekran açık değilse popup da Master Scan de çalışmaz; kullanıcı
 # ekranındayken zaman çizelgesi güvenli biçimde burada yönetilir.
 _kapanis_auto_ready = _run_kapanis_master_automation()
@@ -17040,12 +17042,20 @@ if st.session_state.generate_prompt:
         _ai_session_context = "SEANS ÖNCESİ — önceki son seans"
     elif _volume_quality in ("FINAL", "FINAL_ISYATIRIM"):
         _ai_session_context = "SON SEANS — hacim FINAL"
+    elif _volume_quality == "FINAL_BORSAPY_CONTROLLED":
+        _ai_session_context = "SON SEANS — borsapy kontrollü yedeği; hacim kesin/resmî değil"
     elif _volume_quality == "NON_BIST":
         _ai_session_context = "BIST DIŞI — kaynak piyasanın son verisi"
     else:
         _ai_session_context = "SEANS DURUMU BELİRSİZ"
     if _ai_today_closed:
-        _ai_session_context = f"PİYASA KAPALI — {_ai_last_sess_str or data_timestamp_txt} SON SEANS — hacim FINAL"
+        _closed_volume_note = (
+            "hacim FINAL" if _volume_quality != "FINAL_BORSAPY_CONTROLLED"
+            else "hacim kontrollü borsapy yedeği"
+        )
+        _ai_session_context = (
+            f"PİYASA KAPALI — {_ai_last_sess_str or data_timestamp_txt} SON SEANS — {_closed_volume_note}"
+        )
     # 26 Ağu 2026 — KISMİ BAR, etiketten ÖNCE gelir. Eskiden endeks (XU100) NON_BIST
     # sayılıp "kaynak piyasanın son verisi" diyordu; seans ortasında AI'ya yarım günü
     # bitmiş gün gibi sunuyordu. Artık son bar bugünse ve seans sürüyorsa gerçek söylenir.
@@ -19921,7 +19931,8 @@ REHBER: YAPI = HH+HL/LH+LL trend, CHoCH dönüş; MOMENTUM SLOPE = RSI 5g hızı
 {("VERİ EKSİK — RVOL hesaplanmamış, hacim yorumu yapma." if _vol_missing_flag else "RVOL: 1.0=normal · 2.0+=olağandışı piyasa katılımı · <0.5=ilgisiz. 2.0x + fiyat sabit = Churning (dağıtım); yüksek + kırılım = gerçek katılım; >1.5x + dar bant = Sessiz Birikim/Dağıtım; <0.8x + fiyat ↑ = Zayıf El.")}
 
 🚨 **VOLUME_QUALITY OKUMA (yaml.smart_money.volume_quality):** RVOL'a yorum yapmadan önce bu etikete bak — hacim verisinin GÜVENİLİRLİK seviyesidir:
-• `FINAL_ISYATIRIM` → İsyatirim resmi BIST verisi, kapanış sonrası finalize. RVOL KESİN doğru, tam güven.
+• `FINAL_ISYATIRIM` → İş Yatırım resmî BIST hacmi, kapanış sonrası finalize. RVOL kaynağı resmîdir.
+• `FINAL_BORSAPY_CONTROLLED` → borsapy/TradingView kontrollü yedeği. Hacim oranı gözlem olarak kullanılabilir; resmî/kesin hacim veya kurum niyeti kanıtı gibi yazma, uç RVOL'u çapraz teyitsiz hükme dönüştürme.
 • `FINAL` → Seans kapanmış (>=18:15) veya hafta sonu/tatil. Son finalize değeri, GÜVENİLİR.
 • `PROJECTED_LATE` → 16:15-18:15 arası, projeksiyon sapması <%10. RVOL'a normal yorum yap.
 • `PROJECTED_MID` → 11:55-16:15 arası, sapma %10-25 olabilir. RVOL'u "tahmini" olarak ele al — "Hacim normalden yüksek/düşük görünüyor" dilini kullan, "ortalamanın 2 katı" kesin ifadeden kaçın.
@@ -19929,7 +19940,7 @@ REHBER: YAPI = HH+HL/LH+LL trend, CHoCH dönüş; MOMENTUM SLOPE = RSI 5g hızı
 • `PRE_SESSION` → Seans öncesi, dünkü kapanış. RVOL geçerli ama "bugün için değil".
 • `DATA_MISSING` → Hacim verisi yok, yorum yapma.
 • `NON_BIST` → Kripto/ABD/endeks; ayrı rejim, BIST kuralları uygulanmaz.
-Bu etiket FINAL veya FINAL_ISYATIRIM değilse RVOL'u TEK BAŞINA "olağandışı piyasa katılımı kanıtı" olarak kullanma — diğer hacim göstergeleriyle (OBV, CMF, cum_delta) çapraz teyit ara.
+Bu etiket FINAL, FINAL_ISYATIRIM veya FINAL_BORSAPY_CONTROLLED değilse RVOL'u TEK BAŞINA "olağandışı piyasa katılımı kanıtı" olarak kullanma — diğer hacim göstergeleriyle (OBV, CMF, cum_delta) çapraz teyit ara. FINAL_BORSAPY_CONTROLLED durumunda da borsapy'yi resmî kaynak gibi adlandırma.
 
 *** REFERANS ÜSLÜP (başka hisseden — sadece ton için) ***
 Aselsan'da tablo ilginç bir resim çiziyor. Fiyat sakin geri çekilirken birikimli hacim yönü yukarı dönüyor — bu kombinasyon alım baskısının fiyatın önüne geçtiğini gösterebilir.

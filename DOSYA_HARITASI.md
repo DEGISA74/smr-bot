@@ -2,7 +2,7 @@
 
 > **Ne için var:** "Şurayı değiştir" dendiğinde hangi dosyaya gidileceğini saniyede bulmak için.
 > Her dosyanın NE İŞE YARADIĞI + NE ZAMAN DOKUNULACAĞI yazılı. Satır no'ları kayar; dosya
-> KİMLİĞİ kalıcıdır. Son güncelleme: 18 Tem 2026.
+> KİMLİĞİ kalıcıdır. Son güncelleme: 30 Ağu 2026.
 >
 > **Hızlı refleks:** UI/ekran/panel görünümü → `app.py`. Hesap/formül → ilgili `*_core.py` modülü.
 > Veri gelmiyor/yanlış → `data_layer.py` + `veri_bekcisi.py` + `fetcher.py`. Bot/Telegram → `smr_*`.
@@ -26,7 +26,8 @@
 - `settle_kapanis.py` — parquet yazmaz; lokal Yahoo kapanışını sürüme bağlı aday ZIP yapar.
 - `run_settle.sh` — yalnız aday ZIP’i VPS kabul kapısına yollar; toplu parquet push kaldırıldı.
 - `sync_from_vps.sh` — onaylı manifest + değişen nesneleri doğrular, aktif işareti en son değiştirir.
-- `finalize_volume.py` — hacmi aday toplar; yeterli kapsama ve kalite olmadan marker/sürüm üretmez.
+- `finalize_volume.py` — kapanış sonrası önce İş Yatırım, eksiklerde yalnız son işlem günü için anomali kontrollü borsapy yedeği; yeterli kapsama ve kalite olmadan marker/sürüm üretmez.
+- `volume_source_audit.py` — salt-okur borsapy / İş Yatırım / parquet üçgen denetimi; üretim verisini değiştirmez.
 - `fix_recent_close.py` — eski doğrudan yazıcı emekliye ayrıldı.
 
 Okuyucular: `data_layer.py` (uygulama + Master Scan) ve `smr_core.py` (bot) BIST günlükte yalnız aktif sürümü okur; ağ, silme ve yazma yapmaz.
@@ -103,7 +104,7 @@ Milli/dini tatiller, arefe yarım günleri, `is_trading_day`/`is_half_day`/`get_
 - `repair_parquets.py` — bozuk parquet düzeltme-bazı onarımı (>%30 sıçrama imzası; taze de imzalıysa dokunmaz = gerçek olay). Bozulma şüphesinde koş.
 - `rebaseline_parquets.py` — TEK SEFERLİK tam yeniden bazlama (politika birleşince bir kez koşuldu).
 - `fix_recent_close.py` — provizyon kapanışı oturmuş İsyatirim ile düzeltir (fetcher erken çalışıp bayat Close yakalarsa).
-- `finalize_volume.py` — kapanış sonrası (18:15) İsyatirim resmi hacmini parquet'e yazar.
+- `finalize_volume.py` — kapanış sonrası İş Yatırım hacmini, eksik sembollerde kontrollü borsapy yedeğiyle tamamlamayı aday sürüm olarak yürütür; doğrudan parquet'e yazmaz.
 - `compare_sources.py` — yfinance vs İsyatirim tutarlılık testi (anomali raporu).
 
 ---

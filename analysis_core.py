@@ -205,9 +205,11 @@ def _compute_volume_quality_label(ticker, df=None, vol_missing=False):
 
     Dönen değerler:
       "FINAL"             — Seans kapanmış (>=18:15) veya hafta sonu/tatil.
-                            Hacim son finalize değeri, GÜVENİLİR.
-      "FINAL_ISYATIRIM"   — finalize_volume.py marker dosyası varsa (bugün İsyatirim
-                            override yapıldı), KESİN doğru.
+                            Hacim son onaylı seansın değeridir.
+      "FINAL_ISYATIRIM"   — Aktif manifestte güncel hacim İş Yatırım kaynaklıdır;
+                            resmî ana kaynak.
+      "FINAL_BORSAPY_CONTROLLED" — Aktif manifestte güncel hacim borsapy yedeğidir;
+                            kullanılabilir ama resmî/kesin kaynak değildir.
       "PROJECTED_LATE"    — Seans son 2 saatte (16:15-18:15). Projeksiyon sapması <%10.
       "PROJECTED_MID"     — Seans orta dilim (11:55-16:15). Sapma %10-25.
       "PROJECTED_EARLY"   — İlk 2 saat (09:55-11:55). Projeksiyon güvensiz.
@@ -227,16 +229,33 @@ def _compute_volume_quality_label(ticker, df=None, vol_missing=False):
                 return "NON_BIST"  # Kripto 7/24, ayrı yorum
             if "^" in ticker or ticker.startswith("XU") or "=F" in ticker:
                 return "NON_BIST"
-        # Finalize marker kontrolü — finalize_volume.py bugün çalıştıysa "FINAL_ISYATIRIM"
+        # Aktif manifestte kaynak ayrımı — marker tek başına hangi sağlayıcının
+        # kullanıldığını söylemediği için kalite hükmü yalnız kaynaktan çıkarılır.
         try:
-            _marker = os.path.join(CACHE_DIR, ".finalize_marker")
-            if os.path.exists(_marker):
-                with open(_marker, "r", encoding="utf-8") as _f:
-                    _mdate = _f.read().strip()
-                if _mdate == datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d"):
-                    # Sadece BIST hisseleri için geçerli
-                    if ".IS" in ticker:
-                        return "FINAL_ISYATIRIM"
+            from bist_data_store import active_volume_meta
+            _vmeta = active_volume_meta(ticker)
+            _now_quality = datetime.now(_TZ_ISTANBUL)
+            _today = _now_quality.strftime("%Y-%m-%d")
+            _closed_market = _now_quality.weekday() >= 5
+            try:
+                if _BIST_CAL_OK and not _bist_is_trading_day(_now_quality.date()):
+                    _closed_market = True
+            except Exception:
+                pass
+            _recent_closed_session = False
+            if _vmeta.get("last"):
+                _last_dt = datetime.strptime(_vmeta["last"], "%Y-%m-%d").date()
+                _recent_closed_session = (
+                    _closed_market
+                    and 0 <= (_now_quality.date() - _last_dt).days <= 4
+                )
+            if ".IS" in ticker and (
+                _vmeta.get("last") == _today or _recent_closed_session
+            ):
+                if _vmeta.get("quality") == "official":
+                    return "FINAL_ISYATIRIM"
+                if _vmeta.get("quality") == "controlled_fallback":
+                    return "FINAL_BORSAPY_CONTROLLED"
         except Exception:
             pass
         # Saat tabanlı kalite — sadece BIST için
