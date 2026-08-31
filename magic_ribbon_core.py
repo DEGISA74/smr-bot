@@ -21,6 +21,7 @@ from zamanlama_core import get_4s_data
 ROOT = Path(__file__).resolve().parent
 BIST100_PATH = ROOT / "_bist100.json"
 MIN_BARS = 60
+ENGINE_VERSION = "magic-ribbon-v5.1"
 
 
 def _normalize_symbol(value: object) -> str:
@@ -179,3 +180,73 @@ def scan_magic_ribbon_bist100() -> pd.DataFrame:
     })
     return result
 
+
+def kaydet(result: pd.DataFrame | None, scan_date: str | None = None) -> int:
+    """Taramanin o gunku listesini patron.db'ye yazar - ILERIDE OLCEBILMEK ICIN.
+
+    Bu motorun getirisi HENUZ ISPATLANMADI. Backtest (test donemi, 5.176 islem)
+    kar faktoru 1,93 veriyor; ama maruziyet duzeltmesi olmadan al-tut'a 4,9 puan
+    KAYBEDIYOR, duzeltilince 2,1 puan kazaniyor ve hisse bazinda %51 - yani
+    yazi-tura. Karar backtest tartismasiyla degil ILERI TESTLE verilecek; bu
+    fonksiyon o testin ham verisini biriktirir.
+
+    Asil getiri olcumu scan_signals uzerinden yurur (backfill_signal_returns
+    1-20 gunluk getiriyi ORADAN otomatik hesaplar). Burada yalniz 4S'e ozgu
+    alanlar saklanir: sinyalin dayandigi KAPANMIS bar, tetik yasi, kac bardir
+    yukari oldugu. Bunlar olmadan ileride "YENI HIZALANMA gercekten SURUYOR'dan
+    iyi mi" sorusu sorulamaz. Ayni gun ayni sembol iki kez yazilmaz.
+
+    Doner: yazilan satir sayisi.
+    """
+    if result is None or not isinstance(result, pd.DataFrame) or result.empty:
+        return 0
+    import sqlite3
+    from datetime import datetime
+    try:
+        from db_layer import DB_FILE, init_db
+    except Exception:
+        return 0
+    gun = scan_date or datetime.now().strftime("%Y-%m-%d")
+    evren = str(result.attrs.get("universe") or "BIST100")
+
+    def _f(value):
+        try:
+            out = float(value)
+            return out if out == out else None
+        except (TypeError, ValueError):
+            return None
+
+    def _i(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    satirlar = []
+    for _, row in result.iterrows():
+        sembol = str(row.get("Sembol") or "").strip().upper()
+        if not sembol:
+            continue
+        satirlar.append((
+            gun, str(row.get("SonBar") or ""), sembol, _f(row.get("Fiyat")),
+            str(row.get("Durum") or ""), _i(row.get("TetikYaşı")), _i(row.get("YukarıBar")),
+            _f(row.get("FastLine")), _f(row.get("SlowLine")), _f(row.get("MedianTurnover")),
+            evren, ENGINE_VERSION,
+        ))
+    if not satirlar:
+        return 0
+    try:
+        init_db()
+        con = sqlite3.connect(DB_FILE, timeout=60)
+        try:
+            cur = con.executemany(
+                "INSERT OR IGNORE INTO magic_ribbon_log "
+                "(scan_date, bar_time, symbol, price, durum, tetik_yasi, yukari_bar, "
+                " fast_line, slow_line, ciro, universe, engine) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", satirlar)
+            con.commit()
+            return int(cur.rowcount or 0)
+        finally:
+            con.close()
+    except Exception:
+        return 0

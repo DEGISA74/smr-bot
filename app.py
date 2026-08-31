@@ -114,11 +114,14 @@ except ImportError:
 
 try:
     from magic_ribbon_core import scan_magic_ribbon_bist100
+    from magic_ribbon_core import kaydet as _magic_ribbon_kaydet
     _MAGIC_RIBBON_OK = True
 except ImportError:
     _MAGIC_RIBBON_OK = False
     def scan_magic_ribbon_bist100():
         return pd.DataFrame()
+    def _magic_ribbon_kaydet(result=None, scan_date=None):
+        return 0
 
 # 6 Tem 2026 — BÖLME ADIM 6a: tek-hisse tarayıcı çekirdekleri scanners.py içinde
 from scanners import (process_single_accumulation, process_single_radar1, process_single_radar2,
@@ -15252,6 +15255,21 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                     if _ms_is_bist and _MAGIC_RIBBON_OK
                     else pd.DataFrame()
                 )
+                # 31 Agu 2026 — ILERI TEST DEFTERI. Bu motorun getirisi ISPATLANMADI:
+                # backtest'te kar faktoru 1,93 ama maruziyet duzeltmesiz al-tut'a
+                # 4,9 puan kaybediyor, duzeltilince 2,1 puan kazaniyor, hisse
+                # bazinda %51 (yazi-tura). Karar backtest tartismasiyla degil
+                # ILERI TESTLE verilecek — o yuzden liste bugunden kaydedilir.
+                # scan_signals: asil olcum (backfill_signal_returns 1-20 gunluk
+                # getiriyi ORADAN otomatik hesaplar). magic_ribbon_log: 4S'e ozgu
+                # detay (kapanmis bar, tetik yasi, kac bardir yukari).
+                try:
+                    _mr_df = st.session_state.magic_ribbon_4s_data
+                    if _mr_df is not None and not _mr_df.empty:
+                        log_scan_signal("magic_ribbon_4s", _mr_df, category=_cat)
+                        _magic_ribbon_kaydet(_mr_df)
+                except Exception as _mr_log_exc:
+                    log_error("master_scan_magic_ribbon_log", _mr_log_exc, _cat)
             except Exception as _magic_ribbon_exc:
                 st.session_state.magic_ribbon_4s_data = pd.DataFrame()
                 log_error("master_scan_magic_ribbon_4s", _magic_ribbon_exc, _cat)

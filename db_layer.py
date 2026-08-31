@@ -93,6 +93,32 @@ def init_db():
     _goldmine_cols = {row[1] for row in c.execute('PRAGMA table_info(goldmine_log)').fetchall()}
     if 'skor_kaynagi' not in _goldmine_cols:
         c.execute('ALTER TABLE goldmine_log ADD COLUMN skor_kaynagi TEXT')
+    # 31 Ağu 2026 — MAGIC RIBBON 4S GÜNLÜĞÜ (ileri test defteri).
+    # Neden ayrı tablo: asıl ölçüm scan_signals'a yazılır ve backfill_signal_returns
+    # 1-20 günlük getiriyi ORADAN otomatik hesaplar. Ama scan_signals 4S'e özgü
+    # alanları taşımıyor: sinyalin dayandığı KAPANMIŞ bar, tetik yaşı, kaç bardır
+    # yukarı olduğu. Bunlar olmadan ileride "YENİ HİZALANMA gerçekten SÜRÜYOR'dan
+    # iyi mi", "taze tetik mi eski tetik mi tutuyor" sorulari sorulamaz.
+    # Backtest (test dönemi, 5.176 işlem) maruziyet düzeltmesiz al-tut'a -4,9 puan
+    # KAYBEDİYOR, düzeltilince +2,1 puan kazanıyor ama hisse bazında %51 (yazı-tura).
+    # Yani tarama ÜMİT VAAT EDİYOR ama İSPATLANMADI — bu defter o ispatın verisi.
+    c.execute('''CREATE TABLE IF NOT EXISTS magic_ribbon_log (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        scan_date   TEXT NOT NULL,
+        bar_time    TEXT,
+        symbol      TEXT NOT NULL,
+        price       REAL,
+        durum       TEXT,
+        tetik_yasi  INTEGER,
+        yukari_bar  INTEGER,
+        fast_line   REAL,
+        slow_line   REAL,
+        ciro        REAL,
+        universe    TEXT,
+        engine      TEXT,
+        UNIQUE(scan_date, symbol)
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_magic_ribbon_sym ON magic_ribbon_log(symbol, scan_date)')
     # 19 Haz 2026 Faz 3 — ANALİZ LOG: hisse analiz edilince birleşik verdict snapshot (kanıt+risk).
     # Sonra forward getiriyle "yüksek kanıt-skorlu + düşük riskli analizler tuttu mu" ölçülür (ürün isabeti).
     c.execute('''CREATE TABLE IF NOT EXISTS analysis_log (
