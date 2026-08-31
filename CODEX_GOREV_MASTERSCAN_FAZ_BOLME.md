@@ -1,8 +1,43 @@
 # CODEX GÖREVİ — Master Scan Faz Bölme (Aşama B · C · D)
 
-**Tarih:** 1 Eylül 2026 · **Hazırlayan:** Claude (denetçi) · **Yapan:** Codex
+**Bu belge yazıldı:** 31 Ağustos 2026, Pazartesi (Aşama A o gün bitti)
+**İŞE BAŞLAMA:** 1 Eylül 2026, Salı — yani belgenin yazıldığı günün ERTESİ GÜNÜ
+**Hazırlayan:** Claude (denetçi) · **Yapan:** Codex
 **Önceki commit:** `61b91f8` (Aşama A tamamlandı)
 **Denetim:** İş bitince Claude denetleyecek — diff + golden + gerçek Master Scan koşusu.
+
+---
+
+## ⏱ BAŞLAMADAN ÖNCE: TARİHİ VE SAATİ SİSTEMDEN DOĞRULA
+
+Bu belgedeki tarihlere körü körüne güvenme; **önce sistemden oku**:
+
+```bash
+date +"%Y-%m-%d %H:%M %A"
+```
+
+Sonra üç şeyi kontrol et:
+
+1. **Bugün 1 Eylül 2026 Salı mı?** Değilse belge beklenenden eski/yeni demektir;
+   `git log --oneline -5` ile arada başka iş yapılmış mı bak. Özellikle
+   `61b91f8` sonrası `app.py`'ye dokunulmuş mu — dokunulmuşsa §11'deki
+   "Aşama A'da ne yapıldı" durumu artık geçerli olmayabilir.
+
+2. **Saat kaç?** BIST seansı 10:00–18:00 (Türkiye saati).
+   🔴 **Aşama C ve D'nin doğrulama koşusu KAPANIŞTAN SONRA yapılmalı** —
+   seans içinde `_bayat_yazim_kapisi` sinyal yazmayı reddeder, gerçek bir
+   Master Scan testi yapamazsın (§8 madde 2).
+   Aşama B'yi seans içinde yapabilirsin, golden yeterli.
+
+3. **Bugün işlem günü mü?** Hafta sonu/tatilse veri taze olmaz:
+   ```bash
+   python -c "from bist_calendar import is_trading_day; from datetime import date; print(is_trading_day(date.today()))"
+   ```
+
+⚠ **Akşam zinciriyle çakışma:** 20:00'de otomatik Master Scan, 22:50'de hacim
+finalizeri, 23:10'da çapraz kontrol koşuyor. Master Scan bloğunu **yarım bırakmış
+hâlde** o saatlere girme — ya öncesinde bitir ya da ertesi güne bırak.
+(31 Ağu'da Claude tam bu sebeple Aşama A'dan sonra durdu.)
 
 ---
 
