@@ -61,6 +61,21 @@ export PYTHONIOENCODING=utf-8
 # hisseleri (bölünme/bedelsiz sonrası bazlanmamış) karantinaya alır. ~13 sn.
 # Her turda koşar — bölünme düzeltmesi gün içinde inebiliyor (ORGE, 19 Ağu 21:55).
 "$ROOT/.venv/Scripts/python.exe" "$ROOT/saatlik_uzlasma.py" --yaz >> "$LOG" 2>&1
+# 31 Ağu 2026 — 4S DEPOSU VPS'E İTİLİR. Sebep: Magic Ribbon (BIST100 4S yukarı
+# hizalanma) canlı uygulamada bu depoyu okur, ama VPS'te 4S üreten HİÇBİR görev
+# yok — depo 25 Ağu'da donmuş kalmıştı ve tazelik kapısı 100 hissenin hepsini
+# eliyordu (canlıda 0 aday, lokalde 38). Bu zincirin tek üreticisi burası.
+# Yalnız BU TURDA tazelenen dosyalar gider (12 MB'lık depoyu her tur itmeyiz).
+# VPS ulaşılamazsa saatlik tur ÖLMEZ — sadece log'a düşer.
+_4S_YENI=$(find veriler_4s -name '*_4h.parquet' -newermt '-100 minutes' 2>/dev/null)
+if [ -n "$_4S_YENI" ]; then
+    _4S_ADET=$(echo "$_4S_YENI" | wc -l)
+    if echo "$_4S_YENI" | tar -czf - -T - 2>/dev/null \n         | ssh -o ConnectTimeout=20 -o BatchMode=yes wm11tr@34.153.19.220 \n               "mkdir -p ~/smr/veriler_4s && tar -xzf - -C ~/smr" >> "$LOG" 2>&1; then
+        echo "$(date '+%F %T') 4S -> VPS: $_4S_ADET dosya gonderildi" >> "$LOG"
+    else
+        echo "$(date '+%F %T') 4S -> VPS itme BASARISIZ (tur etkilenmedi)" >> "$LOG"
+    fi
+fi
 echo "$(date '+%F %T') saatlik+4h turu bitti" >> "$LOG"
 rm -f "$LOCK"
 exit 0
