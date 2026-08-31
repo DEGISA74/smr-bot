@@ -560,6 +560,17 @@ def _pipeline_probe(ns):
         "DB_FILE": tmp,
         "_compute_signal_features": lambda t: {"f_rsi": 55.5, "f_52h_pos": 0.42, "f_master_score": 61.0},
     })
+    # 31 Ağu 2026 — SEANSTAN BAĞIMSIZ OL. Bu deneme zaten dış dünyadan yalıtılmış
+    # (geçici DB + sahte özellik hesabı), ama BAYAT YAZIM KAPISI yalıtılmamıştı:
+    # seans içinde kapı "bugünün yarım barındasın, kapanmış seans için yazılmaz"
+    # deyip yazmayı reddediyor, deneme 1 satır yerine 0 satır görüp SAHTE FARK
+    # üretiyordu (31 Ağu 11:26'da canlı yaşandı; 10:25'te aynı kod temiz geçmişti,
+    # çünkü bugünün yarım barı henüz depoya inmemişti).
+    # TEHLİKE: o sahte farkı görüp `--init` diyen biri "0 satır normaldir" diye
+    # mühürler ve GERÇEK bir yazma arızası bir daha asla yakalanmaz.
+    # Kapının kendi resmî anahtarı kullanılır; deneme bitince eski değere döner.
+    _bayat_env_onceki = os.environ.get("SMR_BAYAT_YAZIM_IZNI")
+    os.environ["SMR_BAYAT_YAZIM_IZNI"] = "1"
     try:
         ns["init_db"]()
         df_res = _pd.DataFrame([{"Sembol": "GLDN.IS", "Skor": 77, "Fiyat": 123.45,
@@ -573,6 +584,10 @@ def _pipeline_probe(ns):
     except Exception as e:
         rec["__error__"] = f"{type(e).__name__}: {str(e)[:160]}"
     finally:
+        if _bayat_env_onceki is None:
+            os.environ.pop("SMR_BAYAT_YAZIM_IZNI", None)
+        else:
+            os.environ["SMR_BAYAT_YAZIM_IZNI"] = _bayat_env_onceki
         _restore_patches(saved)
         if _dbm is not None and hasattr(_dbm, "DB_FILE"):
             _dbm.DB_FILE = "patron.db"
