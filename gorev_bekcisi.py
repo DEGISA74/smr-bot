@@ -30,7 +30,16 @@ import urllib.request
 import urllib.parse
 from datetime import datetime, timezone, timedelta
 
-from bist_data_store import VOLUME_CONTROLLED_SOURCES, VOLUME_OFFICIAL_SOURCES
+# 31 Agu 2026 - bekci, diger her sey bozuldugunda haber veren sey. Agir modul
+# (pandas/numpy ceker) import edilemezse TUM izleme sessizce olurdu; bu yuzden
+# kaynak sinifi listeleri savunmali okunur, olmazsa yerel kopyaya duser.
+try:
+    from bist_data_store import VOLUME_CONTROLLED_SOURCES, VOLUME_OFFICIAL_SOURCES
+except Exception as _vol_src_exc:
+    print("[bekci] bist_data_store okunamadi, yerel kaynak listesi:", _vol_src_exc)
+    VOLUME_OFFICIAL_SOURCES = frozenset({"isyatirim", "isyatirim_cache",
+                                         "repair_isyatirim", "index_ciro"})
+    VOLUME_CONTROLLED_SOURCES = frozenset({"borsapy"})
 
 BASE = os.path.expanduser("~/smr")
 HEALTH = os.path.join(BASE, "health")
@@ -155,6 +164,12 @@ VERI_KAPILARI = [
      "venv/bin/python fetcher.py kapanis_final"),
     ("veri_hacim", "\U0001F4CA Hacim kapsamı (İş Yatırım + kontrollü borsapy)", slot(23, 15), "kesin", 0.80,
      "venv/bin/python finalize_volume.py"),
+    # 31 Agu 2026 - RESMI TABAN. Ustteki kapi resmi + kontrollu yedegi TOPLAYIP
+    # sayar; 30 Agu canli manifestinde 628 sembolun 524u borsapy yedeginde,
+    # yalniz 6si resmi Is Yatirim idi ve kapi yine YESIL yaniyordu. Yedek
+    # yasaklanmaz (tarama durmasin) ama resmi kaynagin cokusu SESSIZ kalmaz.
+    ("veri_hacim_resmi", "\U0001F3DB Resmî hacim payı (İş Yatırım)", slot(23, 15), "resmi", 0.50,
+     "venv/bin/python fetcher.py isyatirim"),
 ]
 
 
@@ -173,6 +188,11 @@ def veri_kapilarini_denetle(day):
         if olcut == "guncel":
             deger, payda = guncel, toplam
             detay = "%d/%d hissede bugunun bari var" % (guncel, toplam)
+        elif olcut == "resmi":
+            deger, payda = ozet["official"], guncel
+            detay = ("%d/%d hissede resmî İş Yatırım hacmi var "
+                     "(%d hisse kontrollü borsapy yedeğinde)"
+                     % (ozet["official"], guncel, ozet["controlled"]))
         else:
             deger, payda = usable, guncel
             detay = ("%d/%d hissede kullanılabilir hacim var (%d resmî + %d kontrollü borsapy yedeği)"

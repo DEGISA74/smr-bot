@@ -65,12 +65,19 @@ def _borsapy_volume_scale_guard(active: pd.DataFrame, candidate: pd.DataFrame,
 def _borsapy_volume_candidate(ticker: str, start_date: str, end_date: str,
                               expected_date: str):
     """İş Yatırım cevap vermezse yalnız hacmi TradingView/borsapy'den aday yap."""
+    # 31 Ağu 2026 — import'lar try'ın DIŞINDA yapılır. Eskiden ProviderCooldown
+    # aynı bloğun içinde import ediliyordu; import patlarsa Python `except
+    # ProviderCooldown` satırındaki ismi çözemez, UnboundLocalError atar ve
+    # ALTTAKİ genel yakalayıcı atlanır — gerçek sebep kaybolurdu.
     try:
         from provider_traffic import (ProviderCooldown, acquire_slot,
                                       record_failure, record_success)
         from bist_data_store import read_active
         from borsapy._providers.tradingview import get_tradingview_provider
+    except Exception as exc:
+        return ticker, None, "borsapy yedek katmanı yüklenemedi: %s" % str(exc)[:120]
 
+    try:
         active = read_active(ticker)
         if active is None or active.empty or "Close" not in active.columns:
             return ticker, None, "aktif kapanış yok"
@@ -94,11 +101,11 @@ def _borsapy_volume_candidate(ticker: str, start_date: str, end_date: str,
         frame["Volume"] = pd.to_numeric(frame["Volume"], errors="coerce")
         common = frame.index.intersection(active.index)
         if common.empty:
-            record_failure("borsapy", kind="empty", error=f"{ticker}: aktif günle kesişim yok")
+            # Sağlayıcı arızası DEĞİL, veri durumu → devre kesiciye yazılmaz.
             return ticker, None, "aktif günle kesişim yok"
         target = pd.Timestamp(expected_date).normalize()
         if target not in common:
-            record_failure("borsapy", kind="empty", error=f"{ticker}: hedef gün yok ({expected_date})")
+            # Sembolde o gün yoksa bu bizim beklentimizin sonucu; arıza sayılmaz.
             return ticker, None, f"hedef gün yok ({expected_date})"
 
         aligned = frame.loc[common].copy()
@@ -108,12 +115,13 @@ def _borsapy_volume_candidate(ticker: str, start_date: str, end_date: str,
         aligned = aligned[aligned["Volume"].notna() & (aligned["Volume"] > 0)]
         aligned = aligned.loc[aligned.index == target]
         if aligned.empty:
-            record_failure("borsapy", kind="invalid", error=f"{ticker}: kapanış eşleşmesi yok")
+            # Kapanış tutmuyorsa aday reddedilir; sağlayıcı sağlığı etkilenmez.
             return ticker, None, "kapanış eşleşmesi yok"
 
         scale_ok, scale_note = _borsapy_volume_scale_guard(active, aligned, target)
         if not scale_ok:
-            record_failure("borsapy", kind="invalid", error=f"{ticker}: {scale_note}")
+            # Ölçek kapısı bizim eleğimiz; sağlayıcı arızası olarak kaydedilmez.
+            log.info("borsapy adayı elendi %s: %s", ticker, scale_note)
             return ticker, None, scale_note
 
         record_success("borsapy")
