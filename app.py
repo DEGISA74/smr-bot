@@ -15163,7 +15163,7 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
         _ms_is_bist = "BIST" in str(_cat).upper()
         _ms_progress_steps = [
             "index_health", "backfill", "mkk", "data", "magic_ribbon", "hidden_accum", "radar2",
-            "harmonic", "rs_leaders", "golden", "vip_and_patterns", "cizgi_yapi", "minervini",
+            "harmonic", "rs_leaders", "formasyon", "golden", "vip_and_patterns", "cizgi_yapi", "minervini",
             "weak_pair", "radar1", "rsi_divergence", "strong_reversal", "tavan",
             *( ["flow_leaders"] if _ms_is_bist else [] ),
             "prelaunch", "early_radar", "stp_uyanis", "toplu_terazi", "top20",
@@ -15318,25 +15318,15 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
             st.session_state.harmonic_confluence_data = pd.DataFrame()
             st.session_state.rs_leaders_data = pd.DataFrame()
 
-            # ── KATMAN 3: ŞAMPİYONLAR (Golden Trio + VIP Formasyon) ──
-            _scan_progress("golden", "💎 Altın + Platin fırsatlar")
-            df_golden, df_nadir, df_tekli = get_golden_trio_batch_scan(scan_list)
-            st.session_state.golden_results = (
-                df_golden.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True)
-                if not df_golden.empty else pd.DataFrame()
-            )
-            st.session_state.platin_results = (
-                df_nadir.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True)
-                if not df_nadir.empty else pd.DataFrame()
-            )
-            st.session_state.tekli_altin_results = (
-                df_tekli.sort_values(by=["is_platin", "Teknik_Skor"], ascending=[False, False]).reset_index(drop=True)
-                if not df_tekli.empty else pd.DataFrame()
-            )
-            log_scan_signal("altin_setup",  st.session_state.golden_results,       category=_cat)
-            log_scan_signal("platin_setup", st.session_state.platin_results,        category=_cat)
-            log_scan_signal("tekli_altin",  st.session_state.tekli_altin_results,   category=_cat)
-
+            # ── FORMASYON FOTOĞRAFI — Golden Trio'dan AYRILDI (31 Ağu 2026) ──
+            # Neden ayrıldı: Toplu Terazi formasyon fotoğrafı olmadan ÇALIŞMIYOR
+            # (formation_ready False ise 'hazır değil' deyip çıkıyor). Bu blok
+            # eskiden 'golden' adımının İÇİNDEYDİ; Golden Trio'nun ~313 sn'sini
+            # beklemeden Tarama Merkezi üretilemiyordu. Ölçüldü: bu blok 100
+            # hissede 7 sn, ~600 hissede ~42 sn — yani ucuz olan, pahalı olanın
+            # arkasında bekliyormuş. İkisi birbirine BAĞIMLI DEĞİL (formasyon
+            # scan_list'ten hesaplanır, Golden Trio çıktısını kullanmaz).
+            _scan_progress("formasyon", "📐 Formasyon fotoğrafı (Terazi girdisi)")
             # 17 Ağu 2026 — ELENDİ: VIP Formasyon (alfa -3,9 · iki rejimde de negatif).
             st.session_state.golden_pattern_data = {'formations': pd.DataFrame(),
                                                     'hazirlik': pd.DataFrame()}
@@ -15394,6 +15384,26 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
             # kaynak olarak aktar; skor/AI/terazi hesabına bağlama.
             st.session_state.formasyon_master_data = _master_formasyon_snapshot
 
+            # ── KATMAN 3: ŞAMPİYONLAR (Golden Trio + VIP Formasyon) ──
+            _scan_progress("golden", "💎 Altın + Platin fırsatlar")
+            df_golden, df_nadir, df_tekli = get_golden_trio_batch_scan(scan_list)
+            st.session_state.golden_results = (
+                df_golden.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True)
+                if not df_golden.empty else pd.DataFrame()
+            )
+            st.session_state.platin_results = (
+                df_nadir.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True)
+                if not df_nadir.empty else pd.DataFrame()
+            )
+            st.session_state.tekli_altin_results = (
+                df_tekli.sort_values(by=["is_platin", "Teknik_Skor"], ascending=[False, False]).reset_index(drop=True)
+                if not df_tekli.empty else pd.DataFrame()
+            )
+            log_scan_signal("altin_setup",  st.session_state.golden_results,       category=_cat)
+            log_scan_signal("platin_setup", st.session_state.platin_results,        category=_cat)
+            log_scan_signal("tekli_altin",  st.session_state.tekli_altin_results,   category=_cat)
+
+
             # ── ÇİZGİ YAPISI (30 Ağu 2026) — ortak Master Scan fotoğrafı ──
             # Ayrı motor ve ayrı araştırma listesi: skor, AI, Terazi ve
             # scan_signals içine yazılmaz. BIST100 bilgisi yalnız sıralama
@@ -15429,7 +15439,11 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
             _scan_progress("minervini", "🦁 Minervini SEPA")
             st.session_state.minervini_data = scan_minervini_batch(scan_list)
 
-            # ── KATMAN 5: ZAYIF (15 Haz 2026 backtest gösterdi — UI'da gizli, veri için çalışır) ──
+            # ── KATMAN 5: ZAYIF (15 Haz 2026 backtest) — sıranın SONUNDA ──
+            # ⚠ 31 Ağu 2026 düzeltmesi: eski yorum "UI'da gizli" diyordu, YANLIŞ.
+            # Master Scan TEK AKIŞTIR; hiçbir adım arka planda koşmaz ve hiçbir
+            # sonuç erken gösterilmez — ekran, blok bittikten SONRA çizilir.
+            # "Sona aldık" demek yalnız HESAP SIRASI demektir, gösterim sırası değil.
             # Royal Flush + ICT Sniper PARALEL — en sona alındı, kullanıcı bitirip bekleyebilir.
             _scan_progress("weak_pair", "⚠ ICT Sniper + Royal Flush (paralel)")
             try:
@@ -15454,6 +15468,33 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                 st.session_state.ict_scan_data          = pd.DataFrame()
                 st.session_state.nadir_firsat_scan_data = pd.DataFrame()
 
+            # ── RADAR 1 — NE İŞE YARADIĞI (31 Ağu 2026, ölçülerek yazıldı) ──
+            # Buraya "zayıf tarama, veri için koşuyor" diye bakıp SİLMEYİN. İki
+            # somut işi var ve ikisi de ölçüldü:
+            #
+            # 1) EKRAN KAPISI — Radar 2 paneli yalnız radar1 skoru >=4 olanları
+            #    gösterir (RADARLAR VE KESİŞİMLER sekmesi). Tek hisse paneli de
+            #    hissenin R1 skorunu buradan okur; bulamazsa O HİSSE İÇİN
+            #    yeniden hesaplar (yani silmek maliyeti yok etmez, tek-hisse
+            #    ekranına taşır). Yani radar1 "gizli" DEĞİLDİR.
+            #
+            # 2) EVREN CETVELİ — son 30 günde 11.431 sinyal yazdı; ikinci sıradaki
+            #    tarama 4.442. Toplam 37.362. Bu kadar seçici olmayan bir tarama
+            #    pratikte EVRENİN KENDİSİDİR ve diğer taramaların "iyi mi" sorusu
+            #    ancak böyle geniş bir tabana karşı cevaplanabilir
+            #    (bkz. memory/project_evren_tabani_mercegi.md — alfayı sıfıra göre
+            #    okumak yanlış; 20 günde hisselerin yalnız %35'i endeksi yeniyor).
+            #
+            # MALİYET: Master Scan'in en pahalı ikinci adımı — ortanca 253 sn,
+            # turun %26'sı (20 koşunun zamanlama profilinden). Paralel görünüyor
+            # (10 işçi) ama hesap Python tarafında olduğu için gerçekte sıralı.
+            # Hızlandırmak isteyen: hisse başına hesabı ucuzlatmak ya da gerçek
+            # ayrı süreçlere geçmek gerekir; işçi sayısını artırmak İŞE YARAMAZ.
+            #
+            # ⚠ ÇELİŞKİ NOTU: trajectory tarafında radar1 `NOISE_SCAN_TYPES`
+            # içinde "gürültü" diye işaretli. Orada doğru (tekil fırsat üretmez),
+            # burada da doğru (cetvel + kapı). İki etiket çelişmiyor ama biri
+            # ötekini okumadan karar verilirse yanlış silinir.
             _scan_progress("radar1", "🧠 Ön filtre — Radar 1")
             st.session_state.scan_data = analyze_market_intelligence(scan_list, _cat)
             log_scan_signal("radar1", st.session_state.scan_data, category=_cat)
