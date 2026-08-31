@@ -168,6 +168,10 @@ VERI_KAPILARI = [
     # sayar; 30 Agu canli manifestinde 628 sembolun 524u borsapy yedeginde,
     # yalniz 6si resmi Is Yatirim idi ve kapi yine YESIL yaniyordu. Yedek
     # yasaklanmaz (tarama durmasin) ama resmi kaynagin cokusu SESSIZ kalmaz.
+    # 31 Agu aksam EK NOT: asil hukum artik capraz_kontrol_denetle()te, yani
+    # kaynagin ADINA degil IKISININ UYUSMASINA bakiliyor. Bu kapi ikinci,
+    # BAGIMSIZ gostergedir: capraz tur bir gece kosmazsa "ikinci bacak ayakta
+    # mi" sorusuna yine de tek basina cevap verir. Iki kapi birbirini yedekler.
     ("veri_hacim_resmi", "\U0001F3DB Resmî hacim payı (İş Yatırım)", slot(23, 15), "resmi", 0.50,
      "venv/bin/python fetcher.py isyatirim"),
 ]
@@ -235,6 +239,51 @@ def karne_saglik_denetle(day):
         day['alerted'].append('tarama_karne')
     return satir, arizalar
 
+# -- HACIM CAPRAZ KONTROLU (31 Agu 2026) -------------------------------
+# Sebep: 26-31 Agu arasi sistem sessizce TEK kaynaga (borsapy) dustu.
+# Eski kapi kaynagin ADINA bakiyordu (resmi/yedek) ve 31 Agu olcumu bu
+# ayrimi curuttu: likit hisselerde iki kaynagin ortanca farki %0,00.
+# Artik hukum UYUSMAYA bakar. Ikisi tutuyorsa veri saglam; ayrisiyorsa o
+# barda gercek sorun var; biri susuyorsa capraz kontrol YAPILAMIYOR demektir
+# ve bunu bilmek gerekir - tek gozle korlesme sessiz kalmasin.
+CAPRAZ_DEADLINE_SAAT = (23, 45)     # 22:50 finalizer + 23:10 capraz turu sonrasi
+
+
+def capraz_kontrol_denetle(day):
+    """(ozet_satirlari, yeni_ariza_metinleri). Gunde 1 uyarir."""
+    try:
+        if BASE not in sys.path:
+            sys.path.insert(0, BASE)
+        import hacim_capraz as _hc
+        karne = _hc.karne_oku()
+    except Exception as e:
+        return ["⚠️ Hacim capraz kontrolu denetlenemedi (%s)" % type(e).__name__], []
+    if not karne:
+        hukum, sebep = "yok", "karne dosyasi hic uretilmemis"
+    elif str(karne.get("tarih")) != str(today):
+        hukum, sebep = "bayat", "karne %s tarihli, bugunun olcumu yok" % karne.get("tarih")
+    else:
+        hukum = str(karne.get("hukum") or "yok")
+        sebep = str(karne.get("sebep") or "")
+    likit = (karne.get("likit") or {}) if karne else {}
+    if hukum == "uyusuyor":
+        return ["✅ 🔗 Hacim capraz kontrolu (%d gun, uyusma %%%.0f)"
+                % (likit.get("gun", 0), (likit.get("uyusma_2pct") or 0) * 100)], []
+    satir = ["🔴 🔗 Hacim capraz kontrolu: %s - %s" % (hukum, sebep)]
+    arizalar = []
+    if now >= slot(*CAPRAZ_DEADLINE_SAAT) and "hacim_capraz" not in day["alerted"]:
+        if hukum == "ayrisma_var":
+            bas = "🔗 Iki hacim kaynagi AYRISIYOR -> %s" % sebep
+            not_ = "Ayrisan barlar supheli; hangi kaynaktan geldigi onemli degil."
+        else:
+            bas = "🔗 Hacim capraz kontrolu YAPILAMADI -> %s" % sebep
+            not_ = "Tek kaynakla calisiyor olabiliriz; ikinci goz yok."
+        arizalar.append(bas + chr(10) + not_ + chr(10)
+                        + "Elle: cd ~/smr && venv/bin/python hacim_capraz.py")
+        day["alerted"].append("hacim_capraz")
+    return satir, arizalar
+
+
 def load_state():
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
@@ -274,7 +323,9 @@ def main():
 
     veri_satirlari, veri_arizalari = veri_kapilarini_denetle(day)
     karne_satirlari, karne_arizalari = karne_saglik_denetle(day)
-    veri_arizalari += karne_arizalari
+    capraz_satirlari, capraz_arizalari = capraz_kontrol_denetle(day)
+    veri_satirlari += capraz_satirlari
+    veri_arizalari += karne_arizalari + capraz_arizalari
 
     # ── VERİ ARIZASI uyarısı (kapı başına günde 1) ──
     if veri_arizalari:

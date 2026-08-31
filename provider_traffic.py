@@ -171,7 +171,15 @@ def record_failure(provider: str, *, status_code: int | None = None,
         cooldown = 0.0
         if status_code in (403, 429):
             cooldown = float(retry_after or _COOLDOWNS.get(provider, 900.0))
-        elif kind in ("timeout", "connection") and fails >= 4:
+        elif kind == "timeout" and fails >= 12:
+            # 31 Agu 2026 - YAVAS sunucu BOZUK sunucu degildir. Eskiden 4 ardisik
+            # zaman asimi saglayiciyi 15 dk'ya kadar kapatiyordu; acquire_slot da
+            # BEKLEMEDEN hata firlattigi icin kalan yuzlerce sembol hic denenmeden
+            # eleniyordu. Kismi yavaslama boylece TAM karartmaya donusuyordu.
+            # Artik esik yuksek, ceza kisa: sunucu kendi kendine toparlar.
+            cooldown = min(120.0, 10.0 * fails)
+        elif kind == "connection" and fails >= 4:
+            # Baglanti kurulamiyorsa gercek ariza - eski sert ceza korunur.
             cooldown = min(_COOLDOWNS.get(provider, 600.0), 60.0 * fails)
         elif kind in ("empty", "invalid") and fails >= 8:
             cooldown = min(_COOLDOWNS.get(provider, 600.0), 30.0 * fails)

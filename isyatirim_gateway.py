@@ -25,7 +25,11 @@ TR = timezone(timedelta(hours=3))
 TRIES = int(os.environ.get("ISY_TRIES", "2"))
 SLEEP_BETWEEN = float(os.environ.get("ISY_SLEEP", "1.5"))
 CONNECT_TIMEOUT = float(os.environ.get("ISY_CONNECT_TIMEOUT", "4"))
-READ_TIMEOUT = float(os.environ.get("ISY_READ_TIMEOUT", "10"))
+# 31 Agu 2026 - 10 sn YETMIYORDU. VPS olcumu: Is Yatirim ortanca 11,6 sn cevap
+# veriyor (HTTP 200, tam veri); 10 istegin 8i 10 sn ustu. Yani veri gelmesine
+# 1-2 sn kala telefonu kapatiyorduk -> 4 ardisik zaman asimi -> devre kesici
+# -> kalan 618 sembol HIC denenmiyordu (%99,2 hata). 30 sn ile test: 12/12.
+READ_TIMEOUT = float(os.environ.get("ISY_READ_TIMEOUT", "30"))
 
 
 def _cache_path(symbol: str) -> Path:
