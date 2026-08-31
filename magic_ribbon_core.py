@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""
-Magic Ribbon v5.1 — 4S BIST100 gözlem taraması.
+"""Magic Ribbon — BIST100 seans-mumu gözlem taraması.
 
-Bu modül, kullanıcının paylaştığı Pine göstergesindeki Fast/Slow yön
-hizalanmasını yalnızca kapanmış ve taze 4 saatlik barlarla hesaplar. Sonuç
-bir işlem emri değildir; Master Scan içinde derin inceleme için aday havuzudur.
+Fast/Slow yön hizalanması, TradingView'in 5 dakikalık fiyatlarından üretilen
+tam BIST seans mumları üzerinde hesaplanır. Her işlem günü yalnız iki mum
+kullanılır: 09:55–14:00 ve 14:00–18:10. Sonuç işlem emri değildir; Master
+Scan içinde derin inceleme için aday havuzudur.
 """
 from __future__ import annotations
 
@@ -15,13 +15,22 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from zamanlama_core import get_4s_data
+from magic_ribbon_session_data import (
+    get_magic_ribbon_session_data,
+    session_close_timestamp,
+    session_label,
+)
 
 
 ROOT = Path(__file__).resolve().parent
 BIST100_PATH = ROOT / "_bist100.json"
 MIN_BARS = 60
-ENGINE_VERSION = "magic-ribbon-v5.1"
+ENGINE_VERSION = "magic-ribbon-bist-session-v1"
+# 31 Ağu 2026 ilk ölçüm: 49 tam seans / 100 BIST100 / 578 sinyal.
+# Yaklaşık T+5 alfa -%0,280, T+10 -%0,077, T+20 +%0,024 (gürültü).
+# Ayrım kanıtı yokken aday listesi ekrana çıkmaz; ham sinyaller ileri test için
+# kaydedilmeye devam eder. İkinci rejimde yeniden ölçülmeden True yapılmayacak.
+MAGIC_RIBBON_BIST_SESSION_RENDER_ENABLED = False
 
 
 def _normalize_symbol(value: object) -> str:
@@ -103,18 +112,21 @@ def _format_bar(value: object) -> str:
         return "—"
 
 
-def scan_magic_ribbon_bist100() -> pd.DataFrame:
-    """BIST100 içinde aktif 4S yukarı hizalanmalarını döndürür.
+def _format_session_close(value: object) -> str:
+    close_time = session_close_timestamp(value)
+    if close_time is None:
+        return "—"
+    return close_time.strftime("%d.%m.%Y %H:%M")
 
-    Veri tazeliği ve yarım bar kapısı ``zamanlama_core.get_4s_data`` içindedir.
-    Sonuçlar yalnızca son kapanmış bar hâlâ iki çizgi yukarı eğimli ise üretilir.
-    """
+
+def scan_magic_ribbon_bist100() -> pd.DataFrame:
+    """BIST100 içinde aktif, kapanmış BIST seans-mumu hizalanmalarını döndürür."""
     symbols = sorted(load_bist100_symbols())
     rows: list[dict[str, object]] = []
     skipped = 0
 
     for symbol in symbols:
-        df = get_4s_data(symbol)
+        df = get_magic_ribbon_session_data(symbol)
         if df is None or len(df) < MIN_BARS:
             skipped += 1
             continue
@@ -153,6 +165,8 @@ def scan_magic_ribbon_bist100() -> pd.DataFrame:
                 "TetikYaşı": age_bars,
                 "YukarıBar": up_bars,
                 "SonBar": _format_bar(enriched.index[-1]),
+                "SonSeans": session_label(enriched.index[-1]),
+                "VeriKapanis": _format_session_close(enriched.index[-1]),
                 "TetikBar": _format_bar(enriched.index[trigger_i]),
                 "FastLine": float(last["fast_line"]),
                 "SlowLine": float(last["slow_line"]),
@@ -182,29 +196,14 @@ def scan_magic_ribbon_bist100() -> pd.DataFrame:
 
 
 def kaydet(result: pd.DataFrame | None, scan_date: str | None = None) -> int:
-    """Taramanin o gunku listesini patron.db'ye yazar - ILERIDE OLCEBILMEK ICIN.
-
-    Bu motorun getirisi HENUZ ISPATLANMADI. Backtest (test donemi, 5.176 islem)
-    kar faktoru 1,93 veriyor; ama maruziyet duzeltmesi olmadan al-tut'a 4,9 puan
-    KAYBEDIYOR, duzeltilince 2,1 puan kazaniyor ve hisse bazinda %51 - yani
-    yazi-tura. Karar backtest tartismasiyla degil ILERI TESTLE verilecek; bu
-    fonksiyon o testin ham verisini biriktirir.
-
-    Asil getiri olcumu scan_signals uzerinden yurur (backfill_signal_returns
-    1-20 gunluk getiriyi ORADAN otomatik hesaplar). Burada yalniz 4S'e ozgu
-    alanlar saklanir: sinyalin dayandigi KAPANMIS bar, tetik yasi, kac bardir
-    yukari oldugu. Bunlar olmadan ileride "YENI HIZALANMA gercekten SURUYOR'dan
-    iyi mi" sorusu sorulamaz. Ayni gun ayni sembol iki kez yazilmaz.
-
-    Doner: yazilan satir sayisi.
-    """
+    """BIST seans-mumu listesini, eski 4S kayıtlarından ayrı ileri-test defterine yazar."""
     if result is None or not isinstance(result, pd.DataFrame) or result.empty:
         return 0
     import sqlite3
     from datetime import datetime
     try:
         from db_layer import DB_FILE, init_db
-    except Exception:
+    except ImportError:
         return 0
     gun = scan_date or datetime.now().strftime("%Y-%m-%d")
     evren = str(result.attrs.get("universe") or "BIST100")
@@ -228,7 +227,7 @@ def kaydet(result: pd.DataFrame | None, scan_date: str | None = None) -> int:
         if not sembol:
             continue
         satirlar.append((
-            gun, str(row.get("SonBar") or ""), sembol, _f(row.get("Fiyat")),
+            gun, str(row.get("VeriKapanis") or ""), str(row.get("SonSeans") or ""), sembol, _f(row.get("Fiyat")),
             str(row.get("Durum") or ""), _i(row.get("TetikYaşı")), _i(row.get("YukarıBar")),
             _f(row.get("FastLine")), _f(row.get("SlowLine")), _f(row.get("MedianTurnover")),
             evren, ENGINE_VERSION,
@@ -240,13 +239,13 @@ def kaydet(result: pd.DataFrame | None, scan_date: str | None = None) -> int:
         con = sqlite3.connect(DB_FILE, timeout=60)
         try:
             cur = con.executemany(
-                "INSERT OR IGNORE INTO magic_ribbon_log "
-                "(scan_date, bar_time, symbol, price, durum, tetik_yasi, yukari_bar, "
+                "INSERT OR IGNORE INTO magic_ribbon_session_log "
+                "(scan_date, bar_time, seans, symbol, price, durum, tetik_yasi, yukari_bar, "
                 " fast_line, slow_line, ciro, universe, engine) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", satirlar)
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", satirlar)
             con.commit()
             return int(cur.rowcount or 0)
         finally:
             con.close()
-    except Exception:
+    except (sqlite3.Error, OSError):
         return 0

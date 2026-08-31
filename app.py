@@ -115,9 +115,11 @@ except ImportError:
 try:
     from magic_ribbon_core import scan_magic_ribbon_bist100
     from magic_ribbon_core import kaydet as _magic_ribbon_kaydet
+    from magic_ribbon_core import MAGIC_RIBBON_BIST_SESSION_RENDER_ENABLED
     _MAGIC_RIBBON_OK = True
 except ImportError:
     _MAGIC_RIBBON_OK = False
+    MAGIC_RIBBON_BIST_SESSION_RENDER_ENABLED = False
     def scan_magic_ribbon_bist100():
         return pd.DataFrame()
     def _magic_ribbon_kaydet(result=None, scan_date=None):
@@ -15246,33 +15248,29 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
             _master_formasyon_snapshot = pd.DataFrame()
             _master_formasyon_ready = False
 
-            # ── 4S MAGIC RIBBON — yalnız BIST100, yalnız kapanmış/taze bar ──
+            # ── MAGIC RIBBON — yalnız BIST100, tam/kapanmış BIST seans mumu ──
             # Gözlem listesi: skor, terazi, AI ve diğer taramalara bağlanmaz.
-            _scan_progress("magic_ribbon", "⏱ BIST100 4S yukarı hizalanma")
+            _scan_progress("magic_ribbon", "⏱ BIST100 seans-mumu yukarı hizalanma")
             try:
-                st.session_state.magic_ribbon_4s_data = (
+                _mr_df = (
                     scan_magic_ribbon_bist100()
                     if _ms_is_bist and _MAGIC_RIBBON_OK
                     else pd.DataFrame()
                 )
-                # 31 Agu 2026 — ILERI TEST DEFTERI. Bu motorun getirisi ISPATLANMADI:
-                # backtest'te kar faktoru 1,93 ama maruziyet duzeltmesiz al-tut'a
-                # 4,9 puan kaybediyor, duzeltilince 2,1 puan kazaniyor, hisse
-                # bazinda %51 (yazi-tura). Karar backtest tartismasiyla degil
-                # ILERI TESTLE verilecek — o yuzden liste bugunden kaydedilir.
-                # scan_signals: asil olcum (backfill_signal_returns 1-20 gunluk
-                # getiriyi ORADAN otomatik hesaplar). magic_ribbon_log: 4S'e ozgu
-                # detay (kapanmis bar, tetik yasi, kac bardir yukari).
+                # BIST seans-mumu serisi eski 4S defterinden ayrıdır. Gözlem
+                # sonuçları, sonraki getirilerle ayrı ölçülebilmesi için yazılır.
                 try:
-                    _mr_df = st.session_state.magic_ribbon_4s_data
                     if _mr_df is not None and not _mr_df.empty:
-                        log_scan_signal("magic_ribbon_4s", _mr_df, category=_cat)
+                        log_scan_signal("magic_ribbon_bist_session", _mr_df, category=_cat)
                         _magic_ribbon_kaydet(_mr_df)
                 except Exception as _mr_log_exc:
-                    log_error("master_scan_magic_ribbon_log", _mr_log_exc, _cat)
+                    log_error("master_scan_magic_ribbon_session_log", _mr_log_exc, _cat)
+                st.session_state.magic_ribbon_session_data = (
+                    _mr_df if MAGIC_RIBBON_BIST_SESSION_RENDER_ENABLED else pd.DataFrame()
+                )
             except Exception as _magic_ribbon_exc:
-                st.session_state.magic_ribbon_4s_data = pd.DataFrame()
-                log_error("master_scan_magic_ribbon_4s", _magic_ribbon_exc, _cat)
+                st.session_state.magic_ribbon_session_data = pd.DataFrame()
+                log_error("master_scan_magic_ribbon_session", _magic_ribbon_exc, _cat)
 
             # 1.5 VERİ SANİTY MONITOR (T1 — 8 Haz 2026)
             # 591ad72 doji bug'ı gibi sessiz veri zehirlenmelerini erken yakalar.
@@ -15765,7 +15763,7 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                 "erken_radar_data":         st.session_state.get('erken_radar_data'),
                 "formasyon_master_data":    st.session_state.get('formasyon_master_data'),
                 "cizgi_yapi_master_data":  st.session_state.get('cizgi_yapi_master_data'),
-                "magic_ribbon_4s_data":     st.session_state.get('magic_ribbon_4s_data'),
+                "magic_ribbon_session_data": st.session_state.get('magic_ribbon_session_data'),
                 "toplu_terazi_data":         st.session_state.get('toplu_terazi_data'),
             }
             # Önce tüm snapshot'ı bir arada dene
@@ -21894,7 +21892,7 @@ def _render_left_col():
                         'harmonic_confluence_data','accum_data','minervini_data',
                         'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data',
                         'golden_pattern_data','formasyon_master_data','toplu_terazi_data',
-                        'cizgi_yapi_master_data','magic_ribbon_4s_data']:
+                        'cizgi_yapi_master_data','magic_ribbon_session_data']:
                 if _k not in st.session_state: st.session_state[_k] = None
 
             # ── STARTUP CACHE RESTORE (piyasa dışı saatlerde otomatik yükle) ─────

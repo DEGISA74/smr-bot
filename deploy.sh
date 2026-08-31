@@ -46,7 +46,7 @@ kapanis_master_otomasyon.py veri_saglik_audit.py signal_policy.py deepening_poli
 radar_core.py zirve_taramalari.py stp_uyanis_core.py rsi_divergence_scanner.py
 compass_panel.py clean_chart_plotly.py infographic.py ekran_v2.py
 smr_tickers.py ticker_short_names.py market_cap_cache.py patron_db_guard.py
-kurumsal_takvim.py temettu_takvimi.py intraday_4s.py magic_ribbon_core.py _bist100.json
+kurumsal_takvim.py temettu_takvimi.py intraday_4s.py magic_ribbon_core.py magic_ribbon_session_data.py magic_ribbon_refresh.py _bist100.json
 likidite_siralama.py tarama_karne.py gorev_bekcisi.py"
 
 GO=0; BOT=0; FORCE=0; ONLY=""

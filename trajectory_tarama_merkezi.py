@@ -1631,18 +1631,20 @@ def _build_magic_ribbon_items(frame: pd.DataFrame | None) -> list[dict[str, Any]
             up_bars = int(row.get("YukarıBar"))
         except (TypeError, ValueError):
             up_bars = 0
-        age_text = "son kapanmış bar" if age_bars == 0 else f"{age_bars} kapanmış 4S bar önce"
+        age_text = "son kapanmış seans mumu" if age_bars == 0 else f"{age_bars} kapanmış seans mumu önce"
+        session_text = str(row.get("SonSeans") or "—")
+        close_text = str(row.get("VeriKapanis") or "—")
         items.append({
             "symbol": symbol,
             "target": f"{symbol}.IS",
             "price": price_text,
             "icon": "⏱" if age_bars == 0 else "↗",
-            "label": "Yeni 4S yukarı hizalanma" if age_bars == 0 else "4S yukarı hizalanma sürüyor",
+            "label": "Yeni seans-mumu yukarı hizalanma" if age_bars == 0 else "Seans-mumu yukarı hizalanma sürüyor",
             "detail": (
-                f"Fast ve Slow çizgileri yukarı eğimli · {up_bars} kapanmış 4S bar · "
+                f"Fast ve Slow çizgileri yukarı eğimli · {up_bars} kapanmış seans mumu · "
                 f"son hizalanma {age_text}"
             ),
-            "status": f"BIST100 filtresi · son kapanış {row.get('SonBar', '—')}",
+            "status": f"BIST100 filtresi · son seans {session_text} · kapanış {close_text}",
         })
     return items
 
@@ -1699,7 +1701,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         catalog,
         as_of=as_of,
     )
-    _magic_ribbon_df = session_getter("magic_ribbon_4s_data")
+    _magic_ribbon_df = session_getter("magic_ribbon_session_data")
     _magic_ribbon_rows = _build_magic_ribbon_items(_magic_ribbon_df)
     _magic_ribbon_count = len(_magic_ribbon_rows)
     _summary_items = (
@@ -1708,7 +1710,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         ("🌱 Yeni Sinyal T+0", counts[BUCKET_NEW], "#38bdf8"),
         ("⚠️ Risk masası", counts[BUCKET_RISK], "#ef4444"),
         ("📉 Olası short", _short_count, "#fca5a5"),
-        ("⏱ 4S Yukarı Hizalanma", _magic_ribbon_count, "#f59e0b"),
+        ("⏱ BIST Seans Mumu", _magic_ribbon_count, "#f59e0b"),
         ("📐 Çizgi Yapısı", len(_cizgi_items), "#38bdf8"),
     )
     _summary_html = "".join(
@@ -1790,7 +1792,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         f"⚠️ Risk Masası ({counts[BUCKET_RISK]})",
         f"📚 Katalog ({_catalog_count})",
         f"📉 Olası Short ({_short_count})",
-        f"⏱ 4S Yukarı ({_magic_ribbon_count})",
+        f"⏱ Seans Mumu ({_magic_ribbon_count})",
         f"📐 Çizgi Yapısı ({len(_cizgi_items)})",
     ])
 
@@ -1885,10 +1887,10 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     with tab_magic:
         st.markdown(
             f"<div style='font-size:0.98rem;font-weight:900;color:#f59e0b;margin:2px 0 1px 0;'>"
-            f"⏱ 4S Yukarı Hizalanma · {_magic_ribbon_count} sonuç</div>"
+            f"⏱ BIST Seans Mumu Yukarı Hizalanma · {_magic_ribbon_count} sonuç</div>"
             "<div style='font-size:0.68rem;color:#64748b;margin:0 0 12px 2px;'>"
-            "Yalnız BIST100 içindeki hisselerde, kapanmış ve taze 4S barlarda Fast/Slow "
-            "çizgileri aynı anda yukarı eğimli olan gözlem adayları.</div>",
+            "Yalnız BIST100 içindeki hisselerde; 09:55–14:00 ve 14:00–18:10 tam "
+            "seans mumlarında Fast/Slow çizgileri aynı anda yukarı eğimli olan gözlem adayları.</div>",
             unsafe_allow_html=True,
         )
         if _magic_ribbon_df is None:
@@ -1897,18 +1899,27 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
                 "text-align:center;color:#94a3b8;font-size:0.75rem;'>Master Scan çalıştırın</div>",
                 unsafe_allow_html=True,
             )
+        elif _magic_ribbon_df.empty:
+            st.markdown(
+                "<div style='border:1px solid #f59e0b55;border-radius:7px;padding:12px;"
+                "color:#cbd5e1;font-size:0.78rem;line-height:1.45;'>"
+                "Kısa tarihçeli ilk ölçümde ayırıcı getiri oluşmadı. Ham seans-mumu sinyalleri "
+                "ileri test için kaydediliyor; aday listesi ölçüm güçlenene kadar bilerek kapalıdır."
+                "</div>",
+                unsafe_allow_html=True,
+            )
         else:
             render_standard_scan_list(
                 st,
                 _magic_ribbon_rows,
                 lambda item: (on_click(item.get("target") or item.get("symbol")), st.rerun(scope="app")),
-                key_prefix="magic_ribbon_4s",
+                key_prefix="magic_ribbon_session",
                 priority_title="⏱ İLK BAKILACAK 5",
                 priority_note=(
                     "Yeni hizalanmalar önce; bu ekran yön gözlemidir, bağımsız teyit veya işlem emri değildir."
                 ),
                 priority_color="#f59e0b",
-                empty_text="BIST100 içinde güncel, kapanmış 4S yukarı hizalanması bulunamadı.",
+                empty_text="BIST100 içinde güncel, kapanmış seans-mumu yukarı hizalanması bulunamadı.",
             )
 
     with tab_cizgi:

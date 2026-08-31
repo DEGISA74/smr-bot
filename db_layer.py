@@ -119,6 +119,27 @@ def init_db():
         UNIQUE(scan_date, symbol)
     )''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_magic_ribbon_sym ON magic_ribbon_log(symbol, scan_date)')
+    # 31 Ağu 2026 — Magic Ribbon artık eski 09:30/13:30 4S deposundan değil,
+    # TradingView 5dk verisinden kurulan 09:55–14:00 / 14:00–18:10 BIST seans
+    # mumlarından okunuyor. İki motorun ileri-test kayıtları karışmasın.
+    c.execute('''CREATE TABLE IF NOT EXISTS magic_ribbon_session_log (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        scan_date   TEXT NOT NULL,
+        bar_time    TEXT,
+        seans       TEXT,
+        symbol      TEXT NOT NULL,
+        price       REAL,
+        durum       TEXT,
+        tetik_yasi  INTEGER,
+        yukari_bar  INTEGER,
+        fast_line   REAL,
+        slow_line   REAL,
+        ciro        REAL,
+        universe    TEXT,
+        engine      TEXT,
+        UNIQUE(scan_date, symbol)
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_magic_ribbon_session_sym ON magic_ribbon_session_log(symbol, scan_date)')
     # 19 Haz 2026 Faz 3 — ANALİZ LOG: hisse analiz edilince birleşik verdict snapshot (kanıt+risk).
     # Sonra forward getiriyle "yüksek kanıt-skorlu + düşük riskli analizler tuttu mu" ölçülür (ürün isabeti).
     c.execute('''CREATE TABLE IF NOT EXISTS analysis_log (
