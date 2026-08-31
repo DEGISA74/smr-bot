@@ -1453,6 +1453,114 @@ def _render_short_warning(
         )
 
 
+def _cizgi_master_items(
+    session_getter: Any,
+    catalog: list[dict[str, Any]],
+    *,
+    as_of: object = None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Çizgi Yapısı sonuçlarını ortak tarama kaynaklarıyla zenginleştirir."""
+    try:
+        raw_results = session_getter("cizgi_yapi_master_data")
+    except Exception:
+        raw_results = None
+    if not isinstance(raw_results, list):
+        return [], False
+
+    items: list[dict[str, Any]] = []
+    for row in raw_results:
+        if not isinstance(row, dict):
+            continue
+        symbol = _clean_symbol(row.get("kisa") or row.get("sembol"))
+        if not symbol:
+            continue
+        other_sources = [
+            source
+            for source in tarama_merkezi.candidate_scan_membership(symbol, catalog)
+            if str(source).strip() and str(source).strip() != "Çizgi Yapısı"
+        ]
+        is_bist100 = bool(row.get("bist100"))
+        try:
+            price = f"{float(row.get('fiyat')):,.2f}"
+        except Exception:
+            price = "—"
+        source_text = " · ".join(["Çizgi Yapısı", *other_sources])
+        detail_parts = [
+            f"{_as_int(row.get('bar'))} gün",
+            str(row.get("durum") or row.get("stage") or "durum bilinmiyor"),
+            f"{_as_int(row.get('temas'))} temas",
+        ]
+        if row.get("son_tarih"):
+            detail_parts.append(f"veri: {str(row.get('son_tarih'))[:10]}")
+        if is_bist100:
+            detail_parts.insert(0, "BIST100")
+        items.append(
+            {
+                "symbol": symbol,
+                "target": row.get("sembol") or symbol,
+                "icon": "📐",
+                "label": row.get("ad") or "Çizgi Yapısı",
+                "price": price,
+                "rank": (
+                    f"BIST100 + {len(other_sources)} tarama"
+                    if is_bist100 and other_sources
+                    else ("BIST100" if is_bist100 else f"+{len(other_sources)} tarama")
+                ),
+                "detail": " · ".join(detail_parts),
+                "status": (
+                    f"Birlikte çıkan taramalar: {source_text}"
+                    if other_sources
+                    else "Yalnızca Çizgi Yapısı bulundu."
+                ),
+                "_bist100": is_bist100,
+                "_other_count": len(other_sources),
+                "_ciro": _as_float(row.get("ciro")),
+                "_sources": source_text,
+            }
+        )
+
+    # Önce BIST100 + kesişim, sonra diğer kesişimler, sonra yalnız Çizgi Yapısı.
+    # Her grubun iç sırası likiditeye bırakılır; ölçüm yoksa ortak fotoğraftaki
+    # 20 günlük medyan ciro yalnızca güvenli geri dönüş sırasıdır.
+    groups = ([], [], [], [])
+    for item in items:
+        if item["_bist100"] and item["_other_count"]:
+            groups[0].append(item)
+        elif item["_other_count"]:
+            groups[1].append(item)
+        elif item["_bist100"]:
+            groups[2].append(item)
+        else:
+            groups[3].append(item)
+
+    ordered_items: list[dict[str, Any]] = []
+    measured_any = False
+    for group in groups:
+        group.sort(key=lambda item: item.get("_ciro", 0.0), reverse=True)
+        if not group:
+            continue
+        symbols = [item["symbol"] for item in group]
+        liquidity_order, measured = _liquidity_top(
+            symbols,
+            as_of=as_of,
+            scan_type="cizgi_yapi",
+            limit=len(symbols),
+        )
+        measured_any = measured_any or measured
+        by_symbol = {item["symbol"]: item for item in group}
+        if measured:
+            ordered_items.extend(
+                by_symbol[symbol] for symbol in liquidity_order if symbol in by_symbol
+            )
+            ordered_symbols = set(liquidity_order)
+            ordered_items.extend(
+                item for item in group if item["symbol"] not in ordered_symbols
+            )
+        else:
+            ordered_items.extend(group)
+    return ordered_items, measured_any
+
+
 def _load_karne_summary() -> dict[str, Any]:
     if not KARNE_PATH.exists():
         return {}
@@ -1529,7 +1637,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         for category in catalog
         for symbol in category.get("symbols", [])
     })
-    # 29 Agu 2026 — 5. sutun: OLASI SHORT (er_D4 / er_D5).
+    # 29 Ağu 2026 — 5. sütun: OLASI SHORT (er_D4 / er_D5); 6. sütun: ÇİZGİ YAPISI.
     # Ayni kaynak app.py'deki OLASI SHORT paneliyle: erken_radar_data'daki
     # D4/D5 satirlari, tekil hisse sayisi, endeksler haric.
     # ⚠ Bu bir ALIM/SATIM tavsiyesi degil, uyari/veto katmanidir: islem
@@ -1548,12 +1656,18 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             })
     except Exception:
         _short_count = 0
+    _cizgi_items, _cizgi_liquidity_measured = _cizgi_master_items(
+        session_getter,
+        catalog,
+        as_of=as_of,
+    )
     _summary_items = (
         ("🎯 T+3 Teyitli", counts[BUCKET_READY], "#22c55e"),
         ("⏳ T+1 & T+2 Onaylılar", counts[BUCKET_GROWING] + counts[BUCKET_WATCH], "#f59e0b"),
         ("🌱 Yeni Sinyal T+0", counts[BUCKET_NEW], "#38bdf8"),
         ("⚠️ Risk masası", counts[BUCKET_RISK], "#ef4444"),
         ("📉 Olası short", _short_count, "#fca5a5"),
+        ("📐 Çizgi Yapısı", len(_cizgi_items), "#38bdf8"),
     )
     _summary_html = "".join(
         f"<div style='background:#0f172acc;border:1px solid #263b5d;border-radius:8px;"
@@ -1569,7 +1683,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         f"<div style='font-size:0.72rem;color:#e2e8f0;text-align:right;white-space:nowrap;'>📅 {html.escape(as_of)} kapanışı"
         "<div style='font-size:0.64rem;color:#64748b;margin-top:2px;'>Master Scan fotoğrafı</div></div>"
         "</div>"
-        f"<div style='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:0 0 12px 0;'>"
+        f"<div style='display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:0 0 12px 0;'>"
         f"{_summary_html}</div>",
         unsafe_allow_html=True,
     )
@@ -1624,16 +1738,17 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             st.session_state["_tm_scroll_top"] = True
             st.rerun(scope="app")
 
-    # 🗂️ KARAR YÜZEYİ — ürünce onaylı altı sekme.
+    # 🗂️ KARAR YÜZEYİ — ürünce onaylı yedi sekme.
     # Yaşam döngüsünün iki ara durumu aynı sekmede kalır; içeride ayrı masalara
     # bölünerek geniş ara havuzun işlem listesi gibi görünmesi engellenir.
-    tab_long, tab_confirm, tab_new, tab_risk, tab_catalog, tab_short = st.tabs([
+    tab_long, tab_confirm, tab_new, tab_risk, tab_catalog, tab_short, tab_cizgi = st.tabs([
         f"🎯 T+3 Teyitli ({counts[BUCKET_READY]} aday)",
         f"⏳ T+1 & T+2 Onaylılar ({counts[BUCKET_GROWING] + counts[BUCKET_WATCH]} aday)",
         f"🌱 Yeni Sinyal T+0 ({counts[BUCKET_NEW]})",
         f"⚠️ Risk Masası ({counts[BUCKET_RISK]})",
         f"📚 Katalog ({_catalog_count})",
         f"📉 Olası Short ({_short_count})",
+        f"📐 Çizgi Yapısı ({len(_cizgi_items)})",
     ])
 
     def _render_decision_groups(
@@ -1722,6 +1837,35 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     with tab_short:
         _render_short_warning(
             st, session_getter, on_click, as_of=as_of, show_empty=True
+        )
+
+    with tab_cizgi:
+        st.markdown(
+            f"<div style='font-size:0.98rem;font-weight:900;color:#38bdf8;margin:2px 0 1px 0;'>"
+            f"📐 Çizgi Yapısı · {len(_cizgi_items)} sonuç</div>"
+            "<div style='font-size:0.68rem;color:#64748b;margin:0 0 12px 2px;'>"
+            "BIST100 + başka tarama kesişimleri önce; sonra diğer kesişimler; "
+            "her grubun içinde 20 günlük TL likiditesi.</div>",
+            unsafe_allow_html=True,
+        )
+        if not _cizgi_liquidity_measured and _cizgi_items:
+            st.caption(
+                "Likidite ölçümü hazır değil; ortak Master Scan fotoğrafındaki 20 günlük ciro sırası kullanıldı."
+            )
+        render_standard_scan_list(
+            st,
+            _cizgi_items,
+            lambda item: (on_click(item.get("target") or item.get("symbol")), st.rerun(scope="app")),
+            key_prefix="cizgi_yapi_master",
+            priority_title="📐 İLK BAKILACAK 5",
+            priority_note=(
+                "BIST100 içinde başka taramalarda da çıkanlar üstte; "
+                "aynı grubun içi likiditeye göre sıralıdır."
+            ),
+            priority_color="#38bdf8",
+            empty_text=(
+                "Bu Master Scan fotoğrafında elekten geçen Çizgi Yapısı sonucu yok."
+            ),
         )
 
     with tab_catalog:

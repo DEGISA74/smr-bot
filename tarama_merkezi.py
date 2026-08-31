@@ -52,6 +52,7 @@ CATALOG_MAP = [
     ("rs_leaders_data", "RS Momentum Liderleri", "Trend & Liderlik"),
     ("liderlik_yolculugu_data", "Liderlik Yaşam Döngüsü", "Trend & Liderlik"),
     ("prelaunch_bos_data", "Pre-Launch BOS", "Kırılım"),
+    ("formasyon_master_data", "Formasyon Motoru", "Kırılım & Formasyon"),
     ("golden_pattern_data", "Formasyon (V2)", "Kırılım & Formasyon"),
     ("accum_data", "Gizli Birikim", "Akıllı Para"),
     ("harmonic_confluence_data", "Harmonik Confluence", "Kesişim & Etiketler"),

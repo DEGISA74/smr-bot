@@ -57,7 +57,15 @@ import sampiyonlar_ligi  # 31 Tem 2026 — ŞAMPİYONLAR LİGİ: iki-rejim backt
 import ekran_v2     # 23 Tem 2026 — 🧪 YENİ EKRAN DENEMESİ (kapalı bar; mevcut ekran değişmez)
 import formasyon_core  # 21 Tem 2026 — yaşam döngüsü rozeti (stage_badge tek kaynak)
 import formasyon_v2_app  # 25 Tem 2026 — yalnız Formasyon Grafiği için V2 uyum katmanı
+try:
+    import formasyon_v3  # 30 Ağu 2026 — tek hisse V3 çoklu pencere araştırma motoru
+except ImportError:
+    formasyon_v3 = None
 import cizgi_yapi  # 20 Ağu 2026 — üçgen/kama ZARF hattı (regresyon değil); yalnız kutu+popup, skora bağlı DEĞİL
+try:
+    import cizgi_master  # 30 Ağu 2026 — Master Scan ortak fotoğraf köprüsü
+except ImportError:
+    cizgi_master = None
 import pusula_engine  # 24 Ağu 2026 — Piyasa Pusulası anlatı motoru (SADECE EKRAN; ölçülmemiş → AI/skor bağlantısı yok, 25 Ağu)
 import patron_db_guard
 from stp_uyanis_core import calculate_stp_uyanis_status
@@ -112,7 +120,7 @@ from scanners import (ERKEN_RADAR_SCENARIOS, evaluate_erken_radar, _er_kisa_acik
 from data_layer import (
     CACHE_DIR, _apply_split_adjustments, _data_integrity_check, fetch_stock_info,
     final_bist100_list, get_batch_data_cached, get_benchmark_data, get_safe_historical_data,
-    is_last_bar_projected, kritik_endeks_kapisi, set_hot_ticker,
+    is_last_bar_projected, kritik_endeks_kapisi, load_index_components, set_hot_ticker,
     use_historical_data_snapshot)
 import concurrent.futures
 import re
@@ -9144,6 +9152,133 @@ def _get_cizgi_yapi_view(symbol):
         return {"available": False, "issues": [f"Çizgi yapısı hazırlanamadı: {_cy_exc}"]}
 
 
+# --- FORMASYON V3 (30 Ağu 2026) — tek hisse V3 çoklu pencere görünümü ---
+@st.cache_data(ttl=900, show_spinner=False)
+def _get_formasyon_v3_view(symbol):
+    """V3'ün çoklu pencere adayını mevcut formasyon popup biçimine çevirir.
+
+    V3 yalnız günlük veride araştırılır; V3'ün kendi içinde kısa/orta/geniş/
+    bağlam pencereleri ayrı ayrı denenir. Bu sonuç skora, AI'a veya tarama
+    karnesine yazılmaz; tek hisse ekranında kaynak karşılaştırması içindir.
+    """
+    if formasyon_v3 is None:
+        return {"available": False, "issues": ["V3 modülü bulunamadı."]}
+    try:
+        _df_v3 = get_safe_historical_data(symbol, period="2y", interval="1d")
+        if _df_v3 is None or _df_v3.empty:
+            return {"available": False, "data_ok": False, "issues": ["Günlük fiyat verisi bulunamadı."]}
+        _v3_report = formasyon_v3.analyze_formations_v3(
+            {"1d": _df_v3},
+            ticker=symbol,
+            timeframes=("1d",),
+        )
+        _v3_dict = formasyon_v3.report_to_dict(_v3_report)
+        _v3_candidates = [
+            _row for _row in (_v3_dict.get("candidates") or [])
+            if isinstance(_row, dict) and not bool(_row.get("inactive", False))
+        ]
+        if not _v3_candidates:
+            return {
+                "available": False,
+                "data_ok": bool(_v3_dict.get("data_ok")),
+                "issues": list(_v3_dict.get("data_issues") or []),
+                "engine_version": _v3_dict.get("engine_version", ""),
+                "engine_label": "V3 çoklu pencere motoru",
+                "report": _v3_dict,
+            }
+
+        _candidate = _v3_dict.get("primary_candidate")
+        if not isinstance(_candidate, dict) or bool(_candidate.get("inactive", False)):
+            _candidate = max(
+                _v3_candidates,
+                key=lambda _row: (
+                    -int(
+                        _row.get("stage_rank")
+                        if _row.get("stage_rank") is not None
+                        else 99
+                    ),
+                    float(_row.get("quality_score") or 0.0),
+                    int(_row.get("structure_bars") or 0),
+                    int(_row.get("lookback_bars") or 0),
+                ),
+            )
+
+        _chart_b64 = ""
+        _issues = list(_v3_dict.get("data_issues") or [])
+        try:
+            import tempfile
+            from pathlib import Path
+            with tempfile.TemporaryDirectory(prefix="smr_formasyon_v3_") as _tmp:
+                _chart_path = Path(_tmp) / "formasyon_v3.png"
+                formasyon_v3.render_v3_candidate_chart(
+                    _df_v3,
+                    _candidate,
+                    _chart_path,
+                    ticker=symbol,
+                )
+                _chart_b64 = base64.b64encode(_chart_path.read_bytes()).decode("ascii")
+        except Exception as _chart_exc:
+            _issues.append(f"V3 grafik üretilemedi: {_chart_exc}")
+
+        _quality = float(_candidate.get("quality_score") or 0.0)
+        _quality_label, _quality_color = formasyon_v2_app._quality_band(_quality)
+        _stage_level, _stage_label = formasyon_v2_app._STAGE_INFO.get(
+            _candidate.get("stage"), (2, _candidate.get("stage", ""))
+        )
+        _current = formasyon_v2_app._finite_float(
+            _df_v3["Close"].iloc[-1]
+        )
+        _target = formasyon_v2_app._finite_float(_candidate.get("target"))
+        _trigger = formasyon_v2_app._finite_float(_candidate.get("trigger")) or 0.0
+        _invalid = formasyon_v2_app._finite_float(_candidate.get("invalidation")) or 0.0
+        _risk_reward = None
+        if _current and _target is not None:
+            _risk = abs(_invalid - _current)
+            _reward = abs(_target - _current)
+            if _risk > 0:
+                _risk_reward = _reward / _risk
+
+        _pattern = str(_candidate.get("pattern") or "Formasyon")
+        return {
+            "available": True,
+            "engine_version": _v3_dict.get("engine_version", ""),
+            "engine_label": "V3 çoklu pencere motoru",
+            "overall_status": _v3_dict.get("overall_status", "TEK_PENCERE_ADAYI"),
+            "timeframe": _candidate.get("timeframe", "1d"),
+            "pattern": _pattern,
+            "pattern_label": formasyon_v2_app.V2_PATTERN_LABELS.get(_pattern, _pattern),
+            "direction": _candidate.get("direction"),
+            "stage": _candidate.get("stage"),
+            "stage_level": _stage_level,
+            "stage_total": 5,
+            "stage_label": _stage_label,
+            "quality_score": _quality,
+            "quality_label": _quality_label,
+            "quality_color": _quality_color,
+            "trigger": _trigger,
+            "invalidation": _invalid,
+            "target": _target,
+            "current_price": _current,
+            "risk_reward": _risk_reward,
+            "start_time": _candidate.get("start_time"),
+            "end_time": _candidate.get("end_time"),
+            "breakout_time": _candidate.get("breakout_time"),
+            "chart_b64": _chart_b64,
+            "story": "V3, aynı günlük veriyi kısa, orta, geniş ve bağlam pencerelerinde karşılaştırır.",
+            "conclusion": "Bu V3 bulgusu araştırma amaçlıdır; çoklu pencere uyumu ayrıca kontrol edilmelidir.",
+            "issues": _issues,
+            "notes": list(_candidate.get("notes") or []),
+            "checks": dict(_candidate.get("checks") or {}),
+            "source_window": (
+                f"{_candidate.get('window_label', 'pencere')} · "
+                f"{int(_candidate.get('lookback_bars') or 0)} bar"
+            ),
+            "report": _v3_dict,
+        }
+    except Exception as _v3_exc:
+        return {"available": False, "data_ok": False, "issues": [f"V3 görünümü hazırlanamadı: {_v3_exc}"]}
+
+
 # --- MİNİ FORMASYON GRAFİĞİ (tüm pattern tipleri) ---
 @st.cache_data(ttl=900, show_spinner=False)
 def _mini_pattern_chart_b64(symbol, chart_data, dark_mode):
@@ -10563,7 +10698,9 @@ def _formasyon_v2_dialog(view, display_ticker):
         f"<div><div style='font-size:1.35rem;font-weight:900;color:#e2e8f0;'>"
         f"📊 {display_ticker} — {view.get('pattern_label', 'Formasyon')}</div>"
         f"<div style='font-size:0.75rem;color:#64748b;margin-top:3px;'>"
-        f"Yeni Formasyon Motoru · günlük grafik · {view.get('engine_version', '')}</div></div>"
+        f"{view.get('engine_label', 'Yeni Formasyon Motoru')} · günlük grafik · "
+        f"{view.get('engine_version', '')}"
+        f"{(' · ' + view.get('source_window', '')) if view.get('source_window') else ''}</div></div>"
         f"<div style='text-align:right;'>"
         f"<div style='font-size:0.72rem;font-weight:800;color:{_quality_color};'>"
         f"{view.get('quality_label', '')}</div>"
@@ -15014,7 +15151,7 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
         _ms_is_bist = "BIST" in str(_cat).upper()
         _ms_progress_steps = [
             "index_health", "backfill", "mkk", "data", "hidden_accum", "radar2",
-            "harmonic", "rs_leaders", "golden", "vip_and_patterns", "minervini",
+            "harmonic", "rs_leaders", "golden", "vip_and_patterns", "cizgi_yapi", "minervini",
             "weak_pair", "radar1", "rsi_divergence", "strong_reversal", "tavan",
             *( ["flow_leaders"] if _ms_is_bist else [] ),
             "prelaunch", "early_radar", "stp_uyanis", "toplu_terazi", "top20",
@@ -15212,6 +15349,41 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                                 log_scan_signal(f"birlesik_{_shp}", _sub, category=_cat)
             except Exception as _bir_exc:
                 log_error("master_scan_birlesik_log", _bir_exc, _cat)
+
+            # Formasyon Motoru'nun aynı Master Scan sonucunu Tarama Merkezi'ne
+            # kaynak olarak aktar; skor/AI/terazi hesabına bağlama.
+            st.session_state.formasyon_master_data = _master_formasyon_snapshot
+
+            # ── ÇİZGİ YAPISI (30 Ağu 2026) — ortak Master Scan fotoğrafı ──
+            # Ayrı motor ve ayrı araştırma listesi: skor, AI, Terazi ve
+            # scan_signals içine yazılmaz. BIST100 bilgisi yalnız sıralama
+            # önceliği/rozet içindir; BIST100 dışındaki likit adaylar korunur.
+            _scan_progress("cizgi_yapi", "📐 Çizgi Yapısı — ortak veri fotoğrafı")
+            try:
+                _line_bist100 = (
+                    load_index_components("XU100", allow_network=False)
+                    if "BIST" in str(_cat).upper() else []
+                )
+                if cizgi_master is None:
+                    raise RuntimeError("Çizgi Yapısı Master Scan köprüsü yüklenemedi.")
+                st.session_state.cizgi_yapi_master_data = cizgi_master.scan_batch_snapshot(
+                    _master_batch_snapshot,
+                    scan_list,
+                    timeframe="1d",
+                    lik_taban=(cizgi_yapi.LIK_TABAN_VARSAYILAN if _ms_is_bist else 0),
+                    bist100_symbols=_line_bist100,
+                )
+                try:
+                    cizgi_yapi.kaydet(st.session_state.cizgi_yapi_master_data)
+                except Exception:
+                    pass
+                st.toast(
+                    f"📐 Çizgi Yapısı: {len(st.session_state.cizgi_yapi_master_data)} aday",
+                    icon="✅",
+                )
+            except Exception as _line_scan_exc:
+                st.session_state.cizgi_yapi_master_data = []
+                log_error("master_scan_cizgi_yapi", _line_scan_exc, _cat)
 
             # ── KATMAN 4: BELİRSİZ (yetersiz örnek) ──
             _scan_progress("minervini", "🦁 Minervini SEPA")
@@ -15510,6 +15682,8 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                 "confluence_hits":          st.session_state.confluence_hits,
                 "golden_pattern_data":      st.session_state.golden_pattern_data,
                 "erken_radar_data":         st.session_state.get('erken_radar_data'),
+                "formasyon_master_data":    st.session_state.get('formasyon_master_data'),
+                "cizgi_yapi_master_data":  st.session_state.get('cizgi_yapi_master_data'),
                 "toplu_terazi_data":         st.session_state.get('toplu_terazi_data'),
             }
             # Önce tüm snapshot'ı bir arada dene
@@ -21280,6 +21454,7 @@ def _render_left_col():
             render_synthetic_sentiment_panel(synth_data)
     
     # --- YENİ YERİ: TEKNİK SEVİYELER (MA) PANELİ (TEK SATIR ŞERİT GÖRÜNÜMÜ) ---
+    _sinyal_ozet_slot = None
     try:
         if "ticker" in st.session_state and st.session_state.ticker:
             df_ma = get_safe_historical_data(st.session_state.ticker, period="1y") 
@@ -21413,13 +21588,11 @@ def _render_left_col():
                             f"box-shadow:inset 0 0 0 1px rgba(148,163,255,0.35),0 0 14px rgba(99,102,241,0.30);"
                             f"display:flex;flex-direction:column;gap:1px;line-height:1.05;align-items:center;justify-content:center;'>"
                             f"<span style='font-size:0.62rem;font-weight:800;letter-spacing:0.10em;"
-                            f"background:linear-gradient(90deg,#38bdf8,#a78bfa);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;'>━ FİYAT ━</span>"
+                            f"background:linear-gradient(90deg,#38bdf8,#a78bfa);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;'>"
+                            f"<span style='color:{_arrow_clr};text-shadow:0 0 8px {_arrow_glow};'>{_arrow_char}</span> FİYAT</span>"
                             f"<span style='font-size:1.05rem;font-weight:900;color:#f8fafc;"
                             f"font-family:\"JetBrains Mono\",monospace;"
                             f"text-shadow:0 0 10px rgba(148,163,255,0.65);'>{_fmt_val(_val)}</span>"
-                            f"<span style='font-size:1.05rem;font-weight:900;color:{_arrow_clr};"
-                            f"line-height:1;letter-spacing:0.05em;"
-                            f"text-shadow:0 0 8px {_arrow_glow};'>{_arrow_char}</span>"
                             f"</div>"
                         )
                     else:
@@ -21443,7 +21616,8 @@ def _render_left_col():
                 _52h_html = st.session_state.get('_52h_strip_html', '')
                 _ma_strip_html = (
                     f"<div style='border:1px solid {border_col};border-radius:8px;overflow:hidden;"
-                    f"margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);background:{bg_col};"
+                    f"margin-bottom:0;box-shadow:0 4px 12px rgba(0,0,0,0.4);background:{bg_col};"
+                    f"border-radius:8px 8px 0 0;"
                     f"display:flex;flex-direction:column;width:100%;'>"
                     + _52h_html +
                     f"<div style='display:flex;align-items:stretch;width:100%;'>"
@@ -21508,14 +21682,18 @@ def _render_left_col():
                     _ma_left, _stp_right = st.columns([82, 20], gap='small')
                     with _ma_left:
                         st.markdown(_ma_strip_html, unsafe_allow_html=True)
+                        _sinyal_ozet_slot = st.empty()
                     with _stp_right:
                         st.markdown(_stp_mini_html, unsafe_allow_html=True)
                 else:
                     st.markdown(_ma_strip_html, unsafe_allow_html=True)
-    
-    
+                    _sinyal_ozet_slot = st.empty()
+
+
     except Exception as e:
         st.warning(f"Teknik tablo oluşturulamadı. Hata: {e}")
+    if _sinyal_ozet_slot is None:
+        _sinyal_ozet_slot = st.empty()
     # --------------------------------------------------
     # 1--- SMART MONEY HACİM ANALİZİ --- (ELITE)
     st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
@@ -21633,7 +21811,8 @@ def _render_left_col():
                         'wilder_divergence_data',
                         'harmonic_confluence_data','accum_data','minervini_data',
                         'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data',
-                        'golden_pattern_data','toplu_terazi_data']:
+                        'golden_pattern_data','formasyon_master_data','toplu_terazi_data',
+                        'cizgi_yapi_master_data']:
                 if _k not in st.session_state: st.session_state[_k] = None
 
             # ── STARTUP CACHE RESTORE (piyasa dışı saatlerde otomatik yükle) ─────
@@ -22817,7 +22996,7 @@ def _render_left_col():
         pass
 
     # Tavan Adayları yuvası ARAŞTIRMA LİSTELERİ bloğundadır; içerik sağ kolon çizildikten sonra doldurulur.
-    return _tavan_flow_c1, _tavan_skeleton
+    return _tavan_flow_c1, _tavan_skeleton, _sinyal_ozet_slot
 
     # ── GÖRSEL ANALİZ DOLDURMA — betiğin EN DİBİNE taşındı (14 Tem 2026) ─────
     # ÖNCEDEN burada (sol kolon SONU) çağrılıyordu; ama Streamlit tek geçişte
@@ -23091,7 +23270,7 @@ def _render_tavan_adaylari_panel():
 # çünkü _render_left_col içinde _render_tavan_adaylari_panel() çağrılır.
 with col_left:
     with st.container(height=2500, border=False):
-        _tavan_adaylari_slot, _tavan_iskelet_slot = _render_left_col()
+        _tavan_adaylari_slot, _tavan_iskelet_slot, _sinyal_ozet_slot = _render_left_col()
 
 
 def _render_ekran_v2_deneme(ticker):
@@ -24177,7 +24356,7 @@ def _render_right_col():
             # YOL HARİTASI SKORU stili (1 Tem 2026): üstte icon+label solda / skor sağda (renkli),
             # altında ince çubuk (skora göre renkli). Hesaplama AYNI — sadece gösterim değişti.
             # 18 Tem 2026 — driver: etiketin altında lensin GERÇEK gerekçesi (küçük, soluk).
-            brd = f"border-bottom:1px solid {_CLR_DIVIDER};" if border else ""
+            brd = f"border-right:1px solid {_CLR_DIVIDER};" if border else ""
             _ttl = f"title='{anchor_hint}'" if anchor_hint else ""
             if score_val is None or score_max == 0:
                 _pct = 0
@@ -24190,19 +24369,20 @@ def _render_right_col():
                 _drv_html = (f"<div style='font-size:0.63rem;color:rgba(148,163,184,0.85);"
                              f"line-height:1.25;margin:1px 0 3px;'>{driver}</div>")
             return (
-                f"<div {_ttl} style='padding:5px 11px;{brd}'>"
+                f"<div {_ttl} style='flex:1 1 0;min-width:0;padding:4px 8px;{brd}'>"
                 # Üst satır: icon + label solda, skor sağda (renkli) — yol haritası gibi
                 f"<div style='display:flex;justify-content:space-between;align-items:center;"
-                f"font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.80);"
-                f"line-height:1.1;margin-bottom:3.5px;'>"
-                f"<span style='display:flex;align-items:center;gap:6px;'>"
-                f"<span style='font-size:0.92rem;line-height:1;'>{icon}</span>{label}</span>"
-                f"<span style='color:{_col};font-weight:900;"
-                f"font-family:\"JetBrains Mono\",monospace;'>{score_text}</span>"
-                f"</div>"
-                + _drv_html +
+                 f"font-size:0.69rem;font-weight:700;color:rgba(255,255,255,0.80);"
+                 f"line-height:1.05;margin-bottom:2px;'>"
+                 f"<span style='display:flex;align-items:center;gap:4px;min-width:0;white-space:nowrap;'>"
+                 f"<span style='font-size:0.82rem;line-height:1;'>{icon}</span><span style='overflow:hidden;text-overflow:ellipsis;'>{label}</span></span>"
+                 f"<span style='color:{_col};font-weight:900;white-space:nowrap;"
+                 f"font-size:0.68rem;"
+                 f"font-family:\"JetBrains Mono\",monospace;'>{score_text}</span>"
+                 f"</div>"
+                 + _drv_html +
                 # İnce çubuk (track + fill) — yol haritası bar stili
-                f"<div style='height:4px;background:rgba(100,116,139,0.20);border-radius:2px;overflow:hidden;'>"
+                 f"<div style='height:3px;background:rgba(100,116,139,0.20);border-radius:2px;overflow:hidden;'>"
                 f"<div style='height:100%;width:{_pct:.0f}%;background:{_col};border-radius:2px;'></div>"
                 f"</div>"
                 f"</div>"
@@ -24232,11 +24412,12 @@ def _render_right_col():
             pass
 
         _sinyal_rows = (
-              _so_row("🎯", "Genel Sağlık",     _so_master, 100, _so_color_100(_so_master),
-                     _so_lens_lbl(_so_master),
-                     ("Teknik Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)"
-                      + (f" · skor: {int(_so_master)}/100" if _so_master is not None else "")),
-                     driver=_drv_master)
+            "<div style='display:flex;align-items:stretch;width:100%;'>"
+            + _so_row("🎯", "Genel Sağlık",     _so_master, 100, _so_color_100(_so_master),
+                      _so_lens_lbl(_so_master),
+                      ("Teknik Skor — Trend+Momentum+Hacim+Yapı+Senaryo karması (1-3 ay)"
+                       + (f" · skor: {int(_so_master)}/100" if _so_master is not None else "")),
+                      driver=_drv_master)
             + _so_row("🧭", "Pozisyon Eğilimi", _so_pos,    100, _so_color_100(_so_pos),
                      _so_lens_lbl(_so_pos, "egilim"),
                      ("Conviction — SMA50/200 + OBV + Z-Score (5-15g LONG/SHORT bias)"
@@ -24249,21 +24430,17 @@ def _render_right_col():
                      driver=_drv_road)
             + _so_row("🌟", "Erken Radar",      _so_er,     100, _so_color_100(_so_er),
                      _so_lens_lbl(_so_er),
-                     ("27 senaryo paterni — ER kurulum kalitesi (5g-20g)"
-                      + (f" · skor: {int(_so_er)}/100" if _so_er is not None else "")),
-                     border=False, driver=_drv_er)
+                      ("27 senaryo paterni — ER kurulum kalitesi (5g-20g)"
+                       + (f" · skor: {int(_so_er)}/100" if _so_er is not None else "")),
+                      border=False, driver=_drv_er)
+            + "</div>"
         )
 
-        # Bağımsız panel — fiyat kartının ALTINDA, kendi border + arka planı ile
-        # (CANLI SİNYALLER tarzı). Fiyat kartının parlaması artık etkilemiyor.
+        # Ağırlıklı ortalamaların hemen altında, aynı grubun alt bölümü olarak görünür.
         _sinyal_block_standalone = (
             f"<div style='background:rgba(15,23,42,0.62);border:1px solid rgba(255,255,255,0.10);"
-            f"border-radius:10px;padding:7px 0 5px;margin-bottom:8px;"
-            f"box-shadow:0 2px 6px rgba(0,0,0,0.25);'>"
-            f"<div style='padding:2px 11px 6px;font-size:0.66rem;color:rgba(255,255,255,0.62);"
-            f"text-transform:uppercase;letter-spacing:0.6px;font-weight:800;"
-            f"border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px;'>"
-            f"📊 SİNYAL ÖZETİ</div>"
+            f"border-top:0;border-radius:0 0 8px 8px;padding:0;margin:0 0 8px;"
+            f"box-shadow:0 2px 6px rgba(0,0,0,0.25);overflow:hidden;'>"
             + _sinyal_rows
             + "</div>"
         )
@@ -24987,6 +25164,8 @@ def _render_right_col():
     # Eski motor diğer formasyonlarda ve tüm tarama/AI/Canlı Sinyal akışlarında aynen kalır.
     _fv2 = _get_formasyon_v2_view(st.session_state.ticker)
     _fv2_active = isinstance(_fv2, dict) and bool(_fv2.get('available'))
+    _fv3 = _get_formasyon_v3_view(st.session_state.ticker)
+    _fv3_active = isinstance(_fv3, dict) and bool(_fv3.get('available'))
     _old_form_allowed = (
         _fcd and isinstance(_fcd, dict)
         and not formasyon_v2_app.old_chart_is_v2_scope(_fcd)
@@ -25143,6 +25322,74 @@ def _render_right_col():
             if _cy.get('stage') in ('OLUŞUYOR', 'YAKIN') and _cy.get('mesafe_pct') is not None:
                 _cy_durum += f" · tetiğe %{_cy['mesafe_pct']:.1f}"
             _cy_rozet(_cy_durum, _cy.get('durum_bg', '#64748b'), _cy.get('durum_fg', '#ffffff'))
+
+    # --- V3 KAYNAK BUTONU (30 Ağu 2026) — V2 ve Çizgi Yapısı'ndan bağımsız ---
+    # V3 çoklu pencere araştırmasıdır. Aynı yapıyı üç motor da görse bile
+    # kaynakları birbirine karıştırmamak için ayrı düğme ve kaynak satırı vardır.
+    if _fv3_active:
+        _fv3_dsp = get_display_name(st.session_state.ticker)
+        _fv3_bull = _fv3.get('direction') == 'bullish'
+        _fv3_bg = "#81bb96" if _fv3_bull else "#9B7C99"
+        _fv3_brd = "#3d8c5a" if _fv3_bull else "#6b3a5c"
+        _fv3_hov = "#6aaa82" if _fv3_bull else "#876a85"
+        st.markdown(f"""<style>
+            div.st-key-btn_formasyon_v3_dialog button {{
+                background:{_fv3_bg} !important;
+                border:1px solid {_fv3_brd} !important;
+                color:white !important;
+                font-weight:700 !important;
+                min-height:1.9rem !important;
+                padding:2px 10px !important;
+                font-size:0.8rem !important;
+            }}
+            div.st-key-btn_formasyon_v3_dialog button:hover {{
+                background:{_fv3_hov} !important;
+                border-color:{_fv3_brd} !important;
+            }}
+        </style>""", unsafe_allow_html=True)
+        if st.button(
+            f"🧪 {_fv3_dsp}-{_fv3.get('pattern_label', 'Formasyon')} · "
+            f"{_fv3.get('source_window', 'çoklu pencere')}",
+            width='stretch',
+            key="btn_formasyon_v3_dialog",
+        ):
+            _formasyon_v2_dialog(_fv3, _fv3_dsp)
+        st.markdown(
+            f"<div style='margin:-4px 0 4px 0;padding:2px 8px;border-radius:6px;"
+            f"background:#1e293b;color:#cbd5e1;font-size:0.7rem;font-weight:700;"
+            f"text-align:center;line-height:1.4;'>V3 · {_fv3.get('overall_status', 'çoklu pencere araştırması')}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # --- ÜÇ MOTOR KAYNAK SATIRI (30 Ağu 2026) ---
+    # Formasyon kutusu çakışma nedeniyle gizlense bile kullanıcı hangi motorun
+    # bulduğunu burada görür; üç motorun bulgusu tek bir hüküm gibi birleştirilmez.
+    _formation_sources = []
+    if _fv2_active:
+        _formation_sources.append(f"V2 → {_fv2.get('pattern_label', 'Formasyon')}")
+    if _fv3_active:
+        _formation_sources.append(f"V3 → {_fv3.get('pattern_label', 'Formasyon')}")
+    if _cy_ok:
+        _formation_sources.append(f"Çizgi Yapısı → {_cy.get('pattern_label', 'Formasyon')}")
+    if _formation_sources:
+        if len(_formation_sources) == 3:
+            _formation_source_title = "✅ Üç motor da aktif yapı buldu"
+            _formation_source_color = "#22c55e"
+        elif len(_formation_sources) == 2:
+            _formation_source_title = "🔎 İki motor aktif yapı buldu"
+            _formation_source_color = "#f59e0b"
+        else:
+            _formation_source_title = "🔎 Aktif yapının kaynağı"
+            _formation_source_color = "#38bdf8"
+        st.markdown(
+            f"<div style='margin:6px 0 8px 0;padding:7px 10px;border-radius:7px;"
+            f"background:{_formation_source_color}12;border:1px solid {_formation_source_color}55;"
+            f"color:{_formation_source_color};font-size:0.72rem;font-weight:800;'>"
+            f"{_formation_source_title}<div style='margin-top:3px;color:#cbd5e1;"
+            f"font-size:0.66rem;font-weight:600;line-height:1.45;'>"
+            f"{' · '.join(_formation_sources)}</div></div>",
+            unsafe_allow_html=True,
+        )
 
     # --- HARMONİK FORMASYON BUTONU — formasyon butonunun hemen altında ---
     try:
@@ -25484,11 +25731,6 @@ def _render_right_col():
 
     # --- ICT BOTTOM LINE (SONUÇ) → 1 Tem 2026: ICT Smart Money Analizi panelinin İÇİNE
     # (en altına, tam genişlik) geri taşındı — render_ict_deep_panel sonunda. Sağ sütundan çıkarıldı.
-
-    # 📊 SİNYAL ÖZETİ — Price Action ile yer değiştirdi, aşağıya taşındı (7 Tem 2026)
-    _so_html_mv = st.session_state.get('_so_ozet_html', '')
-    if _so_html_mv:
-        st.markdown(_so_html_mv, unsafe_allow_html=True)
 
     # 🦅 YENİ: ICT SNIPER ONAY RAPORU (Sadece Setup Varsa Çıkar) (ELITE)
     if _MM_ELITE_OK:
@@ -25904,6 +26146,12 @@ def _render_right_col():
 with col_right:
     with st.container(height=2300, border=False):
         _render_right_col()
+
+# Sinyal özeti sağ kolonda hesaplanır; görseli sol kolonda ağırlıklı ortalamaların
+# altındaki yer tutucuya basılır. Böylece hesap akışı aynı, panel grubu değişir.
+_so_html_mv = st.session_state.get('_so_ozet_html', '')
+if _sinyal_ozet_slot is not None and _so_html_mv:
+    _sinyal_ozet_slot.markdown(_so_html_mv, unsafe_allow_html=True)
 
 try:
     # İçerik iskeletin ALTINA çizilir, sonra iskelet silinir → yuva hiç boş kalmaz.
