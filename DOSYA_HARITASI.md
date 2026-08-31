@@ -84,6 +84,9 @@ Veri katmanından panellere giden HER OHLCV df'i tek kapıdan geçirir; bozuk ve
 ### `zamanlama_core.py` (~290 satır) — 4 SAATLİK MOMENTUM FİLTRESİ (ŞU AN KAPALI)
 25 Ağu 2026'da eklendi. `veriler_4s/` deposundan 4S RSI + WaveTrend okuyup "tepeden alma freni" üretir. ⛔ **ÖLÇÜLDÜ, AYRIM ÇIKMADI** → `app.py` içinde `ZAMANLAMA_4S_ENABLED = False` ile susturuldu (1.692 sinyal × 3 vade; dengeli grup N=1455 üç vadede de ~0, diğerleri vadeye göre işaret değiştiriyor). Modül duruyor; ikinci rejimde `python _4s_filtre_backtest.py` koşup tablo tutarlılaşırsa bayrak açılır. İçindeki 4 koruma bayraktan bağımsız doğrudur: yarım bar reddi, 3 günlük bayat eşiği, fail-closed saatlik_kapi, `gunluk_kapi_gecti` (iki kademe üst basamağı). **Ne zaman dokun:** 4S eşikleri, bayrağı geri açma, günlük kapı ölçütü.
 
+### `magic_ribbon_core.py` — MAGIC RIBBON 4S BIST100 GÖZLEM MOTORU
+Kullanıcının paylaştığı Magic Ribbon Fast/Slow hizalanmasını aynı formülle backtest ve canlı Master Scan'de hesaplar. `veriler_4s/` içinden yalnız taze/kapanmış barları okur, `_bist100.json` ile evreni kesin olarak BIST100'e sınırlar; sonuç skora, teraziye ve AI prompt'una bağlanmaz. **Ne zaman dokun:** Magic Ribbon formülü veya BIST100 gözlem listesinin çalışma biçimi değişecekse.
+
 ### `pusula_engine.py` (~610 satır) — PİYASA PUSULASI: ANLATI + ÖLÇÜLMÜŞ KARNE
 24 Ağu 2026'da eklendi, **25 Ağu'da ÖLÇÜLDÜ** (`_pusula_backtest.py`, 3.985 sinyal). Fiyat kartı altındaki Piyasa Pusulası için 17 dallı arketip anlatısı üretir; `_synthesize_raw` durumu tespit eder, `synthesize_market_compass` sarmalayıcısı her arketipe **ölçülmüş karnesini** ekler (`ARKETIP_KARNE` sözlüğü → `note` sonuna yazılır, panelde "Ne anlama geliyor?" kutusunda görünür). Ölçüm 5 dalın TERS konuştuğunu gösterdi ("Taze Yükseliş" -3,20/isabet %27; 200 SMA çifti simetrik ters) → başlıklar durum tarifine, tahmin cümleleri gözlem diline çevrildi. Kazananlar: momentum run +10,38 · pullback +5,58. ⚠ TEK REJİM — rejim değişince backtest'i yeniden koş, SADECE `ARKETIP_KARNE`'yi güncelle. AI prompt bağlantısı YOK (ekran-only). **Ne zaman dokun:** arketip kuralları, karne sözlüğü, anlatı dili.
 
@@ -164,7 +167,7 @@ HER hisse HER gün ölçülür (tarama seçsin/seçmesin) → seçim yanlılığ
 - `MerdivenTarama.py` — 10 yıllık "merdiven vs testere" karakter analizi (araştırma).
 
 ### Backtest çıktı JSON'ları (script'ler yazar, app/panel okur)
-`golden_record.json` (emniyet referansı) · `backtest_results.json` · `genel_ozet_verdict_backtest.json` (Smart Money verdict karnesi) · `panel_verdict_backtest.json` · `rsi_kova_backtest.json` · `sert_gun_backtest.json` · `tavan_weights_onerilen.json`. **Rejim değişince** ilgili backtest yeniden koşulur.
+`golden_record.json` (emniyet referansı) · `backtest_results.json` · `genel_ozet_verdict_backtest.json` (Smart Money verdict karnesi) · `panel_verdict_backtest.json` · `rsi_kova_backtest.json` · `sert_gun_backtest.json` · `tavan_weights_onerilen.json` · `magic_ribbon_4s_backtest.json`. **Rejim değişince** ilgili backtest yeniden koşulur.
 
 ---
 
@@ -183,7 +186,7 @@ HER hisse HER gün ölçülür (tarama seçsin/seçmesin) → seçim yanlılığ
 
 - `patron.db` (SQLite) — Master Scan sonuçları: scan_signals + signal_returns + signal_results + analysis_log + goldmine_log + mkk_yabanci. Git'te DEĞİL (haftalık yedek: backup_patron_db.ps1).
 - `signals.db` — bot sinyalleri.
-- `veriler/*.parquet` — her hissenin günlük OHLCV cache'i (SYMBOL.IS_1d.parquet). `.index_components.json` = XU100 bileşen listesi cache.
+- `veriler/*.parquet` — her hissenin günlük OHLCV cache'i (SYMBOL.IS_1d.parquet). `veriler_4s/*.parquet` — Magic Ribbon ve 4S ölçümleri için 4 saatlik kasa. `_bist100.json` — Master Scan 4S gözlem evreni.
 - `email_leads.json` / `members.json` / `member_usage.json` / `usage_tracker.json` — üyelik/lead verisi.
 - `telegram_config.json` — bot token/chat id'leri.
 - `.streamlit/config.toml` — tema (koyu, primary #10b981).

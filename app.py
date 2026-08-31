@@ -111,6 +111,15 @@ except ImportError:
         return {"verdict": "STANDART", "verdict_badge": "", "verdict_color": "gray", "timing": {}}
     def gunluk_kapi_gecti(df_gunluk=None):
         return False
+
+try:
+    from magic_ribbon_core import scan_magic_ribbon_bist100
+    _MAGIC_RIBBON_OK = True
+except ImportError:
+    _MAGIC_RIBBON_OK = False
+    def scan_magic_ribbon_bist100():
+        return pd.DataFrame()
+
 # 6 Tem 2026 — BÖLME ADIM 6a: tek-hisse tarayıcı çekirdekleri scanners.py içinde
 from scanners import (process_single_accumulation, process_single_radar1, process_single_radar2,
                       calculate_guclu_donus_adaylari, calculate_prelaunch_bos, process_single_ict_setup)
@@ -15150,7 +15159,7 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
         my_bar = st.progress(0, text=progress_text)
         _ms_is_bist = "BIST" in str(_cat).upper()
         _ms_progress_steps = [
-            "index_health", "backfill", "mkk", "data", "hidden_accum", "radar2",
+            "index_health", "backfill", "mkk", "data", "magic_ribbon", "hidden_accum", "radar2",
             "harmonic", "rs_leaders", "golden", "vip_and_patterns", "cizgi_yapi", "minervini",
             "weak_pair", "radar1", "rsi_divergence", "strong_reversal", "tavan",
             *( ["flow_leaders"] if _ms_is_bist else [] ),
@@ -15233,6 +15242,19 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                 "XU100.IS", period="1y")
             _master_formasyon_snapshot = pd.DataFrame()
             _master_formasyon_ready = False
+
+            # ── 4S MAGIC RIBBON — yalnız BIST100, yalnız kapanmış/taze bar ──
+            # Gözlem listesi: skor, terazi, AI ve diğer taramalara bağlanmaz.
+            _scan_progress("magic_ribbon", "⏱ BIST100 4S yukarı hizalanma")
+            try:
+                st.session_state.magic_ribbon_4s_data = (
+                    scan_magic_ribbon_bist100()
+                    if _ms_is_bist and _MAGIC_RIBBON_OK
+                    else pd.DataFrame()
+                )
+            except Exception as _magic_ribbon_exc:
+                st.session_state.magic_ribbon_4s_data = pd.DataFrame()
+                log_error("master_scan_magic_ribbon_4s", _magic_ribbon_exc, _cat)
 
             # 1.5 VERİ SANİTY MONITOR (T1 — 8 Haz 2026)
             # 591ad72 doji bug'ı gibi sessiz veri zehirlenmelerini erken yakalar.
@@ -15684,6 +15706,7 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                 "erken_radar_data":         st.session_state.get('erken_radar_data'),
                 "formasyon_master_data":    st.session_state.get('formasyon_master_data'),
                 "cizgi_yapi_master_data":  st.session_state.get('cizgi_yapi_master_data'),
+                "magic_ribbon_4s_data":     st.session_state.get('magic_ribbon_4s_data'),
                 "toplu_terazi_data":         st.session_state.get('toplu_terazi_data'),
             }
             # Önce tüm snapshot'ı bir arada dene
@@ -21812,7 +21835,7 @@ def _render_left_col():
                         'harmonic_confluence_data','accum_data','minervini_data',
                         'golden_results','platin_results','tekli_altin_results','prelaunch_bos_data',
                         'golden_pattern_data','formasyon_master_data','toplu_terazi_data',
-                        'cizgi_yapi_master_data']:
+                        'cizgi_yapi_master_data','magic_ribbon_4s_data']:
                 if _k not in st.session_state: st.session_state[_k] = None
 
             # ── STARTUP CACHE RESTORE (piyasa dışı saatlerde otomatik yükle) ─────

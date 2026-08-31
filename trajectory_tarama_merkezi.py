@@ -1609,6 +1609,44 @@ def _render_live_karne(st: Any) -> None:
             st.warning("Örneklem henüz küçük. Bu ekran öğrenme sicilidir; kural değiştirme kanıtı değildir.")
 
 
+def _build_magic_ribbon_items(frame: pd.DataFrame | None) -> list[dict[str, Any]]:
+    """4S Magic Ribbon sonuçlarını Tarama Merkezi'nin ortak satır formatına çevirir."""
+    if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
+        return []
+    items: list[dict[str, Any]] = []
+    for _, row in frame.iterrows():
+        symbol = str(row.get("Sembol") or "").replace(".IS", "").upper()
+        if not symbol:
+            continue
+        status = str(row.get("Durum") or "HİZALANMA SÜRÜYOR")
+        try:
+            price_text = f"{float(row.get('Fiyat')):.2f}"
+        except (TypeError, ValueError):
+            price_text = "—"
+        try:
+            age_bars = int(row.get("TetikYaşı"))
+        except (TypeError, ValueError):
+            age_bars = 0
+        try:
+            up_bars = int(row.get("YukarıBar"))
+        except (TypeError, ValueError):
+            up_bars = 0
+        age_text = "son kapanmış bar" if age_bars == 0 else f"{age_bars} kapanmış 4S bar önce"
+        items.append({
+            "symbol": symbol,
+            "target": f"{symbol}.IS",
+            "price": price_text,
+            "icon": "⏱" if age_bars == 0 else "↗",
+            "label": "Yeni 4S yukarı hizalanma" if age_bars == 0 else "4S yukarı hizalanma sürüyor",
+            "detail": (
+                f"Fast ve Slow çizgileri yukarı eğimli · {up_bars} kapanmış 4S bar · "
+                f"son hizalanma {age_text}"
+            ),
+            "status": f"BIST100 filtresi · son kapanış {row.get('SonBar', '—')}",
+        })
+    return items
+
+
 def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_click: Any) -> None:
     """Streamlit render. Yeni hesap yapmaz; kapanış collector çıktısını şık sekmeli düzende gösterir."""
     import streamlit as st
@@ -1661,12 +1699,16 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         catalog,
         as_of=as_of,
     )
+    _magic_ribbon_df = session_getter("magic_ribbon_4s_data")
+    _magic_ribbon_rows = _build_magic_ribbon_items(_magic_ribbon_df)
+    _magic_ribbon_count = len(_magic_ribbon_rows)
     _summary_items = (
         ("🎯 T+3 Teyitli", counts[BUCKET_READY], "#22c55e"),
         ("⏳ T+1 & T+2 Onaylılar", counts[BUCKET_GROWING] + counts[BUCKET_WATCH], "#f59e0b"),
         ("🌱 Yeni Sinyal T+0", counts[BUCKET_NEW], "#38bdf8"),
         ("⚠️ Risk masası", counts[BUCKET_RISK], "#ef4444"),
         ("📉 Olası short", _short_count, "#fca5a5"),
+        ("⏱ 4S Yukarı Hizalanma", _magic_ribbon_count, "#f59e0b"),
         ("📐 Çizgi Yapısı", len(_cizgi_items), "#38bdf8"),
     )
     _summary_html = "".join(
@@ -1683,7 +1725,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         f"<div style='font-size:0.72rem;color:#e2e8f0;text-align:right;white-space:nowrap;'>📅 {html.escape(as_of)} kapanışı"
         "<div style='font-size:0.64rem;color:#64748b;margin-top:2px;'>Master Scan fotoğrafı</div></div>"
         "</div>"
-        f"<div style='display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:0 0 12px 0;'>"
+        f"<div style='display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin:0 0 12px 0;'>"
         f"{_summary_html}</div>",
         unsafe_allow_html=True,
     )
@@ -1738,16 +1780,17 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             st.session_state["_tm_scroll_top"] = True
             st.rerun(scope="app")
 
-    # 🗂️ KARAR YÜZEYİ — ürünce onaylı yedi sekme.
+    # 🗂️ KARAR YÜZEYİ — ürünce onaylı sekmeler.
     # Yaşam döngüsünün iki ara durumu aynı sekmede kalır; içeride ayrı masalara
     # bölünerek geniş ara havuzun işlem listesi gibi görünmesi engellenir.
-    tab_long, tab_confirm, tab_new, tab_risk, tab_catalog, tab_short, tab_cizgi = st.tabs([
+    tab_long, tab_confirm, tab_new, tab_risk, tab_catalog, tab_short, tab_magic, tab_cizgi = st.tabs([
         f"🎯 T+3 Teyitli ({counts[BUCKET_READY]} aday)",
         f"⏳ T+1 & T+2 Onaylılar ({counts[BUCKET_GROWING] + counts[BUCKET_WATCH]} aday)",
         f"🌱 Yeni Sinyal T+0 ({counts[BUCKET_NEW]})",
         f"⚠️ Risk Masası ({counts[BUCKET_RISK]})",
         f"📚 Katalog ({_catalog_count})",
         f"📉 Olası Short ({_short_count})",
+        f"⏱ 4S Yukarı ({_magic_ribbon_count})",
         f"📐 Çizgi Yapısı ({len(_cizgi_items)})",
     ])
 
@@ -1838,6 +1881,35 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         _render_short_warning(
             st, session_getter, on_click, as_of=as_of, show_empty=True
         )
+
+    with tab_magic:
+        st.markdown(
+            f"<div style='font-size:0.98rem;font-weight:900;color:#f59e0b;margin:2px 0 1px 0;'>"
+            f"⏱ 4S Yukarı Hizalanma · {_magic_ribbon_count} sonuç</div>"
+            "<div style='font-size:0.68rem;color:#64748b;margin:0 0 12px 2px;'>"
+            "Yalnız BIST100 içindeki hisselerde, kapanmış ve taze 4S barlarda Fast/Slow "
+            "çizgileri aynı anda yukarı eğimli olan gözlem adayları.</div>",
+            unsafe_allow_html=True,
+        )
+        if _magic_ribbon_df is None:
+            st.markdown(
+                "<div style='border:1px dashed #f59e0b55;border-radius:7px;padding:12px;"
+                "text-align:center;color:#94a3b8;font-size:0.75rem;'>Master Scan çalıştırın</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            render_standard_scan_list(
+                st,
+                _magic_ribbon_rows,
+                lambda item: (on_click(item.get("target") or item.get("symbol")), st.rerun(scope="app")),
+                key_prefix="magic_ribbon_4s",
+                priority_title="⏱ İLK BAKILACAK 5",
+                priority_note=(
+                    "Yeni hizalanmalar önce; bu ekran yön gözlemidir, bağımsız teyit veya işlem emri değildir."
+                ),
+                priority_color="#f59e0b",
+                empty_text="BIST100 içinde güncel, kapanmış 4S yukarı hizalanması bulunamadı.",
+            )
 
     with tab_cizgi:
         st.markdown(

@@ -41,12 +41,12 @@ formasyon_core.py formasyon_v2.py formasyon_v3.py cizgi_yapi.py cizgi_master.py 
 formasyon_v2_app.py sampiyonlar_ligi.py smr_core.py infografik_build.py fetcher.py finalize_volume.py
 data_policy.py bist_calendar.py master_scan_progress.py master_scan_giris_senaryolari.py
 trajectory_tarama_merkezi.py tarama_merkezi.py pusula_engine.py
-bist_data_store.py bist_exchange.py provider_traffic.py isyatirim_gateway.py
+bist_data_store.py bist_exchange.py provider_traffic.py isyatirim_gateway.py hacim_capraz.py
 kapanis_master_otomasyon.py veri_saglik_audit.py signal_policy.py deepening_policy.py
 radar_core.py zirve_taramalari.py stp_uyanis_core.py rsi_divergence_scanner.py
 compass_panel.py clean_chart_plotly.py infographic.py ekran_v2.py
 smr_tickers.py ticker_short_names.py market_cap_cache.py patron_db_guard.py
-kurumsal_takvim.py temettu_takvimi.py intraday_4s.py
+kurumsal_takvim.py temettu_takvimi.py intraday_4s.py magic_ribbon_core.py _bist100.json
 likidite_siralama.py tarama_karne.py gorev_bekcisi.py"
 
 GO=0; BOT=0; FORCE=0; ONLY=""
