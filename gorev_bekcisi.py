@@ -26,6 +26,7 @@ import os
 import pathlib
 import sys
 import json
+import sqlite3
 import urllib.request
 import urllib.parse
 from datetime import datetime, timezone, timedelta
@@ -291,6 +292,81 @@ def capraz_kontrol_denetle(day):
     return satir, arizalar
 
 
+# -- AKSAM MASTER SCAN NOBETI (1 Eyl 2026) -------------------------------
+# Sebep: 1 Eylul aksami 20:00 Master Scan'i HIC baslamadi ve kimse fark etmedi.
+# Ogleyin elle kosulan bir test "bugun tarandi" kaydi birakmisti; aksam
+# otomasyonu onu gorup sessizce vazgecti. Gorunmez tarayici acildi, sayfa
+# cizildi, saatlerce hicbir sey olmadi. Arizanin kendisi kadar kotu olan sey
+# SESSIZ olmasiydi -- ayni sinif hata icin daha once tarama karnesi ve hacim
+# capraz nobetleri kurulmustu (28 ve 31 Agu); bu ucuncusu.
+#
+# Kural tarafi ayrica duzeltildi: kapanis_master_otomasyon.is_scan_completed_today
+# artik yalniz AKSAM PENCERESINDE yazilan kaydi sayiyor. Ama duzeltme yetmez --
+# taramanin kosmadigini SOYLEYEN bir goz de olmali. Baska bir sebep (kilit,
+# tarayici cokusu, bellek, elektrik) yine susturursa bu kapi konusur.
+#
+# Olcut: patron.db > scan_runs icinde BUGUN, aksam esiginden SONRA yazilmis
+# satir. Tam tur ~57 satir uretir; esik dusuk tutuldu cunku bu kapinin sorusu
+# "iyi mi tarandi" degil, "hic tarandi mi". Kalite sorusu karne nobetinde.
+MASTER_SCAN_DEADLINE_SAAT = (22, 30)   # 19:55 tetik + soguk turda ~40 dk pay
+MASTER_SCAN_MIN_TARAMA = 10            # tam tur ~57; 10 = "kosmus" kaniti
+
+
+def _aksam_esigi():
+    """Aksam penceresinin baslangic saati; tek kaynak otomasyon modulu."""
+    try:
+        if BASE not in sys.path:
+            sys.path.insert(0, BASE)
+        from kapanis_master_otomasyon import CHECK_HOUR
+        return int(CHECK_HOUR)
+    except Exception:
+        return 20
+
+
+def master_scan_denetle(day):
+    """(ozet_satirlari, yeni_ariza_metinleri). Gunde 1 uyarir."""
+    if not _islem_gunu():
+        return [], []
+    esik = _aksam_esigi()
+    db = os.path.join(BASE, "patron.db")
+    if not os.path.exists(db):
+        return ["⚠️ Aksam Master Scan denetlenemedi (patron.db yok)"], []
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
+        try:
+            tarama, sinyal = con.execute(
+                "SELECT COUNT(*), COALESCE(SUM(row_count), 0) FROM scan_runs "
+                "WHERE scan_date = ? AND recorded_at >= ?",
+                (str(today), "%s %02d:00:00" % (today, esik)),
+            ).fetchone()
+        finally:
+            con.close()
+    except Exception as e:
+        return ["⚠️ Aksam Master Scan denetlenemedi (%s)"
+                % type(e).__name__], []
+
+    if tarama >= MASTER_SCAN_MIN_TARAMA:
+        return ["✅ 💎 Aksam Master Scan (%d tarama, %d sinyal)"
+                % (tarama, sinyal)], []
+
+    satir = ["🔴 💎 Aksam Master Scan: %d tarama yazildi "
+             "(esik %d) -- %02d:00 sonrasi"
+             % (tarama, MASTER_SCAN_MIN_TARAMA, esik)]
+    arizalar = []
+    if (now >= slot(*MASTER_SCAN_DEADLINE_SAAT)
+            and "master_scan" not in day["alerted"]):
+        arizalar.append(
+            "💎 Aksam MASTER SCAN KOSMADI -> %02d:00 sonrasi yalniz %d "
+            "tarama yazildi" % (esik, tarama)
+            + chr(10) + "Gunun taramasi yok: panel, bulten ve karne bugunu "
+            "gormeden calisir."
+            + chr(10) + "Bak: logs/kapanis_master_scan_completion.json "
+            "(gun ici kayit engelliyor olabilir)"
+        )
+        day["alerted"].append("master_scan")
+    return satir, arizalar
+
+
 def load_state():
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
@@ -331,8 +407,9 @@ def main():
     veri_satirlari, veri_arizalari = veri_kapilarini_denetle(day)
     karne_satirlari, karne_arizalari = karne_saglik_denetle(day)
     capraz_satirlari, capraz_arizalari = capraz_kontrol_denetle(day)
-    veri_satirlari += capraz_satirlari
-    veri_arizalari += karne_arizalari + capraz_arizalari
+    ms_satirlari, ms_arizalari = master_scan_denetle(day)
+    veri_satirlari += karne_satirlari + capraz_satirlari + ms_satirlari
+    veri_arizalari += karne_arizalari + capraz_arizalari + ms_arizalari
 
     # ── VERİ ARIZASI uyarısı (kapı başına günde 1) ──
     if veri_arizalari:

@@ -68,13 +68,46 @@ def _read_completion_record() -> dict[str, Any]:
 
 
 def is_scan_completed_today(now: datetime | None = None) -> bool:
-    """Tam veya kısmi biten tarama, aynı gün yeniden tüm taramayı açmasın."""
+    """Akşam penceresinde biten tarama, aynı gece ikinci turu açmasın.
+
+    ⚠ 1 Eyl 2026 — GÜN İÇİ TARAMA AKŞAMKİNİ SUSTURUYORDU. Kural yalnız
+    "kayıt bugünden mi" diye soruyordu. Oysa gün ortasında elle koşulan her
+    tur (test, kontrol, merak) da bu kaydı BUGÜNÜN tarihiyle yazıyor. Akşam
+    20:00 otomasyonu onu görüp "bugün zaten tarandı" diyor ve taramayı HİÇ
+    BAŞLATMIYORDU — üstelik sessizce: görünmez tarayıcı açılıyor, sayfa
+    çiziliyor, hiçbir şey olmuyor, kimse fark etmiyor. 1 Eylül akşamı tam
+    bu yaşandı: 15:00'teki bir test 20:00 turunu öldürdü.
+
+    Engelin dayanağı da yoktu: ``load_scan_result`` kapanıştan (18:20) önce
+    hesaplanmış hiçbir sonucu zaten kabul etmiyor. Yani kural, kullanılmayan
+    bir sonuç uğruna günün gerçek turunu iptal ediyordu.
+
+    Artık kayıt, AKŞAM PENCERESİ (``CHECK_HOUR``) açıldıktan sonra yazılmışsa
+    geçerli sayılır. Görünmez oturumu yöneten ``master_scan_headless_session.ps1``
+    aynı kontrolü 28 Ağu 2026'dan beri yapıyordu; kural buraya konmamıştı.
+    ``completed_at`` yoksa veya okunamazsa eski davranışa düşülür — o taraf
+    temkinli: mükerrer tarama açmaktansa açmamayı seçer.
+    """
     current = _istanbul_now(now)
     record = _read_completion_record()
-    return bool(
-        record.get("status") in {"completed", "partial"}
-        and record.get("day") == current.strftime("%Y-%m-%d")
-    )
+    if record.get("status") not in {"completed", "partial"}:
+        return False
+    if record.get("day") != current.strftime("%Y-%m-%d"):
+        return False
+    stamp = record.get("completed_at")
+    if not stamp:
+        return True
+    try:
+        written = datetime.fromisoformat(str(stamp))
+    except (TypeError, ValueError):
+        return True
+    if written.tzinfo is None:
+        written = TZ_ISTANBUL.localize(written)
+    else:
+        written = written.astimezone(TZ_ISTANBUL)
+    window_open = current.replace(
+        hour=CHECK_HOUR, minute=0, second=0, microsecond=0)
+    return written >= window_open
 
 
 def claim_scan_start(now: datetime | None = None) -> bool:
