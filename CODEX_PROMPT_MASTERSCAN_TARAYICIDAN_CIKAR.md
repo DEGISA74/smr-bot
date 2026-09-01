@@ -38,6 +38,13 @@ kaldırıyor.
   C) `master_scan_kiyas.py` — iki yolun sonucunu tip ve sembol düzeyinde
      karşılaştıran araç.
 
+Bir de küçük, bağımsız bir ek iş var: **C-EK** — "Magic Ribbon -4S" sekmesi
+boş göründüğünde nedenini söylesin. Farklı dosya, çakışma yok, kısa. İstersen
+ısınmak için önce onu yap. ⚠ Orada bir tuzak var: sekme boş çünkü tarama
+çalışmıyor DEĞİL; ölçüm kanıtı tamamlanmadığı için aday listesi bilerek ekrana
+çıkarılmıyor. Bayrağı AÇMA — sadece ekranın bunu söylemesini sağla. Detayı iş
+emrinin C-EK bölümünde.
+
 ## SINIRLAR (iş emrinde uzun hâli var)
 
 - Aşama D (zamanlayıcıyı yeni yola çevirmek) BU GÖREVDE YOK. Görünmez tarayıcı
@@ -69,6 +76,8 @@ Claude bu işi denetleyecek. Bitirdiğinde şunları ver:
 - Ekrandan elle Master Scan koştuğunda eskisi gibi çalıştığının kanıtı
 - `master_scan_kos.py --kuru` log çıktısı
 - Çökme testi: koşucuyu ortadan öldürdüğünde çıkış kodunun 0 DÖNMEDİĞİ
+- C-EK yaptıysan: bayrak False iken sekmenin ne yazdığı, True iken
+  normal tablonun çıktığı
 - Dokunduğun her dosyanın listesi + neden dokunduğun
 
 Emin olmadığın bir yerde tahmin etme, sor. Bu projede en pahalı hata
