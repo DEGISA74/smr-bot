@@ -1117,8 +1117,33 @@ def get_benchmark_data(category):
         return None
 
 
+# ── AKŞAM TAZELİK KOVASI (31 Ağu 2026) ──────────────────────────────────────
+# Kapanış oturması 18:36-20:58 arasına yayılıyor (26 Ağu ölçümü, 24 iş günü).
+# ttl statik olduğu için tazelik ANAHTARA gömülür: kova değişince cache ıskalar.
+#
+# Pencere 19:55'te KAPANIR — Master Scan tam o dakikada başlıyor ve veriye 19 kez
+# uğruyor; bir tam evren okuması 9,1 sn. Kova tarama sırasında dönseydi hem ~3 dk
+# eklerdi hem de tarayıcıların bir kısmı eski, bir kısmı yeni kapanışı görürdü
+# (sinyaller tutarsız fotoğraftan yazılırdı). Pencere kapalıyken eski 15 dk sürer.
+_KOVA_AKSAM_SN = 300        # 18:15-19:55 hafta içi
+_KOVA_NORMAL_SN = 900       # diğer tüm saatler — eski davranış
+_KOVA_BASLANGIC_DK = 18 * 60 + 15
+_KOVA_BITIS_DK = 19 * 60 + 55
+
+
+def _cache_bucket() -> int:
+    """Anahtara gömülen tazelik damgası; akşam penceresinde 5 dk'da bir değişir."""
+    now = datetime.now()
+    hm = now.hour * 60 + now.minute
+    pencere = (_KOVA_AKSAM_SN
+               if (now.weekday() < 5 and _KOVA_BASLANGIC_DK <= hm < _KOVA_BITIS_DK)
+               else _KOVA_NORMAL_SN)
+    return int(now.timestamp() // pencere)
+
+
 @st.cache_data(ttl=900, show_spinner=False)
-def _get_batch_data_cached_versioned(asset_list, period="1y", _bist_version="legacy"):
+def _get_batch_data_cached_versioned(asset_list, period="1y", _bist_version="legacy",
+                                     cache_bucket=0):
     """
     GATEKEEPER DESTEKLİ TOPLU TARAMA MOTORU - MULTIINDEX HATASI GİDERİLDİ
     """
@@ -1348,7 +1373,8 @@ def _get_batch_data_cached_versioned(asset_list, period="1y", _bist_version="leg
 def get_batch_data_cached(asset_list, period="1y"):
     """Aktif BIST sürümünü cache anahtarına sabitleyen hızlı toplu okuyucu."""
     return _get_batch_data_cached_versioned(
-        asset_list, period=period, _bist_version=_bist_active_version_id())
+        asset_list, period=period, _bist_version=_bist_active_version_id(),
+        cache_bucket=_cache_bucket())
 
 
 # Mevcut app.py çağrılarının `.clear()` sözleşmesini koru.
