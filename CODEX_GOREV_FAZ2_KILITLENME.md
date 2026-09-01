@@ -97,17 +97,44 @@ burada ölçtüğün şey sinyal değil, faz 2'nin bitip bitmediği.
 
 ---
 
-## 2. ⚠ Uyarı bir kez sorulup susuyor
+## 2. 🔴 Uyarı bir kez sorulup susuyor — 1. MADDE SONRASI ÖNEM KAZANDI
 
-"Taramayı sürdür" dendikten sonra `_ms_faz2_warning_ack` kalıcı `True` oluyor;
-sonraki bütün kesintiler **sessiz** geçiyor. 1. madde çözülünce zararı büyük
-ölçüde kalkar, ama davranış yine de düşünülmeli:
+**Güncelleme (1 Eyl, 1. madde bittikten sonra yazıldı):** Bu maddeyi önce
+"küçük iş" diye yazmıştım. 1. madde çözülünce **asıl risk buraya taşındı.**
 
-- Kesinti sayacı tutulsun mu? (ör. 3. kesintide "tarama ilerlemiyor" uyarısı)
-- Ya da `ack` her kesintide değil, **kullanıcı başına bir kez** mi olmalı?
+Artık faz 2'yi kesen tek şey **gerçek kullanıcı tıklaması** (zamanlayıcılar
+susturuldu). Ama `_ms_faz2_warning_ack` bir kez `True` olunca kalıcı:
 
-Karar senin; ama **sessizce ilerlemeyen bir tarama** bu projede en sevilmeyen
-hata türü. Ne seçersen kodda gerekçesini yaz.
+```
+1. tıklama  → pencere çıkar, "Taramayı sürdür" → ack = True
+2. tıklama  → PENCERE YOK, betik sessizce kesilir, adım SIFIRDAN başlar
+3. tıklama  → yine sessiz, yine sıfırdan
+...
+```
+
+`golden` 313 saniye sürüyor. Kullanıcı bu süre içinde birkaç kez tıklarsa
+(hisse değiştirmek, sekme açmak, favori eklemek — hepsi rerun tetikler)
+**adım hiç bitmez.** 1. maddedeki kilitlenmenin aynısı, bu kez zamanlayıcı
+değil insan eliyle. Ve yine **sessiz** — kullanıcı taramanın ilerlemediğini
+görmüyor.
+
+### Yapılacak (öneri, karar senin)
+
+En az şu ikisinden biri:
+
+- **Kesinti sayacı:** her kesintide say; 2. veya 3. kesintide `ack`'i sıfırla
+  ve pencereyi tekrar göster — bu kez "tarama ilerlemiyor, N kez kesildi"
+  uyarısıyla. Kullanıcı ya vazgeçer ya bırakır.
+- **Adım-bazlı ack:** `ack`'i faz 2'nin tamamı için değil, **o anki adım**
+  için tut. Adım değişince sıfırlansın.
+
+Ayrıca düşün: kesinti anında **tamamlanmış adımlar korunuyor** (liste tek tek
+düşüyor), yalnız o anki adım baştan başlıyor. Yani zarar bir adımla sınırlı —
+ama o adım `golden` ise 313 saniye kaybediliyor.
+
+**Sessizce ilerlemeyen bir tarama** bu projede en sevilmeyen hata türü
+(bkz. 26-31 Ağu hacim arızası: sistem 6 gün ALERT yazdı, kimse görmedi).
+Ne seçersen kodda gerekçesini yaz.
 
 ---
 
