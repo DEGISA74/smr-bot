@@ -18,6 +18,7 @@ from __future__ import annotations
 from datetime import datetime, time as dtime
 import os
 from pathlib import Path
+import threading
 import time
 from typing import Iterable
 
@@ -45,6 +46,16 @@ FIRST_LABEL = "09:55–14:00"
 SECOND_LABEL = "14:00–18:10"
 EXPECTED_BARS_PER_DAY = 99
 MIN_REQUEST_GAP_SECONDS = 3.2
+
+# 1 Eyl 2026 — SEMBOL BAŞINA SÜRE SINIRI. borsapy.download bir zaman aşımı
+# parametresi almıyor; TradingView akışı tek sembolde takılırsa süresiz bekler.
+# 18:20 turunda tam bu oldu: 77 sembol yenilendikten sonra SARKY'de kilitlendi,
+# 26 dakika hiçbir şey yazılmadı ve görev zamanlayıcısı süreci 30. dakikada
+# öldürdü. Öldürülen süreç sıfır dönmediği için sarmalayıcı VPS aktarımına hiç
+# gelmedi — yenilenmiş 77 sembol de sunucuya gidemedi. Artık takılan sembol
+# süresi dolunca "düştü" sayılır ve tur devam eder; kısmi başarı kuralı
+# (%90 eşiği) zaten bu durumu karşılıyor.
+DOWNLOAD_TIMEOUT_SECONDS = float(os.environ.get("MAGIC_RIBBON_5M_TIMEOUT", "45"))
 
 
 class MagicRibbonSessionDataError(RuntimeError):
@@ -194,11 +205,33 @@ def _download_5m(symbol: str, period: str) -> pd.DataFrame:
         acquire_slot("borsapy", max_wait=180.0, priority="probe")
     except (ProviderCooldown, TimeoutError) as exc:
         raise MagicRibbonSessionDataError("TradingView trafik sigortası beklemede") from exc
-    try:
-        result = download(symbol, period=period, interval="5m", progress=False)
-    except (ConnectionError, OSError, TimeoutError, ValueError, RuntimeError) as exc:
+    # Nöbetçi iş parçacığı: takılan indirme ana turu kilitleyemesin.
+    # Artık iş parçacığı öldürülemez, ama daemon olduğu için süreç bitince
+    # kendiliğinden gider ve tur bu sembolü "düştü" yazıp yoluna devam eder.
+    kutu: dict[str, object] = {}
+
+    def _indir() -> None:
+        try:
+            kutu["veri"] = download(symbol, period=period, interval="5m", progress=False)
+        except BaseException as hata:  # noqa: BLE001 - is parcacigindan disari tasimak icin
+            kutu["hata"] = hata
+
+    nobetci = threading.Thread(target=_indir, name=f"mr5m-{symbol}", daemon=True)
+    nobetci.start()
+    nobetci.join(DOWNLOAD_TIMEOUT_SECONDS)
+    if nobetci.is_alive():
+        record_failure("borsapy", error=f"5m zaman asimi: {symbol}", kind="timeout")
+        raise MagicRibbonSessionDataError(
+            f"TradingView 5 dakika isteği {DOWNLOAD_TIMEOUT_SECONDS:.0f} sn içinde yanıtlamadı: {symbol}"
+        )
+    exc = kutu.get("hata")
+    if exc is not None:
         record_failure("borsapy", error=str(exc), kind="connection")
         raise MagicRibbonSessionDataError(f"TradingView 5 dakika isteği başarısız: {symbol}") from exc
+    result = kutu.get("veri")
+    if result is None:
+        record_failure("borsapy", error=f"bos 5m cevap: {symbol}", kind="empty")
+        raise MagicRibbonSessionDataError(f"TradingView 5 dakika verisi boş: {symbol}")
     result = _normalise_5m(result)
     if result.empty:
         record_failure("borsapy", error=f"bos 5m cevap: {symbol}", kind="empty")

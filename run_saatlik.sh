@@ -70,7 +70,7 @@ export PYTHONIOENCODING=utf-8
 _4S_YENI=$(find veriler_4s -name '*_4h.parquet' -newermt '-100 minutes' 2>/dev/null)
 if [ -n "$_4S_YENI" ]; then
     _4S_ADET=$(echo "$_4S_YENI" | wc -l)
-    if echo "$_4S_YENI" | tar -czf - -T - 2>/dev/null \n         | ssh -o ConnectTimeout=20 -o BatchMode=yes wm11tr@34.153.19.220 \n               "mkdir -p ~/smr/veriler_4s && tar -xzf - -C ~/smr" >> "$LOG" 2>&1; then
+    if echo "$_4S_YENI" | tar -czf - -T - 2>/dev/null | ssh -o ConnectTimeout=20 -o BatchMode=yes wm11tr@34.153.19.220 "mkdir -p ~/smr/veriler_4s && tar -xzf - -C ~/smr" >> "$LOG" 2>&1; then
         echo "$(date '+%F %T') 4S -> VPS: $_4S_ADET dosya gonderildi" >> "$LOG"
     else
         echo "$(date '+%F %T') 4S -> VPS itme BASARISIZ (tur etkilenmedi)" >> "$LOG"
