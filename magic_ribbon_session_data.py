@@ -300,3 +300,101 @@ def session_close_timestamp(timestamp: object) -> pd.Timestamp | None:
         return None
     end = dtime(18, 10) if stamp.time() >= SECOND_START else dtime(14, 0)
     return stamp.normalize() + pd.Timedelta(hours=end.hour, minutes=end.minute)
+
+
+# ── SEANS SÜREKLİLİĞİ (1 Eyl 2026) ────────────────────────────────────────────
+# Bozuk günü tamamen reddetme kuralı veriyi temiz tutuyor ama arkasında bir
+# tuzak bırakıyordu: geriye kalan mumlar hesapta YAN YANA sayılıyordu. Araya bir
+# hafta girmiş iki mum arasındaki "eğim" gerçek eğim değildir; "10 mum sonra"
+# dediğimiz vade de delikli hissede 5 iş gününü aşar. Aşağıdaki yardımcılar
+# deliği görünür kılar: hangi mumun bir öncekiyle GERÇEKTEN komşu olduğunu ve
+# bir sembolün penceresinde kaç işlem gününün eksik olduğunu söyler.
+
+def _previous_trading_day(day: object, limit: int = 12) -> object | None:
+    """Verilen günden önceki en yakın BIST işlem gününü döner."""
+    current = pd.Timestamp(day).date()
+    for _ in range(limit):
+        current = current - pd.Timedelta(days=1)
+        if is_trading_day(current):
+            return current
+    return None
+
+
+def contiguous_prev_mask(frame: pd.DataFrame) -> pd.Series:
+    """Her mum için: bir önceki mum gerçekten bir önceki seans mı?
+
+    Sabah mumunun komşusu bir önceki işlem gününün öğleden sonra mumudur;
+    öğleden sonra mumunun komşusu aynı günün sabah mumudur. İlk mum daima
+    False (öncesi yok).
+    """
+    if frame is None or frame.empty:
+        return pd.Series(dtype=bool)
+    index = _as_istanbul_index(frame.index)
+    flags = [False] * len(index)
+    for position in range(1, len(index)):
+        current, previous = index[position], index[position - 1]
+        if current.time() >= SECOND_START:
+            flags[position] = (
+                previous.date() == current.date() and previous.time() < SECOND_START
+            )
+        else:
+            expected_day = _previous_trading_day(current.date())
+            flags[position] = (
+                expected_day is not None
+                and previous.date() == expected_day
+                and previous.time() >= SECOND_START
+            )
+    return pd.Series(flags, index=index)
+
+
+def session_block_ids(frame: pd.DataFrame) -> pd.Series:
+    """Kesintisiz mum bloklarını numaralar; delikte numara artar.
+
+    Aynı numaraya sahip mumlar aralarında delik OLMADAN birbirini izler.
+    """
+    mask = contiguous_prev_mask(frame)
+    if mask.empty:
+        return pd.Series(dtype=int)
+    return (~mask).cumsum()
+
+
+def session_gap_report(frame: pd.DataFrame) -> dict[str, object]:
+    """Bir sembolün seans penceresindeki delikleri sayar."""
+    bos = {
+        "gun": 0, "beklenen_gun": 0, "eksik_gun": 0, "kapsama": 0.0,
+        "en_uzun_bosluk": 0, "eksik_gunler": [], "son_delik_uzakligi": None,
+    }
+    if frame is None or frame.empty:
+        return bos
+    index = _as_istanbul_index(frame.index)
+    days = sorted({stamp.date() for stamp in index})
+    if not days:
+        return bos
+    expected = [
+        stamp.date()
+        for stamp in pd.date_range(days[0], days[-1], freq="D")
+        if is_trading_day(stamp.date())
+    ]
+    present = set(days)
+    missing = [day for day in expected if day not in present]
+
+    longest = run = 0
+    for day in expected:
+        run = run + 1 if day in missing else 0
+        longest = max(longest, run)
+
+    son_uzaklik = None
+    if missing:
+        # Son delikten bugüne kaç işlem günü geçti (taze delik daha zararlı).
+        son_delik = max(missing)
+        son_uzaklik = sum(1 for day in expected if day > son_delik and day in present)
+
+    return {
+        "gun": len(days),
+        "beklenen_gun": len(expected),
+        "eksik_gun": len(missing),
+        "kapsama": round(len(days) / len(expected), 4) if expected else 0.0,
+        "en_uzun_bosluk": longest,
+        "eksik_gunler": [str(day) for day in missing],
+        "son_delik_uzakligi": son_uzaklik,
+    }

@@ -137,9 +137,19 @@ def init_db():
         ciro        REAL,
         universe    TEXT,
         engine      TEXT,
+        kapsama     REAL,
+        eksik_gun   INTEGER,
         UNIQUE(scan_date, symbol)
     )''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_magic_ribbon_session_sym ON magic_ribbon_session_log(symbol, scan_date)')
+    # 1 Eyl 2026 — VERİ TAMLIĞI İLERİ TESTLE BİRLİKTE SAKLANIR. Bozuk günler
+    # reddedildiği için her sembolün seans serisinde delik var (ölçümde kapsama
+    # %69-98 arası çıktı). Hükmü hangi tamlıktaki seriyle verdiğimizi sonradan
+    # sorgulayamazsak, "delikli hisse daha mı kötü tutuyor" sorusu cevapsız kalır.
+    _mr_session_cols = {row[1] for row in c.execute('PRAGMA table_info(magic_ribbon_session_log)').fetchall()}
+    for _col, _tip in (('kapsama', 'REAL'), ('eksik_gun', 'INTEGER')):
+        if _col not in _mr_session_cols:
+            c.execute(f'ALTER TABLE magic_ribbon_session_log ADD COLUMN {_col} {_tip}')
     # 19 Haz 2026 Faz 3 — ANALİZ LOG: hisse analiz edilince birleşik verdict snapshot (kanıt+risk).
     # Sonra forward getiriyle "yüksek kanıt-skorlu + düşük riskli analizler tuttu mu" ölçülür (ürün isabeti).
     c.execute('''CREATE TABLE IF NOT EXISTS analysis_log (

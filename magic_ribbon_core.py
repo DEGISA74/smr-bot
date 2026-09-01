@@ -17,7 +17,9 @@ import pandas as pd
 
 from magic_ribbon_session_data import (
     get_magic_ribbon_session_data,
+    session_block_ids,
     session_close_timestamp,
+    session_gap_report,
     session_label,
 )
 
@@ -25,9 +27,20 @@ from magic_ribbon_session_data import (
 ROOT = Path(__file__).resolve().parent
 BIST100_PATH = ROOT / "_bist100.json"
 MIN_BARS = 60
+# 1 Eyl 2026 — DELİK KAPISI. Bozuk gün reddedilince geriye kalan mumlar hesapta
+# yan yana sayılıyordu; araya bir hafta girmiş iki mum arasındaki "eğim" gerçek
+# eğim değildir. Şeridi besleyen mum sayısı: CoraWave(10,3) ≈ 12 bar,
+# LazyLine(15) ≈ 13 bar, eğim için +1. Bu yüzden BUGÜNKÜ okumanın dayandığı son
+# 20 mum tek bir kesintisiz blokta olmalı; olmazsa hisse aday listesine girmez.
+# Sayı sezgiyle değil göstergenin kendi geriye bakışından türetildi.
+RIBBON_LOOKBACK_BARS = 20
 ENGINE_VERSION = "magic-ribbon-bist-session-v1"
 # 31 Ağu 2026 ilk ölçüm: 49 tam seans / 100 BIST100 / 578 sinyal.
 # Yaklaşık T+5 alfa -%0,280, T+10 -%0,077, T+20 +%0,024 (gürültü).
+# 1 Eyl 2026 — ölçüm delik-farkında yapılınca üç vadede de artıya döndü
+# (+%0,273 / +%0,789 / +%1,867). BU KANIT DEĞİL: filtre tabanı da düzeltiyor ve
+# Temmuz'un yalnız %34,6'sını bırakıyor (takvim yanlılığı); alfanın t değeri
+# 1,33 ve bu örtüşen pencereler yok sayıldığı için iyimser bir üst sınır.
 # Ayrım kanıtı yokken aday listesi ekrana çıkmaz; ham sinyaller ileri test için
 # kaydedilmeye devam eder. İkinci rejimde yeniden ölçülmeden True yapılmayacak.
 MAGIC_RIBBON_BIST_SESSION_RENDER_ENABLED = False
@@ -124,6 +137,7 @@ def scan_magic_ribbon_bist100() -> pd.DataFrame:
     symbols = sorted(load_bist100_symbols())
     rows: list[dict[str, object]] = []
     skipped = 0
+    gapped = 0
 
     for symbol in symbols:
         df = get_magic_ribbon_session_data(symbol)
@@ -136,6 +150,16 @@ def scan_magic_ribbon_bist100() -> pd.DataFrame:
             if len(valid) < 2:
                 skipped += 1
                 continue
+
+            # DELİK KAPISI — bugünkü okumayı besleyen mumlar kesintisiz mi?
+            blocks = session_block_ids(enriched)
+            if len(blocks) < RIBBON_LOOKBACK_BARS or (
+                blocks.iloc[-1] != blocks.iloc[-RIBBON_LOOKBACK_BARS]
+            ):
+                gapped += 1
+                continue
+            gap = session_gap_report(enriched)
+
             last = enriched.iloc[-1]
             if not bool(last.get("ribbon_up", False)):
                 continue
@@ -171,6 +195,10 @@ def scan_magic_ribbon_bist100() -> pd.DataFrame:
                 "FastLine": float(last["fast_line"]),
                 "SlowLine": float(last["slow_line"]),
                 "MedianTurnover": turnover,
+                # Veri kalitesi ileri testle birlikte saklanır: hükmü hangi
+                # tamlıktaki seriyle verdiğimizi sonradan sorgulayabilelim.
+                "Kapsama": float(gap["kapsama"]),
+                "EksikGun": int(gap["eksik_gun"]),
             })
         except (KeyError, TypeError, ValueError, IndexError):
             skipped += 1
@@ -190,7 +218,9 @@ def scan_magic_ribbon_bist100() -> pd.DataFrame:
         "data_count": len(result) + skipped,
         "candidate_count": len(result),
         "skipped_count": skipped,
+        "gapped_count": gapped,
         "closed_bars_only": True,
+        "contiguous_lookback_bars": RIBBON_LOOKBACK_BARS,
     })
     return result
 
@@ -230,7 +260,7 @@ def kaydet(result: pd.DataFrame | None, scan_date: str | None = None) -> int:
             gun, str(row.get("VeriKapanis") or ""), str(row.get("SonSeans") or ""), sembol, _f(row.get("Fiyat")),
             str(row.get("Durum") or ""), _i(row.get("TetikYaşı")), _i(row.get("YukarıBar")),
             _f(row.get("FastLine")), _f(row.get("SlowLine")), _f(row.get("MedianTurnover")),
-            evren, ENGINE_VERSION,
+            evren, ENGINE_VERSION, _f(row.get("Kapsama")), _i(row.get("EksikGun")),
         ))
     if not satirlar:
         return 0
@@ -241,8 +271,8 @@ def kaydet(result: pd.DataFrame | None, scan_date: str | None = None) -> int:
             cur = con.executemany(
                 "INSERT OR IGNORE INTO magic_ribbon_session_log "
                 "(scan_date, bar_time, seans, symbol, price, durum, tetik_yasi, yukari_bar, "
-                " fast_line, slow_line, ciro, universe, engine) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", satirlar)
+                " fast_line, slow_line, ciro, universe, engine, kapsama, eksik_gun) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", satirlar)
             con.commit()
             return int(cur.rowcount or 0)
         finally:

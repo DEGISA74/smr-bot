@@ -43,6 +43,56 @@ ayrı deftere kaydedilir ve ileri test devam eder, ancak aday listesi ekrana
 açılmaz. İkinci farklı piyasa rejiminde, daha uzun geçmişle üç vadede tutarlı
 pozitif ayrım oluşmadan bayrak açılmaz.
 
+## Denetim — 1 Eylül 2026 (Claude)
+
+Üç bulgu; ilk ikisi düzeltildi, üçüncüsü ölçümün kendisini şüpheli çıkardı.
+
+**1. İleri test defteri boştu.** Değişiklikten sonra hiç Master Scan koşmadığı
+için `magic_ribbon_session_log` ve `scan_signals` sıfır satırdı; VPS'te tablo
+henüz oluşmamıştı bile. Ekranı kapalı tutmanın tek gerekçesi "kayıt birikiyor"
+olduğu hâlde kayıt birikmiyordu. Defter 1 Eylül'de başlatıldı (Master Scan
+çalıştırılmadan, yalnız Magic Ribbon yolu — gün içi tur akşamki 19:55
+otomasyonunu iptal ettiği için, bkz. Master Scan otomasyon tuzağı).
+
+**2. Tek sembol tüm aktarımı öldürüyordu.** Yenileyici 100 sembolden biri
+düşünce hata dönüyor, sarmalayıcı da yalnız tam başarıda VPS'e gönderiyordu →
+lokal kasa ilerlerken sunucu sessizce geride kalıyordu. Ölçüt artık **başarı
+oranı %90**; altında sistemik arıza sayılıp aktarım durur.
+
+**3. Her sembolün serisinde delik var — ve ölçüm bu deliğe karşı kırılgan.**
+Bozuk günü reddetme kuralı doğru çalışıyor ama arkasında tuzak bırakıyordu:
+kalan mumlar hesapta **yan yana** sayılıyordu. 100 sembolün 100'ünde eksik
+işlem günü var; kapsama medyanı **%94,6**, en kötü BSOKE **%69,2** (54 günün
+16'sı yok). Delikli seride "eğim" gerçek eğim değil, "10 mum sonra" da 5 iş
+günü değil.
+
+Ölçüm delik-farkında hale getirilip iki kova üretildi (HAM / KESİNTİSİZ):
+
+| Vade | HAM alfa | KESİNTİSİZ alfa | Kesintisiz N |
+|---|---:|---:|---:|
+| T+5 | -%0,280 | +%0,273 | 407 |
+| T+10 | -%0,077 | +%0,789 | 227 |
+| T+20 | +%0,024 | +%1,867 | 13 |
+
+**Bu iyi haber DEĞİL.** Filtre sadece sinyali değil TABANI da düzeltiyor
+(T+10 tabanı -%0,343 → +%0,843) ve giriş aylarının dağılımı bozuluyor:
+Haziran'ın %65'i, Ağustos'un %64,5'i kalırken **Temmuz'un yalnız %34,6'sı**
+kalıyor. Yani filtre "temiz sinyal" değil ağırlıkla **kötü ayı** eliyor —
+takvim yanlılığı. Üstelik kesintisiz alfanın t değeri **1,33**, üstelik bu
+örtüşen pencereler yok sayıldığı için **iyimser bir üst sınır**; gerçek değer
+daha küçük. Ham kovada t = -0,14.
+
+**Hüküm: iki okuma da kanıt değil.** Delik düzeltmesi ölçümü dürüstleştirir,
+edge üretmez. Bayrak kapalı kalır — bu bulgu kararı zayıflatmaz, güçlendirir.
+
+**Üretime giren delik kapısı:** şeridi besleyen mumlar (CoraWave 10+3 ≈ 12 bar,
+LazyLine 15 ≈ 13 bar, eğim için +1) yüzünden **son 20 mum tek kesintisiz blokta
+olmalı**; değilse hisse aday listesine girmez. Sayı sezgiyle değil göstergenin
+geriye bakışından türetildi. 1 Eylül canlı turunda 19 hisse bu kapıdan elendi,
+aday 13 → 10 düştü — **TUPRS dahil**, üstelik "yeni hizalanma" etiketiyle.
+Ayrıca her kayda `kapsama` ve `eksik_gun` yazılıyor: ileride "delikli hisse
+daha mı kötü tutuyor" sorusu sorulabilsin diye.
+
 ## İlgili dosyalar
 
 - `magic_ribbon_session_data.py`: kaynak, seans mumları ve tazelik kapısı
