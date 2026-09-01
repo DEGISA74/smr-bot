@@ -159,10 +159,17 @@ def _islem_gunu():
 
 
 # ad, gorunur_ad, deadline(TR), olcut, esik(oran), elle-cozum komutu
+# ⏱ 1 Eyl 2026 — KAPI SAATI 23:15 -> 23:40. Sebep: 31 Agu gecesi finalizer
+# ILK GERCEK kosusunu yapti ve 30,6 dk surdu (22:50 -> 23:20). Eski 23:15
+# kapisi finalizer BITMEDEN 5 dk once bakiyordu -> yersiz alarm.
+# Ironi: finalizer YAVASLADI cunku DUZELDI. Is Yatirim okuma siniri 10->30 sn
+# olunca sunucu gercekten cevap vermeye basladi (sembol basina ~10 sn);
+# eskiden hizlica hata verip 20-50 sn'de 'bitiyordu'. Sonuc: resmi hacim
+# 6/628'den 577/628'e cikti. Yani gecikme arizanin degil, tedavinin isareti.
 VERI_KAPILARI = [
     ("veri_fiyat", "\U0001F4B0 Kapanis fiyati (tum evren)", slot(19, 30), "guncel", 0.92,
      "venv/bin/python fetcher.py kapanis_final"),
-    ("veri_hacim", "\U0001F4CA Hacim kapsamı (İş Yatırım + kontrollü borsapy)", slot(23, 15), "kesin", 0.80,
+    ("veri_hacim", "\U0001F4CA Hacim kapsamı (İş Yatırım + kontrollü borsapy)", slot(23, 40), "kesin", 0.80,
      "venv/bin/python finalize_volume.py"),
     # 31 Agu 2026 - RESMI TABAN. Ustteki kapi resmi + kontrollu yedegi TOPLAYIP
     # sayar; 30 Agu canli manifestinde 628 sembolun 524u borsapy yedeginde,
@@ -172,7 +179,7 @@ VERI_KAPILARI = [
     # kaynagin ADINA degil IKISININ UYUSMASINA bakiliyor. Bu kapi ikinci,
     # BAGIMSIZ gostergedir: capraz tur bir gece kosmazsa "ikinci bacak ayakta
     # mi" sorusuna yine de tek basina cevap verir. Iki kapi birbirini yedekler.
-    ("veri_hacim_resmi", "\U0001F3DB Resmî hacim payı (İş Yatırım)", slot(23, 15), "resmi", 0.50,
+    ("veri_hacim_resmi", "\U0001F3DB Resmî hacim payı (İş Yatırım)", slot(23, 40), "resmi", 0.50,
      "venv/bin/python fetcher.py isyatirim"),
 ]
 
