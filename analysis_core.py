@@ -1768,9 +1768,16 @@ def _compute_genel_ozet_pack_cached(ticker, gs_bms, dtok):
                 _cl = _gs_df['Close']; _s50 = _cl.rolling(50).mean()
                 _curr = float(_cl.iloc[-1]); _s50v = float(_s50.iloc[-1])
                 _gs_sma50_above = _curr > _s50v
-                _cnt = sum(1 for i in range(1, min(80, len(_gs_df)))
-                           if not pd.isna(float(_s50.iloc[-i])) and
-                           (_cl.iloc[-i] > _s50.iloc[-i]) == _gs_sma50_above)
+                _cnt = 0
+                for i in range(1, min(80, len(_gs_df))):
+                    if pd.isna(float(_s50.iloc[-i])):
+                        break
+                    _same_side = ((_cl.iloc[-i] > _s50.iloc[-i])
+                                  if _gs_sma50_above
+                                  else (_cl.iloc[-i] < _s50.iloc[-i]))
+                    if not _same_side:
+                        break
+                    _cnt += 1
                 _side = "üstünde" if _gs_sma50_above else "altında"
                 if _gs_sma50_above:
                     _interp = "Köklü yükseliş" if _cnt >= 20 else ("Yükseliş trendi" if _cnt >= 5 else "Yeni kırılım ↑")

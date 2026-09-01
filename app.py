@@ -12957,6 +12957,7 @@ def _render_genel_ozet_panel():
         # bilgi 2 yerde olmasın.
 
         _gs_items_html = ""
+        _gs_top_summary_html = ""
         try:
             # SWOT O1+O4 (11 Tem 2026): deger-ureten blok analysis_core.compute_genel_ozet_pack
             # icine BIREBIR tasindi (cache ttl=600). Pack None => eski "dna yok/hata" davranisi.
@@ -12993,6 +12994,7 @@ def _render_genel_ozet_panel():
                 _gs_today_label = _gs_pack['_gs_today_label']
                 _gs_last_sess_str = _gs_pack['_gs_last_sess_str']
                 _gs_last_was_half = _gs_pack['_gs_last_was_half']
+                _sm_score = None
 
                 # ── TEMETTÜ ETİKETİ (4 Ağu 2026) ──────────────────────────────
                 # Ham fiyat (AUTO_ADJUST=False) → temettü günü fiyat gerçekten düşer.
@@ -13047,7 +13049,7 @@ def _render_genel_ozet_panel():
                 _sec_icons = {
                     "Yapı & Konum": "🏗️",
                     "Yön":          "🧭",
-                    "Para akışı":   "💰",
+                    "Akıllı Para":  "💰",
                     "Momentum":     "⚡",
                 }
 
@@ -13607,6 +13609,7 @@ def _render_genel_ozet_panel():
 
                 # 2) MOMENTUM YÖNÜ — RSI 5g eğimi × seviye matris (7 senaryo)
                 _mom_lbl = "Yetersiz veri"; _mom_clr = _gs_neu; _mom_expl = "RSI tarihçesi yetersiz"
+                _rsi_ser = None
                 try:
                     if _gs_df is not None and len(_gs_df) >= 20:
                         _delta_m = _gs_df['Close'].diff()
@@ -13658,57 +13661,48 @@ def _render_genel_ozet_panel():
                         else:
                             _mom_lbl = "Yatay →"; _mom_clr = _gs_neu
                             _mom_expl = f"RSI son 5 günde {_rsi_dlt:+.1f} {_mom_act}"
+                        _mom_expl += f" · bugün: {_rsi_n:.0f}"
                 except Exception:
                     pass
 
-                # 13 Tem 2026 v2 — Momentum İVME DEĞİŞİMİ çizgisi (kullanıcı tarifi):
-                # Para Akış İvmesi barlarının GÜNLÜK FARKI — 10'dan 4'e düşüş
-                # panelde iki mavi bar görünür ama burada -6'ya inen çizgi olur.
-                # Sıfırın üstü = ivme güçleniyor, altı = zayıflıyor. 20 iş günü,
-                # kutunun tamamına yayılır (20G Konum widget'ı gibi uçtan uca).
+                # Momentum grafiği başlıkla aynı kaynaktan gelsin: RSI'ın son 20 günü.
+                # Altında yalnızca başlangıç ve son veri tarihleri gösterilir.
                 _mom_hist_html = ""
                 try:
-                    _ss_pd_m = calculate_synthetic_sentiment(_ticker)
-                    if _ss_pd_m is not None and 'MF_Smooth' in _ss_pd_m.columns:
-                        _mfv = [float(x) for x in _ss_pd_m['MF_Smooth'].tail(21)
-                                if pd.notna(x)]
-                        _mdel = [_mfv[i] - _mfv[i - 1] for i in range(1, len(_mfv))]
-                        if len(_mdel) >= 5:
-                            _md_n = len(_mdel)
-                            _md_w, _md_h = 300, 46
-                            _md_mid = _md_h / 2
-                            _md_lim = max(5.0, max(abs(v) for v in _mdel) * 1.1)
-                            # 14 Tem 2026 — BAR görünümü (kullanıcı isteği): her bar O GÜNÜN
-                            # ivme değişimi. Sıfır çizgisinden yukarı mavi (güçlendi),
-                            # aşağı kırmızı (zayıfladı). Hesap AYNI (_mdel günlük fark).
-                            _md_p = [f"<line x1='0' y1='{_md_mid}' x2='{_md_w}' y2='{_md_mid}' "
-                                     f"stroke='#475569' stroke-width='1' stroke-dasharray='3,3'/>"]
-                            _md_step = _md_w / _md_n
-                            _md_bw   = _md_step * 0.62          # bar genişliği (aralıklı)
-                            for _mi, _mv in enumerate(_mdel):
-                                _bx = _mi * _md_step + (_md_step - _md_bw) / 2
-                                _bh = abs(_mv) / _md_lim * (_md_mid - 4)
-                                _bh = max(_bh, 1.0)             # sıfıra yakın gün de görünsün
-                                _by = _md_mid - _bh if _mv >= 0 else _md_mid
-                                _mc = "#5B84C4" if _mv > 0 else ("#ef4444" if _mv < 0 else "#64748B")
-                                _mo = "1.0" if _mi == len(_mdel) - 1 else "0.75"
-                                _md_p.append(
-                                    f"<rect x='{_bx:.1f}' y='{_by:.1f}' width='{_md_bw:.1f}' "
-                                    f"height='{_bh:.1f}' rx='1' fill='{_mc}' opacity='{_mo}'/>")
-                            _lc_dot = ("#5B84C4" if _mdel[-1] > 0 else
-                                       ("#ef4444" if _mdel[-1] < 0 else "#64748B"))
-                            _md_son_txt = ("güçleniyor" if _mdel[-1] > 0 else
-                                           ("zayıflıyor" if _mdel[-1] < 0 else "sabit"))
+                    if _rsi_ser is not None:
+                        _rsi_chart_rows = [
+                            (idx, float(x)) for idx, x in _rsi_ser.tail(20).items()
+                            if pd.notna(x) and np.isfinite(float(x))
+                        ]
+                        if len(_rsi_chart_rows) >= 5:
+                            _rsi_chart_vals = [value for _, value in _rsi_chart_rows]
+                            _rc_start_txt = pd.Timestamp(_rsi_chart_rows[0][0]).strftime("%d/%m")
+                            _rc_end_txt = pd.Timestamp(_rsi_chart_rows[-1][0]).strftime("%d/%m")
+                            _rc_n, _rc_w, _rc_h = len(_rsi_chart_vals), 300, 52
+                            _rc_top, _rc_bottom = 3.0, 49.0
+                            _rc_span = _rc_bottom - _rc_top
+                            _rc_x_step = _rc_w / max(_rc_n - 1, 1)
+                            _rc_points = []
+                            for _ri, _rv in enumerate(_rsi_chart_vals):
+                                _rx = _ri * _rc_x_step
+                                _ry = _rc_top + (100.0 - max(0.0, min(100.0, _rv))) / 100.0 * _rc_span
+                                _rc_points.append(f"{_rx:.1f},{_ry:.1f}")
+                            _rc_last_y = _rc_top + (100.0 - max(0.0, min(100.0, _rsi_chart_vals[-1]))) / 100.0 * _rc_span
+                            _rc_polyline = " ".join(_rc_points)
                             _mom_hist_html = (
                                 f"<div style='margin:6px 0 2px;padding-left:11px;'>"
-                                f"<svg width='100%' height='{_md_h}' viewBox='0 0 {_md_w} {_md_h}' "
+                                f"<svg width='100%' height='{_rc_h}' viewBox='0 0 {_rc_w} {_rc_h}' "
                                 f"preserveAspectRatio='none' style='display:block;'>"
-                                + "".join(_md_p) + "</svg>"
+                                + f"<polyline points='{_rc_polyline}' fill='none' "
+                                  f"stroke='{_mom_clr}' stroke-width='2' stroke-linejoin='round' "
+                                  f"stroke-linecap='round'/>"
+                                + f"<circle cx='{(_rc_n - 1) * _rc_x_step:.1f}' cy='{_rc_last_y:.1f}' "
+                                  f"r='3' fill='{_mom_clr}' stroke='#0f172a' stroke-width='1'/>"
+                                + "</svg>"
                                 f"<div style='display:flex;justify-content:space-between;"
                                 f"font-size:0.6rem;color:{_gs_neu};font-style:normal;margin-top:2px;'>"
-                                f"<span>20 gün önce</span>"
-                                f"<span>ivmenin günlük değişimi · üstü=güçleniyor, altı=zayıflıyor</span>"
-                                f"<span style='color:{_lc_dot};font-weight:700;'>bugün: {_md_son_txt}</span>"
+                                f"<span>{_rc_start_txt}</span>"
+                                f"<span>{_rc_end_txt}</span>"
                                 f"</div></div>"
                             )
                 except Exception:
@@ -13717,7 +13711,7 @@ def _render_genel_ozet_panel():
                 # Sert dönüş / Tepe geri çekilme → pulse
                 _mom_pulse = ("Sert" in _mom_lbl) or ("Tepe geri çekilme" in _mom_lbl)
                 _gs_items_html += _gs_row(
-                    "Momentum",
+                    "Momentum son 20g",
                     f"<span style='color:{_mom_clr};'>{_mom_lbl}</span>",
                     explain=_mom_hist_html + _mom_expl,
                     lc=_mom_clr,
@@ -14076,23 +14070,31 @@ def _render_genel_ozet_panel():
                     pass
 
                 # 20G Konum — 2 satırlık özel blok (9 Haz 2026 Oturum 20 fix v3)
-                # Satır 1: "20G Konum" başlığı + delta + durum etiketi (+VP chip'leri)
+                # Satır 1: "20G Konum" başlığı + durum etiketi (+VP chip'leri)
                 # Satır 2: TAM GENİŞLİK bar (○ 5G işareti yanında etiket + ● bugün)
                 _rng_pulse = any(k in _rng_lbl for k in ("V-dönüş", "Üstten düşüş", "Tepede tıkalı"))
+                _rng_dir_arrow = "→"
 
                 if _rng_pos_pct is not None:
-                    # Delta
+                    # 5G'den bugüne konum yönü — sayısal delta artık gösterilmez.
                     try:
                         _delta_rng_val = _rng_pos_pct - _rng_prev_pct
-                        _delta_clr = _gs_up_clr if _delta_rng_val > 0 else (_gs_dn_clr if _delta_rng_val < 0 else _gs_neu)
-                        _delta_sign = "+" if _delta_rng_val > 0 else ""
-                        _delta_html = (f"<span style='color:{_delta_clr};font-size:0.78rem;"
-                                       f"font-weight:700;margin-right:5px;'>%{_delta_sign}{_delta_rng_val:.0f}</span>")
+                        _rng_dir_arrow = ("→" if _delta_rng_val > 0 else
+                                          ("←" if _delta_rng_val < 0 else "↔"))
+                        _rng_delta_width = abs(_delta_rng_val)
+                        _rng_delta_mid = min(_rng_pos_pct, _rng_prev_pct) + (_rng_delta_width / 2.0)
+                        _rng_delta_clr = (_gs_up_clr if _delta_rng_val > 0 else
+                                          (_gs_dn_clr if _delta_rng_val < 0 else _gs_neu))
                     except Exception:
-                        _delta_html = ""
+                        _rng_dir_arrow = "↔"
+                        _rng_delta_width = 0.0
+                        _rng_delta_mid = 0.0
+                        _rng_delta_clr = _gs_neu
                     _rng_status_lbl = _rng_lbl.split(' · ', 1)[-1] if ' · ' in _rng_lbl else _rng_lbl
-                    _top_chip_inner = (f"{_delta_html}"
-                                       f"<span style='color:{_rng_clr};font-size:0.75rem;'>{_rng_status_lbl}</span>")
+                    _rng_status_lbl = (_rng_status_lbl.replace("↗", "").replace("↘", "")
+                                       .replace("⤴", "").replace("⤵", "").strip())
+                    _top_chip_inner = (f"<span style='color:{_rng_clr};font-size:0.75rem;'>"
+                                       f"{_rng_status_lbl}</span>")
 
                     # VP zone + shape chip'leri (varsa) — üst chip'in sağına
                     try:
@@ -14128,8 +14130,15 @@ def _render_genel_ozet_panel():
                         f"<span style='font-size:0.58rem;color:#64748b;font-weight:700;flex-shrink:0;'>0</span>"
                         f"<span style='flex:1;display:block;height:6px;background:#1e293b;"
                         f"border-radius:3px;position:relative;'>"
+                        # 5G → bugün konum hareketi — yatay, görünür ok.
+                        + (f"<span style='position:absolute;left:{_rng_delta_mid:.1f}%;top:-8px;"
+                           f"transform:translateX(-50%);color:{_rng_delta_clr};"
+                           f"font-size:0.95rem;font-weight:900;line-height:12px;"
+                           f"background:#0f172a;padding:0 2px;z-index:4;'>"
+                           f"{_rng_dir_arrow}</span>"
+                           if _rng_delta_width > 0 else "")
                         # 20G hollow ring
-                        f"<span style='position:absolute;left:{_rng_20g_pct:.0f}%;top:-3px;"
+                        + f"<span style='position:absolute;left:{_rng_20g_pct:.0f}%;top:-3px;"
                         f"width:12px;height:12px;border-radius:50%;background:#0f172a;"
                         f"border:1.5px solid {_20g_mark_clr};"
                         f"transform:translateX(-50%);' title='20 gün önce: %{_rng_20g_pct:.0f}'></span>"
@@ -14177,8 +14186,6 @@ def _render_genel_ozet_panel():
                         f"</div>"
                         # Alt satır: tam genişlik bar
                         f"{_bottom_bar_html}"
-                        # Explain
-                        f"{_gs_explain(_rng_expl) if _rng_expl else ''}"
                         f"</div>"
                     )
                     _gs_items_html += _rng_block
@@ -14187,7 +14194,7 @@ def _render_genel_ozet_panel():
                     _gs_items_html += _gs_row(
                         "20G Konum",
                         f"<span style='color:{_rng_clr};'>{_rng_lbl}</span>",
-                        explain=_rng_expl,
+                        explain=None,
                         lc=_rng_clr,
                         pulse=_rng_pulse
                     )
@@ -14269,11 +14276,11 @@ def _render_genel_ozet_panel():
                             f"padding:1px 7px;border-radius:8px;"
                             f"background:rgba({_sm_rgb},0.15);color:{_sm_clr};"
                             f"border:1px solid rgba({_sm_rgb},0.35);text-transform:none;"
-                            f"letter-spacing:0;'>SM {_sm_score}/100</span>"
+                            f"letter-spacing:0;'>Akıllı Para {_sm_score}/100</span>"
                         )
                 except Exception:
                     pass
-                _gs_items_html += _gs_section("Para akışı", badge_html=_dots_para + _sm_badge_html)
+                _gs_items_html += _gs_section("Akıllı Para", badge_html=_dots_para + _sm_badge_html)
 
                 # 5g delta % (Hacim cümlesi için)
                 if _gs_cdpct > 0:
@@ -14527,7 +14534,7 @@ def _render_genel_ozet_panel():
                 _mfi_icon_b = _dwc['_mfi_icon_b']
                 _mfi_clr_b = _dwc['_mfi_clr_b']
 
-                # Pusula + sinyal listesi yan yana, altında 3 cümle (italic — panel açıklama stiliyle aynı)
+                # Açıklamalar önce; görsel pusula kaldırıldı, metin kanıtı üstte okunur.
                 # 18 Tem akşam: endekste (XU100) hacim cümleleri tek-aktör dilinden ("akıllı para/
                 # kurumsal") piyasa-geneli diline çevrilir — sayı doğru, kelime düzelir.
                 def _flow_sentence(icon, color, text):
@@ -14598,7 +14605,7 @@ def _render_genel_ozet_panel():
                                     f"<div style='font-size:0.8rem;color:{_gs_neu};font-style:italic;"
                                     f"margin-top:1px;opacity:0.85;'>Bu barlar birikimin <b>HIZINI</b> ölçer: "
                                     f"para girişi hızlanıyor mu, gaz mı kesiyor? Birikim var mı sorusunun "
-                                    f"cevabı ise SMART MONEY panelindeki \"OBV vs Fiyat\" grafiğinde.</div>"
+                                     f"cevabı ise Akıllı Para panelindeki \"OBV vs Fiyat\" grafiğinde.</div>"
                                     f"</div>"
                                 )
                 except Exception:
@@ -14608,17 +14615,13 @@ def _render_genel_ozet_panel():
                 _gs_items_html += (
                     f"<div style='padding:7px 8px;border:1px solid {_gs_line};"
                     f"border-radius:6px;margin:4px 0 2px;'>"
-                    f"<div style='display:flex;align-items:stretch;gap:6px;margin-bottom:5px;'>"
-                    f"{_compass_svg}"
-                    f"{_signals_block}"
-                    f"</div>"
-                    + _obv_line_html
                     + _flow_sentence(_hac_icon, _hac_clr, _hac_text)
                     + _flow_sentence(_obv_icon, _obv_clr_s, _obv_text)
                     + _flow_sentence(_cmf_icon, _cmf_clr_s, _cmf_text)
                     + (_flow_sentence(_cum_icon_b, _cum_clr_b, _cum_text_b) if _cum_text_b else "")
                     + (_flow_sentence(_rsi_icon_b, _rsi_clr_b, _rsi_text_b) if _rsi_text_b else "")
                     + (_flow_sentence(_mfi_icon_b, _mfi_clr_b, _mfi_text_b) if _mfi_text_b else "")
+                    + _obv_line_html
                     + "</div>"
                 )
 
@@ -14808,6 +14811,72 @@ def _render_genel_ozet_panel():
                         pulse=_cp_pulse
                     )
 
+                # ── ÜST GENEL ÖZET — karar + en temel kanıtlar ───────────────
+                # Yeni hesap yok; aşağıdaki satırlarda zaten üretilen değerler
+                # kısa bir üst şerit halinde yeniden düzenlenir.
+                _top_votes = (
+                    ("Hacim", _sig_hacim), ("OBV", _sig_obv),
+                    ("Yapı", _sig_yapi), ("RSI", _sig_rsi),
+                    ("CMF", _sig_cmf), ("MFI", _sig_mfi),
+                )
+                _top_up_names = [name for name, sig in _top_votes if sig > 0]
+                _top_dn_names = [name for name, sig in _top_votes if sig < 0]
+                _top_neutral_n = 6 - len(_top_up_names) - len(_top_dn_names)
+                if len(_top_dn_names) == 1 and not _top_up_names:
+                    _top_vote_text = (f"Tek zayıf alan: {_top_dn_names[0]}; "
+                                      f"{_top_neutral_n} gösterge nötr.")
+                elif len(_top_up_names) == 1 and not _top_dn_names:
+                    _top_vote_text = (f"Tek olumlu alan: {_top_up_names[0]}; "
+                                      f"{_top_neutral_n} gösterge nötr.")
+                elif not _top_up_names and not _top_dn_names:
+                    _top_vote_text = "6 göstergenin tamamı nötr; genel yön birliği oluşmamış."
+                else:
+                    _top_vote_text = (f"{len(_top_up_names)} yukarı · {len(_top_dn_names)} aşağı · "
+                                      f"{_top_neutral_n} nötr.")
+
+                _top_score_html = ""
+                _top_is_index = (_ticker.upper().startswith(("XU", "XB", "XT", "XY", "^"))
+                                 or _ticker.upper().endswith("=F")
+                                 or "-USD" in _ticker.upper())
+                if _top_is_index and _lr_score is not None:
+                    _top_score_html = (
+                        f"<span style='margin-left:auto;color:{_gs_neu};font-size:0.72rem;"
+                        f"font-weight:700;'>{_lr_score}/100</span>"
+                    )
+                _top_s50 = (_gs_sma50_txt.split(" · ", 1)[0]
+                            .replace("50 günlük ortalamanın ", "")) if _gs_sma50_txt else "veri yok"
+                _top_rsi_state = (_gs_rsi_disp.split(" — ", 1)[-1]
+                                  if " — " in _gs_rsi_disp else "")
+                _top_rsi_text = f"{_gs_rsi_val:.0f}" + (f" · {_top_rsi_state}" if _top_rsi_state else "")
+                _top_obv_text = ("5G/14G net değil" if _sig_obv == 0 else
+                                 ("yukarı" if _sig_obv > 0 else "aşağı"))
+                _top_20g_text = _rng_dir_arrow if _rng_pos_pct is not None else "veri yok"
+                _top_sm_text = f"{_sm_score}/100" if _sm_score is not None else "—"
+                _top_momentum_text = _mom_lbl if _mom_lbl else "veri yok"
+                _gs_top_summary_html = (
+                    f"<div style='padding:8px 9px;margin:0 0 7px;"
+                    f"background:linear-gradient(135deg,rgba(56,189,248,0.12),rgba(15,23,42,0.55));"
+                    f"border:1px solid rgba(56,189,248,0.30);border-radius:7px;'>"
+                    f"<div style='display:flex;align-items:center;gap:7px;'>"
+                    f"<span style='font-size:0.64rem;color:#38bdf8;font-weight:800;"
+                    f"letter-spacing:0.08em;'>KISA OKUMA</span>"
+                    f"<span style='color:{_gs_net_clr};font-size:0.86rem;font-weight:900;'>"
+                    f"{_gs_net_txt}</span>"
+                    f"{_top_score_html}"
+                    f"</div>"
+                    f"<div style='margin-top:4px;color:#e2e8f0;font-size:0.76rem;"
+                    f"font-weight:700;line-height:1.35;'>{_top_vote_text}</div>"
+                    f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;"
+                    f"margin-top:6px;color:#94a3b8;font-size:0.64rem;line-height:1.3;'>"
+                    f"<span><b style='color:#38bdf8;'>50G:</b> {_top_s50}</span>"
+                    f"<span><b style='color:#38bdf8;'>RSI:</b> {_top_rsi_text}</span>"
+                    f"<span><b style='color:#38bdf8;'>OBV:</b> {_top_obv_text}</span>"
+                    f"<span><b style='color:#38bdf8;'>20G:</b> {_top_20g_text}</span>"
+                    f"<span><b style='color:#38bdf8;'>Akıllı Para:</b> {_top_sm_text}</span>"
+                    f"<span><b style='color:#38bdf8;'>Momentum:</b> {_top_momentum_text}</span>"
+                    f"</div></div>"
+                )
+
 
         except Exception as _gs_exc:
             import traceback as _tb_gs
@@ -14822,6 +14891,9 @@ def _render_genel_ozet_panel():
                 f"<div style='font-size:0.65rem;color:#f87171;padding:6px 2px;font-style:italic;'>"
                 f"⚠️ Panel hatası{_gs_err_loc}:<br>{_gs_err_msg}</div>"
             )
+
+        if _gs_top_summary_html:
+            _gs_items_html = _gs_top_summary_html + _gs_items_html
 
         # ── Tatil günü chip'i — panel içeriğinin en başına yerleştir ─────
         try:
