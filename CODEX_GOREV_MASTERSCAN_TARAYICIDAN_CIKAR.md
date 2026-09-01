@@ -210,6 +210,73 @@ gevşetme. Fark çıkarsa sebebi bulunur, eşik indirilmez.
 
 ---
 
+## C-EK. KÜÇÜK AYRI İŞ — "Magic Ribbon -4S" sekmesi neden boş olduğunu söylesin
+
+**Bu, yukarıdaki üç aşamadan bağımsız. Farklı dosya, çakışma yok. Önce bunu
+yapabilirsin — kısa.**
+
+### Durum (1 Eyl 2026 akşamı ölçüldü — arıza DEĞİL)
+
+Kullanıcı "Magic Ribbon sıfır sonuç çıkarmış" dedi. Çıkarmamış:
+
+```
+magic_ribbon_session_log · 1 Eyl : 13 satır
+  ├─ 10 satır  bar_time 31.08.2026 18:10   (sabah 09:19 testinden, o saatte doğru)
+  └─  3 satır  bar_time 01.09.2026 18:10   (akşam turu — ENKAI, ISMEN, ODAS,
+                                            üçü de YENİ HİZALANMA, tetik yaşı 0)
+```
+
+Motor çalışıyor, adayları buluyor, veritabanına yazıyor. **Ekrana boş tablo
+gitmesinin sebebi bilinçli bir karar:**
+
+`app.py` ~15838:
+```
+st.session_state.magic_ribbon_session_data = (
+    _mr_df if MAGIC_RIBBON_BIST_SESSION_RENDER_ENABLED else pd.DataFrame()
+)
+```
+
+`magic_ribbon_core.py` ~46'da bayrak **False** ve gerekçesi hemen üstünde yazılı:
+31 Ağu ilk ölçüm gürültü; 1 Eyl delik-farkında ölçüm artıya döndü ama filtre
+tabanı da oynatıyor, Temmuz'un yalnız %34,6'sı kalıyor (takvim yanlılığı),
+t = 1,33. Hüküm: *"Ayrım kanıtı yokken aday listesi ekrana çıkmaz; ham sinyaller
+ileri test için kaydedilmeye devam eder. İkinci rejimde yeniden ölçülmeden
+True yapılmayacak."*
+
+Bu doğru bir karar ve [[feedback-rozet-olcumden-gecer]] kuralının ta kendisi.
+
+⚠ Ayrıca: eski 4 saatlik Magic Ribbon **emekli oldu**, yerini bu seans-mumu
+sürümü aldı. `magic_ribbon_log` tablosunun 31 Ağu'da donmuş olması normaldir,
+geçmişi için duruyor. Onu "çalışmıyor" sanıp diriltmeye kalkma.
+
+### Asıl kusur
+
+**Ekran neden boş olduğunu söylemiyor.** Kullanıcı üç ihtimali ayırt edemiyor:
+
+1. "bugün aday bulamadı"
+2. "bozuk"
+3. "ölçümde, bilerek kapalı"  ← gerçek olan bu
+
+Bu, 1 Eylül'de Katalog'dan kaldırdığımız 4 ölü satırın **aynı sınıfı**: sistem
+bir şeyi bilerek göstermiyor ama bunu kullanıcıya söylemiyor.
+
+### Yapılacak
+
+`trajectory_tarama_merkezi.py` (~1732, `session_getter("magic_ribbon_session_data")`).
+
+Bayrak **False** iken sekme boş tablo yerine şunu göstersin:
+- Açık bir ibare: **"ölçümde — aday listesi henüz ekrana çıkmıyor"**
+- Tek cümle gerekçe: ayrım kanıtı ikinci rejimde doğrulanmadı
+- Bugün kaç ham sinyal kaydedildiği (ileri test sürüyor, boşuna koşmuyor)
+
+Bayrak True olduğunda hiçbir şey değişmemeli — normal tablo çıksın.
+
+**Yasak:** bayrağı True yapma. Ölçüm kararı senin değil.
+**Yasak:** sayıyı ekrana yazmak için yeni bir sorgu yolu icat etme; tek kaynak
+`magic_ribbon_session_log`.
+
+---
+
 ## D. TUZAKLAR — bunlar seni ısıracak
 
 1. **`st.session_state` düz sözlük OLMALI, golden'ın falsy stub'ı DEĞİL.**
@@ -259,6 +326,7 @@ gevşetme. Fark çıkarsa sebebi bulunur, eşik indirilmez.
 - [ ] Çökme testi: koşucuyu ortadan öldür → çıkış kodu 0 DÖNMÜYOR, log'da iz var
 - [ ] En az **3 işlem günü** paralel koşu + kıyas raporu
 - [ ] Aşama D'ye GEÇME — kanıtı Claude'a getir
+- [ ] C-EK: bayrak False iken sekme "ölçümde" diyor, True iken normal tablo çıkıyor
 
 ---
 
