@@ -62,9 +62,34 @@ def build_fig(ticker, nbar=120, height=300):
            ('SMA 100', full.rolling(100, min_periods=1).mean(), '#4aa3ff'),
            ('SMA 200', full.rolling(200, min_periods=1).mean(), '#f59e0b')]
     seg = df.tail(nbar)
+    # Hacim — fiyat eksenini bozmadan grafiğin alt bandına bindir.
+    # Hacim çubukları ve 20 günlük ortalama, görünür fiyat alanının alt %20'sinde
+    # ayrı bir ölçekle çizilir; böylece TradingView'deki ince hacim şeridi korunur.
+    _volume_full = pd.to_numeric(df['Volume'], errors='coerce').fillna(0.0)
+    _volume = _volume_full.tail(nbar)
+    _volume_avg20 = _volume_full.rolling(20, min_periods=1).mean().tail(nbar)
+    _volume_peak = max(float(_volume.max()), float(_volume_avg20.max()), 1.0)
+    _volume_axis_max = _volume_peak / 0.20
+    _volume_colors = [
+        'rgba(46,193,119,0.60)' if close >= open_ else 'rgba(240,85,106,0.52)'
+        for open_, close in zip(seg['Open'].values, seg['Close'].values)
+    ]
     vwap = (((seg['High'] + seg['Low'] + seg['Close']) / 3 * seg['Volume']).cumsum() / seg['Volume'].cumsum())
     p = poc(seg)
     fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=seg.index, y=_volume,
+        marker_color=_volume_colors, marker_line_width=0,
+        width=86400000 * 0.62, opacity=1.0,
+        name='Hacim', showlegend=False, yaxis='y2',
+        hovertemplate='<b>%{x|%d %b %Y}</b><br>Hacim: %{y:.3s}<extra></extra>',
+    ))
+    fig.add_trace(go.Scatter(
+        x=seg.index, y=_volume_avg20,
+        mode='lines', name='Hacim 20G Ort.', showlegend=False, yaxis='y2',
+        line=dict(color='#facc15', width=1.5),
+        hovertemplate='<b>%{x|%d %b %Y}</b><br>20G ort. hacim: %{y:.3s}<extra></extra>',
+    ))
     fig.add_trace(go.Candlestick(x=seg.index, open=seg['Open'], high=seg['High'], low=seg['Low'], close=seg['Close'],
                                  increasing=dict(line=dict(color='#2ec177', width=1), fillcolor='#2ec177'),
                                  decreasing=dict(line=dict(color='#f0556a', width=1), fillcolor='#f0556a'),
@@ -83,7 +108,10 @@ def build_fig(ticker, nbar=120, height=300):
     fig.update_layout(paper_bgcolor='#0d1623', plot_bgcolor='#0d1623', font=dict(color='#8aa0bb', size=11),
                       xaxis_rangeslider_visible=False, margin=dict(l=8, r=58, t=8, b=22),
                       legend=dict(orientation='h', y=1.03, x=0, font=dict(size=11), bgcolor='rgba(0,0,0,0)'),
-                      width=720, height=height)
+                      width=720, height=height,
+                      yaxis2=dict(overlaying='y', side='right', range=[0, _volume_axis_max],
+                                  showgrid=False, showticklabels=False, zeroline=False,
+                                  fixedrange=True, layer='below traces'))
     fig.update_xaxes(gridcolor='#162234', showgrid=True, rangebreaks=_wk_rangebreaks(seg.index))
     fig.update_yaxes(gridcolor='#162234', side='right', tickformat='.1f')
     return fig

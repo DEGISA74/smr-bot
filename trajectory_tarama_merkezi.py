@@ -1008,6 +1008,29 @@ def _compact_history_status(candidate: dict[str, Any]) -> tuple[str, str]:
     return "⚪ Belirsiz", history_color
 
 
+def _candidate_standard_item(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Karar masası adayını ortak, okunaklı tarama satırına çevirir."""
+    symbol = str(candidate.get("sym") or "—")
+    sources = " · ".join(
+        _display_scan(source) for source in _card_scan_types(candidate)[:2]
+    ) or "Kaynak yok"
+    story = _card_story(candidate) or "Algoritmik kurulum"
+    reason = _compact_reason(candidate)
+    history_badge, _history_color = _compact_history_status(candidate)
+    detail_parts = [reason, f"Kaynak: {sources}"]
+    if candidate.get("flow_alignment"):
+        detail_parts.append("CMF + OBV olumlu")
+    return {
+        "symbol": symbol,
+        "target": candidate.get("ticker") or f"{symbol}.IS",
+        "icon": "📈" if candidate.get("bucket") == BUCKET_GROWING else "↔",
+        "label": story,
+        "detail": " · ".join(detail_parts),
+        "status": f"Geçmiş T+5: {history_badge}",
+        "_candidate": candidate,
+    }
+
+
 def _render_compact_rows(
     st: Any,
     candidates: list[dict[str, Any]],
@@ -1078,29 +1101,31 @@ def render_standard_scan_list(
     priority_note: str = "Mevcut taramanın sırası korunur; bu bölüm tek başına alım teyidi değildir.",
     priority_color: str = "#4ade80",
     empty_text: str = "Bu taramada sonuç yok.",
+    priority_limit: int = 5,
 ) -> None:
     """Aday üreten farklı taramaları aynı, dar liste hiyerarşisinde gösterir.
 
     Bu yardımcı puan hesaplamaz ve sıralama yapmaz. Çağıran panelin ürettiği
-    sıralamayı korur; yalnızca ilk beşi görünür öncelik, geri kalanı kompakt
+    sıralamayı korur; yalnızca istenen sayıdaki adayı görünür öncelik, geri kalanı kompakt
     takip listesi ve açılır ham sonuçlar olarak çizer.
     """
     clean_items = [item for item in (items or []) if isinstance(item, dict)]
     if not clean_items:
         st.markdown(
             f"<div style='border:1px dashed {priority_color}55;border-radius:7px;"
-            f"padding:14px 10px;text-align:center;color:#94a3b8;font-size:0.76rem;'>"
+            f"padding:16px 12px;text-align:center;color:#94a3b8;font-size:0.88rem;'>"
             f"{html.escape(empty_text)}</div>",
             unsafe_allow_html=True,
         )
         return
 
-    priority = clean_items[:5]
-    remaining = clean_items[5:]
+    visible_limit = max(1, int(priority_limit))
+    priority = clean_items[:visible_limit]
+    remaining = clean_items[visible_limit:]
     st.markdown(
-        f"<div style='font-size:0.80rem;font-weight:900;color:{priority_color};"
-        f"margin:8px 0 2px 0;'>{html.escape(priority_title)} · {len(clean_items)} sonuç</div>"
-        f"<div style='font-size:0.64rem;color:#64748b;margin:0 0 6px 2px;'>"
+        f"<div style='font-size:0.96rem;font-weight:900;color:{priority_color};"
+        f"margin:10px 0 3px 0;'>{html.escape(priority_title)} · {len(clean_items)} sonuç</div>"
+        f"<div style='font-size:0.78rem;color:#94a3b8;margin:0 0 9px 2px;line-height:1.35;'>"
         f"{html.escape(priority_note)}</div>",
         unsafe_allow_html=True,
     )
@@ -1116,21 +1141,21 @@ def render_standard_scan_list(
         if item.get("rank") not in (None, "", "—"):
             button_text += f" · {item.get('rank')}"
         with st.container(border=True):
-            cols = st.columns([0.92, 2.55, 1.10])
+            cols = st.columns([1.00, 2.65, 1.00])
             with cols[0]:
                 st.markdown(
-                    f"<div style='font-size:{'0.94' if prominent else '0.82'}rem;"
+                    f"<div style='font-size:{'1.08' if prominent else '0.96'}rem;"
                     f"font-weight:900;color:#f8fafc;'>{html.escape(symbol)}</div>",
                     unsafe_allow_html=True,
                 )
             with cols[1]:
                 st.markdown(
-                    f"<div style='font-size:{'0.71' if prominent else '0.64'}rem;"
-                    f"color:#7dd3fc;font-weight:800;line-height:1.25;'>"
+                    f"<div style='font-size:{'0.88' if prominent else '0.80'}rem;"
+                    f"color:#7dd3fc;font-weight:800;line-height:1.35;'>"
                     f"{html.escape(label)}</div>"
-                    f"<div style='font-size:0.59rem;color:#cbd5e1;line-height:1.3;"
-                    f"margin-top:3px;'>{html.escape(detail)}</div>"
-                    + (f"<div style='font-size:0.57rem;color:#fbbf24;margin-top:2px;'>"
+                    f"<div style='font-size:0.76rem;color:#cbd5e1;line-height:1.4;"
+                    f"margin-top:5px;'>{html.escape(detail)}</div>"
+                    + (f"<div style='font-size:0.70rem;color:#fbbf24;line-height:1.35;margin-top:4px;'>"
                        f"{html.escape(status)}</div>" if status else ""),
                     unsafe_allow_html=True,
                 )
@@ -1158,8 +1183,8 @@ def _render_ready_priority(
     as_of: object = None,
 ) -> None:
     ordered, measured = _order_candidates_by_liquidity(candidates, as_of=as_of)
-    priority = ordered[:5]
-    remaining = ordered[5:]
+    priority = ordered[:6]
+    remaining = ordered[6:]
     if not priority:
         return
     st.markdown(
@@ -1217,27 +1242,22 @@ def _render_confirm_pool(
         if not values:
             st.caption("Bu alt grupta aday yok.")
             continue
-        visible = values[:10]
         st.caption(
             "Sıra: 20 günlük ortalama TL işlem hacmi."
             if measured
             else "Likidite ölçümü hazır değil; mevcut takip sırası korunuyor."
         )
-        _render_compact_rows(
+        standard_items = [_candidate_standard_item(candidate) for candidate in values]
+        render_standard_scan_list(
             st,
-            visible,
-            open_detail,
-            key_prefix=f"{bucket}_visible",
+            standard_items,
+            lambda item: open_detail(item.get("_candidate")),
+            key_prefix=f"{bucket}_standard",
+            priority_title="🔎 İLK BAKILACAK 6",
+            priority_note="Likidite sırasına göre; geçmiş karne yalnız bilgi amaçlıdır.",
+            priority_color=BUCKET_META[bucket]["color"],
+            priority_limit=6,
         )
-        remaining = values[10:]
-        if remaining:
-            with st.expander(f"🔽 Kalan {len(remaining)} adayı kompakt göster"):
-                _render_compact_rows(
-                    st,
-                    remaining,
-                    open_detail,
-                    key_prefix=f"{bucket}_remaining",
-                )
 
 
 def _render_header(st: Any, bucket: str, count: int) -> None:
@@ -1309,7 +1329,7 @@ def _render_goldmine_liquidity(
     desk: dict[str, Any],
     on_click: Any,
 ) -> None:
-    """Gold Mine'ın 28 Ağustos'ta ölçülen EN LİKİT 4 seçimini Katalog'a taşır."""
+    """Gold Mine'ın likidite sırasını Katalog'a ortak kart biçiminde taşır."""
     goldmine = _goldmine_candidates(desk)
     if not goldmine:
         return
@@ -1318,10 +1338,11 @@ def _render_goldmine_liquidity(
         list(goldmine),
         as_of=as_of,
         scan_type="goldmine",
+        limit=len(goldmine),
     )
     st.markdown(
         "<div style='font-size:0.86rem;font-weight:900;color:#fbbf24;"
-        "margin:4px 0 4px 0;'>💧 GOLD MINE · EN LİKİT 4</div>"
+        "margin:4px 0 4px 0;'>💧 GOLD MINE · EN LİKİT 6</div>"
         "<div style='font-size:0.66rem;color:#94a3b8;margin:0 0 6px 2px;'>"
         "20 günlük ortalama TL işlem hacmiyle seçilir; puan veya 'en iyi' sırası değildir."
         "</div>",
@@ -1336,29 +1357,32 @@ def _render_goldmine_liquidity(
             unsafe_allow_html=True,
         )
         return
-    with st.container(border=True):
-        for index, symbol in enumerate(top):
-            candidate = goldmine.get(symbol) or {}
-            story = _card_story(candidate) or "📊 Algoritmik Güçlü Kurulum"
-            sources = " · ".join(
-                "Gold Mine" if str(source).strip().lower() == "goldmine"
-                else _display_scan(source)
-                for source in _card_scan_types(candidate)[:3]
-            ) or "Gold Mine"
-            if st.button(
-                f"💧 {index + 1}. {symbol} · {story}",
-                key=f"trajectory_goldmine_{symbol}_{index}",
-                width="stretch",
-                help=f"EN LİKİT seçim · {sources}",
-            ):
-                on_click(candidate.get("ticker") or f"{symbol}.IS")
-                st.rerun(scope="app")
-            st.markdown(
-                f"<div style='font-size:0.66rem;color:#94a3b8;margin:-6px 0 4px 8px;'>"
-                f"{html.escape(sources)} · Gold Mine üyeliği · bağımsız karar puanı değil"
-                "</div>",
-                unsafe_allow_html=True,
-            )
+    items = []
+    for symbol in top:
+        candidate = goldmine.get(symbol) or {}
+        sources = " · ".join(
+            "Gold Mine" if str(source).strip().lower() == "goldmine"
+            else _display_scan(source)
+            for source in _card_scan_types(candidate)[:3]
+        ) or "Gold Mine"
+        items.append({
+            "symbol": symbol,
+            "target": candidate.get("ticker") or f"{symbol}.IS",
+            "icon": "💧",
+            "label": _card_story(candidate) or "Algoritmik güçlü kurulum",
+            "detail": f"{sources} · Gold Mine üyeliği",
+            "status": "Likidite sırası; bağımsız karar puanı değildir.",
+        })
+    render_standard_scan_list(
+        st,
+        items,
+        lambda item: (on_click(item.get("target") or item.get("symbol")), st.rerun(scope="app")),
+        key_prefix="goldmine_liquidity",
+        priority_title="💧 İLK BAKILACAK 6",
+        priority_note="20 günlük ortalama TL işlem hacmiyle sıralanır; puan veya 'en iyi' sırası değildir.",
+        priority_color="#fbbf24",
+        priority_limit=6,
+    )
 
 
 def _short_candidates(session_getter: Any) -> dict[str, list[str]]:
@@ -1411,10 +1435,11 @@ def _render_short_warning(
         list(short_map),
         as_of=as_of,
         scan_type="er_D4",
+        limit=len(short_map),
     )
-    display_top = top if measured else list(short_map)[:4]
+    display_top = top if measured else list(short_map)
     short_order_note = (
-        "en likit 4 üstte"
+        "en likit 6 üstte"
         if measured
         else "likidite ölçümü yok; kaynak sırası gösteriliyor"
     )
@@ -1433,24 +1458,27 @@ def _render_short_warning(
     )
     if not measured:
         st.caption("Likidite ölçümü hazır değil; EN LİKİT sırası gösterilmedi.")
-    for index, symbol in enumerate(display_top):
+    items = []
+    for symbol in display_top:
         scenarios = " + ".join(sorted(short_map.get(symbol, [])))
-        if st.button(
-            f"💧 {index + 1}. {symbol} · {scenarios}",
-            key=f"trajectory_short_{symbol}_{index}",
-            width="stretch",
-            help="D4/D5 uyarısı · işlem tavsiyesi değildir",
-        ):
-            on_click(symbol)
-            st.rerun(scope="app")
-    remaining = len(short_map) - len(display_top)
-    if remaining > 0:
-        st.markdown(
-            "<div style='font-size:0.64rem;color:#94a3b8;margin:-3px 0 6px 6px;'>"
-            f"+{remaining} hisse daha (EN LİKİT 4 dışında)"
-            "</div>",
-            unsafe_allow_html=True,
-        )
+        items.append({
+            "symbol": symbol,
+            "target": symbol,
+            "icon": "📉",
+            "label": f"Erken Radar {scenarios} düşüş uyarısı",
+            "detail": "D4/D5 senaryosu aktif; yön uyarısıdır.",
+            "status": "Uyarı listesi; işlem tavsiyesi değildir.",
+        })
+    render_standard_scan_list(
+        st,
+        items,
+        lambda item: (on_click(item.get("target") or item.get("symbol")), st.rerun(scope="app")),
+        key_prefix="short_warning",
+        priority_title="📉 İLK BAKILACAK 6",
+        priority_note="Likidite sırası uygunsa ilk 6 üstte; bu bölüm uyarı listesidir.",
+        priority_color="#fca5a5",
+        priority_limit=6,
+    )
 
 
 def _cizgi_master_items(
@@ -1610,7 +1638,7 @@ def _render_live_karne(st: Any) -> None:
 
 
 def _build_magic_ribbon_items(frame: pd.DataFrame | None) -> list[dict[str, Any]]:
-    """4S Magic Ribbon sonuçlarını Tarama Merkezi'nin ortak satır formatına çevirir."""
+    """BIST seans-mumu Magic Ribbon sonuçlarını ortak satır biçimine çevirir."""
     if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
         return []
     items: list[dict[str, Any]] = []
@@ -1710,7 +1738,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         ("🌱 Yeni Sinyal T+0", counts[BUCKET_NEW], "#38bdf8"),
         ("⚠️ Risk masası", counts[BUCKET_RISK], "#ef4444"),
         ("📉 Olası short", _short_count, "#fca5a5"),
-        ("⏱ BIST Seans Mumu", _magic_ribbon_count, "#f59e0b"),
+        ("⏱ Magic Ribbon -4S", _magic_ribbon_count, "#f59e0b"),
         ("📐 Çizgi Yapısı", len(_cizgi_items), "#38bdf8"),
     )
     _summary_html = "".join(
@@ -1792,7 +1820,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         f"⚠️ Risk Masası ({counts[BUCKET_RISK]})",
         f"📚 Katalog ({_catalog_count})",
         f"📉 Olası Short ({_short_count})",
-        f"⏱ Seans Mumu ({_magic_ribbon_count})",
+        f"⏱ Magic Ribbon -4S ({_magic_ribbon_count})",
         f"📐 Çizgi Yapısı ({len(_cizgi_items)})",
     ])
 
@@ -1806,7 +1834,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             view_meta = {
                 (BUCKET_READY,): (
                     "🎯 T+3 Teyitli Adaylar",
-                    "T+3 kontrolü tamamlanan; ilk bakışta likiditesi yüksek 5 aday öne çıkar",
+                    "T+3 kontrolü tamamlanan; ilk bakışta likiditesi yüksek 6 aday öne çıkar",
                 ),
                 (BUCKET_GROWING, BUCKET_WATCH): (
                     "⏳ T+1 & T+2 Onaylılar",
@@ -1887,7 +1915,7 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
     with tab_magic:
         st.markdown(
             f"<div style='font-size:0.98rem;font-weight:900;color:#f59e0b;margin:2px 0 1px 0;'>"
-            f"⏱ BIST Seans Mumu Yukarı Hizalanma · {_magic_ribbon_count} sonuç</div>"
+            f"⏱ Magic Ribbon -4S · {_magic_ribbon_count} sonuç</div>"
             "<div style='font-size:0.68rem;color:#64748b;margin:0 0 12px 2px;'>"
             "Yalnız BIST100 içindeki hisselerde; 09:55–14:00 ve 14:00–18:10 tam "
             "seans mumlarında Fast/Slow çizgileri aynı anda yukarı eğimli olan gözlem adayları.</div>",
@@ -1952,27 +1980,33 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
         )
 
     with tab_catalog:
-        _render_goldmine_liquidity(st, desk, on_click)
-        st.markdown(
-            "<div style='font-size:0.92rem;font-weight:900;color:#e2e8f0;margin:16px 0 2px 0;'>"
-            "📚 Tarama Kataloğu</div>"
-            "<div style='font-size:0.66rem;color:#64748b;margin:0 0 6px 2px;'>"
-            "Ham sonuçlar denetim alanıdır; karar listesine puan taşımaz.</div>",
-            unsafe_allow_html=True,
-        )
-        for category in catalog:
-            if not category["count"]:
-                continue
-            with st.expander(
-                f"{category['name']} · {category['count']} sonuç · {category['family']}"
-            ):
-                for index, symbol in enumerate(category["symbols"]):
-                    if st.button(
-                        symbol,
-                        key=f"trajectory_catalog_{category['key']}_{symbol}_{index}",
-                        width="stretch",
-                    ):
-                        on_click(symbol + ".IS" if "." not in symbol else symbol)
-                        st.rerun(scope="app")
+        if session_getter("_ms_faz2_bekliyor"):
+            st.info(
+                "⏳ Katalog Faz 2 taramaları hesaplanırken ortak fotoğraf bekleniyor. "
+                "Liste tamamlandığında otomatik açılacak."
+            )
+        else:
+            _render_goldmine_liquidity(st, desk, on_click)
+            st.markdown(
+                "<div style='font-size:0.92rem;font-weight:900;color:#e2e8f0;margin:16px 0 2px 0;'>"
+                "📚 Tarama Kataloğu</div>"
+                "<div style='font-size:0.66rem;color:#64748b;margin:0 0 6px 2px;'>"
+                "Ham sonuçlar denetim alanıdır; karar listesine puan taşımaz.</div>",
+                unsafe_allow_html=True,
+            )
+            for category in catalog:
+                if not category["count"]:
+                    continue
+                with st.expander(
+                    f"{category['name']} · {category['count']} sonuç · {category['family']}"
+                ):
+                    for index, symbol in enumerate(category["symbols"]):
+                        if st.button(
+                            symbol,
+                            key=f"trajectory_catalog_{category['key']}_{symbol}_{index}",
+                            width="stretch",
+                        ):
+                            on_click(symbol + ".IS" if "." not in symbol else symbol)
+                            st.rerun(scope="app")
 
     _render_live_karne(st)

@@ -3054,6 +3054,470 @@ if '_kapanis_master_state' not in st.session_state: st.session_state._kapanis_ma
 if '_kapanis_master_soft_closed' not in st.session_state: st.session_state._kapanis_master_soft_closed = False
 if '_kapanis_master_auto_pending' not in st.session_state: st.session_state._kapanis_master_auto_pending = False
 if '_kapanis_master_auto_excluded' not in st.session_state: st.session_state._kapanis_master_auto_excluded = []
+if '_ms_faz2_bekliyor' not in st.session_state: st.session_state._ms_faz2_bekliyor = []
+if '_ms_faz2_baglam' not in st.session_state: st.session_state._ms_faz2_baglam = {}
+if '_ms_faz2_resume_once' not in st.session_state: st.session_state._ms_faz2_resume_once = False
+if '_ms_faz2_interruptions' not in st.session_state: st.session_state._ms_faz2_interruptions = 0
+
+
+# ── MASTER SCAN FAZLARI (1 Eyl 2026) ────────────────────────────────────────
+# Faz 1, Tarama Merkezi'nin ortak fotoğrafını üretir. Faz 2, ekran çizildikten
+# sonra aynı Streamlit oturumunda kalan ağır/ölçüm taramalarını sürdürür.
+_MS_PHASE1_STEPS = [
+    'index_health', 'backfill', 'mkk', 'data', 'magic_ribbon', 'hidden_accum',
+    'formasyon', 'cizgi_yapi', 'minervini', 'rsi_divergence', 'prelaunch',
+    'early_radar', 'toplu_terazi',
+]
+_MS_PHASE2_LABELS = {
+    'golden': 'Altın + Platin fırsatlar',
+    'radar2': 'Pozitif Karne — Radar 2',
+    'weak_pair': 'ICT Sniper + Royal Flush',
+    'radar1': 'Ön filtre — Radar 1',
+    'strong_reversal': 'Güçlü Dönüş adayları',
+    'tavan': 'Tavan adayları — alarm + TOP 30',
+    'flow_leaders': 'Para Akışı Liderleri',
+    'stp_uyanis': 'STP teyitli tepki · gözlem havuzu',
+    'top20': 'TOP 20 & Confluence',
+}
+
+
+def _ms_phase2_labels(pending):
+    """Kullanıcıya teknik anahtar göstermeden kalan Faz 2 işlerini anlatır."""
+    return [_MS_PHASE2_LABELS.get(str(key), str(key)) for key in pending]
+
+
+@st.dialog("⚠️ Master Scan hâlâ tarıyor", width="small", dismissible=False)
+def _master_scan_phase2_interruption_dialog(labels, interruption_count):
+    st.markdown(
+        "Tarama arka planda sürerken ekranda bir işlem başlattınız. "
+        "**Şu taramalar henüz bitmedi:**"
+    )
+    for _label in labels:
+        st.markdown(f"- {_label}")
+    st.markdown(
+        f"Bu, Faz 2 sırasında {interruption_count}. kullanıcı kesintisi. "
+        "Devam kararı yalnızca **bir sonraki çalıştırma** için geçerlidir; "
+        "tarama yeniden kesilirse bu uyarı tekrar görünür."
+    )
+    # 1 Eyl 2026 — DÜĞME ETİKETLERİ NİYETE GÖRE YAZILIR. Eskiden vurgulu düğme
+    # "Devam et" yazıyordu ve TARAMAYI ÖLDÜRÜYORDU; hemen üstünde kalan taramalar
+    # listeleniyordu. Aceleci bir tıklama, korunmak istenen taramayı bitiriyordu.
+    # Artık: güvenli olan (sürdür) vurgulu ve SOLDA, yıkıcı olan (yarıda bırak)
+    # vurgusuz ve sağda. Mantık aynı, yalnız hangi düğmenin ne yaptığı okunuyor.
+    _c1, _c2 = st.columns(2)
+    with _c1:
+        if st.button("↩️ Taramayı sürdür", type="primary", width="stretch",
+                     key="_ms_faz2_continue"):
+            # 1 Eyl 2026 — Kalıcı ACK yerine tek kullanımlık geçiş bileti.
+            # ACK True bırakılırsa sonraki kullanıcı tıklaması sessizce Faz 2'yi
+            # başa sarar; bu bayrak yalnız bu kararın hemen sonraki rerun'ını
+            # geçirir, sonra guard tarafından tüketilir.
+            st.session_state._ms_faz2_resume_once = True
+            st.rerun()
+    with _c2:
+        if st.button("⛔ Taramayı yarıda bırak", width="stretch", key="_ms_faz2_abort"):
+            _ctx = st.session_state.get('_ms_faz2_baglam') or {}
+            _cat = _ctx.get('category', st.session_state.get('category', ''))
+            _missing = _ms_phase2_labels(st.session_state.get('_ms_faz2_bekliyor', []))
+            _failures = list(_ctx.get('persistence_failures') or [])
+            _failures.extend([f"Faz 2 eksik: {_label}" for _label in _missing])
+            try:
+                if bool(_ctx.get('is_bist')):
+                    _daily = patron_db_guard.write_daily_karne(category=_cat)
+                    if not _daily.get('ok', False):
+                        _failures.append('Günlük Karne')
+            except Exception as _abort_exc:
+                _failures.append('Günlük Karne')
+                log_error('master_scan_phase2_abort_daily', _abort_exc, _cat)
+            if bool(_ctx.get('is_bist')):
+                try:
+                    _completion_saved = kapanis_master_otomasyon.mark_scan_completed(
+                        category=_cat, critical_failures=_failures,
+                    )
+                    if _completion_saved:
+                        st.session_state._kapanis_master_state = {
+                            'day': datetime.now(_TZ_ISTANBUL).strftime('%Y-%m-%d'),
+                            'started': True,
+                            'completed': False,
+                        }
+                        st.session_state._kapanis_master_auto_pending = False
+                        st.session_state._kapanis_master_auto_excluded = []
+                except Exception as _completion_exc:
+                    _failures.append('Faz 2 kapanış kaydı')
+                    log_error('master_scan_phase2_abort', _completion_exc, _cat)
+            st.session_state._ms_faz2_bekliyor = []
+            st.session_state._ms_faz2_baglam = {}
+            st.session_state._ms_faz2_resume_once = False
+            st.session_state._ms_faz2_interruptions = 0
+            st.session_state._master_scan_running = False
+            st.session_state.generate_prompt = False
+            kapanis_master_otomasyon.release_scan_start()
+            st.rerun()
+
+
+def _ms_run_phase2_step(step, ctx):
+    """Faz 2'nin tek adımını çalıştırır; adım tamamlanınca çağıran düşürür."""
+    _cat = ctx['category']
+    _scan_list = ctx['scan_list']
+
+    if step == 'golden':
+        _df_golden, _df_nadir, _df_tekli = get_golden_trio_batch_scan(_scan_list)
+        st.session_state.golden_results = (
+            _df_golden.sort_values(by='Teknik_Skor', ascending=False).reset_index(drop=True)
+            if not _df_golden.empty else pd.DataFrame()
+        )
+        st.session_state.platin_results = (
+            _df_nadir.sort_values(by='Teknik_Skor', ascending=False).reset_index(drop=True)
+            if not _df_nadir.empty else pd.DataFrame()
+        )
+        st.session_state.tekli_altin_results = (
+            _df_tekli.sort_values(
+                by=['is_platin', 'Teknik_Skor'], ascending=[False, False]
+            ).reset_index(drop=True)
+            if not _df_tekli.empty else pd.DataFrame()
+        )
+        log_scan_signal('altin_setup', st.session_state.golden_results, category=_cat)
+        log_scan_signal('platin_setup', st.session_state.platin_results, category=_cat)
+        log_scan_signal('tekli_altin', st.session_state.tekli_altin_results, category=_cat)
+        return
+
+    if step == 'radar2':
+        st.session_state.radar2_data = radar2_scan(_scan_list)
+        log_scan_signal('radar2', st.session_state.radar2_data, category=_cat)
+        # Erken Radar Faz 1'de üretilir; Radar 2 geldikten sonra yaşam döngüsü
+        # köprüsü kurulabilir. Böylece bağımlılık sırası bozulmaz.
+        st.session_state.liderlik_yolculugu_data = scan_leadership_lifecycle(
+            st.session_state.get('radar2_data'),
+            st.session_state.get('erken_radar_data'),
+            category=_cat,
+        )
+        if not st.session_state.liderlik_yolculugu_data.attrs.get('_persistence_ok', True):
+            ctx['persistence_failures'].append('Liderlik')
+        try:
+            _leader_ok = bool(
+                st.session_state.liderlik_yolculugu_data.attrs.get('_persistence_ok', True)
+            )
+            _leader_row_count = len(st.session_state.liderlik_yolculugu_data)
+            patron_db_guard.record_component_result(
+                'Liderlik', _leader_ok, category=_cat,
+                expected_count=_leader_row_count, actual_count=_leader_row_count,
+            )
+        except Exception as _leader_exc:
+            ctx['persistence_failures'].append('Liderlik karne')
+            log_error('master_scan_liderlik_karne', _leader_exc, _cat)
+        return
+
+    if step == 'weak_pair':
+        # 17 Ağu 2026'da iki tarama backtest nedeniyle elendi; sonuç anahtarları
+        # yine boş yazılır ki mevcut ekran davranışı aynen korunsun.
+        st.session_state.ict_scan_data = pd.DataFrame()
+        st.session_state.nadir_firsat_scan_data = pd.DataFrame()
+        return
+
+    if step == 'radar1':
+        st.session_state.scan_data = analyze_market_intelligence(_scan_list, _cat)
+        log_scan_signal('radar1', st.session_state.scan_data, category=_cat)
+        return
+
+    if step == 'strong_reversal':
+        st.session_state.guclu_donus_data = scan_guclu_donus_batch(_scan_list)
+        return
+
+    if step == 'tavan':
+        try:
+            import datetime as _tav_dt
+            _tav_now = _tav_dt.datetime.now()
+            _tav_ck = (
+                f"{_tav_now.strftime('%Y-%m-%d')}_{_tav_now.hour:02d}"
+                f"{(_tav_now.minute // 10) * 10:02d}"
+            )
+            _tav_df, _tav_rejim, _tav_chg, _tav_target = _tav_compute_panel(cache_key=_tav_ck)
+            if _tav_df is not None and not _tav_df.empty:
+                st.session_state.tavan_adaylari_data = {
+                    'df': _tav_df, 'rejim': _tav_rejim, 'xu_chg': _tav_chg,
+                    'target_date': _tav_target,
+                }
+                if 'BIST' in _cat.upper():
+                    _tav_log = _tav_df.copy()
+                    _tav_log['Sembol'] = _tav_log['tk'].apply(
+                        lambda _t: _t if '.IS' in str(_t) else f'{_t}.IS'
+                    )
+                    _tav_log['Fiyat'] = _tav_log['fiyat']
+                    _tav_log['Skor'] = _tav_log['skor']
+                    _tav_log['F_Tavan_Skor'] = _tav_log['skor']
+                    _tav_log['F_Tavan_Kat'] = _tav_log['kat']
+                    _tav_log['F_Tavan_Confluence'] = _tav_log['confluence_n']
+                    _tav_alarm = _tav_log[_tav_log['skor'] >= 150]
+                    if not _tav_alarm.empty:
+                        log_scan_signal('tavan_alarm', _tav_alarm, category=_cat)
+                    _tav_top30 = _tav_log.head(30)
+                    if not _tav_top30.empty:
+                        log_scan_signal('tavan_top30', _tav_top30, category=_cat)
+                    st.toast(
+                        f"🚀 Tavan Motoru: {len(_tav_alarm)} alarm + {len(_tav_top30)} TOP30",
+                        icon='✅',
+                    )
+        except Exception as _tavan_exc:
+            log_error('master_scan_tavan_motoru', _tavan_exc, _cat)
+        return
+
+    if step == 'flow_leaders':
+        try:
+            if 'BIST' in _cat.upper():
+                _pal_df = scan_para_akisi_liderleri(_scan_list, _cat)
+                if _pal_df is not None and not _pal_df.empty:
+                    log_scan_signal('para_akisi_lider', _pal_df, category=_cat)
+                    st.toast(
+                        f'💧 Para Akışı Liderleri: {len(_pal_df)} hisse loglandı',
+                        icon='✅',
+                    )
+        except Exception as _pal_exc:
+            log_error('master_scan_para_akisi', _pal_exc, _cat)
+        return
+
+    if step == 'stp_uyanis':
+        try:
+            st.session_state.stp_uyanis_data = scan_stp_uyanis_batch(_scan_list)
+        except Exception as _stp_exc:
+            st.session_state.stp_uyanis_data = pd.DataFrame()
+            log_error('master_scan_stp_uyanis', _stp_exc, _cat)
+        return
+
+    if step == 'top20':
+        st.session_state.top_20_summary = compile_top_20_summary()
+        st.session_state.confluence_hits = compile_confluence_hits()
+        return
+
+    raise ValueError(f'Bilinmeyen Master Scan Faz 2 adımı: {step}')
+
+
+def _ms_write_frontend_preview(category, er_df):
+    """Erken Radar önizlemesini eski Master Scan kapanış noktasında üretir."""
+    if 'BIST' not in str(category).upper() or er_df is None or er_df.empty:
+        return
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        _er5 = er_df[
+            (er_df['Role'] == 'primary') &
+            (er_df['Stars'].apply(lambda value: isinstance(value, int) and value == 5))
+        ]
+        _all_primary = er_df[er_df['Role'] == 'primary']
+        _aging_pairs = [
+            (str(row['Sembol']), str(row['ScenarioId'])) for _, row in _er5.iterrows()
+        ]
+        _aging_map = get_scenario_ages_batch(
+            _aging_pairs, max_lookback=180, include_details=True
+        )
+        _preview_items = []
+        for _, row in _er5.iterrows():
+            _ticker = str(row.get('Sembol', '')).replace('.IS', '')
+            if not _ticker:
+                continue
+            _life = _aging_map.get(
+                (row.get('Sembol', ''), row.get('ScenarioId', '')), {}
+            )
+            _preview_items.append({
+                'ticker': _ticker,
+                'scenario_id': str(row.get('ScenarioId', '')),
+                'scenario_name': str(row.get('ScenarioName', '')),
+                'category': str(row.get('Category', '')),
+                'stars': 5,
+                'aging_days': int(_life.get('event_day') or 1),
+                'event_day': int(_life.get('event_day') or 1),
+                'first_seen': _life.get('first_seen'),
+            })
+        _preview_items.sort(key=lambda item: item['aging_days'], reverse=True)
+        _show_n = 3
+        _preview_payload = {
+            'generated_at': datetime.now(_TZ_ISTANBUL).strftime('%Y-%m-%d %H:%M'),
+            'category': category,
+            'public_items': _preview_items[:_show_n],
+            'locked_count': max(0, len(_all_primary) - _show_n),
+        }
+        _frontend_dir = _Path(r'C:\Users\LENOVO\OneDrive\Desktop\Patron Terminal\public\frontend')
+        (_frontend_dir / 'erken_radar_preview.json').write_text(
+            _json.dumps(_preview_payload, ensure_ascii=False, indent=2), encoding='utf-8'
+        )
+    except Exception as _preview_exc:
+        import logging as _logging
+        _logging.warning(f'[erken_radar_preview] JSON üretim hatası: {_preview_exc}')
+
+
+def _ms_finalize_master_scan(ctx, progress, progress_bar=None, holiday_ph=None):
+    """Faz 2 bitince eski kapanış işlerini aynı sonuçlarla tamamlar."""
+    _cat = ctx['category']
+    _is_bist = bool(ctx.get('is_bist'))
+    _failures = ctx.setdefault('persistence_failures', [])
+
+    # patron.db → VPS: tutarlı SQLite snapshot + atomik uzak dosya değişimi.
+    try:
+        import os as _os_sync
+        if _os_sync.name == 'nt':
+            import subprocess as _sp_sync, sqlite3 as _sq_sync
+            _src = _sq_sync.connect('patron.db')
+            _dst = _sq_sync.connect('patron_sync.db')
+            _src.backup(_dst)
+            _dst.close()
+            _src.close()
+            _sync_cmd = (
+                'scp -o StrictHostKeyChecking=no patron_sync.db '
+                'wm11tr@34.153.19.220:~/smr/patron.db.new && '
+                'ssh -o StrictHostKeyChecking=no wm11tr@34.153.19.220 '
+                '"mv ~/smr/patron.db.new ~/smr/patron.db"'
+            )
+            _sp_sync.Popen(
+                _sync_cmd, shell=True,
+                stdout=_sp_sync.DEVNULL, stderr=_sp_sync.DEVNULL,
+            )
+            st.toast('🔄 patron.db VPS\'e gönderiliyor (tutarlı snapshot + atomik)', icon='🔄')
+    except Exception as _sync_exc:
+        log_error('master_scan_patrondb_sync', _sync_exc, _cat)
+
+    _er_df = st.session_state.get('erken_radar_data')
+    if _er_df is not None and not _er_df.empty:
+        _er_primary_n = int((_er_df['Role'] == 'primary').sum())
+        st.toast(
+            f"🚀 Erken Radar: {_er_primary_n} hisse, {len(_er_df)} senaryo",
+            icon='✅',
+        )
+    else:
+        st.toast('⚠️ Erken Radar: Hiç senaryo eşleşmedi', icon='⚠️')
+    _ms_write_frontend_preview(_cat, _er_df)
+
+    _finish_pct, _finish_text = progress.finish()
+    if progress_bar is not None:
+        progress_bar.progress(_finish_pct, text=_finish_text)
+
+    import pickle, logging as _logging
+    _master_snapshot = {
+        'ict_scan_data': st.session_state.ict_scan_data,
+        'nadir_firsat_scan_data': st.session_state.nadir_firsat_scan_data,
+        'golden_results': st.session_state.golden_results,
+        'platin_results': st.session_state.platin_results,
+        'tekli_altin_results': st.session_state.tekli_altin_results,
+        'accum_data': st.session_state.accum_data,
+        'scan_data': st.session_state.scan_data,
+        'radar2_data': st.session_state.radar2_data,
+        'liderlik_yolculugu_data': st.session_state.liderlik_yolculugu_data,
+        'harmonic_confluence_data': st.session_state.harmonic_confluence_data,
+        'minervini_data': st.session_state.minervini_data,
+        'rs_leaders_data': st.session_state.get('rs_leaders_data'),
+        'guclu_donus_data': st.session_state.guclu_donus_data,
+        'wilder_divergence_data': st.session_state.wilder_divergence_data,
+        'stp_uyanis_data': st.session_state.get('stp_uyanis_data'),
+        'prelaunch_bos_data': st.session_state.prelaunch_bos_data,
+        'top_20_summary': st.session_state.top_20_summary,
+        'confluence_hits': st.session_state.confluence_hits,
+        'golden_pattern_data': st.session_state.golden_pattern_data,
+        'erken_radar_data': st.session_state.get('erken_radar_data'),
+        'formasyon_master_data': st.session_state.get('formasyon_master_data'),
+        'cizgi_yapi_master_data': st.session_state.get('cizgi_yapi_master_data'),
+        'magic_ribbon_session_data': st.session_state.get('magic_ribbon_session_data'),
+        'toplu_terazi_data': st.session_state.get('toplu_terazi_data'),
+    }
+    _save_ok = False
+    _skipped_keys = []
+    try:
+        pickle.dumps(_master_snapshot)
+        _res = save_scan_result('master_scan', _master_snapshot, _cat)
+        _save_ok = (_res is True)
+    except Exception as _pickle_exc:
+        _logging.warning(
+            f'[scan_cache] Toplu pickle hatası: {_pickle_exc} — key bazlı kayda geçiliyor'
+        )
+        _clean_snapshot = {}
+        for _key, _value in _master_snapshot.items():
+            try:
+                pickle.dumps(_value)
+                _clean_snapshot[_key] = _value
+            except Exception as _key_exc:
+                _skipped_keys.append(_key)
+                _logging.warning(f'[scan_cache] pickle edilemeyen key atlandı: {_key} — {_key_exc}')
+        if _clean_snapshot:
+            _res = save_scan_result('master_scan', _clean_snapshot, _cat)
+            _save_ok = (_res is True)
+    if _save_ok:
+        st.toast('💾 Tarama sonuçları diske kaydedildi.', icon='✅')
+    else:
+        _skip_str = ', '.join(_skipped_keys[:5]) if _skipped_keys else 'bilinmiyor'
+        st.warning(f'⚠️ Tarama önbelleği kaydedilemedi. Atlanan keyler: {_skip_str}')
+
+    st.session_state.generate_prompt = False
+    st.session_state._master_scan_running = False
+    if _is_bist:
+        try:
+            _daily = patron_db_guard.write_daily_karne(category=_cat)
+            if not _daily.get('ok', False):
+                _failures.append('Günlük Karne')
+                log_error(
+                    'master_scan_daily_karne',
+                    RuntimeError('; '.join(_daily.get('issues', []))),
+                    _cat,
+                )
+        except Exception as _daily_exc:
+            _failures.append('Günlük Karne')
+            log_error('master_scan_daily_karne', _daily_exc, _cat)
+        _completion_saved = kapanis_master_otomasyon.mark_scan_completed(
+            category=_cat, critical_failures=_failures,
+        )
+        if _completion_saved:
+            st.session_state._kapanis_master_state = {
+                'day': datetime.now(_TZ_ISTANBUL).strftime('%Y-%m-%d'),
+                'started': True,
+                'completed': not bool(_failures),
+            }
+            st.session_state._kapanis_master_auto_pending = False
+            st.session_state._kapanis_master_auto_excluded = []
+            if _failures:
+                st.warning(
+                    '⚠️ Master Scan hesapları bitti ancak '
+                    + ', '.join(_failures)
+                    + " kaydı eksik kaldı. Günlük durum 'kısmi tamamlandı' olarak işaretlendi."
+                )
+            else:
+                st.toast(
+                    'Bugünkü BIST Master Scan tamamlandı. Otomatik kontrol sonraki işlem günü 20:00\'de yapılacak.',
+                    icon='✅',
+                )
+        else:
+            st.warning(
+                '⚠️ Master Scan bitti ancak günlük tamamlanma kaydı yazılamadı; '
+                'otomatik tekrar güvenlik için kapalı değil.'
+            )
+
+    st.session_state._ms_faz2_bekliyor = []
+    st.session_state._ms_faz2_baglam = {}
+    st.session_state._ms_faz2_resume_once = False
+    st.session_state._ms_faz2_interruptions = 0
+    try:
+        if progress_bar is not None:
+            progress_bar.empty()
+        if holiday_ph is not None:
+            holiday_ph.empty()
+    except Exception:
+        pass
+
+
+def _ms_execute_pending_phase2(ctx, progress, progress_bar):
+    """Ekran çizildikten sonra kalan Faz 2 adımlarını sırayla tamamlar."""
+    _pending = list(st.session_state.get('_ms_faz2_bekliyor') or [])
+    for _step in _pending:
+        _label = _MS_PHASE2_LABELS.get(_step, _step)
+        _pct, _text = progress.begin(_step, _label)
+        progress_bar.progress(_pct, text=_text)
+        try:
+            _ms_run_phase2_step(_step, ctx)
+        except Exception as _phase2_exc:
+            st.session_state._master_scan_running = False
+            kapanis_master_otomasyon.release_scan_start()
+            st.error(f'Faz 2 sırasında bir hata oluştu: {str(_phase2_exc)}')
+            return False
+        _pending = [key for key in _pending if key != _step]
+        st.session_state._ms_faz2_bekliyor = _pending
+    _ms_finalize_master_scan(ctx, progress, progress_bar)
+    st.rerun()
+    return True
 
 # ── BIST Piyasa Durum Kaşesi — TEK KAYNAK (tatil/arefe/hafta sonu) ────────
 # Her oturum başında BİR KEZ hesaplanır. render_smart_volume_panel,
@@ -3205,7 +3669,7 @@ def _run_kapanis_master_automation():
 
         st.session_state._kapanis_master_state = _state
         _phase = _decision["phase"]
-        if _phase not in ("start", "done"):
+        if _phase not in ("start", "done") and not st.session_state.get("_ms_faz2_bekliyor"):
             # Ekran yalnız sonraki gerçek karar anında yenilenir: veri beklerken
             # dakikada bir, uyarıdaysa doğrudan son-iki-dakika / başlangıç eşiğinde.
             _st_autorefresh(
@@ -5931,6 +6395,7 @@ def render_smart_volume_panel(ticker):
                         _obv_line_html = (
                             f'<polyline points="{_pts}" fill="none" stroke="#f59e0b" '
                             f'stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" '
+                            f'stroke-dasharray="0.1,2.8" '
                             f'vector-effect="non-scaling-stroke" opacity="0.98"/>'
                         )
                         _ly = _oyv_all[-1]
@@ -7625,7 +8090,9 @@ def render_smart_volume_panel(ticker):
         f'<div style="padding:6px 7px;background:{t4_bb};display:flex;flex-direction:column;min-width:0;">'
         f'<div style="font-size:0.60rem;color:{text_muted};font-weight:900;text-align:center;margin-bottom:3px;">SON 5 SEANS HACİM</div>'
         f'<div style="font-size:0.58rem;color:{text_sub};font-weight:700;text-align:center;margin-bottom:3px;">20G ORT. = 1.0×</div>'
-        f'{_volume_aligned_chart_html if _volume_aligned_chart_html else _volume_fallback_html}'
+        # 1 Eyl 2026 — Mumlar normal boyda üstte, hacim barları ayrı ve en altta.
+        # Birleşik SVG yolu iki seriyi kutunun ortasına sıkıştırıyordu.
+        f'{_volume_fallback_html}'
         f'</div></div>'
 
         # Sağ sütun: üstte iki teknik kart, altta akıllı para durumu; iki sıra da alanı doldurur.
@@ -15099,6 +15566,19 @@ if _MM_MEMBER_VIEW and st.session_state.get("_mm_quota_block"):
 # ekranındayken zaman çizelgesi güvenli biçimde burada yönetilir.
 _kapanis_auto_ready = _run_kapanis_master_automation()
 
+# Faz 2 sürerken gelen bir kullanıcı etkileşimi Streamlit'i yeniden başlatır.
+# Yeni tarama veya panel işlemi araya girmeden önce açık kalan işleri sor.
+_ms_pending_for_warning = list(st.session_state.get('_ms_faz2_bekliyor') or [])
+_ms_phase2_interruption_pending = False
+if _ms_pending_for_warning:
+    # Devam düğmesi bir defalık geçiş bileti bırakır. Bileti tüketmeden başka
+    # bir kullanıcı tıklaması gelirse diyalog yeniden açılır; böylece ikinci,
+    # üçüncü vb. kesintiler kalıcı ACK yüzünden sessizce Faz 2'yi sıfırlamaz.
+    if not st.session_state.pop('_ms_faz2_resume_once', False):
+        _ms_interruptions = int(st.session_state.get('_ms_faz2_interruptions', 0)) + 1
+        st.session_state._ms_faz2_interruptions = _ms_interruptions
+        _ms_phase2_interruption_pending = True
+
 # 5. MASTER SCAN BUTONU (üye modunda gizli — admin'e özel ağır tarama)
 with col_btn:
     _manual_master_scan = False
@@ -15108,7 +15588,11 @@ with col_btn:
 _auto_master_scan = bool(
     _kapanis_auto_ready or st.session_state.get("_kapanis_master_auto_pending", False)
 )
-if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
+if (
+    (not _MM_MEMBER_VIEW)
+    and (_manual_master_scan or _auto_master_scan)
+    and not _ms_phase2_interruption_pending
+):
 
         if _auto_master_scan:
             # Kapanış otomasyonu yalnız BIST verisini denetler; kullanıcı o anda
@@ -15131,8 +15615,7 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
 
         # ── CACHE KONTROLÜ KAPATILDI — buton tıklanınca DAİMA fresh scan
         # (Cache load sadece sayfa ilk açılışında çalışır, line ~20385'te)
-        # Eskiden burada cache load + st.rerun() vardı → Erken Radar adımı hiç
-        # çalışmıyordu. Artık her buton tıklaması full Master Scan çalıştırır.
+        # Cache yükleme burada yapılmaz; her buton tıklaması yeni Master Scan başlatır.
 
         # ── BIST TAKVİM KONTROLÜ ─────────────────────────────────────────────
         # Banner'ı st.empty() placeholder'a koy ki tarama bitince temizlenebilsin.
@@ -15155,6 +15638,22 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
         # API çağrılarını (get_live_price) atlamak için flag aç. Parquet'teki
         # kapanış verisi yeterli — 500 ticker × ban riski engellenir.
         st.session_state['_master_scan_running'] = True
+        # Yeni turda önceki Faz 2'nin yarım/eskimiş sonuçları ekrana sızmasın.
+        st.session_state._ms_faz2_bekliyor = []
+        st.session_state._ms_faz2_baglam = {}
+        st.session_state._ms_faz2_resume_once = False
+        st.session_state._ms_faz2_interruptions = 0
+        for _ms_stale_key in (
+            'golden_results', 'platin_results', 'tekli_altin_results',
+            'radar2_data', 'liderlik_yolculugu_data', 'ict_scan_data',
+            'nadir_firsat_scan_data', 'scan_data', 'guclu_donus_data',
+            'tavan_adaylari_data', 'stp_uyanis_data', 'top_20_summary',
+            'confluence_hits',
+        ):
+            st.session_state[_ms_stale_key] = None
+        # İlk render'daki disk snapshot'ı bu yeni turun boş Faz 2 anahtarlarını
+        # eski sonuçlarla doldurmasın.
+        st.session_state['_scan_cache_restored'] = True
 
         # --- A. HAZIRLIK ---
         st.toast("Ajanlar göreve çağrılıyor...", icon="🕵️")
@@ -15164,11 +15663,10 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
         my_bar = st.progress(0, text=progress_text)
         _ms_is_bist = "BIST" in str(_cat).upper()
         _ms_progress_steps = [
-            "index_health", "backfill", "mkk", "data", "magic_ribbon", "hidden_accum", "radar2",
-            "harmonic", "rs_leaders", "formasyon", "golden", "vip_and_patterns", "cizgi_yapi", "minervini",
-            "weak_pair", "radar1", "rsi_divergence", "strong_reversal", "tavan",
+            *_MS_PHASE1_STEPS,
+            "golden", "radar2", "weak_pair", "radar1", "strong_reversal", "tavan",
             *( ["flow_leaders"] if _ms_is_bist else [] ),
-            "prelaunch", "early_radar", "stp_uyanis", "toplu_terazi", "top20",
+            "stp_uyanis", "top20",
         ]
         _ms_progress = master_scan_progress.MasterScanProgress(_cat, _ms_progress_steps)
         _ms_persistence_failures = []
@@ -15290,7 +15788,7 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                 log_error("data_sanity_report", _sx, _cat)
 
             # ═══════════════════════════════════════════════════════════════════
-            # MASTER SCAN AKIŞI — 15 Haz 2026 TIER bazlı yeniden sıralandı.
+            # MASTER SCAN FAZ 1 — Tarama Merkezi ortak fotoğrafını üretir.
             # Mantık: ELİT/GÜVENİLİR önce (Pre-Launch BOS + Erken Radar = TIER_1+2 ana motoru),
             # ZAYIF (Royal Flush + ICT Sniper + Radar 1) en sona.
             # Önceden Pre-Launch BOS %96'daydı (en güçlü ELİT en sondaydı), Royal Flush %20'de
@@ -15305,10 +15803,6 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
             _scan_progress("hidden_accum", "🤫 Ölçüm — Gizli Toplama")
             st.session_state.accum_data = scan_hidden_accumulation(scan_list)
             log_scan_signal("gizli_birikim", st.session_state.accum_data, category=_cat)
-
-            _scan_progress("radar2", "🎯 Pozitif Karne — Radar 2")
-            st.session_state.radar2_data = radar2_scan(scan_list)
-            log_scan_signal("radar2", st.session_state.radar2_data, category=_cat)
 
             # 17 Ağu 2026 — ELENDİ: Harmonik Confluence (alfa -2,1) + RS Momentum (alfa -2,9).
             # İkisi de iki rejimde de endeksin altında kaldı; taranmıyor, yazılmıyor.
@@ -15382,26 +15876,6 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
             # kaynak olarak aktar; skor/AI/terazi hesabına bağlama.
             st.session_state.formasyon_master_data = _master_formasyon_snapshot
 
-            # ── KATMAN 3: ŞAMPİYONLAR (Golden Trio + VIP Formasyon) ──
-            _scan_progress("golden", "💎 Altın + Platin fırsatlar")
-            df_golden, df_nadir, df_tekli = get_golden_trio_batch_scan(scan_list)
-            st.session_state.golden_results = (
-                df_golden.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True)
-                if not df_golden.empty else pd.DataFrame()
-            )
-            st.session_state.platin_results = (
-                df_nadir.sort_values(by="Teknik_Skor", ascending=False).reset_index(drop=True)
-                if not df_nadir.empty else pd.DataFrame()
-            )
-            st.session_state.tekli_altin_results = (
-                df_tekli.sort_values(by=["is_platin", "Teknik_Skor"], ascending=[False, False]).reset_index(drop=True)
-                if not df_tekli.empty else pd.DataFrame()
-            )
-            log_scan_signal("altin_setup",  st.session_state.golden_results,       category=_cat)
-            log_scan_signal("platin_setup", st.session_state.platin_results,        category=_cat)
-            log_scan_signal("tekli_altin",  st.session_state.tekli_altin_results,   category=_cat)
-
-
             # ── ÇİZGİ YAPISI (30 Ağu 2026) — ortak Master Scan fotoğrafı ──
             # Ayrı motor ve ayrı araştırma listesi: skor, AI, Terazi ve
             # scan_signals içine yazılmaz. BIST100 bilgisi yalnız sıralama
@@ -15437,121 +15911,8 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
             _scan_progress("minervini", "🦁 Minervini SEPA")
             st.session_state.minervini_data = scan_minervini_batch(scan_list)
 
-            # ── KATMAN 5: ZAYIF (15 Haz 2026 backtest) — sıranın SONUNDA ──
-            # ⚠ 31 Ağu 2026 düzeltmesi: eski yorum "UI'da gizli" diyordu, YANLIŞ.
-            # Master Scan TEK AKIŞTIR; hiçbir adım arka planda koşmaz ve hiçbir
-            # sonuç erken gösterilmez — ekran, blok bittikten SONRA çizilir.
-            # "Sona aldık" demek yalnız HESAP SIRASI demektir, gösterim sırası değil.
-            # Royal Flush + ICT Sniper PARALEL — en sona alındı, kullanıcı bitirip bekleyebilir.
-            _scan_progress("weak_pair", "⚠ ICT Sniper + Royal Flush (paralel)")
-            try:
-                import threading as _threading
-                from streamlit.runtime.scriptrunner import (
-                    add_script_run_ctx as _add_ctx,
-                    get_script_run_ctx as _get_ctx,
-                )
-                _ms_ctx = _get_ctx()
-
-                def _run_ctx(_fn, *_a):
-                    if _ms_ctx is not None:
-                        _add_ctx(_threading.current_thread(), _ms_ctx)
-                    return _fn(*_a)
-
-                # 17 Ağu 2026 — ELENDİ: ICT Sniper (alfa -4,9 · en kötü) +
-                # Royal Flush (-3,3). Paralel iş parçacığı da kalktı → Master Scan hızlandı.
-                st.session_state.ict_scan_data          = pd.DataFrame()
-                st.session_state.nadir_firsat_scan_data = pd.DataFrame()
-            except Exception as _par_exc:
-                log_error("master_scan_parallel(ict+nadir)", _par_exc, _cat)
-                st.session_state.ict_scan_data          = pd.DataFrame()
-                st.session_state.nadir_firsat_scan_data = pd.DataFrame()
-
-            # ── RADAR 1 — NE İŞE YARADIĞI (31 Ağu 2026, ölçülerek yazıldı) ──
-            # Buraya "zayıf tarama, veri için koşuyor" diye bakıp SİLMEYİN. İki
-            # somut işi var ve ikisi de ölçüldü:
-            #
-            # 1) EKRAN KAPISI — Radar 2 paneli yalnız radar1 skoru >=4 olanları
-            #    gösterir (RADARLAR VE KESİŞİMLER sekmesi). Tek hisse paneli de
-            #    hissenin R1 skorunu buradan okur; bulamazsa O HİSSE İÇİN
-            #    yeniden hesaplar (yani silmek maliyeti yok etmez, tek-hisse
-            #    ekranına taşır). Yani radar1 "gizli" DEĞİLDİR.
-            #
-            # 2) EVREN CETVELİ — son 30 günde 11.431 sinyal yazdı; ikinci sıradaki
-            #    tarama 4.442. Toplam 37.362. Bu kadar seçici olmayan bir tarama
-            #    pratikte EVRENİN KENDİSİDİR ve diğer taramaların "iyi mi" sorusu
-            #    ancak böyle geniş bir tabana karşı cevaplanabilir
-            #    (bkz. memory/project_evren_tabani_mercegi.md — alfayı sıfıra göre
-            #    okumak yanlış; 20 günde hisselerin yalnız %35'i endeksi yeniyor).
-            #
-            # MALİYET: Master Scan'in en pahalı ikinci adımı — ortanca 253 sn,
-            # turun %26'sı (20 koşunun zamanlama profilinden). Paralel görünüyor
-            # (10 işçi) ama hesap Python tarafında olduğu için gerçekte sıralı.
-            # Hızlandırmak isteyen: hisse başına hesabı ucuzlatmak ya da gerçek
-            # ayrı süreçlere geçmek gerekir; işçi sayısını artırmak İŞE YARAMAZ.
-            #
-            # ⚠ ÇELİŞKİ NOTU: trajectory tarafında radar1 `NOISE_SCAN_TYPES`
-            # içinde "gürültü" diye işaretli. Orada doğru (tekil fırsat üretmez),
-            # burada da doğru (cetvel + kapı). İki etiket çelişmiyor ama biri
-            # ötekini okumadan karar verilirse yanlış silinir.
-            _scan_progress("radar1", "🧠 Ön filtre — Radar 1")
-            st.session_state.scan_data = analyze_market_intelligence(scan_list, _cat)
-            log_scan_signal("radar1", st.session_state.scan_data, category=_cat)
-
             _scan_progress("rsi_divergence", "🧭 Ölçümde — RSI Pozitif Uyumsuzluk")
             st.session_state.wilder_divergence_data = scan_wilder_positive_divergence_batch(scan_list)
-
-            # 17 Ağu 2026 — ELENDİ, sonra GERİ ALINDI: ortak tarih aralığında
-            # alfa +0,34 çıktı (ilk ölçümdeki -2,3 dönem etkisiydi).
-            _scan_progress("strong_reversal", "⚠ Güçlü Dönüş adayları")
-            st.session_state.guclu_donus_data = scan_guclu_donus_batch(scan_list)
-
-            # ── 🚀 TAVAN MOTORU (18 Haz 2026) — son adım, scan_signals'a yazar ──
-            # 60g 1131 backtest: skor ≥150 hit %11.24 (random×3.44), TOP 30 %14.8 (×3.04)
-            # Eylül 2026 ortası signal_returns JOIN ile gerçek hit/ret katkısı ölçülür.
-            _scan_progress("tavan", "🚀 Tavan adayları — alarm + TOP 30")
-            try:
-                import datetime as _tav_dt
-                _tav_now = _tav_dt.datetime.now()
-                _tav_ck = f"{_tav_now.strftime('%Y-%m-%d')}_{_tav_now.hour:02d}{(_tav_now.minute//10)*10:02d}"
-                _tav_df, _tav_rejim, _tav_chg, _tav_target = _tav_compute_panel(cache_key=_tav_ck)
-                if _tav_df is not None and not _tav_df.empty:
-                    st.session_state.tavan_adaylari_data = {
-                        'df': _tav_df, 'rejim': _tav_rejim, 'xu_chg': _tav_chg,
-                        'target_date': _tav_target,
-                    }
-                    # scan_signals'a yaz — BIST kategorisinde
-                    if "BIST" in _cat.upper():
-                        # tk → Sembol (.IS ek), fiyat → Fiyat, skor → Skor + F_* alias'lar
-                        _tav_log = _tav_df.copy()
-                        _tav_log['Sembol'] = _tav_log['tk'].apply(lambda t: t if '.IS' in str(t) else f"{t}.IS")
-                        _tav_log['Fiyat']  = _tav_log['fiyat']
-                        _tav_log['Skor']   = _tav_log['skor']
-                        _tav_log['F_Tavan_Skor']        = _tav_log['skor']
-                        _tav_log['F_Tavan_Kat']         = _tav_log['kat']
-                        _tav_log['F_Tavan_Confluence']  = _tav_log['confluence_n']
-                        # ALARM = skor ≥150
-                        _tav_alarm = _tav_log[_tav_log['skor'] >= 150]
-                        if not _tav_alarm.empty:
-                            log_scan_signal("tavan_alarm", _tav_alarm, category=_cat)
-                        # TOP 30 = sıra ≤30
-                        _tav_top30 = _tav_log.head(30)
-                        if not _tav_top30.empty:
-                            log_scan_signal("tavan_top30", _tav_top30, category=_cat)
-                        st.toast(f"🚀 Tavan Motoru: {len(_tav_alarm)} alarm + {len(_tav_top30)} TOP30", icon="✅")
-            except Exception as _tav_e:
-                log_error("master_scan_tavan_motoru", _tav_e, _cat)
-
-            # ── 💧 PARA AKIŞI LİDERLERİ (21 Haz 2026) — scan_signals'a yaz (Tarama Performansı backtest)
-            # CMF+momentum+filtreli ilk 10. 'para_akisi_lider' scan_type olarak birikir, backtest'lenir.
-            try:
-                if "BIST" in _cat.upper():
-                    _scan_progress("flow_leaders", "💧 Para Akışı Liderleri")
-                    _pal_df = scan_para_akisi_liderleri(scan_list, _cat)
-                    if _pal_df is not None and not _pal_df.empty:
-                        log_scan_signal("para_akisi_lider", _pal_df, category=_cat)
-                        st.toast(f"💧 Para Akışı Liderleri: {len(_pal_df)} hisse loglandı", icon="✅")
-            except Exception as _pal_e:
-                log_error("master_scan_para_akisi", _pal_e, _cat)
 
             # ── ELİT TIER_1 (Pre-Launch BOS + Erken Radar) — EN SON (24 Haz 2026) ──
             # En ağır adımlar burada; tüm diğer taramalar bittikten sonra çalışır.
@@ -15574,33 +15935,7 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                 _ms_persistence_failures.append("Erken Radar karne")
                 log_error("master_scan_er_karne", _er_karne_exc, _cat)
             st.session_state.erken_radar_data = _er_batch_df
-            st.session_state.liderlik_yolculugu_data = scan_leadership_lifecycle(
-                st.session_state.get("radar2_data"),
-                _er_batch_df,
-                category=_cat,
-            )
-            if not st.session_state.liderlik_yolculugu_data.attrs.get("_persistence_ok", True):
-                _ms_persistence_failures.append("Liderlik")
-            try:
-                _leader_ok = bool(st.session_state.liderlik_yolculugu_data.attrs.get("_persistence_ok", True))
-                _leader_row_count = len(st.session_state.liderlik_yolculugu_data)
-                patron_db_guard.record_component_result(
-                    "Liderlik", _leader_ok, category=_cat,
-                    expected_count=_leader_row_count, actual_count=_leader_row_count,
-                )
-            except Exception as _lead_karne_exc:
-                _ms_persistence_failures.append("Liderlik karne")
-                log_error("master_scan_liderlik_karne", _lead_karne_exc, _cat)
             save_scan_result("erken_radar_data", _er_batch_df, _cat)
-
-            # STP UYANIŞ — ayrı gözlem havuzu: puan, Elit sırası ve AI kararına girmez.
-            # Master Scan'in önceden açtığı parquet fotoğrafını okur; ek veri isteği yoktur.
-            _scan_progress("stp_uyanis", "⚗ STP teyitli tepki · gözlem havuzu")
-            try:
-                st.session_state.stp_uyanis_data = scan_stp_uyanis_batch(scan_list)
-            except Exception as _stp_uy_exc:
-                st.session_state.stp_uyanis_data = pd.DataFrame()
-                log_error("master_scan_stp_uyanis", _stp_uy_exc, _cat)
 
             # 🏆 GOLD MINE META-BACKTEST LOG (19 Haz 2026 — Build 1) — tüm taramalar dolu,
             # vitrinin o günkü top seçimlerini kaydet. Sonra signal_results JOIN ile vitrin
@@ -15648,211 +15983,29 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                 }
                 log_error("master_scan_toplu_terazi", _tt_exc, _cat)
 
-            # 🔄 patron.db → VPS SYNC (19 Haz 2026 · 1 Tem 2026 GÜVENLİ-SNAPSHOT fix) — bot DB
-            # köprüsü (smr_core kanıt katmanı) taze kalsın. SADECE lokal Windows admin (os.name=='nt').
-            # ⚠️ ESKİ: ham `scp patron.db` CANLI dosyayı kopyalıyordu → SQLite yarım-tutarsız imaj
-            #    kopyalanınca VPS db "malformed" oluyordu (1 Tem'de oldu, bot kanıt katmanı öldü).
-            # ✅ FIX: (1) sqlite .backup ile TUTARLI snapshot → (2) geçici ada gönder → (3) VPS'te
-            #    atomik mv. scp başarısızsa `&&` sayesinde mv çalışmaz, eski sağlam db korunur.
-            try:
-                import os as _os_sync
-                if _os_sync.name == 'nt':
-                    import subprocess as _sp_sync, sqlite3 as _sq_sync
-                    _src = _sq_sync.connect('patron.db'); _dst = _sq_sync.connect('patron_sync.db')
-                    _src.backup(_dst); _dst.close(); _src.close()   # canlı yazımdan etkilenmez
-                    _sync_cmd = (
-                        'scp -o StrictHostKeyChecking=no patron_sync.db '
-                        'wm11tr@34.153.19.220:~/smr/patron.db.new && '
-                        'ssh -o StrictHostKeyChecking=no wm11tr@34.153.19.220 '
-                        '"mv ~/smr/patron.db.new ~/smr/patron.db"'
-                    )
-                    _sp_sync.Popen(_sync_cmd, shell=True,
-                                   stdout=_sp_sync.DEVNULL, stderr=_sp_sync.DEVNULL)
-                    st.toast("🔄 patron.db VPS'e gönderiliyor (tutarlı snapshot + atomik)", icon="🔄")
-            except Exception as _sync_e:
-                log_error("master_scan_patrondb_sync", _sync_e, _cat)
-
-            # Debug toast — kaç hisse/senaryo bulundu
-            if _er_batch_df is not None and not _er_batch_df.empty:
-                _er_primary_n = int((_er_batch_df['Role'] == 'primary').sum())
-                _er_total_n   = len(_er_batch_df)
-                st.toast(f"🚀 Erken Radar: {_er_primary_n} hisse, {_er_total_n} senaryo", icon="✅")
-            else:
-                st.toast("⚠️ Erken Radar: Hiç senaryo eşleşmedi", icon="⚠️")
-
-            # 16b. SITE FRONTEND TADIMLIK JSON — sadece BIST için, FREE pazarlama (top 2 + lock count)
-            if "BIST" in _cat.upper() and _er_batch_df is not None and not _er_batch_df.empty:
-                try:
-                    import json as _json
-                    from pathlib import Path as _Path
-                    # 5★ primary'leri al, aging hesapla, sırala
-                    _er5 = _er_batch_df[(_er_batch_df['Role'] == 'primary') &
-                                        (_er_batch_df['Stars'].apply(lambda v: isinstance(v, int) and v == 5))]
-                    _all_primary = _er_batch_df[_er_batch_df['Role'] == 'primary']
-                    _aging_pairs2 = [(str(_r['Sembol']), str(_r['ScenarioId'])) for _, _r in _er5.iterrows()]
-                    _aging_map2 = get_scenario_ages_batch(
-                        _aging_pairs2, max_lookback=180, include_details=True
-                    )
-                    _preview_items = []
-                    for _, _r in _er5.iterrows():
-                        _tk = str(_r.get('Sembol', '')).replace('.IS', '')
-                        if not _tk:
-                            continue
-                        _life = _aging_map2.get(
-                            (_r.get('Sembol', ''), _r.get('ScenarioId', '')), {}
-                        )
-                        _preview_items.append({
-                            'ticker':        _tk,
-                            'scenario_id':   str(_r.get('ScenarioId', '')),
-                            'scenario_name': str(_r.get('ScenarioName', '')),
-                            'category':      str(_r.get('Category', '')),
-                            'stars':         5,
-                            'aging_days':    int(_life.get('event_day') or 1),
-                            'event_day':     int(_life.get('event_day') or 1),
-                            'first_seen':    _life.get('first_seen'),
-                        })
-                    # Aging'e göre sırala (uzun süredir aktif olanlar daha "sıkışmış" — öncelikli)
-                    _preview_items.sort(key=lambda x: x['aging_days'], reverse=True)
-                    _show_n = 3
-                    _public_items   = _preview_items[:_show_n]
-                    _locked_total   = max(0, len(_all_primary) - _show_n)
-                    _preview_payload = {
-                        'generated_at':   datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d %H:%M"),
-                        'category':       _cat,
-                        'public_items':   _public_items,
-                        'locked_count':   _locked_total,
-                    }
-                    _frontend_dir = _Path(r"C:\Users\LENOVO\OneDrive\Desktop\Patron Terminal\public\frontend")
-                    _preview_path = _frontend_dir / "erken_radar_preview.json"
-                    _preview_path.write_text(_json.dumps(_preview_payload, ensure_ascii=False, indent=2), encoding='utf-8')
-                except Exception as _e:
-                    import logging as _logging
-                    _logging.warning(f"[erken_radar_preview] JSON üretim hatası: {_e}")
-
-            # --- TOP 20 + CONFLUENCE
-            _scan_progress("top20", "🏆 TOP 20 & Confluence hesaplanıyor")
-            st.session_state.top_20_summary  = compile_top_20_summary()
-            st.session_state.confluence_hits = compile_confluence_hits()
-
-            # --- BİTİŞ ---
-            _finish_pct, _finish_text = _ms_progress.finish()
-            my_bar.progress(_finish_pct, text=_finish_text)
-
-            # ── TARAMA SONUÇLARINI DİSKE KAYDET (agresif cache) ────────────
-            import pickle, logging as _logging
-            _master_snapshot = {
-                "ict_scan_data":            st.session_state.ict_scan_data,
-                "nadir_firsat_scan_data":   st.session_state.nadir_firsat_scan_data,
-                "golden_results":           st.session_state.golden_results,
-                "platin_results":           st.session_state.platin_results,
-                "tekli_altin_results":      st.session_state.tekli_altin_results,
-                "accum_data":               st.session_state.accum_data,
-                "scan_data":                st.session_state.scan_data,
-                "radar2_data":              st.session_state.radar2_data,
-                "liderlik_yolculugu_data":  st.session_state.liderlik_yolculugu_data,
-                "harmonic_confluence_data": st.session_state.harmonic_confluence_data,
-                "minervini_data":           st.session_state.minervini_data,
-                "rs_leaders_data":          st.session_state.get('rs_leaders_data'),
-                "guclu_donus_data":         st.session_state.guclu_donus_data,
-                "wilder_divergence_data":   st.session_state.wilder_divergence_data,
-                "stp_uyanis_data":          st.session_state.get('stp_uyanis_data'),
-                "prelaunch_bos_data":       st.session_state.prelaunch_bos_data,
-                "top_20_summary":           st.session_state.top_20_summary,
-                "confluence_hits":          st.session_state.confluence_hits,
-                "golden_pattern_data":      st.session_state.golden_pattern_data,
-                "erken_radar_data":         st.session_state.get('erken_radar_data'),
-                "formasyon_master_data":    st.session_state.get('formasyon_master_data'),
-                "cizgi_yapi_master_data":  st.session_state.get('cizgi_yapi_master_data'),
-                "magic_ribbon_session_data": st.session_state.get('magic_ribbon_session_data'),
-                "toplu_terazi_data":         st.session_state.get('toplu_terazi_data'),
+            # Faz 1'in ortak fotoğrafı hazır: sayfa şimdi çizilecek; Faz 2,
+            # sayfanın altındaki devam bloğunda adım adım çalışacak.
+            _ms_phase2_steps = [
+                'golden', 'radar2', 'weak_pair', 'radar1', 'strong_reversal', 'tavan',
+                *(['flow_leaders'] if _ms_is_bist else []), 'stp_uyanis', 'top20',
+            ]
+            st.session_state._ms_faz2_baglam = {
+                'category': _cat,
+                'scan_list': list(scan_list),
+                'is_bist': _ms_is_bist,
+                'master_batch_snapshot': _master_batch_snapshot,
+                'master_benchmark_snapshot': _master_benchmark_snapshot,
+                'master_formasyon_snapshot': _master_formasyon_snapshot,
+                'master_snapshot_as_of': _master_snapshot_as_of,
+                'master_formasyon_ready': _master_formasyon_ready,
+                'persistence_failures': list(_ms_persistence_failures),
+                'phase1_steps': list(_MS_PHASE1_STEPS),
+                'phase2_steps': list(_ms_phase2_steps),
+                'progress_steps': list(_ms_progress_steps),
             }
-            # Önce tüm snapshot'ı bir arada dene
-            _save_ok = False
-            _skipped_keys = []
-            try:
-                pickle.dumps(_master_snapshot)   # bellek testi
-                _res = save_scan_result("master_scan", _master_snapshot, _cat)
-                _save_ok = (_res is True)
-            except Exception as _pe:
-                # Toplu pickle başarısız — her key'i ayrı ayrı dene, bozuk olanı atla
-                _logging.warning(f"[scan_cache] Toplu pickle hatası: {_pe} — key bazlı kayda geçiliyor")
-                _clean_snapshot = {}
-                for _sk, _sv in _master_snapshot.items():
-                    try:
-                        pickle.dumps(_sv)
-                        _clean_snapshot[_sk] = _sv
-                    except Exception as _ke:
-                        _skipped_keys.append(_sk)
-                        _logging.warning(f"[scan_cache] pickle edilemeyen key atlandı: {_sk} — {_ke}")
-                if _clean_snapshot:
-                    _res = save_scan_result("master_scan", _clean_snapshot, _cat)
-                    _save_ok = (_res is True)
-            # ────────────────────────────────────────────────────────────────
-
-            if _save_ok:
-                st.toast("💾 Tarama sonuçları diske kaydedildi.", icon="✅")
-            else:
-                _skip_str = ", ".join(_skipped_keys[:5]) if _skipped_keys else "bilinmiyor"
-                st.warning(f"⚠️ Tarama önbelleği kaydedilemedi. Atlanan keyler: {_skip_str}")
-
-            st.session_state.generate_prompt = False
-            # ⚠️ BAN KORUMA flag'i kapat (sayfa render'larında tek hisse view'da live patch aktif)
-            st.session_state['_master_scan_running'] = False
-
-            # Başarıyla biten BIST taraması günlük kayda geçer. Sayfa/servis
-            # yeniden başlasa bile otomasyon sonraki işlem gününün 20:00'sini bekler.
-            if _ms_is_bist:
-                try:
-                    _daily_karne = patron_db_guard.write_daily_karne(category=_cat)
-                    if not _daily_karne.get("ok", False):
-                        _ms_persistence_failures.append("Günlük Karne")
-                        log_error(
-                            "master_scan_daily_karne",
-                            RuntimeError("; ".join(_daily_karne.get("issues", []))),
-                            _cat,
-                        )
-                except Exception as _karne_exc:
-                    _ms_persistence_failures.append("Günlük Karne")
-                    log_error("master_scan_daily_karne", _karne_exc, _cat)
-                _completion_saved = kapanis_master_otomasyon.mark_scan_completed(
-                    category=_cat,
-                    critical_failures=_ms_persistence_failures,
-                )
-                if _completion_saved:
-                    st.session_state._kapanis_master_state = {
-                        "day": datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d"),
-                        "started": True,
-                        "completed": not bool(_ms_persistence_failures),
-                    }
-                    st.session_state._kapanis_master_auto_pending = False
-                    st.session_state._kapanis_master_auto_excluded = []
-                    if _ms_persistence_failures:
-                        st.warning(
-                            "⚠️ Master Scan hesapları bitti ancak "
-                            + ", ".join(_ms_persistence_failures)
-                            + " kaydı eksik kaldı. Günlük durum 'kısmi tamamlandı' olarak işaretlendi."
-                        )
-                    else:
-                        st.toast(
-                            "Bugünkü BIST Master Scan tamamlandı. Otomatik kontrol sonraki işlem günü 20:00'de yapılacak.",
-                            icon="✅",
-                        )
-                else:
-                    st.warning(
-                        "⚠️ Master Scan bitti ancak günlük tamamlanma kaydı yazılamadı; otomatik tekrar güvenlik için kapalı değil."
-                    )
-
-            # ── UI TEMİZLİK (31 May 2026): tarama bitince banner + progress bar
-            # ANINDA ekrandan kaldır. st.rerun() zaten birkaç ms içinde sayfayı
-            # yeniden render edecek; empty() çağrıları rerun'dan ÖNCE olduğundan
-            # Streamlit DOM'dan o placeholder'ları siler.
-            # NOT: sleep KULLANMA — sleep süresince eski component'ler ekranda
-            # asılı kalır, kullanıcı "neden hâlâ duruyor?" der.
-            try:
-                my_bar.empty()
-                _holiday_ph.empty()
-            except Exception:
-                pass
+            st.session_state._ms_faz2_bekliyor = list(_ms_phase2_steps)
+            st.session_state._ms_faz2_resume_once = False
+            st.session_state._ms_faz2_interruptions = 0
 
         except Exception as e:
             # Hata olsa bile flag'i kapat (sonsuza kadar açık kalmasın)
@@ -15864,9 +16017,6 @@ if (not _MM_MEMBER_VIEW) and (_manual_master_scan or _auto_master_scan):
                 raise
             st.error(f"Tarama sırasında bir hata oluştu: {str(e)}")
             st.stop()
-
-        # st.rerun() try/except DIŞINDA — Streamlit exception'ı artık yakalanmıyor
-        st.rerun()
 
 st.markdown("<hr style='margin-top:0.5rem; margin-bottom:0.5rem;'>", unsafe_allow_html=True)
 
@@ -21052,9 +21202,16 @@ def _render_left_col():
                     _eh, _em = map(int, _sess[1].split(":"))
                     _now_t = (_now_tr.hour, _now_tr.minute)
                     if (_sh, _sm) <= _now_t <= (_eh, _em):
-                        _ar_count = _st_autorefresh(
-                            interval=210_000,  # 3.5 dk — infografik oturana kadar sayfa yenilenmesin
-                            key=f"_auto_refresh_{_cur_ticker}",
+                        # Faz 2'nin uzun adımları (ör. golden) seans tazelemesiyle
+                        # başa sarılmasın; Faz 2 bitince liste boşalır ve tazeleme
+                        # kendiliğinden geri gelir.
+                        _ar_count = (
+                            None
+                            if st.session_state.get("_ms_faz2_bekliyor")
+                            else _st_autorefresh(
+                                interval=210_000,  # 3.5 dk — infografik oturana kadar sayfa yenilenmesin
+                                key=f"_auto_refresh_{_cur_ticker}",
+                            )
                         )
                         if _ar_count and _ar_count > 0:
                             try:
@@ -21064,7 +21221,7 @@ def _render_left_col():
                                 get_safe_historical_data.clear()
                             except Exception:
                                 pass
-                        else:
+                        elif _ar_count == 0:
                             # ── İLK AÇILIŞ TAZELİK KAPISI (30 Haz 2026) ──────────
                             # st_autorefresh ilk render'da 0 döner → periyodik temizlik
                             # ancak sekme açıldıktan 10 dk SONRA başlar. O pencerede
@@ -21094,7 +21251,10 @@ def _render_left_col():
                                 except Exception:
                                     pass
                                 st.session_state[_fresh_flag] = True
-                    elif (18, 15) <= _now_t <= (18, 35):
+                    elif (
+                        (18, 15) <= _now_t <= (18, 35)
+                        and not st.session_state.get("_ms_faz2_bekliyor")
+                    ):
                         # ── KAPANIŞ SONRASI YOĞUN TAZELEME (18 Haz 2026) ──
                         # Yahoo 18:00 kapanışı 18:20-18:35 arası publish eder.
                         # Bu pencerede 5dk'da bir tetik → gerçek kapanış değeri
@@ -26254,3 +26414,42 @@ except Exception:
 # expander'da ayrılan st.empty yuvası buradan doldurulur → hem sol hem SAĞ kolon
 # artık bu üretimi beklemez; görsel yuvanın konumuna (sol kol) oturur (14 Tem 2026).
 _finalize_infografik_slot()
+
+
+# Faz 2 kesintisi artık sayfanın başında durdurulmuyor: normal içerik çizildikten
+# sonra pencere açılıyor. Böylece kullanıcı verilerinin yerine boş bir sayfa
+# gelmiyor; Master Scan düğmesi ise yukarıdaki kapıyla bu turda devre dışı kalıyor.
+if _ms_phase2_interruption_pending:
+    _master_scan_phase2_interruption_dialog(
+        _ms_phase2_labels(_ms_pending_for_warning),
+        st.session_state.get('_ms_faz2_interruptions', 1),
+    )
+    st.stop()
+
+
+# ── MASTER SCAN FAZ 2 — sayfa çizildikten sonra ─────────────────────────────
+# İlk çalıştırmada Faz 1'in canlı ilerleme nesnesi korunur. Kullanıcı Faz 2
+# sırasında etkileşim yaptıysa Streamlit yeniden başlatır; o durumda tamamlanan
+# adımlar session_state listesinden okunup yeni sayaçla devam edilir.
+_ms_pending_bottom = list(st.session_state.get('_ms_faz2_bekliyor') or [])
+if _ms_pending_bottom:
+    _ms_ctx_bottom = st.session_state.get('_ms_faz2_baglam') or {}
+    _ms_progress_bottom = globals().get('_ms_progress')
+    _ms_progress_steps_bottom = list(
+        _ms_ctx_bottom.get('progress_steps') or (_MS_PHASE1_STEPS + _ms_pending_bottom)
+    )
+    if (
+        not isinstance(_ms_progress_bottom, master_scan_progress.MasterScanProgress)
+        or _ms_progress_bottom.category != str(_ms_ctx_bottom.get('category', '')).strip()
+        or tuple(_ms_progress_steps_bottom) != tuple(_ms_progress_bottom.steps)
+    ):
+        _ms_progress_bottom = master_scan_progress.MasterScanProgress(
+            _ms_ctx_bottom.get('category', ''), _ms_progress_steps_bottom
+        )
+        _ms_progress_bottom.completed.update(
+            set(_ms_progress_steps_bottom) - set(_ms_pending_bottom)
+        )
+    _ms_bar_bottom = globals().get('my_bar')
+    if _ms_bar_bottom is None:
+        _ms_bar_bottom = st.progress(0, text='Faz 2 devam ediyor...')
+    _ms_execute_pending_phase2(_ms_ctx_bottom, _ms_progress_bottom, _ms_bar_bottom)

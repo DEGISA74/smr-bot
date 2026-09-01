@@ -6256,6 +6256,7 @@
   },
   "schema": [
    "CREATE INDEX idx_kap_sym ON kap_events(symbol, event_date)",
+   "CREATE INDEX idx_magic_ribbon_session_sym ON magic_ribbon_session_log(symbol, scan_date)",
    "CREATE INDEX idx_magic_ribbon_sym ON magic_ribbon_log(symbol, scan_date)",
    "CREATE INDEX idx_mkk_sym ON mkk_yabanci(symbol, report_date)",
    "CREATE INDEX idx_rsi_journeys_resolution ON rsi_journeys(resolution, signal_date)",
@@ -6266,6 +6267,7 @@
    "CREATE TABLE goldmine_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, scan_date TEXT NOT NULL, symbol TEXT NOT NULL, rank INTEGER, score REAL, scanner TEXT, confluence_count INTEGER, unmeasured INTEGER DEFAULT 0, category TEXT, skor_kaynagi TEXT, UNIQUE(scan_date, symbol) )",
    "CREATE TABLE kap_events ( event_date TEXT NOT NULL, symbol TEXT NOT NULL, event_type TEXT NOT NULL, -- 'buyback' | 'ownership_change' | 'insider_buy' event_subtype TEXT, -- 'new_program' | 'threshold_5pct' vs amount_tl REAL, -- tutar (TL) amount_lots REAL, -- adet (varsa) price REAL, -- ortalama fiyat actor TEXT NOT NULL DEFAULT '', -- alıcı/satıcı (yönetici/holding adı) meta_json TEXT, -- ham JSON detay PRIMARY KEY (event_date, symbol, event_type, actor) )",
    "CREATE TABLE magic_ribbon_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, scan_date TEXT NOT NULL, bar_time TEXT, symbol TEXT NOT NULL, price REAL, durum TEXT, tetik_yasi INTEGER, yukari_bar INTEGER, fast_line REAL, slow_line REAL, ciro REAL, universe TEXT, engine TEXT, UNIQUE(scan_date, symbol) )",
+   "CREATE TABLE magic_ribbon_session_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, scan_date TEXT NOT NULL, bar_time TEXT, seans TEXT, symbol TEXT NOT NULL, price REAL, durum TEXT, tetik_yasi INTEGER, yukari_bar INTEGER, fast_line REAL, slow_line REAL, ciro REAL, universe TEXT, engine TEXT, kapsama REAL, eksik_gun INTEGER, UNIQUE(scan_date, symbol) )",
    "CREATE TABLE mkk_yabanci ( report_date TEXT NOT NULL, -- YYYY-MM-DD symbol TEXT NOT NULL, -- BIST kodu direction TEXT NOT NULL, -- 'in' | 'out' | 'streak' bps_change REAL, -- baz puan (sadece in/out için) streak_days INTEGER, -- üst üste artış günü (sadece streak için) PRIMARY KEY (report_date, symbol, direction) )",
    "CREATE TABLE rsi_journeys ( signal_id INTEGER PRIMARY KEY, symbol TEXT NOT NULL, signal_date TEXT NOT NULL, entry_status TEXT, entry_date TEXT, entry_price REAL, stop_price REAL, risk_value REAL, one_r_price REAL, two_r_price REAL, one_r_day INTEGER, two_r_day INTEGER, stop_day INTEGER, ambiguous_day INTEGER, peak_day INTEGER, peak_date TEXT, max_gain_pct REAL, max_r REAL, days_observed INTEGER, resolution TEXT, journey_stage TEXT, updated_at TEXT )",
    "CREATE TABLE scan_runs ( scan_date TEXT NOT NULL, scan_type TEXT NOT NULL, row_count INTEGER NOT NULL DEFAULT 0, category TEXT, recorded_at TEXT, PRIMARY KEY (scan_date, scan_type) )",

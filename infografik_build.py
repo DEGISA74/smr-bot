@@ -299,6 +299,40 @@ def _statbox(d, ms):
             f"background:{CARD2};padding:4px 2px;'>{cells}</div>")
 
 
+def _rsi_band(d):
+    """RSI(14) gelişimi — sol kolonda iki ana kanıt panelinin arasındaki ince bant."""
+    try:
+        _r = d.get('rsi_track') or {}
+        _now = float(_r['now']); _five = float(_r['five']); _fourteen = float(_r['fourteen'])
+        _avg50 = float(_r['avg50'])
+        _eps = 1.0
+        if _now <= _five - _eps and _five <= _fourteen - _eps:
+            _trend, _clr = 'RSI zayıflıyor', DN
+        elif _now >= _five + _eps and _five >= _fourteen + _eps:
+            _trend, _clr = 'RSI güçleniyor', UP
+        elif _now >= _five + _eps and _now <= _fourteen - _eps:
+            _trend, _clr = 'RSI toparlanıyor', UP
+        elif _now <= _five - _eps and _now >= _fourteen + _eps:
+            _trend, _clr = 'RSI soğuyor', GOLD
+        elif _now <= min(_five, _fourteen) - _eps:
+            _trend, _clr = 'RSI zayıflıyor', DN
+        elif _now >= max(_five, _fourteen) + _eps:
+            _trend, _clr = 'RSI güçleniyor', UP
+        else:
+            _trend, _clr = 'RSI yatay', GOLD
+        return (f"<div style='background:{CARD};border:1px solid {LINE};border-radius:8px;"
+                f"padding:6px 9px;margin-bottom:7px;'>"
+                f"<div style='font-size:10px;line-height:1.25;white-space:nowrap;'>"
+                f"<span style='font-weight:800;color:{MUT};'>MOMENTUM · RSI</span>"
+                f"<span style='color:{_clr};font-weight:800;margin-left:6px;'>{_trend}</span></div>"
+                f"<div style='font-size:9.5px;line-height:1.35;color:{MUT};white-space:nowrap;'>"
+                f"(1g–5g–14g: <span style='color:{TXT};font-weight:800;'>"
+                f"{_now:.0f}–{_five:.0f}–{_fourteen:.0f}</span> · 50g ort: "
+                f"<span style='color:{TXT};font-weight:800;'>{_avg50:.0f}</span>)</div></div>")
+    except Exception:
+        return ""
+
+
 def _decision_box(df, d, ms, compact=False):
     """Görseldeki verilerden kısa-vade karar özeti üretir; AL/SAT emri değildir.
 
@@ -723,6 +757,7 @@ def build_html(ticker):
     decision = _decision_box(df, d, _ms, compact=True)
     levels = ''
     sbox = _signal_box(df, d, _ms)
+    rsi_band = _rsi_band(d)
     notice = _notice_badge(fs=12)   # dar sol kolon → punto 17'den 12'ye
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}}
@@ -749,7 +784,7 @@ img{{display:block;border-radius:8px;}}
   <!-- 27 Ağu 2026: sol kolon 330→248 daraldı, kazanılan yer SAĞDAKİ GRAFİKLERE gitti.
        Uyarı rozeti sayfanın dibinden sol kolonun dibine indi (margin-top:auto). -->
   <div style="display:grid;grid-template-columns:248px 1fr;gap:12px;align-items:stretch;">
-    <div style="display:flex;flex-direction:column;">{compass}<div style="height:8px;"></div>{sbox}
+    <div style="display:flex;flex-direction:column;">{compass}<div style="height:8px;"></div>{rsi_band}{sbox}
       <div style="margin-top:auto;padding-top:8px;display:flex;">{notice}</div>
     </div>
     <!-- 27 Ağu 2026: ozet ust serite cikinca sag kolon kisaldi ve dipte delik kaldi.
@@ -799,6 +834,7 @@ def build_widget_html(ticker):
     decision = _decision_box(df, d, _ms, compact=True)
     levels = ''
     sbox = _signal_box(df, d, _ms)
+    rsi_band = _rsi_band(d)
     notice = _notice_badge(fs=12)   # dar sol kolon → punto 17'den 12'ye
     # 23 Tem 2026 — ANA KART parçaları buraya ENJEKTE edilir (app.py, ana thread).
     # Bu fonksiyon arka planda/terazisiz koştuğu için burada YALNIZ yer tutucu var;
@@ -827,7 +863,7 @@ def build_widget_html(ticker):
   <!-- 27 Ağu 2026: sol kolon 330→248 daraldı, kazanılan yer SAĞDAKİ GRAFİKLERE gitti.
        Uyarı rozeti sayfanın dibinden sol kolonun dibine indi (margin-top:auto). -->
   <div style="display:grid;grid-template-columns:248px 1fr;gap:12px;align-items:stretch;">
-    <div style="display:flex;flex-direction:column;">{compass}<div style="height:8px;"></div>{sbox}
+    <div style="display:flex;flex-direction:column;">{compass}<div style="height:8px;"></div>{rsi_band}{sbox}
       <div style="margin-top:auto;padding-top:8px;display:flex;">{notice}</div>
     </div>
     <!-- 27 Ağu 2026: ozet ust serite cikinca sag kolon kisaldi ve dipte delik kaldi.

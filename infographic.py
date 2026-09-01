@@ -62,6 +62,12 @@ def rsi(c, n=14):
     return float((100 - 100 / (1 + g / l)).iloc[-1])
 
 
+def rsi_history(c, n=14):
+    """Aynı RSI hesabının zaman serisi — gelişim bandı için tek kaynak."""
+    d = c.diff(); g = d.where(d > 0, 0).rolling(n).mean(); l = (-d.where(d < 0, 0)).rolling(n).mean()
+    return 100 - 100 / (1 + g / l)
+
+
 def para_akisi_pct(ticker):
     try:
         c = sqlite3.connect(DB)
@@ -80,7 +86,14 @@ def compute(ticker, df):
     sma = {p: float(c.rolling(p).mean().iloc[-1]) for p in (50, 100, 200)}
     win = df.tail(252); hi52 = float(win['High'].max()); lo52 = float(win['Low'].min())
     pos52 = (last - lo52) / (hi52 - lo52) * 100 if hi52 > lo52 else 50
-    r14 = rsi(c); cmf20 = float(cmf(df, 20).iloc[-1])
+    r14 = rsi(c); _rsi_hist = rsi_history(c).dropna()
+    _rsi_track = None
+    if len(_rsi_hist) >= 14:
+        _rsi_track = dict(now=float(_rsi_hist.iloc[-1]),
+                          five=float(_rsi_hist.iloc[-5]),
+                          fourteen=float(_rsi_hist.iloc[-14]),
+                          avg50=float(_rsi_hist.tail(50).mean()))
+    cmf20 = float(cmf(df, 20).iloc[-1])
     mom = (float(c.iloc[-21]) / float(c.iloc[-231]) - 1) * 100 if len(c) >= 235 else None
     mom_5 = (float(c.iloc[-1]) / float(c.iloc[-6]) - 1) * 100 if len(c) >= 6 else None
     mom_20 = (float(c.iloc[-1]) / float(c.iloc[-21]) - 1) * 100 if len(c) >= 21 else None
@@ -147,7 +160,7 @@ def compute(ticker, df):
         rvol = None
 
     return dict(ticker=ticker.replace('.IS', ''), last=last, chg=chg, ema=ema, sma=sma,
-                hi52=hi52, lo52=lo52, pos52=pos52, rsi=r14, cmf=cmf20, mom=mom,
+                hi52=hi52, lo52=lo52, pos52=pos52, rsi=r14, rsi_track=_rsi_track, cmf=cmf20, mom=mom,
                 mom_5=mom_5, mom_20=mom_20, poz=poz,
                 health=health, pa_pct=pa_pct, fib=fib, sh=sh, sl=sl, df=df,
                 obv_title=obv_title, obv_force=obv_force, cmf_state=cmf_state, cmf_force=d5,

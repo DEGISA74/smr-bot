@@ -19,6 +19,8 @@ veriyle doğrular.
 """
 
 # ── KARAR BÖLÜMLERİ ──────────────────────────────────────────────────────────
+from evidence import ELENEN_TARAMALAR
+
 BUCKET_LONG = "oncelikli_long"
 BUCKET_TEYIT = "teyit"
 BUCKET_YENI = "yeni"
@@ -43,6 +45,22 @@ _LATE_STAGE = "GEÇ SİNYAL"
 # Ölçülmemiş dönüş kaynağı (Öncelikli LONG'a giremez, Yeni'de "erken dönüş" alt bölümü)
 _REVERSAL_SOURCES = {"rsi_pozitif_uyumsuzluk"}
 
+
+def _catalog_scan_type(session_key):
+    """Katalog anahtarını evidence.py'deki tek eleme sözlüğünün adına çevirir."""
+    _scan_type = str(session_key or "")
+    if _scan_type.endswith("_data"):
+        _scan_type = _scan_type[:-5]
+    if _scan_type.endswith("_scan"):
+        _scan_type = _scan_type[:-5]
+    # Eski session anahtarları `ict_scan_data` ve `harmonic_confluence_data`,
+    # kanıt kaynağındaki adları ise sırasıyla ict_sniper ve harmonik_confluence.
+    return {
+        "ict": "ict_sniper",
+        "harmonic_confluence": "harmonik_confluence",
+    }.get(_scan_type, _scan_type)
+
+
 # Katalog: (session_key, görünen ad, aile) — karar vitrini DEĞİL, denetim alanı.
 CATALOG_MAP = [
     ("erken_radar_data", "Erken Radar", "Erken Kurulum"),
@@ -59,6 +77,12 @@ CATALOG_MAP = [
     ("ict_scan_data", "ICT Setup", "Kesişim & Etiketler"),
     ("nadir_firsat_scan_data", "Nadir Fırsat", "Kesişim & Etiketler"),
     ("scan_data", "Radar (Market Intelligence)", "Radar"),
+]
+# 17 Ağu 2026 elemesi: katalogda yalnız çalışan taramalar görünsün. Eleme
+# listesi burada tekrarlanmaz; tek kaynak evidence.ELENEN_TARAMALAR'dır.
+CATALOG_MAP = [
+    _entry for _entry in CATALOG_MAP
+    if _catalog_scan_type(_entry[0]) not in ELENEN_TARAMALAR
 ]
 # Katalogda hisse sembolü hangi kolonlarda aranır (tarama df'leri farklı ad kullanır)
 _SYMBOL_COLS = ("Sembol", "Hisse", "Sembol_Raw", "symbol", "Ticker")
