@@ -1,6 +1,8 @@
 #!/bin/bash
 # Magic Ribbon için bağımsız, kapanış-sonrası TradingView yenileme hattı.
 # Yahoo/günlük/saatlik hatlarına dokunmaz; yalnız seans-mumu kasasını üretir.
+# 1 Eyl 2026: yenileyici artik tek sembol dusunce degil, basari orani %90'in
+# altina inince hata doner. Kismi turlar da VPS'e gider; bayat sembolu tarama eler.
 ROOT="/c/Users/LENOVO/OneDrive/Desktop/Patron Terminal"
 cd "$ROOT" || exit 1
 LOG="$ROOT/logs/magic_ribbon_refresh.log"
@@ -33,5 +35,5 @@ if "$ROOT/.venv/Scripts/python.exe" "$ROOT/magic_ribbon_refresh.py" >> "$LOG" 2>
         echo "$(date '+%F %T') Magic Ribbon VPS aktarimi basarisiz (lokal kasa korundu)" >> "$LOG"
     fi
 else
-    echo "$(date '+%F %T') Magic Ribbon yenileme hatali bitti; VPS'e veri gonderilmedi" >> "$LOG"
+    echo "$(date '+%F %T') Magic Ribbon turu esigin altinda kaldi (cok sembol dustu); VPS'e veri gonderilmedi" >> "$LOG"
 fi
