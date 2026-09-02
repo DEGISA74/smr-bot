@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ import pandas as pd
 
 import tarama_merkezi
 import evidence
+from magic_ribbon_core import MAGIC_RIBBON_BIST_SESSION_RENDER_ENABLED
 
 
 ROOT = Path(__file__).resolve().parent
@@ -1677,6 +1679,24 @@ def _build_magic_ribbon_items(frame: pd.DataFrame | None) -> list[dict[str, Any]
     return items
 
 
+def _magic_ribbon_raw_signal_count() -> int | None:
+    """Bugünün ham Magic Ribbon kayıt sayısını tek ileri-test defterinden okur."""
+    scan_date = pd.Timestamp.now(tz="Europe/Istanbul").strftime("%Y-%m-%d")
+    try:
+        connection = sqlite3.connect(DB_PATH, timeout=5)
+        try:
+            row = connection.execute(
+                "SELECT COUNT(*) FROM magic_ribbon_session_log WHERE scan_date = ?",
+                (scan_date,),
+            ).fetchone()
+        finally:
+            connection.close()
+    except (sqlite3.Error, OSError) as exc:
+        logging.warning("Magic Ribbon ham sinyal sayısı okunamadı: %s", exc)
+        return None
+    return int(row[0] or 0) if row else 0
+
+
 def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_click: Any) -> None:
     """Streamlit render. Yeni hesap yapmaz; kapanış collector çıktısını şık sekmeli düzende gösterir."""
     import streamlit as st
@@ -1925,6 +1945,27 @@ def render_trajectory_tarama_merkezi(session_getter: Any, validate_fn: Any, on_c
             st.markdown(
                 "<div style='border:1px dashed #f59e0b55;border-radius:7px;padding:12px;"
                 "text-align:center;color:#94a3b8;font-size:0.75rem;'>Master Scan çalıştırın</div>",
+                unsafe_allow_html=True,
+            )
+        elif (
+            _magic_ribbon_df.empty
+            and not MAGIC_RIBBON_BIST_SESSION_RENDER_ENABLED
+        ):
+            _magic_ribbon_raw_count = _magic_ribbon_raw_signal_count()
+            if _magic_ribbon_raw_count is None:
+                _magic_ribbon_count_text = "Bugünkü ham sinyal sayısı okunamadı."
+            else:
+                _magic_ribbon_count_text = (
+                    f"Bugün {_magic_ribbon_raw_count} ham sinyal kaydedildi."
+                )
+            st.markdown(
+                "<div style='border:1px solid #f59e0b55;border-radius:7px;padding:12px;"
+                "color:#cbd5e1;font-size:0.78rem;line-height:1.45;'>"
+                "<b>⏳ ölçümde — aday listesi henüz ekrana çıkmıyor</b><br>"
+                "Ayrım kanıtı ikinci rejimde doğrulanmadı.<br>"
+                f"{_magic_ribbon_count_text} Ham seans-mumu sinyalleri ileri test için "
+                "kaydedilmeye devam ediyor."
+                "</div>",
                 unsafe_allow_html=True,
             )
         elif _magic_ribbon_df.empty:

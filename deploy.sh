@@ -40,6 +40,7 @@ seans_profili.py
 formasyon_core.py formasyon_v2.py formasyon_v3.py cizgi_yapi.py cizgi_master.py cizgi_alarm.py
 formasyon_v2_app.py sampiyonlar_ligi.py smr_core.py infografik_build.py fetcher.py finalize_volume.py
 data_policy.py bist_calendar.py master_scan_progress.py master_scan_giris_senaryolari.py
+master_scan_engine.py master_scan_kos.py master_scan_kiyas.py
 trajectory_tarama_merkezi.py tarama_merkezi.py pusula_engine.py
 bist_data_store.py bist_exchange.py provider_traffic.py isyatirim_gateway.py hacim_capraz.py
 kapanis_master_otomasyon.py veri_saglik_audit.py signal_policy.py deepening_policy.py
