@@ -16397,6 +16397,52 @@ if st.session_state.generate_prompt:
         if res_tuple: fib_res = f"{res_tuple[1]:.2f} ({res_tuple[0]})"
         if sup_tuple: fib_sup = f"{sup_tuple[1]:.2f} ({sup_tuple[0]})"
 
+    # 2 Eyl 2026 (bulgu 3+4 · prompt tarafı) — SEVİYE MERDİVENİ AI'a da gidiyor.
+    # Eskiden prompt yalnız TEK Fibonacci direnç/destek veriyordu (direnc_fib/
+    # destek_fib) — ekranda düzelttiğimiz dar görüşün aynısı. AI'ın "en yakın
+    # direnç" dediği çoğu gün uzaktaki Fibonacci oluyordu; gerçek yakın seviyeler
+    # (ortalamalar, değer alanı sınırı, POC) AI'ın gözünde yoktu. Şimdi ekranla
+    # AYNI merdiven (analysis_core.seviye_merdiveni) prompt'a besleniyor.
+    _em_seviye_merdiveni = ""
+    try:
+        _sm_df = get_safe_historical_data(t, period="1y")   # cache hit
+        _sm_sv = (pa_data or {}).get('smart_volume') or {}
+        _sm_px = float(levels_data.get('curr_price') or
+                       (_sm_df['Close'].iloc[-1] if _sm_df is not None else 0))
+        _merd = seviye_merdiveni(_sm_df, _sm_px, fibs=levels_data.get('fibs'),
+                                 vah=_sm_sv.get('vah'), val=_sm_sv.get('val'),
+                                 poc=_sm_sv.get('poc'))
+        if _merd and (_merd.get('ust') or _merd.get('alt')):
+            def _md_line(b, yon):
+                return (f"{b['px']:.2f} (%{b['mesafe_pct']:+.1f} {yon}, {b['ad']})")
+            _ust = " · ".join(_md_line(b, "üstte") for b in _merd['ust'][:3]) or "yok"
+            _alt = " · ".join(_md_line(b, "altta") for b in _merd['alt'][:3]) or "yok"
+            _em_seviye_merdiveni = (
+                f"\n  seviye_merdiveni_dirnc: \"{_ust}\""
+                f"\n  seviye_merdiveni_destek: \"{_alt}\""
+                f"\n  seviye_notu: \"Yakınlık sırası; en yakın seviye 'direnc_fib' "
+                f"değil bu listenin ilk maddesidir. Aynı satırda birden çok isim = "
+                f"o seviyede confluence. Hangisinin daha güçlü olduğu ölçülmedi.\"")
+    except Exception:
+        _em_seviye_merdiveni = ""
+
+    # 2 Eyl 2026 (bulgu 7 · prompt tarafı) — SİSTEM TABAN ÇİZGİSİ AI'a da gidiyor.
+    # AI analiz yazarken ortalama bir sinyalin tarihsel getirisini BİLMİYORDU;
+    # yüksek skorları/yeşil rozetleri hak ettiğinden fazla kesinlikle okuyabiliyordu.
+    # Ekrana koyduk (KISA OKUMA altı), AI'ın gözünde yoktu. Tek satır referans.
+    _em_taban_ref = ""
+    try:
+        _tbp = _taban_cizgisi_stats()
+        if _tbp:
+            _em_taban_ref = (
+                f"\n  sistem_taban_cizgisi: \"ortalama sinyal 10 günde "
+                f"{_tbp['ret10']:+.1f}%, endeksi geçme %{_tbp['hit10']:.0f} "
+                f"({_tbp['n']:,} geçmiş sinyal). Bu ekrandaki skorların/rozetlerin "
+                f"okunması gereken TABAN. Pozitif skoru bu tabanın ÜSTÜNE oku; "
+                f"tek başına yüksek skor 'kazanır' demek değil.\"")
+    except Exception:
+        _em_taban_ref = ""
+
     # Likidite Hedefi
     liq_str = f"{ict_data.get('target', 0):.2f}" if ict_data else "-"
 
@@ -19960,7 +20006,7 @@ meta:
   gorunen_baslik: {ai_display_heading}
   fiyat: {fiyat_str}
   gunluk_degisim: {degisim_str}
-  master_score: {master_txt}{(chr(10) + "  " + _master_trajectory_txt) if _master_trajectory_txt else ""}
+  master_score: {master_txt}{(chr(10) + "  " + _master_trajectory_txt) if _master_trajectory_txt else ""}{_em_taban_ref}
   master_breakdown: {master_breakdown_txt}
   pros: {pros_txt}
   cons: {cons_txt}
@@ -20040,7 +20086,7 @@ institutional_ref:
 
 targets:
   direnc_fib: {fib_res}
-  destek_fib: {fib_sup}
+  destek_fib: {fib_sup}{_em_seviye_merdiveni}
   hedef_likidite: {liq_str}
 ```
 ═══════════════════════════════════════════════════════════════════════
@@ -20432,6 +20478,7 @@ DİKKAT: GÖRSEL, YAPAY ZEKA ÇIKTISI DEĞİLDİR. ALGORİTMAMIN HESAPLAMALARIDI
 1) **YASAK KELİME:** "çok / büyük / sert / ciddi / kritik / tarihi / nadir / kesin / mutlaka / tamamen / resmen / oldukça / net bir / fısıldıyor / kanıtlıyor / patlayacak / şok edici / -dır / -mektedir / -maktadır / bar içi / kurumsal nakit / sermaye koruma / bekle gör / perakende / pozisyonsuz". Bulduğun her cümle yeniden yaz veya sil.
 2) **TAVSİYE SIZMASI:** "al/sat/tut/kaçın/bekle/izle/dikkat et/temkinli ol/portföyünüze/en rasyonel/en makul/yapılması gereken" → koşullu dile çevir ("X kırılırsa Y görülebilir").
 3) **KAYNAK ÖNCELİĞİ:** Tek sıra kullan: doğrulanmış sayısal YAML → bu sayılardan hesaplanan durum/vade mutabakatı → üretilen açıklama. GENEL ÖZET PANEL yalnız yardımcıdır; çelişkide YAML kazanır. master_score için yaml.asset.master_score baş kaynaktır.
+   🎚 TABAN + SEVİYE: (a) yaml.asset.sistem_taban_cizgisi varsa yüksek skoru/pozitif rozeti "kazanır" diye SUNMA — o tabanın (ort. sinyal negatif) üstüne oku, hak edilmemiş kesinlikten kaçın. (b) "en yakın direnç/destek" derken yaml.targets.seviye_merdiveni_dirnc/_destek'in İLK maddesini kullan — direnc_fib/destek_fib tek Fibonacci'dir, çoğu zaman en yakın DEĞİLDİR.
 4) **VERİ SADAKAT:** Her sayı/seviye/yüzde için YAML'a geri dön ve doğrula (HARSI, SMA, Delta, mum formasyonu, 52H, master_score, CMF). YAML'da yoksa cümleyi düzelt. YAML'daki ölçüye özel hassasiyeti koru; yeni sayı türetme veya yeniden yuvarlama yapma.
 5) **6 ANCHOR + UZAKLIK BAĞLAM:** VP Şekli + cum_delta_5g + OMI + OBV durum + CMF Dual + 52H — her biri en az 1 kez geçti mi? VWAP/POC/Z-Score/RSI cümlesi sadece seviye mi yoksa dönüş argümanı mı? Argümansa bağımsız kanıt eklenmiş mi? Yoksa sil.
 6) **ERKEN RADAR ≥65:** G1 + G4'te senaryo adı geçti mi? Hayırsa enjekte et.
