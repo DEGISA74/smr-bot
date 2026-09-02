@@ -27,6 +27,10 @@ import master_scan_progress
 
 _SERVICE_NAMESPACE: Mapping[str, Any] | None = None
 
+# Yan-kayıtların hangi orkestrasyon sözleşmesiyle üretildiğini açıkça damgala.
+# Bu sürüm hesap motoru değil, yalnızca Master Scan sıra/servis sözleşmesidir.
+MASTER_SCAN_ENGINE_VERSION = "master_scan_engine.v1"
+
 _MS_PHASE1_STEPS = [
     'index_health', 'backfill', 'mkk', 'data', 'magic_ribbon', 'hidden_accum',
     'formasyon', 'cizgi_yapi', 'minervini', 'rsi_divergence', 'prelaunch',
@@ -85,6 +89,18 @@ def _persist(durum: Mapping[str, Any], name: str, *args: Any,
              dry_default: Any = None, **kwargs: Any) -> Any:
     """Bilinen yazma noktalarını kuru koşuda gerçekten devre dışı bırakır."""
     if _dry_run(durum):
+        # Kuru koşuda servis yazıcısı çağrılmaz; ancak kıyas için aynı yazım
+        # çağrısının fotoğrafı alınır. Callback yalnızca master_scan_kos.py
+        # tarafından kuru modda bağlanır ve veritabanına yazmaz.
+        if _SERVICE_NAMESPACE is not None:
+            if name == 'log_scan_signal':
+                _capture = _SERVICE_NAMESPACE.get('_ms_dry_capture_signal')
+            elif name == 'log_erken_radar_signals':
+                _capture = _SERVICE_NAMESPACE.get('_ms_dry_capture_early_radar')
+            else:
+                _capture = None
+            if callable(_capture):
+                _capture(*args, **kwargs)
         return dry_default
     return _service(name)(*args, **kwargs)
 
