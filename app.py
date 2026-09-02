@@ -7580,7 +7580,8 @@ def render_smart_volume_panel(ticker):
             f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:5px;">'
             f'<span style="font-size:0.52rem;color:{text_muted};font-weight:900;letter-spacing:0.60px;text-transform:uppercase;">{label}</span>'
             f'<span style="font:800 0.74rem JetBrains Mono;color:{_gauge_clr};white-space:nowrap;">{value}</span></div>'
-            f'<div style="font-size:0.60rem;color:{text_main};font-weight:800;margin:5px 0 4px;">HANGİ TARAF DAHA GÜÇLÜ?</div>'
+            f'<div style="font-size:0.60rem;color:{text_main};font-weight:800;margin:5px 0 2px;">HANGİ TARAF DAHA GÜÇLÜ?</div>'
+            f'<div style="font-size:0.52rem;color:{text_sub};line-height:1.25;margin-bottom:4px;">Fiyat değil — hacmin ne kadarı tek tarafta.</div>'
             f'<div style="position:relative;height:13px;border-radius:99px;background:linear-gradient(90deg,rgba(248,113,113,0.30) 0%,rgba(248,113,113,0.30) 46%,rgba(251,191,36,0.30) 46%,rgba(251,191,36,0.30) 54%,rgba(16,185,129,0.30) 54%,rgba(16,185,129,0.30) 100%);background-color:rgba(15,23,42,0.85);border:1px solid rgba(255,255,255,0.06);">'
             f'{_gauge_marker_html(_gauge_pos, direction)}</div>'
             f'<div style="display:flex;justify-content:space-between;gap:3px;margin-top:4px;font-size:0.52rem;color:{text_muted};font-weight:700;">'
@@ -7727,8 +7728,11 @@ def render_smart_volume_panel(ticker):
         f'</div>'
         # Son seans ve son 5 seans kartları açıklamanın altında yan yana kalır.
         f'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;">'
-        f'{_sv_pressure_card("SON SEANS", t3_pct, 1 if delta_val > 0 else -1 if delta_val < 0 else 0, delta_yuzde)}'
-        f'{_sv_pressure_card("SON 5 SEANS", t5_pct, 1 if cum5 > 0 else -1 if cum5 < 0 else 0, cum5_pct)}'
+        # 2 Eyl 2026 (bulgu 12) — BASLIK BIRIMI SOYLUYOR. Bu yuzdeler FIYAT DEGIL,
+        # gunun hacminin ne kadarinin tek tarafta kaldigi. Ayni ekranda
+        # "20G Degisim +%4,0" gercekten fiyat; yan yana iki yuzde iki farkli sey.
+        f'{_sv_pressure_card("SON SEANS · NET HACİM YÖNÜ", t3_pct, 1 if delta_val > 0 else -1 if delta_val < 0 else 0, delta_yuzde)}'
+                f'{_sv_pressure_card("SON 5 SEANS · NET HACİM YÖNÜ", t5_pct, 1 if cum5 > 0 else -1 if cum5 < 0 else 0, cum5_pct)}'
         f'</div>'
         f'</div>'  # /SOL SÜTUN
         f'{_obv_flow_html}'
@@ -13202,8 +13206,27 @@ def _render_genel_ozet_panel():
                 # genel_ozet_verdict_backtest.json (V8, 600 hisse × 56K örnek).
                 # Etiket kovası zayıfsa (n<30) veya dosya yoksa satır gizlenir.
                 _verdict_ev_html = ""
+                # 2 Eyl 2026 (bulgu 13) — ENDEKSE HİSSE KARNESİ UYGULANMAZ.
+                # Bu karne 600 BIST HİSSESİNDE ölçüldü. Ekrandaki enstrüman endeks
+                # ise (XU100 = o hisselerin ortalaması) başka bir topluluğun
+                # istatistiğini buraya taşımak olur; endeksin getiri dağılımı tek
+                # hissenin dağılımından çok daha dar. Satırı gizlemiyoruz —
+                # BOŞLUĞU gösteriyoruz ki hükmün arkasında kanıt olmadığı görünsün.
+                _ev_is_idx = False
                 try:
-                    _vst = get_genel_ozet_verdict_stats().get(_gs_net_txt)
+                    _ev_tk = str(_ticker).upper()
+                    _ev_is_idx = (_ev_tk.startswith(("XU", "XB", "XT", "XY", "^"))
+                                  or _ev_tk.endswith("=F") or "-USD" in _ev_tk)
+                except Exception:
+                    _ev_is_idx = False
+                if _ev_is_idx:
+                    _verdict_ev_html = (
+                        "<div style='font-size:0.72rem;color:#94a3b8;font-weight:600;"
+                        "margin-top:4px;'><span style='color:#64748b;font-size:0.64rem;'>◇</span> "
+                        "Bu karne 600 BIST hissesinde ölçüldü — endeksin kendi karnesi yok.</div>")
+                try:
+                    _vst = (None if _ev_is_idx
+                            else get_genel_ozet_verdict_stats().get(_gs_net_txt))
                     if _vst:
                         _ev_r = _vst.get('ret10'); _ev_h = _vst.get('hit10')
                         _ev_clr = (_gs_up_clr if (_ev_r or 0) > 1.0
