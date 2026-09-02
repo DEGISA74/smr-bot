@@ -14804,8 +14804,7 @@ def _render_health_signals_panel():
             # 1.B HOVER ROZETLERİ (POZİTİF / NEGATİF — gauge altı)
             _pos_n = len(score_pros) if score_pros else 0
             _neg_n = len(score_cons) if score_cons else 0
-            _pos_pulse_cls = "pulse" if _pos_n >= 5 else ""
-            _neg_pulse_cls = "pulse" if _neg_n >= 3 else ""
+            # nabiz animasyonu 2 Eyl 2026 kaldirildi (olculmemis vurgu)
 
             # Popup içerikleri
             if _pos_n > 0:
@@ -14852,47 +14851,22 @@ def _render_health_signals_panel():
               <div style="background:#060d1a;padding:6px 4px 8px 4px;border-radius:0 0 10px 10px;overflow:visible;">
                 {_gauge_img_html}
             <style>
+            /* 2 Eyl 2026 (bulgu 6) — rozet gorunumu duz metne indi.
+               Rozet ekranda YALNIZ olculmus oy demek olsun diye (Kanit
+               Terazisi). Buradaki sayilar aciklama; hover dokumu duruyor. */
             .gz-badge-row {{
-                display:flex; justify-content:space-between; align-items:center;
-                margin-top:-10px; margin-bottom:4px; padding:0 18px;
+                display:flex; justify-content:center; align-items:baseline;
+                gap:6px; margin-top:-6px; margin-bottom:4px; padding:0 14px;
                 position:relative; z-index:5;
             }}
             .gz-badge {{
-                display:inline-flex; align-items:center; gap:5px;
-                padding:4px 9px; border-radius:999px;
-                font-size:0.72rem; font-weight:800;
-                cursor:help; position:relative;
-                border-bottom:1px dashed rgba(255,255,255,0.25);
-                transition:transform 0.15s;
-                user-select:none;
+                display:inline-flex; align-items:baseline; gap:4px;
+                cursor:help; position:relative; user-select:none;
+                font-size:0.72rem; font-weight:500; color:#94a3b8;
+                border-bottom:1px dashed rgba(148,163,184,0.35);
             }}
-            .gz-badge:hover {{ transform:scale(1.08); }}
-            .gz-badge-pos {{
-                background:rgba(74,222,128,0.15);
-                color:#4ade80;
-                border:1px solid rgba(74,222,128,0.4);
-            }}
-            .gz-badge-neg {{
-                background:rgba(248,113,113,0.15);
-                color:#f87171;
-                border:1px solid rgba(248,113,113,0.4);
-            }}
-            @keyframes gz-pulse-green {{
-                0%,100% {{ box-shadow:0 0 0 0 rgba(74,222,128,0.6); }}
-                50%     {{ box-shadow:0 0 0 6px rgba(74,222,128,0); }}
-            }}
-            @keyframes gz-pulse-red {{
-                0%,100% {{ box-shadow:0 0 0 0 rgba(248,113,113,0.6); }}
-                50%     {{ box-shadow:0 0 0 6px rgba(248,113,113,0); }}
-            }}
-            .gz-badge-pos.pulse {{ animation:gz-pulse-green 3s ease-in-out 5; }}
-            .gz-badge-neg.pulse {{ animation:gz-pulse-red 3s ease-in-out 5; }}
-            .gz-icon {{ font-size:0.85rem; line-height:1; }}
-            .gz-count {{
-                background:rgba(0,0,0,0.25);
-                padding:1px 5px; border-radius:999px;
-                font-size:0.65rem; font-weight:900;
-            }}
+            .gz-badge b {{ color:#e2e8f0; font-weight:600; }}
+            .gz-sep {{ color:#475569; font-size:0.72rem; }}
             .gz-popup {{
                 visibility:hidden; opacity:0;
                 position:absolute; top:calc(100% + 8px);
@@ -14926,20 +14900,27 @@ def _render_health_signals_panel():
             .gz-dot-r {{ color:#f87171; flex-shrink:0; }}
             </style>
 
+            <!-- 2 Eyl 2026 (bulgu 6) — ✓/✗ ROZETLERİ DÜZ METNE İNDİ.
+                 Rozet tasarımı 21 Tem'de bu karttan KANIT TERAZİSİ'ne ödünç
+                 verilmişti; iki kart birebir aynı rozeti taşıyınca göz onları
+                 karşılaştırıyordu. Ama saydıkları şey farklı: burası master
+                 skorun AÇIKLAMA maddeleri (kendi karnesi yok), terazininki
+                 ölçülmüş OY. Rozet artık ekranda tek anlama gelsin diye
+                 buradaki rozet kaldırıldı — sayılar ve hover dökümü duruyor.
+                 Nabız animasyonu da kalktı: ölçülmemiş bir vurguydu. -->
             <div class="gz-badge-row">
-              <span class="gz-badge gz-badge-pos {_pos_pulse_cls}" tabindex="0"
+              <span class="gz-badge gz-badge-pos" tabindex="0"
                     title="Üzerine gel — pozitif etkenleri gör">
-                <span class="gz-icon">✓</span>
-                <span class="gz-count">{_pos_n}</span>
+                <b>{_pos_n} olumlu etken</b>
                 <div class="gz-popup">
                   <div class="gz-pop-title gz-pop-title-pos">POZİTİF ETKENLER ({_pos_n})</div>
                   {_pos_popup_items}
                 </div>
               </span>
-              <span class="gz-badge gz-badge-neg {_neg_pulse_cls}" tabindex="0"
+              <span class="gz-sep">·</span>
+              <span class="gz-badge gz-badge-neg" tabindex="0"
                     title="Üzerine gel — negatif etkenleri gör">
-                <span class="gz-icon">✗</span>
-                <span class="gz-count">{_neg_n}</span>
+                {_neg_n} olumsuz
                 <div class="gz-popup">
                   <div class="gz-pop-title gz-pop-title-neg">NEGATİF ETKENLER ({_neg_n})</div>
                   {_neg_popup_items}
