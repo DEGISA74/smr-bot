@@ -5276,7 +5276,7 @@ def render_synthetic_sentiment_panel(data):
         _overlay2  = base2.mark_point(opacity=0, size=200).encode(
                         y=alt.Y('Price:Q', scale=_ys2), tooltip=_tt2).add_params(_hover2)
         st.altair_chart(alt.layer(area, line_stp, line_price, _vrule2, _dot_p2, _dot_s2, _overlay2).properties(
-            height=280, title=alt.TitleParams(f"Sentiment — {display_ticker}: Fiyat (mavi) ↔ Eğilim (sarı) — yukarı keserse AL, aşağı keserse SAT", fontSize=14, color="#38bdf8")), width='stretch')
+            height=280, title=alt.TitleParams(f"Sentiment — {display_ticker}: Fiyat (mavi) ↔ Eğilim (sarı) — yukarı keserse pozitif yön, aşağı keserse negatif yön", fontSize=14, color="#38bdf8")), width='stretch')
 
 
 # ── GÖRSEL ANALİZ İNFOGRAFİĞİ (22 Haz 2026) — birebir PNG görünümü, st.html ile ──
@@ -9121,7 +9121,10 @@ def render_levels_card(ticker):
     
     is_bullish = data['st_dir'] == 1
     st_color = "#10b981" if is_bullish else "#16a34a" if is_bullish else "#f87171"
-    st_text = "YÜKSELİŞ (AL)" if is_bullish else "DÜŞÜŞ (SAT)"
+    # 2 Eyl 2026 (bulgu 8) — "(AL)/(SAT)" KALDIRILDI. Sistemin kalıcı kuralı
+    # "Yön ≠ Eylem": sistem "ne oluyor" der, "al/sat" demez. SuperTrend bir yön
+    # göstergesi; eylem tavsiyesi karnesi ölçülmemiş.
+    st_text = "YÜKSELİŞ YÖNÜ" if is_bullish else "DÜŞÜŞ YÖNÜ"
     st_icon = "🐂" if is_bullish else "🐻"
     
     # SuperTrend metinleri (ORİJİNAL, DOKUNULMADI).
