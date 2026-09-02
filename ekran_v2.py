@@ -87,6 +87,91 @@ def gecersizlik_cizgisi(df, yon, vah=None, val=None):
         return None
 
 
+def gecersizlik_serit(df, yon, *, vah=None, val=None,
+                      formasyon_px=None, formasyon_ad=None):
+    """Fiyat kartı şeridi + AI metni için TEK KAYNAK geçersizlik verisi (2 Eyl 2026).
+
+    NEDEN VAR: aynı çizgi app.py'de iki kez daha elle hesaplanıyordu ve ikisi de
+    seviyenin fiyatın hangi TARAFINDA kaldığını kontrol etmiyordu. Dal seçimi
+    "fiyat 50 günlük ortalamanın üstünde mi" sorusuna bağlıydı, sonra körlemesine
+    21 günlük ortalama yazılıyordu. Fiyat 50 günlüğün üstünde ama 21 günlüğün
+    ALTINDAYKEN çizgi fiyatın üstüne düşüyor, kart ise ona hâlâ uzun pozisyon
+    stopu diyordu (1 Eyl 2026 XU100: stop 14.261, fiyat 14.229).
+
+    KURAL: yön terazinin hükmünden gelir, fiyat-ortalama kıyasından değil.
+    'yukari' hükümde geçersizlik çizgisi fiyatın ALTINDA, 'asagi' hükümde
+    ÜSTÜNDE olmak zorundadır — yanlış tarafta kalan aday hükmü bozacak seviye
+    değildir. Hüküm dengedeyse bozulacak bir tez yoktur → None döner, şerit
+    çizilmez ("sorun yoksa gösterme").
+
+    Yeni eşik/skor/hesap YOK: seviye adayları gecersizlik_cizgisi merdiveninden
+    gelir (EMA 5/8/13 · SMA 50/100/200 · değer alanı sınırları).
+
+    Döner: {'px','ad','mesafe_pct','teyit_px','teyit_ad','baslik','px_str',
+            'teyit_str','sebep'} veya None.
+    """
+    if yon not in ('yukari', 'asagi'):
+        return None
+    try:
+        if df is None or len(df) < 20:
+            return None
+        c = 'Close' if 'Close' in df.columns else ('close' if 'close' in df.columns else None)
+        if c is None:
+            return None
+        s = df[c].dropna()
+        if s.empty:
+            return None
+        px = float(s.iloc[-1])
+        if px <= 0:
+            return None
+    except Exception:
+        return None
+
+    def _fmt(v):
+        return f"{int(v):,}".replace(",", ".") if v >= 1000 else f"{v:.2f}"
+
+    def _dogru_taraf(v):
+        return v < px if yon == 'yukari' else v > px
+
+    seviye = ad = None
+    teyit_px = teyit_ad = None
+
+    # Formasyon iptal çizgisi önceliklidir — ama YALNIZ doğru taraftaysa.
+    # (Eski kod bunu taraf kontrolü yapmadan kullanıyordu.)
+    try:
+        if formasyon_px is not None:
+            _fpx = float(formasyon_px)
+            if _fpx > 0 and _dogru_taraf(_fpx):
+                seviye = _fpx
+                ad = f"{formasyon_ad or 'Formasyon'} iptal çizgisi"
+    except (TypeError, ValueError):
+        seviye = ad = None
+
+    if seviye is None:
+        _g = gecersizlik_cizgisi(df, yon, vah=vah, val=val)
+        if not _g:
+            return None
+        seviye, ad = float(_g['seviye']), str(_g['ad'])
+        teyit_px, teyit_ad = _g.get('teyit_seviye'), _g.get('teyit_ad')
+
+    mesafe = (seviye - px) / px * 100.0
+    return {
+        'px': round(seviye, 2),
+        'ad': ad,
+        'mesafe_pct': round(mesafe, 1),
+        'teyit_px': round(float(teyit_px), 2) if teyit_px is not None else None,
+        'teyit_ad': teyit_ad,
+        # Yön dili: yukarı hükümde altı kırılırsa stop, aşağı hükümde üstü
+        # kırılırsa hüküm iptal. Aynı ayrım GENEL ÖZET panelinde de var.
+        'baslik': "STOP" if yon == 'yukari' else "İPTAL",
+        'px_str': _fmt(seviye),
+        'teyit_str': (f"{_fmt(float(teyit_px))} ({teyit_ad})"
+                      if teyit_px is not None else ""),
+        'sebep': (f"{ad} · fiyatın %{abs(mesafe):.1f} "
+                  f"{'altında' if mesafe < 0 else 'üstünde'}"),
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 2) BUGÜN NE DEĞİŞTİ — dünkü snapshot'a göre fark
 # ─────────────────────────────────────────────────────────────────────────────

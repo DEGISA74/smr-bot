@@ -18363,32 +18363,30 @@ if st.session_state.generate_prompt:
     #  (b) Pusula ölçülmemiş sezgisel bir anlatı katmanı; çizgi/formasyon için
     #      kalıcı kural: getirisi ölçülmedi → skora/AI'a bağlanmaz. Ekranda kalır.
     #      Ölçüm yapılırsa yeniden bağlanır.
+    # 2 Eyl 2026 — ELLE YAZILMIŞ KOPYA KALDIRILDI, TEK KAYNAĞA BAĞLANDI.
+    # Eski kod dalı "fiyat 50 günlük ortalamanın üstünde mi" ile seçip körlemesine
+    # 21 günlük ortalamayı yazıyordu; seviyenin fiyatın hangi TARAFINDA kaldığını
+    # hiç kontrol etmiyordu → 1 Eyl 2026 XU100'de AI'a "stop 14.261" gitti, fiyat
+    # 14.229'du (stop fiyatın ÜSTÜNDE). Artık yön terazinin hükmünden geliyor ve
+    # taraf kontrolü ekran_v2.gecersizlik_serit içinde yapılıyor.
     _em_inval_line = ""
     try:
-        _inval_px = None
-        _inval_reason = ""
         _cy_v = cizgi_yapi.gorunum(df_hist, ticker=t, timeframe="1d") if df_hist is not None else None
-        if _cy_v and _cy_v.get("invalidation"):
-            _inval_px = float(_cy_v["invalidation"])
-            _inval_reason = f"{_cy_v.get('pattern_label', 'Formasyon')} iptal çizgisi"
-        elif df_hist is not None and len(df_hist) >= 50:
-            _close_ser = df_hist['Close']
-            _cp_ai = float(_close_ser.iloc[-1])
-            _s50_ai = float(_close_ser.rolling(50).mean().iloc[-1])
-            if _cp_ai >= _s50_ai:
-                if len(_close_ser) >= 21:
-                    _inval_px = float(_close_ser.ewm(span=21, adjust=False).mean().iloc[-1])
-                    _inval_reason = "EMA 21 dinamik destek altı kapanış"
-                else:
-                    _inval_px = _s50_ai
-                    _inval_reason = "50 SMA ana trend desteği altı"
-            else:
-                _inval_px = _s50_ai
-                _inval_reason = "50 SMA düşüş trendi direnci üstü"
-
-        if _inval_px is not None and _inval_px > 0:
-            _inval_px_str = f"{int(_inval_px):,}".replace(",", ".") if _inval_px >= 1000 else f"{_inval_px:.2f}"
-            _em_inval_line = f"\n  gecersizlik_cizgisi_stop: \"{_inval_px_str} ({_inval_reason})\""
+        _sv_inv = (dna or {}).get('smart_volume') or {}
+        _inv_ai = ekran_v2.gecersizlik_serit(
+            df_hist, ((_kz_ai or {}).get('terazi') or {}).get('yon'),
+            vah=_sv_inv.get('vah'), val=_sv_inv.get('val'),
+            formasyon_px=(_cy_v or {}).get("invalidation"),
+            formasyon_ad=(_cy_v or {}).get("pattern_label"))
+        if _inv_ai:
+            _inv_rol = ("altı kapanışta hüküm bozulur (STOP)"
+                        if _inv_ai['baslik'] == "STOP"
+                        else "üstü kapanışta hüküm iptal olur")
+            _em_inval_line = (
+                f"\n  gecersizlik_cizgisi: \"{_inv_ai['px_str']} — {_inv_ai['sebep']}; "
+                f"{_inv_rol}"
+                + (f" · teyit {_inv_ai['teyit_str']}" if _inv_ai['teyit_str'] else "")
+                + "\"")
     except Exception:
         _em_inval_line = ""
 
@@ -23415,9 +23413,17 @@ def _giris_kalitesi(ticker):
         if _h:
             return _h
         if _olculebilir:
+            # 2 Eyl 2026 — TARAF ETİKETİ. Kapı, risk-ödülü DEĞER ALANI geometrisiyle
+            # kuruyor: yukarı hedef = üst sınır, aşağı savunma = alt sınır. Yani her
+            # zaman UZUN taraf için hesap yapıyor ve terazinin hükmüne hiç bakmıyor.
+            # 1 Eyl 2026 XU100'de terazi AŞAĞI derken kutu yeşil "ELVERİŞLİ" diyordu.
+            # Hükmü DEĞİŞTİRMİYORUZ (o yeni kural olur, ölçüm ister) — sadece kutunun
+            # hangi tarafı fiyatladığını söylüyoruz ki koşulsuz yeşil okunmasın.
             return {'durum': 'gecti', 'etiket': 'ELVERİŞLİ', 'renk': '#22c55e',
-                    'sebep': ('yukarı kazanç alanı aşağı savunma mesafesinden geniş · '
-                              'likidite ve pompa riski uyarısı yok')}
+                    'taraf': 'uzun taraf için',
+                    'sebep': ('uzun taraf için ölçüldü — yukarı kazanç alanı aşağı '
+                              'savunma mesafesinden geniş · likidite ve pompa riski '
+                              'uyarısı yok')}
         return {'durum': 'olcum_yok', 'etiket': 'ÖLÇÜLEMEDİ', 'renk': '#94a3b8',
                 'sebep': ('fiyat değer alanının dışında — yakın hedef/stop bu yöntemle '
                           'tanımsız, kapı hüküm vermiyor')}
@@ -24605,45 +24611,60 @@ def _render_right_col():
                     f"<span style='font-size:0.60rem;font-weight:900;letter-spacing:0.13em;"
                     f"color:#91b7d6;'>GİRİŞ KALİTESİ</span>"
                     f"<span style='font-size:0.86rem;font-weight:900;color:{_gkc};"
-                    f"line-height:1.15;'>{_gk_ikon} {_gk['etiket']}</span></div>"
+                    f"line-height:1.15;'>{_gk_ikon} {_gk['etiket']}</span>"
+                    + (f"<span style='font-size:0.55rem;font-weight:700;"
+                       f"color:rgba(255,255,255,0.45);letter-spacing:0.04em;'>"
+                       f"· {_gk['taraf']}</span>" if _gk.get('taraf') else "")
+                    + f"</div>"
                     f"<div style='margin-top:3px;font-size:0.66rem;line-height:1.35;"
                     f"color:rgba(255,255,255,0.78);'>{_gk['sebep']}</div></div>")
         except Exception:
             pass
 
-        # ── ⛔ GEÇERSİZLİK ÇİZGİSİ (24 Ağu 2026) ────────────────────────────
-        # Trader'ın karar iptal seviyesi: Formasyon varsa formasyon stopu,
-        # trend yukarıysa EMA 21 / 50 SMA, trend aşağıysa 50 SMA bariyeri.
+        # ── ⛔ GEÇERSİZLİK ÇİZGİSİ (24 Ağu 2026 · 2 Eyl 2026 tek kaynağa bağlandı) ──
+        # ESKİ HÂLİ HATALIYDI: dalı "fiyat 50 günlük ortalamanın üstünde mi" ile
+        # seçip körlemesine 21 günlük ortalamayı yazıyordu; seviyenin fiyatın hangi
+        # TARAFINDA kaldığını hiç kontrol etmiyordu. 1 Eyl 2026 XU100'de şerit
+        # "STOP 14.261" yazdı ama fiyat 14.229'du — iptal şartı ZATEN gerçekleşmişti,
+        # şerit onu hâlâ "aşağıda bekleyen savunma" gibi gösteriyordu ve hemen
+        # üstündeki GİRİŞ KALİTESİ kutusu yeşil "ELVERİŞLİ" diyordu.
+        # Yön artık terazinin hükmünden geliyor (Kanıt Terazisi kartıyla AYNI
+        # kaynak), taraf kontrolü ekran_v2.gecersizlik_serit içinde yapılıyor.
+        # Hüküm dengedeyse bozulacak tez yoktur → şerit çizilmez.
         _inval_strip_html = ""
         try:
-            _inval_px = None
-            _inval_reason = ""
-            if _cy_view and _cy_view.get("invalidation"):
-                _inval_px = float(_cy_view["invalidation"])
-                _inval_reason = f"{_cy_view.get('pattern_label', 'Formasyon')} iptal çizgisi"
-            elif _hier_pack.get("_gs_sma50_above"):
-                if _h_df is not None and len(_h_df) >= 21:
-                    _inval_px = float(_h_df['Close'].ewm(span=21, adjust=False).mean().iloc[-1])
-                    _inval_reason = "EMA 21 dinamik destek altı kapanış"
-                elif _hier_pack.get("_gs_sma50"):
-                    _inval_px = float(_hier_pack["_gs_sma50"])
-                    _inval_reason = "50 SMA ana trend desteği altı"
-            else:
-                if _hier_pack.get("_gs_sma50"):
-                    _inval_px = float(_hier_pack["_gs_sma50"])
-                    _inval_reason = "50 SMA düşüş trendi direnci üstü"
-
-            if _inval_px is not None and _inval_px > 0:
-                _inval_px_str = f"{int(_inval_px):,}".replace(",", ".") if _inval_px >= 1000 else f"{_inval_px:.2f}"
+            _kz_inv = _compute_kanit_ozeti(st.session_state.ticker) or {}
+            _sv_inv = {}
+            try:
+                _sv_inv = (calculate_price_action_dna(st.session_state.ticker)
+                           or {}).get('smart_volume') or {}
+            except Exception:
+                _sv_inv = {}
+            _inv = ekran_v2.gecersizlik_serit(
+                _h_df, (_kz_inv.get('terazi') or {}).get('yon'),
+                vah=_sv_inv.get('vah'), val=_sv_inv.get('val'),
+                formasyon_px=(_cy_view or {}).get("invalidation"),
+                formasyon_ad=(_cy_view or {}).get("pattern_label"))
+            if _inv:
+                _inv_rol = ("altı kapanışta hüküm bozulur"
+                            if _inv['baslik'] == "STOP"
+                            else "üstü kapanışta hüküm iptal olur")
+                _inv_teyit_html = (
+                    f"<div style='font-size:0.57rem;color:rgba(255,255,255,0.45);'>"
+                    f"teyit: {_inv['teyit_str']}</div>"
+                    if _inv['teyit_str'] else "")
                 _inval_strip_html = (
                     f"<div style='padding:6px 12px;background:rgba(2,6,17,0.65);"
                     f"border-top:1px solid rgba(239,68,68,0.25);border-left:3px solid #ef4444;"
-                    f"display:flex;justify-content:space-between;align-items:center;'>"
-                    f"<div><span style='font-size:0.58rem;font-weight:900;letter-spacing:0.12em;"
-                    f"color:#f87171;'>⛔ GEÇERSİZLİK (STOP)</span>"
-                    f"<div style='font-size:0.62rem;color:rgba(255,255,255,0.70);'>{_inval_reason}</div></div>"
+                    f"display:flex;justify-content:space-between;align-items:center;gap:8px;'>"
+                    f"<div style='min-width:0;'>"
+                    f"<span style='font-size:0.58rem;font-weight:900;letter-spacing:0.12em;"
+                    f"color:#f87171;'>⛔ GEÇERSİZLİK ({_inv['baslik']})</span>"
+                    f"<div style='font-size:0.62rem;color:rgba(255,255,255,0.70);'>"
+                    f"{_inv['sebep']} · {_inv_rol}</div>"
+                    f"{_inv_teyit_html}</div>"
                     f"<span style='font-family:\"JetBrains Mono\",monospace;font-size:0.85rem;"
-                    f"font-weight:900;color:#fecaca;'>{_inval_px_str}</span></div>"
+                    f"font-weight:900;color:#fecaca;white-space:nowrap;'>{_inv['px_str']}</span></div>"
                 )
         except Exception:
             _inval_strip_html = ""
