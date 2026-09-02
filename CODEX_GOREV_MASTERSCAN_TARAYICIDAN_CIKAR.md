@@ -350,6 +350,75 @@ düşme, bu belgedeki özet yeterli.
 
 ---
 
+## C-EK3. İLK KIYAS KONTROLLÜ DEĞİLDİ + gizli_birikim boş döndü (2 Eyl denetimi)
+
+C-EK2 mekanik olarak tamam (commit `495fa85`): yan-kayıt üretiliyor (57 tip,
+1.540 sembol), araç aynı günü karşılaştırıyor, `--kuru` gerçekten kuru
+(patron.db kuru koşudan sonra **değişmedi**: mtime 09:26:45, koşu 10:02–10:06).
+
+**Ama ilk kıyasın "FARK VAR" sonucu yol farkı olarak OKUNAMAZ.** İki kontrolsüz
+değişken var:
+
+```
+ekran turu : 08:50 → 09:26   (seans AÇILMADAN önce)
+kuru koşu  : 10:02           (seans AÇIK)
+```
+
+1. **Zaman:** seans içi/dışı kapıları farklı davranıyor (bayat yazım kapısı,
+   seans-mumu tazelik kapısı, önbellek geçerlilik kuralı). İki koşu farklı
+   kapı rejiminde çalıştı.
+2. **Önbellek:** ekran turu ısınmış önbellekle, ekransız koşu sıfırdan
+   hesapladı. Eşiğe yakın değerler taraf değiştirir.
+
+⚠ Piyasa verisi suçlu DEĞİL: günlük, saatlik ve 4S depolarında iki koşu
+arasında **tek dosya yazılmadı** (üç pencere de 0). Yani fark veriden değil,
+koşma koşullarından ve/veya yoldan geliyor.
+
+### Yine de açıklanması gereken bulgu
+
+```
+gizli_birikim :  DB 83  →  kuru 0
+tekli_altin   :  DB 268 →  kuru 302
+platin_setup  :  DB 56  →  kuru 67
+altin_setup   :  DB 185 →  kuru 182
+sayısal fark  :  626 kayıt (score / entry_price / stop_level)
+```
+
+`gizli_birikim` **yakalama boşluğu değil** — motor onu `_persist(...,
+'log_scan_signal', 'gizli_birikim', ...)` ile yazıyor ve yan-kayıt tam o yolu
+dinliyor. Yani tarama gerçekten **boş döndü**. Diğerleri iki yöne birden
+sapıyor (kimi fazla kimi eksik), bu da tek bir "adım koşmadı" hikâyesine
+uymuyor — eşik civarı oynama gibi duruyor.
+
+### Yapılacak — bu sırayla
+
+**1. `gizli_birikim` neden 0 döndü, bul.** Zamanlamadan bağımsız açıklanmalı.
+   Bakılacak yerler: seans-saati kapısı mı var, `@st.cache_data` ekransız
+   stub altında farklı mı davranıyor, `durum` sözlüğünde beklediği bir anahtar
+   eksik mi. Sebebi bul, **sonra** düzelt. Tahminle yama yazma.
+
+**2. KONTROLLÜ kıyas koş.** Şart: aynı akşam, kapanıştan sonra, arka arkaya,
+   arada seans yok:
+```
+   ekran turu biter (patron.db yazılır)
+      ↓  hemen ardından, aynı akşam
+   python master_scan_kos.py --kategori "BIST 500 " --kuru
+      ↓
+   python master_scan_kiyas.py --kuru-dosya ... --tarih ...
+```
+
+**3. Araç kontrolsüz kıyası REDDETSİN.** Yan-kaydın `run_at` değeri ile DB
+   satırlarının `recorded_at` aralığı arasında bir seans açılışı/kapanışı
+   varsa ya da aralık çok genişse, araç hüküm vermek yerine
+   **"KIYAS KONTROLLÜ DEĞİL"** desin ve sebebini yazsın. Sayıları yine
+   raporlasın ama sonucu "FARK VAR" diye etiketlemesin.
+   Sebep: bu raporun yanlış okunması, ölçüm yapmamaktan daha pahalı.
+
+**Yasak:** farkı açıklayamadan ölçütü gevşetme · Aşama D'ye geçme ·
+"herhalde önbellekten" deyip geçme — ölç, göster.
+
+---
+
 ## D. TUZAKLAR — bunlar seni ısıracak
 
 1. **`st.session_state` düz sözlük OLMALI, golden'ın falsy stub'ı DEĞİL.**
