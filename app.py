@@ -1180,6 +1180,24 @@ SMC_YOPEN_AI_ENABLED = False
 # Modül SİLİNMEDİ, susturuldu: ikinci rejimde `python _4s_filtre_backtest.py`
 # tekrar koş, tablo tutarlılaşırsa True yap.
 ZAMANLAMA_4S_ENABLED = False
+# 2 Eyl 2026 — RSI UYUMSUZLUK SUSTURULDU (rsi_uyumsuzluk_motor_karne.py ölçtü).
+# Ekranda AYNI ANDA iki motor konuşuyordu (GENEL ÖZET chip + PA-DNA kartı) ve
+# 623 hissede ikisinin de yön verdiği günlerin %29'unda TERS cevap veriyorlardı.
+# Karne: 124.636 hisse-gün, alfa = hisse getirisi − aynı gün XU100. Mühürler
+# sonuç görülmeden yazıldı (3 vade + yön-alfa uyumu + N≥200 + eşik 0,50 puan).
+# SONUÇ: 7 kovanın HİÇBİRİ geçemedi; üstelik klasik etiketler TERS çalışıyor —
+#   'bullish' (💎 Gizli Güç, yeşil): T+10 -1,10 vs baseline -0,50 · T+20 -2,80
+#                                    vs -1,19 · N=18.157 · üç vadede tutarlı
+#   'bearish' (🐻 Tepe Zayıflığı)  : T+10 -0,19 → baseline'ın ÜSTÜNDE
+#   Motor A 'bull' -0,89 · 'bear' -0,26 (aynı ters yön, daha zayıf)
+# MEKANİZMA: etiketler uyumsuzluk değil ZİRVEDEN DÜŞÜŞ ölçüyor —
+#   tüm günler %-22,8 · 'bullish' %-32,5 · 'bearish' %-15,5.
+#   Yani f_dd_zirveden ve f_52h_pos'un daha temiz ölçtüğü şeyin gürültülü ve
+#   yanlış adlandırılmış vekili. TERS ÇEVİRMEDİK: çevirmek "dövülmüş hisseden
+#   uzak dur"u ikinci kez, daha kötü bir adla söylemek olurdu.
+# scan_signals'a YAZIM SÜRÜYOR → rejim değişince `python
+# rsi_uyumsuzluk_motor_karne.py` tekrar koş; tablo yön-tutarlı olursa True yap.
+RSI_DIVERGENCE_AI_ENABLED = False
 
 # -> indicators.py (Adim 4, 4 Tem 2026): _spike_dom_ratio
 
@@ -8047,16 +8065,18 @@ def render_price_action_panel(ticker):
             f'</div>'
         )
 
-    # RSI Uyumsuzluk
-    _div_prio = 10 if div_active else 1
-    if _div_prio >= 3:
-        secs.append((_div_prio,
-            f'<div style="padding:8px;border-radius:6px;background:{div_bg};border-left:3px solid {div_brd};">'
-            f'<div style="font-weight:800;font-size:0.85rem;color:{div_col};">RSI UYUMSUZLUK: {div_data["title"]}</div>'
-            f'<div class="edu-note" style="margin-bottom:0;color:#cbd5e1;">{div_data["desc"]}</div>'
-            f'</div>'))
-    else:
-        secs.append((_div_prio, _compact("RSI UYUMSUZLUK", div_data["title"])))
+    # RSI Uyumsuzluk — 2 Eyl 2026: RSI_DIVERGENCE_AI_ENABLED ile susturuldu.
+    # Karne ters çıktı (💎 Gizli Güç = en kötü kova). Gerekçe bayrağın yanında.
+    if RSI_DIVERGENCE_AI_ENABLED:
+        _div_prio = 10 if div_active else 1
+        if _div_prio >= 3:
+            secs.append((_div_prio,
+                f'<div style="padding:8px;border-radius:6px;background:{div_bg};border-left:3px solid {div_brd};">'
+                f'<div style="font-weight:800;font-size:0.85rem;color:{div_col};">RSI UYUMSUZLUK: {div_data["title"]}</div>'
+                f'<div class="edu-note" style="margin-bottom:0;color:#cbd5e1;">{div_data["desc"]}</div>'
+                f'</div>'))
+        else:
+            secs.append((_div_prio, _compact("RSI UYUMSUZLUK", div_data["title"])))
 
     # Tuzak (SFP)
     _sfp_prio = 9 if sfp_active else 1
@@ -12338,11 +12358,15 @@ def render_unified_signals_panel(ticker):
         # ── 18. RSI Uyumsuzluk + Smart Volume ───────────────────────
         try:
             if pa:
+                # 2 Eyl 2026 — RSI uyumsuzluk canlı sinyalleri SUSTURULDU.
+                # Karne ters: 'bullish' kovası T+10 -1,10 (baseline -0,50),
+                # 'bearish' -0,19 (baseline üstü). Gerekçe bayrağın yanında.
                 div_type = pa.get('div',{}).get('type','neutral')
-                if div_type == 'bullish':
-                    signals.append(("💎","RSI Uyumsuzluk: POZİTİF (Gizli Güç)","#15803d","Fiyat yeni dip yaparken RSI yüksek dip yapıyor. Satıcıların gücü azalıyor — büyükler dipten topluyor olabilir.",True,1))
-                elif div_type == 'bearish':
-                    signals.append(("🐻","RSI Uyumsuzluk: NEGATİF (Yorgun Boğa)","#b91c1c","Fiyat yeni zirve yaparken RSI düşük zirve yapıyor. Yükseliş devam ediyor gibi görünse de içten çürüyor.",False,1))
+                if RSI_DIVERGENCE_AI_ENABLED:
+                    if div_type == 'bullish':
+                        signals.append(("💎","RSI Uyumsuzluk: POZİTİF (Gizli Güç)","#15803d","Fiyat yeni dip yaparken RSI yüksek dip yapıyor. Satıcıların gücü azalıyor — büyükler dipten topluyor olabilir.",True,1))
+                    elif div_type == 'bearish':
+                        signals.append(("🐻","RSI Uyumsuzluk: NEGATİF (Yorgun Boğa)","#b91c1c","Fiyat yeni zirve yaparken RSI düşük zirve yapıyor. Yükseliş devam ediyor gibi görünse de içten çürüyor.",False,1))
                 sv = pa.get('smart_volume',{})
                 if sv.get('stopping','Yok') != 'Yok':
                     signals.append(("🐋","Balina İzi: Stopping Volume","#15803d","Düşüş yüksek hacimle karşılandı. Kurumsal fren devrede, düşüş durduruluyor olabilir.",True,1))
@@ -14347,25 +14371,29 @@ def _render_genel_ozet_panel():
                         _rsi_lbl = "aşırı alım"; _rc = _gs_dn_clr
                         _rsi_expl = "Güçlü trendlerde RSI haftalarca 70+ kalabilir — OBV/Hacim çelişkisi yoksa düzeltme zorunlu değil"
 
-                    # Divergence chip — seviyenin yanına ekle
-                    if _rsi_div == "bull":
-                        _div_chip  = (f" <span style='color:{_gs_up_clr};font-size:0.72rem;"
-                                      f"font-weight:700;'>· Poz Div ✓</span>")
-                        _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
-                    elif _rsi_div == "bear":
-                        _div_chip  = (f" <span style='color:{_gs_dn_clr};font-size:0.72rem;"
-                                      f"font-weight:700;'>· Neg Div ✗</span>")
-                        _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
-                    elif _rsi_div == "hidden_bull":
-                        _div_chip  = (f" <span style='color:{_gs_up_clr};font-size:0.72rem;"
-                                      f"font-weight:700;'>· Gizli Poz ↗</span>")
-                        _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
-                    elif _rsi_div == "hidden_bear":
-                        _div_chip  = (f" <span style='color:{_gs_dn_clr};font-size:0.72rem;"
-                                      f"font-weight:700;'>· Gizli Neg ↘</span>")
-                        _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
-                    else:
-                        _div_chip  = ""
+                    # Divergence chip — 2 Eyl 2026: SUSTURULDU.
+                    # Dört kova da sınavdan kaldı; 'bull'/'bear' üstelik TERS
+                    # yönde (bull -0,89 vs baseline -0,50; bear -0,26 = baseline
+                    # üstü). 'hidden_*' yönü doğru ama üç vadede tutarsız ve
+                    # eşiğin altında. Gerekçe RSI_DIVERGENCE_AI_ENABLED yanında.
+                    _div_chip = ""
+                    if RSI_DIVERGENCE_AI_ENABLED:
+                        if _rsi_div == "bull":
+                            _div_chip  = (f" <span style='color:{_gs_up_clr};font-size:0.72rem;"
+                                          f"font-weight:700;'>· Poz Div ✓</span>")
+                            _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
+                        elif _rsi_div == "bear":
+                            _div_chip  = (f" <span style='color:{_gs_dn_clr};font-size:0.72rem;"
+                                          f"font-weight:700;'>· Neg Div ✗</span>")
+                            _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
+                        elif _rsi_div == "hidden_bull":
+                            _div_chip  = (f" <span style='color:{_gs_up_clr};font-size:0.72rem;"
+                                          f"font-weight:700;'>· Gizli Poz ↗</span>")
+                            _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
+                        elif _rsi_div == "hidden_bear":
+                            _div_chip  = (f" <span style='color:{_gs_dn_clr};font-size:0.72rem;"
+                                          f"font-weight:700;'>· Gizli Neg ↘</span>")
+                            _rsi_expl  = _rsi_div_expl + " · " + _rsi_expl
 
                     # RSI mini gauge (30/70 markerlı)
                     _rsi_pct = max(0, min(100, _gs_rsi_val))
@@ -14395,7 +14423,9 @@ def _render_genel_ozet_panel():
                         f"</svg>"
                     )
                     # Regular Div (bull/bear) → pulse
-                    _rsi_pulse = _rsi_div in ("bull", "bear")
+                    # Nabız vurgusu da çürütülmüş sinyale bağlıydı — sustu.
+                    _rsi_pulse = (RSI_DIVERGENCE_AI_ENABLED
+                                  and _rsi_div in ("bull", "bear"))
                     _gs_items_html += _gs_row(
                         "RSI",
                         (f"{_rsi_gauge}"
@@ -18648,7 +18678,14 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
 
     # ── PROMPT İÇİN AKTİF PA SİNYALİ ÖNCELİK LİSTESİ ─────────────
     _pa_prio = []
-    _div_active_ai   = pa_div not in ("-", "Yok", "Bilinmiyor") and "Nötr" not in pa_div
+    # 2 Eyl 2026 — RSI uyumsuzlugu AI metninden CIKARILDI (karne ters).
+    # YAML alani bayrak acilinca geri gelir; hesap yerinde duruyor.
+    _em_rsi_div_line = ("\n  rsi_divergence: " + str(pa_div)
+                        if RSI_DIVERGENCE_AI_ENABLED else "")
+    # 2 Eyl 2026 — karne ters cikti, AI oncelik listesinden dusuruldu (bayrak).
+    _div_active_ai   = (RSI_DIVERGENCE_AI_ENABLED
+                        and pa_div not in ("-", "Yok", "Bilinmiyor")
+                        and "Nötr" not in pa_div)
     _sfp_active_ai   = "Bullish SFP" in sfp_desc or "Bearish SFP" in sfp_desc
     _sd_active_ai    = sd_txt_ai not in ("Taze bölge görünmüyor.", "Veri Yok")
     _vwap_ext_ai     = v_diff < -2.0 or v_diff > 15.0
@@ -18827,7 +18864,10 @@ KURAL: Belirgin bir çelişki varsa analizini o çelişkinin etrafında kur. Çe
                     _div_p = "Yok (fiyat ve RSI uyumlu — divergence sinyali yok)"
             except Exception:
                 _div_p = "Yok"
-            _panel_rows.append(f"- RSI DIVERGENCE: {_div_p}")
+            # 2 Eyl 2026 — susturuldu: dort kova da sinavdan kaldi, klasik
+            # etiketler ters calisiyor. Gerekce RSI_DIVERGENCE_AI_ENABLED yaninda.
+            if RSI_DIVERGENCE_AI_ENABLED:
+                _panel_rows.append(f"- RSI DIVERGENCE: {_div_p}")
             # AI EK 1 (17 Tem 2026): etiketler rsi_kova_backtest ölçümüne hizalandı —
             # <25 ölçülmüş toparlanma bölgesi · 70-80 nötr (ayrışmıyor) · >80 momentum ucu
             # ("aşırı alım → düzeltme" okuması BIST ölçümüne aykırı).
@@ -19579,8 +19619,7 @@ ict_pa:
   hedef_likidite_seviye: {ict_data.get('target', 0)}
   mum_formasyonu: {mum_desc}
   chart_formasyon: {pattern_full_txt}
-  formasyon_guvenilirligi: {confidence_prompt if confidence_prompt else "(veri eksik)"}
-  rsi_divergence: {pa_div}
+  formasyon_guvenilirligi: {confidence_prompt if confidence_prompt else "(veri eksik)"}{_em_rsi_div_line}
   sfp_tuzak: {sfp_desc}
   harmonik_xabcd: {harm_txt}
 
@@ -19989,7 +20028,6 @@ DİKKAT: GÖRSEL, YAPAY ZEKA ÇIKTISI DEĞİLDİR. ALGORİTMAMIN HESAPLAMALARIDI
 1) **YASAK KELİME:** "çok / büyük / sert / ciddi / kritik / tarihi / nadir / kesin / mutlaka / tamamen / resmen / oldukça / net bir / fısıldıyor / kanıtlıyor / patlayacak / şok edici / -dır / -mektedir / -maktadır / bar içi / kurumsal nakit / sermaye koruma / bekle gör / perakende / pozisyonsuz". Bulduğun her cümle yeniden yaz veya sil.
 2) **TAVSİYE SIZMASI:** "al/sat/tut/kaçın/bekle/izle/dikkat et/temkinli ol/portföyünüze/en rasyonel/en makul/yapılması gereken" → koşullu dile çevir ("X kırılırsa Y görülebilir").
 3) **KAYNAK ÖNCELİĞİ:** Tek sıra kullan: doğrulanmış sayısal YAML → bu sayılardan hesaplanan durum/vade mutabakatı → üretilen açıklama. GENEL ÖZET PANEL yalnız yardımcıdır; çelişkide YAML kazanır. master_score için yaml.asset.master_score baş kaynaktır.
-   🚨 RSI DIVERGENCE ZORUNLU CHECK: yaml.ict_pa.rsi_divergence değerini AYNEN yansıt. yaml="Uyumlu" + panel="Hidden Bull" → "Uyumlu" yaz, "gizli pozitif"/"hidden bull"/"gizli yükseliş" YASAK. yaml="Klasik Negatif" + panel="Hidden Bear" → "Klasik Negatif" yaz. Panel etiketini YAML üzerine asla bindirme.
 4) **VERİ SADAKAT:** Her sayı/seviye/yüzde için YAML'a geri dön ve doğrula (HARSI, SMA, Delta, mum formasyonu, 52H, master_score, CMF). YAML'da yoksa cümleyi düzelt. YAML'daki ölçüye özel hassasiyeti koru; yeni sayı türetme veya yeniden yuvarlama yapma.
 5) **6 ANCHOR + UZAKLIK BAĞLAM:** VP Şekli + cum_delta_5g + OMI + OBV durum + CMF Dual + 52H — her biri en az 1 kez geçti mi? VWAP/POC/Z-Score/RSI cümlesi sadece seviye mi yoksa dönüş argümanı mı? Argümansa bağımsız kanıt eklenmiş mi? Yoksa sil.
 6) **ERKEN RADAR ≥65:** G1 + G4'te senaryo adı geçti mi? Hayırsa enjekte et.
