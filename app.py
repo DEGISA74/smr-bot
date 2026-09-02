@@ -12670,6 +12670,36 @@ def render_unified_signals_panel(ticker):
 # Tüm tarama sonuçlarını özetleyen genel özet paneli.
 # Piyasa sağlığı göstergeleri ve makro sinyal özeti.
 # ==============================================================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def _taban_cizgisi_stats():
+    """2 Eyl 2026 (bulgu 7 · Katman 1) — SİSTEMİN TABAN ÇİZGİSİ.
+
+    Ekranda 18 gösterge var, hepsi 0-100/yüzde formunda, hepsi aynı görsel
+    dilde — ama arkalarında farklı ölçek türleri yatıyor ve okuyucu birbirinin
+    alternatifi sanıyor. Bunların HEPSİ tek bir referansın üstüne okunmalı:
+    ortalama bir sinyal ürettiğimizde tarihsel olarak ne oluyor?
+
+    Kaynak: signal_results (canlı, JOIN gerekmez — her sinyal 1 satır). Statik
+    rapor yerine canlı hesap → rakam kendini günceller, bayatlamaz.
+    Döner: {'n','ret10','hit10'} veya None."""
+    try:
+        import sqlite3 as _sq
+        _cx = _sq.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       "patron.db"))
+        try:
+            _r = _cx.execute(
+                "SELECT COUNT(*), AVG(ret_10g), "
+                "AVG(CASE WHEN ret_10g>0 THEN 1.0 ELSE 0.0 END)*100 "
+                "FROM signal_results WHERE ret_10g IS NOT NULL").fetchone()
+        finally:
+            _cx.close()
+        if not _r or not _r[0] or _r[0] < 500:   # az örnekte taban güvenilmez
+            return None
+        return {'n': int(_r[0]), 'ret10': float(_r[1]), 'hit10': float(_r[2])}
+    except Exception:
+        return None
+
+
 def _render_genel_ozet_panel():
     """GENEL ÖZET — kısmen ilişkili 6 gösterge (13 Tem 2026: V8 çift-onay backtest ile
     CMF + MFI oyu eklendi), trend bağlamı, iptal koşulu, ER kurulum kalitesi."""
@@ -14662,6 +14692,26 @@ def _render_genel_ozet_panel():
                 _top_sm_text = (f"{_sm_gecen}/{_sm_toplam} oy"
                                 if _sm_gecen is not None and _sm_toplam else "—")
                 _top_momentum_text = _mom_lbl if _mom_lbl else "veri yok"
+                # Taban çizgisi şeridi (bulgu 7 · Katman 1) — canlı, cache'li.
+                _taban_serit_html = ""
+                try:
+                    _tb = _taban_cizgisi_stats()
+                    if _tb:
+                        _taban_serit_html = (
+                            f"<div title='signal_results — {_tb['n']:,} geçmiş sinyal; "
+                            f"bugünkü hisseye özel değil, sistemin genel ölçeği' "
+                            f"style='margin-top:6px;padding-top:5px;"
+                            f"border-top:1px dashed rgba(148,163,184,0.25);"
+                            f"font-size:0.62rem;color:#94a3b8;line-height:1.35;'>"
+                            f"<span style='color:#64748b;'>⚖ TABAN ÇİZGİSİ</span> — "
+                            f"ortalama sinyal 10 günde "
+                            f"<b style='color:#e2e8f0;'>{_tb['ret10']:+.1f}%</b> · "
+                            f"isabet <b style='color:#e2e8f0;'>%{_tb['hit10']:.0f}</b>"
+                            f"<span style='color:#64748b;'> · yukarıdaki skorları bunun "
+                            f"üstüne oku</span></div>"
+                        )
+                except Exception:
+                    _taban_serit_html = ""
                 _gs_top_summary_html = (
                     f"<div style='padding:8px 9px;margin:0 0 7px;"
                     f"background:linear-gradient(135deg,rgba(56,189,248,0.12),rgba(15,23,42,0.55));"
@@ -14683,7 +14733,13 @@ def _render_genel_ozet_panel():
                     f"<span><b style='color:#38bdf8;'>20G:</b> {_top_20g_text}</span>"
                     f"<span><b style='color:#38bdf8;'>Akıllı Para:</b> {_top_sm_text}</span>"
                     f"<span><b style='color:#38bdf8;'>Momentum:</b> {_top_momentum_text}</span>"
-                    f"</div></div>"
+                    f"</div>"
+                    # 2 Eyl 2026 (bulgu 7 · Katman 1) — TABAN ÇİZGİSİ ŞERİDİ.
+                    # Ekrandaki her skor/rozet/yüzde bunun ÜSTÜNE okunmalı: ortalama
+                    # bir sinyalin tarihsel getirisi. Referans olmadan "GÜÇLÜ 65" ya da
+                    # yeşil rozet, hak etmediği bir kesinlik hissi veriyordu.
+                    f"{_taban_serit_html}"
+                    f"</div>"
                 )
 
 
