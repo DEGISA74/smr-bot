@@ -31,6 +31,7 @@
    "bull_cnt": 6,
    "diagnosis_text": "Vadelerin çoğunluğu yukarıyı destekliyor. Momentum alıcı lehine seyrediyor.",
    "dominant": "YUKARI",
+   "kaynak_4h": "saglayici",
    "matrix": {
     "Aylık": {
      "hacim": 0,
@@ -76,7 +77,8 @@
     "Haftalık",
     "Aylık"
    ],
-   "total": 9
+   "total": 9,
+   "yarim_bar_4h": true
   },
   "an_obv_divergence": [
    "✅ SAĞLIKLI TREND (Hacim Onaylı)",
@@ -1261,6 +1263,7 @@
    "bull_cnt": 5,
    "diagnosis_text": "Vadelerin çoğunluğu yukarıyı destekliyor. Momentum alıcı lehine seyrediyor.",
    "dominant": "YUKARI",
+   "kaynak_4h": "saglayici",
    "matrix": {
     "Aylık": {
      "hacim": 0,
@@ -1306,7 +1309,8 @@
     "Haftalık",
     "Aylık"
    ],
-   "total": 9
+   "total": 9,
+   "yarim_bar_4h": true
   },
   "an_obv_divergence": [
    "🔄 OBV KAFA ÇEVİRİYOR (Zayıflama)",
@@ -2494,6 +2498,7 @@
    "bull_cnt": 1,
    "diagnosis_text": "Vadeler arasında belirgin bir konsensüs yok. Piyasa yatay bantta denge arıyor.",
    "dominant": "KARARSIZ",
+   "kaynak_4h": "saglayici",
    "matrix": {
     "Aylık": {
      "hacim": 0,
@@ -2539,7 +2544,8 @@
     "Haftalık",
     "Aylık"
    ],
-   "total": 9
+   "total": 9,
+   "yarim_bar_4h": true
   },
   "an_obv_divergence": [
    "🔄 OBV KAFA ÇEVİRİYOR (Toparlanma)",
@@ -3737,6 +3743,7 @@
    "bull_cnt": 3,
    "diagnosis_text": "Vadelerin çoğunluğu yukarıyı destekliyor. Momentum alıcı lehine seyrediyor.",
    "dominant": "YUKARI",
+   "kaynak_4h": "saglayici",
    "matrix": {
     "Aylık": {
      "hacim": 0,
@@ -3782,7 +3789,8 @@
     "Haftalık",
     "Aylık"
    ],
-   "total": 9
+   "total": 9,
+   "yarim_bar_4h": true
   },
   "an_obv_divergence": [
    "⚖️ ZAYIF İVME (Hacimsiz Bölge)",
@@ -4994,6 +5002,7 @@
    "bull_cnt": 5,
    "diagnosis_text": "Vadelerin çoğunluğu yukarıyı destekliyor. Momentum alıcı lehine seyrediyor.",
    "dominant": "YUKARI",
+   "kaynak_4h": "saglayici",
    "matrix": {
     "Aylık": {
      "hacim": 0,
@@ -5039,7 +5048,8 @@
     "Haftalık",
     "Aylık"
    ],
-   "total": 9
+   "total": 9,
+   "yarim_bar_4h": true
   },
   "an_obv_divergence": [
    "✅ SAĞLIKLI TREND (Hacim Onaylı)",
