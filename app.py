@@ -11694,7 +11694,7 @@ def render_roadmap_8_panel(ticker):
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;'
         f'padding-bottom:4px;border-bottom:1px solid rgba(100,116,139,0.18);">'
         f'<span style="font-size:0.7rem;font-weight:800;color:#64748b;letter-spacing:0.04em;'
-        f'text-transform:uppercase;" title="Yol Haritası 5 alt faktörünün ağırlıklı sentezi — Zamanlama ve Risk olgunluğunu ölçer.">🗺 Yol Haritası <span style="color:#38bdf8;font-size:0.58rem;font-weight:800;">[ZAMANLAMA & RİSK]</span></span>'
+        f'text-transform:uppercase;" title="Yol Haritası 5 alt faktörünün ağırlıklı sentezi — Zamanlama ve Risk olgunluğunu ölçer.">🗺 Yol Haritası <span style="color:#38bdf8;font-size:0.58rem;font-weight:800;">[ZAMANLAMA & RİSK]</span> <span title="Birden çok göstergeyi harmanlayıp tek karar sayısı üretir — ham okuma değil. Performans karnesi değildir." style="font-family:JetBrains Mono,monospace;font-size:0.5rem;font-weight:700;color:#a78bfa;background:rgba(167,139,250,0.13);border:1px solid rgba(167,139,250,0.32);padding:0 4px;border-radius:4px;">SENTEZ</span></span>'
         f'<span style="font-size:0.7rem;font-weight:800;color:{_comp_color};">{_comp_decision}</span>'
         f'</div>'
         f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">'
@@ -13013,11 +13013,21 @@ def _render_genel_ozet_panel():
                 _dom_n      = max(_gs_up, _gs_dn)
                 # ER kurulum kalitesi — mini progress bar + skor
                 if _lr_score is not None:
-                    _lr_field_lbl = ("PİYASA RADARI <span style='color:#38bdf8;font-size:0.55rem;font-weight:800;'>[YAPISAL SAĞLIK]</span>" if
+                    # 2 Eyl 2026 (bulgu 7 · Katman 2) — SENTEZ etiketi. Bu skor net
+                    # oy sayımından türeyen bir HÜKÜM (ham okuma değil). "Ölçülmüş=iyi"
+                    # demez; sadece "harman, tek gösterge değil" ayrımı yapar.
+                    _sentez_tag = ("<span title='Birden çok göstergeyi harmanlayıp tek "
+                                   "karar sayısı üretir — ham okuma değil. Performans "
+                                   "karnesi değildir.' style='font-family:JetBrains Mono,"
+                                   "monospace;font-size:0.5rem;font-weight:700;color:#a78bfa;"
+                                   "background:rgba(167,139,250,0.13);border:1px solid "
+                                   "rgba(167,139,250,0.32);padding:0 4px;border-radius:4px;'>"
+                                   "SENTEZ</span>")
+                    _lr_field_lbl = ((f"PİYASA RADARI <span style='color:#38bdf8;font-size:0.55rem;font-weight:800;'>[YAPISAL SAĞLIK]</span> {_sentez_tag}") if
                                      (_ticker.upper().startswith(("XU", "XB", "XT", "XY", "^"))
                                       or _ticker.upper().endswith("=F")
                                       or "-USD" in _ticker.upper())
-                                     else "ER KURULUM KALİTESİ <span style='color:#38bdf8;font-size:0.55rem;font-weight:800;'>[YAPISAL SAĞLIK]</span>")
+                                     else f"ER KURULUM KALİTESİ <span style='color:#38bdf8;font-size:0.55rem;font-weight:800;'>[YAPISAL SAĞLIK]</span> {_sentez_tag}")
                     _lr_bar_html = (
                         f"<span style='display:inline-block;width:42px;height:5px;background:#1e293b;"
                         f"border-radius:3px;position:relative;margin-right:5px;vertical-align:middle;'>"
@@ -14934,6 +14944,7 @@ def _render_health_signals_panel():
                           border-radius:10px 10px 0 0;">
                 <span style="font-size:1.1rem;line-height:1;">🎯</span>
                 GENEL SAĞLIK (Teknik Skor)
+                <span title="Birden çok göstergeyi harmanlayıp tek karar sayısı üretir — ham okuma değil. Performans karnesi değildir." style="font-family:'JetBrains Mono',monospace;font-size:0.52rem;font-weight:700;letter-spacing:0.04em;color:#a78bfa;background:rgba(167,139,250,0.13);border:1px solid rgba(167,139,250,0.32);padding:0 5px;border-radius:4px;cursor:help;">SENTEZ</span>
               </div>
               <div style="background:#060d1a;padding:6px 4px 8px 4px;border-radius:0 0 10px 10px;overflow:visible;">
                 {_gauge_img_html}
