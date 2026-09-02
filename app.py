@@ -2426,6 +2426,10 @@ _FEATURE_PERF_CATALOG = {
     'f_trend_persist':{'label': '🏛 Trend kalıcılığı (SMA50 üstü %)', 'kind': 'fixed',
                        'edges': [-0.01, 25, 50, 75, 100.01],
                        'labels': ['%0-25', '%25-50', '%50-75', '%75-100']},
+    # 2 Eyl 2026 (bulgu 7 · Bölüm 3) — feature karnesinin EN GÜÇLÜ ayrıştırıcısı
+    # (yayılım +8,27). Karne panelinde açık hisseye bağlanır. Kategorik durumlar
+    # scan_signals.f_manip_risk ile birebir (yok/orta/yüksek).
+    'f_manip_risk':   {'label': '🛡 Manipülasyon riski', 'kind': 'categorical'},
 }
 
 
@@ -12700,6 +12704,222 @@ def _taban_cizgisi_stats():
         return None
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def _hisse_karne_satirlari(ticker):
+    """2 Eyl 2026 (bulgu 7 · Bölüm 3) — açık hissenin BUGÜNKÜ durumlarını ölçüm
+    arşivine bağlar. 115K sinyal + 657K ileri getiri ölçülmüştü ama ekranda iki
+    kapalı menüde, açık hisseyle bağlantısız duruyordu.
+
+    MANTIK: hissenin kendi (seyrek) geçmişi DEĞİL — bugünkü feature değerini
+    kovasına eşle, o kovanın EVREN karnesini göster. "RSI'ın 47 → orta bant →
+    o bant geçmişte 10 günde -%2,15." İstatistik evren örnekleminden, bağlam
+    açık hisseden. Yeni ölçüm yok; get_feature_performance (kova karnesi) +
+    _FEATURE_PERF_CATALOG tek kaynak.
+
+    SAĞLAM = feature karnesinde üç vadede de ayrım veren 4 faktör
+    (52H konum · 12-1 momentum · riske göre momentum · manipülasyon riski).
+    Döner: satır dict listesi veya []."""
+    _rows = []
+    try:
+        _tk = str(ticker).upper()
+        _is_idx = (_tk.startswith(("XU", "XB", "XT", "XY", "^"))
+                   or _tk.endswith("=F") or "-USD" in _tk)
+        _df = get_safe_historical_data(ticker, period="1y")
+        if _df is None or len(_df) < 60:
+            return []
+        _c = _df['Close'] if not isinstance(_df['Close'], pd.DataFrame) else _df['Close'].iloc[:, 0]
+        _cp = float(_c.iloc[-1])
+
+        _SOLID = {'f_52h_pos', 'f_mom_12_1', 'f_sharpe_mom', 'f_manip_risk'}
+        _SIRA = ['f_52h_pos', 'f_mom_12_1', 'f_sharpe_mom', 'f_manip_risk',
+                 'f_rsi', 'f_cmf_dual']
+
+        # ── Açık hissenin bugünkü kova ETİKETİ (feature başına) ──
+        def _bucket_label(feat):
+            spec = _FEATURE_PERF_CATALOG.get(feat, {})
+            kind = spec.get('kind')
+            try:
+                if feat == 'f_52h_pos':
+                    _h = _df['High'] if 'High' in _df.columns else _c
+                    _l = _df['Low'] if 'Low' in _df.columns else _c
+                    if isinstance(_h, pd.DataFrame): _h = _h.iloc[:, 0]
+                    if isinstance(_l, pd.DataFrame): _l = _l.iloc[:, 0]
+                    _hi = float(_h.tail(252).max()); _lo = float(_l.tail(252).min())
+                    if _hi <= _lo: return None, None
+                    _val = (_cp - _lo) / (_hi - _lo) * 100.0
+                    _lbl = pd.cut([_val], bins=spec['edges'], labels=spec['labels'])[0]
+                    return (None if _lbl is None else str(_lbl)), f"şu an %{_val:.0f}"
+                if feat == 'f_rsi':
+                    _d = _c.diff()
+                    _g = _d.where(_d > 0, 0).rolling(14).mean()
+                    _ls = (-_d.where(_d < 0, 0)).rolling(14).mean()
+                    _val = float((100 - 100 / (1 + _g / _ls)).iloc[-1])
+                    _lbl = pd.cut([_val], bins=spec['edges'], labels=spec['labels'])[0]
+                    return (None if _lbl is None else str(_lbl)), f"şu an {_val:.0f}"
+                if feat == 'f_manip_risk':
+                    _lm = _liquidity_manip(_df) or {}
+                    _m = _lm.get('manip')
+                    return (str(_m) if _m else None), (f"şu an {_m}" if _m else None)
+                if feat == 'f_cmf_dual':
+                    _c5 = compute_cmf(_df, period=5); _c20 = compute_cmf(_df, period=20)
+                    if _c5 is None or _c20 is None: return None, None
+                    _c5 = float(_c5); _c20 = float(_c20); _T = 0.05
+                    if   _c5 > _T and _c20 > _T:  _st = 'strong_pos'
+                    elif _c5 < -_T and _c20 < -_T: _st = 'strong_neg'
+                    elif _c5 > _T and _c20 < -_T: _st = 'turning_up'
+                    elif _c5 < -_T and _c20 > _T: _st = 'turning_down'
+                    elif _c20 > _T: _st = 'pos'
+                    elif _c20 < -_T: _st = 'neg'
+                    else: _st = 'neutral'
+                    return _st, f"şu an {_c20:+.2f}"
+                if feat in ('f_mom_12_1', 'f_sharpe_mom'):
+                    # Kesitsel faktör: endekste sıralanamaz (tek enstrüman).
+                    if _is_idx:
+                        return None, None
+                    import sqlite3 as _sq
+                    _cx = _sq.connect(DB_FILE, timeout=15)
+                    try:
+                        _rv = _cx.execute(
+                            f"SELECT {feat} FROM scan_signals WHERE symbol=? "
+                            f"AND {feat} IS NOT NULL ORDER BY scan_date DESC LIMIT 1",
+                            (_tk.replace('.IS', ''),)).fetchone()
+                        if not _rv or _rv[0] is None:
+                            _rv = _cx.execute(
+                                f"SELECT {feat} FROM scan_signals WHERE symbol=? "
+                                f"AND {feat} IS NOT NULL ORDER BY scan_date DESC LIMIT 1",
+                                (_tk,)).fetchone()
+                        if not _rv or _rv[0] is None:
+                            return None, None
+                        _v = float(_rv[0])
+                        # Kohort içindeki yüzdelik (qcut(rank,5) ile aynı mantık)
+                        _pc = _cx.execute(
+                            f"SELECT AVG(CASE WHEN {feat} < ? THEN 1.0 ELSE 0.0 END) "
+                            f"FROM scan_signals WHERE {feat} IS NOT NULL "
+                            f"AND scan_date >= date('now','-180 days')", (_v,)).fetchone()[0]
+                    finally:
+                        _cx.close()
+                    _q = min(int(float(_pc or 0) * 5), 4)
+                    return str(spec['labels'][_q]), f"şu an {spec['labels'][_q]}"
+            except Exception:
+                return None, None
+            return None, None
+
+        for _feat in _SIRA:
+            _spec = _FEATURE_PERF_CATALOG.get(_feat, {})
+            _lbl, _valtxt = _bucket_label(_feat)
+            _row = {'feat': _feat, 'ad': _spec.get('label', _feat),
+                    'solid': _feat in _SOLID, 'val': _valtxt,
+                    'kesitsel_gizli': (_feat in ('f_mom_12_1', 'f_sharpe_mom') and _is_idx),
+                    'ret': None, 'hit': None, 'n': None, 'kova': _lbl}
+            if _lbl is not None:
+                try:
+                    _fp = get_feature_performance(_feat, day_offset=10, lookback_days=180)
+                    if _fp is not None and not _fp.empty:
+                        _m = _fp[_fp['Kriter Durumu'].astype(str) == str(_lbl)]
+                        if not _m.empty:
+                            _r0 = _m.iloc[0]
+                            _row['ret'] = float(_r0['Ort Getiri %'])
+                            _row['hit'] = float(_r0['Hit %'])
+                            _row['n'] = int(_r0['n'])
+                except Exception:
+                    pass
+            _rows.append(_row)
+    except Exception:
+        return []
+    return _rows
+
+
+def _render_hisse_karne_panel():
+    """⚖ BU HİSSENİN KARNESİ (bulgu 7 · Bölüm 3) — GENEL ÖZET'in hemen altında.
+    Açık hissenin bugünkü durumlarını evren ölçüm arşivine bağlar."""
+    try:
+        _tk = st.session_state.get('ticker')
+        if not _tk:
+            return
+        _rows = _hisse_karne_satirlari(_tk)
+        if not _rows:
+            return
+        _disp = get_display_name(_tk)
+        _tb = _taban_cizgisi_stats()
+
+        def _clr(v):
+            if v is None: return "#94a3b8"
+            return "#4ade80" if v > 0.5 else ("#f87171" if v < -0.5 else "#fbbf24")
+
+        _base_html = ""
+        if _tb:
+            _base_html = (
+                f"<div style='display:flex;align-items:baseline;gap:5px;padding:5px 11px;"
+                f"background:rgba(2,6,17,0.5);border-bottom:1px dashed #29465f;"
+                f"font-size:0.6rem;color:#94a3b8;'>"
+                f"<span style='color:#64748b;'>TABAN ÇİZGİSİ</span> ortalama sinyal "
+                f"<b style='font-family:\"JetBrains Mono\",monospace;color:#f87171;'>"
+                f"{_tb['ret10']:+.1f}%</b> · isabet "
+                f"<b style='font-family:\"JetBrains Mono\",monospace;color:#e2e8f0;'>"
+                f"%{_tb['hit10']:.0f}</b><span style='color:#475569;'> — satırları "
+                f"bununla kıyasla</span></div>")
+
+        _row_html = ""
+        for _r in _rows:
+            _solid = ("<span style='font-family:\"JetBrains Mono\",monospace;font-size:0.5rem;"
+                      "font-weight:700;color:#4ade80;background:rgba(74,222,128,0.13);"
+                      "border:1px solid rgba(74,222,128,0.32);padding:0 4px;border-radius:3px;'>"
+                      "SAĞLAM</span>") if _r['solid'] else ""
+            if _r['kesitsel_gizli']:
+                _sag = ("<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.86rem;"
+                        "font-weight:800;color:#64748b;text-align:right;line-height:1;'>—</div>"
+                        "<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.58rem;"
+                        "color:#64748b;text-align:right;margin-top:2px;'>hisse panelinde aktif</div>")
+                _val = "endekste gizli — kesitsel faktör (hisseler arası sıralar)"
+                _op = "opacity:0.55;"
+            elif _r['ret'] is not None:
+                _rc = _clr(_r['ret'])
+                _sag = (f"<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.9rem;"
+                        f"font-weight:800;color:{_rc};text-align:right;line-height:1;'>"
+                        f"{_r['ret']:+.1f}%</div>"
+                        f"<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.58rem;"
+                        f"color:#64748b;text-align:right;margin-top:2px;'>"
+                        f"isabet %{_r['hit']:.0f} · n={_r['n']:,}</div>")
+                _val = _r['val'] or ""
+                if _r['kova']:
+                    _val = f"{_r['val']} → {_r['kova']} kovası" if _r['val'] else f"{_r['kova']} kovası"
+                _op = ""
+            else:
+                _sag = ("<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.86rem;"
+                        "font-weight:800;color:#64748b;text-align:right;line-height:1;'>—</div>"
+                        "<div style='font-size:0.58rem;color:#64748b;text-align:right;"
+                        "margin-top:2px;'>yeterli örnek yok</div>")
+                _val = _r['val'] or "veri yok"
+                _op = "opacity:0.55;"
+            _row_html += (
+                f"<div style='display:grid;grid-template-columns:1fr auto;gap:4px 10px;"
+                f"align-items:center;padding:7px 11px;border-bottom:1px solid rgba(30,58,95,0.5);{_op}'>"
+                f"<div style='min-width:0;'>"
+                f"<div style='font-size:0.73rem;font-weight:600;color:#e2e8f0;'>{_r['ad']} {_solid}</div>"
+                f"<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.6rem;color:#94a3b8;"
+                f"margin-top:1px;'>{_val}</div></div>"
+                f"<div>{_sag}</div></div>")
+
+        st.markdown(
+            f"<div style='margin:7px 0;background:#091421;border:1px solid rgba(167,139,250,0.32);"
+            f"border-radius:9px;overflow:hidden;'>"
+            f"<div style='padding:8px 11px;background:linear-gradient(90deg,"
+            f"rgba(167,139,250,0.14),rgba(15,23,42,0.5));border-bottom:1px solid rgba(167,139,250,0.28);'>"
+            f"<div style='font-size:0.8rem;font-weight:800;color:#c4b5fd;letter-spacing:0.03em;'>"
+            f"⚖ BU HİSSENİN KARNESİ · {_disp}</div>"
+            f"<div style='font-size:0.58rem;color:#64748b;margin-top:1px;'>"
+            f"bugünkü durumların geçmiş getirisi — evren, T+10 · alfa değil ham getiri</div></div>"
+            f"{_base_html}{_row_html}"
+            f"<div style='padding:7px 11px;font-size:0.58rem;color:#64748b;font-style:italic;"
+            f"line-height:1.4;border-top:1px solid #29465f;background:rgba(2,6,17,0.4);'>"
+            f"ⓘ Bunlar hissenin KENDİ geçmişi değil — bu durumdaki TÜM sinyallerin evren "
+            f"ortalaması. <b style='color:#4ade80;'>SAĞLAM</b> = üç vadede de pozitif, "
+            f"örneklemi yeterli. İşaretsizler henüz o sınavdan geçmedi.</div></div>",
+            unsafe_allow_html=True)
+    except Exception:
+        pass
+
+
 def _render_genel_ozet_panel():
     """GENEL ÖZET — kısmen ilişkili 6 gösterge (13 Tem 2026: V8 çift-onay backtest ile
     CMF + MFI oyu eklendi), trend bağlamı, iptal koşulu, ER kurulum kalitesi."""
@@ -15049,6 +15269,12 @@ with st.sidebar:
 
     # --- GENEL ÖZET — başlığın hemen altında ---
     _render_genel_ozet_panel()
+
+    # --- BU HİSSENİN KARNESİ (bulgu 7 · Bölüm 3, 2 Eyl 2026) ---
+    # GENEL ÖZET'in hemen altı: açık hissenin bugünkü durumlarını ölçüm arşivine
+    # bağlar. Ölçüm arşivi (115K sinyal) eskiden 2 kapalı menüde, hisseyle
+    # bağlantısız duruyordu.
+    _render_hisse_karne_panel()
 
     # (TEKNİK GÖRÜNÜM + ICT BOTTOM LINE → sağ sütuna CANLI SİNYALLER altına taşındı)
 
