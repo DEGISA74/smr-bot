@@ -277,6 +277,79 @@ Bayrak True olduğunda hiçbir şey değişmemeli — normal tablo çıksın.
 
 ---
 
+## C-EK2. KIYAS YAPILAMIYOR — iş emrinin eksiği (2 Eyl 2026, denetimden çıktı)
+
+**Bu Codex'in hatası değil; iş emrinin eksiği.** "İki turu karşılaştırır"
+yazdım ama iki turun aynı gün veritabanında **nasıl yan yana duracağını**
+söylemedim. Duramıyor:
+
+```
+scan_runs     PRIMARY KEY (scan_date, scan_type)
+scan_signals  UNIQUE      (scan_date, symbol, scan_type)
+```
+
+Yani bir gün + bir tarama tipi için **tek satır** var. Sonuç:
+
+- `master_scan_kos.py --kuru` → patron.db'ye hiç yazmıyor → kıyaslanacak veri yok
+- `master_scan_kos.py` (kuru değil) → ekran turunun satırlarını **EZER**, kanıt yok olur
+- `master_scan_kiyas.py` iki **TARİH** karşılaştırıyor → farklı iki günün
+  karşılaştırması, piyasa verisi zaten farklı olduğu için anlamsız
+
+Elimizdeki iki koşu bunu gösteriyor: 31 Ağu → 1 Eyl kıyası "FARK VAR" dedi
+(`altin_setup` 213 → 185 vb. — bunlar iki farklı günün doğal farkı, yol farkı
+değil); aynı günü kendisiyle kıyaslamak "AYNI" dedi (aracın kendi tutarlılık
+kontrolü). **İkisi de yol eşdeğerliği kanıtı değil.** Yani Aşama C aracı
+yazıldı ama sorulan soruyu henüz soramıyor.
+
+### Yapılacak
+
+**1. `master_scan_kos.py --kuru` yan-kayıt bıraksın.**
+Kuru koşu patron.db'ye yazmamaya devam etsin, ama **yazacak olduğu şeyi**
+dosyaya döksün: `logs/master_scan_kuru_<YYYY-MM-DD>.json`.
+
+İçerik, ekran turunun patron.db'ye yazdığıyla **aynı alanlar**:
+```
+tarama tipi -> { row_count, semboller: [ {symbol, score, entry_price, stop_level} ] }
+```
+Ayrıca: koşu saati, kategori, motor sürümü.
+
+⚠ Bu dosya kuru koşunun **tek çıktısı** — üretilirken hiçbir yazma bariyeri
+gevşetilmeyecek. Yan-kayıt, yazımın yerine değil, yazımın *yerine geçen
+fotoğrafı* olarak üretiliyor.
+
+**2. `master_scan_kiyas.py` yeni bir kip kazansın.**
+```
+python master_scan_kiyas.py --kuru-dosya logs/master_scan_kuru_2026-09-03.json --tarih 2026-09-03
+```
+Yan-kaydı, **aynı günün** patron.db satırlarıyla karşılaştırsın. Ölçüt ve
+tolerans aynen korunacak (tip kümesi / satır sayısı / sembol kümesi /
+score-entry-stop, tolerans 0). Mevcut iki-tarih kipi kalsın, silinmesin.
+
+**3. Kullanım sırası yazılsın (README değil, betiğin `--help` metni yeterli).**
+Doğru sıra şu ve bu sıra önemli:
+```
+akşam ekran turu biter (patron.db yazılır)
+   ↓
+python master_scan_kos.py --kategori "BIST 500 " --kuru     → yan-kayıt
+   ↓
+python master_scan_kiyas.py --kuru-dosya ... --tarih ...    → hüküm
+```
+Kuru koşu **ekran turundan SONRA** koşmalı; aynı günün verisiyle çalışsın.
+
+### Bu bitince
+
+Üç işlem günü bu sırayla koşulacak. Üçünde de "AYNI" çıkarsa Aşama D
+(zamanlayıcıyı çevirme) gündeme gelir. Bir gün bile fark verirse sebebi
+bulunur — **ölçüt gevşetilmez.**
+
+### Ayrıca (küçük)
+
+İş emrinin A bölümünde `memory/project_master_scan_otomasyon_tuzagi.md`
+diye bir yol verdim; o dosya depoda değil, Claude'un hafızasında. Peşine
+düşme, bu belgedeki özet yeterli.
+
+---
+
 ## D. TUZAKLAR — bunlar seni ısıracak
 
 1. **`st.session_state` düz sözlük OLMALI, golden'ın falsy stub'ı DEĞİL.**
