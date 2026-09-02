@@ -217,6 +217,50 @@ def _filter_scan_log_input(scan_pipeline: Any, df_result: Any) -> Any:
     return df_result
 
 
+def _install_dry_benchmark_bridge(
+    scan_pipeline: Any, services: dict[str, Any], logger: logging.Logger,
+) -> list[tuple[Any, str, Any]]:
+    """Kuru golden yfinance stub'ını BIST'in yerel benchmark fotoğrafına bağlar."""
+    original = services.get("get_benchmark_data")
+    safe_loader = getattr(scan_pipeline, "get_safe_historical_data", None)
+    if not callable(original) or not callable(safe_loader):
+        raise RuntimeError("Kuru benchmark köprüsü için veri servisleri bulunamadı")
+
+    def dry_benchmark_data(category: Any) -> Any:
+        if "BIST" not in str(category or "").upper():
+            return original(category)
+        benchmark_df = safe_loader("XU100.IS", period="1y")
+        if benchmark_df is None or getattr(benchmark_df, "empty", False):
+            logger.warning("[kuru][benchmark] XU100.IS aktif günlük fotoğrafı boş")
+            return None
+        if "Close" not in benchmark_df.columns:
+            raise RuntimeError("Kuru benchmark fotoğrafında Close kolonu yok")
+        close = benchmark_df["Close"]
+        if hasattr(close, "columns"):
+            close = close.iloc[:, 0]
+        logger.debug("[kuru][benchmark] XU100.IS aktif günlük fotoğrafı: %s satır", len(close))
+        return close
+
+    saved: list[tuple[Any, str, Any]] = []
+    namespaces = [
+        (services, "get_benchmark_data"),
+        (scan_pipeline.__dict__, "get_benchmark_data"),
+    ]
+    data_layer = importlib.import_module("data_layer")
+    namespaces.append((data_layer.__dict__, "get_benchmark_data"))
+    for namespace, key in namespaces:
+        if key in namespace:
+            saved.append((namespace, key, namespace[key]))
+            namespace[key] = dry_benchmark_data
+    logger.info("[kuru][benchmark] BIST benchmark köprüsü aktif: XU100.IS günlük depo")
+    return saved
+
+
+def _restore_dry_benchmark_bridge(saved: list[tuple[Any, str, Any]]) -> None:
+    for namespace, key, original in reversed(saved):
+        namespace[key] = original
+
+
 def _install_dry_write_barrier(sidecar: _DryRunSidecar) -> tuple[Any, Any]:
     scan_pipeline = importlib.import_module("scan_pipeline")
     original = scan_pipeline.log_scan_signal
@@ -298,6 +342,7 @@ def run(category: str, dry_run: bool, logger: logging.Logger) -> int:
     claimed = False
     dry_saved: tuple[Any, Any] | None = None
     dry_sidecar: _DryRunSidecar | None = None
+    dry_benchmark_saved: list[tuple[Any, str, Any]] = []
     try:
         services, streamlit = _load_services(logger)
         asset_groups = services.get("ASSET_GROUPS")
@@ -340,6 +385,9 @@ def run(category: str, dry_run: bool, logger: logging.Logger) -> int:
 
             dry_services["_ms_dry_capture_signal"] = capture_signal
             dry_services["_ms_dry_capture_early_radar"] = capture_early_radar
+            dry_benchmark_saved = _install_dry_benchmark_bridge(
+                dry_pipeline, dry_services, logger,
+            )
             services = dry_services
         master_scan_engine.configure_services(services)
         state = _new_state(resolved_category, scan_list, dry_run)
@@ -377,6 +425,7 @@ def run(category: str, dry_run: bool, logger: logging.Logger) -> int:
         logger.exception("Master Scan çöktü")
         return 2
     finally:
+        _restore_dry_benchmark_bridge(dry_benchmark_saved)
         _restore_dry_write_barrier(dry_saved)
         if claimed:
             kapanis_master_otomasyon.release_scan_start()

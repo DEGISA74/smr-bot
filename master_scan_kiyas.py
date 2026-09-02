@@ -7,14 +7,24 @@ import json
 import math
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
+
+from bist_calendar import get_session_hours
 
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DB = ROOT / "patron.db"
 REPORT_DIR = ROOT / "logs"
+ISTANBUL_TZ = ZoneInfo("Europe/Istanbul")
+
+# Kıyasın "ekran turu biter → kuru koşu başlar" iddiasını koruyan kapılar.
+# Bunlar sonuç ölçütünü değiştirmez; yalnızca zaman koşulu sağlanmıyorsa mekanik
+# farkın yol farkı diye hükme çevrilmesini engeller.
+MAX_DB_RUN_SPAN_MINUTES = 60
+MAX_DB_TO_SIDECAR_MINUTES = 30
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -265,15 +275,121 @@ def _load_sidecar(path: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]
     return payload, runs, signals
 
 
+def _parse_sidecar_run_at(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("Kuru yan-kayıt run_at ISO tarih-saat biçiminde olmalı") from exc
+    if parsed.tzinfo is None:
+        raise ValueError("Kuru yan-kayıt run_at saat dilimi bilgisi içermeli")
+    return parsed.astimezone(ISTANBUL_TZ)
+
+
+def _parse_db_recorded_at(value: Any) -> tuple[datetime | None, str | None]:
+    if not isinstance(value, str) or not value.strip():
+        return None, "DB recorded_at boş"
+    try:
+        parsed = datetime.strptime(value.strip(), "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None, f"DB recorded_at biçimi tanınmadı: {value!r}"
+    return parsed.replace(tzinfo=ISTANBUL_TZ), None
+
+
+def _control_assessment(
+    sidecar_run_at: datetime, db_runs: dict[str, dict[str, Any]], day: str,
+) -> dict[str, Any]:
+    """Yan-kayıt ile DB turunun gerçekten ardışık olup olmadığını ölçer."""
+    parsed_records: list[datetime] = []
+    reasons: list[str] = []
+    for scan_type, run in sorted(db_runs.items()):
+        recorded_at, error = _parse_db_recorded_at(run.get("recorded_at"))
+        if error:
+            reasons.append(f"{scan_type}: {error}")
+        elif recorded_at is not None:
+            parsed_records.append(recorded_at)
+
+    details: dict[str, Any] = {
+        "controlled": False,
+        "sidecar_run_at": sidecar_run_at.isoformat(timespec="seconds"),
+        "db_first_recorded_at": None,
+        "db_last_recorded_at": None,
+        "db_run_span_minutes": None,
+        "db_to_sidecar_minutes": None,
+        "max_db_run_span_minutes": MAX_DB_RUN_SPAN_MINUTES,
+        "max_db_to_sidecar_minutes": MAX_DB_TO_SIDECAR_MINUTES,
+        "session": None,
+        "reasons": reasons,
+    }
+    if not parsed_records:
+        details["reasons"].append("DB turunda kullanılabilir recorded_at yok")
+        return details
+
+    first_recorded = min(parsed_records)
+    last_recorded = max(parsed_records)
+    db_span_minutes = (last_recorded - first_recorded).total_seconds() / 60
+    db_to_sidecar_minutes = (sidecar_run_at - last_recorded).total_seconds() / 60
+    details.update({
+        "db_first_recorded_at": first_recorded.isoformat(timespec="seconds"),
+        "db_last_recorded_at": last_recorded.isoformat(timespec="seconds"),
+        "db_run_span_minutes": round(db_span_minutes, 3),
+        "db_to_sidecar_minutes": round(db_to_sidecar_minutes, 3),
+    })
+
+    if sidecar_run_at < first_recorded:
+        details["reasons"].append("Yan-kayıt koşusu DB turunun başlangıcından önce")
+    if db_span_minutes > MAX_DB_RUN_SPAN_MINUTES:
+        details["reasons"].append(
+            f"DB turunun recorded_at aralığı çok geniş: {db_span_minutes:.1f} dakika "
+            f"(üst sınır {MAX_DB_RUN_SPAN_MINUTES} dakika)"
+        )
+    if db_to_sidecar_minutes < 0:
+        details["reasons"].append("Yan-kayıt koşusu DB turunun bitişinden önce")
+    elif db_to_sidecar_minutes > MAX_DB_TO_SIDECAR_MINUTES:
+        details["reasons"].append(
+            f"DB turu ile yan-kayıt arasında çok geniş boşluk: {db_to_sidecar_minutes:.1f} dakika "
+            f"(üst sınır {MAX_DB_TO_SIDECAR_MINUTES} dakika)"
+        )
+
+    session_hours = get_session_hours(datetime.strptime(day, "%Y-%m-%d").date())
+    if session_hours is not None:
+        open_text, close_text = session_hours
+        day_date = datetime.strptime(day, "%Y-%m-%d").date()
+        open_at = datetime.combine(
+            day_date, time.fromisoformat(open_text), tzinfo=ISTANBUL_TZ,
+        )
+        close_at = datetime.combine(
+            day_date, time.fromisoformat(close_text), tzinfo=ISTANBUL_TZ,
+        )
+        details["session"] = {
+            "open": open_at.isoformat(timespec="seconds"),
+            "close": close_at.isoformat(timespec="seconds"),
+        }
+        interval_start = min(first_recorded, sidecar_run_at)
+        interval_end = max(last_recorded, sidecar_run_at)
+        crossed = [
+            ("seans açılışı", open_at),
+            ("seans kapanışı", close_at),
+        ]
+        for label, boundary in crossed:
+            if interval_start <= boundary <= interval_end:
+                details["reasons"].append(
+                    f"DB recorded_at ile yan-kayıt run_at aralığında {label} var: "
+                    f"{boundary.isoformat(timespec='seconds')}"
+                )
+    else:
+        details["session"] = {"open": None, "close": None}
+
+    details["controlled"] = not details["reasons"]
+    return details
+
+
 def compare_sidecar(
     sidecar_path: Path, day: str, category: str | None, db_path: Path,
 ) -> dict[str, Any]:
     day = _parse_date(day)
     payload, sidecar_runs, sidecar_signals = _load_sidecar(sidecar_path)
-    try:
-        sidecar_day = datetime.fromisoformat(payload["run_at"]).date().isoformat()
-    except ValueError as exc:
-        raise ValueError("Kuru yan-kayıt run_at ISO tarih-saat biçiminde olmalı") from exc
+    sidecar_run_at = _parse_sidecar_run_at(payload["run_at"])
+    sidecar_day = sidecar_run_at.date().isoformat()
     if sidecar_day != day:
         raise ValueError(
             f"Kuru yan-kayıt aynı gün olmalı: dosya={sidecar_day}, --tarih={day}"
@@ -289,6 +405,17 @@ def compare_sidecar(
         old_source=f"kuru yan-kayıt: {sidecar_path}",
         new_source=f"patron.db: {day}",
     )
+    result["control"] = _control_assessment(sidecar_run_at, db_runs, day)
+    result["mechanical_passed"] = result["status"] == "AYNI"
+    result["mechanical_difference_counts"] = {
+        "missing_scan_types": len(result["missing_scan_types"]),
+        "extra_scan_types": len(result["extra_scan_types"]),
+        "row_count_diffs": len(result["row_count_diffs"]),
+        "symbol_diffs": len(result["symbol_diffs"]),
+        "numeric_diffs": len(result["numeric_diffs"]),
+    }
+    if not result["control"]["controlled"]:
+        result["status"] = "KIYAS KONTROLLÜ DEĞİL"
     result["sidecar_run_at"] = payload["run_at"]
     result["sidecar_engine_version"] = payload["engine_version"]
     result["sidecar_category"] = payload["category"]
@@ -313,6 +440,25 @@ def _markdown_report(result: dict[str, Any]) -> str:
         f"**Sonuç: {result['status']}**",
         f"- Kategori: `{result['category']}`",
         *source_lines,
+        *(
+            [
+                f"- Kontrol: `{'KONTROLLÜ' if result['control']['controlled'] else 'KONTROLLÜ DEĞİL'}`",
+                f"- DB recorded_at ilk/son: `{result['control']['db_first_recorded_at']}` → "
+                f"`{result['control']['db_last_recorded_at']}`",
+                f"- DB son kayıttan yan-kayda: `{result['control']['db_to_sidecar_minutes']}` dakika",
+                "- Ham fark sayımı (kontrol kararı değildir): "
+                + ", ".join(
+                    f"{key}={value}"
+                    for key, value in result["mechanical_difference_counts"].items()
+                ),
+                *(
+                    [f"- Kontrol gerekçesi: {'; '.join(result['control']['reasons'])}"]
+                    if result['control']['reasons'] else []
+                ),
+            ]
+            if result.get("comparison_mode") == "kuru_dosya_vs_aynı_gün_db"
+            else []
+        ),
         f"- Eski tur tarama tipi: {result['old_scan_type_count']}",
         f"- Yeni tur tarama tipi: {result['new_scan_type_count']}",
         "- Ölçüt: tarama tipi, satır sayısı, sembol kümesi ve `score` / `entry_price` / `stop_level` için sıfır tolerans.",
@@ -400,7 +546,13 @@ def main(argv: list[str] | None = None) -> int:
         day = _parse_date(args.tarih)
         result = compare_sidecar(args.kuru_dosya, day, args.kategori, args.db)
         report_stem = f"master_scan_kiyas_kuru_{day}"
-        print(f"{result['status']}: kuru yan-kayıt ↔ patron.db ({day})")
+        if result["status"] == "KIYAS KONTROLLÜ DEĞİL":
+            print(
+                f"KIYAS KONTROLLÜ DEĞİL: kuru yan-kayıt ↔ patron.db ({day}) — "
+                f"{'; '.join(result['control']['reasons'])}"
+            )
+        else:
+            print(f"{result['status']}: kuru yan-kayıt ↔ patron.db ({day})")
     else:
         if args.tarih is not None:
             raise ValueError("--tarih yalnızca --kuru-dosya kipiyle kullanılabilir")
@@ -417,6 +569,8 @@ def main(argv: list[str] | None = None) -> int:
     json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Rapor: {markdown_path}")
     print(f"JSON: {json_path}")
+    if result["status"] == "KIYAS KONTROLLÜ DEĞİL":
+        return 2
     return 0 if result["status"] == "AYNI" else 1
 
 
