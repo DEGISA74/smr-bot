@@ -201,6 +201,7 @@ try:
     from seans_profili import (
         gun_katsayisi     as _seans_gun_katsayisi,
         kismi_bar_durumu  as _seans_kismi_bar,
+        rvol_paydasi      as _seans_rvol_paydasi,   # 2 Eyl 2026 — Akıllı Para hacim oyu
     )
     _SEANS_PROFIL_OK = True
 except ImportError:
@@ -209,6 +210,8 @@ except ImportError:
     def _seans_kismi_bar(_bar_dt=None, _now=None):
         return {"kismi": False, "katsayi": 1.0, "pay": 1.0,
                 "yeterli": True, "rozet": "", "aciklama": ""}
+    def _seans_rvol_paydasi(_ort=0.0, _bar_dt=None, _now=None):
+        return float(_ort or 0.0), _seans_kismi_bar(_bar_dt)
     _SEANS_PROFIL_OK = False
 
 
@@ -8200,7 +8203,11 @@ def render_erken_radar_panel(ticker):
             f'<div style="background:#060d1a;border:2px solid #1e3a5f;border-radius:12px;'
             f'padding:10px 14px;margin-bottom:10px;font-family:Inter,sans-serif;">'
             f'<div style="display:flex;align-items:center;justify-content:space-between;">'
-            f'<div><div style="font-size:0.75rem;font-weight:700;color:#94a3b8;letter-spacing:0.8px;">&#128202; ENDEKS RADARI</div>'
+            # 2 Eyl 2026 — ad netleşti. Bu skor endekste 5 ORTALAMA-DİZİLİM kriteri
+            # sayar, hacim İÇERMEZ (kodun kendi notu: endekste hacim güvenilmez).
+            # "Akıllı para" çağrışımı yanlıştı; puan (19/100) aynen korundu.
+            f'<div><div style="font-size:0.75rem;font-weight:700;color:#94a3b8;letter-spacing:0.8px;">&#128202; ENDEKS RADARI '
+            f'<span style="font-weight:600;color:#64748b;letter-spacing:0;">· Trend Dizilimi</span></div>'
             f'<div style="font-size:0.85rem;font-weight:800;color:#f1f5f9;margin-top:2px;">{display_name}</div></div>'
             f'<div style="text-align:right;">'
             f'<div style="font-family:JetBrains Mono,monospace;font-size:1.8rem;font-weight:900;color:{s_color};">{score}<span style="font-size:0.9rem;color:#94a3b8">/100</span></div>'
@@ -12702,7 +12709,7 @@ def _render_genel_ozet_panel():
                 _gs_today_label = _gs_pack['_gs_today_label']
                 _gs_last_sess_str = _gs_pack['_gs_last_sess_str']
                 _gs_last_was_half = _gs_pack['_gs_last_was_half']
-                _sm_score = None
+                _sm_gecen = _sm_toplam = None; _sm_detay = []
 
                 # ── TEMETTÜ ETİKETİ (4 Ağu 2026) ──────────────────────────────
                 # Ham fiyat (AUTO_ADJUST=False) → temettü günü fiyat gerçekten düşer.
@@ -12804,37 +12811,74 @@ def _render_genel_ozet_panel():
 
                 # --- Kurumsal seviye yedirmeler (1 Haz 2026) ---
                 def _sm_consensus_calc():
-                    """5 sinyal SM oylaması (Hacim/OBV/CMF/Delta5g/POC) → (score 0-100, pos_list)."""
-                    if _gs_df is None or len(_gs_df) < 20:
-                        return None, []
-                    pos = []
+                    """HACİM-AKIŞ OYLARI — 4 oy (Hacim/OBV/CMF/Delta5g) → (gecen, toplam, detay).
+
+                    2 Eyl 2026 — ÜÇ DEĞİŞİKLİK (bulgu 5):
+                    (a) 5. oy "POC üstü" KALDIRILDI. 125.159 hisse-gün ölçümü: POC'un
+                        etkisinin %90'ı 52 hafta konumundan geliyor — konum sabitlenince
+                        bağımsız katkı +0,61'den +0,07'ye düşüyor ve konum kovaları
+                        içinde İŞARET DEĞİŞTİRİYOR (en dipte +0,68, dördüncüde -0,68).
+                        Bağımsız oy değil, konumun bulanık kopyası. Hesap yerinde duruyor.
+                    (b) Hacim oyu SEANS PROFİLİNDEN geçiyor. Eskiden yarım günün hacmini
+                        tam günün eşiğiyle kıyaslıyordu → gün içi sistematik "hayır".
+                        Ayrıca 20 günlük ortalama bugünün yarım barını da içine katıp
+                        ortalamayı aşağı çekiyordu; artık bugün ortalamadan ÇIKARILIYOR.
+                    (c) Skor 0-100 yerine OY SAYISI. Dört evet/hayır oyunu 100'e vurmak
+                        olmayan hassasiyet iddiasıydı: para akışı eşiği 0,009 ile
+                        kaçırınca rozet "0/100" yazıp "hiç ilgi yok" izlenimi veriyordu.
+
+                    Oyların KENDİ karnesi HENÜZ ÖLÇÜLMEDİ — bu rozet bir kanıt değil,
+                    dört ölçünün sayımıdır. Ölçüm ayrı iş.
+                    """
+                    if _gs_df is None or len(_gs_df) < 21:
+                        return None, None, []
+                    pos, detay = [], []
                     try:
-                        _v20 = float(_gs_df['Volume'].tail(20).mean())
-                        if _v20 > 0 and float(_gs_df['Volume'].iloc[-1]) > _v20 * 1.2:
+                        # bugün hariç son 20 bar → payda kendi kendini aşağı çekmesin
+                        _v20 = float(_gs_df['Volume'].iloc[-21:-1].mean())
+                        _vson = float(_gs_df['Volume'].iloc[-1])
+                        _kismi = False
+                        try:                      # seans sürüyorsa paydayı geçen paya göre küçült
+                            _pay, _kd = _seans_rvol_paydasi(_v20, _gs_df.index[-1])
+                            if _pay and _pay > 0:
+                                _v20 = float(_pay)
+                            _kismi = bool((_kd or {}).get("kismi", False))
+                        except Exception:
+                            pass
+                        _oran = (_vson / _v20) if _v20 > 0 else 0.0
+                        _gecti = _oran > 1.2
+                        if _gecti:
                             pos.append("Hacim")
+                        detay.append(("Hacim", f"{_oran:.2f}×" + (" (tahmin)" if _kismi else ""),
+                                      "eşik 1,20×", _gecti))
                     except Exception: pass
                     try:
                         _obv = (np.sign(_gs_df['Close'].diff()) * _gs_df['Volume']).fillna(0).cumsum()
-                        if float(_obv.iloc[-1]) > float(_obv.tail(20).mean()):
+                        _gecti = float(_obv.iloc[-1]) > float(_obv.tail(20).mean())
+                        if _gecti:
                             pos.append("OBV")
+                        detay.append(("OBV", "ortalama üstünde" if _gecti else "ortalama altında",
+                                      "20 günlük", _gecti))
                     except Exception: pass
                     try:
                         _cmf = compute_cmf(_gs_df, period=20)
-                        if _cmf is not None and float(_cmf) > 0.05:
-                            pos.append("CMF")
+                        if _cmf is not None:
+                            _cmf = float(_cmf)
+                            _gecti = _cmf > 0.05
+                            if _gecti:
+                                pos.append("CMF")
+                            detay.append(("Para akışı", f"{_cmf:+.3f}", "eşik +0,050", _gecti))
                     except Exception: pass
                     try:
                         _r5 = _gs_df.tail(5)
                         _d5 = float(((_r5['Close'] - _r5['Open']) * _r5['Volume']).sum())
-                        if _d5 > 0:
+                        _gecti = _d5 > 0
+                        if _gecti:
                             pos.append("Delta")
+                        detay.append(("Delta 5 gün", "artı" if _gecti else "eksi", "> 0 olmalı", _gecti))
                     except Exception: pass
-                    try:
-                        _poc_p = calculate_volume_profile_poc(_gs_df, lookback=20)
-                        if _poc_p is not None and float(_gs_df['Close'].iloc[-1]) > float(_poc_p):
-                            pos.append("POC")
-                    except Exception: pass
-                    return len(pos) * 20, pos
+                    # 5. oy (POC üstü) 2 Eyl 2026'da kaldırıldı — gerekçe fonksiyon başında.
+                    return len(pos), len(detay), detay
 
                 def _vp_zone_calc(lookback=20):
                     """Value Area POC/VAH/VAL hesabı + fiyat konumu (Premium/Discount/Value Area)."""
@@ -13970,22 +14014,41 @@ def _render_genel_ozet_panel():
                 # SM Konsensüs rozeti (5 sinyal: Hacim/OBV/CMF/Delta5g/POC)
                 _sm_badge_html = ""
                 try:
-                    _sm_score, _sm_pos = _sm_consensus_calc()
-                    if _sm_score is not None:
-                        if _sm_score >= 80:   _sm_clr = _gs_up_clr
-                        elif _sm_score >= 60: _sm_clr = "#22c55e"
-                        elif _sm_score >= 40: _sm_clr = _gs_neu
+                    # 2 Eyl 2026 — 0-100 SKOR YERİNE OY SAYISI. Dört evet/hayır oyunu
+                    # 100'e vurmak olmayan hassasiyet iddiasıydı: para akışı eşiği
+                    # 0,009 ile kaçırınca rozet "0/100" yazıp "hiç ilgi yok" izlenimi
+                    # veriyordu. İsim "Akıllı Para" olarak KORUNDU (kullanıcı kararı).
+                    _sm_gecen, _sm_toplam, _sm_detay = _sm_consensus_calc()
+                    if _sm_gecen is not None and _sm_toplam:
+                        _sm_oran = _sm_gecen / _sm_toplam
+                        if _sm_oran >= 0.75:   _sm_clr = _gs_up_clr
+                        elif _sm_oran >= 0.50: _sm_clr = "#22c55e"
+                        elif _sm_oran >= 0.25: _sm_clr = _gs_neu
                         else:                  _sm_clr = _gs_dn_clr
                         _sm_rgb = _hex_to_rgb(_sm_clr)
+                        _sm_pos = [d[0] for d in _sm_detay if d[3]]
+                        # Tooltip artık hangi oyun NEDEN düştüğünü de söyler —
+                        # kıl payı kaçan oy (para akışı 0,041 / eşik 0,050) görünsün.
+                        _sm_tip = " · ".join(
+                            f"{_ad}: {_deg} ({_esik}) {'✓' if _ok else '✗'}"
+                            for _ad, _deg, _esik, _ok in _sm_detay) or "veri yok"
                         _sm_badge_html = (
-                            f"<span title='Hacim/OBV/CMF/Delta5g/POC oylaması — pozitif: "
-                            f"{', '.join(_sm_pos) if _sm_pos else 'yok'}' "
+                            f"<span title='{_sm_tip}' "
                             f"style='font-size:0.64rem;font-weight:700;"
                             f"padding:1px 7px;border-radius:8px;"
                             f"background:rgba({_sm_rgb},0.15);color:{_sm_clr};"
                             f"border:1px solid rgba({_sm_rgb},0.35);text-transform:none;"
-                            f"letter-spacing:0;'>Akıllı Para {_sm_score}/100</span>"
+                            f"letter-spacing:0;'>Akıllı Para {_sm_gecen}/{_sm_toplam} oy</span>"
                         )
+                        # Oy dökümü — rozetin altında tek satır, hangi oy neden düştü.
+                        _sm_satir = " · ".join(
+                            (f"<span style='color:{_gs_up_clr};'>{_ad} ✓</span>" if _ok
+                             else f"<span style='color:{_gs_neu};'>{_ad} {_deg}</span>")
+                            for _ad, _deg, _esik, _ok in _sm_detay)
+                        if _sm_satir:
+                            _sm_badge_html += (
+                                f"<div style='margin-top:3px;font-size:0.58rem;"
+                                f"color:#94a3b8;line-height:1.35;'>{_sm_satir}</div>")
                 except Exception:
                     pass
                 _gs_items_html += _gs_section("Akıllı Para", badge_html=_dots_para + _sm_badge_html)
@@ -14565,7 +14628,8 @@ def _render_genel_ozet_panel():
                 _top_obv_text = ("5G/14G net değil" if _sig_obv == 0 else
                                  ("yukarı" if _sig_obv > 0 else "aşağı"))
                 _top_20g_text = _rng_dir_arrow if _rng_pos_pct is not None else "veri yok"
-                _top_sm_text = f"{_sm_score}/100" if _sm_score is not None else "—"
+                _top_sm_text = (f"{_sm_gecen}/{_sm_toplam} oy"
+                                if _sm_gecen is not None and _sm_toplam else "—")
                 _top_momentum_text = _mom_lbl if _mom_lbl else "veri yok"
                 _gs_top_summary_html = (
                     f"<div style='padding:8px 9px;margin:0 0 7px;"
