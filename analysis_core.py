@@ -1001,8 +1001,23 @@ def calculate_multi_timeframe_alignment(ticker):
     try:
         # Vade verileri çek
         timeframes = {}
+        _4h_kaynak = {"kaynak": "yok", "yarim_bar": False}
         try:
-            _df_4h = _yf_download_with_retry(ticker, period="60d", interval="4h")
+            # 2 Eyl 2026 (bulgu 10) — ÖNCE YEREL 4S DEPOSU, yoksa sağlayıcı.
+            # Eskiden her panel açılışında doğrudan sağlayıcıya gidiliyordu; bu
+            # dosyanın beslediği veriler_4s/ deposu (denetlendi: NaN 0, bozuk
+            # OHLC 0, günlerin %99,15'inde tam 2 bar) hiç kullanılmıyordu.
+            # Depo bayatsa (likit liste dışına düşmüş sembol) sağlayıcıya düşer.
+            _df_4h, _4h_kaynak = None, {"kaynak": "yok", "yarim_bar": False}
+            try:
+                from intraday_4s import depodan_oku as _4s_oku
+                _df_4h, _4h_kaynak = _4s_oku(ticker)
+            except Exception:
+                _df_4h, _4h_kaynak = None, {"kaynak": "yok", "yarim_bar": False}
+            if _df_4h is None or _df_4h.empty or len(_df_4h) <= 30:
+                _df_4h = _yf_download_with_retry(ticker, period="60d", interval="4h")
+                _4h_kaynak = {"kaynak": "saglayici", "yarim_bar": True,
+                              "son_bar": None, "yas_gun": None}
             if _df_4h is not None and not _df_4h.empty and len(_df_4h) > 30:
                 if isinstance(_df_4h.columns, pd.MultiIndex):
                     _df_4h.columns = _df_4h.columns.get_level_values(0)
@@ -1142,6 +1157,11 @@ def calculate_multi_timeframe_alignment(ticker):
 
         return {
             "matrix":         matrix,
+            # 2 Eyl 2026 (bulgu 10) — 4S satırının kaynağı ve tamlığı.
+            # 'depo' = kapıdan geçmiş yerel dosya · 'saglayici' = canlı çekim.
+            # yarim_bar True ise son 4 saatlik mum henüz kapanmadı.
+            "kaynak_4h":      _4h_kaynak.get("kaynak", "yok"),
+            "yarim_bar_4h":   bool(_4h_kaynak.get("yarim_bar", False)),
             "timeframes":     list(matrix.keys()),
             "overall_pct":    overall_pct,
             "dominant":       dominant,

@@ -11753,6 +11753,11 @@ def render_roadmap_8_panel(ticker):
             "Haftalık": ("1H", "Resim"),
             "Aylık": ("1A", "Makro")
         }
+        # 2 Eyl 2026 (bulgu 10) — 4S satırı artık önce yerel depodan okunuyor.
+        # Seans sürerken son 4 saatlik mum KAPANMAMIŞ olur; hücreler yarım barla
+        # hesaplanır. Ekran bunu söylesin — sessizce tam bar gibi sunulmasın.
+        if _mtf.get("yarim_bar_4h"):
+            _tf_subtitles["4H"] = ("4S ◷", "yarım bar")
 
         # Üst sıra: boş köşe + timeframe başlıkları (subtle border-bottom)
         _items.append('<div></div>')

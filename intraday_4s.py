@@ -144,6 +144,47 @@ def gostergeler_4s(df):
     return out
 
 
+def depodan_oku(sym, azami_yas_gun=3):
+    """4 saatlik depodan OKU — yoksa/bayatsa None (2 Eyl 2026, bulgu 10).
+
+    NEDEN VAR: Vade Uyumu tablosunun 4S kolonu her panel açılışında doğrudan
+    sağlayıcıdan çekiyordu; yerel depo (bu dosyanın beslediği veriler_4s/)
+    hiç kullanılmıyordu. Depo denetlendi (231 dosya · ~155 bin bar-gün):
+    NaN 0 · tekrar eden zaman damgası 0 · bozuk OHLC 0 · fiyat<=0 0 ·
+    hacim<=0 0 · günlerin %99,15'inde tam 2 bar. Yani depo sağlıklı.
+
+    BAYATLIK KAPISI: depo yalnız likit listedeki hisseleri besler; liste
+    dışına düşen sembolün dosyası olduğu yerde kalır (16/231 örnek). Bayat
+    dosyayla hesap yapmak "donuk aynayla koşmak" olur → azami yaştan eskiyse
+    None döner, çağıran taraf sağlayıcıya düşer.
+
+    Döner: (df, durum) · durum = {'kaynak','son_bar','yas_gun','yarim_bar'}
+    df None ise durum['kaynak'] = 'yok'.
+    """
+    ad = str(sym).upper().replace(".IS", "")
+    yol = os.path.join(DEPO, f"{ad}.IS_4h.parquet")
+    bos = {"kaynak": "yok", "son_bar": None, "yas_gun": None, "yarim_bar": False}
+    if not os.path.exists(yol):
+        return None, bos
+    try:
+        d = pd.read_parquet(yol)
+        if d is None or d.empty or "Close" not in d.columns:
+            return None, bos
+        son = d.index[-1]
+        bugun = pd.Timestamp.now(tz=TZ).normalize()
+        yas = int((bugun - son.normalize()).days)
+        if yas > azami_yas_gun:
+            return None, {"kaynak": "bayat", "son_bar": son,
+                          "yas_gun": yas, "yarim_bar": False}
+        # Son bar BUGÜNÜN barıysa ve seans sürüyorsa o bar henüz kapanmamıştır.
+        simdi = pd.Timestamp.now(tz=TZ)
+        yarim = bool(son.normalize() == bugun and simdi.hour < 18)
+        return d, {"kaynak": "depo", "son_bar": son, "yas_gun": yas,
+                   "yarim_bar": yarim}
+    except Exception:
+        return None, bos
+
+
 def kaydet(sym, df):
     os.makedirs(DEPO, exist_ok=True)
     ad = sym.replace(".IS", "")
