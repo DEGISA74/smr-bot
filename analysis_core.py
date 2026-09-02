@@ -791,6 +791,112 @@ def detect_ict_reversal(df):
         
     return "NÖTR"
 
+def seviye_merdiveni(df, price, fibs=None, vah=None, val=None, poc=None,
+                     n=3, birlesme_pct=0.15):
+    """2 Eyl 2026 — fiyatın üstündeki/altındaki GERÇEK en yakın seviyeler.
+
+    NEDEN VAR: seviye kartı "EN YAKIN DİRENÇ" diyordu ama adaylarını YALNIZ
+    Fibonacci listesinden seçiyordu. 2 Eyl 2026 XU100'de kart 14.146'yı "en
+    yakın direnç" gösterirken önünde iki seviye duruyordu: değer alanı alt
+    sınırı 14.059 (+%0,52) ve SMA50 14.111 (+%0,89). Ayrıca aynı sayı bazı
+    günler "EN YAKIN DESTEK · Golden-Satış" ve "GOLDEN POCKET · kurumsal alım"
+    diye İKİ kutuda TERS anlamla görünüyordu (1 Eyl 2026: ikisi de 14.146,03).
+
+    Tek seviyeyi "en önemli" diye SEÇMİYORUZ — seviye türlerinin önem karnesi
+    ölçülmedi. Merdiven yalnız YAKINLIK sırasına dizer, önem iddiası kurmaz.
+    Birbirine çok yakın seviyeler (varsayılan %0,15) tek basamakta birleşir;
+    birleşmenin kendisi bilgidir (aynı yerde iki bağımsız seviye = confluence).
+
+    Yeni gösterge/eşik/skor YOK: bütün adaylar ekranda zaten hesaplanan
+    seviyeler. Döner: {'ust': [...], 'alt': [...]} — yakından uzağa,
+    her basamak {'px', 'ad', 'mesafe_pct', 'n_kaynak'}.
+    """
+    try:
+        price = float(price)
+        if not np.isfinite(price) or price <= 0:
+            return None
+    except (TypeError, ValueError):
+        return None
+
+    aday = []
+
+    def _ekle(ad, v):
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return
+        if np.isfinite(v) and v > 0:
+            aday.append((ad, v))
+
+    # 1) Hareketli ortalamalar — MA tablosunun gösterdiği seviyelerin aynısı
+    try:
+        if df is not None and len(df) >= 20:
+            c = df['Close'] if 'Close' in df.columns else df.iloc[:, 0]
+            if isinstance(c, pd.DataFrame):
+                c = c.iloc[:, 0]
+            c = c.dropna()
+            for _n in (5, 8, 13, 21, 144):
+                if len(c) >= _n:
+                    _ekle(f"EMA {_n}", c.ewm(span=_n, adjust=False).mean().iloc[-1])
+            for _n in (50, 100, 200):
+                if len(c) >= _n:
+                    _ekle(f"SMA {_n}", c.rolling(_n).mean().iloc[-1])
+            # 2) 52 hafta ucu — gerçek High/Low'dan
+            _h = df['High'] if 'High' in df.columns else c
+            _l = df['Low'] if 'Low' in df.columns else c
+            if isinstance(_h, pd.DataFrame): _h = _h.iloc[:, 0]
+            if isinstance(_l, pd.DataFrame): _l = _l.iloc[:, 0]
+            _ekle("52H zirve", _h.tail(252).max())
+            _ekle("52H dip", _l.tail(252).min())
+    except Exception:
+        pass
+
+    # 3) Fibonacci — kartın eski tek kaynağı, artık adaylardan biri.
+    # "Golden - Satış" ibaresi TEK isme indirildi: aynı seviyeye bir kutuda
+    # "satış" diğerinde "kurumsal alım" diyen çelişki buradan doğuyordu.
+    try:
+        for _lbl, _v in (fibs or {}).items():
+            _ad = ("Fib 0.618 · Golden Pocket" if "Golden" in str(_lbl)
+                   else f"Fib {_lbl}")
+            _ekle(_ad, _v)
+    except Exception:
+        pass
+
+    # 4) Değer alanı + hacim yoğunluk noktası
+    _ekle("Değer alanı üst (VAH)", vah)
+    _ekle("Değer alanı alt (VAL)", val)
+    _ekle("Hacim yoğunluk (POC)", poc)
+
+    if not aday:
+        return None
+
+    def _merdiven(secilen, yukari):
+        # yakından uzağa sırala
+        secilen.sort(key=lambda x: (x[1] - price) if yukari else (price - x[1]))
+        basamak = []
+        for ad, v in secilen:
+            yerlesti = False
+            for b in basamak:
+                if abs(v - b['px']) / price * 100.0 <= birlesme_pct:
+                    if ad not in b['ad']:          # aynı yer = confluence
+                        b['ad'] += f" · {ad}"
+                        b['n_kaynak'] += 1
+                    yerlesti = True
+                    break
+            if not yerlesti:
+                if len(basamak) >= n:
+                    break
+                basamak.append({'px': v, 'ad': ad, 'n_kaynak': 1,
+                                'mesafe_pct': round((v - price) / price * 100.0, 2)})
+        return basamak
+
+    return {
+        'ust': _merdiven([a for a in aday if a[1] > price], True),
+        'alt': _merdiven([a for a in aday if a[1] < price], False),
+        'price': price,
+    }
+
+
 @st.cache_data(ttl=600)
 def get_advanced_levels_data(ticker):
     """

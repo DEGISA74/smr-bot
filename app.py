@@ -75,7 +75,8 @@ from analysis_core import (_risk_profile, get_active_scanner_tiers, _scanner_set
                            _compute_volume_quality_label, calculate_synthetic_sentiment,
                            get_obv_divergence_status, process_single_stock_stp,
                            process_single_breakout, detect_ict_reversal,
-                           get_advanced_levels_data, build_erken_radar_prompt_text,
+                           get_advanced_levels_data, seviye_merdiveni,
+                           build_erken_radar_prompt_text,
                            calculate_multi_timeframe_alignment, calculate_8_point_roadmap,
                            compute_weekly_frame,
                            compute_genel_ozet_pack,
@@ -9112,38 +9113,91 @@ def render_levels_card(ticker):
     st_text = "YÜKSELİŞ (AL)" if is_bullish else "DÜŞÜŞ (SAT)"
     st_icon = "🐂" if is_bullish else "🐻"
     
-    # --- ORİJİNAL MANTIK VE METİNLER (DOKUNULMADI) ---
+    # SuperTrend metinleri (ORİJİNAL, DOKUNULMADI).
+    # 2 Eyl 2026 — seviye kutularının metinleri KALDIRILDI: "Zorlu tavan",
+    # "İlk savunma hattı", "Kurumsal alım bölgesi", "Akıllı Para short arar"
+    # gibi ifadelerin hepsi ölçülmemiş ÖNEM/NİYET iddialarıydı. Merdiven yalnız
+    # yakınlık sırası gösterir; hangi seviyenin daha güçlü olduğu ölçülmedi.
     if is_bullish:
         st_label = "Takip Eden Stop (Stop-Loss)"
         st_desc = "⚠️ Fiyat bu seviyenin <b>altına inerse</b> trend bozulur, stop olunmalıdır."
-        gp_desc_text = "Kurumsal alım bölgesi (İdeal Giriş/Destek)."
-        gp_desc_color = "#fbbf24"
-        res_ui_label = "EN YAKIN DİRENÇ 🚧"
-        res_ui_desc = "Zorlu tavan. Geçilirse yükseliş hızlanır."
-        sup_ui_label = "EN YAKIN DESTEK 🛡️"
-        sup_ui_desc = "İlk savunma hattı. Düşüşü tutmalı."
     else:
         st_label = "Trend Dönüşü (Direnç)"
         st_desc = "🚀 Piyasa yapıcının sipariş akışını (Order Flow) koruduğu son hattır. Yani, Fiyat bu seviyenin <b>üstüne çıkarsa</b> düşüş biter, yükseliş başlar."
-        gp_desc_text = "⚠️ Güçlü Direnç / Tepki Satış Bölgesi (Short). Büyük fonların 'Discount' (İndirimli) fiyatlardan maliyetlenmek veya dağıtım yapmak için beklediği en stratejik denge noktasıdır."
-        gp_desc_color = "#f87171"
-        res_ui_label = "O.T.E. DİRENCİ"
-        res_ui_desc = "Akıllı Para short arar. Trend yönünde satış bölgesidir. Fiyatın Fibonacci O.T.E. aralığına girmesi 'pahalı' bölgeye işarettir. Akıllı para, buradaki küçük yatırımcı alımlarını satış likiditesi olarak kullanır."
-        sup_ui_label = "AŞAĞIDAKİ LİKİDİTE HEDEFİ"
-        sup_ui_desc = "Düşüş trendinde destek aranmaz, kırılması beklenir. Bu seviyeler destek değil, fiyatın stopları patlatmak için çekildiği birer mıknatıstır. Kurumsal çıkış likiditesi bu bölgede aranır."
     
-    sup_lbl, sup_val = data['nearest_sup']
-    res_lbl, res_val = data['nearest_res']
-    
-    if res_lbl == "ZİRVE AŞIMI":
-        res_display = "---"
-        res_desc_final = "🚀 Fiyat tüm dirençleri kırdı (Price Discovery)."
-    else:
-        res_display = f"{res_val:.2f}"
-        res_desc_final = res_ui_desc
+    # ── 2 Eyl 2026 — SEVİYE MERDİVENİ (bulgu 3 + 4) ────────────────────
+    # ESKİ HÂLİ: "EN YAKIN DİRENÇ / EN YAKIN DESTEK" adaylarını YALNIZ
+    # Fibonacci listesinden seçiyordu. 2 Eyl 2026 XU100'de "en yakın direnç"
+    # 14.146 yazarken önünde iki seviye vardı (değer alanı alt sınırı +%0,52,
+    # SMA50 +%0,89). Ayrıca "Golden Pocket" kutusu bazı günler destek kutusuyla
+    # AYNI sayıyı gösteriyor, biri "Satış" diğeri "kurumsal alım" diyordu
+    # (1 Eyl 2026: ikisi de 14.146,03).
+    # YENİ: tek "en önemli" seviye SEÇİLMİYOR — seviye türlerinin önem karnesi
+    # ölçülmedi. Merdiven yakınlık sırasına dizer, aynı yerdeki seviyeleri tek
+    # basamakta birleştirir. Golden Pocket artık ayrı kutu değil, merdivende
+    # kendi adıyla bir basamak → aynı sayı iki kez, ters anlamla görünemez.
+    _lvl_px = None
+    _merdiven = None
+    try:
+        _lvl_df = get_safe_historical_data(ticker, period="1y")   # cache hit
+        _lvl_px = float(data.get('curr_price') or 0) or (
+            float(_lvl_df['Close'].iloc[-1]) if _lvl_df is not None else 0)
+        _lvl_sv = {}
+        try:
+            _lvl_sv = (calculate_price_action_dna(ticker) or {}).get('smart_volume') or {}
+        except Exception:
+            _lvl_sv = {}
+        _merdiven = seviye_merdiveni(
+            _lvl_df, _lvl_px, fibs=data.get('fibs'),
+            vah=_lvl_sv.get('vah'), val=_lvl_sv.get('val'), poc=_lvl_sv.get('poc'))
+    except Exception:
+        _merdiven = None
 
-    gp_key = next((k for k in data['fibs'].keys() if "Golden" in k), "0.618 (Golden)")
-    gp_val = data['fibs'].get(gp_key, 0)
+    def _lvl_fmt(v):
+        return f"{int(v):,}".replace(",", ".") if v >= 1000 else f"{v:.2f}"
+
+    def _lvl_row(b, yukari):
+        _c = "#f87171" if yukari else "#4ade80"
+        _ok = "▲" if yukari else "▼"
+        return (
+            f'<div style="display:flex;align-items:baseline;gap:6px;padding:2px 0;'
+            f'border-bottom:1px dashed rgba(148,163,184,0.14);">'
+            f'<span style="color:{_c};font-size:0.6rem;width:9px;flex:none;">{_ok}</span>'
+            f'<span style="font-family:&quot;JetBrains Mono&quot;,monospace;font-weight:800;'
+            f'color:{_c};font-size:0.78rem;min-width:62px;">{_lvl_fmt(b["px"])}</span>'
+            f'<span style="font-family:&quot;JetBrains Mono&quot;,monospace;color:{_c};'
+            f'font-size:0.66rem;opacity:0.85;min-width:48px;">{b["mesafe_pct"]:+.2f}%</span>'
+            f'<span style="color:#cbd5e1;font-size:0.68rem;line-height:1.25;">{b["ad"]}</span>'
+            f'</div>')
+
+    if _merdiven and (_merdiven['ust'] or _merdiven['alt']):
+        _rows = "".join(_lvl_row(b, True) for b in reversed(_merdiven['ust']))
+        _rows += (
+            f'<div style="display:flex;align-items:baseline;gap:6px;padding:3px 0;'
+            f'margin:1px 0;background:rgba(56,189,248,0.10);border-radius:3px;">'
+            f'<span style="color:#38bdf8;font-size:0.6rem;width:9px;flex:none;">●</span>'
+            f'<span style="font-family:&quot;JetBrains Mono&quot;,monospace;font-weight:900;'
+            f'color:#f1f5f9;font-size:0.8rem;min-width:62px;">{_lvl_fmt(_merdiven["price"])}</span>'
+            f'<span style="color:#38bdf8;font-size:0.66rem;font-weight:800;'
+            f'letter-spacing:0.06em;">FİYAT</span></div>')
+        _rows += "".join(_lvl_row(b, False) for b in _merdiven['alt'])
+        _merdiven_html = (
+            f'<div style="background:rgba(15,23,42,0.45);padding:5px 8px;border-radius:4px;'
+            f'border:1px solid rgba(139,92,246,0.30);">'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;'
+            f'margin-bottom:3px;">'
+            f'<span style="font-size:0.72rem;color:#a78bfa;font-weight:800;">📊 SEVİYE MERDİVENİ</span>'
+            f'<span style="font-size:0.6rem;color:#64748b;">yakınlık sırası</span></div>'
+            f'{_rows}'
+            f'<div style="font-size:0.66rem;color:#94a3b8;font-style:italic;margin-top:4px;'
+            f'line-height:1.25;">Aynı satırda birden çok isim varsa o seviyede birden çok '
+            f'bağımsız eşik üst üste biniyor. Hangisinin daha güçlü olduğu ölçülmedi — '
+            f'liste yalnız yakınlık sırasıdır.</div></div>')
+    else:
+        _merdiven_html = (
+            '<div style="background:rgba(15,23,42,0.45);padding:8px;border-radius:4px;'
+            'border:1px solid rgba(148,163,184,0.25);font-size:0.72rem;color:#94a3b8;">'
+            '📊 SEVİYE MERDİVENİ — seviye hesaplamak için yeterli fiyat verisi yok.</div>')
     
     html_content = f"""
     <div class="info-card" style="border-top: 3px solid #8b5cf6; padding:6px 10px 8px 10px;">
@@ -9152,7 +9206,7 @@ def render_levels_card(ticker):
         <span style="font-family:'JetBrains Mono'; font-weight:800; color:#f1f5f9; font-size:0.9rem; background:#0d1829; padding:1px 6px; border-radius:5px;">{current_price_str}</span>
         </div>
 
-        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:5px;">
+        <div style="display:grid; grid-template-columns: 1fr 1.35fr; gap:5px;">
 
             <div style="background:{st_color}15; padding:5px 6px; border-radius:4px; border:1px solid {st_color};">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -9166,26 +9220,7 @@ def render_levels_card(ticker):
                 <div style="font-size:0.72rem; color:#cbd5e1; font-style:italic; margin-top:2px; line-height:1.25;">{st_desc}</div>
             </div>
 
-            <div style="background:rgba(16,185,129,0.07); padding:5px 6px; border-radius:4px; border:1px solid rgba(74,222,128,0.3);">
-                <div style="font-size:0.75rem; color:#4ade80; font-weight:700;">{res_ui_label}</div>
-                <div style="font-family:'JetBrains Mono'; font-weight:800; color:#4ade80; font-size:0.88rem; margin-top:1px;">{res_display}</div>
-                <div style="font-size:0.72rem; color:#4ade80; font-weight:600; margin-top:3px;">Fib {res_lbl}</div>
-                <div style="font-size:0.72rem; color:#cbd5e1; font-style:italic; margin-top:2px; line-height:1.25;">{res_desc_final}</div>
-            </div>
-
-            <div style="background:rgba(248,113,113,0.08); padding:5px 6px; border-radius:4px; border:1px solid rgba(248,113,113,0.3);">
-                <div style="font-size:0.75rem; color:#f87171; font-weight:700;">{sup_ui_label}</div>
-                <div style="font-family:'JetBrains Mono'; font-weight:800; color:#f87171; font-size:0.88rem; margin-top:1px;">{sup_val:.2f}</div>
-                <div style="font-size:0.72rem; color:#f87171; font-weight:600; margin-top:3px;">Fib {sup_lbl}</div>
-                <div style="font-size:0.72rem; color:#cbd5e1; font-style:italic; margin-top:2px; line-height:1.25;">{sup_ui_desc}</div>
-            </div>
-
-            <div style="background:rgba(245,158,11,0.07); padding:5px 6px; border-radius:4px; border:1px dashed #f59e0b;">
-                <div style="font-size:0.75rem; font-weight:700; color:#fbbf24;">⚜️ GOLDEN POCKET</div>
-                <div style="font-family:'JetBrains Mono'; font-size:0.88rem; font-weight:800; color:#fbbf24; margin-top:1px;">{gp_val:.2f}</div>
-                <div style="font-size:0.72rem; color:#fbbf24; font-weight:600; margin-top:3px;">Kurumsal Bölge</div>
-                <div style="font-size:0.72rem; color:#cbd5e1; font-style:italic; margin-top:2px; line-height:1.25;">{gp_desc_text}</div>
-            </div>
+            {_merdiven_html}
 
         </div>
     </div>
