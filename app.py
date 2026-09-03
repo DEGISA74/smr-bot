@@ -13033,6 +13033,36 @@ def _render_hisse_karne_panel():
         return ""
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _algoritmik_ozet_karne_html(ticker, datekey, srcver):
+    """GENEL ÖZET sol paneline 'benzerleri · endekse göre' KARNE yerine basılan
+    4-satır 'SMART MONEY RADAR · ALGORİTMİK ÖZET' (3 Eyl 2026 — kullanıcı isteği:
+    karne kafa karıştırıyordu; okuyan 'bu hissenin durumu ne' görmek istiyor).
+
+    Metin TEK KAYNAK: infografik_build._decision_box → sol paneldeki bu özet, Görsel
+    Analiz infografiğindeki 'ALGORİTMİK ÖZET' kutusuyla BİREBİR aynı cümleyi kurar
+    (aynı ig.load verisi + aynı fonksiyon → ayrışamaz). Karne hesabı SİLİNMEDİ;
+    _hisse_karne_satirlari/_render_hisse_karne_panel yerinde duruyor, yalnız çağrılmıyor
+    — istenirse tek satırla geri bağlanır.
+
+    datekey/srcver: cache tazeleme anahtarı (alt-çizgisiz → st.cache_data anahtarına
+    GİRER; infografik_build.py düzenlenince srcver değişir → özet de tazelenir)."""
+    try:
+        import infographic as _ig
+        import infografik_build as _ib
+        _df = _ig.load(ticker)
+        if _df is None or len(_df) < 60:
+            return ""
+        _d = _ig.compute(ticker, _df)
+        # _decision_box yalnız ms['rvol'] okur → tam _market_stats (XU100 yükleme +
+        # RS geçmişi) gereksiz; rvol'u infografikle AYNI formülle burada hesapla.
+        _v = _df['Volume']; _m = float(_v.tail(20).mean())
+        _ms = {'rvol': (float(_v.iloc[-1] / _m) if _m > 0 else None)}
+        return _ib._decision_box(_df, _d, _ms, compact=False)
+    except Exception:
+        return ""
+
+
 def _render_genel_ozet_panel():
     """GENEL ÖZET — kısmen ilişkili 6 gösterge (13 Tem 2026: V8 çift-onay backtest ile
     CMF + MFI oyu eklendi), trend bağlamı, iptal koşulu, ER kurulum kalitesi."""
@@ -15100,11 +15130,16 @@ def _render_genel_ozet_panel():
                 f"⚠️ Panel hatası{_gs_err_loc}:<br>{_gs_err_msg}</div>"
             )
 
-        _karne_html = _render_hisse_karne_panel()
+        # 3 Eyl 2026 (kullanıcı) — 'benzerleri · endekse göre' KARNE ekrandan çekildi;
+        # yerine Görsel Analiz'deki "ALGORİTMİK ÖZET" kutusunun BİREBİR aynısı basılıyor.
+        # Karne hesabı silinmedi (yukarıda _render_hisse_karne_panel duruyor), render'dan
+        # alındı. Geri istenirse: alttaki satırı _render_hisse_karne_panel() yap.
+        _ozet_html = _algoritmik_ozet_karne_html(
+            _ticker, pd.Timestamp.today().strftime('%Y-%m-%d'), _infografik_src_version())
         if _gs_top_summary_html:
-            _gs_items_html = _gs_top_summary_html + _karne_html + _gs_items_html
-        elif _karne_html:
-            _gs_items_html = _karne_html + _gs_items_html
+            _gs_items_html = _gs_top_summary_html + _ozet_html + _gs_items_html
+        elif _ozet_html:
+            _gs_items_html = _ozet_html + _gs_items_html
 
         # ── Tatil günü chip'i — panel içeriğinin en başına yerleştir ─────
         try:
@@ -21848,7 +21883,9 @@ def _render_left_col():
                 _ma_strip_html = (
                     f"<div style='border:1px solid {border_col};border-radius:8px;overflow:hidden;"
                     f"margin-bottom:0;box-shadow:0 4px 12px rgba(0,0,0,0.4);background:{bg_col};"
-                    f"border-radius:8px 8px 0 0;"
+                    # 3 Eyl 2026 (kullanıcı) — MA şeridi artık TAM yuvarlak, kendi başına kart.
+                    # Alt sinyal bloğuyla arasında 4px (≈1-2mm) boşluk var (yapışık değil).
+                    f"border-radius:8px;"
                     f"display:flex;flex-direction:column;width:100%;'>"
                     + _52h_html +
                     f"<div style='display:flex;align-items:stretch;width:100%;'>"
@@ -24715,10 +24752,12 @@ def _render_right_col():
             + "</div>"
         )
 
-        # Ağırlıklı ortalamaların hemen altında, aynı grubun alt bölümü olarak görünür.
+        # 3 Eyl 2026 (kullanıcı) — MA şeridinden 4px (≈1-2mm) AYRI kart: "yapışık değil,
+        # iki ayrı bölüm gibi ama boşluk çok az". Eskiden border-top:0 + border-radius:0 0 8px 8px
+        # + margin:0 ile üstteki ağırlıklı ortalamalara kaynaşıktı (tek kart görünürdü).
         _sinyal_block_standalone = (
             f"<div style='background:rgba(15,23,42,0.62);border:1px solid rgba(255,255,255,0.10);"
-            f"border-top:0;border-radius:0 0 8px 8px;padding:0;margin:0 0 8px;"
+            f"border-radius:8px;padding:0;margin:4px 0 8px;"
             f"box-shadow:0 2px 6px rgba(0,0,0,0.25);overflow:hidden;'>"
             + _sinyal_rows
             + "</div>"
