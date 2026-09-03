@@ -222,6 +222,9 @@ def ensure_signal_results_table(conn):
             ret_5g         REAL,
             ret_10g        REAL,
             ret_20g        REAL,
+            alpha_5g       REAL,
+            alpha_10g      REAL,
+            alpha_20g      REAL,
             hit_5g         INTEGER,
             hit_10g        INTEGER,
             hit_20g        INTEGER,
@@ -239,6 +242,9 @@ def ensure_signal_results_table(conn):
         ("entry_gap_pct", "REAL"),
         ("entry_delay", "INTEGER"),
         ("entry_status", "TEXT"),
+        ("alpha_5g", "REAL"),      # 3 Eyl 2026 (Faz 2) — endekse göre fazla getiri
+        ("alpha_10g", "REAL"),     # (ret − XU100). Alpha zaten hesaplanıyordu ama
+        ("alpha_20g", "REAL"),     # JSON'a gidip DB'ye yazılmıyordu → karne paneli okusun.
     ):
         try:
             conn.execute(f"ALTER TABLE signal_results ADD COLUMN {column} {kind}")
@@ -274,6 +280,7 @@ def upsert_result(conn, row: dict):
             signal_id, symbol, scan_type, signal_date, bias,
             entry_price, entry_date, entry_gap_pct, entry_delay, entry_status, stop_level,
             ret_5g, ret_10g, ret_20g,
+            alpha_5g, alpha_10g, alpha_20g,
             hit_5g, hit_10g, hit_20g,
             stop_hit_5g, stop_hit_10g, stop_hit_20g,
             max_gain_20g, max_loss_20g, evaluated_at
@@ -281,6 +288,7 @@ def upsert_result(conn, row: dict):
             :signal_id, :symbol, :scan_type, :signal_date, :bias,
             :entry_price, :entry_date, :entry_gap_pct, :entry_delay, :entry_status, :stop_level,
             :ret_5g, :ret_10g, :ret_20g,
+            :alpha_5g, :alpha_10g, :alpha_20g,
             :hit_5g, :hit_10g, :hit_20g,
             :stop_hit_5g, :stop_hit_10g, :stop_hit_20g,
             :max_gain_20g, :max_loss_20g, :evaluated_at
@@ -290,6 +298,7 @@ def upsert_result(conn, row: dict):
             entry_gap_pct=excluded.entry_gap_pct, entry_delay=excluded.entry_delay,
             entry_status=excluded.entry_status, stop_level=excluded.stop_level,
             ret_5g=excluded.ret_5g, ret_10g=excluded.ret_10g, ret_20g=excluded.ret_20g,
+            alpha_5g=excluded.alpha_5g, alpha_10g=excluded.alpha_10g, alpha_20g=excluded.alpha_20g,
             hit_5g=excluded.hit_5g, hit_10g=excluded.hit_10g, hit_20g=excluded.hit_20g,
             stop_hit_5g=excluded.stop_hit_5g, stop_hit_10g=excluded.stop_hit_10g,
             stop_hit_20g=excluded.stop_hit_20g,
@@ -403,6 +412,7 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
                 'entry_delay': _entry_info.get('entry_delay'),
                 'entry_status': _entry_status, 'stop_level': None,
                 'ret_5g': None, 'ret_10g': None, 'ret_20g': None,
+                'alpha_5g': None, 'alpha_10g': None, 'alpha_20g': None,
                 'hit_5g': None, 'hit_10g': None, 'hit_20g': None,
                 'stop_hit_5g': None, 'stop_hit_10g': None, 'stop_hit_20g': None,
                 'max_gain_20g': None, 'max_loss_20g': None,
@@ -576,6 +586,7 @@ def evaluate_signals(lookback_days=LOOKBACK_DAYS, forward_windows=None):
                 result_row[f'alpha_{fwd}g']     = alpha
 
                 db_row[f'ret_{fwd}g']  = ret
+                db_row[f'alpha_{fwd}g'] = alpha   # 3 Eyl 2026 (Faz 2) — DB'ye de yaz
                 db_row[f'hit_{fwd}g']  = hit
                 db_row[f'stop_hit_{fwd}g'] = stop_hit
 

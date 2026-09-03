@@ -449,46 +449,120 @@ def yon_label(yon):
             'asagi': ('AŞAĞI AĞIR BASIYOR', '#f87171')}.get(yon, ('DENGEDE', '#94a3b8'))
 
 
-def risk_odul_kapisi(price, vah, val, va_pos, r_iyi=1.5, r_kotu=1.0):
-    """GÜVENLİK KAPISI — Değer Alanı (VA) tabanlı risk-ödül (21 Tem 2026).
+def _risk_odul_dis_seviye(df, price):
+    """VA dışındaki taraf hesabı için mevcut kısa vadeli seviyeleri çıkarır."""
+    try:
+        if df is None or len(df) < 5:
+            return None
+        _high = [float(x) for x in df['High'].iloc[-21:].tolist()]
+        _low = [float(x) for x in df['Low'].iloc[-21:].tolist()]
+        if not _high or not _low:
+            return None
+        _raw_low5 = min(_low[-5:])
+        _raw_high5 = max(_high[-5:])
+        _ranges = [h - l for h, l in zip(_high[-14:], _low[-14:]) if h > l]
+        _atr = (sum(_ranges) / len(_ranges)) if _ranges else price * 0.03
+        if _atr <= 0:
+            return None
+        # GENEL ÖZET'teki 5 günlük stop/iptal seviyeleriyle aynı sınırlar.
+        _low5 = max(_raw_low5, price - 2.0 * _atr)
+        _high5 = min(_raw_high5, price + 2.0 * _atr)
+        _prior_highs = [x for x in _high[:-1] if x > price]
+        _prior_lows = [x for x in _low[:-1] if x < price]
+        return {
+            'low5': _low5 if _low5 < price else None,
+            'high5': _high5 if _high5 > price else None,
+            'prior_resistance': min(_prior_highs) if _prior_highs else None,
+            'prior_support': max(_prior_lows) if _prior_lows else None,
+        }
+    except (KeyError, TypeError, ValueError, IndexError):
+        return None
 
-    Soru: yön doğru olsa BİLE, şu an girişte kazanç alanı dar / risk geniş mi?
-    Yakın direnç = VAH (yukarı hedef), yakın destek = VAL (aşağı savunma).
-    R = (VAH - fiyat) / (fiyat - VAL).
 
-    "Sorun yoksa gösterme" ilkesi: elverişliyse (R >= r_iyi) veya kapı bu durumda
-    bir şey söyleyemiyorsa (fiyat VA DIŞINDA → VA-tabanlı hedef/stop tanımsız) None
-    döner. SADECE risk varsa (R < r_iyi) uyarı sözlüğü döner. Betimleyici — "girme"
-    demez, geometriyi tarif eder; kararı kullanıcı verir.
+def risk_odul_kapisi(price, vah, val, va_pos, r_iyi=1.5, r_kotu=1.0,
+                     yon=None, df=None):
+    """GÜVENLİK KAPISI — yönlü risk-ödül geometrisi (21 Tem 2026).
 
-    Dönüş: {'seviye': 'kirmizi'|'amber', 'r': float, 'metin': str} veya None."""
+    Soru: seçilen yönde mevcut fiyat ile geçerli hedef arasındaki kazanç alanı,
+    geçersizlik/stop seviyesine kadar olan riske göre yeterli mi?
+
+    Fiyat Değer Alanı (VA) içindeyse yakın seviyeler VAH/VAL'dir. Fiyat VA
+    dışındaysa hesap susmaz: aşağıda kalan fiyat için ilk VA sınırı ve mevcut
+    kısa vadeli dip/tepe, yukarıda kalan fiyat için ilk VA sınırı ve kısa vadeli
+    tepe/dip kullanılır. Böylece Long ve Short aynı geometri kuralını paylaşır.
+
+    `yon` 'yukari' ise Long, 'asagi' ise Short hesabıdır. Yön veya geçerli
+    hedef/stop seviyesi yoksa None döner; sayı üretilemeyen yerde ölçülmüş gibi
+    davranılmaz. R = kazanç mesafesi / risk mesafesi.
+
+    Dönüş: {'seviye': 'kirmizi'|'amber'|None, 'r': float, 'metin': str} veya None."""
     try:
         price = float(price); vah = float(vah); val = float(val)
     except (TypeError, ValueError):
         return None
-    # Fiyat VA dışındaysa (kırılım/düşüş) VA-tabanlı hedef/stop yok → kapı susar
-    if 'İÇİNDE' not in str(va_pos):
+    _yon = str(yon or '').strip().lower()
+    if _yon not in ('yukari', 'asagi') or price <= 0 or not (val < vah):
         return None
-    if not (val < price < vah):
+
+    _inside = val < price < vah
+    _levels = _risk_odul_dis_seviye(df, price) if not _inside else None
+    if _inside:
+        _target = vah if _yon == 'yukari' else val
+        _stop = val if _yon == 'yukari' else vah
+    elif price < val:
+        if not _levels:
+            return None
+        if _yon == 'yukari':
+            # VA altındaki Long için ilk hedef VAL, risk kısa vadeli dip.
+            _target = val
+            _stop = _levels.get('low5')
+        else:
+            # VA altındaki Short için hedef fiyatın altındaki son destek,
+            # geçersizlik ise VAL'ın geri alınmasıdır.
+            _target = _levels.get('prior_support')
+            _stop = val
+    elif price > vah:
+        if not _levels:
+            return None
+        if _yon == 'yukari':
+            # VA üstündeki Long için hedef, fiyatın üstündeki ilk tarihsel direnç;
+            # destek olarak önce VAH kullanılır.
+            _target = _levels.get('prior_resistance')
+            _stop = vah
+        else:
+            # VA üstündeki Short için ilk hedef VAH, risk kısa vadeli tepe.
+            _target = vah
+            _stop = _levels.get('high5')
+    else:
         return None
-    kazanc = vah - price   # yukarı hedef mesafesi
-    risk   = price - val   # aşağı savunma mesafesi
-    if kazanc <= 0 or risk <= 0:
+
+    if _target is None or _stop is None:
         return None
-    r = kazanc / risk
-    if r >= r_iyi:
-        return None  # elverişli → sorun yok, gösterme
-    kazanc_pct = kazanc / price * 100
-    risk_pct   = risk / price * 100
-    if r < r_kotu:
-        return {'seviye': 'kirmizi', 'r': round(r, 2),
-                'kazanc_pct': round(kazanc_pct, 1), 'risk_pct': round(risk_pct, 1),
-                'metin': (f"Risk-ödül elverişsiz (≈{r:.1f}R) — yukarı kazanç alanı dar "
-                          f"(%{kazanc_pct:.1f}), aşağı savunma mesafesi geniş (%{risk_pct:.1f})")}
-    return {'seviye': 'amber', 'r': round(r, 2),
-            'kazanc_pct': round(kazanc_pct, 1), 'risk_pct': round(risk_pct, 1),
-            'metin': (f"Risk-ödül sınırda (≈{r:.1f}R) — kazanç alanı (%{kazanc_pct:.1f}) "
-                      f"savunma mesafesine (%{risk_pct:.1f}) göre dar")}
+    _kazanc = (_target - price) if _yon == 'yukari' else (price - _target)
+    _risk = (price - _stop) if _yon == 'yukari' else (_stop - price)
+    if _kazanc <= 0 or _risk <= 0:
+        return None
+    _r = _kazanc / _risk
+    _kazanc_pct = _kazanc / price * 100
+    _risk_pct = _risk / price * 100
+    _taraf = 'Long' if _yon == 'yukari' else 'Short'
+    _base = {'r': round(_r, 2),
+             'kazanc_pct': round(_kazanc_pct, 1),
+             'risk_pct': round(_risk_pct, 1),
+             'taraf': _taraf,
+             'hedef': round(_target, 4),
+             'stop': round(_stop, 4)}
+    if _r >= r_iyi:
+        return {**_base, 'seviye': None,
+                'metin': f"{_taraf} risk-ödül elverişli (≈{_r:.1f}R)"}
+    if _r < r_kotu:
+        return {**_base, 'seviye': 'kirmizi',
+                'metin': (f"{_taraf} risk-ödül elverişsiz (≈{_r:.1f}R) — "
+                          f"kazanç alanı dar (%{_kazanc_pct:.1f}), risk geniş "
+                          f"(%{_risk_pct:.1f})")}
+    return {**_base, 'seviye': 'amber',
+            'metin': (f"{_taraf} risk-ödül sınırda (≈{_r:.1f}R) — kazanç alanı "
+                      f"(%{_kazanc_pct:.1f}) riske (%{_risk_pct:.1f}) göre dar")}
 
 
 def kapi_hukmu(likidite_tier=None, manip=None, risk_odul=None, adv_mn=None):

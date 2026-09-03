@@ -1777,9 +1777,10 @@ def _compute_genel_ozet_pack_cached(ticker, gs_bms, dtok):
     Alt cizgisiz adlar anahtara girer; govde ici adlar asagida aliaslanir."""
     _ticker, _gs_bms, _dtok = ticker, gs_bms, dtok
     try:
-        _snapshot_key = (
-            _dtok if str(_dtok).startswith("toplu_terazi:") else None
-        )
+        # Normal tek-hisse ekranında da PA-DNA aynı veri parmak izini kullansın.
+        # Aksi halde özet yeni fotoğrafla, PA-DNA ise eski 15 dakikalık cache ile
+        # hesaplanabiliyor ve aynı ekranda iki farklı fiyat anı oluşuyordu.
+        _snapshot_key = _dtok if _dtok is not None else None
         _gs_dna = calculate_price_action_dna(
             _ticker, snapshot_key=_snapshot_key)
 
@@ -2105,6 +2106,7 @@ def _compute_genel_ozet_pack_cached(ticker, gs_bms, dtok):
         else:               _gs_net_clr = "#fbbf24"; _gs_net_txt = "KARARSIZ"
         return {
             '_curr_close_val': _curr_close_val,
+            '_gs_dna': _gs_dna,
             '_data_ready': _data_ready,
             '_gs_cdpct': _gs_cdpct,
             '_gs_cum5': _gs_cum5,

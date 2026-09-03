@@ -2434,15 +2434,19 @@ _FEATURE_PERF_CATALOG = {
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def get_feature_performance(feature_key: str, day_offset: int = 10, lookback_days: int = 180):
+def get_feature_performance(feature_key: str, day_offset: int = 10, lookback_days: int = 180,
+                            metric: str = 'ret'):
     """Tek bir feature'ın durumuna göre ileri getiri (hit% + ort getiri + n).
-    scan_signals × signal_returns JOIN. feature_key SADECE katalogdan (SQL güvenliği).
+    scan_signals × signal_results JOIN. feature_key SADECE katalogdan (SQL güvenliği).
+    metric='ret' → ham getiri; metric='alpha' → endekse göre fazla getiri (3 Eyl 2026 Faz 2).
     Dönüş: bucket başına satır DataFrame (Ort Getiri'ye göre azalan)."""
     spec = _FEATURE_PERF_CATALOG.get(feature_key)
     if not spec:
         return pd.DataFrame()
-    # İleri getiri signal_results tablosunda (ret_5g/10g/20g, sinyal başına 1 satır).
-    _ret_col = {5: 'ret_5g', 10: 'ret_10g', 20: 'ret_20g'}.get(int(day_offset), 'ret_10g')
+    # İleri getiri signal_results tablosunda (ret_/alpha_ 5g/10g/20g, sinyal başına 1 satır).
+    _prefix = 'alpha' if metric == 'alpha' else 'ret'
+    _ret_col = {5: f'{_prefix}_5g', 10: f'{_prefix}_10g', 20: f'{_prefix}_20g'}.get(
+        int(day_offset), f'{_prefix}_10g')
     try:
         conn = sqlite3.connect(DB_FILE, timeout=30)
         q = (f"SELECT ss.{feature_key} AS feat, sr.{_ret_col} AS ret "
@@ -9115,13 +9119,13 @@ def _render_ict_deep_panel_full(ticker):
         "Canlı isabet ölçümü (model skoru karnesi) Eylül 2026'da yayınlanacak.</div>",
         unsafe_allow_html=True)
 
-def render_levels_card(ticker):
+def _build_level_ladder_content(ticker):
     data = get_advanced_levels_data(ticker)
-    if not data: return
-    display_ticker = get_display_name(ticker)
-    info = fetch_stock_info(ticker)
-    _cp_raw = info.get('price', 0) if info else 0
-    current_price_str = (f"{int(_cp_raw)}" if _cp_raw >= 1000 else f"{_cp_raw:.2f}") if info else "0.00"
+    if not data:
+        return (
+            '<div style="font-size:0.72rem;color:#94a3b8;">'
+            'Seviye verisi alınamadı.</div>'
+        )
     
     is_bullish = data['st_dir'] == 1
     st_color = "#10b981" if is_bullish else "#16a34a" if is_bullish else "#f87171"
@@ -9204,8 +9208,7 @@ def render_levels_card(ticker):
             f'border:1px solid rgba(139,92,246,0.30);">'
             f'<div style="display:flex;justify-content:space-between;align-items:baseline;'
             f'margin-bottom:3px;">'
-            f'<span style="font-size:0.72rem;color:#a78bfa;font-weight:800;">📊 SEVİYE MERDİVENİ</span>'
-            f'<span style="font-size:0.6rem;color:#64748b;">yakınlık sırası</span></div>'
+            f'<span style="font-size:0.72rem;color:#a78bfa;font-weight:800;">YAKINLIK SIRASI</span></div>'
             f'{_rows}'
             f'<div style="font-size:0.66rem;color:#94a3b8;font-style:italic;margin-top:4px;'
             f'line-height:1.25;">Aynı satırda birden çok isim varsa o seviyede birden çok '
@@ -9215,35 +9218,25 @@ def render_levels_card(ticker):
         _merdiven_html = (
             '<div style="background:rgba(15,23,42,0.45);padding:8px;border-radius:4px;'
             'border:1px solid rgba(148,163,184,0.25);font-size:0.72rem;color:#94a3b8;">'
-            '📊 SEVİYE MERDİVENİ — seviye hesaplamak için yeterli fiyat verisi yok.</div>')
-    
-    html_content = f"""
-    <div class="info-card" style="border-top: 3px solid #8b5cf6; padding:6px 10px 8px 10px;">
-        <div class="info-header" style="color:#8b5cf6; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center; padding:0; font-size:0.9rem; font-weight:800;">
-        <span>📐 Trend & Seviyeler: {display_ticker}</span>
-        <span style="font-family:'JetBrains Mono'; font-weight:800; color:#f1f5f9; font-size:0.9rem; background:#0d1829; padding:1px 6px; border-radius:5px;">{current_price_str}</span>
-        </div>
+            'YAKINLIK SIRASI — seviye hesaplamak için yeterli fiyat verisi yok.</div>')
 
-        <div style="display:grid; grid-template-columns: 1fr 1.35fr; gap:5px;">
-
-            <div style="background:{st_color}15; padding:5px 6px; border-radius:4px; border:1px solid {st_color};">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div style="font-weight:700; color:{st_color}; font-size:0.75rem;">{st_icon} SuperTrend</div>
-                    <div style="font-weight:800; color:{st_color}; font-size:0.75rem;">{st_text}</div>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px;">
-                    <div style="font-size:0.72rem; color:#cbd5e1;">{st_label}:</div>
-                    <div style="font-family:'JetBrains Mono'; font-weight:800; color:#f1f5f9; font-size:0.82rem;">{data['st_val']:.2f}</div>
-                </div>
-                <div style="font-size:0.72rem; color:#cbd5e1; font-style:italic; margin-top:2px; line-height:1.25;">{st_desc}</div>
-            </div>
-
-            {_merdiven_html}
-
-        </div>
-    </div>
-    """
-    st.markdown(html_content.replace("\n", " "), unsafe_allow_html=True)
+    _supertrend_html = (
+        f'<div style="background:{st_color}15;padding:5px 6px;border-radius:4px;'
+        f'border:1px solid {st_color};margin-bottom:5px;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+        f'<div style="font-weight:700;color:{st_color};font-size:0.72rem;">'
+        f'{st_icon} SuperTrend</div>'
+        f'<div style="font-weight:800;color:{st_color};font-size:0.72rem;">{st_text}</div>'
+        f'</div>'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">'
+        f'<div style="font-size:0.70rem;color:#cbd5e1;">{st_label}:</div>'
+        f'<div style="font-family:\'JetBrains Mono\';font-weight:800;color:#f1f5f9;font-size:0.80rem;">'
+        f'{data["st_val"]:.2f}</div>'
+        f'</div>'
+        f'<div style="font-size:0.68rem;color:#cbd5e1;font-style:italic;margin-top:2px;line-height:1.25;">'
+        f'{st_desc}</div></div>'
+    )
+    return _supertrend_html + _merdiven_html
 
 def render_minervini_panel_v2(ticker):
     # 1. Verileri al
@@ -11625,18 +11618,16 @@ def render_roadmap_8_panel(ticker):
         </div>
         """
 
-    # Statüleri yeniden eşle: 8 → 5 kart için (Card 6 ve Card 7 yeni Composite/MTF/Trade Plan kartlarına taşındı)
+    # Statüleri yeniden eşle: ilk kutu artık fiyat seviyelerini taşır;
+    # Trend faktörü composite kartta ve AI bağlamında yaşamaya devam eder.
     _statuses_orig = data.get('S', ['neutral'] * 8)
-    # Yeni sıra: [s1 (Fiyat+Formasyon birleşik), s3 (VSA), s4 (Trend), s5 (Hacim), s8 (Sentez)]
-    # Birleşik kart için s1 ve s2'nin daha güçlü olanını seç
+    # Yeni sıra: [Seviye Merdiveni, s8 (Sentez)]
     def _stronger_status(a, b):
         rank = {"bull": 3, "warning": 2, "bear": 2, "neutral": 1}
         return a if rank.get(a, 0) >= rank.get(b, 0) else b
     _statuses = [
-        _statuses_orig[3],  # M4 Trend
-        _statuses_orig[4],  # M5 Hacim
+        "neutral",          # Seviye Merdiveni; liste önem sırası taşımaz
         _statuses_orig[7],  # M8 Sentez
-        "neutral",          # Piyasa Özeti (içerik-güdümlü renk)
     ]
     _now_str = datetime.now().strftime("%H:%M")
 
@@ -11649,18 +11640,13 @@ def render_roadmap_8_panel(ticker):
         f'</div>'
     )
 
+    _level_ladder_content = _build_level_ladder_content(ticker)
     _box_defs = [
-        ("1", "Trend Skoru",       data['M4'],  "Sıkışma, hacim daralması ve hareketli ortalama yakınsaması.", "1-3 Ay"),
-        ("2", "Hacim Algoritması", data['M5'],  "Kurumsal emilim (Absorption) ve agresif piyasa akışı.",       "Son 20 Gün"),
+        ("1", "SEVİYE MERDİVENİ", _level_ladder_content,
+         "Fiyatın çevresindeki seviyeleri yakınlık sırasıyla gösterir; SuperTrend stop çizgisi ayrıca korunur.",
+         "Yakınlık"),
         ("3", "Teknik Özet",       data['M8'],  "Tüm verilerin genel sentezi ve piyasa beklentisi.",            "Genel Bakış"),
     ]
-
-    boxes = [
-        make_box(num, title, content, "", edu, tf, status=_statuses[i], box_idx=i)
-        for i, (num, title, content, edu, tf) in enumerate(_box_defs)
-    ]
-
-    grid_html = "".join(boxes)
 
     # CSS: hover ile edu tooltip görünür hale gelir
     hover_css = "".join(
@@ -11740,22 +11726,22 @@ def render_roadmap_8_panel(ticker):
             if sig > 0:
                 _txt = "● YOĞUN" if is_vol else "● BOĞA"
                 return (f"<span style='background:rgba(34,197,94,0.16);color:#22c55e;"
-                        f"border:1px solid rgba(34,197,94,0.35);padding:1px 5px;border-radius:10px;"
-                        f"font-size:0.58rem;font-weight:800;white-space:nowrap;'>{_txt}</span>")
+                        f"border:1px solid rgba(34,197,94,0.35);padding:1px 3px;border-radius:10px;"
+                        f"font-size:0.54rem;font-weight:800;white-space:nowrap;'>{_txt}</span>")
             if sig < 0:
                 _txt = "● SEYREK" if is_vol else "● AYI"
                 return (f"<span style='background:rgba(239,68,68,0.16);color:#ef4444;"
-                        f"border:1px solid rgba(239,68,68,0.35);padding:1px 5px;border-radius:10px;"
-                        f"font-size:0.58rem;font-weight:800;white-space:nowrap;'>{_txt}</span>")
+                        f"border:1px solid rgba(239,68,68,0.35);padding:1px 3px;border-radius:10px;"
+                        f"font-size:0.54rem;font-weight:800;white-space:nowrap;'>{_txt}</span>")
             _txt = "○ NORMAL" if is_vol else "○ NÖTR"
             return (f"<span style='background:rgba(148,163,184,0.12);color:#94a3b8;"
-                    f"border:1px solid rgba(148,163,184,0.25);padding:1px 5px;border-radius:10px;"
-                    f"font-size:0.58rem;font-weight:700;white-space:nowrap;'>{_txt}</span>")
+                    f"border:1px solid rgba(148,163,184,0.25);padding:1px 3px;border-radius:10px;"
+                    f"font-size:0.54rem;font-weight:700;white-space:nowrap;'>{_txt}</span>")
 
         # Grid: 5 sütun (label + 4 vade)
         _tfs   = _mtf['timeframes']
         _ncol  = len(_tfs)
-        _grid_cols = "1fr " + " ".join(["1fr"] * _ncol)
+        _grid_cols = "minmax(0,1fr) " + " ".join(["minmax(0,1fr)"] * _ncol)
         _items = []
 
         _tf_subtitles = {
@@ -11936,17 +11922,26 @@ def render_roadmap_8_panel(ticker):
         make_box(num, title, content, "", edu, tf, status=_statuses[i], box_idx=i)
         for i, (num, title, content, edu, tf) in enumerate(_box_defs)
     ]
-    # 3-sütun grid: 1. Trend Skoru | 2. Hacim Algoritması | 3. Teknik Özet (yan yana)
+    # Hedef yerleşim: Seviye Merdiveni solda tam boy; sağ tarafta
+    # MTF → Yol Haritası ve Fiyat/Formasyon → Teknik Özet akışı.
     # NOT (31 May 2026): Piyasa Özeti (eski col4) bağımsız panel olarak Smart Money
     # Hacim Analizi altına taşındı (render_piyasa_ozeti_full_width).
-    top_section_html = (
+    roadmap_layout_html = (
         f'<div style="padding:5px 5px 0 5px;">'
-        f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">'
-        f'{composite_card_html}{mtf_card_html}{fp_top_html}'
+        f'<div style="display:grid;grid-template-columns:1fr 1.05fr 1fr;gap:5px;'
+        f'align-items:stretch;">'
+        f'<div style="min-width:0;display:flex;">{boxes[0]}</div>'
+        f'<div style="min-width:0;display:flex;flex-direction:column;gap:5px;">'
+        f'<div style="min-width:0;">{mtf_card_html}</div>'
+        f'<div style="min-width:0;">{composite_card_html}</div>'
+        f'</div>'
+        f'<div style="min-width:0;display:flex;flex-direction:column;gap:5px;">'
+        f'<div style="min-width:0;">{fp_top_html}</div>'
+        f'<div style="min-width:0;flex:1;min-height:0;">{boxes[1]}</div>'
+        f'</div>'
         f'</div></div>'
     )
 
-    _grid = boxes[0] + boxes[1] + boxes[2]
     card_html = f"""
 <style>
 .dark-text-fix {{ color: #cbd5e1 !important; }}
@@ -11965,12 +11960,7 @@ def render_roadmap_8_panel(ticker):
     <div style="height:4px;background:rgba(30,58,95,0.5);margin-bottom:0;">
         <div style="height:100%;width:{_comp_score}%;background:{'#22c55e' if _comp_score >= 67 else ('#f59e0b' if _comp_score >= 40 else '#ef4444')};border-radius:0 2px 2px 0;"></div>
     </div>
-    {top_section_html}
-    <div style="padding:5px;">
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;">
-            {_grid}
-        </div>
-    </div>
+    {roadmap_layout_html}
 </div>
 """
     st.markdown(_endeks_dil(card_html.replace('\n', ''), ticker), unsafe_allow_html=True)
@@ -12683,8 +12673,10 @@ def _taban_cizgisi_stats():
     alternatifi sanıyor. Bunların HEPSİ tek bir referansın üstüne okunmalı:
     ortalama bir sinyal ürettiğimizde tarihsel olarak ne oluyor?
 
-    Kaynak: signal_results (canlı, JOIN gerekmez — her sinyal 1 satır). Statik
-    rapor yerine canlı hesap → rakam kendini günceller, bayatlamaz.
+    Kaynak: scan_signals ⋈ signal_results, SON 180 GÜN (3 Eyl 2026 · Codex —
+    kova karneleri get_feature_performance ile AYNI pencere ve popülasyon;
+    taban all-time, kova 180g olunca elmayla-armut kıyaslanıyordu). Canlı hesap
+    → rakam kendini günceller, bayatlamaz.
     Döner: {'n','ret10','hit10'} veya None."""
     try:
         import sqlite3 as _sq
@@ -12692,14 +12684,44 @@ def _taban_cizgisi_stats():
                                        "patron.db"))
         try:
             _r = _cx.execute(
-                "SELECT COUNT(*), AVG(ret_10g), "
-                "AVG(CASE WHEN ret_10g>0 THEN 1.0 ELSE 0.0 END)*100 "
-                "FROM signal_results WHERE ret_10g IS NOT NULL").fetchone()
+                "SELECT COUNT(*), AVG(sr.ret_10g), "
+                "AVG(CASE WHEN sr.ret_10g>0 THEN 1.0 ELSE 0.0 END)*100 "
+                "FROM scan_signals ss JOIN signal_results sr "
+                "ON ss.id = sr.signal_id "
+                "WHERE sr.ret_10g IS NOT NULL "
+                "AND ss.scan_date >= date('now','-180 days')").fetchone()
         finally:
             _cx.close()
         if not _r or not _r[0] or _r[0] < 500:   # az örnekte taban güvenilmez
             return None
         return {'n': int(_r[0]), 'ret10': float(_r[1]), 'hit10': float(_r[2])}
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _alpha_taban():
+    """3 Eyl 2026 (Faz 2) — ALFA TABANI: tipik taranmış sinyal endekse göre ne yapar?
+    Karne kutusunda renk buna göre (bir kova bu tabandan iyi mi kötü mü). Kovalarla
+    aynı 180g + JOIN penceresi. Döner: {'a10','a20'} veya None.
+
+    Neden 0 değil: taramalar dev-ağırlıklı endeksin altında kalan hisse seçer →
+    taban ~−1,3 (10g) / ~−2,2 (20g). Renk sıfıra göre olsa her şey kırmızı olurdu."""
+    try:
+        import sqlite3 as _sq
+        _cx = _sq.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       "patron.db"))
+        try:
+            _r = _cx.execute(
+                "SELECT AVG(sr.alpha_10g), AVG(sr.alpha_20g), COUNT(sr.alpha_10g) "
+                "FROM scan_signals ss JOIN signal_results sr ON ss.id = sr.signal_id "
+                "WHERE ss.scan_date >= date('now','-180 days')").fetchone()
+        finally:
+            _cx.close()
+        if not _r or not _r[2] or _r[2] < 500:
+            return None
+        return {'a10': (float(_r[0]) if _r[0] is not None else None),
+                'a20': (float(_r[1]) if _r[1] is not None else None)}
     except Exception:
         return None
 
@@ -12761,17 +12783,21 @@ def _hisse_karne_satirlari(ticker):
                     _m = _lm.get('manip')
                     return (str(_m) if _m else None), (f"şu an {_m}" if _m else None)
                 if feat == 'f_cmf_dual':
-                    _c5 = compute_cmf(_df, period=5); _c20 = compute_cmf(_df, period=20)
-                    if _c5 is None or _c20 is None: return None, None
-                    _c5 = float(_c5); _c20 = float(_c20); _T = 0.05
-                    if   _c5 > _T and _c20 > _T:  _st = 'strong_pos'
-                    elif _c5 < -_T and _c20 < -_T: _st = 'strong_neg'
-                    elif _c5 > _T and _c20 < -_T: _st = 'turning_up'
-                    elif _c5 < -_T and _c20 > _T: _st = 'turning_down'
-                    elif _c20 > _T: _st = 'pos'
-                    elif _c20 < -_T: _st = 'neg'
-                    else: _st = 'neutral'
-                    return _st, f"şu an {_c20:+.2f}"
+                    # 3 Eyl 2026 (Codex #4 — kova eşleme bug'ı): kova ETİKETİ,
+                    # scan_signals.f_cmf_dual'ı YAZAN kuralla (scan_pipeline.
+                    # _terazi_cmf_dual_state) BİREBİR olmalı. Eski inline ±0.05
+                    # kuralı turning_up/down'ı sıfır-eşikli writer'dan ayırıyordu
+                    # → panel canlı durumu farklı eşikle etiketleyip yanlış kovaya
+                    # bakıyordu. Artık tek kaynak.
+                    _st = scan_pipeline_mod._terazi_cmf_dual_state(_df)
+                    if not _st:
+                        return None, None
+                    try:
+                        _c20 = float(compute_cmf(_df, period=20))
+                        _vtxt = f"şu an {_c20:+.2f}"
+                    except Exception:
+                        _vtxt = ""
+                    return _st, _vtxt
                 if feat in ('f_mom_12_1', 'f_sharpe_mom'):
                     # Kesitsel faktör: endekste sıralanamaz (tek enstrüman).
                     if _is_idx:
@@ -12810,19 +12836,30 @@ def _hisse_karne_satirlari(ticker):
             _row = {'feat': _feat, 'ad': _spec.get('label', _feat),
                     'solid': _feat in _SOLID, 'val': _valtxt,
                     'kesitsel_gizli': (_feat in ('f_mom_12_1', 'f_sharpe_mom') and _is_idx),
-                    'ret': None, 'hit': None, 'n': None, 'kova': _lbl}
+                    'kova': _lbl,
+                    'ret': None, 'hit': None, 'n': None,
+                    'ret20': None, 'hit20': None, 'n20': None,
+                    'alpha': None, 'ahit': None, 'an': None,
+                    'alpha20': None, 'ahit20': None, 'an20': None}
             if _lbl is not None:
-                try:
-                    _fp = get_feature_performance(_feat, day_offset=10, lookback_days=180)
-                    if _fp is not None and not _fp.empty:
-                        _m = _fp[_fp['Kriter Durumu'].astype(str) == str(_lbl)]
-                        if not _m.empty:
-                            _r0 = _m.iloc[0]
-                            _row['ret'] = float(_r0['Ort Getiri %'])
-                            _row['hit'] = float(_r0['Hit %'])
-                            _row['n'] = int(_r0['n'])
-                except Exception:
-                    pass
+                # 3 Eyl 2026 (Faz 2): ham getiri (hover için) + alfa (ekranda gösterilen)
+                for _off, _metric, _rk, _hk, _nk in (
+                        (10, 'ret',   'ret',     'hit',    'n'),
+                        (20, 'ret',   'ret20',   'hit20',  'n20'),
+                        (10, 'alpha', 'alpha',   'ahit',   'an'),
+                        (20, 'alpha', 'alpha20', 'ahit20', 'an20')):
+                    try:
+                        _fp = get_feature_performance(_feat, day_offset=_off,
+                                                      lookback_days=180, metric=_metric)
+                        if _fp is not None and not _fp.empty:
+                            _m = _fp[_fp['Kriter Durumu'].astype(str) == str(_lbl)]
+                            if not _m.empty:
+                                _r0 = _m.iloc[0]
+                                _row[_rk] = float(_r0['Ort Getiri %'])
+                                _row[_hk] = float(_r0['Hit %'])
+                                _row[_nk] = int(_r0['n'])
+                    except Exception:
+                        pass
             _rows.append(_row)
     except Exception:
         return []
@@ -12830,94 +12867,170 @@ def _hisse_karne_satirlari(ticker):
 
 
 def _render_hisse_karne_panel():
-    """⚖ BU HİSSENİN KARNESİ (bulgu 7 · Bölüm 3) — GENEL ÖZET'in hemen altında.
-    Açık hissenin bugünkü durumlarını evren ölçüm arşivine bağlar."""
+    """📌 GENEL ÖZET içindeki tek bakışlık karne metni."""
     try:
         _tk = st.session_state.get('ticker')
         if not _tk:
-            return
+            return ""
         _rows = _hisse_karne_satirlari(_tk)
         if not _rows:
-            return
+            return ""
         _disp = get_display_name(_tk)
-        _tb = _taban_cizgisi_stats()
+        _plain = {
+            'f_52h_pos': '52 haftalık konum',
+            'f_mom_12_1': 'Uzun vadeli momentum',
+            'f_sharpe_mom': 'Risk-getiri dengesi',
+            'f_manip_risk': 'Manipülasyon riski',
+            'f_rsi': 'RSI',
+            'f_cmf_dual': 'Para akışı',
+        }
+        _directional = {'f_52h_pos', 'f_mom_12_1', 'f_sharpe_mom', 'f_rsi', 'f_cmf_dual'}
 
-        def _clr(v):
-            if v is None: return "#94a3b8"
-            return "#4ade80" if v > 0.5 else ("#f87171" if v < -0.5 else "#fbbf24")
+        def _name(_r):
+            return _plain.get(_r['feat'], _r['ad'])
 
-        _base_html = ""
-        if _tb:
-            _base_html = (
-                f"<div style='display:flex;align-items:baseline;gap:5px;padding:5px 11px;"
-                f"background:rgba(2,6,17,0.5);border-bottom:1px dashed #29465f;"
-                f"font-size:0.6rem;color:#94a3b8;'>"
-                f"<span style='color:#64748b;'>TABAN ÇİZGİSİ</span> ortalama sinyal "
-                f"<b style='font-family:\"JetBrains Mono\",monospace;color:#f87171;'>"
-                f"{_tb['ret10']:+.1f}%</b> · isabet "
-                f"<b style='font-family:\"JetBrains Mono\",monospace;color:#e2e8f0;'>"
-                f"%{_tb['hit10']:.0f}</b><span style='color:#475569;'> — satırları "
-                f"bununla kıyasla</span></div>")
+        _is_idx = (str(_tk).upper().startswith(("XU", "XB", "XT", "XY", "^"))
+                   or str(_tk).upper().endswith("=F") or "-USD" in str(_tk).upper())
 
-        _row_html = ""
+        # 3 Eyl 2026 (Faz 2): sayı = ALFA (endekse göre fazla getiri); renk = ALFA-TABANINA
+        # göre (kova, tipik taranmış sinyalden iyi mi kötü mü). Sıfıra göre olsa her şey
+        # kırmızı olurdu (taranmışlar endeksin altında) — bilgi kaybolurdu.
+        _ab = _alpha_taban() or {}
+        _b10 = _ab.get('a10'); _b20 = _ab.get('a20')
+
+        def _clr(_x, _base):
+            if _x is None:
+                return "#64748b"
+            _d = _x - (_base if _base is not None else 0.0)
+            if _d <= -0.5:
+                return "#f87171"
+            if _d >= 0.5:
+                return "#34d399"
+            return "#94a3b8"
+
+        def _num(_x):
+            return "—" if _x is None else f"{_x:+.1f}"
+
+        # Bugünkü değeri kısa + Türkçe göster (jargon çeviri)
+        _CMF_TR = {'strong_pos': 'güçlü alış', 'strong_neg': 'güçlü satış',
+                   'turning_up': 'dönüyor↑', 'turning_down': 'dönüyor↓',
+                   'pos': 'alışta', 'neg': 'satışta', 'neutral': 'nötr'}
+        _Q_TR = {'Q1 en düşük': 'en zayıf', 'Q2': 'zayıf', 'Q3': 'orta',
+                 'Q4': 'orta-üst', 'Q5 en yüksek': 'en güçlü'}
+
+        def _today(_r):
+            _f = _r['feat']
+            _v = (_r.get('val') or "").replace("şu an ", "")
+            if _f == 'f_cmf_dual':
+                return _CMF_TR.get(str(_r.get('kova')), _v)
+            if _f in ('f_mom_12_1', 'f_sharpe_mom'):
+                return _Q_TR.get(str(_r.get('kova')), _v)
+            return _v
+
+        # Satırlar: ölçülenler (akrandan en geride önce) + ölçülemeyenler (altta)
+        _meas = []   # (başlık, bugün, alfa10, alfa20, diff10, tip)
+        _miss = []
         for _r in _rows:
-            _solid = ("<span style='font-family:\"JetBrains Mono\",monospace;font-size:0.5rem;"
-                      "font-weight:700;color:#4ade80;background:rgba(74,222,128,0.13);"
-                      "border:1px solid rgba(74,222,128,0.32);padding:0 4px;border-radius:3px;'>"
-                      "SAĞLAM</span>") if _r['solid'] else ""
+            _title = _name(_r)
             if _r['kesitsel_gizli']:
-                _sag = ("<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.86rem;"
-                        "font-weight:800;color:#64748b;text-align:right;line-height:1;'>—</div>"
-                        "<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.58rem;"
-                        "color:#64748b;text-align:right;margin-top:2px;'>hisse panelinde aktif</div>")
-                _val = "endekste gizli — kesitsel faktör (hisseler arası sıralar)"
-                _op = "opacity:0.55;"
-            elif _r['ret'] is not None:
-                _rc = _clr(_r['ret'])
-                _sag = (f"<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.9rem;"
-                        f"font-weight:800;color:{_rc};text-align:right;line-height:1;'>"
-                        f"{_r['ret']:+.1f}%</div>"
-                        f"<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.58rem;"
-                        f"color:#64748b;text-align:right;margin-top:2px;'>"
-                        f"isabet %{_r['hit']:.0f} · n={_r['n']:,}</div>")
-                _val = _r['val'] or ""
-                if _r['kova']:
-                    _val = f"{_r['val']} → {_r['kova']} kovası" if _r['val'] else f"{_r['kova']} kovası"
-                _op = ""
-            else:
-                _sag = ("<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.86rem;"
-                        "font-weight:800;color:#64748b;text-align:right;line-height:1;'>—</div>"
-                        "<div style='font-size:0.58rem;color:#64748b;text-align:right;"
-                        "margin-top:2px;'>yeterli örnek yok</div>")
-                _val = _r['val'] or "veri yok"
-                _op = "opacity:0.55;"
-            _row_html += (
-                f"<div style='display:grid;grid-template-columns:1fr auto;gap:4px 10px;"
-                f"align-items:center;padding:7px 11px;border-bottom:1px solid rgba(30,58,95,0.5);{_op}'>"
-                f"<div style='min-width:0;'>"
-                f"<div style='font-size:0.73rem;font-weight:600;color:#e2e8f0;'>{_r['ad']} {_solid}</div>"
-                f"<div style='font-family:\"JetBrains Mono\",monospace;font-size:0.6rem;color:#94a3b8;"
-                f"margin-top:1px;'>{_val}</div></div>"
-                f"<div>{_sag}</div></div>")
+                _miss.append((_title, "endekste ölçülemez")); continue
+            if _is_idx and _r['feat'] == 'f_manip_risk':
+                _miss.append((_title, "endekste anlamsız")); continue
+            _a = _r.get('alpha'); _b = _r.get('alpha20')
+            if _a is None and _b is None:
+                _miss.append((_title, "veri yetersiz")); continue
+            _kova = _r.get('kova')
+            _tip = f"bugün: {_today(_r)}"
+            if _kova:
+                _tip += f" (kova {_kova})"
+            _rr = _r.get('ret'); _rr20 = _r.get('ret20')
+            if _rr is not None or _rr20 is not None:
+                _tip += f" · ham 10g {_num(_rr)}/20g {_num(_rr20)}"
+            if _r.get('ahit') is not None:
+                _tip += f" · endeksi geçme %{_r['ahit']:.0f}"
+            if _r.get('an'):
+                _tip += f" · n={_r['an']}"
+            _d10 = (_a - _b10) if (_a is not None and _b10 is not None) else None
+            _meas.append((_title, _today(_r), _a, _b, _d10, _tip))
+        _meas.sort(key=lambda x: (x[4] if x[4] is not None else 9e9))
 
-        st.markdown(
-            f"<div style='margin:7px 0;background:#091421;border:1px solid rgba(167,139,250,0.32);"
-            f"border-radius:9px;overflow:hidden;'>"
-            f"<div style='padding:8px 11px;background:linear-gradient(90deg,"
-            f"rgba(167,139,250,0.14),rgba(15,23,42,0.5));border-bottom:1px solid rgba(167,139,250,0.28);'>"
-            f"<div style='font-size:0.8rem;font-weight:800;color:#c4b5fd;letter-spacing:0.03em;'>"
-            f"⚖ BU HİSSENİN KARNESİ · {_disp}</div>"
-            f"<div style='font-size:0.58rem;color:#64748b;margin-top:1px;'>"
-            f"bugünkü durumların geçmiş getirisi — evren, T+10 · alfa değil ham getiri</div></div>"
-            f"{_base_html}{_row_html}"
-            f"<div style='padding:7px 11px;font-size:0.58rem;color:#64748b;font-style:italic;"
-            f"line-height:1.4;border-top:1px solid #29465f;background:rgba(2,6,17,0.4);'>"
-            f"ⓘ Bunlar hissenin KENDİ geçmişi değil — bu durumdaki TÜM sinyallerin evren "
-            f"ortalaması. <b style='color:#4ade80;'>SAĞLAM</b> = üç vadede de pozitif, "
-            f"örneklemi yeterli. İşaretsizler henüz o sınavdan geçmedi.</div></div>",
-            unsafe_allow_html=True)
+        _grid = ("<span></span>"
+                 "<span style='font-size:0.54rem;color:#64748b;font-weight:700;"
+                 "text-align:right;white-space:nowrap;'>10g α</span>"
+                 "<span style='font-size:0.54rem;color:#64748b;font-weight:700;"
+                 "text-align:right;white-space:nowrap;'>20g α</span>")
+        for _t, _bug, _a, _b, _d10, _tip in _meas:
+            _bugtxt = (f" <span style='color:#64748b;font-weight:400;'>{_bug}</span>"
+                       if _bug else "")
+            _grid += (
+                f"<span title='{_tip}' style='color:#cbd5e1;'>{_t}{_bugtxt}</span>"
+                f"<span style='font-weight:700;text-align:right;color:{_clr(_a,_b10)};'>{_num(_a)}</span>"
+                f"<span style='font-weight:700;text-align:right;color:{_clr(_b,_b20)};'>{_num(_b)}</span>")
+        for _t, _rs in _miss:
+            _grid += (
+                f"<span title='{_rs}' style='color:#64748b;'>{_t}</span>"
+                f"<span style='text-align:right;color:#64748b;'>—</span>"
+                f"<span style='text-align:right;color:#64748b;'>—</span>")
+
+        # Çip + özet — ALFA-TABANINA göre (akranlarından iyi mi?)
+        _diffs = [(_t, (_a - _b10),
+                   ((_b - _b20) if (_b is not None and _b20 is not None) else None))
+                  for _t, _bug, _a, _b, _d10, _tip in _meas
+                  if _a is not None and _b10 is not None]
+        if _diffs:
+            _sumd = sum(_d for _, _d, _ in _diffs)
+            if _sumd < -0.3:
+                _ov, _ovc, _ovbg = "akranların altında", "#f87171", "rgba(248,113,113,0.12)"
+            elif _sumd > 0.3:
+                _ov, _ovc, _ovbg = "akranların üstünde", "#34d399", "rgba(52,211,153,0.12)"
+            else:
+                _ov, _ovc, _ovbg = "akran düzeyinde", "#94a3b8", "rgba(148,163,184,0.12)"
+        else:
+            _ov, _ovc, _ovbg = "veri yok", "#94a3b8", "rgba(148,163,184,0.12)"
+
+        _summ = ""
+        if _diffs:
+            def _avgd(_x):
+                _, _dd10, _dd20 = _x
+                return _dd10 if _dd20 is None else (_dd10 + _dd20) / 2.0
+            _best = max(_diffs, key=_avgd)
+            _wrst = min(_diffs, key=_avgd)
+            _bc = "#34d399" if _avgd(_best) > 0.15 else "#94a3b8"
+            _wc = "#f87171" if _avgd(_wrst) < -0.15 else "#94a3b8"
+            _summ = (f"Öne çıkan: <b style='color:{_bc};'>{_best[0]}</b> — akranlarını geçiyor; "
+                     f"en geride: <b style='color:{_wc};'>{_wrst[0]}</b>.")
+        _summ_html = ""
+        if _summ:
+            _summ_html = (
+                f"<div style='margin-top:7px;font-size:0.6rem;color:#cbd5e1;"
+                f"line-height:1.4;border-left:2px solid #38bdf8;padding-left:7px;'>{_summ}</div>")
+
+        _idx_note = ""
+        if _is_idx:
+            _idx_note = (
+                "<div style='margin-top:5px;font-size:0.53rem;color:#64748b;'>"
+                "kova karneleri hisse evreninden; endeksin kendi geçmişi değil</div>")
+
+        _bt10 = f"{abs(_b10):.1f}" if _b10 is not None else "~1.3"
+        return (
+            f"<div style='margin:0 0 6px;padding:8px 10px;background:#091421;"
+            f"border:1px solid rgba(56,189,248,0.28);border-radius:8px;'>"
+            f"<div style='display:flex;justify-content:space-between;align-items:center;'>"
+            f"<span style='font-size:0.68rem;font-weight:800;color:#e2e8f0;'>"
+            f"📊 {_disp} BENZERLERİ · ENDEKSE GÖRE</span>"
+            f"<span style='font-size:0.55rem;font-weight:700;color:{_ovc};"
+            f"background:{_ovbg};padding:1px 6px;border-radius:4px;'>{_ov}</span></div>"
+            f"<div style='margin:3px 0 7px;font-size:0.6rem;color:#94a3b8;line-height:1.3;'>"
+            f"Geçmişteki benzerlere göre {_disp} endeksi 10g / 20g ne kadar geçer/geride kalır?</div>"
+            f"<div style='display:grid;grid-template-columns:1fr 50px 50px;"
+            f"gap:3px 6px;align-items:baseline;font-size:0.63rem;'>{_grid}</div>"
+            f"{_summ_html}"
+            f"<div style='margin-top:7px;font-size:0.53rem;color:#64748b;line-height:1.32;'>"
+            f"α = endekse göre fazla getiri. Benzer sinyaller endeksin ~%{_bt10} altında (taban); "
+            f"renk buna göre — eksi ama tabandan iyi = yeşil. Kesin kehanet değil, arşiv "
+            f"ortalaması (180g). Ham getiri + detay: fareyle üstüne gel.</div>{_idx_note}</div>")
     except Exception:
-        pass
+        return ""
 
 
 def _render_genel_ozet_panel():
@@ -14987,8 +15100,11 @@ def _render_genel_ozet_panel():
                 f"⚠️ Panel hatası{_gs_err_loc}:<br>{_gs_err_msg}</div>"
             )
 
+        _karne_html = _render_hisse_karne_panel()
         if _gs_top_summary_html:
-            _gs_items_html = _gs_top_summary_html + _gs_items_html
+            _gs_items_html = _gs_top_summary_html + _karne_html + _gs_items_html
+        elif _karne_html:
+            _gs_items_html = _karne_html + _gs_items_html
 
         # ── Tatil günü chip'i — panel içeriğinin en başına yerleştir ─────
         try:
@@ -15270,11 +15386,7 @@ with st.sidebar:
     # --- GENEL ÖZET — başlığın hemen altında ---
     _render_genel_ozet_panel()
 
-    # --- BU HİSSENİN KARNESİ (bulgu 7 · Bölüm 3, 2 Eyl 2026) ---
-    # GENEL ÖZET'in hemen altı: açık hissenin bugünkü durumlarını ölçüm arşivine
-    # bağlar. Ölçüm arşivi (115K sinyal) eskiden 2 kapalı menüde, hisseyle
-    # bağlantısız duruyordu.
-    _render_hisse_karne_panel()
+    # BU HİSSENİN KARNESİ artık GENEL ÖZET içindeki KISA OKUMA'nın hemen altında çiziliyor.
 
     # (TEKNİK GÖRÜNÜM + ICT BOTTOM LINE → sağ sütuna CANLI SİNYALLER altına taşındı)
 
@@ -18722,7 +18834,16 @@ if st.session_state.generate_prompt:
             _klm = _liquidity_manip(_kdf)
             _svk = dna['smart_volume']
             _pk  = float(_kdf['Close'].iloc[-1])
-            _rok = terazi_core.risk_odul_kapisi(_pk, _svk.get('vah'), _svk.get('val'), _svk.get('va_pos'))
+            _rr_yon = None
+            try:
+                _gsv_net = float((_prompt_gsv or {}).get('_gs_net'))
+                _rr_yon = ('yukari' if _gsv_net > 0 else
+                           ('asagi' if _gsv_net < 0 else None))
+            except (TypeError, ValueError):
+                pass
+            _rok = terazi_core.risk_odul_kapisi(
+                _pk, _svk.get('vah'), _svk.get('val'), _svk.get('va_pos'),
+                yon=_rr_yon, df=_kdf)
             _kap = terazi_core.kapi_hukmu(_klm.get('tier'), _klm.get('manip'), _rok, adv_mn=_klm.get('adv_mn'))
             if _kap:
                 _em_kapi = (f"\n  kapi_durumu: KAPI {_kap['etiket']} — {_kap['sebep']}. "
@@ -21498,8 +21619,8 @@ def _render_left_col():
     }
     </style>""", unsafe_allow_html=True)
 
-    # 📈 SMC Concept Analiz (SMC Derin Yapı) — 22 Haz 2026: "Trend & Seviyeler"
-    #    panelinin altına taşındı (aşağıda, render_levels_card sonrası). İnfografik tepeye geldi.
+    # 📈 SMC Concept Analiz (SMC Derin Yapı) — ayrı seviyeler paneli kaldırıldı;
+    #    infografik Teknik Yol Haritası'nın ardından aşağıda kalır.
 
 
     # ── Stale data uyarısı (veri güncellenemediğinde) ─────────────────
@@ -21831,11 +21952,10 @@ def _render_left_col():
     else:
         _mm_elite_teaser("ICT Yapı Gözlemi")
 
-    # 4. Kritik Seviyeler
-    with _Timer("PANEL: render_levels_card"):
-        render_levels_card(st.session_state.ticker)
-    # 📈 SMART MONEY CONCEPT ANALİZ (SMC Derin Yapı) — 22 Haz 2026: infografik tepeye
-    #    geçince buraya (Trend & Seviyeler altına) taşındı.
+    # 4. Kritik Seviyeler: Seviye Merdiveni artık Teknik Yol Haritası'nın
+    #    ilk kutusunda gösteriliyor; ayrı Trend & Seviyeler paneli yok.
+    # 📈 SMART MONEY CONCEPT ANALİZ (SMC Derin Yapı) — infografik tepeye
+    #    geçince burada kalır.
     with st.expander(f"📈 Smart Money Concept Analiz: SMC Derin Yapı Grafiğini İncelemek için TIKLA  ·  {_disp_name}", expanded=False):
         _tb_zoom, _tb_full, _ = st.columns([1, 1, 8])
         with _tb_zoom:
@@ -23453,7 +23573,9 @@ def _render_ekran_v2_deneme(ticker):
         try:
             if _df is not None and len(_df) >= 20 and _px:
                 _klm_v2 = _liquidity_manip(_df)
-                _rok_v2 = terazi_core.risk_odul_kapisi(_px, _vah, _val, _olc.get('va_pos'))
+                _rok_v2 = terazi_core.risk_odul_kapisi(
+                    _px, _vah, _val, _olc.get('va_pos'),
+                    yon=ter.get('yon'), df=_df)
                 _kapi_v2 = terazi_core.kapi_hukmu(_klm_v2.get('tier'), _klm_v2.get('manip'),
                                                   _rok_v2, adv_mn=_klm_v2.get('adv_mn'))
         except Exception:
@@ -23866,7 +23988,7 @@ def _live_scanner_hits(ticker, category):
     return hits
 
 
-def _giris_kalitesi(ticker):
+def _giris_kalitesi(ticker, shared_pack=None):
     """🚦 GİRİŞ KALİTESİ — güvenlik kapısının TEK okuma noktası (18 Ağu 2026).
 
     Kapının hükmü iki yerde birden gösteriliyor (FİYAT kartı üstü + tarama üyelik
@@ -23877,45 +23999,60 @@ def _giris_kalitesi(ticker):
       'zayif'     → risk-ödül elverişsiz (kırmızı, FİYAT kartı üstünde)
       'temkinli'  → likidite/pompa/sınırda R (amber, tarama panelinde)
       'gecti'     → kapı temiz VE risk-ödül ÖLÇÜLEBİLDİ (yeşil, FİYAT kartı üstünde)
-      'olcum_yok' → fiyat değer alanı dışında; VA tabanlı hedef/stop tanımsız (gri)
+      'olcum_yok' → yön veya geçerli hedef/stop seviyesi bulunamadı (gri)
     Veri yoksa None. 'gecti' ile 'olcum_yok' ayrımı şart: kapı susunca yeşil basmak
     ölçülmemiş şeyi ölçülmüş gibi göstermek olur."""
     try:
-        _df = get_safe_historical_data(ticker, period="1y")
+        _shared = shared_pack if isinstance(shared_pack, dict) else {}
+        _df = _shared.get('_gs_df')
+        if _df is None or getattr(_df, 'empty', True):
+            _df = get_safe_historical_data(ticker, period="1y")
         if _df is None or len(_df) < 20:
             return None
-        _price = float(_df['Close'].iloc[-1])
+        _price = _shared.get('_curr_close_val')
+        if _price is None:
+            _price = float(_df['Close'].iloc[-1])
+        else:
+            _price = float(_price)
         _lm = _liquidity_manip(_df) or {}
         _ro, _olculebilir = None, False
+        _rr_yon = None
         try:
-            _pa = calculate_price_action_dna(ticker)
+            _gs_net = float(_shared.get('_gs_net'))
+            _rr_yon = 'yukari' if _gs_net > 0 else ('asagi' if _gs_net < 0 else None)
+        except (TypeError, ValueError):
+            _rr_yon = None
+        try:
+            _pa = _shared.get('_gs_dna') or calculate_price_action_dna(ticker)
             _sv = _pa.get('smart_volume', {}) if _pa else {}
             _vah, _val, _vapos = _sv.get('vah'), _sv.get('val'), _sv.get('va_pos')
-            _ro = terazi_core.risk_odul_kapisi(_price, _vah, _val, _vapos)
-            # Kapı ancak fiyat değer alanının İÇİNDEyken konuşabiliyor (terazi_core kuralı)
-            _olculebilir = ('İÇİNDE' in str(_vapos)
-                            and float(_val) < _price < float(_vah))
+            _ro = terazi_core.risk_odul_kapisi(
+                _price, _vah, _val, _vapos, yon=_rr_yon, df=_df)
+            _olculebilir = isinstance(_ro, dict) and _ro.get('r') is not None
         except Exception:
             pass
         _h = terazi_core.kapi_hukmu(_lm.get('tier'), _lm.get('manip'), _ro,
                                     adv_mn=_lm.get('adv_mn'))
+        _rr = _ro.get('r') if isinstance(_ro, dict) else None
+        _rr_side = ('Long' if _rr_yon == 'yukari' else
+                    ('Short' if _rr_yon == 'asagi' else 'RR'))
+        _rr_txt = (f"{_rr_side} RR: 1/{_rr:.1f}".replace('.', ',')
+                   if _rr is not None else f"{_rr_side} RR: ölçülemedi")
         if _h:
+            _h = dict(_h)
+            _h['taraf'] = _rr_txt
             return _h
         if _olculebilir:
-            # 2 Eyl 2026 — TARAF ETİKETİ. Kapı, risk-ödülü DEĞER ALANI geometrisiyle
-            # kuruyor: yukarı hedef = üst sınır, aşağı savunma = alt sınır. Yani her
-            # zaman UZUN taraf için hesap yapıyor ve terazinin hükmüne hiç bakmıyor.
-            # 1 Eyl 2026 XU100'de terazi AŞAĞI derken kutu yeşil "ELVERİŞLİ" diyordu.
-            # Hükmü DEĞİŞTİRMİYORUZ (o yeni kural olur, ölçüm ister) — sadece kutunun
-            # hangi tarafı fiyatladığını söylüyoruz ki koşulsuz yeşil okunmasın.
+            _rr_word = 'yukarı' if _rr_yon == 'yukari' else 'aşağı'
             return {'durum': 'gecti', 'etiket': 'ELVERİŞLİ', 'renk': '#22c55e',
-                    'taraf': 'uzun taraf için',
-                    'sebep': ('uzun taraf için ölçüldü — yukarı kazanç alanı aşağı '
-                              'savunma mesafesinden geniş · likidite ve pompa riski '
+                    'taraf': _rr_txt,
+                    'sebep': (f'RR hesabı ölçüldü — {_rr_word} hedef alanı risk '
+                              f'mesafesinden geniş · likidite ve pompa riski '
                               'uyarısı yok')}
         return {'durum': 'olcum_yok', 'etiket': 'ÖLÇÜLEMEDİ', 'renk': '#94a3b8',
-                'sebep': ('fiyat değer alanının dışında — yakın hedef/stop bu yöntemle '
-                          'tanımsız, kapı hüküm vermiyor')}
+                'taraf': _rr_txt,
+                'sebep': ('yön veya geçerli hedef/stop seviyesi bulunamadı — '
+                          'RR hesabı bu nedenle ölçülemedi')}
     except Exception:
         return None
 
@@ -24155,12 +24292,14 @@ def render_scanner_membership_panel(ticker):
         # 18 Ağu 2026: ELVERİŞLİ / ZAYIF hükmü FİYAT kartının üstüne taşındı. Burada
         # SADECE ara ton (TEMKİNLİ) kalıyor — ekranda tek bilgi iki yerde çıkmasın.
         try:
-            _kapi = _giris_kalitesi(ticker)
+            _kapi_pack = compute_genel_ozet_pack(
+                ticker, st.session_state.get("bist_market_status", {})) or {}
+            _kapi = _giris_kalitesi(ticker, shared_pack=_kapi_pack)
             if _kapi and _kapi.get('durum') == 'temkinli':
                 _kc = _kapi['renk']
                 _wbar = (f"<div style='background:{_kc}22;border-bottom:1px solid {_kc}55;"
                          f"padding:5px 11px;font-size:0.72rem;color:{_kc};font-weight:700;'>"
-                         f"🚦 GİRİŞ KALİTESİ: {_kapi['etiket']} — {_kapi['sebep']}</div>")
+                         f"🚦 Giriş: Risk-Getiri hesabı — {_kapi['etiket']} — {_kapi['sebep']}</div>")
                 _body = _wbar + _body
         except Exception:
             pass
@@ -24228,6 +24367,28 @@ def _render_right_col():
         price_val  = info.get('price', 0)
         change_val = info.get('change_pct', 0)
         _tk        = st.session_state.ticker
+
+        # Sol Genel Özet ile sağ fiyat/RR kartı aynı hesap paketini kullansın.
+        # fetch_stock_info ayrı bir canlı okuma yaptığı için fiyat kartı bazen
+        # sol taraftaki fotoğraftan birkaç tick farklı kalabiliyordu.
+        _shared_ui_pack = {}
+        try:
+            _shared_ui_pack = compute_genel_ozet_pack(
+                _tk, st.session_state.get("bist_market_status", {})) or {}
+            _shared_px = _shared_ui_pack.get('_curr_close_val')
+            if _shared_px is not None:
+                price_val = float(_shared_px)
+                _shared_df = _shared_ui_pack.get('_gs_df')
+                _shared_close = (_shared_df.get('Close')
+                                 if _shared_df is not None else None)
+                if isinstance(_shared_close, pd.DataFrame):
+                    _shared_close = _shared_close.iloc[:, 0]
+                if _shared_close is not None and len(_shared_close) >= 2:
+                    _shared_prev = float(_shared_close.iloc[-2])
+                    change_val = ((price_val - _shared_prev) / _shared_prev * 100
+                                  if _shared_prev else 0.0)
+        except Exception:
+            pass
 
         # Renk paleti → satır ~322'deki KART_RENK dict'inden gelir (orada kutucuklarla düzenle)
         _CLR_POS_BG   = KART_RENK["pos_bg"]
@@ -24631,12 +24792,7 @@ def _render_right_col():
         # Fiyat kartının kırmızı orta alanı — canlı 10 maddelik kanıt hiyerarşisi.
         # Üst fiyat şeridi ve alttaki RSI uç uyarısı korunur; eski RS/Momentum ve
         # RSI/Hacim/Beta satırları yalnızca bu alanda yerini hiyerarşiye bırakır.
-        _hier_pack = {}
-        try:
-            _hier_pack = compute_genel_ozet_pack(
-                _tk, st.session_state.get("bist_market_status", {})) or {}
-        except Exception:
-            pass
+        _hier_pack = _shared_ui_pack
 
         _h_net_txt = _hier_pack.get("_gs_net_txt", "—")
         _h_net_col = _hier_pack.get("_gs_net_clr", _CLR_TEXT_SEC)
@@ -25089,7 +25245,8 @@ def _render_right_col():
         # "piyasa genişliği" demek yanıltıcıydı + her render'da 8 ek veri okuması yapıyordu.
         _kapi_strip_html = ""
         try:
-            _gk = _giris_kalitesi(st.session_state.ticker)
+            _gk = _giris_kalitesi(
+                st.session_state.ticker, shared_pack=_hier_pack)
             if _gk and _gk.get('durum') in ('gecti', 'zayif', 'olcum_yok'):
                 _gkc = _gk['renk']
                 _gk_ikon = {'gecti': '✅', 'zayif': '⛔', 'olcum_yok': '◻'}[_gk['durum']]
@@ -25098,7 +25255,7 @@ def _render_right_col():
                     f"border-top:1px solid {_CLR_DIVIDER};border-left:3px solid {_gkc};'>"
                     f"<div style='display:flex;align-items:baseline;gap:8px;'>"
                     f"<span style='font-size:0.60rem;font-weight:900;letter-spacing:0.13em;"
-                    f"color:#91b7d6;'>GİRİŞ KALİTESİ</span>"
+                    f"color:#91b7d6;'>Giriş: Risk-Getiri hesabı</span>"
                     f"<span style='font-size:0.86rem;font-weight:900;color:{_gkc};"
                     f"line-height:1.15;'>{_gk_ikon} {_gk['etiket']}</span>"
                     + (f"<span style='font-size:0.55rem;font-weight:700;"
