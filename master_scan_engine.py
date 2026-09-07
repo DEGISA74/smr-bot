@@ -26,6 +26,7 @@ import master_scan_progress
 
 
 _SERVICE_NAMESPACE: Mapping[str, Any] | None = None
+ROOT = Path(__file__).resolve().parent
 
 # Yan-kayıtların hangi orkestrasyon sözleşmesiyle üretildiğini açıkça damgala.
 # Bu sürüm hesap motoru değil, yalnızca Master Scan sıra/servis sözleşmesidir.
@@ -186,7 +187,8 @@ def _ms_write_frontend_preview(category: str, er_df: Any) -> None:
             'public_items': _preview_items[:_show_n],
             'locked_count': max(0, len(_all_primary) - _show_n),
         }
-        _frontend_dir = Path(r'C:\Users\LENOVO\OneDrive\Desktop\Patron Terminal\public\frontend')
+        _frontend_dir = ROOT / 'public' / 'frontend'
+        _frontend_dir.mkdir(parents=True, exist_ok=True)
         (_frontend_dir / 'erken_radar_preview.json').write_text(
             json.dumps(_preview_payload, ensure_ascii=False, indent=2), encoding='utf-8'
         )
