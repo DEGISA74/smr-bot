@@ -8,6 +8,7 @@ split scores (yapısal/tactical) + risk profile + liquidity manip + breakout sta
 (_compute_signal_features + log_scan_signal + scan_*_batch) app.py'de KALDI.
 Fotoğraf: golden_record smart_money_score/master_score/... hedefleri (sıfır fark).
 """
+import os
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -329,9 +330,14 @@ def _compute_risk_profile(ticker: str) -> dict:
         # Dipten toparlanma: 1y dibinden bu yana
         out['dipten_recovery'] = round(((last/low_1y) - 1) * 100, 1) if low_1y > 0 else None
 
-        # ── BETA (XU100'e göre, son 60g) ──
+        # ── BETA (kendi piyasa endeksine göre, son 60g) ──
         try:
-            bench = get_safe_historical_data("XU100.IS", period="1y")
+            _bench_ticker = (
+                "^GSPC"
+                if os.environ.get("SMR_MARKET_PROFILE", "").upper() == "US200"
+                else "XU100.IS"
+            )
+            bench = get_safe_historical_data(_bench_ticker, period="1y")
             if bench is not None and not bench.empty and len(bench) >= 60:
                 stock_ret = close.pct_change().dropna()
                 bench_ret = bench['Close'].pct_change().dropna()

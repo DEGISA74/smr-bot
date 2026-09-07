@@ -266,12 +266,17 @@ def classify_state(r, q, close, high, i):
         return 'hazir', ''
 
 
-def scan_universe(veriler_dir, lik_taban=500_000_000):
-    """Tum likit (>=lik_taban TL/gun) parquet'leri tarar, 3 kutuya ayirir.
+def scan_universe(veriler_dir, lik_taban=500_000_000, benchmark_symbol="XU100.IS",
+                  symbols=None):
+    """Parquet evrenini 3 kutulu formasyon radarıyla tarar.
+
+    Varsayılanlar BIST davranışını korur. ABD evreni çağıranı kendi benchmark
+    dosyasını ve sembol listesini vererek aynı formasyon motorunu kullanabilir.
     Doner: (hazir, sikis, kirdi, target_date). kirdi satirlarinda 'durum':
       taze (yeni kirdi, ustunde) / retest (boyna dondu, ustunde tutuyor) /
       extended (ucmus) / fail (altina kapandi) / retest_wait (hemen altinda)."""
-    xu = pd.read_parquet(os.path.join(veriler_dir, 'XU100.IS_1d.parquet'))
+    bench_path = os.path.join(veriler_dir, f'{benchmark_symbol}_1d.parquet')
+    xu = pd.read_parquet(bench_path)
     xu = xu[~xu.index.duplicated()].sort_index(); xuc = xu['Close']
     today = pd.Timestamp.now(tz='UTC').date()
     xt = xu[xu.index.date >= today]
@@ -280,9 +285,13 @@ def scan_universe(veriler_dir, lik_taban=500_000_000):
         xuc = xuc[xuc.index.date < today]
     hazir, sikis, kirdi = [], [], []
     target_date = None
-    for f in glob.glob(os.path.join(veriler_dir, '*.IS_1d.parquet')):
-        tk = os.path.basename(f).replace('.IS_1d.parquet', '')
-        if tk in ENDEKS:
+    file_glob = '*_1d.parquet' if symbols is not None else '*.IS_1d.parquet'
+    wanted = {str(symbol).upper().replace('.IS', '') for symbol in symbols} if symbols else None
+    for f in glob.glob(os.path.join(veriler_dir, file_glob)):
+        tk = os.path.basename(f).replace('_1d.parquet', '').replace('.IS', '')
+        if tk in ENDEKS or tk == str(benchmark_symbol).upper().replace('.IS', ''):
+            continue
+        if wanted is not None and tk.upper() not in wanted:
             continue
         try:
             d = pd.read_parquet(f); d = d[~d.index.duplicated()].sort_index()

@@ -91,3 +91,6 @@ cizgi_yapi_log.jsonl
 
 # 28 Agu 2026 — Faz 0 derin fiyat arsivi (GB olcegi, git e girmez)
 arsiv_derin/
+
+# S&P 200 yerel veri aynası ve çalışma zamanı manifestleri
+us200_data/

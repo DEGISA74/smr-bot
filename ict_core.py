@@ -1248,14 +1248,19 @@ def _calculate_price_action_dna_cached(ticker, cache_key):
         # today_v: df'den gelen c1_v kullan — get_safe_historical_data zaten
         # apply_volume_projection çalıştırdı, yani c1_v = gün içi projeksiyon uygulanmış tam gün tahmini.
         # Kural: geçmiş barlara dokunma, sadece son barı normalize et.
+        _us_mirror_only = os.environ.get("SMR_US_MIRROR_READONLY", "0") == "1"
         with _Timer("    PA-DNA: yf.Ticker.fast_info NETWORK"):
-            try:
-                _yf_info     = yf.Ticker(ticker).fast_info
-                _avg_vol_yf  = float(getattr(_yf_info, 'three_month_average_volume', 0) or 0)
-                _fi_last_vol = float(getattr(_yf_info, 'last_volume', 0) or 0)
-            except Exception:
-                _avg_vol_yf  = 0.0
+            if _us_mirror_only:
+                _avg_vol_yf = 0.0
                 _fi_last_vol = 0.0
+            else:
+                try:
+                    _yf_info     = yf.Ticker(ticker).fast_info
+                    _avg_vol_yf  = float(getattr(_yf_info, 'three_month_average_volume', 0) or 0)
+                    _fi_last_vol = float(getattr(_yf_info, 'last_volume', 0) or 0)
+                except Exception:
+                    _avg_vol_yf  = 0.0
+                    _fi_last_vol = 0.0
 
         # Bugünkü bar hacmi 0 veya çok küçükse (endeks/API gecikmesi) → fast_info.last_volume ile doldur
         # Bu sadece raw_today_v için geçerli; geçmiş barlara dokunmuyoruz.
@@ -1316,7 +1321,7 @@ def _calculate_price_action_dna_cached(ticker, cache_key):
             except Exception:
                 pass
 
-        if _avg_stale and not _is_crypto:
+        if _avg_stale and not _is_crypto and not _us_mirror_only:
             if _PROFILE_ENABLED:
                 _tlog("    ⚠ PA-DNA: _avg_stale=TRUE → 2 ek Yahoo network çağrısı yapılacak!", 0.0, extra=f"ticker={ticker}")
             # Parquet/cache bozuk: iki farklı yfinance endpoint'i dene.

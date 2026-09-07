@@ -22,14 +22,15 @@ import numpy as np
 import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DEPO_4S = os.path.join(BASE_DIR, "veriler_4s")
+DEPO_4S = os.environ.get("SMR_4H_DIR", os.path.join(BASE_DIR, "veriler_4s"))
+_US200_MODE = os.environ.get("SMR_MARKET_PROFILE", "").upper() == "US200"
 
 
 # Bayat eşiği: 4S'te günde ~2 bar oluşur. 3 takvim günü ≈ 6 bar boşluk; RSI 14
 # barla hesaplandığı için bunun ötesi "eski veriyle hüküm" demektir.
 BAYAT_GUN_ESIGI = 3
 # BIST seansı 18:10'da biter; 18:15'ten önce günün son barı KAPANMAMIŞTIR.
-_SEANS_KAPANIS = _dtime(18, 15)
+_SEANS_KAPANIS = _dtime(16, 5) if _US200_MODE else _dtime(18, 15)
 
 
 def _son_bar_yarim_mi(df: pd.DataFrame) -> bool:
@@ -68,7 +69,8 @@ def get_4s_data(symbol: str) -> pd.DataFrame | None:
     # hisse zaten None döner.
 
     # 1. Dosya
-    path = os.path.join(DEPO_4S, f"{sym}.IS_4h.parquet")
+    file_name = f"{sym}_4h.parquet" if _US200_MODE else f"{sym}.IS_4h.parquet"
+    path = os.path.join(DEPO_4S, file_name)
     if not os.path.exists(path):
         return None
 

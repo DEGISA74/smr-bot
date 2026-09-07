@@ -3126,10 +3126,11 @@ def scan_guclu_donus_batch(asset_list):
     data = get_batch_data_cached(asset_list, period="1y")
     if data.empty: return pd.DataFrame()
 
-    # ── BIST100 göreceli güç için ────────────────────────────────────────
+    # ── Kategori endeksine göre göreceli güç ─────────────────────────────
     bist100_close = None
     try:
-        _bist_ticker = "XU100.IS"
+        _cat_gd = st.session_state.get('category', '')
+        _bist_ticker = "XU100.IS" if "BIST" in _cat_gd else "^GSPC"
         _bist_data   = get_batch_data_cached([_bist_ticker], period="1y")
         if not _bist_data.empty:
             if isinstance(_bist_data.columns, pd.MultiIndex):
@@ -3172,12 +3173,16 @@ def scan_guclu_donus_batch(asset_list):
     return df_out
 
 def scan_wilder_positive_divergence_batch(asset_list):
-    """Wilder RSI pozitif uyumsuzluk — taze, geç kalmamış BIST dönüşleri."""
+    """Wilder RSI pozitif uyumsuzluk — taze, geç kalmamış hisse dönüşleri."""
+    _us200_mode = os.environ.get("SMR_MARKET_PROFILE", "").upper() == "US200"
     bist_assets = [
         str(symbol).upper()
         for symbol in asset_list
-        if str(symbol).upper().endswith(".IS")
+        if (_us200_mode or str(symbol).upper().endswith(".IS"))
         and not str(symbol).upper().startswith("XU")
+        and not str(symbol).upper().startswith("^")
+        and not str(symbol).upper().endswith("=F")
+        and "-USD" not in str(symbol).upper()
     ]
     if not bist_assets:
         return _empty_wilder_result_frame()
@@ -3248,10 +3253,12 @@ def scan_prelaunch_bos(asset_list):
 
     bist100_close = None
     try:
-        _bd = get_batch_data_cached(["XU100.IS"], period="1y")
+        _cat_pb = st.session_state.get('category', '')
+        _bench_pb = "XU100.IS" if "BIST" in _cat_pb else "^GSPC"
+        _bd = get_batch_data_cached([_bench_pb], period="1y")
         if not _bd.empty:
             if isinstance(_bd.columns, pd.MultiIndex):
-                bist100_close = _bd["XU100.IS"]['Close'].dropna()
+                bist100_close = _bd[_bench_pb]['Close'].dropna()
             else:
                 bist100_close = _bd['Close'].dropna()
     except Exception:
@@ -3658,13 +3665,18 @@ def scan_erken_radar_batch(asset_list):
     if not stock_list:
         return pd.DataFrame()
 
-    # XU100 bench bir kez al (parquet'ten, live patch atlanır - flag set)
+    # Kategori benchmark'ını bir kez al (parquet'ten, live patch atlanır).
     try:
-        bench_df = get_safe_historical_data("XU100.IS")
+        _cat_er = st.session_state.get('category', '')
+        _is_bist_er = "BIST" in _cat_er
+        bench_df = get_safe_historical_data("XU100.IS" if _is_bist_er else "^GSPC")
     except Exception:
         bench_df = None
     try:
-        _v2_top10_symbols = _published_v2_top10_symbols(bench_df.index[-1]) if bench_df is not None else set()
+        _v2_top10_symbols = (
+            _published_v2_top10_symbols(bench_df.index[-1])
+            if _is_bist_er and bench_df is not None else set()
+        )
     except Exception:
         _v2_top10_symbols = set()
 

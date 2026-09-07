@@ -247,7 +247,11 @@ def _cizgi_yapi_scan():
     Her tarama günlük dosyaya yazılır (cizgi_yapi_log.jsonl) — getiri ölçümü
     ileride yapılacak, o gün elde veri olsun diye. Aynı gün tekrar yazmaz."""
     try:
-        _cy_sonuc = cizgi_yapi.tara_evren(CACHE_DIR)
+        _cy_sonuc = cizgi_yapi.tara_evren(
+            CACHE_DIR,
+            lik_taban=0 if _US200_MODE else cizgi_yapi.LIK_TABAN_VARSAYILAN,
+            semboller=set(US200_TICKERS) if _US200_MODE else None,
+        )
         try:
             cizgi_yapi.kaydet(_cy_sonuc)
         except Exception:
@@ -262,7 +266,12 @@ def _firsat_radar_scan():
     """Fırsat Radarı — radar_core.scan_universe (firsat_radari botu ile AYNI motor).
     Likit (≥500M) BIST formasyon kırılımlarını 3 kutuya ayırır: (hazir, sikis, kirdi, tarih)."""
     try:
-        return radar_core.scan_universe(CACHE_DIR)
+        return radar_core.scan_universe(
+            CACHE_DIR,
+            lik_taban=0 if _US200_MODE else 500_000_000,
+            benchmark_symbol="^GSPC" if _US200_MODE else "XU100.IS",
+            symbols=US200_TICKERS if _US200_MODE else None,
+        )
     except Exception:
         return ([], [], [], None)
 
@@ -1933,7 +1942,7 @@ def _collect_kanit_context(
                     _rel_st = _udvr_st = None
                     try:
                         _bench_flow = get_safe_historical_data(
-                            "XU100.IS", period="3mo")
+                            "^GSPC" if _US200_MODE else "XU100.IS", period="3mo")
                         if _bench_flow is not None and len(_bench_flow) >= 25:
                             _rr = compute_relative_obv_state(
                                 _df_flow, _bench_flow, lookback=20)
@@ -2034,11 +2043,13 @@ def _toplu_terazi_candidate_pool():
         _sym = str(symbol or '').strip()
         if not _sym:
             return
-        if ('.IS' not in _sym and not _sym.startswith(
+        if (not _US200_MODE and '.IS' not in _sym and not _sym.startswith(
                 ('XU', 'XB', 'XT', 'XY', '^'))
                 and not _sym.endswith('=F') and '-USD' not in _sym):
             _sym = f"{_sym}.IS"
         _clean = _sym.upper().replace('.IS', '')
+        if _US200_MODE and _clean not in set(US200_TICKERS):
+            return
         _entry = candidates.setdefault(
             _clean, {'ticker': _sym, 'sources': []})
         if source not in _entry['sources']:
@@ -2166,7 +2177,10 @@ def _compute_toplu_terazi_snapshot(
                 'ticker': _ticker, 'reason': 'hisse veri fotoğrafı yetersiz'})
             continue
         _snapshot_key = f"{_as_of}:{_clean}"
-        _data_map = {_ticker: _df, "XU100.IS": benchmark_df}
+        _data_map = {
+            _ticker: _df,
+            ("^GSPC" if _US200_MODE else "XU100.IS"): benchmark_df,
+        }
         try:
             with use_historical_data_snapshot(
                     _data_map, strict=True) as _snapshot_audit:
@@ -2497,6 +2511,10 @@ def get_feature_performance(feature_key: str, day_offset: int = 10, lookback_day
 
 @st.fragment
 def render_tarama_performans_panel():
+    if _US200_MODE:
+        with st.expander("🏆 TARAMA PERFORMANSI — ABD ölçümü", expanded=False):
+            st.info("S&P 200 sinyalleri ayrı kasada birikiyor. Yeterli 5/10/20 günlük örnek oluşmadan tarihsel getiri iddiası gösterilmez.")
+        return
     # ── TARAMA PERFORMANSI — Backtest (sol sütun EN ALT) ─────────────────────
     with st.expander("🏆 TARAMA PERFORMANSI — Backtest (Son 90 Gün)", expanded=False):
         import json as _bt_json
@@ -2870,6 +2888,10 @@ def render_tarama_performans_panel():
 
 @st.fragment
 def render_kriter_performans_panel():
+    if _US200_MODE:
+        with st.expander("🔬 KRİTER PERFORMANSI — ABD ölçümü", expanded=False):
+            st.info("Kriter karnesi S&P 200 sinyallerinden ayrı olarak oluşturuluyor; eski BIST örnekleri burada kullanılmaz.")
+        return
     # ── KRİTER PERFORMANSI — feature → ileri getiri (29 Haz 2026) ────────────
     with st.expander("🔬 KRİTER PERFORMANSI — Tek kriter ne kadar kazandırdı?", expanded=False):
         st.caption(
@@ -3052,14 +3074,22 @@ commodities_list = [
 
 # -> data_layer.py (Adim 6c, 9 Tem 2026): EVREN_BLOGU
 
-ASSET_GROUPS = {
-    "BIST 500 ": final_bist100_list,
-    "S&P 500": final_sp500_list,
-    "NASDAQ-100": raw_nasdaq,
-    "KRİPTO": final_crypto_list,
-    "EMTİALAR": commodities_list
-}
-INITIAL_CATEGORY = "BIST 500 "
+_US200_MODE = os.environ.get("SMR_MARKET_PROFILE", "").upper() == "US200"
+if _US200_MODE:
+    from us200_universe import US200_CATEGORY, US200_TICKERS
+    ASSET_GROUPS = {US200_CATEGORY: list(US200_TICKERS)}
+    INITIAL_CATEGORY = US200_CATEGORY
+    INITIAL_TICKER = US200_TICKERS[0]
+else:
+    ASSET_GROUPS = {
+        "BIST 500 ": final_bist100_list,
+        "S&P 500": final_sp500_list,
+        "NASDAQ-100": raw_nasdaq,
+        "KRİPTO": final_crypto_list,
+        "EMTİALAR": commodities_list
+    }
+    INITIAL_CATEGORY = "BIST 500 "
+    INITIAL_TICKER = "XU100.IS"
 
 
 
@@ -3070,7 +3100,7 @@ INITIAL_CATEGORY = "BIST 500 "
 # ==============================================================================
 # --- STATE YÖNETİMİ ---
 if 'category' not in st.session_state: st.session_state.category = INITIAL_CATEGORY
-if 'ticker' not in st.session_state: st.session_state.ticker = "XU100.IS"
+if 'ticker' not in st.session_state: st.session_state.ticker = INITIAL_TICKER
 if 'scan_data' not in st.session_state: st.session_state.scan_data = None
 if 'generate_prompt' not in st.session_state: st.session_state.generate_prompt = False
 if 'radar2_data' not in st.session_state: st.session_state.radar2_data = None
@@ -12680,8 +12710,7 @@ def _taban_cizgisi_stats():
     Döner: {'n','ret10','hit10'} veya None."""
     try:
         import sqlite3 as _sq
-        _cx = _sq.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                       "patron.db"))
+        _cx = _sq.connect(DB_FILE)
         try:
             _r = _cx.execute(
                 "SELECT COUNT(*), AVG(sr.ret_10g), "
@@ -12709,8 +12738,7 @@ def _alpha_taban():
     taban ~−1,3 (10g) / ~−2,2 (20g). Renk sıfıra göre olsa her şey kırmızı olurdu."""
     try:
         import sqlite3 as _sq
-        _cx = _sq.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                       "patron.db"))
+        _cx = _sq.connect(DB_FILE)
         try:
             _r = _cx.execute(
                 "SELECT AVG(sr.alpha_10g), AVG(sr.alpha_20g), COUNT(sr.alpha_10g) "
@@ -13625,13 +13653,18 @@ def _render_genel_ozet_panel():
                                   or _ev_tk.endswith("=F") or "-USD" in _ev_tk)
                 except Exception:
                     _ev_is_idx = False
-                if _ev_is_idx:
+                if _US200_MODE:
+                    _verdict_ev_html = (
+                        "<div style='font-size:0.72rem;color:#94a3b8;font-weight:600;"
+                        "margin-top:4px;'><span style='color:#64748b;font-size:0.64rem;'>◇</span> "
+                        "ABD geçmiş performans ölçümü bu kasada birikiyor.</div>")
+                elif _ev_is_idx:
                     _verdict_ev_html = (
                         "<div style='font-size:0.72rem;color:#94a3b8;font-weight:600;"
                         "margin-top:4px;'><span style='color:#64748b;font-size:0.64rem;'>◇</span> "
                         "Bu karne 600 BIST hissesinde ölçüldü — endeksin kendi karnesi yok.</div>")
                 try:
-                    _vst = (None if _ev_is_idx
+                    _vst = (None if (_ev_is_idx or _US200_MODE)
                             else get_genel_ozet_verdict_stats().get(_gs_net_txt))
                     if _vst:
                         _ev_r = _vst.get('ret10'); _ev_h = _vst.get('hit10')
@@ -15866,7 +15899,7 @@ if _MM_MEMBER_VIEW and st.session_state.get("_mm_quota_block"):
 # Veri kasası fiyat açısından onaylanmadan tarama
 # başlamaz. Ekran açık değilse popup da Master Scan de çalışmaz; kullanıcı
 # ekranındayken zaman çizelgesi güvenli biçimde burada yönetilir.
-_kapanis_auto_ready = _run_kapanis_master_automation()
+_kapanis_auto_ready = False if _US200_MODE else _run_kapanis_master_automation()
 
 # Faz 2 sürerken gelen bir kullanıcı etkileşimi Streamlit'i yeniden başlatır.
 # Yeni tarama veya panel işlemi araya girmeden önce açık kalan işleri sor.
@@ -15921,7 +15954,10 @@ if (
 
         # ── BIST TAKVİM KONTROLÜ ─────────────────────────────────────────────
         # Banner'ı st.empty() placeholder'a koy ki tarama bitince temizlenebilsin.
-        _ms_day_status, _ms_day_name = _bist_day_status()
+        if _US200_MODE:
+            _ms_day_status, _ms_day_name = "open", "ABD evreni"
+        else:
+            _ms_day_status, _ms_day_name = _bist_day_status()
         _holiday_ph = st.empty()
         if _ms_day_status == "closed":
             _holiday_ph.warning(
@@ -15966,8 +16002,8 @@ if (
         _ms_is_bist = "BIST" in str(_cat).upper()
         _ms_progress_steps = [
             *_MS_PHASE1_STEPS,
-            "golden", "radar2", "weak_pair", "radar1", "strong_reversal", "tavan",
-            *( ["flow_leaders"] if _ms_is_bist else [] ),
+            "golden", "radar2", "weak_pair", "radar1", "strong_reversal",
+            *( ["tavan", "flow_leaders"] if _ms_is_bist else [] ),
             "stp_uyanis", "top20",
         ]
         _ms_progress = master_scan_progress.MasterScanProgress(_cat, _ms_progress_steps)
@@ -21396,23 +21432,26 @@ def _render_left_col():
             pass
         _k1_rsi_col = "#4ade80" if _k1_rsi_val >= 55 else ("#f87171" if _k1_rsi_val <= 40 else "#f59e0b")
 
-        # ── RS Gücü (sadece BIST hisseleri) ───────────────────────────────────────
+        # ── RS Gücü (seçili piyasa endeksine göre) ─────────────────────────────────
         _k1_is_bist_stock = (
+            not _US200_MODE and
             not _k1_is_idx and
             "-" not in _k1_ticker and
             "=F" not in _k1_ticker and
             "^" not in _k1_ticker and
             "USD" not in _k1_ticker.upper()
         )
-        # ── KATMAN1 fix (15 Haz 2026): RS + Beta tek XU100 1y çağrısına birleştirildi.
+        _k1_is_equity = _k1_is_bist_stock or (_US200_MODE and not _k1_is_idx)
+        _k1_bench_ticker = "^GSPC" if _US200_MODE else "XU100"
+        # ── KATMAN1 fix (15 Haz 2026): RS + Beta tek benchmark çağrısına birleştirildi.
         # Eskiden RS Gücü "XU100 3mo" + Beta "XU100 1y" iki ayrı cache key → her açılışta
         # 1.7-3.5 sn boşa giderdi. Şimdi 1y bir kez çek, RS için son 90 günü slice et.
         _k1_xu_df_full = None  # 1y XU100 verisi — RS + Beta ortak kaynak
         _k1_rs_str = "—"; _k1_rs_col = "#64748b"
-        if _k1_is_bist_stock:
+        if _k1_is_equity:
             try:
-                with _Timer("KATMAN1: get_safe_historical_data(XU100,1y) — RS+Beta ortak"):
-                    _k1_xu_df_full = get_safe_historical_data("XU100", period="1y")
+                with _Timer("KATMAN1: get_safe_historical_data(benchmark,1y) — RS+Beta ortak"):
+                    _k1_xu_df_full = get_safe_historical_data(_k1_bench_ticker, period="1y")
                 # RS Gücü → 1y verinin son 90 günü (3mo eşdeğeri)
                 if _k1_xu_df_full is not None and _k1_df is not None and len(_k1_df) >= 21:
                     _k1_xu_df = _k1_xu_df_full.tail(90)
@@ -21445,11 +21484,11 @@ def _render_left_col():
         # ── Beta (BIST→XU100, diğer→^GSPC, endeks/emtia→—) ───────────────────────
         _k1_beta_str = "—"; _k1_beta_col = "#64748b"
         try:
-            _ref_ticker_b = "XU100" if _k1_is_bist_stock else (None if _k1_is_idx else "^GSPC")
+            _ref_ticker_b = _k1_bench_ticker if _k1_is_equity else (None if _k1_is_idx else "^GSPC")
             if _ref_ticker_b and _k1_df is not None and len(_k1_df) >= 60:
                 # BIST hissesi ise XU100 1y zaten yukarıda çekildi → tekrar isteme.
                 # Aksi halde (ABD hissesi) ^GSPC için bir kez çek.
-                if _k1_is_bist_stock and _k1_xu_df_full is not None:
+                if _k1_is_equity and _k1_xu_df_full is not None:
                     _ref_b = _k1_xu_df_full
                 else:
                     with _Timer("KATMAN1: get_safe_historical_data(beta_ref,1y)"):
@@ -22105,16 +22144,20 @@ def _render_left_col():
                 if isinstance(_stp_restore, dict) and 'stp_uyanis_data' in _stp_restore:
                     st.session_state.stp_uyanis_data = _stp_restore['stp_uyanis_data']
 
-            @st.fragment
-            def _tm_fragment():
-                # 30 Tem 2026 — FRAGMENT: "Kurulumu aç" popup'ı SADECE bu bölümü yeniler
-                # (tüm sayfa reload'u yok, hızlı hisseder). Hisse seçimi modül içinde
-                # st.rerun(scope="app") ile tüm sayfayı yeniler → üstteki paneller güncel.
-                trajectory_tarama_merkezi.render_trajectory_tarama_merkezi(
-                    st.session_state.get, _validate_toplu_terazi_payload,
-                    on_scan_result_click)
-                _master_scan_giris_senaryolari.render_master_scan_entry_scenarios()
-            _tm_fragment()
+            if _US200_MODE:
+                st.info("⏳ Tarama Merkezi'nin T+3 takip geçmişi ABD kasasında henüz oluşmadı. "
+                        "Bu bölüm veri biriktikçe yalnız S&P 200 sonuçlarıyla açılacak.")
+            else:
+                @st.fragment
+                def _tm_fragment():
+                    # 30 Tem 2026 — FRAGMENT: "Kurulumu aç" popup'ı SADECE bu bölümü yeniler
+                    # (tüm sayfa reload'u yok, hızlı hisseder). Hisse seçimi modül içinde
+                    # st.rerun(scope="app") ile tüm sayfayı yeniler → üstteki paneller güncel.
+                    trajectory_tarama_merkezi.render_trajectory_tarama_merkezi(
+                        st.session_state.get, _validate_toplu_terazi_payload,
+                        on_scan_result_click)
+                    _master_scan_giris_senaryolari.render_master_scan_entry_scenarios()
+                _tm_fragment()
             st.markdown(
                 "<div style='height:1px;background:#1e293b;margin:12px 0;'></div>",
                 unsafe_allow_html=True)
@@ -22539,9 +22582,8 @@ def _render_left_col():
         "Örnek yeterli olana kadar bu tarama ölçümde."
     )
     try:
-        _rsi_hist_conn = sqlite3.connect(
-            "file:patron.db?mode=ro", uri=True, timeout=2
-        )
+        _rsi_hist_uri = "file:" + os.path.abspath(DB_FILE).replace("\\", "/") + "?mode=ro"
+        _rsi_hist_conn = sqlite3.connect(_rsi_hist_uri, uri=True, timeout=2)
         _rsi_hist_rows = _rsi_hist_conn.execute(
             """
             SELECT resolution, peak_day
@@ -23007,11 +23049,13 @@ def _render_left_col():
     # ══════════════════════════════════════════════════════════
     # 18 Tem 2026: uydurma "90/100" çipi kaldırıldı — toplu karne henüz ölçülmedi
     # (firsat_radar_log VPS'te birikiyor; firsat_backtest.py olgunlaşınca sayı bağlanır).
+    _fr_market = "S&P 200" if _US200_MODE else "BIST"
+    _fr_suffix = "" if _US200_MODE else ".IS"
     st.markdown(_scan_card_header("🎯", "FIRSAT RADARI — Formasyon Avcısı", None,
         "Fincan-Kulp + TOBO + Üçgen + Taban · boyun çizgisi kırılımı", "#a855f7",
-        desc="Büyük çıkışları başlamadan yakalar: hazırlanıyor → sıkıştı → kırdı (likit ≥500M TL)",
+        desc="Büyük çıkışları başlamadan yakalar: hazırlanıyor → sıkıştı → kırdı",
         karne="Karnesi henüz ölçülmedi — sinyaller tespit amaçlıdır, güven puanı değildir."), unsafe_allow_html=True)
-    if st.button("🎯 FIRSAT RADARI TARA (likit BIST formasyonları)", type="secondary", width='stretch', key="btn_firsat_radar",
+    if st.button(f"🎯 FIRSAT RADARI TARA ({_fr_market} formasyonları)", type="secondary", width='stretch', key="btn_firsat_radar",
                  help="Formasyon-önce: fincan-kulp/TOBO/çift-dip + 5 kalite işareti. Bot ile aynı motor."):
         with st.spinner("Formasyonlar ve boyun kırılımları taranıyor..."):
             st.session_state.firsat_radar_data = _firsat_radar_scan()
@@ -23029,7 +23073,7 @@ def _render_left_col():
                         "<div style='text-align:center;font-size:0.7rem;color:#94a3b8;margin-bottom:4px;'>Taban kuruyor, daha kırmadı</div>", unsafe_allow_html=True)
             _frh_items = [
                 {
-                    'symbol': _r['tk'], 'target': _r['tk'] + '.IS', 'icon': '🌱',
+                    'symbol': _r['tk'], 'target': _r['tk'] + _fr_suffix, 'icon': '🌱',
                     'label': _TT.get(_r['type'], _r['type']),
                     'detail': f"Boyun çizgisine %{_r['dist']} kaldı",
                 }
@@ -23048,7 +23092,7 @@ def _render_left_col():
                         "<div style='text-align:center;font-size:0.7rem;color:#94a3b8;margin-bottom:4px;'>Yay gerildi, kırılma yakın</div>", unsafe_allow_html=True)
             _frs_items = [
                 {
-                    'symbol': _r['tk'], 'target': _r['tk'] + '.IS', 'icon': '🤏',
+                    'symbol': _r['tk'], 'target': _r['tk'] + _fr_suffix, 'icon': '🤏',
                     'label': _TT.get(_r['type'], _r['type']),
                     'detail': f"Boyun çizgisine %{_r['dist']} kaldı · sıkıştı",
                 }
@@ -23069,7 +23113,7 @@ def _render_left_col():
             for _r in _kirdi_show:
                 _tag = "🔄 geri test" if _r.get('durum') == 'retest' else f"{_r.get('Q', 0)}/5 işaret"
                 _frk_items.append({
-                    'symbol': _r['tk'], 'target': _r['tk'] + '.IS', 'icon': '🚀',
+                    'symbol': _r['tk'], 'target': _r['tk'] + _fr_suffix, 'icon': '🚀',
                     'label': _TT.get(_r['type'], _r['type']), 'detail': _tag,
                 })
             trajectory_tarama_merkezi.render_standard_scan_list(
@@ -23103,15 +23147,16 @@ def _render_left_col():
         "Karnesi zayıf veya henüz ölçülmemiş — izleme amaçlı. Üstteki ölçülen "
         "kurulumlarla aynı ağırlıkta okunmaz, skora katkı vermez.</div></div>",
         unsafe_allow_html=True)
-    _tavan_flow_c1, _tavan_flow_c2 = st.columns(2)
+    _tavan_flow_c1, _tavan_flow_c2 = (st.columns(2) if not _US200_MODE else (None, None))
     # 19 Ağu 2026 — İSKELET: içerik geç geldiği için yuva, gerçek panelle AYNI
     # yükseklikte bir bekleme kutusuyla baştan doldurulur; içerik hazır olunca
     # kutu silinir. Aday çıkmazsa kutu "aday yok" mesajına döner, delik kalmaz.
     _tavan_skeleton = None
     try:
-        with _tavan_flow_c1:
-            _tavan_skeleton = st.empty()
-            _tavan_skeleton.markdown(_tavan_bekleme_kutusu(), unsafe_allow_html=True)
+        if _tavan_flow_c1 is not None:
+            with _tavan_flow_c1:
+                _tavan_skeleton = st.empty()
+                _tavan_skeleton.markdown(_tavan_bekleme_kutusu(), unsafe_allow_html=True)
     except Exception:
         _tavan_skeleton = None
 
@@ -23129,7 +23174,7 @@ def _render_left_col():
         "Sınır çizgileri gerçek tepe/diplere oturur. Yalnız <b>kırıldı mı</b> der — "
         "hedef, puan veya tavsiye vermez. Getirisi henüz ölçülmedi.</div></div>",
         unsafe_allow_html=True)
-    if st.button("📐 ÇİZGİ YAPILARINI TARA (BIST + emtia/kripto)", type="secondary",
+    if st.button("📐 ÇİZGİ YAPILARINI TARA (S&P 200)" if _US200_MODE else "📐 ÇİZGİ YAPILARINI TARA (BIST + emtia/kripto)", type="secondary",
                  width='stretch', key="btn_cizgi_yapi_scan",
                  help="Uzun vadeli üçgen/kama sınır çizgileri. Tek hisse kutusuyla aynı motor."):
         with st.spinner("Çizgi yapıları taranıyor (yaklaşık 1 dakika)..."):
@@ -23172,7 +23217,8 @@ def _render_left_col():
                 )
         _cy_gizli = len(_cyl) - (len(_cy_o) + len(_cy_y) + len(_cy_k))
         st.caption(
-            f"📐 {len(_cyl)} yapı bulundu · likidite tabanı 25 mn TL/gün (BIST) · "
+            f"📐 {len(_cyl)} yapı bulundu · "
+            f"{'S&P 200 günlük veri kasası' if _US200_MODE else 'likidite tabanı 25 mn TL/gün (BIST)'} · "
             f"{_cy_gizli} tanesi geçmişte kalmış (bozuldu/uzadı/tamamlandı) → listelenmedi · "
             f"tek hisse kutusuyla aynı motor")
 
@@ -23194,8 +23240,29 @@ def _render_left_col():
     # --- GİZLİ TEMETTÜ / BÖLÜNME SIFIRLAMA + VERİ TAZELE BUTONLARI ---
     col_reset, col_refresh, _ = st.columns([1, 1, 2])
     with col_reset:
-        with st.expander("⚙️ Veriyi Onar (Temettü/Bölünme)"):
-            if st.button("🔄 Sıfırla ve İndir", width='stretch', key="reset_data_btn"):
+        with st.expander("⚙️ VPS veri kasası" if _US200_MODE else "⚙️ Veriyi Onar (Temettü/Bölünme)"):
+            if _US200_MODE:
+                st.caption("Kasa normalde VPS aynasını okur. Tekli yenileme yalnız açık hisse için, eksik bölümü Yahoo'dan kontrollü tamamlar.")
+                if st.button("⚡ Açık Hisseyi Yahoo'dan Yenile", width='stretch', key="us200_single_refresh"):
+                    try:
+                        from us200_fetcher import refresh_single
+                        with st.spinner("Önce kasa denetleniyor, sonra yalnız eksik barlar isteniyor..."):
+                            _single_result = refresh_single(st.session_state.ticker)
+                        if _single_result.get("ok"):
+                            if _single_result.get("skipped"):
+                                st.info(str(_single_result.get("reason", "Yeni istek gerekmiyor.")))
+                            else:
+                                get_safe_historical_data.clear()
+                                get_batch_data_cached.clear()
+                                _daily_mode = _single_result.get("daily", {}).get("mode", "—")
+                                _hourly_mode = _single_result.get("hourly", {}).get("mode", "—")
+                                st.success(f"{st.session_state.ticker} yenilendi · günlük: {_daily_mode} · saatlik: {_hourly_mode}")
+                                st.rerun()
+                        else:
+                            st.error(str(_single_result.get("reason", "Yahoo yanıtı güvenli bulunmadı; kasa korunuyor.")))
+                    except Exception as _single_refresh_exc:
+                        st.error(f"Tekli yenileme tamamlanamadı; eski sağlam kasa korundu: {_single_refresh_exc}")
+            elif st.button("🔄 Sıfırla ve İndir", width='stretch', key="reset_data_btn"):
                 t_clean = st.session_state.ticker.replace(".IS", "")
                 if "BIST" in st.session_state.category or ".IS" in st.session_state.ticker:
                     t_clean = st.session_state.ticker if st.session_state.ticker.endswith(".IS") else f"{st.session_state.ticker}.IS"
@@ -23217,9 +23284,9 @@ def _render_left_col():
                 st.rerun()
     
     with col_refresh:
-        with st.expander("🔄 Veriyi Tazele (Kategorideki Tüm hisseler)"):
-            st.caption("Seçili kategorideki tüm eski parquet verilerini yeniden indirir.")
-            if st.button("▶ Güncellemeyi Başlat", width='stretch', key="refresh_all_btn"):
+        with st.expander("🔄 VPS senkron durumu" if _US200_MODE else "🔄 Veriyi Tazele (Kategorideki Tüm hisseler)"):
+            st.caption("Yerel kopya VPS veri kasasından güncellenir." if _US200_MODE else "Seçili kategorideki tüm eski parquet verilerini yeniden indirir.")
+            if (not _US200_MODE) and st.button("▶ Güncellemeyi Başlat", width='stretch', key="refresh_all_btn"):
                 _ref_cat   = st.session_state.get('category', 'BIST 500 ')
                 _ref_list  = ASSET_GROUPS.get(_ref_cat, [])
                 _ref_total = len(_ref_list)
@@ -23960,7 +24027,7 @@ def _firsat_radar_single(ticker):
         r = radar_core.formation_row(df, ticker)
         if r is None:
             return None
-        _xu = get_safe_historical_data('XU100.IS', period="1y")
+        _xu = get_safe_historical_data('^GSPC' if _US200_MODE else 'XU100.IS', period="1y")
         _xuc = _xu['Close'] if _xu is not None else None
         q = radar_core.quality_signals(df, i, _xuc) if _xuc is not None else {'sqd': 0, 'a200': 0, 'Q': 0}
         kutu, durum = radar_core.classify_state(r, q, close, high, i)
@@ -25760,7 +25827,7 @@ def _render_right_col():
     # Detektör: sampiyonlar_ligi.hits · renk: LONG yeşil / SHORT mor (formasyonla aynı).
     try:
         _sl_df = get_safe_historical_data(st.session_state.ticker, period="1y")
-        _sl_bench = get_safe_historical_data("XU100.IS", period="1y")
+        _sl_bench = get_safe_historical_data("^GSPC" if _US200_MODE else "XU100.IS", period="1y")
         _sl_hits = (sampiyonlar_ligi.hits(st.session_state.ticker, _sl_df, _sl_bench)
                     if _sl_df is not None and not _sl_df.empty else [])
     except Exception:
@@ -26485,8 +26552,9 @@ if _sinyal_ozet_slot is not None and _so_html_mv:
 try:
     # İçerik iskeletin ALTINA çizilir, sonra iskelet silinir → yuva hiç boş kalmaz.
     _tavan_dolu = False
-    with _tavan_adaylari_slot:
-        _tavan_dolu = bool(_render_tavan_adaylari_panel())
+    if not _US200_MODE and _tavan_adaylari_slot is not None:
+        with _tavan_adaylari_slot:
+            _tavan_dolu = bool(_render_tavan_adaylari_panel())
     if _tavan_iskelet_slot is not None:
         if _tavan_dolu:
             _tavan_iskelet_slot.empty()

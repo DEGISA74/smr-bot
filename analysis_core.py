@@ -95,6 +95,10 @@ def get_active_scanner_tiers(ticker: str) -> list:
     Returns: list of dict {scan_type, tier, hit10, avg10, display, note, n_sample, reliable}
     n_sample: nottan çıkarılan örnek sayısı (None=belirsiz) · reliable: N≥eşik mi
     (yetersizse AI prompt ham hit/ret'i susturur — İş 2)."""
+    # Bu tablo BIST geçmiş ölçümünden doğdu. ABD kasası kendi geçmişini
+    # biriktirene kadar aynı yüzdeyi NVDA vb. için kanıt diye göstermeyiz.
+    if os.environ.get("SMR_MARKET_PROFILE", "").upper() == "US200":
+        return []
     out = []
     try:
         # Klasik scanner → session_state map (df içinde 'Sembol' kolonu)

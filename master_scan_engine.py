@@ -207,8 +207,8 @@ def run_phase1(durum: dict[str, Any], bildir: Callable[[str, str], Any]) -> bool
     _ms_progress_steps = list(
         durum.get('_ms_engine_progress_steps') or durum.get('progress_steps') or
         (_MS_PHASE1_STEPS + [
-            'golden', 'radar2', 'weak_pair', 'radar1', 'strong_reversal', 'tavan',
-            *(['flow_leaders'] if _ms_is_bist else []), 'stp_uyanis', 'top20',
+            'golden', 'radar2', 'weak_pair', 'radar1', 'strong_reversal',
+            *(['tavan', 'flow_leaders'] if _ms_is_bist else []), 'stp_uyanis', 'top20',
         ])
     )
     durum['_ms_engine_category'] = _cat
@@ -220,7 +220,8 @@ def run_phase1(durum: dict[str, Any], bildir: Callable[[str, str], Any]) -> bool
     _ms_persistence_failures: list[str] = []
 
     try:
-        _begin_progress(durum, bildir, 'index_health', 'XU100 veri sağlığı kontrol ediliyor')
+        _index_name = 'XU100' if _ms_is_bist else 'S&P 500'
+        _begin_progress(durum, bildir, 'index_health', f'{_index_name} veri sağlığı kontrol ediliyor')
 
         if 'BIST' in _cat:
             try:
@@ -280,7 +281,7 @@ def run_phase1(durum: dict[str, Any], bildir: Callable[[str, str], Any]) -> bool
         _master_batch_snapshot = _batch_loader(_scan_list, period='1y')
         _master_snapshot_as_of = datetime.now(_service('_TZ_ISTANBUL')).isoformat()
         _master_benchmark_snapshot = _service('get_safe_historical_data')(
-            'XU100.IS', period='1y'
+            'XU100.IS' if _ms_is_bist else '^GSPC', period='1y'
         )
         _master_formasyon_snapshot = pd.DataFrame()
         _master_formasyon_ready = False
@@ -493,8 +494,9 @@ def run_phase1(durum: dict[str, Any], bildir: Callable[[str, str], Any]) -> bool
             _record_error(durum, 'master_scan_toplu_terazi', _tt_exc, _cat)
 
         _ms_phase2_steps = [
-            'golden', 'radar2', 'weak_pair', 'radar1', 'strong_reversal', 'tavan',
-            *(['flow_leaders'] if _ms_is_bist else []), 'stp_uyanis', 'top20',
+            'golden', 'radar2', 'weak_pair', 'radar1', 'strong_reversal',
+            *(['tavan', 'flow_leaders'] if _ms_is_bist else []),
+            'stp_uyanis', 'top20',
         ]
         durum['_ms_faz2_baglam'] = {
             'category': _cat,
@@ -672,7 +674,7 @@ def finalize_master_scan(durum: dict[str, Any], bildir: Callable[[str, str], Any
     # Kuru koşu patron.db'ye veya tamamlanma kasasına dokunmaz.
     if not _dry_run(durum):
         try:
-            if os.name == 'nt':
+            if os.name == 'nt' and _is_bist:
                 _src = sqlite3.connect('patron.db')
                 _dst = sqlite3.connect('patron_sync.db')
                 _src.backup(_dst)

@@ -1094,6 +1094,16 @@ def get_benchmark_data(category):
         # Kategoriye göre sembol seçimi
         ticker = "XU100.IS" if "BIST" in category else "^GSPC"
         
+        if os.environ.get("SMR_US_MIRROR_READONLY", "0") == "1":
+            _path = os.path.join(CACHE_DIR, f"{ticker}_1d.parquet")
+            if not os.path.exists(_path):
+                return None
+            _cached = pd.read_parquet(_path)
+            if isinstance(_cached.columns, pd.MultiIndex):
+                _cached.columns = _cached.columns.get_level_values(0)
+            _close = _cached['Close']
+            return _close.iloc[:, 0] if isinstance(_close, pd.DataFrame) else _close
+
         # Hisse verileriyle uyumlu olması için 1 yıllık çekiyoruz
         df = yf.download(ticker, period="1y", progress=False, auto_adjust=AUTO_ADJUST, prepost=False)
 
@@ -1152,6 +1162,27 @@ def _get_batch_data_cached_versioned(asset_list, period="1y", _bist_version="leg
     # 24 Haz 2026 — çıplak BIST sembol (EREGL) → EREGL.IS. get_safe_historical_data zaten
     # normalize ediyordu; burada YOKTU → çıplak semboller Yahoo'ya gidip 404 seli + DONMA yapıyordu.
     asset_list = [_normalize_bist_ticker(t) for t in asset_list]
+
+    # 8502 ABD terminalinde Master Scan de yalnız VPS'in onaylı paketini okur.
+    # Eksik dosya Yahoo indirmesi başlatmaz; o hisse bu turda güvenle atlanır.
+    if os.environ.get("SMR_US_MIRROR_READONLY", "0") == "1":
+        mirror_data = {}
+        for sym in asset_list:
+            clean_sym = sym.replace(".IS", "")
+            mirror_path = os.path.join(CACHE_DIR, f"{clean_sym}_1d.parquet")
+            if not os.path.exists(mirror_path):
+                continue
+            try:
+                frame = pd.read_parquet(mirror_path)
+                if isinstance(frame.columns, pd.MultiIndex):
+                    frame.columns = frame.columns.get_level_values(0)
+                frame = frame.loc[:, ~frame.columns.duplicated()].copy()
+                if not frame.empty:
+                    mirror_data[sym] = apply_volume_projection(frame.tail(500).copy(), sym)
+            except Exception:
+                continue
+        return (pd.concat(mirror_data.values(), axis=1, keys=mirror_data.keys())
+                if mirror_data else pd.DataFrame())
 
     missing_assets = []
     combined_dict = {}
@@ -1840,6 +1871,23 @@ def _get_safe_historical_data_cached(ticker, period="1y", interval="1d"):
                 df['Volume'] = 0.0  # KARANTİNA: Sahte 1.0 atamasını iptal ettik
             return df
 
+        # 8502 ABD terminali de BIST ayna modeliyle çalışır: Yahoo'ya ekran
+        # tıklaması gitmez, yalnız arka plan fetcher'ının onaylı parquet'i okunur.
+        if os.environ.get("SMR_US_MIRROR_READONLY", "0") == "1":
+            _is_hourly = str(interval).lower() in {"1h", "60m"}
+            _mirror_dir = os.environ.get("SMR_1H_DIR", CACHE_DIR) if _is_hourly else CACHE_DIR
+            _mirror_suffix = "1h" if _is_hourly else str(interval)
+            _mirror_path = os.path.join(_mirror_dir, f"{clean_ticker}_{_mirror_suffix}.parquet")
+            if not os.path.exists(_mirror_path):
+                st.session_state['_data_stale'] = {
+                    'ticker': ticker, 'days': 999, 'last': 'ABD kasasında yok',
+                }
+                return None
+            df_mirror = safe_clean_columns(pd.read_parquet(_mirror_path))
+            if df_mirror.index.tz is not None:
+                df_mirror.index = df_mirror.index.tz_convert(None)
+            return apply_volume_projection(df_mirror.tail(500).copy(), ticker)
+
         import datetime as _dt
         # ZAMAN DİLİMİ FIX (28 Tem 2026): _start artık period'e bağlı (eskiden hep 380
         # sabitti → "2y" istenince ~1y geliyordu). Floor 380 → kısa periyot değişmez.
@@ -2156,6 +2204,8 @@ def _ensure_parquet_on_disk(ticker: str, interval: str = "1d", period: str = "1y
     parquet'ini HEP 380 günle önden yaratıyordu → ana fonksiyonun derin fetch'i
     devreye giremiyordu (2y istense bile ~1y kalıyordu). Artık period'e bağlı iner.
     """
+    if os.environ.get("SMR_US_MIRROR_READONLY", "0") == "1":
+        return
     # Sadece günlük ve kripto olmayan tickerlar için
     _bist_ro = (ticker.endswith(".IS") or ticker.upper().startswith(
         ("XU", "XB", "XT", "XY", "XK", "XG", "XI", "XUS")))

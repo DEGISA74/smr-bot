@@ -45,7 +45,7 @@ def log_error(where, exc, context=""):
         pass  # log yazımı başarısızsa sessizce geç — uygulama akışı korunur
 
 
-DB_FILE = "patron.db"
+DB_FILE = os.environ.get("SMR_DB_FILE", "patron.db")
 
 
 def init_db():
