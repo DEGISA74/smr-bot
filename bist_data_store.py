@@ -39,7 +39,11 @@ EVENT_LOG = ROOT / "logs" / "bist_data_events.jsonl"
 for _p in (OBJECTS, MANIFESTS, STAGING, QUARANTINE, INBOX, OUTBOX, EVENT_LOG.parent):
     _p.mkdir(parents=True, exist_ok=True)
 
-PRICE_SOURCES = {"yahoo", "yahoo_settled", "borsapy_gapfill", "repair_yahoo"}
+# 8 Eyl 2026: repair_isyatirim fiyat kaynagi olarak eklendi — Yahoo'nun dusurdugu
+# (ama BIST'te canli isleme giren) hisseleri Is Yatirim OHLC'siyle geri doldurmak icin
+# (delik_alarmi 5 is gunu grace sonrasi benign gapfill). Volume listesinde zaten vardi.
+PRICE_SOURCES = {"yahoo", "yahoo_settled", "borsapy_gapfill", "repair_yahoo",
+                 "repair_isyatirim"}
 VOLUME_SOURCES = {"isyatirim", "isyatirim_cache", "yahoo_provisional",
                   "repair_isyatirim", "index_ciro", "borsapy"}
 VOLUME_OFFICIAL_SOURCES = frozenset({

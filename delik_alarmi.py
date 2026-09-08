@@ -140,6 +140,64 @@ def tespit(gunler: list[str]) -> dict:
     return {"gunler": rapor, "okunamayan": okunamayan}
 
 
+# ---- Delik yaşı + İş Yatırım geri doldurma (8 Eyl 2026) --------------------
+# Kullanıcı kararı: bir delik HEMEN alarm/onarım tetiklemez. 5 İŞ GÜNÜ sessiz
+# biriktir. Hâlâ varsa araştır: Yahoo hisseyi düşürmüş ama İş Yatırım canlıysa
+# (benign) SESSİZCE İş Yatırım OHLC'sinden doldur; sonuç farklıysa alarm at.
+GRACE_ISGUN = 5
+
+
+def _eksik_isgun(last_ts) -> int:
+    """Hissenin son barından bugüne kadar kaç İŞLEM GÜNÜ eksik (deliğin yaşı)."""
+    try:
+        from bist_calendar import is_trading_day
+    except Exception:
+        is_trading_day = lambda d: d.weekday() < 5
+    try:
+        d = pd.Timestamp(last_ts).date()
+    except Exception:
+        return 999
+    bugun = datetime.now(TR).date()
+    say, d = 0, d + timedelta(days=1)
+    while d <= bugun and say < 90:
+        if is_trading_day(d):
+            say += 1
+        d = d + timedelta(days=1)
+    return say
+
+
+def _isy_backfill(sym: str, cur: pd.DataFrame) -> str:
+    """Yahoo düşürmüş + İş Yatırım canlı: son bardan sonraki TÜM barları İş Yatırım'dan yaz."""
+    from isyatirim_saglik import robust_isyatirim
+    df, kaynak = robust_isyatirim(f"{sym}.IS", period_days=30, allow_stale=True, tries=1)
+    if df is None or df.empty or kaynak in {"yok", "cooldown"}:
+        return "hata"
+    for c in ("Open", "High", "Low", "Close", "Volume"):
+        if c not in df.columns:
+            return "hata"
+    yeni = df[df.index > cur.index.max()][["Open", "High", "Low", "Close", "Volume"]].dropna()
+    yeni = yeni[(yeni[["Open", "High", "Low", "Close"]] > 0).all(axis=1)]
+    if yeni.empty:
+        return "zaten_var"
+    from bist_data_store import promote_batch
+    result = promote_batch({f"{sym}.IS": {
+        "price_df": yeni[["Open", "High", "Low", "Close"]],
+        "price_source": "repair_isyatirim",
+        "volume_df": yeni[["Volume"]],
+        "volume_source": "repair_isyatirim",
+        "reference_df": yeni[["Close"]],
+    }}, reason="isy_gapfill_yahoo_dropped", repair=True, max_reject_ratio=0.90)
+    if result.get("ok"):
+        return "dolduruldu_isy"
+    # 8 Eyl: promote "kanıtsız aşırı fiyat sıçraması" ile reddettiyse bu BİLİNEN ölçek
+    # uyuşmazlığıdır (kurumsal işlem sonrası depo eski ölçekte). Alarm DEĞİL — sessiz sınıf;
+    # kalıcı çözüm ayrı rescale görevi. Diğer red sebepleri gerçek "hata".
+    rej = (result.get("rejected") or {}).get(f"{sym}.IS", {})
+    if any("sıçra" in str(w) for w in rej.get("warnings", [])):
+        return "olcek_uyusmazligi"
+    return "hata"
+
+
 # ---- Şüpheliyi İsyatirim'e sor: gerçek delik mi, gerçek tatil mi? -----------
 def incele(sym: str, gun: str, yaz: bool) -> str:
     """Şüpheli hisse-günü İsyatirim'e sorar.
@@ -154,6 +212,9 @@ def incele(sym: str, gun: str, yaz: bool) -> str:
         return "hata"
     if gun in cur.index.astype(str).str.slice(0, 10).values:
         return "zaten_var"
+    # GRACE (8 Eyl): delik 5 iş gününden genç ise sessiz biriktir — ne alarm ne onarım.
+    if _eksik_isgun(cur.index.max()) < GRACE_ISGUN:
+        return "bekliyor"
     df, kaynak = robust_isyatirim(f"{sym}.IS", period_days=20,
                                   want_dates=[gun], allow_stale=True, tries=1)
     if df is None or df.empty:
@@ -177,7 +238,8 @@ def incele(sym: str, gun: str, yaz: bool) -> str:
                           auto_adjust=False, progress=False, timeout=15)
         if ydf is None or ydf.empty:
             record_failure("yahoo", kind="empty", error="gap_repair_empty")
-            return "hata"
+            # 8 Eyl: Yahoo hisseyi düşürmüş ama İş Yatırım canlı (benign) → sessizce doldur
+            return _isy_backfill(sym, cur)
         record_success("yahoo")
         if isinstance(ydf.columns, pd.MultiIndex):
             ydf.columns = ydf.columns.get_level_values(0)
@@ -237,27 +299,32 @@ def main():
                             + ", ".join(supheli[:12]) + (" …" if len(supheli) > 12 else ""))
             continue
 
-        # DOĞRULA: her şüpheliyi İsyatirim'e sor (gerçek delik ↔ gerçek tatil)
-        delik, dolduruldu, tatil, hata, belirsiz = [], [], [], [], []
+        # DOĞRULA (8 Eyl): bekliyor(grace) + İş Yatırım gapfill(auto-heal) + anomali ayrımı.
+        delik, dolduruldu, dolduruldu_isy, tatil, hata, belirsiz, bekliyor, olcek = [], [], [], [], [], [], [], []
         for sym in supheli:
             sonuc = incele(sym, g, yaz=fix)
-            if sonuc == "dolduruldu":   dolduruldu.append(sym)
-            elif sonuc == "gercek_delik": delik.append(sym)
-            elif sonuc == "gercek_tatil": tatil.append(sym)
-            elif sonuc == "hata":       hata.append(sym)
-            elif sonuc == "kaynak_yok": belirsiz.append(sym)
-        gercek = len(delik) + len(dolduruldu) + len(hata) + len(belirsiz)
-        gercek_delik_toplam += gercek
-        if gercek == 0:
-            satirlar.append(f"• {g}: ✅ {len(tatil)} şüpheli vardı ama hepsi gerçek tatil (o gün işlem görmemiş)")
-            continue
+            if sonuc == "dolduruldu":       dolduruldu.append(sym)
+            elif sonuc == "dolduruldu_isy": dolduruldu_isy.append(sym)
+            elif sonuc == "gercek_delik":   delik.append(sym)
+            elif sonuc == "gercek_tatil":   tatil.append(sym)
+            elif sonuc == "hata":           hata.append(sym)
+            elif sonuc == "kaynak_yok":     belirsiz.append(sym)
+            elif sonuc == "bekliyor":       bekliyor.append(sym)
+            elif sonuc == "olcek_uyusmazligi": olcek.append(sym)
+        # ALARM sadece ANOMALİ'de: doldurulamamış gerçek delik + hata + kaynak yok.
+        # bekliyor(grace) / dolduruldu / dolduruldu_isy / tatil / olcek(bilinen) = SESSİZ.
+        anomali = len(delik) + len(hata) + len(belirsiz)
+        gercek_delik_toplam += anomali
         parts = [f"• {g}:"]
-        if delik:      parts.append(f"⚠ {len(delik)} GERÇEK DELİK ({', '.join(delik[:8])})")
-        if dolduruldu: parts.append(f"🔧 {len(dolduruldu)} dolduruldu ({', '.join(dolduruldu[:8])})")
-        if hata:       parts.append(f"⛔ {len(hata)} HATA ({', '.join(hata[:8])})")
-        if belirsiz:   parts.append(f"🟠 {len(belirsiz)} KAYNAK YOK — tatil sayılmadı ({', '.join(belirsiz[:8])})")
-        if tatil:      parts.append(f"⚪ {len(tatil)} gerçek tatil (sessiz)")
-        satirlar.append("  ".join(parts))
+        if delik:          parts.append(f"⚠ {len(delik)} GERÇEK DELİK ({', '.join(delik[:8])})")
+        if hata:           parts.append(f"⛔ {len(hata)} HATA ({', '.join(hata[:8])})")
+        if belirsiz:       parts.append(f"🟠 {len(belirsiz)} KAYNAK YOK — tatil sayılmadı ({', '.join(belirsiz[:8])})")
+        if dolduruldu:     parts.append(f"🔧 {len(dolduruldu)} Yahoo onarıldı (sessiz)")
+        if dolduruldu_isy: parts.append(f"🩹 {len(dolduruldu_isy)} İş Yatırım'dan dolduruldu (sessiz)")
+        if bekliyor:       parts.append(f"⏳ {len(bekliyor)} bekliyor (<{GRACE_ISGUN} iş günü, sessiz)")
+        if olcek:          parts.append(f"⚖ {len(olcek)} ölçek uyuşmazlığı (bilinen sorun, sessiz): {', '.join(olcek[:8])}")
+        if tatil:          parts.append(f"⚪ {len(tatil)} gerçek tatil (sessiz)")
+        satirlar.append("  ".join(parts) if len(parts) > 1 else f"• {g}: ✅ temiz")
 
     if r["okunamayan"]:
         satirlar.append(f"• ⛔ OKUNAMAYAN dosya: {', '.join(r['okunamayan'][:12])}")
