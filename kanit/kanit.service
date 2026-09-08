@@ -8,6 +8,6 @@ Type=oneshot
 User=wm11tr
 WorkingDirectory=/home/wm11tr/kanit
 EnvironmentFile=/home/wm11tr/kanit/.env
-ExecStart=/home/wm11tr/insider/venv/bin/python /home/wm11tr/kanit/kanit_tweet.py
+ExecStart=/home/wm11tr/smr/venv/bin/python /home/wm11tr/kanit/kanit_tweet.py
 StandardOutput=append:/home/wm11tr/kanit/kanit.log
 StandardError=append:/home/wm11tr/kanit/kanit.log
