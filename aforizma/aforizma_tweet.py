@@ -36,6 +36,7 @@ import os
 import sys
 import json
 import random
+import re
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -186,15 +187,20 @@ def build_units(havuz):
                 units.append({
                     "id": item["id"],
                     "katman": katman,
+                    "tip": item.get("tip", "aforizma"),
                     "kategori": item.get("kategori", ""),
                     "konu": item.get("konu", ""),
                     "metin": metin.strip(),
+                    # ZENGIN 4-vurus yapisi yalniz ana ses (ayna) icin gecerli.
+                    "zengin": item.get("zengin") if katman == "ayna" else None,
                 })
     return units
 
 
-def pick_unit(units, st, oranlar, rng):
-    """Kova orani + tekrar onleme ile bir birim sec. Asla None donmez (havuz bosunsa haric)."""
+def pick_unit(units, st, oranlar, rng, zengin_pay=0.0):
+    """Kova orani + tekrar onleme ile bir birim sec. Asla None donmez (havuz bosunsa haric).
+    zengin_pay>0 ise AYNA katmani secildiginde, uygun zengin (4-vurus) aday varsa
+    bu olasilikla zengin madde tercih edilir (kullanici: gonderimlerin cogu zengin olsun)."""
     recent_ids = set(st.get("recent_ids", [])[-ID_PENCERE:])
     recent_units = set(st.get("recent_units", [])[-UNIT_PENCERE:])
     last_kat = st.get("last_kategori")
@@ -222,6 +228,14 @@ def pick_unit(units, st, oranlar, rng):
                     continue
                 cands.append(u)
             if cands:
+                # AYNA'da zengin yanliligi: uygun zengin aday varsa zengin_pay olasilikla onu sec
+                if katman == "ayna" and zengin_pay > 0:
+                    zc = [u for u in cands if u.get("zengin")]
+                    pc = [u for u in cands if not u.get("zengin")]
+                    if zc and (not pc or rng.random() < zengin_pay):
+                        return rng.choice(zc)
+                    if pc:
+                        return rng.choice(pc)
                 return rng.choice(cands)
     return units[0] if units else None
 
@@ -305,6 +319,21 @@ def _human_text(text):
                 .replace("💬 ", ""))
 
 
+def _readable_main_text(text):
+    """Uzun ana havuz metnini, anlamı değiştirmeden okunabilir paragraflara ayırır."""
+    text = text.strip()
+    if "\n\n" in text:
+        return text
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-ZÇĞİÖŞÜ\"'])", text)
+    if len(sentences) < 3:
+        return text
+    paragraphs = [
+        " ".join(sentences[i:i + 2]).strip()
+        for i in range(0, len(sentences), 2)
+    ]
+    return "\n\n".join(p for p in paragraphs if p)
+
+
 def _format_admin_draft(header, body, question=None, is_test=False):
     """Bütün aforizma aileleri için ortak, sade taslak kabuğu."""
     tag = " (TEST)" if is_test else ""
@@ -315,7 +344,7 @@ def _format_admin_draft(header, body, question=None, is_test=False):
     ]
     if question:
         parts.append(question)
-    parts.append("ℹ️ Sana özel taslak; sen atmadıkça kimse görmez.")
+    parts.append("ℹ️")
     return "\n\n".join(_human_text(part) for part in parts if part)
 
 
@@ -405,9 +434,21 @@ def format_draft(unit, is_test=False, seri_baslik="", seri_no=None, rng=None):
         "Bu notu kendi planımıza nereye koyarız?"
     ])
     soru = (rng or random).choice(soru_havuzu)
+    format_etiket = (
+        "Mini Vaka / " if unit.get("tip") == "mini_vaka" else ""
+    )
+    z = unit.get("zengin")
+    if z and z.get("soru") and z.get("donus"):
+        # ZENGIN ayna: soru-hook -> empatik kurulum -> "Oysa..." donus -> sivri kapanis
+        # (Aci Gercekler'de 3x erisim getiren kanitli yapinin ana havuza tasinmasi)
+        govde = "\n\n".join(p.strip() for p in (
+            z.get("soru"), z.get("kurulum"), z.get("donus"), z.get("kapanis")
+        ) if p and p.strip())
+    else:
+        govde = _readable_main_text(unit["metin"])
     return _format_admin_draft(
-        f"☕️ {baslik} - {KAT_ETIKET.get(unit['kategori'], unit['kategori'])}",
-        unit["metin"],
+        f"☕️ {baslik} - {format_etiket}{KAT_ETIKET.get(unit['kategori'], unit['kategori'])}",
+        govde,
         soru,
         is_test=is_test,
     )
@@ -423,7 +464,7 @@ def run_sim(units, mitler, cfg, n):
     son_gorulen = {}
     oranlar = cfg["oranlar"]
     for i in range(n):
-        u = pick_unit(units, st, oranlar, rng)
+        u = pick_unit(units, st, oranlar, rng, cfg.get("zengin_ayna_pay", 0.60))
         kc[u["katman"]] += 1
         katc[u["kategori"]] += 1
         key = f"{u['id']}|{u['katman']}"
@@ -550,7 +591,7 @@ def main():
         msg = format_mit_draft(secilen_mit, cfg.get("mit_seri_baslik", "Yanlış Bilinenler"),
                                mit_no, is_test=TEST)
     else:
-        unit = pick_unit(units, st, oranlar, rng)
+        unit = pick_unit(units, st, oranlar, rng, cfg.get("zengin_ayna_pay", 0.60))
         log.info(f"Secilen: [{unit['id']}] {unit['katman']} / {unit['kategori']} — {unit['konu']}")
         seri_baslik = cfg.get("seri_baslik", "")
         seri_no = st.get("seri_no")

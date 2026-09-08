@@ -78,7 +78,7 @@
       "egitim",
       "kripto"
     ],
-    "durum": "Havuz 180 kavrama cikarildi (22 Tem 2026). Ayna+Ters Kose her maddede, Ciplak Gercek secili maddelerde.",
+    "durum": "Havuz 216 kavrama cikarildi (36 mini-vaka eklendi). Ayna+Ters Kose her maddede, Ciplak Gercek secili maddelerde.",
     "katman_isimleri": {
       "ayna": "Gercegi oldugu gibi gosteren olgun ozlu soz (ana metin)",
       "ters_kose": "Beklenmedik karsi hamle - kabul gormus dogruyu tokatlar (alinti/tartisma toplar)",
@@ -94,7 +94,13 @@
       "konu": "küçük yatırımcı miti",
       "ayna": "Hepimizin yatırım yolculuğunda bir kez olsun karşılaştığı tablo şu: 'Küçük yatırımcı' diye bir şey yok; sadece küçük disiplin var. Bizi hayatta tutan sermayemiz değil, risk yönetimimiz. Portföyümüze değil, davranışımıza bakalım. İyi portföy en çok varlığı taşıyan değil, her varlığın görevini ve toplam riske katkısını açıklayabildiğimiz portföydür. Her pozisyonun portföyde neden bulunduğunu, hangi senaryoda koruma sağladığını ve ne zaman çıkarılacağını yazalım. Portföyümüzdeki her varlığın bir işi yoksa, yalnızca yer kaplıyor olabilir.",
       "ters_kose": "Asıl ters köşe, doğru bildiğimiz davranışın bizi yanlış sonuca taşımasıdır: 'Az param var, ne yapabilirim ki' bir bahane. Bizi bitiren küçük hesap değil, hesapsız cesaret. Büyük hesaplar da aynı hatadan ölür — sadece daha yavaş. Kazanç ve kayıp yalnızca bakiyeyi değil, özgüvenimizi de etkiler; kontrolsüz bırakıldığında bir sonraki kararın ölçüsünü bozar. Duygunun yükseldiğini fark ettiğimizde işlemi büyütmek yerine kısa bir ara verip ilk gerekçemizi yeniden okuyalım. Piyasa egomuzu değil, kararlarımızın sonucunu fiyatlar.",
-      "ciplak_gercek": null
+      "ciplak_gercek": null,
+      "zengin": {
+        "soru": "Bizi piyasada küçük yapan sermayemizin boyutu mu, yoksa disiplinimizin boyutu mu?",
+        "kurulum": "'Az param var, ben ne yapabilirim ki' deriz. Küçüklüğü bir kader gibi görüp sorumluluğu sermayeye yükleriz.",
+        "donus": "Oysa piyasada 'küçük yatırımcı' diye bir şey yoktur; sadece küçük disiplin vardır. Bizi hayatta tutan hesabın büyüklüğü değil, riski yönetme becerimizdir. Büyük hesaplar da aynı hatadan batar, sadece daha yavaş.",
+        "kapanis": "Şunu bilelim: seni küçük yapan paranın azlığı değil, planının yokluğudur."
+      }
     },
     {
       "id": "psi_002",
@@ -112,7 +118,13 @@
       "konu": "aşırı özgüven",
       "ayna": "Hepimizin zaman zaman düştüğü sessiz bir tuzak var: Üst üste 5 doğru trade, sistemimizin iyi olduğunu değil, şansımızın yanında olduğunu gösterebilir. Aşırı özgüven en pahalı öğrenim ücretidir. Hafızamız iyi işlemleri büyütüp kötü işlemlere bahane bulabilir; kayıt ise ne yaptığımızı olduğu gibi önümüze koyar. Kazanan ve kaybeden işlemleri aynı dürüstlükle kaydedip ortak hatalarımızı arayalım. Şans bir kez kazandırabilir, kayıtlı disiplin ne yaptığımızı öğretir.",
       "ters_kose": "Asıl ters köşe, doğru bildiğimiz davranışın bizi yanlış sonuca taşımasıdır: En tehlikeli an zarar ettiğimiz an değil, üst üste kazandığımız andır. Çünkü o an ölçmeyi bırakıp inanmaya başlarız. Seri galibiyet, en pahalı dersin faturasını hazırlar. Duygu yükseldiğinde veri aynı kalsa bile ona verdiğimiz anlam değişir; risk çoğu zaman tam bu ayrımda büyür. Bizi haksız çıkarabilecek veriyi de özellikle arayalım; kararımıza taraftar değil denetçi olalım. En zor analiz çoğu zaman grafiğe değil, kendi davranışımıza yaptığımız analizdir.",
-      "ciplak_gercek": null
+      "ciplak_gercek": null,
+      "zengin": {
+        "soru": "Üst üste kazanmak, iyi olduğumuzun mu yoksa şansın yanımızda olduğunun mu kanıtı?",
+        "kurulum": "Birkaç işlem tuttu, 'ben bu işi çözdüm' deriz. Kazandıkça özgüven şişer, kurallar gevşer.",
+        "donus": "Oysa üst üste birkaç doğru, sistemin iyi olduğunu değil, çoğu zaman şansın o an yanında olduğunu gösterir. En tehlikeli an zarar ettiğimiz an değil, kazanç serisinin bizi ölçmekten alıkoyduğu andır. O an inanmaya başlar, ölçmeyi bırakırız.",
+        "kapanis": "Hatırlayalım: piyasada en pahalı dersi çoğu zaman en özgüvenli an yazdırır."
+      }
     },
     {
       "id": "psi_004",
@@ -1706,6 +1718,758 @@
       "ayna": "Gelin bu meseleyi süslemeden, kendi davranışlarımız üzerinden konuşalım: Bedava token ya da meme coin peşinde koşmak, bazen kazandırır ama çoğu zaman dikkatimizi ve sermayemizi dağıtır. Piyango bileti stratejisi değildir. Merkeziyetsizlik anlatısı, kullandığımız ürünün bütün risklerini otomatik olarak ortadan kaldırmaz. Getiri oranından önce varlığın nerede tutulduğunu, hangi şartta çekilebildiğini ve hangi risk karşılığında ödendiğini inceleyelim. Kriptoda görünmeyen risk, çoğu zaman görünen getirinin sponsorudur.",
       "ters_kose": "Piyasada çoğunluğun rahatça söylediği şey her zaman güvenli değildir: Her yeni meme coine 'ya tutarsa' diye girmek, sistem değil kumar refleksidir. Birinin 1000x yaptığını görürüz; aynı bahiste silinen binlerce kişiyi görmeyiz. Bedava sanılan avın bedelini, odaklanamamış bir portföyle öderiz. Kriptoda fiyat riski tek başına değildir; platform, saklama, akıllı sözleşme ve likidite riskleri aynı anda çalışabilir. Tek platforma, tek protokole veya tek varlığa bütün bakiyemizi bağlamayalım. Anahtar bizde olsa bile riskin tamamı ortadan kalkmaz; yalnızca şekli değişir.",
       "ciplak_gercek": "Portföyümüzde görmezden gelmenin pahalı olduğu gerçek şu: Birinin 1000x yaptığını görüyoruz; aynı bahiste silinen binlerce kişi tweet atmıyor. Yüksek getiri oranı çoğu zaman görünmeyen bir karşılık taşır: kilit süresi, token enflasyonu, karşı taraf veya likidite riski. Getiri oranından önce varlığın nerede tutulduğunu, hangi şartta çekilebildiğini ve hangi risk karşılığında ödendiğini inceleyelim. Yüksek APY bedava öğle yemeği değil, taşıdığımız riskin fiyatı olabilir."
+    },
+    {
+      "id": "mv_psi_001",
+      "kategori": "psikoloji",
+      "tip": "mini_vaka",
+      "konu": "zararı kabullenmek",
+      "ayna": "Bir yatırımcı zarar eden hissesinin ekran görüntüsünü her gün saklıyordu.\n\n\"Unutmayayım\" diyordu ama aslında her gün aynı kararı savunuyordu.\n\nFeridun Abi ona ekran görüntülerini değil, hisseyi alma gerekçesini yeniden yazdırdı. İkisi aynı şey değildi.",
+      "ters_kose": "Zarar eden pozisyonu taşımak her zaman sabır değildir.\n\nBazen yalnızca ilk kararımızın hâlâ doğru olduğunu kendimize kanıtlamaya çalışırız.\n\nFeridun Abi'nin sözü netti: Piyasa bizim gururumuzu değil, gerekçemizin hâlâ ayakta olup olmadığını fiyatlar."
+    },
+    {
+      "id": "mv_psi_002",
+      "kategori": "psikoloji",
+      "tip": "mini_vaka",
+      "konu": "ekrana bakma sıklığı",
+      "ayna": "Bir yatırımcı portföyüne günde 40 kez bakıyordu.\n\nHisse değişmiyor, yalnızca onun ruh hâli değişiyordu.\n\nBir hafta bildirimleri kapattı. Daha az fiyat gördü ama daha çok planına sadık kaldı.",
+      "ters_kose": "Portföye sık bakmak kontrol hissi verir; kontrolün kendisini değil.\n\nFiyatı her dakika izlemek, şirketin değerini daha hızlı anlamamızı sağlamaz.\n\nBazen yatırımcının en iyi hamlesi yeni veri aramak değil, gürültüyü kapatmaktır."
+    },
+    {
+      "id": "mv_psi_003",
+      "kategori": "psikoloji",
+      "tip": "mini_vaka",
+      "konu": "kârı geri vermek",
+      "ayna": "Bir yatırımcı yılın ilk ayında kazandığı parayı ayrı bir hesaba koydu.\n\nÜç ay sonra piyasa yükselince o hesabı yeniden açtı ve bütün kârını tek işlemde riske etti.\n\nFeridun Abi, kazancı korumanın da bir yatırım kararı olduğunu söyledi.",
+      "ters_kose": "Kârdayken daha cesur olduğumuzu sanırız.\n\nOysa çoğu zaman bize ait olmayan bir parayı harcıyormuş gibi davranırız.\n\nKâr ekranında görünür görünmez risk iştahımız büyüyorsa, kazanç bizi yönetmeye başlamış demektir."
+    },
+    {
+      "id": "mv_psi_004",
+      "kategori": "psikoloji",
+      "tip": "mini_vaka",
+      "konu": "başkasının kazancı",
+      "ayna": "Bir arkadaşının tek işlemde kazandığını gören yatırımcı, kendi planını yetersiz buldu.\n\nErtesi gün hiç tanımadığı bir şirkete, yalnızca yükseldiği için ortak oldu.\n\nAkşam Feridun Abi'ye \"Ben de kazanacaktım\" dedi. Feridun Abi, \"Sen onun sonucunu satın aldın\" diye cevap verdi.",
+      "ters_kose": "Başkasının kazancı bize fırsat gibi görünür.\n\nAma o kazancın hangi riskle, hangi sürede ve hangi şartta geldiğini bilmeden yalnızca fiyatı kopyalarız.\n\nBorsada başkasının ekran görüntüsü, bizim yatırım gerekçemiz olamaz."
+    },
+    {
+      "id": "mv_psi_005",
+      "kategori": "psikoloji",
+      "tip": "mini_vaka",
+      "konu": "plan yazmak",
+      "ayna": "Feridun Abi bir yatırımcının aldığı hisseyi neden aldığını sordu.\n\nAdam uzun uzun şirketi anlattı ama ne zaman fikrini değiştireceğini bilmiyordu.\n\nFeridun Abi ona yeni bir analiz değil, tek sayfalık bir plan yazdırdı.",
+      "ters_kose": "Plan yazmak bazen disiplinli görünmek için yaptığımız bir tören değildir.\n\nAsıl işe yaradığı yer, fiyat tersine döndüğünde ne yapacağımızı önceden söylemesidir.\n\nKararımız kâğıt üzerinde yoksa, düşüş anında kararı çoğu zaman korku verir."
+    },
+    {
+      "id": "mv_psi_006",
+      "kategori": "psikoloji",
+      "tip": "mini_vaka",
+      "konu": "kazanç serisine güvenmek",
+      "ayna": "Bir yatırımcı üst üste altı işlem kazanınca pozisyonlarını büyüttü.\n\nYedinci işlemde piyasa değil, ölçüsü değişmişti.\n\nFeridun Abi ona kazanç serisinin sistemi kanıtlamadığını, yalnızca rehaveti büyütebildiğini söyledi.",
+      "ters_kose": "En tehlikeli işlem bazen zarar ettiğimiz işlem değildir.\n\nÜst üste kazandığımızda riskimizi fark etmeden büyütürüz; piyasa ilk hatada bizi yakalar.\n\nBaşarı, ölçüyü bozuyorsa kazanç değil, gecikmiş bir uyarıdır."
+    },
+    {
+      "id": "mv_bist_001",
+      "kategori": "bist",
+      "tip": "mini_vaka",
+      "konu": "ciro ile kasa",
+      "ayna": "Bir şirket satışlarını ikiye katladı.\n\nHerkes büyümeyi konuşurken Feridun Abi bilançonun alt tarafına baktı: Kasa aynı yerdeydi, borçlar büyümüştü.\n\n\"Çok satmak başka, sattığından para kazanmak başka\" dedi.",
+      "ters_kose": "Ciro büyümesi kulağa iyi gelir.\n\nAma şirket her yeni satış için daha fazla borçlanıyor ve parasını tahsil edemiyorsa, büyüme bazen yalnızca daha büyük bir faturadır.\n\nBorsada satışın hızına değil, paranın şirkette kalıp kalmadığına da bakılır."
+    },
+    {
+      "id": "mv_bist_002",
+      "kategori": "bist",
+      "tip": "mini_vaka",
+      "konu": "genel kurul sorusu",
+      "ayna": "Genel kurulda herkes temettü ne zaman dağıtılacak diye soruyordu.\n\nFeridun Abi söz istedi ve tek bir soru sordu: \"Bu parayı dağıtırsanız, gelecek yıl büyümeyi neyle finanse edeceksiniz?\"\n\nSalon bir anda sessizleşti.",
+      "ters_kose": "Temettü almak güzeldir ama her dağıtım iyi yönetim göstergesi değildir.\n\nŞirketin kârlı yatırımı varken sırf ortakları memnun etmek için kasa boşaltması da risk taşır.\n\nYatırımcı bazen alacağı parayı değil, şirketin o parayla ne yapacağını sorgulamalıdır."
+    },
+    {
+      "id": "mv_bist_003",
+      "kategori": "bist",
+      "tip": "mini_vaka",
+      "konu": "aynı sektörde iki şirket",
+      "ayna": "Aynı sektördeki iki şirketin fiyatı birbirine çok yakındı.\n\nBiri daha parlak sunum yapıyor, diğeri daha az konuşuyordu. Feridun Abi iki bilançoyu yan yana koydu ve sessiz olanı seçti.\n\nÇünkü borcu daha düşük, müşterisi daha sadıktı.",
+      "ters_kose": "Aynı sektörde olmak, iki şirketin aynı kalitede olduğu anlamına gelmez.\n\nBiri büyümeyi borçla, diğeri verimlilikle yapabilir.\n\nFiyatları benzer diye şirketleri de eşit saymak, iki dükkânı yalnızca tabelasına bakarak karşılaştırmaktır."
+    },
+    {
+      "id": "mv_bist_004",
+      "kategori": "bist",
+      "tip": "mini_vaka",
+      "konu": "ucuz görünen hisse",
+      "ayna": "Bir hisse yıllardır düşüyordu.\n\nEkrandaki rakam o kadar ucuz görünüyordu ki herkes \"Buradan daha ne kadar düşebilir?\" diyordu.\n\nFeridun Abi fiyatı değil, şirketin her yıl biraz daha küçülen işini gösterdi.",
+      "ters_kose": "Bir hissenin geçmişte daha yüksekten işlem görmesi, bugünkü fiyatını ucuz yapmaz.\n\nBazen fiyat düşmez; şirketin değeri fiyatı takip eder.\n\nUcuzluk, eski zirveye göre değil, gelecekte üreteceği paraya göre ölçülür."
+    },
+    {
+      "id": "mv_bist_005",
+      "kategori": "bist",
+      "tip": "mini_vaka",
+      "konu": "patron pay satışı",
+      "ayna": "Patronun pay sattığı gün hisse sert düştü.\n\nYatırımcıların yarısı \"Kesin kötü haber\" dedi, diğer yarısı \"Fırsat\" diye alıma geçti.\n\nFeridun Abi ise satışın nedenini, nereye giden parayı ve şirketin kasasına etkisini aradı.",
+      "ters_kose": "Bir ortağın pay satması tek başına ne iyi ne kötüdür.\n\nBorç kapatmak için yapılan satışla, şirket zayıflarken yapılan çıkış aynı okunmaz.\n\nBorsada haberin başlığı değil, paranın hangi yöne aktığı önemlidir."
+    },
+    {
+      "id": "mv_bist_006",
+      "kategori": "bist",
+      "tip": "mini_vaka",
+      "konu": "kârın kullanımı",
+      "ayna": "Bir şirket kârını dağıtmıyor, fabrikasına yatırıyordu.\n\nOrtaklar her yıl \"Temettü yok\" diye şikâyet etti.\n\nÜç yıl sonra kapasite ikiye katlandı. Feridun Abi o zaman \"Bazen ortaklık getirisi cebine değil, şirketin büyüyen makinesine gider\" dedi.",
+      "ters_kose": "Kâr dağıtmamak otomatik olarak büyüme demek değildir.\n\nŞirket parayı verimli kullanmıyorsa, kasada duran para da ortak için değer üretmez.\n\nYatırımcı hem kârın neden tutulduğunu hem de tutulduktan sonra neye dönüştüğünü izlemelidir."
+    },
+    {
+      "id": "mv_makro_001",
+      "kategori": "makro",
+      "tip": "mini_vaka",
+      "konu": "faiz manşeti",
+      "ayna": "Faiz indirimi haberi gelince herkes aynı hissede alıma geçti.\n\nFeridun Abi ekrana değil, şirketlerin borç maliyetine baktı.\n\n\"Manşet piyasayı hareket ettirir\" dedi. \"Ama her şirketi aynı yönde taşımaz.\"",
+      "ters_kose": "Faiz düşecek diye bütün hisselerin aynı anda kazanacağını düşünmek kolaydır.\n\nBorcu yüksek şirket rahatlayabilir; talebi zayıf şirket ise düşük faizden beklenen faydayı göremeyebilir.\n\nMakro rüzgâr yönü gösterir, her tekneyi aynı hızda götürmez."
+    },
+    {
+      "id": "mv_makro_002",
+      "kategori": "makro",
+      "tip": "mini_vaka",
+      "konu": "kur hareketi",
+      "ayna": "Dolar yükselince bir yatırımcı döviz geliri olan her şirketi almaya başladı.\n\nFeridun Abi ona satışın hangi para biriminde, maliyetin hangi para biriminde olduğunu sordu.\n\nRakamı bilen yatırımcı çoktu; denklemi bilen azdı.",
+      "ters_kose": "Kur yükselişi bazı şirketleri destekler, bazılarını sıkıştırır.\n\nGeliri döviz olan şirketin maliyeti de dövizse, ekrandaki ilk avantaj kâr hanesine aynı şekilde yansımayabilir.\n\nPiyasada tek değişkenle bütün bilançoyu açıklamaya çalışmak pahalıya mal olur."
+    },
+    {
+      "id": "mv_makro_003",
+      "kategori": "makro",
+      "tip": "mini_vaka",
+      "konu": "enflasyon manşeti",
+      "ayna": "Enflasyon verisi açıklanınca bir yatırımcı yalnızca rakamın düştüğüne sevindi.\n\nFeridun Abi \"Şirketin sattığı ürünün fiyatı, maliyeti ve talebi ne oldu?\" diye sordu.\n\nTek veriyle bütün ekonomiyi okumaya çalışmak, tek mumla bütün grafiği okumaya benziyordu.",
+      "ters_kose": "Enflasyonun düşmesi her şirket için aynı rahatlama değildir.\n\nFiyat artırabilen şirketle maliyetini müşterisine aktaramayan şirket aynı verinin içinde farklı bir hayat yaşar.\n\nMakro veriyi bilmek başlangıçtır; şirketin o ortamda ne yaptığı asıl hikâyedir."
+    },
+    {
+      "id": "mv_makro_004",
+      "kategori": "makro",
+      "tip": "mini_vaka",
+      "konu": "endeks ve piyasa genişliği",
+      "ayna": "Endeks yükseliyordu ama portföydeki hisselerin çoğu düşüyordu.\n\nBir yatırımcı \"Piyasa gidiyor, ben neden kazanamıyorum?\" diye sordu.\n\nFeridun Abi endeksin hareketiyle piyasanın tamamının aynı şey olmadığını anlattı.",
+      "ters_kose": "Endeksin yükselmesi, her yatırımcının doğru yerde olduğu anlamına gelmez.\n\nBazen birkaç büyük hisse vitrin olur, geri kalan piyasa sessizce zayıflar.\n\nYatırımcı yalnızca manşete değil, hareketin kaç şirkete yayıldığına da bakmalıdır."
+    },
+    {
+      "id": "mv_makro_005",
+      "kategori": "makro",
+      "tip": "mini_vaka",
+      "konu": "risk iştahı",
+      "ayna": "Yabancı piyasalar neşelenince bir yatırımcı riskini iki katına çıkardı.\n\nFeridun Abi ona iyi havanın kalıcı söz vermediğini söyledi.\n\nRisk iştahı yükselir; fakat her portföyün taşıma kapasitesi aynı kalmaz.",
+      "ters_kose": "Piyasa sakinleştiğinde risk almak daha kolay görünür.\n\nAma yatırımcının en büyük hataları çoğu zaman korku gününde değil, güvenin fazla yükseldiği günlerde hazırlanır.\n\nRüzgâr arkadan esiyor diye yelkeni sınırsız açmak, tekneyi güçlendirmez."
+    },
+    {
+      "id": "mv_makro_006",
+      "kategori": "makro",
+      "tip": "mini_vaka",
+      "konu": "resesyon korkusu",
+      "ayna": "Resesyon manşeti çıkınca herkes aynı anda satışa geçti.\n\nFeridun Abi bazı şirketleri izlemeye devam etti; çünkü ekonomik yavaşlama ile her şirketin aynı oranda küçülmediğini biliyordu.\n\nKorku geneldi, bilançolar değildi.",
+      "ters_kose": "Kötü makro haber bütün şirketleri aynı anda kötü yapmaz.\n\nBorcu yüksek, talebe bağımlı şirketle nakdi güçlü ve zor dönemde pazar payı kazanan şirket aynı sepete konmaz.\n\nPiyasa korkusu fırsat yaratabilir; ama seçmeden alanı değil, riski büyütür."
+    },
+    {
+      "id": "mv_tek_001",
+      "kategori": "teknik",
+      "tip": "mini_vaka",
+      "konu": "herkesin gördüğü destek",
+      "ayna": "Grafikte herkes aynı destek çizgisini çizmişti.\n\nFiyat o seviyeye geldiğinde binlerce yatırımcı aynı anda alım bekledi.\n\nFeridun Abi çizginin kendisinden çok, fiyat oraya geldiğinde alıcıların gerçekten ortaya çıkıp çıkmadığını izledi.",
+      "ters_kose": "Bir seviyeyi herkesin görmesi onu otomatik olarak güçlü yapmaz.\n\nBazen ortak inanç destek oluşturur; bazen de herkesin stopu aynı yerde olduğu için likiditeye dönüşür.\n\nÇizgi plan değildir. Fiyatın o çizgide verdiği tepki planın kanıtıdır."
+    },
+    {
+      "id": "mv_tek_002",
+      "kategori": "teknik",
+      "tip": "mini_vaka",
+      "konu": "hacimsiz kırılım",
+      "ayna": "Bir hisse direnç üstüne çıktı.\n\nYatırımcılar kırılımı kutladı ama Feridun Abi hacme baktı; hareketi taşıyacak alıcı sayısı artmamıştı.\n\nİki gün sonra fiyat eski aralığına döndü.",
+      "ters_kose": "Her direnç üstü hareket kırılım değildir.\n\nFiyat bir seviyeyi aşabilir; fakat arkasında yeni talep yoksa orada kalamayabilir.\n\nGrafikte ilk görünen hareketi değil, o hareketin taşınma gücünü izlemek gerekir."
+    },
+    {
+      "id": "mv_tek_003",
+      "kategori": "teknik",
+      "tip": "mini_vaka",
+      "konu": "aşırı alım",
+      "ayna": "Bir yatırımcı RSI yüksek diye yükselen hisseden çıktı.\n\nHisse birkaç gün daha yükselince pişman oldu.\n\nFeridun Abi \"Aşırı alım satış emri değildir\" dedi; güçlü trendin de uzun süre güçlü kalabileceğini hatırlattı.",
+      "ters_kose": "RSI'ın yüksek olması hissenin hemen düşeceğini garanti etmez.\n\nBazen gösterge uzun süre yüksek kalır, çünkü alıcılar hâlâ güçlüdür.\n\nTek göstergeyle karar vermek, bir doktorun yalnızca ateşe bakarak teşhis koymasına benzer."
+    },
+    {
+      "id": "mv_tek_004",
+      "kategori": "teknik",
+      "tip": "mini_vaka",
+      "konu": "gap hareketi",
+      "ayna": "Hisse sabah büyük bir boşlukla açıldı.\n\nBir yatırımcı bunu kaçırılmış fırsat, diğeri kesin dönüş işareti saydı.\n\nFeridun Abi ikisine de aynı soruyu sordu: \"Bu boşluğu kim ve hangi haberle oluşturdu?\"",
+      "ters_kose": "Gap tek başına yön söylemez.\n\nHaberle açılan boşlukla, likiditesi zayıf bir tahtada oluşan boşluğu aynı okumak hatalıdır.\n\nTeknik görüntüye bağlam eklenmezse, grafik bize yalnızca şekli anlatır; sebebi değil."
+    },
+    {
+      "id": "mv_tek_005",
+      "kategori": "teknik",
+      "tip": "mini_vaka",
+      "konu": "stop seviyesi",
+      "ayna": "Bir yatırımcı stopunu sürekli biraz aşağı taşıyordu.\n\nHer seferinde \"Biraz daha alan verelim\" diyordu.\n\nFeridun Abi ona stopun fiyatı değil, fikrin geçersiz olduğu yer olduğunu hatırlattı.",
+      "ters_kose": "Stop çalışınca her zaman analiz yanlış değildir; bazen risk doğru ölçülmemiştir.\n\nÇizgiyi sürekli oynatmak zararı azaltmaz, yalnızca kabul tarihini erteler.\n\nPlanın seviyesi değişiyorsa, bunun gerekçesi de işlemden önce yazılı olmalıdır."
+    },
+    {
+      "id": "mv_tek_006",
+      "kategori": "teknik",
+      "tip": "mini_vaka",
+      "konu": "zaman dilimi",
+      "ayna": "Günlük grafikte güçlü görünen hisse, saatlik grafikte sert satıştaydı.\n\nİki yatırımcı aynı grafiğe bakıp farklı karar verdi.\n\nFeridun Abi \"İkisi de yanlış değil; yalnızca aynı hikâyenin farklı sayfalarına bakıyorlar\" dedi.",
+      "ters_kose": "Alt zaman dilimindeki gürültü, üst zaman dilimindeki planı tek başına bozmaz.\n\nAma üst zaman dilimine sığınıp kısa vadeli riski görmezden gelmek de doğru değildir.\n\nZaman dilimi seçmek, beklentimizin süresini seçmektir."
+    },
+    {
+      "id": "mv_eg_001",
+      "kategori": "egitim",
+      "tip": "mini_vaka",
+      "konu": "ilk portföy",
+      "ayna": "İlk portföyünü kuran yatırımcı altı farklı hisse aldı.\n\nNeden aldığını sorduğumuzda üçü için yalnızca \"Herkes konuşuyordu\" diyebildi.\n\nFeridun Abi çeşitliliğin, bilmediğimiz şirket sayısını artırmak olmadığını söyledi.",
+      "ters_kose": "Portföyde çok hisse olması otomatik olarak iyi dağılım değildir.\n\nBilmediğimiz on şirket, bildiğimiz üç şirketten daha güvenli olmayabilir.\n\nÇeşitlendirme sayıyı değil, tek bir hatanın portföyü ne kadar sarsacağını yönetir."
+    },
+    {
+      "id": "mv_eg_002",
+      "kategori": "egitim",
+      "tip": "mini_vaka",
+      "konu": "kâr ve nakit akışı",
+      "ayna": "Bir şirket kâr açıkladı ama kasasına para girmemişti.\n\nYatırımcılar kâr rakamını kutladı. Feridun Abi ise tahsil edilemeyen alacakları gösterdi.\n\n\"Kâğıt üzerindeki kârla kasadaki para aynı gün buluşmayabilir\" dedi.",
+      "ters_kose": "Kâr açıklayan her şirketin eli nakit dolu değildir.\n\nSatışlar vadeli, tahsilat gecikmeli ve borçlar yakınsa kâr rakamı yatırımcıya rahatlık değil, soru üretmelidir.\n\nBilançoda rakamın büyüklüğü kadar kalitesi de önemlidir."
+    },
+    {
+      "id": "mv_eg_003",
+      "kategori": "egitim",
+      "tip": "mini_vaka",
+      "konu": "çeşitlendirme",
+      "ayna": "Bir yatırımcı beş farklı hisseye sahip olduğu için kendini çeşitlendirmiş sanıyordu.\n\nFeridun Abi hisselerin aynı sektörde, aynı kur riskinde ve aynı habere bağlı olduğunu gösterdi.\n\n\"Beş kapı var ama hepsi aynı odaya açılıyor\" dedi.",
+      "ters_kose": "Çeşitlendirme, portföye rastgele hisse eklemek değildir.\n\nAynı riskin beş farklı isimle taşınması, güvenlik değil sayı yanılsamasıdır.\n\nPortföydeki varlıkların birbirinden hangi durumda ayrışacağını bilmeden yapılan dağılım eksik kalır."
+    },
+    {
+      "id": "mv_eg_004",
+      "kategori": "egitim",
+      "tip": "mini_vaka",
+      "konu": "backtest sonucu",
+      "ayna": "Bir sistem geçmişte 20 işlemde 16 kez kazanmıştı.\n\nYatırımcı bunu görünce bütün parasını sisteme bağlamak istedi.\n\nFeridun Abi önce kaybeden dört işlemi, sonra işlem maliyetini ve farklı piyasa dönemlerini sordu.",
+      "ters_kose": "Geçmişte iyi çalışan sistem gelecek için garanti değildir.\n\nAz sayıda örnek şansın payını büyütür; masraf, kayma ve kötü dönem hesaba katılmazsa sonuç güzelleşir.\n\nBacktest kehanet değil, sorgulanacak bir başlangıçtır."
+    },
+    {
+      "id": "mv_eg_005",
+      "kategori": "egitim",
+      "tip": "mini_vaka",
+      "konu": "pozisyon büyüklüğü",
+      "ayna": "Aynı hisseyi iki yatırımcı aldı.\n\nBiri gece rahat uyudu, diğeri her dakika fiyat kontrol etti.\n\nFeridun Abi grafikleri değil, pozisyon büyüklüklerini karşılaştırdı. Fark analizde değil, taşıdıkları riski ölçememelerindeydi.",
+      "ters_kose": "İyi fikir, yanlış büyüklükte alındığında kötü işleme dönüşebilir.\n\nPozisyonu büyütmek inancı değil, hatanın portföye etkisini büyütür.\n\nYatırımcının haklı çıkması kadar, yanıldığında ne kadar kaybedeceği de planın parçasıdır."
+    },
+    {
+      "id": "mv_eg_006",
+      "kategori": "egitim",
+      "tip": "mini_vaka",
+      "konu": "çıkış planı",
+      "ayna": "Bir yatırımcı hisseyi neden aldığını biliyordu ama ne zaman çıkacağını bilmiyordu.\n\nFiyat yükselince erken sattı, düşünce geç kaldı.\n\nFeridun Abi çıkış planı olmayan girişin, yarım yazılmış bir cümle olduğunu söyledi.",
+      "ters_kose": "Çıkış planı yalnızca stop seviyesinden ibaret değildir.\n\nHedefe ulaşınca ne yapacağımız, şirketin gerekçesi bozulunca nasıl davranacağımız ve kârı nasıl koruyacağımız da önceden düşünülmelidir.\n\nGiriş heyecanı kısa, çıkış kararı uzundur."
+    },
+    {
+      "id": "mv_kr_001",
+      "kategori": "kripto",
+      "tip": "mini_vaka",
+      "konu": "yüksek APY",
+      "ayna": "Bir yatırımcı yüksek APY gördüğü coin'i kilitledi.\n\nGetiri hesabını her gün yaptı ama kilit süresini hiç düşünmedi.\n\nFiyat sert düşünce kazandığı faiz değil, çıkamadığı pozisyon konuşulmaya başlandı.",
+      "ters_kose": "Yüksek getiri, riskin yok olduğu anlamına gelmez.\n\nBazen APY bize kazanç değil; likiditeyi, karşı tarafı ve token arzını görmezden gelmemiz için sunulan parlak etikettir.\n\nÖnce paranın hangi şartta geri çıkabildiğini bilmek gerekir."
+    },
+    {
+      "id": "mv_kr_002",
+      "kategori": "kripto",
+      "tip": "mini_vaka",
+      "konu": "stablecoin güveni",
+      "ayna": "Bir yatırımcı stablecoin'i nakit gibi görüyordu.\n\nFeridun Abi ona \"Nakit hangi kurumun sözüne dayanıyor?\" diye sordu.\n\nYatırımcı ilk kez fiyat riskinden başka saklama, karşı taraf ve itfa riskleri olduğunu düşündü.",
+      "ters_kose": "Bir varlığın fiyatının sabit kalması, riskinin de sabit kaldığı anlamına gelmez.\n\nKriptoda güven bazen kodda, bazen rezervde, bazen de platformun sözünde taşınır.\n\nSabit görünen fiyatın arkasındaki mekanizma bozulursa, sakinlik bir anda kaybolabilir."
+    },
+    {
+      "id": "mv_kr_003",
+      "kategori": "kripto",
+      "tip": "mini_vaka",
+      "konu": "saklama riski",
+      "ayna": "Bir yatırımcı coin'lerini platformda bırakıp yalnızca fiyata bakıyordu.\n\nFeridun Abi ona cüzdan adresini değil, çıkış planını sordu.\n\nKazanç hesabı vardı; varlığı nasıl geri alacağını hiç yazmamıştı.",
+      "ters_kose": "Kriptoda anahtarın bizde olması önemli olabilir ama bütün riski yok etmez.\n\nYanlış ağ, sahte sözleşme, likidite eksikliği ve işlem hatası da sermayeyi etkiler.\n\nVarlığı almak kadar, güvenli biçimde tutmak ve gerektiğinde çıkarabilmek de kararın parçasıdır."
+    },
+    {
+      "id": "mv_kr_004",
+      "kategori": "kripto",
+      "tip": "mini_vaka",
+      "konu": "airdrop beklentisi",
+      "ayna": "Bir yatırımcı aylarca airdrop bekledi.\n\nHarcanan zamanı ve işlem ücretlerini hiç hesaplamadı; yalnızca dağıtılacak token miktarını konuştu.\n\nFeridun Abi \"Bedava görünen şeyin toplam maliyetini yaz\" dedi.",
+      "ters_kose": "Airdrop bedava olabilir; ona ulaşmak için harcadığımız zaman, ücret ve dikkat bedava değildir.\n\nBir ödül ihtimali, bizi anlamadığımız protokole daha fazla para taşımaya itiyorsa strateji yavaşça bahse dönüşür.\n\nGetiriden önce yolun riskini ölçmek gerekir."
+    },
+    {
+      "id": "mv_kr_005",
+      "kategori": "kripto",
+      "tip": "mini_vaka",
+      "konu": "kaldıraç ölçüsü",
+      "ayna": "Bir yatırımcı küçük teminatla büyük pozisyon açtı.\n\n\"Sadece yüzde bir oynasa yeter\" diyordu.\n\nFeridun Abi ona yüzde bir hareketin pozisyonunda kaç lira ettiğini hesaplattı. Rakamı görünce kaldıraç fikri değişti.",
+      "ters_kose": "Kaldıraç sermayeyi büyütmez; aynı sermayeyle daha büyük riske maruz bırakır.\n\nDoğru tahmin bile yanlış büyüklükte açılmış pozisyonu kurtarmayabilir.\n\nPiyasada bazen yönü değil, ölçüyü yanlış bildiğimiz için tasfiye oluruz."
+    },
+    {
+      "id": "mv_kr_006",
+      "kategori": "kripto",
+      "tip": "mini_vaka",
+      "konu": "24 saatlik piyasa",
+      "ayna": "Kripto piyasası hiç kapanmadığı için bir yatırımcı da hiç kapanmıyordu.\n\nGecenin üçünde verdiği kararların çoğu yeni veriden değil, yorgunluktan doğuyordu.\n\nFeridun Abi ekranı kapatmanın da risk yönetimi olduğunu söyledi.",
+      "ters_kose": "Piyasa 24 saat açık diye yatırımcının 24 saat karar vermesi gerekmez.\n\nUykusuzluk, FOMO ve anlık hareketler birleşince işlem planı değil refleks çalışır.\n\nBazen portföyü koruyan şey yeni bir indikatör değil, zamanında kapatılan ekrandır."
+    },
+    {
+      "id": "zb1_01",
+      "kategori": "psikoloji",
+      "konu": "stop-loss",
+      "kaynak": "psi_002 zengin yükseltme",
+      "ayna": "Stop koymamak 'ben hata yapmam' demenin kibirli halidir; piyasa egomuzu değil fiyatı ödüllendirir.",
+      "zengin": {
+        "soru": "Stop koymamak cesaret mi, yoksa 'ben yanılmam' demenin kibarı mı?",
+        "kurulum": "Hepimiz yaşadık: pozisyon kırmızıya döner, 'birazdan toparlar, gerek yok' deriz. Aslında içimizden geçen cümle şudur: ben hata yapmam.",
+        "donus": "Oysa piyasa egomuzu değil fiyatı ödüllendirir. Stop bir zayıflık itirafı değil, sermayenin sigortasıdır. Üstelik mesele stop koymak değil doğru yere koymaktır; yanlış yere konan stop, hiç stop kadar pahalıya gelir.",
+        "kapanis": "Kısacası dostlar: planı olan uyur, sadece ümidi olan sabaha kadar nöbet tutar."
+      }
+    },
+    {
+      "id": "zb1_02",
+      "kategori": "psikoloji",
+      "konu": "FOMO / geç kalma korkusu",
+      "kaynak": "yeni",
+      "ayna": "Kaçan tren için üzülmek yerine bir sonrakini beklemek, parayı koruyanın işidir.",
+      "zengin": {
+        "soru": "Treni kaçırma korkusu mu bindiriyor bizi, yoksa istasyonu mu şaşırıyoruz?",
+        "kurulum": "Bir hisse üst üste tavan yapar, herkes konuşur, 'ben de gireyim, daha gider' deriz. FOMO tam da burada, en yüksek sesle en tepede bağırır.",
+        "donus": "Oysa fırsat dediğimiz şey çoğu zaman başkasının çıkışıdır. Piyasada her gün yeni bir tren kalkar, ama sermaye bir tanedir; kovaladığımız kazanç, koruduğumuz kazançtan daha pahalıya mal olur.",
+        "kapanis": "Şunu hiç unutmayalım: kaçırdığımız kazanç canımızı yakmaz, kovaladığımız kazanç yakar."
+      }
+    },
+    {
+      "id": "zb1_03",
+      "kategori": "bist",
+      "konu": "hikâye vs bilanço",
+      "kaynak": "yeni",
+      "ayna": "Fiyatı uzun vadede hikâye değil nakit akışı taşır; hikâye bedava, bilanço pahalıdır.",
+      "zengin": {
+        "soru": "Biz bir şirketi mi alıyoruz, yoksa onun hakkında anlatılan hikâyeyi mi?",
+        "kurulum": "Forumda parlak bir senaryo okuruz: 'yeni yatırım geliyor, patlayacak' derler. Bilançoyu açmadan, sırf hikâye güzel diye pozisyona gireriz.",
+        "donus": "Oysa fiyatı uzun vadede hikâye değil nakit akışı taşır. Hikâye bedava, bilanço ise pahalıdır; biri hevesimizi, diğeri paramızı ilgilendirir. En azından borcunu ve nakdini görmeden 'ucuz' dememeliyiz.",
+        "kapanis": "Sonuçta hikâyeye âşık olan, faturayı bilançodan öder."
+      }
+    },
+    {
+      "id": "zb1_04",
+      "kategori": "makro",
+      "konu": "manşet / haber ticareti",
+      "kaynak": "yeni",
+      "ayna": "Piyasa manşetle değil beklentiyle fiyatlanır; haber çıktığında çoğu zaman iş bitmiştir.",
+      "zengin": {
+        "soru": "Manşet mi yönetiyor portföyümüzü, yoksa planımız mı?",
+        "kurulum": "Bir veri açıklanır, ekran kıpkırmızı olur, 'her şeyi sat' deriz. Ertesi hafta manşet döner, bu kez 'kaçırmayalım' diye geri alırız.",
+        "donus": "Oysa piyasa manşetle değil beklentiyle fiyatlanır; haber çıktığında çoğu zaman iş çoktan bitmiştir. Her başlığa göre pozisyon değiştiren, komisyonu brokerına, huzuru ekrana bağışlar.",
+        "kapanis": "Bakın dostlar; manşeti gazeteci yazar, kararı biz veririz; ikisini karıştırmayalım."
+      }
+    },
+    {
+      "id": "zb1_05",
+      "kategori": "teknik",
+      "konu": "tek gösterge / teyit",
+      "kaynak": "yeni",
+      "ayna": "Tek gösterge bir fikirdir, teyit değil; sinyal ancak birkaç işaret aynı yöne bakınca güçlenir.",
+      "zengin": {
+        "soru": "Bir tek ok bize yönü söyler mi, yoksa hedefi ıskalatır mı?",
+        "kurulum": "RSI aşırı satımda diye 'dip burası' deyip alırız. Gösterge tek başına konuşur, biz de tek cümleye koca bir pozisyon yaslarız.",
+        "donus": "Oysa tek gösterge bir fikirdir, teyit değil. RSI, hacim, seviye ve trend aynı yöne baktığında sinyal güçlenir; biri parlıyor diye plan kurmak, tek tanığın ifadesiyle hüküm vermeye benzer.",
+        "kapanis": "Özetle: grafik heyecan verir, ama parayı teyit korur."
+      }
+    },
+    {
+      "id": "zb1_06",
+      "kategori": "teknik",
+      "konu": "destek/direnç dokunma yanılgısı",
+      "kaynak": "yeni",
+      "ayna": "Destek bir söz değil olasılıktır; kırılana kadar geçerli, kırıldığında en pahalı inat orada başlar.",
+      "zengin": {
+        "soru": "Bir seviyeye dokunulması dönüş müjdesi mi, yoksa sadece bir dokunuş mu?",
+        "kurulum": "Fiyat desteğe gelir, 'buradan döner' deyip aşağı bakan bıçağı tutarız. Seviyeyi kutsarız; sanki çizgi para basıyormuş gibi.",
+        "donus": "Oysa destek bir söz değil, bir olasılıktır. Kırılana kadar geçerlidir, kırıldığında ise en pahalı inat orada başlar. Seviye bize nerede yanıldığımızı gösterir, nereye kadar haklı olacağımızı değil.",
+        "kapanis": "Çizgiyi biz çizeriz dostlar, ama fiyatı piyasa çizer."
+      }
+    },
+    {
+      "id": "zb1_07",
+      "kategori": "egitim",
+      "konu": "çıkış planı",
+      "kaynak": "yeni",
+      "ayna": "Girişi heyecan, çıkışı plan yönetir; çıkışı olmayan bir alım yarım yazılmış bir cümledir.",
+      "zengin": {
+        "soru": "Nereden aldığımızı biliyoruz da, nerede satacağımızı biliyor muyuz?",
+        "kurulum": "Bir hisseye 'sağlam' deyip gireriz, gerekçeyi ezbere sayarız. Ama 'ne olursa satarım' sorusuna gelince sessiz kalırız.",
+        "donus": "Oysa girişi heyecan, çıkışı ise plan yönetir. Çıkışı olmayan bir alım, yarım yazılmış bir cümledir; kâr da zarar da o boşlukta kaybolur. Almadan önce hem hedefi hem de 'yanıldım' çizgisini yazmalıyız.",
+        "kapanis": "Nereden çıkacağını bilmeden girdiğimiz oda, oda değil kapandır."
+      }
+    },
+    {
+      "id": "zb1_08",
+      "kategori": "egitim",
+      "konu": "pozisyon boyutu / risk",
+      "kaynak": "yeni",
+      "ayna": "Pozisyon boyutu özgüvenimizle değil, yanıldığımızda kaybedeceğimiz tutarla ölçülür.",
+      "zengin": {
+        "soru": "Bir işlemde asıl soru 'ne kadar kazanırım' mı, yoksa 'yanılırsam ne kaybederim' mı?",
+        "kurulum": "Emin olduğumuz bir fikir gelir, 'bu kesin' deyip hesabın yarısını tek hisseye bindiririz. Haklı çıkmayı o kadar isteriz ki, yanılma ihtimaline yer bırakmayız.",
+        "donus": "Oysa oyunda kalmanın tek şartı, tek bir hatanın bizi masadan kaldırmamasıdır. Pozisyon boyutu özgüvenimizle değil, yanıldığımızda kaybedeceğimiz tutarla ölçülür. Küçük yanılmalar öğretir, büyük yanılmalar bitirir.",
+        "kapanis": "Uzun vadede piyasada kalan, en çok haklı çıkan değil en az iflas edendir."
+      }
+    },
+    {
+      "id": "zb2_01",
+      "kategori": "psikoloji",
+      "konu": "islem yapmama disiplini",
+      "ayna": "Bazen en iyi işlem, hiç işlem yapmamaktır; nakitte beklemek de bir karardır.",
+      "zengin": {
+        "soru": "Elimiz her gün bir tuşa basmak zorunda mı?",
+        "kurulum": "Ekran açık, piyasa hareketli, 'bugün de bir şey yapmalıyım' hissi bastırır. Boş durmak, para kaybetmek gibi gelir bize.",
+        "donus": "Oysa piyasa her gün fırsat dağıtmaz; iyi kurulumlar seyrektir. İşlem yapmadığın günlerde sermayeni korumak, kötü kuruluma girip kaybetmekten çok daha kârlıdır. Beklemek tembellik değil, seçiciliktir.",
+        "kapanis": "Kısacası dostlar: bazen en iyi hamle, elleri klavyeden çekmektir."
+      }
+    },
+    {
+      "id": "zb2_02",
+      "kategori": "psikoloji",
+      "konu": "batik maliyet yanilgisi",
+      "ayna": "Bir pozisyonu 'zararına satmam' demek, kararı fiyata değil egoya bağlamaktır.",
+      "zengin": {
+        "soru": "Zarardaki hisseyi tutarken gerçekten hisseyi mi tutuyoruz, yoksa haklılığımızı mı?",
+        "kurulum": "'Maliyetime gelsin, çıkarım' deriz. O rakam artık bir yatırım kararı değil, kişisel bir meseledir.",
+        "donus": "Oysa piyasa senin ortalama maliyetini bilmez, umursamaz da. Dünkü zarar battı; asıl soru şu: bugün elimde hiç olmasaydı, bu parayla yine bunu alır mıydım? Cevap hayırsa, tutmanın tek sebebi inattır.",
+        "kapanis": "Şunu hiç unutmayalım: geçmiş maliyet bir anıdır, gelecek karar ise bugünkü fiyattadır."
+      }
+    },
+    {
+      "id": "zb2_03",
+      "kategori": "psikoloji",
+      "konu": "suru davranisi",
+      "ayna": "Herkesin aldığı yerde alıcı bitmiştir; kalabalık en çok tepede toplanır.",
+      "zengin": {
+        "soru": "Bir hisseyi herkes konuşuyorsa, biz erken mi kaldık, yoksa geç mi?",
+        "kurulum": "Telefon bildirimleri, forumlar, sohbetler; hepsi aynı hisseyi söylüyor. 'Bu kadar insan yanılmaz' diye içimiz rahatlar.",
+        "donus": "Oysa bir hikaye herkese ulaştığında, alacak olan çoktan almıştır; geriye sadece son alıcılar kalır. Kalabalık ısındıkça risk artar, azalmaz. Rahatladığın an, çoğu zaman dikkatli olman gereken andır.",
+        "kapanis": "Sonuçta piyasada çoğunluk rahatken kazanılmaz; herkes aynı kapıya koştuğunda kapı daralır."
+      }
+    },
+    {
+      "id": "zb2_04",
+      "kategori": "psikoloji",
+      "konu": "revenge trade",
+      "ayna": "Zararı hemen geri almak istemek, kaybı ikiye katlamanın en hızlı yoludur.",
+      "zengin": {
+        "soru": "Bir işlemde kaybedince, sıradaki işleme kim giriyor: biz mi, öfkemiz mi?",
+        "kurulum": "Stop yedik, içimiz yandı. 'Şimdi bir işlemle bunu geri alırım' deyip plansızca tekrar gireriz; buna revenge trade denir.",
+        "donus": "Oysa piyasa dünkü kaybını sana borçlu değil. Öfkeyle girilen işlem kural değil duygu taşır; ve duygu, hesabın en pahalı danışmanıdır. Kaybı geri almak için değil, doğru kurulum olduğu için işlem yapmalıyız.",
+        "kapanis": "Bakın dostlar; kaybı kovalayan çoğu zaman ikinci kez kaybeder."
+      }
+    },
+    {
+      "id": "zb2_05",
+      "kategori": "psikoloji",
+      "konu": "fazla islem",
+      "ayna": "Çok işlem çok kâr demek değildir; çoğu zaman sadece çok komisyon demektir.",
+      "zengin": {
+        "soru": "Hareket ile ilerlemeyi karıştırıyor olabilir miyiz?",
+        "kurulum": "Gün boyu al-sat yaparız, meşgul hissederiz, 'çalışıyorum' deriz. Her işlem bize bir şey yaptığımız hissini verir.",
+        "donus": "Oysa piyasada meşguliyet, kârın kanıtı değildir. Her giriş-çıkış komisyon, vergi ve hata riski biriktirir; küçük sızıntılar toplamda büyük yara açar. Bazen en verimli gün, hiç işlem yapmadığın gündür.",
+        "kapanis": "Özetle: bir yatırımcıyı çok işlem değil, doğru işlem zengin eder."
+      }
+    },
+    {
+      "id": "zb2_06",
+      "kategori": "psikoloji",
+      "konu": "tek senaryo korlugu",
+      "ayna": "Bir senaryoya âşık olduğumuzda, sadece bizi doğrulayan haberleri görürüz.",
+      "zengin": {
+        "soru": "Elimizdeki fikri sınıyor muyuz, yoksa sadece ona kanıt mı topluyoruz?",
+        "kurulum": "Bir hisseye inandık. Artık sadece iyi haberler gözümüze çarpar, kötü sinyalleri 'geçici' diye eleriz. Zihin, kendini haklı çıkarmayı sever.",
+        "donus": "Oysa piyasa bizim inancımızı değil, gerçeği fiyatlar. Sağlam yatırımcı 'neden haklıyım'ı değil, 'nerede yanılıyor olabilirim'i sorar. Karşı senaryoyu yazamıyorsak, aslında o pozisyonu hiç anlamamışızdır.",
+        "kapanis": "En tehlikeli pozisyon, yanılma ihtimalini hiç düşünmediğimiz pozisyondur."
+      }
+    },
+    {
+      "id": "zb2_07",
+      "kategori": "bist",
+      "konu": "temettu yanilgisi",
+      "ayna": "Temettü bedava para değildir; şirket kasasından çıkıp fiyattan düşer.",
+      "zengin": {
+        "soru": "Temettü aldığımızda cebimize gerçekten yeni bir para mı giriyor?",
+        "kurulum": "'Bu hisse temettü veriyor, bedava gelir' deriz. Hesabımıza nakit düşünce kazandığımızı sanırız.",
+        "donus": "Oysa temettü, şirketin kendi kasasından dağıttığı paradır; dağıtıldığı gün fiyat o kadar düşer. Asıl mesele temettünün varlığı değil, şirketin onu sürdürülebilir şekilde üretip üretemediğidir. Borçlanarak dağıtılan temettü, cebe konmuş bir borçtur.",
+        "kapanis": "Uzun vadede seni zengin eden temettünün kendisi değil, onu üretebilen şirkettir."
+      }
+    },
+    {
+      "id": "zb2_08",
+      "kategori": "bist",
+      "konu": "deger tuzagi",
+      "ayna": "Ucuz olan her hisse fırsat değildir; bazıları haklı sebeplerle ucuzdur.",
+      "zengin": {
+        "soru": "Bu hisse 'ucuz' mu, yoksa sadece 'düşmüş' mü?",
+        "kurulum": "Fiyat tepeden çok inmiş, 'bu kadar ucuzlamışken kaçmaz' deriz. Düşük fiyatı otomatik olarak değerle karıştırırız.",
+        "donus": "Oysa fiyatın düşük olması, değerli olduğu anlamına gelmez; piyasa bazen bir sebep bildiği için satar. Bilanço bozuluyorsa, ucuz hisse daha da ucuzlar; buna değer tuzağı denir. Asıl soru fiyatın nereden geldiği değil, şirketin nereye gittiğidir.",
+        "kapanis": "Sözün özü: ucuzluk bir fiyat değil, bir gerekçe sorusudur."
+      }
+    },
+    {
+      "id": "zb2_09",
+      "kategori": "bist",
+      "konu": "bedelli",
+      "ayna": "Bedelli, bedava hisse değildir; cebinden para koyarsın, koymazsan payın erir.",
+      "zengin": {
+        "soru": "Bedelli haberi neden bazen sevinç, bazen kâbus?",
+        "kurulum": "'Şirket bedelli yapıyor, yeni hisse gelecek' deyip kimi zaman müjde sanırız. Oysa çoğu zaman ne olduğunu tam bilmeyiz.",
+        "donus": "Oysa bedelli, ortaktan taze para ister; katılmazsan hissen sulanır, oran olarak küçülürsün. Asıl soru bedellinin varlığı değil, o paranın nereye gideceğidir: borç kapatmak mı, büyümek mi? İkisi çok farklı hikayelerdir.",
+        "kapanis": "Hatırlayalım: bedellide asıl mesele kaç lira değil, hangi amaç."
+      }
+    },
+    {
+      "id": "zb2_10",
+      "kategori": "bist",
+      "konu": "yabanci takas algisi",
+      "ayna": "Yabancı alıyor diye almak, kendi planını başkasının cebine emanet etmektir.",
+      "zengin": {
+        "soru": "'Yabancı topluyor' cümlesi bir kanıt mı, yoksa bir hikaye mi?",
+        "kurulum": "Takas verisine bakar, 'yabancı giriyor, bu iş tamam' deriz. Büyük oyuncunun peşine takılmak güven verir.",
+        "donus": "Oysa takas verisi gecikmeli ve eksik okunur; yabancı dediğimiz tek bir akıl değil, binlerce farklı karardır. Onların alım sebebini, vadesini, çıkış planını bilmeyiz. Başkasının izini körü körüne takip etmek, kendi geçersizlik çizgin olmadan yürümektir.",
+        "kapanis": "En sade haliyle: başkasının aldığını görmek, senin ne zaman satacağını söylemez."
+      }
+    },
+    {
+      "id": "zb2_11",
+      "kategori": "bist",
+      "konu": "halka arz cosku",
+      "ayna": "Halka arz, şirketin sana değil, senin şirkete para verdiğin andır.",
+      "zengin": {
+        "soru": "Halka arza girerken kim kime fırsat sunuyor?",
+        "kurulum": "'Herkes giriyor, ilk gün prim yapar' deyip sıraya gireriz. Yeni, parlak, herkesin konuştuğu bir şey cazip gelir.",
+        "donus": "Oysa halka arzın zamanını ve fiyatını satan taraf seçer, alan değil; genelde şirketin en iyi göründüğü an tercih edilir. İlk gün coşkusu bir yatırım tezini değil, talep-arz dengesini yansıtır. Parlak yeni hikayeye, en az bildiğin şirkete girdiğin kadar temkinle yaklaş.",
+        "kapanis": "Dostlar, satışın zamanını satan seçer; alıcıya düşen coşkuya değil rakama bakmaktır."
+      }
+    },
+    {
+      "id": "zb2_12",
+      "kategori": "bist",
+      "konu": "ince tahta likidite",
+      "ayna": "İnce tahtada kolay girilir, zor çıkılır; asıl risk alışta değil satıştadır.",
+      "zengin": {
+        "soru": "Bir hisseye girerken 'çıkarken kime satacağım' diye soruyor muyuz?",
+        "kurulum": "Küçük bir hisse hızla yükselir, 'az hacimle bile uçuyor' deyip dalarız. Yukarı hareket kolay göründüğü için cazip gelir.",
+        "donus": "Oysa ince tahtada seni yukarı taşıyan azlık, aşağıda tuzağa çevirir; satmak istediğinde karşında alıcı olmayabilir. Likidite iyi günde fark edilmez, kötü günde her şeydir. Çıkışını garanti edemediğin bir yere, girişini büyük yapma.",
+        "kapanis": "Kısaca: bir pozisyonun gerçek boyutu, rahatça çıkabildiğin kadardır."
+      }
+    },
+    {
+      "id": "zb2_13",
+      "kategori": "makro",
+      "konu": "reel getiri",
+      "ayna": "Kazancı nominal rakamla değil, enflasyon sonrası alım gücüyle ölçmek gerekir.",
+      "zengin": {
+        "soru": "Paramız büyüdü de, alım gücümüz gerçekten arttı mı?",
+        "kurulum": "Hesap yüzde kırk büyümüş, seviniriz. Rakam büyüdükçe kazandığımızı hissederiz.",
+        "donus": "Oysa enflasyon yüzde elli ise, o yüzde kırk aslında yerinde saymak değil, geriye gitmektir. Piyasada asıl soru 'kaç lira oldu' değil, 'kaç ekmek alıyor'dur. Nominal getiri gururu okşar; reel getiri cebi doldurur.",
+        "kapanis": "Gün sonunda önemli olan paranın sayısı değil, aldığı şeydir."
+      }
+    },
+    {
+      "id": "zb2_14",
+      "kategori": "makro",
+      "konu": "faiz-borsa",
+      "ayna": "Faiz paranın fiyatıdır; yükseldiğinde riskli varlıkların cazibesi azalır.",
+      "zengin": {
+        "soru": "Faiz haberleri neden borsayı bu kadar sarsıyor?",
+        "kurulum": "'Faiz arttı, bana ne, ben hissedeyim' deriz. İki dünya ayrıymış gibi gelir.",
+        "donus": "Oysa faiz, tüm paranın kirasıdır; yükseldiğinde risksiz getiri cazip olur, hisseden para çıkar. Şirketin borcu pahalılaşır, gelecekteki kârı bugün daha az değerlenir. Faizi görmezden gelen bir hisse analizi, rüzgarı saymadan yelken açmaktır.",
+        "kapanis": "Şöyle diyelim: faiz yükselince, her varlık aynı teraziyle yeniden tartılır."
+      }
+    },
+    {
+      "id": "zb2_15",
+      "kategori": "makro",
+      "konu": "dolar bazi",
+      "ayna": "Yükseliş bazen hissenin değil, sadece paranın eridiğinin işaretidir.",
+      "zengin": {
+        "soru": "Hisse mi kazandırdı, yoksa lira mı değer kaybetti?",
+        "kurulum": "Portföy TL olarak arttı, mutlu oluruz. Rakam yukarı gidince başarı sanırız.",
+        "donus": "Oysa aynı dönemde kur daha çok yükseldiyse, dolar bazında aslında gerilemişizdir. Endeks rekor kırarken sabit bir çıpayla ölçmezsek, ilerlemeyi yanlış okuruz. Kendi paran erirken büyüyen bir rakam, seni yanıltan bir aynadır.",
+        "kapanis": "Hangi para biriminde kazandığını bilmeyen, kazanıp kazanmadığını da bilmez."
+      }
+    },
+    {
+      "id": "zb2_16",
+      "kategori": "makro",
+      "konu": "merkez bankasi iletisimi",
+      "ayna": "Merkez bankalarında bazen faizden çok, kullandıkları kelimeler piyasayı oynatır.",
+      "zengin": {
+        "soru": "Faiz aynı kaldı da, piyasa neden yine de hareketlendi?",
+        "kurulum": "'Karar bekleniyordu zaten, bir şey değişmez' deriz. Rakam sabitse etki de sabit sanırız.",
+        "donus": "Oysa piyasa bugünü değil, yarının beklentisini fiyatlar; tek bir kelime değişimi ('geçici' yerine 'kalıcı') tüm beklentiyi çevirebilir. Karar metnindeki ton, çoğu zaman rakamın kendisinden daha güçlüdür. Manşetteki sayıya bakıp cümleyi okumamak, filmi sessize alıp izlemek gibidir.",
+        "kapanis": "Nihayetinde piyasayı bazen faizin kendisi değil, ona dair anlatılan hikaye oynatır."
+      }
+    },
+    {
+      "id": "zb2_17",
+      "kategori": "makro",
+      "konu": "kuresel risk istahi",
+      "ayna": "Bazen bir hisse kendinden dolayı değil, dünya korktuğu için düşer.",
+      "zengin": {
+        "soru": "Bizim hisse iyi de, neden herkesle birlikte düşüyor?",
+        "kurulum": "Şirkette kötü bir haber yok, ama fiyat eriyor. 'Bu hisseye ne oldu' diye şaşırırız.",
+        "donus": "Oysa korku küresel olduğunda para önce riskli varlıklardan kaçar; iyi-kötü ayırmaz, hepsini birlikte satar. Buna risk-off denir; iştah döndüğünde aynı para geri gelir. Bazı düşüşler şirketle ilgili değil, dünyanın o günkü ruh haliyle ilgilidir.",
+        "kapanis": "Özetle: her düşüşün sebebini şirkette arama; bazen suçlu dünyanın korkusudur."
+      }
+    },
+    {
+      "id": "zb2_18",
+      "kategori": "makro",
+      "konu": "black swan",
+      "ayna": "En büyük risk, hesapladığın değil, hiç aklına gelmeyen risktir.",
+      "zengin": {
+        "soru": "Planımız sadece beklediğimiz senaryolara mı dayanıyor?",
+        "kurulum": "Her şeyi hesapladık, tabloyu kurduk, 'olabilecek en kötü şey bu' dedik. Kendimizi hazır hissederiz.",
+        "donus": "Oysa piyasayı asıl sarsan, öngörülen değil öngörülemeyen olaydır; nadir ama yıkıcıdır, buna black swan denir. Ona karşı tek korunma tahmin değil, dayanıklılıktır: tek bir sürpriz seni masadan kaldırmasın. Hazırlık, her şeyi bilmek değil, bilmediğin şeye yer bırakmaktır.",
+        "kapanis": "Bakın dostlar; hayatta kalmak, her fırtınayı öngörmek değil, hiçbirinde batmayacak kadar hafif olmaktır."
+      }
+    },
+    {
+      "id": "zb2_19",
+      "kategori": "teknik",
+      "konu": "hacim teyidi",
+      "ayna": "Hacimsiz yükseliş, alkışsız sahne gibidir; hareket vardır ama inandırıcılığı yoktur.",
+      "zengin": {
+        "soru": "Bir kırılıma inanmadan önce arkasında kaç kişi var diye bakıyor muyuz?",
+        "kurulum": "Fiyat bir direnci geçti, 'kırdı, gider' deyip peşine takılırız. Yeşil muma bakmak yeter sanırız.",
+        "donus": "Oysa hareketi taşıyan yakıt hacimdir; hacimsiz kırılım çoğu zaman tuzaktır, birkaç el fiyatı ittirmiştir. Gerçek katılım varsa hacim de artar; yoksa hareket kalıcı olmaz. Fiyat 'ne' olduğunu söyler, hacim ise 'gerçek mi' diye sorar.",
+        "kapanis": "Şöyle özetleyelim: fiyat konuşur, ama sözüne güveni hacim verir."
+      }
+    },
+    {
+      "id": "zb2_20",
+      "kategori": "teknik",
+      "konu": "trend dostundur",
+      "ayna": "Trende karşı işlem, akıntıya karşı yüzmektir; ara sıra olur, ama yorar.",
+      "zengin": {
+        "soru": "Dönecek diye tepeyi mi arıyoruz, yoksa trendle mi yürüyoruz?",
+        "kurulum": "Fiyat yükseliyor ama 'çok çıktı, artık düşer' deyip short'a yelteniriz. Tepeyi yakalamak zekice görünür.",
+        "donus": "Oysa yükselen bir trend, sen 'çok oldu' dedikçe daha da uzayabilir; piyasa haklı çıkmanı beklemez. Trende karşı durup dönüşü erken yakalamaya çalışmak, çoğu zaman defalarca stop yemek demektir. Dönüşü kanıt gelince selamlamak, tahmin edip beklemekten güvenlidir.",
+        "kapanis": "Trend dostundur derler; en azından, ona karşı savaşmadığın sürece."
+      }
+    },
+    {
+      "id": "zb2_21",
+      "kategori": "teknik",
+      "konu": "gap doldurma miti",
+      "ayna": "'Her boşluk doldurulur' bir kural değil, bazen pahalıya patlayan bir inançtır.",
+      "zengin": {
+        "soru": "Gap gördüğümüzde 'nasılsa dolar' derken neye güveniyoruz?",
+        "kurulum": "Fiyat boşlukla açıldı, 'gap'ler dolar, geri gelir' deyip ters yöne pozisyon alırız. Kulağa kesin bir kuralmış gibi gelir.",
+        "donus": "Oysa boşlukların çoğu bir gün dolar ama 'ne zaman' sorusu belirsizdir; bir haber gap'i günlerce, aylarca açık bırakabilir. Kesin gibi duyulan bu genelleme, zamanlamayı görmezden gelir. 'Er ya da geç dolar' demek, stop'suz beklemek için bahane olmamalı.",
+        "kapanis": "Sözün özü: 'nasılsa dolar' cümlesi, çoğu hesabı zaman içinde eritir."
+      }
+    },
+    {
+      "id": "zb2_22",
+      "kategori": "teknik",
+      "konu": "asiri alim yanilgisi",
+      "ayna": "Aşırı alım düşecek demek değildir; güçlü hisse uzun süre 'pahalı' kalabilir.",
+      "zengin": {
+        "soru": "RSI yüksek diye satmak, gücü zayıflıkla karıştırmak olabilir mi?",
+        "kurulum": "RSI 80'i gördü, 'aşırı alım, şimdi düşer' deyip satarız ya da short'a gireriz. Gösterge bize kesin bir emir vermiş gibi gelir.",
+        "donus": "Oysa güçlü bir trendde RSI günlerce aşırı alımda kalabilir; yükseklik, zayıflığın değil çoğu zaman gücün işaretidir. Tek bir göstergenin uç değeri, dönüşün kanıtı değil, sadece dikkat çağrısıdır. Sinyali teyitle birlikte okumazsak, en güçlü hisseden en erken ineriz.",
+        "kapanis": "Şunu hiç unutmayalım: bir gösterge uçta diye trend bitmez; uç, dönüş değil uyarıdır."
+      }
+    },
+    {
+      "id": "zb2_23",
+      "kategori": "teknik",
+      "konu": "hareketli ortalama",
+      "ayna": "Ortalamalar geçmişin özetidir; yol gösterir ama geleceği vaat etmez.",
+      "zengin": {
+        "soru": "Ortalamalar bize önden mi haber veriyor, yoksa olanı mı özetliyor?",
+        "kurulum": "Fiyat ortalamayı kesti, 'al sinyali' deyip hemen gireriz. Çizgi net göründüğü için kesin sanırız.",
+        "donus": "Oysa hareketli ortalama geçmiş fiyatların ortalamasıdır; doğası gereği gecikir, dönüşü sonradan onaylar, önceden söylemez. Yatay piyasada sürekli yanıltıcı sinyal üretir. Ortalama bir pusula değil, arkaya bakan bir aynadır; yönü teyit eder, icat etmez.",
+        "kapanis": "Uzun vadede ortalamalar trendi anlatır, ama tek başına gelecekten haber vermez."
+      }
+    },
+    {
+      "id": "zb2_24",
+      "kategori": "teknik",
+      "konu": "yatay piyasa sabri",
+      "ayna": "Yatay piyasada asıl kazanç, kaybetmemeyi bilmektir.",
+      "zengin": {
+        "soru": "Piyasa yön vermiyorken neden ille de yön arıyoruz?",
+        "kurulum": "Fiyat haftalardır bir bantta gidip geliyor. Sıkılırız, 'bir şey olsun' diye zorlama işlemlere gireriz.",
+        "donus": "Oysa yatay piyasa, trendin dinlendiği yerdir; net yön yokken zorlanan her işlem, gürültüye ödenen bir bedeldir. Bu dönemler seçici olmayı ve beklemeyi ödüllendirir. Sıkıntıdan işlem yapmak, kararı piyasaya değil canının sıkkınlığına bağlamaktır.",
+        "kapanis": "En sade haliyle: yön yokken en iyi strateji, sabırla yönü beklemektir."
+      }
+    },
+    {
+      "id": "zb2_25",
+      "kategori": "egitim",
+      "konu": "risk-getiri orani",
+      "ayna": "Kazanma ihtimali kadar, kazanınca ne alacağını ve kaybedince ne vereceğini de sor.",
+      "zengin": {
+        "soru": "Bir işleme girerken sadece 'yükselir mi' diye mi soruyoruz?",
+        "kurulum": "'Bu çıkar' deyip gireriz; ama ne kadar riske ne kadar hedef koyduğumuzu çoğu zaman hesaplamayız. Haklı çıkma isteği, matematiği gölgeler.",
+        "donus": "Oysa uzun vadede kaderi belirleyen isabet değil, risk-getiri oranıdır; 1 riske 3 hedef koyan biri, işlemlerinin yarısında yanılsa bile kazanır. Nereye kadar yanılacağını bilmeden girmek, pusulasız yola çıkmaktır. Önce kaybı tanımla, kâr kendi gelir.",
+        "kapanis": "Gün sonunda seni ayakta tutan kaç kez haklı çıktığın değil, haklıyken çok, haksızken az kazanıp kaybettiğindir."
+      }
+    },
+    {
+      "id": "zb2_26",
+      "kategori": "egitim",
+      "konu": "cesitlendirme",
+      "ayna": "Tüm yumurtaları tek sepete koymak cesaret değil, hesapsızlıktır.",
+      "zengin": {
+        "soru": "Tek bir hisseye 'bundan eminim' demek, ne kadar emin olmaya değer?",
+        "kurulum": "Bir fikre çok güveniriz, 'bu kesin' deyip sermayenin çoğunu ona yaslarız. Emin olmak güçlü hissettirir.",
+        "donus": "Oysa en sağlam tez bile öngörülemez bir haberle bozulabilir; tek sepete yaslanmak, tek bir sürprizle her şeyi kaybetmeye açık kapı bırakır. Çeşitlendirme kazancı değil, hayatta kalmayı garanti eder. Amaç en çok kazanmak değil, hiçbir tek hatanın oyunu bitirememesidir.",
+        "kapanis": "Sonuç olarak: çeşitlendirme, geleceği bilmediğimizi kabul etmenin olgun halidir."
+      }
+    },
+    {
+      "id": "zb2_27",
+      "kategori": "egitim",
+      "konu": "bilesik getiri",
+      "ayna": "Serveti büyüten çoğu zaman büyük bir vuruş değil, kesintisiz küçük adımlardır.",
+      "zengin": {
+        "soru": "Zenginliği tek bir isabet mi kurar, yoksa zaman mı?",
+        "kurulum": "'Bir kere büyük vurayım, işi bitireyim' hayaliyle yüksek risk alırız. Sabırlı büyüme yavaş ve sıkıcı gelir.",
+        "donus": "Oysa asıl sihir bileşik getiridedir; küçük ama istikrarlı kazançlar, zamanla üst üste binerek katlanır. Sabrı bozan büyük bir kayıp, yılların birikimini bir gecede siler. Yavaş zengin olmak sıkıcıdır ama en çok işe yarayan yoldur.",
+        "kapanis": "Bileşik getirinin en büyük düşmanı sabırsızlık, en iyi dostu zamandır."
+      }
+    },
+    {
+      "id": "zb2_28",
+      "kategori": "egitim",
+      "konu": "islem gunlugu",
+      "ayna": "Hafıza kazançları büyütür, kayıpları affeder; kayıt ise ne yaptığını olduğu gibi gösterir.",
+      "zengin": {
+        "soru": "Gerçekten iyi mi işlem yapıyoruz, yoksa öyle mi hatırlıyoruz?",
+        "kurulum": "İyi işlemleri anlatır, kötüleri 'şanssızlıktı' diye geçeriz. Zihin, bizi kahraman gösteren bir editördür.",
+        "donus": "Oysa yazılı kayıt yalan söylemez; her girişin sebebini, sonucunu ve hatasını önümüze koyar. Tekrar eden hatayı ancak yazınca görürüz; görmediğimiz hatayı düzeltemeyiz. İşlem günlüğü, geçmişini süsleyen hafızaya karşı en dürüst aynadır.",
+        "kapanis": "Şöyle diyelim: ölçmediğin hatayı yönetemezsin, yazmadığın dersi de öğrenemezsin."
+      }
+    },
+    {
+      "id": "zb2_29",
+      "kategori": "egitim",
+      "konu": "kaldirac riski",
+      "ayna": "Kaldıraç kazancı büyütür, ama önce ve daha hızlı zararı büyütür.",
+      "zengin": {
+        "soru": "Kaldıraç bize güç mü veriyor, yoksa hata payımızı mı yok ediyor?",
+        "kurulum": "'Az parayla çok kazanırım' diye kaldıraca sarılırız. Kâr tarafını hayal ederiz, bilanço güçlü görünür.",
+        "donus": "Oysa kaldıraç iki tarafı da büyütür; küçük bir ters hareket, kaldıraçla hesabı komple silebilir. Haklı olduğunda bile, zamanlaman biraz şaşarsa piyasadan atılırsın. Kaldıraç bir hızlandırıcıdır; doğru gidersen hızlı, yanlış gidersen daha hızlı götürür.",
+        "kapanis": "Sözün kısası: kaldıraç seni haklıyken zengin, azıcık haksızken iflas ettirir."
+      }
+    },
+    {
+      "id": "zb2_30",
+      "kategori": "egitim",
+      "konu": "nakitte durmak",
+      "ayna": "Nakit bir kaçış değil, elinde silahla fırsatı beklemektir.",
+      "zengin": {
+        "soru": "Nakitte beklemek gerçekten 'hiçbir şey yapmamak' mı?",
+        "kurulum": "Hesapta nakit durunca huzursuz oluruz, 'para çalışmıyor' deriz, bir şeye girmek için acele ederiz. Boşluk, kayıp gibi gelir.",
+        "donus": "Oysa nakit de bir pozisyondur; belirsizlikte seni koruyan, fırsat geldiğinde ateşleyebileceğin barut odur. Panik dipte alım yapabilenler, o gün nakiti olanlardır. Her zaman yatırımda olmak zorunda değiliz; bazen en güçlü el, hazır bekleyen eldir.",
+        "kapanis": "Sonuçta nakitte beklemek tembellik değil, doğru anı bekleyen bir sabırdır."
+      }
     }
   ],
   "mitler": [

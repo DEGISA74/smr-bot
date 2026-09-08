@@ -1,0 +1,109 @@
+{
+  "_not": "STAGING - onay bekliyor. Onaylaninca tweet_havuzu.json'a merge edilecek. Kripto YOK. Kapanislar cesitlendirildi.",
+  "havuz": [
+    {
+      "id": "zb1_01",
+      "kategori": "psikoloji",
+      "konu": "stop-loss",
+      "kaynak": "psi_002 zengin yükseltme",
+      "ayna": "Stop koymamak 'ben hata yapmam' demenin kibirli halidir; piyasa egomuzu değil fiyatı ödüllendirir.",
+      "zengin": {
+        "soru": "Stop koymamak cesaret mi, yoksa 'ben yanılmam' demenin kibarı mı?",
+        "kurulum": "Hepimiz yaşadık: pozisyon kırmızıya döner, 'birazdan toparlar, gerek yok' deriz. Aslında içimizden geçen cümle şudur: ben hata yapmam.",
+        "donus": "Oysa piyasa egomuzu değil fiyatı ödüllendirir. Stop bir zayıflık itirafı değil, sermayenin sigortasıdır. Üstelik mesele stop koymak değil doğru yere koymaktır; yanlış yere konan stop, hiç stop kadar pahalıya gelir.",
+        "kapanis": "Kısacası dostlar: planı olan uyur, sadece ümidi olan sabaha kadar nöbet tutar."
+      }
+    },
+    {
+      "id": "zb1_02",
+      "kategori": "psikoloji",
+      "konu": "FOMO / geç kalma korkusu",
+      "kaynak": "yeni",
+      "ayna": "Kaçan tren için üzülmek yerine bir sonrakini beklemek, parayı koruyanın işidir.",
+      "zengin": {
+        "soru": "Treni kaçırma korkusu mu bindiriyor bizi, yoksa istasyonu mu şaşırıyoruz?",
+        "kurulum": "Bir hisse üst üste tavan yapar, herkes konuşur, 'ben de gireyim, daha gider' deriz. FOMO tam da burada, en yüksek sesle en tepede bağırır.",
+        "donus": "Oysa fırsat dediğimiz şey çoğu zaman başkasının çıkışıdır. Piyasada her gün yeni bir tren kalkar, ama sermaye bir tanedir; kovaladığımız kazanç, koruduğumuz kazançtan daha pahalıya mal olur.",
+        "kapanis": "Şunu hiç unutmayalım: kaçırdığımız kazanç canımızı yakmaz, kovaladığımız kazanç yakar."
+      }
+    },
+    {
+      "id": "zb1_03",
+      "kategori": "bist",
+      "konu": "hikâye vs bilanço",
+      "kaynak": "yeni",
+      "ayna": "Fiyatı uzun vadede hikâye değil nakit akışı taşır; hikâye bedava, bilanço pahalıdır.",
+      "zengin": {
+        "soru": "Biz bir şirketi mi alıyoruz, yoksa onun hakkında anlatılan hikâyeyi mi?",
+        "kurulum": "Forumda parlak bir senaryo okuruz: 'yeni yatırım geliyor, patlayacak' derler. Bilançoyu açmadan, sırf hikâye güzel diye pozisyona gireriz.",
+        "donus": "Oysa fiyatı uzun vadede hikâye değil nakit akışı taşır. Hikâye bedava, bilanço ise pahalıdır; biri hevesimizi, diğeri paramızı ilgilendirir. En azından borcunu ve nakdini görmeden 'ucuz' dememeliyiz.",
+        "kapanis": "Sonuçta hikâyeye âşık olan, faturayı bilançodan öder."
+      }
+    },
+    {
+      "id": "zb1_04",
+      "kategori": "makro",
+      "konu": "manşet / haber ticareti",
+      "kaynak": "yeni",
+      "ayna": "Piyasa manşetle değil beklentiyle fiyatlanır; haber çıktığında çoğu zaman iş bitmiştir.",
+      "zengin": {
+        "soru": "Manşet mi yönetiyor portföyümüzü, yoksa planımız mı?",
+        "kurulum": "Bir veri açıklanır, ekran kıpkırmızı olur, 'her şeyi sat' deriz. Ertesi hafta manşet döner, bu kez 'kaçırmayalım' diye geri alırız.",
+        "donus": "Oysa piyasa manşetle değil beklentiyle fiyatlanır; haber çıktığında çoğu zaman iş çoktan bitmiştir. Her başlığa göre pozisyon değiştiren, komisyonu brokerına, huzuru ekrana bağışlar.",
+        "kapanis": "Bakın dostlar; manşeti gazeteci yazar, kararı biz veririz; ikisini karıştırmayalım."
+      }
+    },
+    {
+      "id": "zb1_05",
+      "kategori": "teknik",
+      "konu": "tek gösterge / teyit",
+      "kaynak": "yeni",
+      "ayna": "Tek gösterge bir fikirdir, teyit değil; sinyal ancak birkaç işaret aynı yöne bakınca güçlenir.",
+      "zengin": {
+        "soru": "Bir tek ok bize yönü söyler mi, yoksa hedefi ıskalatır mı?",
+        "kurulum": "RSI aşırı satımda diye 'dip burası' deyip alırız. Gösterge tek başına konuşur, biz de tek cümleye koca bir pozisyon yaslarız.",
+        "donus": "Oysa tek gösterge bir fikirdir, teyit değil. RSI, hacim, seviye ve trend aynı yöne baktığında sinyal güçlenir; biri parlıyor diye plan kurmak, tek tanığın ifadesiyle hüküm vermeye benzer.",
+        "kapanis": "Özetle: grafik heyecan verir, ama parayı teyit korur."
+      }
+    },
+    {
+      "id": "zb1_06",
+      "kategori": "teknik",
+      "konu": "destek/direnç dokunma yanılgısı",
+      "kaynak": "yeni",
+      "ayna": "Destek bir söz değil olasılıktır; kırılana kadar geçerli, kırıldığında en pahalı inat orada başlar.",
+      "zengin": {
+        "soru": "Bir seviyeye dokunulması dönüş müjdesi mi, yoksa sadece bir dokunuş mu?",
+        "kurulum": "Fiyat desteğe gelir, 'buradan döner' deyip aşağı bakan bıçağı tutarız. Seviyeyi kutsarız; sanki çizgi para basıyormuş gibi.",
+        "donus": "Oysa destek bir söz değil, bir olasılıktır. Kırılana kadar geçerlidir, kırıldığında ise en pahalı inat orada başlar. Seviye bize nerede yanıldığımızı gösterir, nereye kadar haklı olacağımızı değil.",
+        "kapanis": "Çizgiyi biz çizeriz dostlar, ama fiyatı piyasa çizer."
+      }
+    },
+    {
+      "id": "zb1_07",
+      "kategori": "egitim",
+      "konu": "çıkış planı",
+      "kaynak": "yeni",
+      "ayna": "Girişi heyecan, çıkışı plan yönetir; çıkışı olmayan bir alım yarım yazılmış bir cümledir.",
+      "zengin": {
+        "soru": "Nereden aldığımızı biliyoruz da, nerede satacağımızı biliyor muyuz?",
+        "kurulum": "Bir hisseye 'sağlam' deyip gireriz, gerekçeyi ezbere sayarız. Ama 'ne olursa satarım' sorusuna gelince sessiz kalırız.",
+        "donus": "Oysa girişi heyecan, çıkışı ise plan yönetir. Çıkışı olmayan bir alım, yarım yazılmış bir cümledir; kâr da zarar da o boşlukta kaybolur. Almadan önce hem hedefi hem de 'yanıldım' çizgisini yazmalıyız.",
+        "kapanis": "Nereden çıkacağını bilmeden girdiğimiz oda, oda değil kapandır."
+      }
+    },
+    {
+      "id": "zb1_08",
+      "kategori": "egitim",
+      "konu": "pozisyon boyutu / risk",
+      "kaynak": "yeni",
+      "ayna": "Pozisyon boyutu özgüvenimizle değil, yanıldığımızda kaybedeceğimiz tutarla ölçülür.",
+      "zengin": {
+        "soru": "Bir işlemde asıl soru 'ne kadar kazanırım' mı, yoksa 'yanılırsam ne kaybederim' mı?",
+        "kurulum": "Emin olduğumuz bir fikir gelir, 'bu kesin' deyip hesabın yarısını tek hisseye bindiririz. Haklı çıkmayı o kadar isteriz ki, yanılma ihtimaline yer bırakmayız.",
+        "donus": "Oysa oyunda kalmanın tek şartı, tek bir hatanın bizi masadan kaldırmamasıdır. Pozisyon boyutu özgüvenimizle değil, yanıldığımızda kaybedeceğimiz tutarla ölçülür. Küçük yanılmalar öğretir, büyük yanılmalar bitirir.",
+        "kapanis": "Uzun vadede piyasada kalan, en çok haklı çıkan değil en az iflas edendir."
+      }
+    }
+  ]
+}
