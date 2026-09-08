@@ -197,6 +197,11 @@ def veri_kapilarini_denetle(day):
     guncel = ozet["current"]
     usable = ozet["usable"]
     for ad, gad, deadline, olcut, esik, komut in VERI_KAPILARI:
+        # 8 Eyl 2026 — bekci 22:45 TR'ye alindi (kullanici: gece 23:45 cok gec).
+        # Deadline'i henuz gelmemis kapi (hacim 22:50 finalizer sonrasi oturur)
+        # ne ozette gosterilir ne alarm uretir; yoksa 22:45 ozeti sahte kirmizi gelir.
+        if now < deadline:
+            continue
         if olcut == "guncel":
             deger, payda = guncel, toplam
             detay = "%d/%d hissede bugunun bari var" % (guncel, toplam)
@@ -259,6 +264,11 @@ CAPRAZ_DEADLINE_SAAT = (23, 45)     # 22:50 finalizer + 23:10 capraz turu sonras
 
 def capraz_kontrol_denetle(day):
     """(ozet_satirlari, yeni_ariza_metinleri). Gunde 1 uyarir."""
+    # 8 Eyl 2026 — capraz turu 23:10'da kosar (deadline 23:45). Bekci artik 22:45'te
+    # kostugu icin capraz HENUZ hazir degil; bu gece ozetinin disinda tutulur.
+    # (Kullanici karari: finalize+capraz "kritik degil", gece pingini geciktirmesin.)
+    if now < slot(*CAPRAZ_DEADLINE_SAAT):
+        return [], []
     try:
         if BASE not in sys.path:
             sys.path.insert(0, BASE)
