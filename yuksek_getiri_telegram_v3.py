@@ -40,8 +40,9 @@ except Exception:
 
 BASE = Path(__file__).resolve().parent
 ELITE_CHAT = "-1003711632362"  # SMR Elite
+SOHBET_CHAT = "-1003851678286"  # SMR Bilgi & Eğitim (9 Eyl: V3 buraya da taşındı — retro'da tek net kazanan, alfa +1.55%)
 ADMIN_ID = "1034525990"
-BROADCAST = (ELITE_CHAT,)
+BROADCAST = (ELITE_CHAT, SOHBET_CHAT)
 ISTANBUL = ZoneInfo("Europe/Istanbul")
 
 DISPLAY_REASON = {
@@ -526,4 +527,5 @@ if __name__ == "__main__":
         targets=BROADCAST if "--broadcast" in sys.argv else (ADMIN_ID,),
         base=BASE,
         live=not any(flag in sys.argv for flag in ("--test", "--dry-run")),
+        announce_previous=False,  # 9 Eyl: 'ÖNCEKİ TARAMA İÇİN SONUÇ YOK' iç plumbing mesajı abonelere GİTMESİN (karne _previous_message'dan gelir)
     ))
