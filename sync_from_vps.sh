@@ -44,6 +44,14 @@ else
     echo "$(date '+%F %T') UYARI: Yerel favoriler VPS'e eşitlenemedi" >> "$LOG"
 fi
 
+# 9 Eyl 2026 - Erken Radar sonuc defteri PC'de uretiliyor; haftalik karne (VPS) buradan
+# okusun diye VPS'e kopyalanir. Kucuk (~100KB) dosya, senkron turlarinda tasinir.
+if [ -f "$ROOT/v2_early_radar.db" ]; then
+    scp -q -o ConnectTimeout=20 -o BatchMode=yes "$ROOT/v2_early_radar.db" "$VPS:~/smr/v2_early_radar.db" >> "$LOG" 2>&1 \
+      && echo "$(date '+%F %T') Erken Radar defteri VPS'e eşitlendi" >> "$LOG" \
+      || echo "$(date '+%F %T') UYARI: Erken Radar defteri VPS'e eşitlenemedi" >> "$LOG"
+fi
+
 BASE=$("$ROOT/.venv/Scripts/python.exe" -c "from bist_data_store import active_version_id; print(active_version_id())")
 STAMP=$(date +%Y%m%d_%H%M%S)
 REMOTE="health/bist_store/outbox/sync_${STAMP}.zip"

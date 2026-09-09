@@ -160,6 +160,56 @@ def _firsat_pairs(db, cutoff, alarm_only):
     return week, allp
 
 
+def _radar_pairs(db, cutoff):
+    """v2_early_radar.db (PC'den senkronlanır) -> son-fiyat getirisi vs XU100."""
+    if not os.path.exists(db):
+        return [], []
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    try:
+        rows = con.execute(
+            "SELECT signal_date, evaluation_date, last_return_pct "
+            "FROM radar_results ORDER BY signal_date").fetchall()
+    except Exception:
+        return [], []
+    finally:
+        con.close()
+    allp, week = [], []
+    for r in rows:
+        g = r["last_return_pct"]
+        x = _xu_ret(r["signal_date"], r["evaluation_date"])
+        a = (g - x) if (g is not None and x is not None) else None
+        allp.append((g, a))
+        if str(r["signal_date"]) >= cutoff:
+            week.append((g, a))
+    return week, allp
+
+
+def _v4_pairs(db, cutoff):
+    """patron4.db v4_results -> ertesi-gün kapanış getirisi vs XU100 (gölge; yeni)."""
+    if not os.path.exists(db):
+        return [], []
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    try:
+        rows = con.execute(
+            "SELECT as_of, evaluation_date, close_ret_pct "
+            "FROM v4_results ORDER BY as_of").fetchall()
+    except Exception:
+        return [], []
+    finally:
+        con.close()
+    allp, week = [], []
+    for r in rows:
+        g = r["close_ret_pct"]
+        x = _xu_ret(r["as_of"], r["evaluation_date"])
+        a = (g - x) if (g is not None and x is not None) else None
+        allp.append((g, a))
+        if str(r["as_of"]) >= cutoff:
+            week.append((g, a))
+    return week, allp
+
+
 def build_message() -> str:
     today = datetime.now(ISTANBUL).date()
     cutoff = str(today - timedelta(days=8))
@@ -173,6 +223,8 @@ def build_message() -> str:
         ("📈 Yüksek Getiri V2 (gölge)", lambda: _engine_pairs(os.path.join(BASE, "patron2.db"), "v2", cutoff)),
         ("🏛 Tavan (ücretsiz)", lambda: _engine_pairs(os.path.join(BASE, "patron2.db"), "v1", cutoff)),
         ("🎯 Fırsat (alarm · T+5)", lambda: _firsat_pairs(os.path.join(BASE, "firsat_karne.db"), cutoff, True)),
+        ("🌟 Erken Radar", lambda: _radar_pairs(os.path.join(BASE, "v2_early_radar.db"), cutoff)),
+        ("🧪 Tarama Motoru V4 (gölge · yeni)", lambda: _v4_pairs(os.path.join(BASE, "patron4.db"), cutoff)),
     ]
     for label, fn in rows:
         week, allp = fn()
