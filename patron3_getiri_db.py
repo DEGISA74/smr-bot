@@ -379,7 +379,7 @@ def _rebuild_v3_portfolio(connection: sqlite3.Connection) -> None:
             """
             SELECT tp4_hit, strategy_gross_return_pct, strategy_net_return_pct
             FROM results
-            WHERE engine='v2' AND signal_date=? ORDER BY symbol
+            WHERE engine='v3' AND signal_date=? ORDER BY symbol
             """,
             (signal_date,),
         ).fetchall()
