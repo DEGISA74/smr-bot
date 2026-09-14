@@ -71,6 +71,8 @@ DRY = "--dry" in sys.argv
 FORCE_MIT = "--mit" in sys.argv    # test: takvimi yok say, MIT taslagi uret
 FORCE_KONUM = "--konumlama" in sys.argv  # test: KONUMLAMA taslagi uret
 FORCE_ACI = "--aci" in sys.argv          # test: ACI GERCEK taslagi uret
+FORCE_EGITIM = "--egitim" in sys.argv    # test: EGITIM dersi uret (takvimi yok say)
+FORCE_AILE = "--aile" in sys.argv        # test/yedek: eski agirlikli aile
 SIM = 0
 if "--sim" in sys.argv:
     try:
@@ -306,6 +308,17 @@ OZEL_TIPLER = {"ikilem": "ikilemler", "risk": "riskler", "efsane": "efsaneler",
 OZEL_ETIKET = {"ikilem": "⚖️ İkilem Sorusu", "risk": "⚠️ Risk Altındasın",
                "efsane": "🧙 Piyasa Efsanesi", "manset": "🗯️ Manşet"}
 
+# EGITIM ailesi: kitaptan damitilmis ders taslaklari (Piyasa Okulu).
+# Kategori -> ekran etiketi. Her ders id/kod/kategori/konu/beats(+mantra) tasir.
+EGT_ETIKET = {
+    "temel": "Piyasanın Ruhu",
+    "mum": "Grafik & Mumlar",
+    "gosterge": "Göstergeler",
+    "formasyon": "Formasyonlar",
+    "yapi": "Yapı & Akıllı Para",
+    "risk": "Risk & Psikoloji",
+}
+
 
 def _human_text(text):
     """Yalnızca Telegram'a giden metni ortak, sade yazım diline çevirir."""
@@ -360,6 +373,45 @@ def push_recent_liste(st, key, item):
     k = f"recent_{key}"
     st.setdefault(k, []).append(item["id"])
     st[k] = st[k][-60:]
+
+
+EGT_PENCERE = 40   # bir ders bu kadar gonderim boyunca tekrar cikmaz
+
+
+def pick_egitim(dersler, st, rng):
+    """Egitim dersi sec — tekrar onlemeli, mumkunse pes pese ayni kategori gelmez."""
+    pencere = max(EGT_PENCERE, len(dersler) // 3)
+    recent = set(st.get("recent_egitim", [])[-pencere:])
+    cands = [d for d in dersler if d["id"] not in recent] or list(dersler)
+    last = st.get("last_egitim_kat")
+    filt = [d for d in cands if d.get("kategori") != last] or cands
+    return rng.choice(filt)
+
+
+def push_recent_egitim(st, d):
+    st.setdefault("recent_egitim", []).append(d["id"])
+    st["recent_egitim"] = st["recent_egitim"][-(EGT_PENCERE * 2):]
+    st["last_egitim_kat"] = d.get("kategori")
+
+
+def _format_egitim_shell(header, body, is_test=False):
+    """Egitim taslagi icin ayri kabuk (aforizma kabugundan bagimsiz baslik)."""
+    tag = " (TEST)" if is_test else ""
+    parts = [f"📨 EĞİTİM TASLAK{tag} — kopyala & at", header, body, "ℹ️"]
+    return "\n\n".join(p.strip() for p in parts if p and p.strip())
+
+
+def format_egitim(d, is_test=False):
+    """Beat listesini numarali thread taslagina cevir (1/N ... + ☕️ mantra)."""
+    beats = [b.strip() for b in d.get("beats", []) if b and b.strip()]
+    n = len(beats)
+    numbered = [f"{i}/{n} {b}" for i, b in enumerate(beats, 1)]
+    body = "\n\n".join(numbered)
+    if d.get("mantra"):
+        body += "\n\n☕️ " + d["mantra"].strip()
+    header = (f"📚 Piyasa Okulu · {EGT_ETIKET.get(d['kategori'], d['kategori'])}\n"
+              f"Konu: {d['konu']}")
+    return _format_egitim_shell(header, body, is_test=is_test)
 
 
 def format_aci(x, is_test=False, seri_baslik="Küçük Yatırımcı Notları", seri_no=None):
@@ -528,6 +580,8 @@ def main():
 
     konumlamalar = havuz.get("konumlamalar", [])
     aci_list = havuz.get("aci_gercekler", [])
+    egitim_dersleri = havuz.get("egitim_dersleri", [])
+    egitim_aktif = cfg.get("egitim_aktif", True) and bool(egitim_dersleri)
 
     # TAKVIMLI icerikler:
     #   Cmt/Paz 1. slot (saat<14) -> MIT (Yanlis Bilinenler)
@@ -547,18 +601,29 @@ def main():
                         and now.hour < cfg.get("konumlama_saat_siniri", 14))
     )
 
+    # --egitim testinde takvimli icerikleri bastir, dogrudan ders uret
+    if FORCE_EGITIM:
+        use_mit = use_aci = use_konum = False
+
+    # Yedek (agirlikli aile) elle zorlandi mi? (--manset/--ikilem/--risk/--efsane)
+    force_ozel = next((t for t in OZEL_TIPLER if f"--{t}" in sys.argv), None)
+    # Takvim disi slot + egitim aktif + yedek zorlanmadi -> EGITIM dersi (Piyasa Okulu)
+    use_egitim = (egitim_aktif and not use_mit and not use_konum and not use_aci
+                  and not FORCE_AILE and not force_ozel)
+
     unit = None
+    ders = None
     secilen_mit = None
     ozel_tip = ozel_item = None
     konum_item = aci_item = None
     seri_no = mit_no = efs_no = None
 
-    # Takvimli degilse: once ozel tip zorlamasi, yoksa agirlikli aile secimi
-    if not use_mit and not use_konum and not use_aci:
-        for t in OZEL_TIPLER:
-            if f"--{t}" in sys.argv:
-                ozel_tip = t
-        if ozel_tip is None:
+    # Takvim disi VE egitim devrede degilse: YEDEK agirlikli aile
+    # (egitim kapaliysa, veya elle --aile / --manset ... zorlandiysa)
+    if not use_mit and not use_konum and not use_aci and not use_egitim:
+        if force_ozel:
+            ozel_tip = force_ozel
+        else:
             aile = ["aforizma"] + [t for t in OZEL_TIPLER if havuz.get(OZEL_TIPLER[t])]
             agir = [sum(oranlar.get(k, 0) for k in ("ayna", "ters_kose", "ciplak_gercek"))]
             agir += [oranlar.get(t, 0) for t in aile[1:]]
@@ -578,6 +643,10 @@ def main():
         konum_item = pick_liste(konumlamalar, st, "konumlama", rng)
         log.info(f"Secilen: KONUMLAMA -> {konum_item['id']}")
         msg = format_konumlama(konum_item, is_test=TEST)
+    elif use_egitim:
+        ders = pick_egitim(egitim_dersleri, st, rng)
+        log.info(f"Secilen: EGITIM -> {ders['id']} ({ders.get('kategori')}) — {ders.get('konu','')[:60]}")
+        msg = format_egitim(ders, is_test=TEST)
     elif ozel_tip:
         ozel_item = pick_liste(havuz[OZEL_TIPLER[ozel_tip]], st, ozel_tip, rng)
         if ozel_tip == "efsane":
@@ -615,6 +684,8 @@ def main():
                 st["seri_no"] = seri_no + 1
         elif konum_item:
             push_recent_liste(st, "konumlama", konum_item)
+        elif ders is not None:
+            push_recent_egitim(st, ders)
         elif ozel_tip:
             push_recent_liste(st, ozel_tip, ozel_item)
             if ozel_tip == "efsane":
