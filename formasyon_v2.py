@@ -467,6 +467,54 @@ def _score(parts: dict[str, float]) -> float:
     return round(float(np.clip(sum(parts.values()), 0.0, 100.0)), 1)
 
 
+# --- Gövde taşma süzgeci: TEK KAYNAK (17 Eyl 2026, mockup onaylı) -----------
+# "Şekil Kalitesi" skoru, kapanışı sınır çizgisinin dışına taşan mumlarla
+# düşürülür. Fitil (intraday high/low) taşması wick kabul edilip tolerans
+# bandıyla dışlanır; yalnız KAPANIŞ (close) ihlali ölçülür. Kama/üçgen iki
+# sınırda da ölçer; TOBO yalnız boyun çizgisinin ÜSTÜNDE ölçer. formasyon_v3
+# de bu sabitleri ve yardımcıları kullanır (import _v2) — tek ayar noktası.
+WEDGE_OVERSHOOT_TOL_PCT = 0.01      # ±%1 hoşgörü bandı (fitil nefes payı)
+WEDGE_OVERSHOOT_MAX_RATIO = 0.08    # taşma oranı > %8 → ceza 1.5x (yapı bozuldu)
+WEDGE_OVERSHOOT_MAX_RUN = 4         # 4+ ardışık dışarıda kapanış → formasyon reddedilir
+WEDGE_OVERSHOOT_PENALTY_PER = 3.0   # her taşan kapanış için -3 kalite puanı
+WEDGE_OVERSHOOT_PENALTY_CAP = 40.0  # toplam ceza tavanı (skoru dibe çakmasın)
+
+_NEG_INF = float("-inf")            # tek-yönlü ölçüm için (TOBO alt sınırı yok)
+
+
+def _body_overshoot_stats(close, start_bar, end_bar, upper_fn, lower_fn, price_ref):
+    """[start_bar..end_bar] aralığında kapanışı ±%1 bandın dışına taşan mumları
+    sayar. Fitil (high/low) sayılmaz; yalnız close. Tek yönlü ölçmek için
+    lower_fn=lambda i: _NEG_INF geçilebilir (yalnız üst taraf sayılır).
+    Döner: (adet, oran[0-1], en_uzun_ardışık)."""
+    lo = int(start_bar)
+    hi = int(end_bar)
+    if hi <= lo:
+        return 0, 0.0, 0
+    idx = range(lo, hi + 1)
+    seg = np.asarray(close[lo : hi + 1], dtype=float)
+    up = np.asarray([upper_fn(i) for i in idx], dtype=float)
+    dn = np.asarray([lower_fn(i) for i in idx], dtype=float)
+    tol = max(abs(float(price_ref)) * WEDGE_OVERSHOOT_TOL_PCT, 1e-9)
+    mask = (seg > up + tol) | (seg < dn - tol)
+    count = int(np.count_nonzero(mask))
+    ratio = float(np.mean(mask)) if mask.size else 0.0
+    run = longest = 0
+    for flag in mask:
+        run = run + 1 if bool(flag) else 0
+        if run > longest:
+            longest = run
+    return count, ratio, longest
+
+
+def _overshoot_penalty(count: int, ratio: float) -> float:
+    """Taşma adedi × puan; oran eşiği aşılırsa 1.5x; tavanla sınırlı."""
+    penalty = count * WEDGE_OVERSHOOT_PENALTY_PER
+    if ratio > WEDGE_OVERSHOOT_MAX_RATIO:
+        penalty *= 1.5
+    return float(min(WEDGE_OVERSHOOT_PENALTY_CAP, penalty))
+
+
 def _detect_triangles(
     df: pd.DataFrame,
     pivots: list[_Pivot],
@@ -609,14 +657,28 @@ def _detect_triangles(
             _line(df, "üst_sınır", top, start, n - 1),
             _line(df, "alt_sınır", bottom, start, n - 1),
         ]
-        quality = _score(
-            {
-                "zorunlu_geometri": 45,
-                "eğim_uyumu": min(15, steep_drift * 140),
-                "çizgi_uyumu": max(0, 15 * min(top.r2, bottom.r2)),
-                "sıkışma": max(0, 15 * (1 - end_gap / start_gap)),
-                "koridor": 10 * containment,
-            }
+        # --- Gövde taşma süzgeci (17 Eyl 2026): çizgilerin çizili olduğu
+        # aralıkta kapanışı bandın dışına taşan mumları cezalandırır; 4+
+        # ardışık dışarıda kapanış adayı reddeder (tek kaynak: yardımcılar). ---
+        _ov_end = min(int(max(end, break_bar if break_bar is not None else end)), n - 1)
+        body_overshoot_count, body_overshoot_ratio, body_overshoot_run = _body_overshoot_stats(
+            df["Close"].to_numpy(dtype=float), start, _ov_end, top.at, bottom.at, price_ref
+        )
+        if body_overshoot_run >= WEDGE_OVERSHOOT_MAX_RUN:
+            continue
+        overshoot_penalty = _overshoot_penalty(body_overshoot_count, body_overshoot_ratio)
+        quality = max(
+            0.0,
+            _score(
+                {
+                    "zorunlu_geometri": 45,
+                    "eğim_uyumu": min(15, steep_drift * 140),
+                    "çizgi_uyumu": max(0, 15 * min(top.r2, bottom.r2)),
+                    "sıkışma": max(0, 15 * (1 - end_gap / start_gap)),
+                    "koridor": 10 * containment,
+                }
+            )
+            - overshoot_penalty,
         )
         found.append(
             PatternCandidate(
@@ -653,6 +715,10 @@ def _detect_triangles(
                     "upper_total_drift_pct": round(top_drift * 100, 3),
                     "lower_total_drift_pct": round(bottom_drift * 100, 3),
                     "containment_pct": round(containment * 100, 2),
+                    "body_overshoot_count": body_overshoot_count,
+                    "body_overshoot_ratio_pct": round(body_overshoot_ratio * 100, 2),
+                    "body_overshoot_run": body_overshoot_run,
+                    "overshoot_penalty": round(float(overshoot_penalty), 1),
                     "apex_bar": round(float(apex), 2),
                     **state_metrics,
                 },
@@ -1094,15 +1160,30 @@ def _detect_tobo(
                 shoulder_diff = abs(left_sh.price - right_sh.price) / max(sh_mid, 1e-9)
             else:
                 shoulder_diff = 0.0
-            quality = _score({
-                "boyun_çok_temas": min(30.0, 12.0 + 6.0 * len(nl["touches"])),
-                "baş_belirginliği": min(22.0, head_depth * 120.0),
-                "ön_trend": min(20.0, pretrend_drop_val * 90.0),
-                "omuz_simetrisi": (max(0.0, 14.0 * (1 - shoulder_diff / 0.12))
-                                   if right_sh is not None else 6.0),
-                "sağ_omuz_var": 8.0 if right_sh is not None else 0.0,
-                "yapı_tazeliği": 6.0,
-            })
+            # --- Erken boyun kırılımı süzgeci (17 Eyl 2026): kırılım
+            # onaylanmadan boyun çizgisinin ÜSTÜNDE kapanan mumlar TOBO'yu
+            # zayıflatır. Yalnız üst taraf ölçülür; kapanış (close), fitil değil.
+            # 4+ ardışık erken kapanış → aday reddedilir. ---
+            _neck_end = (break_bar - 1) if break_bar is not None else (n - 1)
+            neck_overshoot_count, neck_overshoot_ratio, neck_overshoot_run = _body_overshoot_stats(
+                close, fs, _neck_end, neck_fit.at, lambda _i: _NEG_INF, level
+            )
+            if neck_overshoot_run >= WEDGE_OVERSHOOT_MAX_RUN:
+                continue
+            overshoot_penalty = _overshoot_penalty(neck_overshoot_count, neck_overshoot_ratio)
+            quality = max(
+                0.0,
+                _score({
+                    "boyun_çok_temas": min(30.0, 12.0 + 6.0 * len(nl["touches"])),
+                    "baş_belirginliği": min(22.0, head_depth * 120.0),
+                    "ön_trend": min(20.0, pretrend_drop_val * 90.0),
+                    "omuz_simetrisi": (max(0.0, 14.0 * (1 - shoulder_diff / 0.12))
+                                       if right_sh is not None else 6.0),
+                    "sağ_omuz_var": 8.0 if right_sh is not None else 0.0,
+                    "yapı_tazeliği": 6.0,
+                })
+                - overshoot_penalty,
+            )
             found.append(PatternCandidate(
                 pattern="TOBO",
                 direction="bullish",
@@ -1133,6 +1214,10 @@ def _detect_tobo(
                     "head_prominence_pct": round(head_depth * 100, 3),
                     "pretrend_drop_pct": round(pretrend_drop_val * 100, 3),
                     "shoulder_difference_pct": round(shoulder_diff * 100, 3),
+                    "neck_overshoot_count": neck_overshoot_count,
+                    "neck_overshoot_ratio_pct": round(neck_overshoot_ratio * 100, 2),
+                    "neck_overshoot_run": neck_overshoot_run,
+                    "overshoot_penalty": round(float(overshoot_penalty), 1),
                     **state_metrics,
                 },
                 notes=[
