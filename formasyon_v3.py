@@ -48,6 +48,18 @@ ENGINE_VERSION = "3.0.0-multiframe-research"
 SUPPORTED_TIMEFRAMES = ("1d", "4h")
 
 
+# --- Gövde taşma süzgeci parametreleri (17 Eyl 2026, mockup onaylı) ---------
+# "Şekil Kalitesi" skoru, kapanışı sınır çizgisinin dışına taşan mumlarla
+# düşürülür. Fitil (intraday high/low) taşması wick kabul edilip tolerans
+# bandıyla dışlanır; yalnız KAPANIŞ (close) ihlali ölçülür. Endeks/likit hisse
+# için dar band uygundur. Buradaki dört sayı tek ayar noktasıdır.
+WEDGE_OVERSHOOT_TOL_PCT = 0.01      # ±%1 hoşgörü bandı (fitil nefes payı)
+WEDGE_OVERSHOOT_MAX_RATIO = 0.08    # taşma oranı > %8 → ceza 1.5x (yapı bozuldu)
+WEDGE_OVERSHOOT_MAX_RUN = 4         # 4+ ardışık dışarıda kapanış → formasyon reddedilir
+WEDGE_OVERSHOOT_PENALTY_PER = 3.0   # her taşan kapanış için -3 kalite puanı
+WEDGE_OVERSHOOT_PENALTY_CAP = 40.0  # toplam ceza tavanı (skoru dibe çakmasın)
+
+
 # V2'nin minimum veri şartları nedeniyle kısa pencerenin kendisi 90/120 bar
 # tutulur. V2 bu kesitin içinde ayrıca 45/60/... barlık üçgen pencerelerini
 # dener. Böylece kısa yapı korunurken motorun veri yeterlilik kapısı aşılmaz.
@@ -924,22 +936,60 @@ def _detect_wide_triangles(
                 _v2._line(clean, "üst_sınır", top, top_points[0].bar, line_end_bar),
                 _v2._line(clean, "alt_sınır", bottom, bottom_points[0].bar, line_end_bar),
             ]
+            # --- Gövde taşma süzgeci (17 Eyl 2026, mockup onaylı) --------------
+            # Çizgilerin çizili olduğu [start .. line_end_bar] aralığında,
+            # kapanışı ±%1 bandın dışına taşan mumları sayar. Fitil taşması
+            # (high/low) sayılmaz — yalnız close ihlali. 4+ ardışık dışarıda
+            # kapanış artık şekil değil kaos/kırılımdır → aday reddedilir.
+            _ov_end = min(int(line_end_bar), n - 1)
+            body_overshoot_count = 0
+            body_overshoot_run = 0
+            body_overshoot_ratio = 0.0
+            if _ov_end > start:
+                _ov_close = close[start : _ov_end + 1]
+                _ov_upper = np.asarray([top.at(_b) for _b in range(start, _ov_end + 1)])
+                _ov_lower = np.asarray(
+                    [bottom.at(_b) for _b in range(start, _ov_end + 1)]
+                )
+                _ov_tol = max(price_ref * WEDGE_OVERSHOOT_TOL_PCT, 1e-9)
+                _ov_mask = (_ov_close > _ov_upper + _ov_tol) | (
+                    _ov_close < _ov_lower - _ov_tol
+                )
+                body_overshoot_count = int(np.count_nonzero(_ov_mask))
+                body_overshoot_ratio = (
+                    float(np.mean(_ov_mask)) if _ov_mask.size else 0.0
+                )
+                _run = 0
+                for _flag in _ov_mask:
+                    _run = _run + 1 if bool(_flag) else 0
+                    if _run > body_overshoot_run:
+                        body_overshoot_run = _run
+            if body_overshoot_run >= WEDGE_OVERSHOOT_MAX_RUN:
+                continue
+            overshoot_penalty = body_overshoot_count * WEDGE_OVERSHOOT_PENALTY_PER
+            if body_overshoot_ratio > WEDGE_OVERSHOOT_MAX_RATIO:
+                overshoot_penalty *= 1.5
+            overshoot_penalty = min(WEDGE_OVERSHOOT_PENALTY_CAP, overshoot_penalty)
             line_quality = max(0.0, min(20.0, (top_score + bottom_score) * 0.10))
             start_alignment_quality = max(
                 0.0,
                 12.0
                 * (1.0 - line_start_gap_bars / max(float(max_line_start_gap), 1.0)),
             )
-            quality = _v2._score(
-                {
-                    "zorunlu_geometri": 40.0,
-                    "eğim_uyumu": min(15.0, max(abs(top_drift), abs(bottom_drift)) * 140),
-                    "çizgi_uyumu": min(20.0, 10.0 * min(top.r2, bottom.r2)),
-                    "sıkışma": max(0.0, 15.0 * (1.0 - end_gap / start_gap)),
-                    "koridor": 10.0 * containment,
-                    "temas_destegi": line_quality,
-                    "sinir_baslangic_uyumu": start_alignment_quality,
-                }
+            quality = max(
+                0.0,
+                _v2._score(
+                    {
+                        "zorunlu_geometri": 40.0,
+                        "eğim_uyumu": min(15.0, max(abs(top_drift), abs(bottom_drift)) * 140),
+                        "çizgi_uyumu": min(20.0, 10.0 * min(top.r2, bottom.r2)),
+                        "sıkışma": max(0.0, 15.0 * (1.0 - end_gap / start_gap)),
+                        "koridor": 10.0 * containment,
+                        "temas_destegi": line_quality,
+                        "sinir_baslangic_uyumu": start_alignment_quality,
+                    }
+                )
+                - overshoot_penalty,
             )
             found.append(
                 _v2.PatternCandidate(
@@ -981,6 +1031,10 @@ def _detect_wide_triangles(
                         "upper_total_drift_pct": round(top_drift * 100, 3),
                         "lower_total_drift_pct": round(bottom_drift * 100, 3),
                         "containment_pct": round(containment * 100, 2),
+                        "body_overshoot_count": body_overshoot_count,
+                        "body_overshoot_ratio_pct": round(body_overshoot_ratio * 100, 2),
+                        "body_overshoot_run": body_overshoot_run,
+                        "overshoot_penalty": round(float(overshoot_penalty), 1),
                         "shape_start_time": _v2._ts(clean.index[shape_start]),
                         "upper_line_start_bar": int(top_points[0].bar),
                         "lower_line_start_bar": int(bottom_points[0].bar),
