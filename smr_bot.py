@@ -251,6 +251,7 @@ async def call_gemini_gorev3(gorev3_prompt: str, ticker: str,
                 )
             )
             text = response.text.strip() if response.text else ""
+            text = text.replace(" — ", ", ").replace(" – ", ", ").replace("—", "-").replace("–", "-")  # AI em-dash temizle
 
             # Model "başarılı" dönüp boş metin verebilir (ör. düşünme bütçesini
             # tüketip çıktı bırakmaması). Boşsa hata sayıp sıradaki modele geç.

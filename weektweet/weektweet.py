@@ -70,6 +70,7 @@ def save_data(data):
 
 # ---------- Telegram (admin DM, düz metin) ----------
 def tg_send(chat_id, text):
+    text = text.replace(" — ", ", ").replace(" – ", ", ").replace("—", "-").replace("–", "-")  # AI em-dash temizle
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
@@ -179,9 +180,7 @@ def format_draft(topic, cat, body, is_test=False):
         f"[{topic['id']}] · {CAT_LABEL.get(cat, cat)}\n"
         f"Konu: {topic['title']}\n"
         f"────────────────────\n"
-        f"{body}\n"
-        f"────────────────────\n"
-        f"ℹ️ Sana özel taslak; sen atmadıkça kimse görmez."
+        f"{body}"
     )
 
 

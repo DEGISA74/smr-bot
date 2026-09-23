@@ -37,6 +37,7 @@ def _token() -> str | None:
 
 
 def _send(text: str) -> bool:
+    text = text.replace(" — ", ", ").replace(" – ", ", ").replace("—", "-").replace("–", "-")  # AI em-dash temizle
     tok = _token()
     if not tok:
         print("token yok")

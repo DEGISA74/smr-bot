@@ -99,36 +99,69 @@ KAT_ETIKET = {
 # otomatik dönüştürmez.
 KATILIM_SORULARI = {
     "psikoloji": [
-        "Biz bu refleksin devreye girdiğini hangi anda fark ediyoruz?",
-        "Böyle bir anda ekran mı bizi yönetiyor, yoksa plan mı?",
-        "Biz bugün hangi küçük kuralı koyarsak yarın daha az pişman oluruz?",
+        "Bu refleks devreye girdiğinde siz genelde ne yapıyorsunuz?",
+        "Böyle bir anda ekranı siz mi yönetiyorsunuz, ekran mı sizi?",
+        "Yarın daha az pişman olmak için bugün koyacağınız tek kural ne olurdu?",
     ],
     "bist": [
-        "Bu hikâyeye kapılmadan önce biz hangi veriyi bir daha kontrol ederiz?",
-        "Bizim için asıl soru ne: hikâye mi, fiyatı taşıyan kanıt mı?",
-        "Bu başlıkta hangi karşı senaryo planımızı daha sağlam tutar?",
+        "Bir hikâyeye kapılmadan önce siz hangi rakama bakarsınız?",
+        "Sizce asıl mesele hangisi: kulağa hoş gelen hikâye mi, fiyatı taşıyan gerçek mi?",
+        "Peki ya ters giderse? O senaryoyu hiç düşündünüz mü?",
     ],
     "makro": [
-        "Bu gelişme portföyümüze hangi kapıdan girer, önce onu mu konuşsak?",
-        "Manşetin ötesine geçmek için biz hangi veriyi birlikte izleriz?",
-        "Bu tabloda hangi varsayımımızı yeniden kontrol etmemiz gerekir?",
+        "Bu haber sizin cebinize hangi kapıdan girer?",
+        "Manşetin ötesine bakmak için siz neye bakarsınız?",
+        "Bu tabloda en çok hangi beklentiniz sallanıyor?",
     ],
     "teknik": [
-        "Bu sinyale güvenmeden önce biz hangi teyidi görmek isteriz?",
-        "Grafikte heyecan var diye planı değiştirmeden önce hangi riski sınırlarız?",
-        "Bu hareketi tek başına değil, hangi işaretlerle birlikte okuruz?",
+        "Bu sinyale güvenmeden önce siz neyi görmek istersiniz?",
+        "Grafik heyecanlandırıyor diye planı bozmadan önce bir durur musunuz?",
+        "Bu hareketi tek başına mı okursunuz, yoksa başka işaretlerle mi?",
     ],
     "egitim": [
-        "Bu notu kendi planımıza nereye koyarız?",
-        "Daha sağlam karar için önce hangi soruyu kendimize sorarız?",
-        "Bu konuyu portföyümüzde hangi somut kuralla karşılarız?",
+        "Bu dersi kendi kararlarınızda nereye koyarsınız?",
+        "Siz olsanız yarın bunu nasıl uygulardınız?",
+        "Bunu okuyunca aklınıza ilk hangi hatanız geldi?",
     ],
     "kripto": [
-        "Bu işleme girmeden önce biz hangi riski mutlaka kontrol ederiz?",
-        "Getirinin yanında hangi çıkış yolunun açık kaldığını doğrularız?",
-        "Bu pozisyon ters giderse planımızın hangi bölümü bizi korur?",
+        "Bu işleme girmeden önce siz hangi riski kontrol edersiniz?",
+        "Kazancın yanında çıkış kapınız açık mı?",
+        "Ters giderse sizi ne koruyacak?",
     ],
 }
+
+# Aile-bazli kapanis sorulari — insani + kucuk rotasyon ("biz ... planimizda" kalibi YASAK)
+ACI_SORU = [
+    "Siz bu tuzağa düştünüz mü, yoksa hâlâ içinde misiniz?",
+    "Elinizi vicdanınıza koyun: siz bunu hiç yapmadınız mı?",
+    "Bu satırda kendinizi gördünüz mü?",
+    "Peki bu acı gerçeği en çok kim görmezden geliyor?",
+]
+KONUM_SORU = [
+    "Bu notu yarın gerçekten uygular mısınız, yoksa 'haklıymış' deyip geçer misiniz?",
+    "Siz bunu kendi defterinize nasıl yazardınız?",
+    "Bu, sizin de bir kenara not ettiğiniz bir şey mi?",
+]
+IKILEM_SORU = [
+    "Siz olsanız hangi tarafı seçerdiniz?",
+    "Zor olan seçim mi, yoksa seçtikten sonra arkasında durabilmek mi?",
+]
+RISK_SORU = [
+    "Böyle bir anda sizi ne durdurur?",
+    "Siz en son ne zaman bu tuzağa düştünüz?",
+]
+MANSET_SORU = [
+    "Bu başlığa siz de kanar mıydınız?",
+    "Manşetin altında asıl neyi ararsınız?",
+]
+EFSANE_SORU = [
+    "Siz de yıllarca buna inandınız mı?",
+    "Bu cümleyi son duyduğunuzda ne hissettiniz?",
+]
+MIT_SORU = [
+    "Bu üç yanlıştan hangisine siz de inanıyordunuz?",
+    "Hangisi en çok canınızı yaktı?",
+]
 
 # Tekrar-onleme pencereleri
 ID_PENCERE = 25      # bir kavram bu kadar gonderim boyunca tekrar cikmaz
@@ -158,6 +191,7 @@ def load_havuz(cfg):
 
 # ---------- Telegram (admin DM, duz metin) ----------
 def tg_send(chat_id, text):
+    text = text.replace(" — ", ", ").replace(" – ", ", ").replace("—", "-").replace("–", "-")  # AI em-dash temizle
     import requests
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -355,9 +389,9 @@ def _format_admin_draft(header, body, question=None, is_test=False):
         header,
         body,
     ]
-    if question:
+    # Gövde zaten bir soruyla bitiyorsa (kapanista gomulu 💬 soru) ikinci soru EKLENMEZ.
+    if question and not body.rstrip().endswith("?"):
         parts.append(question)
-    parts.append("ℹ️")
     return "\n\n".join(_human_text(part) for part in parts if part)
 
 
@@ -420,14 +454,14 @@ def format_aci(x, is_test=False, seri_baslik="Küçük Yatırımcı Notları", s
         return _format_admin_draft(
             f"☕️ {seri_baslik} - Acı Gerçekler",
             govde,
-            "Biz bu notu kendi planımızda hangi noktaya yazıyoruz?",
+            random.choice(ACI_SORU),
             is_test=is_test,
         )
     # KLASİK format (eski tek-satır madde — havuzda fallback olarak duruyor)
     return _format_admin_draft(
         f"☕️ {seri_baslik} - Acı Gerçekler",
         f"{x['baslik']}\n\n{x['metin']}",
-        "Biz burada en kolay hangi gerçeği görmezden geliyoruz?",
+        random.choice(ACI_SORU),
         is_test=is_test,
     )
 
@@ -436,7 +470,7 @@ def format_konumlama(x, is_test=False):
     return _format_admin_draft(
         "☕️ Küçük Yatırımcı Notları - Not Defterim",
         f"'{x['baslik']}'\n\n{x['govde']}",
-        "Biz bu notu yarınki kararımızda nasıl kullanırız?",
+        random.choice(KONUM_SORU),
         is_test=is_test,
     )
 
@@ -445,21 +479,21 @@ def format_ozel_draft(tip, x, no=None, is_test=False):
     if tip == "ikilem":
         govde = x["soru"]
         baslik = "İkilem"
-        soru = "Biz burada hangi tarafı seçmeden önce bir daha düşünürüz?"
+        soru = random.choice(IKILEM_SORU)
     elif tip == "risk":
         govde = ("Hepimizin zaman zaman düştüğü tuzaklardan biri:\n\n"
                  f"{x['davranis']}\n\n{x['sitem']}")
         baslik = "Risk Notu"
-        soru = "Böyle bir anda biz hangi kuralımıza geri döneriz?"
+        soru = random.choice(RISK_SORU)
     elif tip == "manset":
         govde = f"'{x['baslik']}'\n\n{x['govde']}"
         baslik = "Manşet"
-        soru = "Bu başlıkta biz manşetin ötesinde neyi kontrol ederiz?"
+        soru = random.choice(MANSET_SORU)
     else:  # efsane
         govde = (f"'{x['efsane']}'\n\n"
                  f"Gerçekte ne oluyor?\n{x['gercek']}")
         baslik = "Piyasa Efsanesi"
-        soru = "Biz bu cümleyi duyunca önce hangi veriye bakarız?"
+        soru = random.choice(EFSANE_SORU)
     return _format_admin_draft(
         f"☕️ Küçük Yatırımcı Notları - {baslik}",
         govde,
@@ -470,12 +504,12 @@ def format_ozel_draft(tip, x, no=None, is_test=False):
 
 def format_mit_draft(secilen, baslik, no, is_test=False):
     govde = "\n\n".join(
-        f"'{m['mit']}' diye biliyoruz.\nAslında: {m['duzeltme']}" for m in secilen
+        f"'{m['mit']}' derler.\nOysa: {m['duzeltme']}" for m in secilen
     )
     return _format_admin_draft(
         f"☕️ Küçük Yatırımcı Notları - {baslik}",
         govde,
-        "Bu üç düşünceden hangisini biz kendi planımızda yeniden kontrol ederiz?",
+        random.choice(MIT_SORU),
         is_test=is_test,
     )
 
@@ -483,7 +517,8 @@ def format_mit_draft(secilen, baslik, no, is_test=False):
 def format_draft(unit, is_test=False, seri_baslik="", seri_no=None, rng=None):
     baslik = seri_baslik or "Küçük Yatırımcı Notları"
     soru_havuzu = KATILIM_SORULARI.get(unit["kategori"], [
-        "Bu notu kendi planımıza nereye koyarız?"
+        "Siz bunu kendi kararlarınızda nereye koyarsınız?",
+        "Peki ya siz, ne dersiniz?",
     ])
     soru = (rng or random).choice(soru_havuzu)
     format_etiket = (

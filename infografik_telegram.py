@@ -48,6 +48,7 @@ def tg_send_image(chat_id, path, caption='', as_doc=False):
 
 
 def tg_send_text(chat_id, text):
+    text = text.replace(" — ", ", ").replace(" – ", ", ").replace("—", "-").replace("–", "-")  # AI em-dash temizle
     tok = _token()
     if not tok:
         print('token yok'); return False

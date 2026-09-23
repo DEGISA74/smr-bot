@@ -4,410 +4,1514 @@
     {
       "id": "altin_borc",
       "sira": 1,
-      "metin": "Feridun Abi, yıllar önce en yakın arkadaşının en dibe vurduğu gününde 20.000 TL borç vermiş. O gün gram altın 5.000 TL'ydi; yani cebinden aslında 4 gram altın çıkmış.\n\n\"İlk fırsatta öderim abi\" demiş arkadaşı. Yıllar geçmiş, konu hiç açılmamış.\n\nGeçen hafta adam aramış: \"Feridun Abi, 20.000 TL hazır, borcumu kapatıyorum.\"\n\nFeridun Abi telefonu kapatınca bana döndü: \"O 4 gram altın bugün 120 bin lira. Ama adam 'ben senden altın değil TL aldım' diyor. Şimdi ne yapacağımı bilemiyorum.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi yıllar önce en yakın arkadaşına 20.000 TL borç vermiş. O gün gram altın 5.000 TL'ydi; yani cebinden aslında 4 gram altın çıkmış.\n\nYıllar sonra arkadaşı aradı: \"Abi, paran hazır. Borcumu kapatıyorum.\"\n\nFeridun Abi borcun miktarını sordu, aldığı cevap karşısında şaşırdı\n\n\"Abi, sana 20.000 TL borcum vardı,\" demişti. Feridun Abi miktarı duyunca sevinmedi. Sadece \"Ne zaman görüşelim?\" diye sordu. Çünkü o 4 gram altın bugün 120.000 TL ediyordu.\n\nFeridun Abi'nin önünde artık para değil, dostlukla hak arasında bir seçim vardı.",
       "soru": "Sizce borç rakamla mı ödenir, o günkü değeriyle mi? Siz olsanız dostluğu mu korurdunuz, hakkınızı mı isterdiniz?"
     },
     {
       "id": "araba_nakit_2020",
       "sira": 2,
-      "metin": "Feridun Abi'nin önünde 2020'de iki yol vardı: 100.000 TL'yle araba almak, ya da \"nakit dursun\" deyip beklemek. Herkes \"araba yatırım olmaz\" dedi, o da bekledi.\n\nGeçen gün çayını yudumlarken gülümsedi: \"O araba bugün 1,2 milyon olmuş, benim param ise yıllar içinde erimiş. Tedbirliyim derken en büyük riski ben almışım.\"",
-      "soru": "Sizce Feridun Abi yanlış mı yaptı, yoksa kurallar mı değişti? Bu ülkede 'bekleyen' mi kaybediyor?"
+      "tema": "enflasyon",
+      "metin": "Feridun Abi yıllar önce bir yol ağzındaydı: elindeki parayla araba almak, ya da \"dursun, nakit her zaman iyidir\" deyip beklemek. Herkes \"araba yatırım olmaz\" dedi; o da bekledi.\n\nGeçen gün çayını yudumlarken bana döndü, tek cümle kurdu: \"Tedbirli olayım derken...\"\n\n\"...meğer en büyük riski ben almışım. O gün almadığım araba bugün kat kat pahalı; elimde tuttuğum para ise yıllar içinde sessizce eridi. Bazı zamanlarda hiçbir şey yapmamak, en pahalı karardır.\"",
+      "soru": "Feridun Abi mi yanıldı, yoksa kurallar mı değişti? Böyle dönemlerde \"bekleyen\" mi kaybeder?"
     },
     {
       "id": "poset_10tl",
       "sira": 3,
-      "metin": "Feridun Abi'yle markete gitmiştik. Kasada \"poşet ister misiniz?\" dediler. Güldü, \"yok\" dedi, \"o 10 lirayla her hafta ufak ufak yatırım yapıyorum.\"\n\nKasiyer kız da güldü: \"10 liradan ne olur ki amca?\"\n\nFeridun Abi telefonu çıkardı, 4 yıldır küçük küçük attığı hesabı gösterdi; biriken para milyonu geçmişti. Sıradakiler bir anda sustu.",
-      "soru": "Sizce insanı zengin eden maaş mı, yoksa tekrar eden küçük alışkanlıklar mı?"
+      "tema": "genel",
+      "metin": "Markette kasada \"poşet ister misiniz?\" dediler. Feridun Abi güldü: \"Yok. O poşet parasını her hafta kenara atıyorum, ufaktan yatırıyorum.\"\n\nKasadaki genç kız dayanamadı: \"On liradan ne olur ki amca?\"\n\nFeridun Abi telefonunu çıkardı, yıllardır o \"on lira\"ları biriktirdiği hesabı gösterdi; rakamı görünce kızın gülümsemesi dondu, sıradakiler sustu.\n\n\"Küçük diye küçümsediğin şey\" dedi cebine koyarken, \"her hafta tekrar edince büyür. Zenginlik tek büyük hamlede değil, sıkıcı bir tekrarda saklı.\"",
+      "soru": "İnsanı asıl zengin eden maaşın büyüklüğü mü, yoksa tekrar eden küçük alışkanlıklar mı?"
     },
     {
       "id": "kuyumcu_torun_altin",
       "sira": 4,
-      "metin": "Feridun Abi'yle kuyumcudaydık. \"Bir 200 gram daha ver\" dedi. Dayanamadım sordum: \"Abi bu kadar altını napacaksın?\"\n\nGüldü: \"Ben almıyorum, torunlar alıyor. Her bayram harçlık yerine altın aldırıyorum.\"\n\nSonra öyle bir şey dedi ki aklımdan çıkmadı: \"Miras bırakmak kolay; tasarruf alışkanlığı bırakmak zor.\"",
-      "soru": "Sizce çocuklara para mı bırakmalı, yoksa biriktirme alışkanlığı mı?"
+      "tema": "genel",
+      "metin": "Kuyumcunun önünde Feridun Abi \"bir 200 gram daha ver\" deyince dayanamadım: \"Abi bu kadar altını ne yapacaksın?\"\n\nGüldü: \"Ben takmıyorum ki. Torunlara. Her bayram harçlık yerine ellerine altın tutuşturuyorum; harçlık akşama biter, bu kalır.\"\n\nSonra öyle bir şey söyledi ki aklımdan çıkmadı: \"Çocuğa para bırakmak kolay; asıl zor olan, biriktirme alışkanlığını bırakmak. Biri harcanır, öteki ömür boyu kazandırır.\"",
+      "soru": "Çocuğa para mı bırakmalı, biriktirme alışkanlığı mı? Hangisi daha uzun yaşar?"
     },
     {
       "id": "market_sabirsiz",
       "sira": 5,
-      "metin": "Feridun Abi'yle markete gitmiştik. Önümüzdeki adam üç kez elindeki ürünü rafa geri koydu. Kasada dert yandı: \"Borsada zarar ettim.\"\n\nFeridun Abi sordu: \"Ne kadar bekledin?\"\n\"On bir gün.\"\nAdam her 3 dakikada bir fiyata bakıyormuş.\n\nAdam gidince bana döndü: \"Gördün mü, çoğu insan borsada paradan değil, sabırsızlıktan kaybeder. Kapanışı hiç beklemez.\"",
-      "soru": "Borsada en büyük düşmanımız hangisi: sabırsızlık mı, açgözlülük mü, korku mu?"
+      "tema": "genel",
+      "metin": "Marketteydik; önümüzdeki adam elindeki ürünü üç kez rafa koyup geri aldı, sonra kasada dert yandı: \"Borsada yandım.\"\n\nFeridun Abi kibarca sordu: \"Ne kadar bekledin?\"\n\"On bir gün.\" Adam her üç dakikada bir fiyata bakıyormuş.\n\nAdam gidince Feridun Abi bana döndü: \"Gördün mü? Çoğu insan borsada paradan değil, sabırsızlıktan kaybeder. Ektiği tohumu her gün topraktan çıkarıp 'büyüdü mü' diye bakan, hasat alamaz.\"",
+      "soru": "Borsada en büyük düşman hangisi: sabırsızlık mı, açgözlülük mü, korku mu?"
     },
     {
       "id": "maas_farki",
       "sira": 6,
-      "metin": "Feridun Abi aynı işyerinde yıllardır çalışıyor. Geçen hafta öğrendi ki aynı işe yeni başlayan birine, kendi maaşının neredeyse üç katı teklif edilmiş.\n\nPatrona sorunca cevap hazırmış: \"Sen başladığında şartlar buydu.\"\n\nAkşam bana dedi ki: \"Sadık kaldım ama sadık kalan mı kaybediyor, sürekli yer değiştiren mi kazanıyor, artık bilmiyorum.\"",
-      "soru": "Bu ülkede tecrübe mi değerleniyor, yoksa sadece yeni gelen mi?"
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı aynı işyerinde yıllardır çalışıyor. Geçen hafta öğrendi ki aynı işe yeni başlayan birine, kendi maaşının neredeyse üç katı teklif edilmiş.\n\nPatrona sorunca cevap hazırmış: \"Sen başladığında şartlar buydu.\"\n\nAdam dükkâna gelip dert yandı: \"Sadık kaldım ama sadık kalan mı kaybediyor, sürekli yer değiştiren mi kazanıyor?\"\n\nFeridun Abi dedi ki: \"Karşılıksız sadakat, bir süre sonra fedakârlık değil alışkanlık olur. Değerini başkası söylemeden önce, arada bir kendin piyasaya soracaksın.\"",
+      "soru": "Bu ülkede tecrübe mi değerleniyor, yoksa sadece yeni gelen mi? Değerinizi hiç \"piyasaya sordunuz\" mu?"
     },
     {
       "id": "hisse_alamadim",
       "sira": 7,
-      "metin": "Feridun Abi bir hisseyi yıllar önce 12 liradan izlemiş. \"Biraz düşsün alırım\" demiş. 10 bekledi, 15 oldu almadı; 25 olunca \"çok yükseldi\" dedi.\n\nGeçen gün fiyatına bakınca başını salladı: \"En büyük zararım aldığım hisseden değil, hiç alamadığım fırsatlardan geldi. O trene bir daha binemedim.\"",
-      "soru": "Sizce yatırımda en zor şey para bulmak mı, karar vermek mi?"
+      "tema": "genel",
+      "metin": "Feridun Abi bir hisseyi yıllar önce, daha ucuzken keşfetmiş. \"Biraz daha düşsün, öyle alırım\" demiş. Fiyat düşmemiş, yükselmiş; yükseldikçe \"artık çok pahalı\" deyip yine almamış.\n\nGeçen gün aynı hissenin fiyatına bakınca uzun uzun başını salladı.\n\n\"İnsan sandığı kadar aldığı hisselerden yanmıyor\" dedi. \"Beni asıl yakan, hep 'daha iyi bir an' bekleyip hiç binemediğim trenler oldu. Kaçırdığın fırsatın faturası cepten çıkmadığı için görünmez; ama en ağırı odur.\"",
+      "soru": "En zor iş parayı bulmak mı, yoksa \"şimdi\" deyip kararı verebilmek mi?"
     },
     {
       "id": "baba_tek_hisse",
       "sira": 8,
-      "metin": "Feridun Abi, oğluna 300.000 TL vermiş. Tek şart koymuş: \"Döviz alma, araba alma, harcamaya da kıyma.\"\n\nÇocuk parayı tek bir sağlam hisseye yatırmış. İlk yıl neredeyse yüzde 40 düşmüş, Feridun Abi satmasına izin vermemiş.\n\nBirkaç yıl sonra o para milyonları görmüş. Feridun Abi hâlâ aynı şeyi söylüyor: \"Parayı büyüten doğru hisse değil, bekleyebilen insan.\"",
-      "soru": "Sence en zor yatırım hangisi: doğru hisseyi bulmak mı, yoksa yıllarca satmadan beklemek mi?"
+      "tema": "genel",
+      "metin": "Feridun Abi oğluna bir miktar para vermiş, tek şart koymuş: \"Döviz alma, araba alma, canın sıkılınca harcama.\"\n\nÇocuk parayı sağlam bir hisseye yatırmış. İlk yıl neredeyse yarısını kaybetmiş; her satmak istediğinde Feridun Abi \"dur\" demiş.\n\nYıllar sonra o para birkaç katına çıkmış. Feridun Abi hâlâ aynı şeyi söylüyor: \"Parayı büyüten doğru hisseyi bulmak değil; bulduktan sonra elini cebinden çekip bekleyebilmek. Zor olan seçim değil, sabır.\"",
+      "soru": "Daha zor olan hangisi: doğru hisseyi bulmak mı, yoksa yıllarca satmadan durabilmek mi?"
     },
     {
       "id": "emlakci_gec_kalmak",
       "sira": 9,
-      "metin": "Feridun Abi'yle bir emlakçının önünden geçiyorduk, laflamaya durduk. \"Daireler satılıyor mu?\" dedi.\n\nEmlakçı \"eskisi kadar değil\" dedi, \"eskiden insanlar ev almak için para biriktirirdi, şimdi ev almak için ev satıyorlar.\"\n\nDönüp yürürken Feridun Abi mırıldandı: \"Bu ülkede en pahalı şey ev değil; geç kalmak.\"",
-      "soru": "Sence bugün en büyük yatırım riski yanlış seçim mi, geç kalmak mı?"
+      "tema": "genel",
+      "metin": "Bir emlakçının vitrinine bakarken Feridun Abi lafa girdi: \"Daireler satılıyor mu hâlâ?\"\n\nEmlakçı içini çekti: \"Eskisi kadar değil. Eskiden insan ev almak için para biriktirirdi; şimdi ev almak için elindeki evi satıyor.\"\n\nYürürken Feridun Abi mırıldandı: \"Duydun mu? Bu ülkede en pahalı şey ev değil. En pahalı şey, 'biraz daha bekleyeyim' deyip geç kalmak. O gecikmenin etiketi yok, o yüzden kimse hesaba katmıyor.\"",
+      "soru": "Bugün en büyük yatırım riski yanlış seçim yapmak mı, yoksa hiç seçim yapmayıp geç kalmak mı?"
     },
     {
       "id": "araba_satip_borsa",
       "sira": 10,
-      "metin": "Feridun Abi geçen ay arabasını sattı. \"Parayı ne yaptın abi?\" dedim. \"Sağlam şirketlere koydum.\"\n\nBu hafta tekrar sordum:\n\"Pişman mısın?\"\n\"Hayır.\"\n\"Hisseler yükseldi mi?\"\n\"Hayır.\"\n\"E?\"\n\n\"İlk defa param her gün değer kaybetmiyor\" dedi. \"Yatırım bazen kazanmak değil, kaybetmemeyi öğrenmek.\"",
-      "soru": "Sence yatırımın ilk amacı nedir: kazanmak mı, kaybetmemek mi?"
+      "tema": "genel",
+      "metin": "Feridun Abi geçen ay arabasını sattı; parayı sağlam şirketlere koydu. Merak edip sordum.\n\n\"Pişman mısın?\" — \"Hayır.\"\n\"Hisseler yükseldi mi?\" — \"Hayır.\"\n\"E, o zaman ne değişti?\"\n\nBir an durdu. \"İlk defa param her sabah biraz daha erimiyor\" dedi. \"Ben kazanmayı sonra öğrendim; önce kaybetmemeyi öğrendim. Asıl huzur orada.\"",
+      "soru": "Önce kazanmayı mı öğrenmeli, yoksa kaybetmemeyi mi? Yatırımın ilk amacı hangisi olmalı?"
     },
     {
       "id": "asansor_komsu",
       "sira": 11,
-      "metin": "Asansörde Feridun Abi'yle bir komşu konuşuyordu. Komşu: \"Oğlan yine maaşı borsaya yatırmış, genç işte. Ben onun yaşındayken arabaya yatırmıştım.\"\n\nFeridun Abi sordu: \"Peki şimdi hangisi sende?\"\n\nKısa bir sessizlik oldu. \"Araba çoktan gitti\" dedi komşu, \"oğlanın hisseleri hâlâ duruyor.\"\n\nAsansör geldi, kimse bir şey demedi.",
-      "soru": "Sence 20'li yaşlarda yatırımın önceliği ne olmalı: araba mı, birikim mi?"
+      "tema": "genel",
+      "metin": "Asansörde komşu, Feridun Abi'ye söyleniyordu: \"Oğlan yine maaşını borsaya yatırmış. Gençlik işte. Ben onun yaşındayken arabama yatırmıştım.\"\n\nFeridun Abi kibarca sordu: \"Peki bugün hangisi hâlâ sende?\"\n\nKısa bir sessizlik oldu. \"Araba çoktan gitti\" dedi komşu, sesi düşerek, \"oğlanın hisseleri duruyor ama.\"\n\nAsansör kapısı açıldı; kimse başka bir şey eklemedi.",
+      "soru": "Yirmili yaşlarda öncelik ne olmalı: bugünün konforu mu, yarının birikimi mi?"
     },
     {
       "id": "avm_amca_heves",
       "sira": 12,
-      "metin": "AVM otoparkında Feridun Abi yeni model bir arabaya baktı, uzun uzun. \"Alsana abi\" dedim.\n\nGülümsedi:\n\"Bir zamanlar alabilirdim.\"\n\"Niye almadın?\"\n\"Çünkü o zaman param vardı ama cesaretim yoktu.\"\n\"Şimdi?\"\n\"Şimdi param daha çok... ama hevesim yok. Para her şeyi geri getiriyor da, geçen zamanı getirmiyor.\"",
-      "soru": "Sence paranın satın alamadığı en değerli şey ne?"
+      "tema": "genel",
+      "metin": "AVM otoparkında Feridun Abi sıfır bir arabanın önünde uzun uzun durdu. \"Alsana abi\" dedim, \"paran var.\"\n\nGülümsedi. \"Bir zamanlar da vardı.\"\n\"E niye almadın?\"\n\"O zaman param vardı ama cesaretim yoktu. Şimdi param daha çok, ama o heves bende kalmadı.\"\n\nArabaya son bir kez baktı: \"Para her şeyi geri getiriyor da, insanın bir şeye ilk heveslendiği o yaşı getirmiyor. En pahalı şey, geçip giden zaman.\"",
+      "soru": "Paranın satın alamadığı en değerli şey sizce ne? Geç gelen imkân aynı tadı veriyor mu?"
     },
     {
       "id": "patron_zaman",
       "sira": 13,
-      "metin": "Feridun Abi'nin dükkânında yeni bir çocuk işe başladı.\n\nFeridun Abi sordu: \"Maaşını ne yapacaksın?\"\n\"Biraz gezerim, biraz da yatırım.\"\nGüldü: \"Ben de senin yaşındayken öyle diyordum.\"\nÇocuk sordu: \"Şimdi?\"\nÇayından bir yudum aldı: \"Şimdi yatırım yapıyorum ki biraz gezebileyim.\"",
-      "soru": "Sence yatırımın amacı daha çok para mı, daha çok zaman mı?"
+      "tema": "genel",
+      "metin": "Dükkâna yeni giren çocuk, ilk maaşını nasıl harcayacağını anlatıyordu: \"Biraz gezerim, biraz da yatırım yaparım abi.\"\n\nFeridun Abi tezgâhın arkasından gülümsedi. \"Ben de senin yaşındayken aynını derdim.\"\n\"Peki şimdi?\" diye sordu çocuk.\n\nFeridun Abi çayından bir yudum aldı, dükkâna şöyle bir baktı: \"Şimdi yatırım yapıyorum ki bir gün canım istediğinde gezebileyim. Genç yaşta para zaman satın alır; geç kalınca insan parayı zamana yetiştiremez.\"",
+      "soru": "Yatırımın asıl amacı daha çok para mı, yoksa bir gün kendine ait daha çok zaman mı?"
     },
     {
       "id": "pazar_babam",
       "sira": 14,
-      "metin": "Feridun Abi bana ilk yatırım dersini borsayla vermedi. Pazara götürdü, tezgâh tezgâh dolaştı. Aynı domatesi en ucuza bulunca gülümsedi.\n\n\"Daha ucuza almak da yatırımdır\" dedi. \"Yatırım önce büyük paralarda değil, günlük küçük kararlarda başlıyor.\"",
-      "soru": "Sizce tasarruf, az harcamakla mı başlar, çok kazanmakla mı?"
+      "tema": "genel",
+      "metin": "Feridun Abi'yi ilk kez pazarda gördüm: elinde bir poşet, aynı domatesin fiyatını üç ayrı tezgâha soruyordu. En ucuzunu bulunca, sanki borsada kelepir yakalamış gibi gülümsedi.\n\n\"Herkes yatırımı büyük paralarda sanır\" dedi, yarı kendine. \"Oysa o daha burada, iki lira farkı görüp görmediğinle başlar. Kazandığın kadar, boşa vermediğin de senin kârındır.\"\n\nO gün cebinden büyük para çıkmadı; ama tezgâhın başında bıraktığı ders bende kaldı.",
+      "soru": "Küçük günlük kararlar mı biriktirir insanı, yoksa iş büyük parada mı biter? İki liralık fark gerçekten önemli mi?"
     },
     {
       "id": "kahve_amcalar",
       "sira": 15,
-      "metin": "Kahvede iki masa öteden biri bağırıyordu: \"Ben olsam şimdi bütün parayı borsaya basarım!\"\n\nFeridun Abi çayından bir yudum aldı, sakince dedi ki: \"Gözü kapalı yatırım yapılmaz. Çay bile soğuyunca içilmiyor.\"\n\nMasadakiler güldü. Ben not aldım.",
-      "soru": "Sence yatırımda 'doğru zaman' diye bir şey var mı, yoksa bahane mi?"
+      "tema": "genel",
+      "metin": "Kahvenin arka masasındaki adam sesini bütün salona duyuruyordu: \"Ben olsam bugün bütün parayı borsaya basardım, gözüm kapalı!\"\n\nFeridun Abi başını kaldırmadı bile; çayından bir yudum aldı, bardağı sakince tabağa bıraktı.\n\n\"Gözü kapalı ancak uçurumdan atlanır\" dedi, \"yatırım değil. Şu çayı bile fazla beklersen soğur, aceleyle içersen ağzını yakarsın. Parada doğru an, en yüksek sesle bağıranda değil; sabredip tadına bakanda.\"\n\nMasa bir an sustu. Bağıran adam çayını çoktan soğutmuştu.",
+      "soru": "Peki \"doğru zaman\" diye bir şey gerçekten var mı, yoksa çoğu kez acelenin ya da korkunun kılıfı mı?"
     },
     {
       "id": "yillik_gider_aliskanlik",
       "sira": 16,
-      "metin": "Bir arkadaşım Feridun Abi'ye dert yandı: \"Hiç param kalmıyor.\"\n\nFeridun Abi kâğıt kalem aldı, beraber hesapladılar: günde 1 paket sigara yılda 36.000, haftada 3 kahve yılda 48.000, haftada 2-3 gün dışarda yemek yılda 50.000 TL.\n\nArkadaşım ekrana baktı. Feridun Abi omzuna vurdu: \"Sorun gelirin değil, alışkanlıkların.\"",
-      "soru": "Sizce boş kalan cüzdanın sebebi az kazanmak mı, çok sızdırmak mı?"
+      "tema": "genel",
+      "metin": "\"Hiç param kalmıyor abi, maaş yetmiyor\" diye dert yanan arkadaşına Feridun Abi kâğıt kalem uzattı: \"Otur, beraber sayalım.\"\n\nGünde bir paket sigara, haftada birkaç dışarı kahve, birkaç akşam dışarıda yemek... Yıllığa vurunca çıkan rakam arkadaşını sarstı; küçük sandığı alışkanlıklar bir maaşı çoktan yutmuştu.\n\nFeridun Abi omzuna vurdu: \"Senin derdin az kazanmak değil, farkında olmadan çok sızdırmak. Delik kovaya ne doldursan durmaz.\"",
+      "soru": "Boş kalan cüzdanın asıl sebebi az kazanmak mı, yoksa fark edilmeyen küçük sızıntılar mı?"
     },
     {
       "id": "nisan_masraf",
       "sira": 17,
+      "tema": "genel",
       "metin": "Feridun Abi'ye mahalleden bir genç dert yandı. Nişanlanalı 2 ay olmuş, şimdiden tükenmiş: her eşya belli markadan olacak, düğünden önce yeni araba, salon, takılar, balayı...\n\n\"Biraz ortak hareket edelim\" deyince cevap hep aynı: \"Kızımızı sana veriyoruz, sen gerekeni yapacaksın.\"\n\nFeridun Abi dinledi, sonra dedi ki: \"Yükü tek omza yıklayan evlilik, daha başlamadan yorar.\"",
-      "soru": "Sizce evlilik hazırlığında tüm yük damat tarafına mı yıklanmalı, yoksa herkes bütçesine göre mi hareket etmeli?"
+      "soru": "Peki, evlilik hazırlığında tüm yük damat tarafına mı yıklanmalı, yoksa herkes bütçesine göre mi hareket etmeli?"
     },
     {
       "id": "sig_tahta",
       "sira": 18,
-      "metin": "Feridun Abi beni bir kenara çekti: \"Sana 'bu hissede hareket olacak' diyen mesajlara dikkat et\" dedi.\n\nAnlattı: günlük hacmi çok düşük, dolaşımdaki lot az olan hisselere 'sığ tahta' deniyor. Parası olan biri 3-5 bin lotluk emirle fiyatı istediği yere çekebiliyor. Kademeye lot koyup fiyat kımıldayınca çekmek, tek tek 1 lotla fiyatı yukarı yağmurlamak... hepsi numara.\n\n\"Bu tahtalarda stop-loss bile işe yaramaz\" dedi, \"çünkü tahtacı senin stopunu bilir ve patlatır.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi beni bir kenara çekti: \"Sana 'bu hissede hareket olacak' diyen mesajlara dikkat et\" dedi.\n\nErtesi gün mahalleden bir tanıdığı aradı: \"Abi, aldım ama satamıyorum.\" Hisse sabah birkaç kademe yükselmiş, herkes grupta birbirine \"kaçırma\" diyordu. Feridun Abi telefonu kapatınca yüzü değişti. Nedenini sorunca ekranı bana çevirdi.\n\nEmirler bir anda silinmiş, alış tarafı boşalmıştı. Fiyatı yukarı taşıyan kalabalık gitmiş, içeride kalanlar birbirine bakıyordu.\n\n\"Bir hissenin hareket etmesi, sana çıkış kapısı olduğu anlamına gelmez\" dedi. \"Bazen gördüğün fırsat, bir başkasının çıkış kapısıdır.\"",
       "soru": "Sence Telegram'da 'kesin uçacak' denen hisseler fırsat mı, yoksa birinin ilanı mı?"
     },
     {
       "id": "kar_erken_zarar_gec",
       "sira": 19,
-      "metin": "Feridun Abi borsayla ilgili bana tek bir şey söyledi ama unutmadım.\n\n\"Yeni başlayanlar hep aynı hatayı yapar\" dedi. \"Kâr eden hisseyi hemen satarlar, biraz daha kazanamasın diye. Zarar edeni ise 'biraz daha bekleyeyim' deyip yıllarca tutarlar.\"\n\nSonra ekledi: \"Yani kazananı budarlar, kaybedeni sularlar. Bahçe olsa çoktan kururdu.\"",
-      "soru": "Sence yatırımda zararı kabul etmek mi zor, kârı bırakmak mı?"
+      "tema": "genel",
+      "metin": "Feridun Abi borsa hakkında bana tek cümle söyledi ama yıllardır aklımdan çıkmadı.\n\n\"Yeni başlayan hep aynı tuzağa düşer\" dedi. \"Kâr eden hisseyi, biraz daha kazanmasın diye hemen satar; zarar edeni ise 'bir gün döner' deyip yıllarca kucağında taşır.\"\n\nSonra bahçesini işaret etti: \"Bir bahçıvan düşün; sağlam fidanı kesip çürüğü suluyor. Öyle bahçe kaç gün dayanır? Borsada da çoğu insan kazananı budayıp kaybedeni besliyor.\"",
+      "soru": "Hangisi daha zor: zararı kabul edip kesmek mi, yoksa kârı erken bırakmamak mı?"
     },
     {
       "id": "sadakat_tek_tarafli",
       "sira": 20,
-      "metin": "Feridun Abi'nin çalıştığı şirket her yıl büyüyor. Ama zam vaktinde laf hazır: \"Hepimiz aynı gemideyiz, biraz fedakârlık.\"\n\nFeridun Abi gülüyor: \"Geminin kaptanı son model arabayla gezerken, tayfa kürek çekmekten bitap düşmüş. Sonra da 'gençler neden çalışmak istemiyor' diye soruyorlar. Sadakat tek taraflı olunca, adı sadakat olmuyor.\"",
-      "soru": "Sizce bugün iş değiştirmek bir tercih mi, yoksa zorunluluk mu?"
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığının çalıştığı şirket her yıl büyüyor. Ama zam vaktinde laf hazır: \"Hepimiz aynı gemideyiz, biraz fedakârlık.\"\n\nFeridun Abi güldü: \"Geminin kaptanı son model arabayla gezerken, tayfa kürek çekmekten bitap düşmüş. Sonra da 'gençler neden çalışmak istemiyor' diye soruyorlar. Sadakat tek taraflı olunca, adı sadakat olmuyor.\"",
+      "soru": "Siz ne dersiniz, bugün iş değiştirmek bir tercih mi, yoksa zorunluluk mu?"
     },
     {
       "id": "arsa_kat_karsiligi",
       "sira": 21,
-      "metin": "Feridun Abi bana bir tanıdığını anlattı. Adam yıllar önce ıssız bir arka mahallede 300 metrekare arsa almış. Tamamen şans. Sonra E5 üzerine dev bir AVM yapılınca, kat karşılığı 4 daire 3 dükkân vermişler; o günden beri çalışmıyor.\n\n\"En disiplinli patronlar bile onu bin kez katlıyor\" dedi Feridun Abi, \"ama her gün aynı saatte işe gidiyorlar. Bazen şans, bazen sabır kazandırıyor; ama tembellik hiçbir zaman.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi bana bir tanıdığını anlattı. Adam yıllar önce ıssız bir arka mahallede 300 metrekare arsa almış. Tamamen şans.\n\nSonra E5 üzerine dev bir AVM yapılınca, kat karşılığı 4 daire 3 dükkân vermişler; o günden beri çalışmıyor.\n\n\"En disiplinli patronlar bile onu bin kez katlıyor\" dedi Feridun Abi, \"ama her gün aynı saatte işe gidiyorlar. Bazen şans, bazen sabır kazandırıyor; ama tembellik hiçbir zaman.\"",
       "soru": "Gerçekten biz hayattan ne istiyoruz: çok para mı, özgür zaman mı? Hiç düşündünüz mü?"
     },
     {
       "id": "sertifika_yatirim",
       "sira": 22,
-      "metin": "Feridun Abi gençken 150.000 TL'yi bir eğitime yatırmış. \"O parayı hisseye koysam iki katı olurdu\" diyor. Ama o eğitim sayesinde girdiği iş ona yıllarca ekstra gelir kazandırmış.\n\n\"Kaybettim sandığım fırsat, bana yeni bir kapı açtı\" diyor. \"En yüksek getiri kendine yaptığın yatırımdan gelir, ama geç ödeme yapar.\"",
-      "soru": "Sence hangisi daha riskli: parayı piyasaya yatırıp beklemek mi, yoksa kendine yatırıp sonucu garanti edememek mi?"
+      "tema": "genel",
+      "metin": "Feridun Abi gençliğinde epey bir parayı bir eğitime yatırmış. \"O parayı hisseye koysam bugün iki katı olurdu\" diyor, yarı şaka.\n\nAma sözünü şöyle bitiriyor: o eğitim olmasa, yıllarca ekmeğini kazandığı işe hiç giremezmiş.\n\n\"Kaybettim sandığım o para, bana kapıyı açan anahtardı\" diyor. \"Kendine yaptığın yatırım en yüksek getiriyi verir; ama makbuzunu hemen kesmez, yıllara yayar. Sabredene öder.\"",
+      "soru": "Hangisi daha akıllı: parayı piyasaya koyup beklemek mi, yoksa kendini geliştirip sonucu zamana bırakmak mı?"
     },
     {
       "id": "araba_temettu_firsat",
       "sira": 23,
+      "tema": "genel",
       "metin": "Feridun Abi bir dönem elindeki 1,5 milyon nakitle konforlu bir araba almış, ticaret hayallerini ertelemiş.\n\n\"O araba masraflarıyla cebimi kemirirken\" diyor, \"aynı parayı temettü ödeyen şirketlere koysaydım bugün çok daha büyük bir portföyüm olurdu. Fırsat maliyetinin kralı benim.\"\n\n\"Pişman mısın?\" dedim. \"İlk bakışta evet\" dedi, \"ama o arabanın verdiği rahat olmasa, belki o enerjiyle hiçbir işi ayakta tutamazdım.\"",
       "soru": "Seni geceleri en rahat uyutan şey hangisi: portföyün mü, kapındaki araban mı?"
     },
     {
       "id": "hayatimi_yasayayim",
       "sira": 24,
+      "tema": "genel",
       "metin": "Feridun Abi'nin bir tanıdığı yıllarca araba için para biriktirdi, altına yatırdı. Ama araba fiyatları altını geride bırakınca hayalindeki arabayı bir türlü alamadı.\n\nSonunda sıfır bir telefon almış, bir haftalığına tatile gitmiş. \"Hedefime zaten ulaşamıyorsam, biraz da hayatımı yaşayayım dedim\" demiş.\n\nFeridun Abi bana döndü: \"Bak, en zoru burada; ne zaman sabır, ne zaman teslim olmak lazım, kimse bilmiyor.\"",
       "soru": "Sizce ulaşılmaz görünen bir hedef için biriktirmeye devam mı etmeli, yoksa 'bugünü yaşa' mı demeli?"
     },
     {
       "id": "altin_borc_alan",
       "sira": 25,
-      "metin": "Feridun Abi'ye genç bir komşu geldi. Bir dostundan 40 gram altın borç almış; o gün altın 5.000 TL'ydi. Şimdi hesabını toparlayamıyor.\n\n\"Eksiyi mi kapatsam, yoksa ucuzken biraz altın mı alsam?\" diye soruyor. Bir yanda borç, bir yanda kaçan fırsat korkusu.\n\nFeridun Abi önce bir sustu, sonra \"Önce ayakta kal\" dedi, \"fırsat kaçar, ama borç seni boğar.\"",
-      "soru": "Siz olsanız önce borcu mu kapatırdınız, yoksa altın alıp beklemeyi mi denerdiniz? Sizce yıl sonuna doğru altın ne olur?"
+      "tema": "genel",
+      "metin": "Genç bir komşu Feridun Abi'ye geldi, sıkıntılıydı. Bir dostundan altın borç almış; şimdi hem borcu büyümüş hem kafası karışık.\n\n\"Eksiyi mi kapatsam, yoksa ucuz derken biraz daha altın mı alsam?\" diye soruyordu. Bir yanda ödenmesi gereken borç, bir yanda \"ya kaçırırsam\" korkusu.\n\nFeridun Abi önce bir sustu, sonra sakince dedi: \"Önce ayakta kal. Fırsat kaçarsa yenisi gelir; ama ödenmeyen borç seni her gün biraz daha boğar. Boğulan adam en iyi fırsatı bile kullanamaz.\"",
+      "soru": "Siz olsanız önce borcu mu kapatırdınız, yoksa \"ucuzken al\" deyip beklemeyi mi denerdiniz?"
     },
     {
       "id": "yasam_maliyeti",
       "sira": 26,
-      "metin": "Feridun Abi bir iş ilanına bakıyordu, kaşını çattı. \"Şu hesaba bak\" dedi. İstanbul'da tek başına yaşayan birinin hayatta kalma maliyeti aşağı yukarı 35.000, ay sonunu getirme maliyeti 50.000, arada bir nefes alma maliyeti 80.000 TL.\n\nİlan ise 25-30 bin veriyor, üstelik 'deneyimli' arıyordu. \"Bu rakamlarla nasıl ayakta durulur\" dedi, \"onu da bize söylemiyorlar.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi bir iş ilanına bakıyordu. 25-30 bin lira veriyor, üstelik \"deneyimli\" arıyordu.\n\nİstanbul'da tek başına yaşayan genç bir tanıdığı o ilana başvurmuş. Görüşmede ona ilk şu soru sorulmuş: \"Bu maaşla nasıl geçineceksin?\" Genç cevap verememiş.\n\nFeridun Abi ilanı kapattı: \"İş arayanlardan deneyim istiyorlar. Keşke bir gün de o maaşla yaşama deneyimi isteselerdi.\"",
       "soru": "Siz bu tablonun neresindesiniz? Bu maaşlarla bir şehirde ayakta durmak gerçekten mümkün mü?"
     },
     {
       "id": "berber_memur",
       "sira": 27,
-      "metin": "Feridun Abi'yle berbere gittik. 25 yıldır aynı dükkânı işleten usta, saç keserken öyle bir laf etti ki Feridun Abi aynada durdu:\n\n\"Maaşın seni zengin etseydi, en zenginler memurlar olurdu.\"\n\nDışarı çıkınca Feridun Abi bana döndü: \"Bu adam profesörlerden çok şey biliyor. Zenginlik maaşta değil, biriktirip doğru yere koymakta.\"",
-      "soru": "Sizce bu laf doğru mu? Maaşla zengin olunur mu, yoksa işin sırrı başka yerde mi?"
+      "tema": "genel",
+      "metin": "Berberde saçını keserken usta lafı çaktı: \"Maaş insanı zengin etseydi, en zenginler memurlar olurdu.\"\n\nFeridun Abi aynada bir an durdu; makas sesi devam etti.\n\nDışarı çıkınca bana döndü: \"Yıllardır o koltukta oturup insan okuyor bu adam. Söylediği laf çoğu profesörden derin. Zenginlik maaşın büyüklüğünde değil; kazandığının bir kısmını ayırıp doğru yere koyabilmekte.\"",
+      "soru": "O berberin lafı doğru mu — maaşla zengin olunur mu, yoksa iş kazandığını değerlendirmekte mi biter?"
     },
     {
       "id": "algi_deneyi",
       "sira": 28,
-      "metin": "Feridun Abi gençken bir deney yapmış: her akşam belli bir miktar hisse alıp ertesi sabah satmış, 20 iş günü boyunca.\n\n\"Sonunda hesapladım\" diyor, \"onca al-sat, 5 yıl aynı hisseyi tutmakla neredeyse aynı getiriyi vermiş. Tek fark, ben yoruldum ve komisyoncuyu zengin ettim.\"",
-      "soru": "Sizce böyle bir al-sat, sabırla beklemekten iyi mi çıkar, yoksa sadece komisyona mı çalışır?"
+      "tema": "genel",
+      "metin": "Feridun Abi gençliğinde bir merak yüzünden ay boyunca her akşam bir miktar hisse alıp ertesi sabah satmış; tam yirmi iş günü, hiç aksatmadan.\n\nAy sonunda oturup hesabı çıkarmış. Kâğıda bakınca güldüğünü söyler: onca alım satımın getirisi, aynı hisseyi beş yıl hiç dokunmadan tutmakla neredeyse aynıymış.\n\n\"Tek fark\" der, \"ben her sabah erken kalktım, gün boyu ekrana baktım, bir de komisyoncuyu zengin ettim. O kadar telaş, yerinde oturmakla aynı kapıya çıktı.\"",
+      "soru": "Çok hareket mi kazandırır, yoksa çoğu zaman sadece komisyona mı çalışılır? Hareketi kârla karıştırıyor muyuz?"
     },
     {
       "id": "kira_faiz_ev",
       "sira": 29,
-      "metin": "Feridun Abi akşam sofrada bir soru sordu: \"4 milyona ev alıp 30 bin kira almak mı mantıklı, yoksa parayı faize koyup 100 bin almak mı?\"\n\nSonra kendi cevabını verdi: \"Bunu soranların çoğunun 4 milyonu bile yok. Oturacak bir ev, alınabiliyorsa bir de yazlık yeter. Gerisi çalışsın, yatırımda olsun.\"",
-      "soru": "Siz olsanız eviniz varken elinizdeki parayı kiraya mı, faize mi, temettüye mi yatırırdınız?"
+      "tema": "genel",
+      "metin": "Feridun Abi akşam sofrada bir arkadaşını anlattı. 4 milyon liraya ev bulmuş, ayda 30 bin kira getirecekmiş. Herkes \"ev candır\" dedi. Feridun Abi hesap makinesini açtı ama kira gelirine değil, evin boş kalacağı günlere baktı.\n\n\"Ev boş kaldığında kira getirmiyor; aidat, bakım ve vergi yine kapıyı çalıyor\" dedi. \"Bir varlığa sahip olmak başka, o varlığın seni taşımaya başlaması başka.\"",
+      "soru": "Siz olsanız eviniz varken elinizdeki parayı faize mi, temettüye mi, başka bir varlığa mı yatırırdınız?"
     },
     {
       "id": "vergi_taksi",
       "sira": 30,
-      "metin": "Feridun Abi'yle taksideydik. Şoför dert yandı: \"Maaş daha cebime girmeden vergisi kesiliyor.\"\n\nSonra saydı: markette vergi, araba alırken vergi, her yıl sahip olduğu için bir vergi daha, pompada yine vergi, parasını faize koysa kazancından yine vergi.\n\nFeridun Abi başını salladı: \"Yani kazanırken de veriyorsun, harcarken de, biriktirirken de. Bir para kaç kez vergilensin?\"",
-      "soru": "Sizce bu tablo normal mi? Bir para kaç kez vergilenmeli?"
-    },
-    {
-      "id": "dugune_gelmeyen",
-      "sira": 31,
-      "metin": "Feridun Abi'nin başına ilginç bir şey gelmiş. Kendi düğününe gelmeyen bir tanıdık, \"işim vardı\" deyip geçiştirmiş. Aradan yıllar geçmiş, şimdi o kişi kendi düğününe Feridun Abi'yi çağırmış.\n\n\"Gitmeyi düşünmüyorum\" dedi, \"ama içimde de bir şey kaldı. İnsan bazen gitmemekle bir şey kazanmıyor, sadece ödeşiyor.\"",
-      "soru": "Siz olsanız gider miydiniz? Bir insanın sizin gününüzde yanınızda olmaması, onun gününde olmamak için yeterli sebep mi?"
+      "tema": "genel",
+      "metin": "Feridun Abi'yle taksideydik. Şoför cebinden 100 lira çıkarıp \"Bu para daha bana gelmeden yola çıkıyor\" dedi.\n\nMaaştan kesintiyi, marketteki alışverişi, benzine dönüşmesini tek tek anlattı. Sonra elini direksiyondan çekip bana baktı. \"Bu paranın son durağı neresi?\" diye sordu.\n\nFeridun Abi başını salladı: \"Kazanırken de veriyorsun, harcarken de, biriktirirken de. İnsan bazen parasını değil, parasının peşinden koşuyor.\"",
+      "soru": "Bu tablo normal mi? Bir para kaç kez vergilenmeli?"
     },
     {
       "id": "dogru_zaman_genc",
       "sira": 32,
-      "metin": "Feridun Abi'ye 23 yaşındaki bir genç geldi, hâlâ 'doğru zamanı' bekliyordu. Mükemmel iş, mükemmel fırsat...\n\nFeridun Abi dedi ki: \"Mükemmeli beklerken yıllar geçiyor. Bir yerden başla; tecrübe kazan, insan tanı, hata yap. Kapılar çoğu zaman masa başında değil, yolda açılıyor.\"\n\nÇocuk sustu; aslında korktuğu belliydi.",
-      "soru": "Sizce genç yaşta en büyük hata risk almak mı, yoksa hep 'doğru zamanı' beklemek mi?"
+      "tema": "genel",
+      "metin": "Genç bir adam Feridun Abi'ye geldi; yıllardır \"doğru zamanı\" bekliyordu. Mükemmel iş, mükemmel fırsat, mükemmel giriş noktası...\n\nFeridun Abi sabırla dinledi, sonra dedi ki: \"Mükemmeli beklerken takvim işliyor. Bir yerden başla; tecrübe topla, insan tanı, hata yap. Kapılar çoğu zaman masa başında değil, yolda yürürken açılıyor.\"\n\nGenç sustu. Aslında onu tutan bahane değil, korkuydu; ikisi de bunu biliyordu.\"",
+      "soru": "Genç yaşta daha büyük hata hangisi: acele risk almak mı, yoksa hep \"doğru zamanı\" bekleyip hiç başlamamak mı?"
     },
     {
       "id": "gelir_artti_luks",
       "sira": 33,
-      "metin": "Feridun Abi'nin komşusu bu yıl zam almış. Hemen arabasını üst modele çekti, dışarda yemeği ikiye katladı, yeni telefon için taksite girdi.\n\n\"Hak ettim\" diyormuş. Feridun Abi gülümsedi: \"Doğru da. Ama gelir arttıkça artış doğrudan yeni lükslere gidiyor, yatırım hesabı hâlâ bomboş. Zam gelince önce standardını değil, yatırım oranını artıracaksın.\"",
-      "soru": "Sizce maaş artınca önce yaşam standardını mı yükseltmeli, önce birikimi mi?"
+      "tema": "genel",
+      "metin": "Feridun Abi'nin komşusu bu yıl zam aldı. Daha ilk hafta arabasını üst modele çekti, dışarıda yemeği ikiye katladı, yeni telefon için taksite girdi. \"Hak ettim\" diyordu.\n\nFeridun Abi başını salladı: \"Hak ettin, doğru. Ama dikkat et: zammın tamamı doğrudan yeni lükslere aktı, yatırım hesabın hâlâ bomboş.\"\n\nSonra ekledi: \"Gelir artınca önce yaşam standardını değil, kenara ayırdığın oranı büyüteceksin. Yoksa ne kadar kazanırsan kazan, hep 'yetmiyor' dersin.\"",
+      "soru": "Maaş artınca önce yaşam standardını mı yükseltmeli, yoksa birikim oranını mı?"
     },
     {
       "id": "fare_tekerlek",
       "sira": 34,
-      "metin": "Feridun Abi bir akşam şunu söyledi, aklıma kazındı:\n\n\"Finansal özgürlük ne kadar çok kazandığınla değil, kazandığının ne kadarını elinde tutabildiğinle ilgilidir.\"\n\nSonra bağladı: \"Yaşam standardını maaşın arttığı hızda artırırsan, sonsuza kadar o maaşa mahkûm kalırsın. Farenin tekerlekte koşması gibi; daha hızlı koşarsın ama hiçbir yere varmazsın.\"",
-      "soru": "Sizce siz tekerlekte mi koşuyorsunuz, yoksa tekerlekten çıkabildiniz mi?"
+      "tema": "genel",
+      "metin": "Feridun Abi'nin komşusu her zam aldığında ilk hafta sevinirdi. Ama üç ay içinde yeni telefon, yeni taksit, daha pahalı bir ev derken maaş yine yetmez olurdu.\n\nYine \"geçinemiyorum\" diye geldiğinde Feridun Abi bu kez bordroya değil, mutfaktaki poşetlere, kutulara baktı.\n\n\"Maaşın arttı ama özgürlüğün artmadı\" dedi. \"Sen hızlandıkça tekerlek de hızlanıyor; daha çok koşuyorsun ama hep aynı yerdesin. Mesele daha çok kazanmak değil, tekerlekten inebilmek.\"",
+      "soru": "Siz tekerlekte mi koşuyorsunuz, yoksa inmeyi başardınız mı? Zam gerçekten rahatlatıyor mu?"
     },
     {
       "id": "bahsis_karakter",
       "sira": 35,
-      "metin": "Feridun Abi'nin garson bir tanıdığı ilginç bir şey söylemiş: lüks mekânlarda en çok hesaba itiraz edenler, en az bahşiş bırakanlar çoğu zaman sonradan görme zenginler oluyormuş. Asgari ücretli bir adam ise son 100 lirasının 20'sini bırakacak kadar cömert çıkıyormuş.\n\nFeridun Abi ekledi: \"Para karakteri değiştirmiyor; sadece zaten orada olanı ortaya çıkarıyor.\"",
-      "soru": "Sizce para insanı mı bozuyor, yoksa zaten bozuk olan karakter parayla mı ortaya çıkıyor?"
+      "tema": "genel",
+      "metin": "Garson bir tanıdığı, Feridun Abi'ye o akşamki iki masayı anlattı. Biri hesabın kuruşuna itiraz etmiş, adisyonu üç kez saydırmış. Öbür masadaki yaşlı adam ise hesabı ödedikten sonra cebinde kalan son paranın bir kısmını sessizce bırakmış.\n\nDükkânı kapatırken garsonun aklında tek bir şey kalmış.\n\n\"Para insanın karakterini değiştirmiyor\" dedi Feridun Abi bunu aktarırken, \"zaten içinde ne varsa onu büyütüp ortaya çıkarıyor. Cömerdi daha cömert, cimriyi daha cimri yapar.\"",
+      "soru": "Para insanı mı bozuyor, yoksa zaten var olan huyu mu büyütüp görünür kılıyor?"
     },
     {
       "id": "borc_tatil_fotografi",
       "sira": 36,
-      "metin": "Feridun Abi'den bir arkadaşı borç istemiş; çok sıkışmış gibi, acı acı anlatmış. O da kırmamış, vermiş.\n\nAma aynı gün arkadaşı sosyal medyada tatilden fotoğraf paylaşmış; deniz, otel, kokteyl. Feridun Abi telefonu elinde bir süre öyle bakakalmış.\n\n\"Paramı değil\" dedi, \"güvenimi harcadım asıl.\"",
-      "soru": "Siz olsanız bir daha o kişiye borç verir miydiniz? Yoksa hesabı kapatıp uzaklaşır mıydınız?"
+      "tema": "genel",
+      "metin": "Bir arkadaşı Feridun Abi'ye geldi, acı acı anlattı: çok sıkışmış, borç lazımmış. Feridun Abi kırmadı, verdi.\n\nAynı akşam telefonunu açtığında arkadaşının paylaşımını gördü: deniz kenarı, otel, elinde kokteyl. Bir süre ekrana öylece baktı.\n\n\"Verdiğim paraya yanmıyorum\" dedi sonra, \"onu zaten gözden çıkarmıştım. Asıl yandığım, bir daha bu adamın hiçbir sözüne inanamayacak olmam. Para geri gelir; güven bir kez gidince pahalıya döner.\"",
+      "soru": "Siz olsanız bu kişiye bir daha borç verir miydiniz, yoksa sessizce mesafe mi koyardınız?"
     },
     {
       "id": "keske_10_yil",
       "sira": 37,
-      "metin": "Feridun Abi dedi ki: \"10 yıl önce herkes aynı şeyi konuşuyordu: keşke ev alsaydım, keşke araba alsaydım, keşke altın alsaydım.\"\n\n\"İlginç olan\" diye devam etti, \"10 yıl sonra da aynı cümleleri duyacağız. Sadece tarih ve rakamlar değişecek. Çünkü çoğu insan fırsatı yaşarken değil, geçtikten sonra fark ediyor.\"",
-      "soru": "Sizce bugünün 'keşke'si ne olacak? 10 yıl sonra neye pişman olacağız?"
+      "tema": "genel",
+      "metin": "Feridun Abi'nin dükkânında eski bir defter buldum. On yıl önce bir sayfaya üç kelime yazmış: \"Ev mi, araba mı?\"\n\nSayfanın altında şu soru vardı: \"Bugün hangisini seçmezsem, on yıl sonra neye pişman olurum?\" Feridun Abi defteri elimden aldı, uzun süre sustu.\n\n\"İnsanlar on yıl önce de aynı soruyu soruyordu\" dedi. \"On yıl sonra da soracaklar. Sadece fiyatlar ve bahaneler değişecek.\"",
+      "soru": "Peki, bugünün 'keşke'si ne olacak? 10 yıl sonra neye pişman olacağız?"
     },
     {
       "id": "halka_arz_hirsi",
       "sira": 38,
-      "metin": "Feridun Abi'nin tanıdığı bir genç, her halka arza 10 hesapla girip 'çorba parası çıkarıyorum' diye övünürdü. Tavan serileri bitip ilk düzeltme gelince, bilançosunu bile okumadığı spekülatif bir kâğıda tüm birikimini gömdü. 3 günde, 6 aylık halka arz kârını eritti.\n\nFeridun Abi başını salladı: \"Halka arz piyasaya giriş biletidir, zengin olma yöntemi değil. Çocuk bileti servet sandı.\"",
-      "soru": "Sizce halka arzlar gerçek bir fırsat mı, yoksa acemiyi içine çeken bir vitrin mi?"
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı bir genç, her halka arza 10 hesapla girip 'çorba parası çıkarıyorum' diye övünürdü.\n\nTavan serileri bitip ilk düzeltme gelince, bilançosunu bile okumadığı spekülatif bir kâğıda tüm birikimini gömdü. 3 günde, 6 aylık halka arz kârını eritti.\n\nFeridun Abi başını salladı: \"Halka arz piyasaya giriş biletidir, zengin olma yöntemi değil. Çocuk bileti servet sandı.\"",
+      "soru": "Siz ne dersiniz, halka arzlar gerçek bir fırsat mı, yoksa acemiyi içine çeken bir vitrin mi?"
     },
     {
       "id": "viop_sifir",
       "sira": 39,
-      "metin": "Feridun Abi gençliğini anlatırken hep aynı hikâyeye gelir. 100 bin lirasını VIOP'ta yüksek kaldıraçla bir haftada 400 bine çıkarmış, kendini borsanın dâhisi sanmış. Sonra tek bir ters haber, açılışta bir boşluk... anapara sıfır.\n\n\"Kaldıraç\" der hâlâ, \"aceminin elinde pimi çekilmiş el bombasıdır. O bombayı ben patlattım; sen patlatma.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi gençliğini anlatırken hep aynı hikâyeye gelir. 100 bin lirasını VIOP'ta yüksek kaldıraçla bir haftada 400 bine çıkarmış, kendini borsanın dâhisi sanmış.\n\nSonra tek bir ters haber, açılışta bir boşluk... anapara sıfır.\n\n\"Kaldıraç\" der hâlâ, \"aceminin elinde pimi çekilmiş el bombasıdır. O bombayı ben patlattım; sen patlatma.\"",
       "soru": "Sence kaldıraç bir fırsat aracı mı, yoksa er ya da geç patlayan bir bomba mı?"
     },
     {
       "id": "telegram_tuyo",
       "sira": 40,
-      "metin": "Feridun Abi'nin mahalleden bir tanıdığı 'üstat grupta hisse paylaştı, tavan tavan gidecek' deyip kredi çekti. Malı yukarıdan gruba yıktılar; hisse taban serisine başladı. Adam gruptan atıldı, hesabı engellendi, geriye sadece borç kaldı.\n\n\"Başkasının aklıyla borsaya giren\" dedi Feridun Abi, \"bedelini kendi cebiyle öder. Bedava tüyo, en pahalı şeydir.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi'nin mahalleden bir tanıdığı 'üstat grupta hisse paylaştı, tavan tavan gidecek' deyip kredi çekti.\n\nMalı yukarıdan gruba yıktılar; hisse taban serisine başladı. Adam gruptan atıldı, hesabı engellendi, geriye sadece borç kaldı.\n\n\"Başkasının aklıyla borsaya giren\" dedi Feridun Abi, \"bedelini kendi cebiyle öder. Bedava tüyo, en pahalı şeydir.\"",
       "soru": "Siz hiç bir 'tüyo'ya uyup pişman oldunuz mu? Bedava tüyo gerçekten bedava mı?"
     },
     {
       "id": "dusen_bicak",
       "sira": 41,
-      "metin": "Feridun Abi'nin bir tanıdığının hissesinde şirket temelden bozulmuş; satışlar çökmüş, borç büyümüştü. O ise 'maliyet düşürüyorum' deyip her dipte hisse ekledi. Kâğıt 100 liradan 15 liraya indi; elinde sadece 'ucuz maliyetli' bir çöp kaldı.\n\nFeridun Abi açıkça söyledi: \"Zarar kesemeyen yatırımcı, piyasanın ham maddesi olur. Düşen bıçağı tutan elini keser.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığının hissesinde şirket temelden bozulmuş; satışlar çökmüş, borç büyümüştü. O ise 'maliyet düşürüyorum' deyip her dipte hisse ekledi.\n\nKâğıt 100 liradan 15 liraya indi; elinde sadece 'ucuz maliyetli' bir çöp kaldı.\n\nFeridun Abi açıkça söyledi: \"Zarar kesemeyen yatırımcı, piyasanın ham maddesi olur. Düşen bıçağı tutan elini keser.\"",
       "soru": "Sence düşen bir hisseye eklemek cesaret mi, yoksa inat mı? Nerede durmalı?"
     },
     {
       "id": "fomo_zirve",
       "sira": 42,
-      "metin": "Feridun Abi'nin komşusu, bir hisse 10 liradan 120'ye çıkarken hep izledi. 130 olunca dayanamadı, 'daha gidecek' deyip en tepeden girdi. Büyük oyuncular kâr realize edip malı boşaltınca yüzde 50 zararla kaldı.\n\nFeridun Abi güldü: \"Yeşil mumların peşinden koşan, kırmızı mumların altında kalır. Ben de gençken koştum, öğrendim.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi'nin komşusu, bir hisse 10 liradan 120'ye çıkarken hep izledi. 130 olunca dayanamadı, 'daha gidecek' deyip en tepeden girdi.\n\nBüyük oyuncular kâr realize edip malı boşaltınca yüzde 50 zararla kaldı.\n\nFeridun Abi güldü: \"Yeşil mumların peşinden koşan, kırmızı mumların altında kalır. Ben de gençken koştum, öğrendim.\"",
       "soru": "Sizce en tehlikeli duygu hangisi: kaçırma korkusu (FOMO) mu, açgözlülük mü?"
     },
     {
       "id": "kredi_borsa",
       "sira": 43,
-      "metin": "Feridun Abi'nin bir tanıdığı 'düşük faizli ihtiyaç kredisi çektim, borsada faizden fazla kazanırım' dedi. Piyasa 3 ay yataya bağlandı, taksitler geldi, panikle zararına mal satıp taksit ödedi.\n\nFeridun Abi kesti attı: \"Borç parayla yatırım olmaz; piyasa senin taksit tarihini beklemez. Bekleyemeyen para, hep dipte satar.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı 'düşük faizli ihtiyaç kredisi çektim, borsada faizden fazla kazanırım' dedi.\n\nPiyasa 3 ay yataya bağlandı, taksitler geldi, panikle zararına mal satıp taksit ödedi.\n\nFeridun Abi kesti attı: \"Borç parayla yatırım olmaz; piyasa senin taksit tarihini beklemez. Bekleyemeyen para, hep dipte satar.\"",
       "soru": "Sence borç parayla borsaya girmek hiç mantıklı olur mu, yoksa baştan kaybedilmiş bir kumar mı?"
     },
     {
       "id": "patron_zannetmek",
       "sira": 44,
+      "tema": "genel",
       "metin": "Feridun Abi'nin tanıdığı biri, hissesi yüzde 5 düşünce şirket patronuna, yönetime sövüyor. Ama şirket ne üretiyor, kârı ne, borcu ne bilmiyor; sadece fiyatın her gün çıkmasını bekliyor.\n\nFeridun Abi dedi ki: \"Yatırımcı şirkete ortaktır; gün içi fiyata oynayan ise kumarbaz. İkisini karıştıran, ne ortak olur ne kazanır.\"",
-      "soru": "Sizce hisse aldığınızda bir şirkete mi ortak oluyorsunuz, yoksa bir bilete mi oynuyorsunuz?"
+      "soru": "Hisse aldığınızda bir şirkete mi ortak oluyorsunuz, yoksa bir bilete mi oynuyorsunuz?"
     },
     {
       "id": "panik_satis",
       "sira": 45,
+      "tema": "genel",
       "metin": "Feridun Abi'nin bir komşusu, endeks yüzde 3 düşünce 'borsa çöküyor, her şeyi sat' deyip dipte mal boşalttı. İki gün sonra piyasa toparlanıp yeni rekor kırarken arkasından baktı.\n\nFeridun Abi mırıldandı: \"Piyasa, sabırsızların parasını sabırlılara aktaran bir mekanizmadır. Panikte satan, o transferi kendi elleriyle yapar.\"",
       "soru": "Sert düşüşlerde siz ne yapıyorsunuz: satıp rahatlıyor musunuz, yoksa bekliyor musunuz?"
     },
     {
       "id": "tek_hisse_kumari",
       "sira": 46,
+      "tema": "genel",
       "metin": "Feridun Abi'nin bir tanıdığı 'tüm yumurtaları aynı sepete koydum, bu şirket geleceğin devi' dedi. Şirket bir ceza aldı, tahta aylarca kapandı. Ne acil parası kaldı ne likiditesi.\n\nFeridun Abi dedi ki: \"Çeşitlendirme riski sıfırlamaz ama seni oyunda tutar. Tek kâğıda tüm inancını bağlamak, cesaret değil gizli kumardır.\"",
-      "soru": "Sizce tek bir hisseye tüm inancını bağlamak cesaret mi, yoksa gizli bir kumar mı?"
+      "soru": "Peki, tek bir hisseye tüm inancını bağlamak cesaret mi, yoksa gizli bir kumar mı?"
     },
     {
       "id": "overtrading",
       "sira": 47,
-      "metin": "Feridun Abi'nin bir tanıdığı günde 50 kez portföyüne bakıp her 5 dakikalık grafikte al-sat yapıyordu. Yıl sonunda hesapladı: kazandığı para, ödediği komisyondan azdı.\n\n\"Aşırı işlem\" dedi Feridun Abi, \"portföyün en sessiz katilidir. Çok hareket çok kazanç değil, çok yorgunluk getirir.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı günde 50 kez portföyüne bakıp her 5 dakikalık grafikte al-sat yapıyordu.\n\nYıl sonunda hesapladı: kazandığı para, ödediği komisyondan azdı.\n\n\"Aşırı işlem\" dedi Feridun Abi, \"portföyün en sessiz katilidir. Çok hareket çok kazanç değil, çok yorgunluk getirir.\"",
       "soru": "Sence borsada kazanmak için çok mu hareket etmeli, az mı? Siz günde kaç kez bakıyorsunuz?"
     },
     {
       "id": "kucuk_miktar",
       "sira": 48,
+      "tema": "genel",
       "metin": "Feridun Abi ve bir arkadaşı aynı gün başladı. Arkadaşı 'haftada 500 lira biriktirip ne alacağım, bir akşam yemeği parası' deyip hiç başlamadı. Feridun Abi o küçük parayla her hafta disiplinle temettü hissesi topladı; bugün üçüncü 'temettü maaşını' alıyor.\n\n\"Damlayan su kayayı deler\" diyor, \"gücüyle değil, sürekliliğiyle.\"",
-      "soru": "Sizce hangisi kazandırır: küçük ama düzenli mi, büyük ama ara sıra mı?"
+      "soru": "Siz ne dersiniz, hangisi kazandırır: küçük ama düzenli mi, büyük ama ara sıra mı?"
     },
     {
       "id": "asgari_birikim",
       "sira": 49,
+      "tema": "genel",
       "metin": "Feridun Abi'ye işe yeni başlayan bir genç 'ben asgari ücret alıyorum, birikim yapamam' dedi. Feridun Abi ona bir yol çizdi: sigara ve lüks kahveyi kes, her ay gelirinin yüzde 10'unu altına ve fona ayır.\n\n3 yıl sonra genç ilk acil durum fonunu kurmuştu. \"Mesele ne kadar kazandığın değil\" dedi Feridun Abi, \"ne kadarını elinde tutabildiğin.\"",
       "soru": "Sizce asgari ücretle birikim yapmak mümkün mü, yoksa hayal mi?"
     },
     {
       "id": "temettu_sabir",
       "sira": 50,
+      "tema": "genel",
       "metin": "Feridun Abi temettü için yatırıma başlayınca ilk 2 yıl eline geçen para sadece bir fatura ödemeye yetiyordu. \"Bu paraya mı binlerce lira yatırdın\" diye dalga geçtiler.\n\n7. yılın sonunda gelen yıllık temettü, 4 aylık maaşına denk geldi. \"Kartopu ilk yıl görülmez\" diyor, \"sonradan büyür. Herkes başta güler, sonunda sorar.\"",
-      "soru": "Sizce bu kadar uzun beklemeye sabrınız olur mu? Kaç yıl beklerdiniz?"
+      "soru": "Bu kadar uzun beklemeye sabrınız olur mu? Kaç yıl beklerdiniz?"
     },
     {
       "id": "cocuk_portfoy",
       "sira": 51,
+      "tema": "genel",
       "metin": "Feridun Abi, oğlu doğduğunda sigarayı bırakıp o parayı her ay bir endeks fonuna yatırdı. Çocuk 18 yaşına geldiğinde üniversite ve eğitim masrafı çoktan hazırdı.\n\n\"Çocuğuma bırakabileceğim en büyük miras\" diyor, \"ne ev ne para; bir alışkanlık. Onu da sigarayı bırakınca kazandım.\"",
-      "soru": "Sizce çocuğa en değerli miras nedir: para mı, ev mi, yoksa bir alışkanlık mı?"
+      "soru": "Peki, çocuğa en değerli miras nedir: para mı, ev mi, yoksa bir alışkanlık mı?"
     },
     {
       "id": "kidem_hatasi",
       "sira": 52,
+      "tema": "genel",
       "metin": "Feridun Abi'nin bir tanıdığı işten ayrılınca aldığı 500 bin lira kıdem tazminatıyla dosdoğru son model bir araba aldı. 2 yıl sonra araba değer kaybetti, bakımlar belini büktü. Aynı parayı varlık portföyüne koyan bir diğeri ise artık pasif gelir alıyor.\n\nFeridun Abi özetledi: \"Tüketen varlıklar zengin gösterir, üreten varlıklar zengin eder.\"",
       "soru": "Elinize toplu bir para geçse ilk işiniz ne olurdu: araba mı, ev mi, portföy mü?"
     },
     {
       "id": "herkes_kacarken",
       "sira": 53,
+      "tema": "genel",
       "metin": "Borsanın kan gölüne döndüğü, herkesin 'piyasa bitti' deyip kaçtığı dönemde Feridun Abi hiç sesini çıkarmadan her ay BIST30 ve altın toplamaya devam etti. Çevresi delirdiğini düşündü.\n\n2 yıl sonra portföyü katlanmıştı. \"Piyasadaki korku\" diyor, \"disiplinli yatırımcının en büyük indirim kuponudur. Ama o kuponu kullanmak yürek ister.\"",
-      "soru": "Sizce herkes korkarken almak cesaret mi, delilik mi? Kan varken alabilir misiniz?"
+      "soru": "Siz ne dersiniz, herkes korkarken almak cesaret mi, delilik mi? Kan varken alabilir misiniz?"
     },
     {
       "id": "acil_fon",
       "sira": 54,
-      "metin": "Feridun Abi'nin bir tanıdığı tüm parasını borsaya gömdü, kenarda 1 lira bile nakit bırakmadı. Tam piyasaların dip yaptığı hafta acil bir sağlık masrafı çıktı; zararına mal satmak zorunda kaldı.\n\n\"Acil durum fonu olmayan yatırımcı\" dedi Feridun Abi, \"piyasanın elinde oyuncak olur. Nakit bazen en kârlı pozisyondur.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı tüm parasını borsaya gömdü, kenarda 1 lira bile nakit bırakmadı.\n\nTam piyasaların dip yaptığı hafta acil bir sağlık masrafı çıktı; zararına mal satmak zorunda kaldı.\n\n\"Acil durum fonu olmayan yatırımcı\" dedi Feridun Abi, \"piyasanın elinde oyuncak olur. Nakit bazen en kârlı pozisyondur.\"",
       "soru": "Sizce kaç aylık gideri nakit tutmalı? Yoksa hepsini çalıştırmak mı daha akıllı?"
     },
     {
       "id": "gosteris",
       "sira": 55,
+      "tema": "genel",
       "metin": "Feridun Abi'nin tanıdığı bir genç, etrafına 'başarılı' görünmek için kredi kartıyla son model telefon, lüks kıyafet alıyordu. İçi boş bir prestij uğruna finansal özgürlüğünden yıllar çaldı.\n\nFeridun Abi dedi ki: \"Gerçek zenginlik, alabileceğin ama almadığın şeylerde gizlidir. Gösteriş, sahip olmadığın parayı tanımadığın insanlara harcamaktır.\"",
-      "soru": "Sizce insanlar neden sahip olmadıkları parayla, tanımadıkları insanlara gösteriş yapıyor?"
+      "soru": "İnsanlar neden sahip olmadıkları parayla, tanımadıkları insanlara gösteriş yapıyor?"
     },
     {
       "id": "buy_hold",
       "sira": 56,
-      "metin": "Feridun Abi 10 yıl önce bir portföy kurdu; ne haber izledi ne günlük grafiğe baktı, sadece kaliteli şirketleri toplayıp yattı. Her gün al-sat yapan bir tanıdığından 5 kat fazla getiri aldı.\n\n\"Piyasada zaman geçirmek\" diyor, \"doğru anı yakalamaya çalışmaktan hep kazanır. Ben zamanlamayı bıraktım, zaman kazandırdı.\"",
-      "soru": "Sizce kazandıran sabır mı, yoksa doğru anı yakalamak mı?"
+      "tema": "genel",
+      "metin": "Feridun Abi 10 yıl önce bir portföy kurdu; ne haber izledi ne günlük grafiğe baktı, sadece kaliteli şirketleri toplayıp yattı.\n\nHer gün al-sat yapan bir tanıdığından 5 kat fazla getiri aldı.\n\n\"Piyasada zaman geçirmek\" diyor, \"doğru anı yakalamaya çalışmaktan hep kazanır. Ben zamanlamayı bıraktım, zaman kazandırdı.\"",
+      "soru": "Peki, kazandıran sabır mı, yoksa doğru anı yakalamak mı?"
     },
     {
       "id": "dolar_illuzyon",
       "sira": 57,
-      "metin": "Feridun Abi'nin bir akrabası 'dolar daha da artacak' deyip tüm parasını dolarda, yastık altında tuttu. Dolar arttı ama enflasyon karşısında alım gücü yine eridi.\n\n\"Dolar bir yatırım aracı değil\" dedi Feridun Abi, \"başka bir ülkenin parası. Enflasyonist ortamda nakit hangi para olursa olsun eriyor; önemli olan çalışan varlık.\"",
-      "soru": "Sizce döviz tutmak bir koruma mı, yoksa sadece yavaş erimek mi?"
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin bir akrabası yıllarca \"Dolar ne kadar artarsa artsın, ben güvendeyim\" deyip birikimini yastık altında tuttu.\n\nGeçen ay ev bakmaya gitti. Satıcı fiyatı söyleyince cebindeki hesabı çıkardı, uzun süre hiçbir şey söylemedi.\n\nDolar yükselmişti ama ev daha hızlı yükselmişti. Feridun Abi başını salladı: \"Döviz bazen paranı korur; ama her zaman almak istediğin şeyi korumaz.\"",
+      "soru": "Siz ne dersiniz, döviz tutmak bir koruma mı, yoksa sadece yavaş erimek mi?"
     },
     {
       "id": "mevduat_reel",
       "sira": 58,
+      "tema": "enflasyon",
       "metin": "Feridun Abi'nin bir tanıdığı yüksek faizi görünce 'risk almaya ne gerek var, param garanti büyüyor' dedi. Yıl sonunda faizden güzel kazandı ama almak istediği evin fiyatı neredeyse iki katına çıkmıştı.\n\n\"Nominal kazanç göz boyar\" dedi Feridun Abi, \"önemli olan reel alım gücün. Rakam büyür ama alabildiğin küçülürse, o kazanç değildir.\"",
       "soru": "Sizce 'garanti getiri' gerçekten garanti mi, yoksa fiyatlar kaçarken yerinde saymak mı?"
     },
     {
       "id": "arsa_disiplin",
       "sira": 59,
-      "metin": "Feridun Abi yıllar önce 'burası dağ başı' denen bir yerden bütçesine göre küçük bir arsa aldı. O gün onunla dalga geçenler, bugün aynı bölgede ev kiralayamıyor.\n\n\"Sabır ve toprak\" diyor Feridun Abi, \"piyasaların en sessiz ama en güçlü ikilisidir. Kimse bakmazken alınan yer, herkes isteyince değer olur.\"",
-      "soru": "Sizce bugün herkesin 'dağ başı' dediği, 10 yıl sonra el yakacak yer neresi olur?"
+      "tema": "genel",
+      "metin": "Feridun Abi yıllar önce 'burası dağ başı' denen bir yerden bütçesine göre küçük bir arsa aldı.\n\nO gün onunla dalga geçenler, bugün aynı bölgede ev kiralayamıyor.\n\n\"Sabır ve toprak\" diyor Feridun Abi, \"piyasaların en sessiz ama en güçlü ikilisidir. Kimse bakmazken alınan yer, herkes isteyince değer olur.\"",
+      "soru": "Bugün herkesin 'dağ başı' dediği, 10 yıl sonra el yakacak yer neresi olur?"
     },
     {
       "id": "sabit_faiz_borc",
       "sira": 60,
-      "metin": "Feridun Abi'nin bir arkadaşı, enflasyonun yüksek olduğu dönemde çok düşük sabit faizle konut kredisi çekip ev aldı. 'Çok borçlandın, delilik' dediler. 3 yıl sonra taksiti bir akşam yemeği parasına döndü, evin değeri katlandı.\n\nFeridun Abi ekledi: \"Doğru varlık için alınan sabit faizli borç, servet transferi sağlar. Bütün mesele 'doğru varlık' kelimesinde.\"",
-      "soru": "Sizce borç her zaman kötü mü, yoksa doğru zamanda doğru borç bir kaldıraç mı?"
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin bir arkadaşı, enflasyonun yüksek olduğu dönemde çok düşük sabit faizle konut kredisi çekip ev aldı. 'Çok borçlandın, delilik' dediler.\n\n3 yıl sonra taksiti bir akşam yemeği parasına döndü, evin değeri katlandı.\n\nFeridun Abi ekledi: \"Doğru varlık için alınan sabit faizli borç, servet transferi sağlar. Bütün mesele 'doğru varlık' kelimesinde.\"",
+      "soru": "Peki, borç her zaman kötü mü, yoksa doğru zamanda doğru borç bir kaldıraç mı?"
     },
     {
       "id": "fiziki_altin",
       "sira": 61,
+      "tema": "genel",
       "metin": "Feridun Abi ekrandaki rakamlara hiç tam güvenmez; her ay düzenli fiziki gram altın alıp kasasına koyar. Borsa çöküşlerinde, banka sıkıntılarında en huzurlu uyuyan hep o olmuş.\n\n\"Portföyün bir kısmı\" diyor, \"her zaman sistem riskine karşı sigorta olmalı. O altın kazandırmaz belki ama gece uyutur.\"",
-      "soru": "Sizce elde tutulan fiziki altın bir güven mi, yoksa 'çalışmayan para' mı?"
+      "soru": "Siz ne dersiniz, elde tutulan fiziki altın bir güven mi, yoksa 'çalışmayan para' mı?"
     },
     {
       "id": "kk_taksit",
       "sira": 62,
+      "tema": "genel",
       "metin": "Feridun Abi'nin tanıdığı bir genç 'nasıl olsa 12 taksit, ayda 1000 lira bir şey değil' deyip 20 ayrı ürünü taksite böldü. Ay sonunda maaşının yüzde 70'i taksitlere gidiyordu; birikime marj kalmadı.\n\n\"Taksit\" dedi Feridun Abi, \"gelecekteki özgürlüğünü bugünden ipotek etmektir. Küçük görünür, toplamı seni boğar.\"",
       "soru": "Sizce taksit bir kolaylık mı, yoksa gizli bir tuzak mı?"
     },
     {
       "id": "kripto_ath",
       "sira": 63,
+      "tema": "genel",
       "metin": "Feridun Abi'nin bir tanıdığı, Bitcoin en tepedeyken haberlerde görüp tüm birikimiyle içeri girdi. Piyasa sert düşünce zararına çıktı.\n\n\"Herkesin konuştuğu an\" dedi Feridun Abi, \"genelde satış anıdır; kimsenin yüzüne bakmadığı an ise toplama. Haberlerde gördüğün fırsat, çoğu zaman başkasının çıkışıdır.\"",
-      "soru": "Sizce bir şey herkesin dilindeyken almak mı doğru, yoksa kimse bakmazken mi?"
+      "soru": "Bir şey herkesin dilindeyken almak mı doğru, yoksa kimse bakmazken mi?"
     },
     {
       "id": "lokanta_ticaret",
       "sira": 64,
+      "tema": "genel",
       "metin": "Feridun Abi'nin bir tanıdığı tüm birikimiyle hiç bilmediği bir sektörde lokanta açtı, 8 ay sonra devretti. Hem parasını kaybetti hem 16 saat çalışmaktan sağlığından oldu.\n\n\"Operasyonel riskle finansal yatırımı karıştırmamak lazım\" dedi Feridun Abi. \"Aynı parayı sağlam şirketlere koysa, hem sağlığı hem pasif geliri yerinde olurdu.\"",
-      "soru": "Sizce kendi işini kurmak mı daha akıllı, yoksa parayı çalıştırıp rahat etmek mi?"
+      "soru": "Peki, kendi işini kurmak mı daha akıllı, yoksa parayı çalıştırıp rahat etmek mi?"
     },
     {
       "id": "luks_tatil_kredi",
       "sira": 65,
+      "tema": "genel",
       "metin": "Feridun Abi'nin tanıdığı bir çift, yazın bir haftalık lüks tatil için 12 ay vadeli tüketici kredisi çekti. Tatil bitti, anılar soldu ama borç ödemeleri sonraki yaza kadar sürdü.\n\n\"Tüketim için çekilen kredi\" dedi Feridun Abi, \"gelecekteki emeğini bugünden ucuzlatmaktır. Bir haftalık keyif, bir yıllık yük oldu.\"",
-      "soru": "Sizce 'bir kere yaşıyoruz' deyip borca girmek mi doğru, yoksa biriktirip gitmek mi?"
+      "soru": "Siz ne dersiniz, 'bir kere yaşıyoruz' deyip borca girmek mi doğru, yoksa biriktirip gitmek mi?"
     },
     {
       "id": "kripto_100x",
       "sira": 66,
-      "metin": "Feridun Abi'nin tanıdığı bir genç 'BIST çok yavaş kazandırıyor, bana 100 katını yapacak bir coin lazım' diyordu. Üç ayrı projede dolandırıldı, parası sıfırlandı.\n\n\"Hızlı zengin olma arzusu\" dedi Feridun Abi, \"en kestirme fakirleşme yoludur. Yavaş ama kesin dururken, hızlı ama kumarı seçen hep kaybeder.\"",
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı bir genç 'BIST çok yavaş kazandırıyor, bana 100 katını yapacak bir coin lazım' diyordu.\n\nÜç ayrı projede dolandırıldı, parası sıfırlandı.\n\n\"Hızlı zengin olma arzusu\" dedi Feridun Abi, \"en kestirme fakirleşme yoludur. Yavaş ama kesin dururken, hızlı ama kumarı seçen hep kaybeder.\"",
       "soru": "Sizce yavaş ama kesin mi, yoksa hızlı ama kumar mı? Sabır mı kazandırır, cesaret mi?"
     },
     {
       "id": "fire_emeklilik",
       "sira": 67,
-      "metin": "Feridun Abi'nin tanıdığı bir genç, 25 yaşında harcamalarını kısıp gelirinin yarısını yatırıma ayırdı. 38 yaşında finansal özgürlüğünü kazandı; artık mecbur olduğu için değil, sevdiği için çalışıyor.\n\n\"Emeklilik bir yaş değil\" dedi Feridun Abi, \"bir finansal rakamdır. Kimi 65'te bekler, kimi 38'de ulaşır; fark, erken başlamakta.\"",
-      "soru": "Sizce gençlikte çok kısıp erken özgür olmak mı mantıklı, yoksa günü yaşamak mı?"
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı bir genç, 25 yaşında harcamalarını kısıp gelirinin yarısını yatırıma ayırdı.\n\n38 yaşında finansal özgürlüğünü kazandı; artık mecbur olduğu için değil, sevdiği için çalışıyor.\n\n\"Emeklilik bir yaş değil\" dedi Feridun Abi, \"bir finansal rakamdır. Kimi 65'te bekler, kimi 38'de ulaşır; fark, erken başlamakta.\"",
+      "soru": "Gençlikte çok kısıp erken özgür olmak mı mantıklı, yoksa günü yaşamak mı?"
     },
     {
       "id": "dovizle_borc",
       "sira": 68,
-      "metin": "Feridun Abi'nin tanıdığı bir işletme sahibi, kazancı TL iken 'faizi ucuz' deyip dövizle borçlandı. Kur aniden sıçrayınca borcu ikiye katlandı, şirketini kaybetti.\n\n\"Hangi para biriminden kazanıyorsan\" dedi Feridun Abi, \"o para biriminden borçlanacaksın. Ucuz görünen döviz borcu, çoğu zaman gizli bir mayındır.\"",
-      "soru": "Sizce ucuz görünen döviz borcu bir fırsat mı, yoksa gizli bir mayın mı?"
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin tanıdığı bir işletme sahibi, kazancı TL iken 'faizi ucuz' deyip dövizle borçlandı.\n\nKur aniden sıçrayınca borcu ikiye katlandı, şirketini kaybetti.\n\n\"Hangi para biriminden kazanıyorsan\" dedi Feridun Abi, \"o para biriminden borçlanacaksın. Ucuz görünen döviz borcu, çoğu zaman gizli bir mayındır.\"",
+      "soru": "Peki, ucuz görünen döviz borcu bir fırsat mı, yoksa gizli bir mayın mı?"
+    },
+    {
+      "id": "minimum_odeme",
+      "sira": 69,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı kredi kartında her ay sadece asgari tutarı ödüyordu. \"Borç azalıyor ya\" diyordu. Bir gün markette kartı geçmedi. Kasiyer ikinci kez denedi; adam başını eğip Feridun Abi'ye fısıldadı: \"Ama ben her ay ödüyordum.\"\n\nKartın limiti dolmuştu. Aylarca yaptığı ödemeler borcu bitirmemiş, yalnızca gecikmesini engellemişti. Feridun Abi çayını karıştırıp şöyle dedi: \"Bazı borçlar kapıyı çalmaz; evin içinde sessizce büyür.\"",
+      "soru": "Siz ne dersiniz, asgari ödeme kolaylık mı, yoksa borcu sessizce büyüten bir tuzak mı?"
+    },
+    {
+      "id": "kefil_imzasi",
+      "sira": 70,
+      "tema": "genel",
+      "metin": "Feridun Abi bir arkadaşının kredi çekmesine kefil olmuş. \"Bir imza atacağım, alt tarafı\" demişti.\n\nAradan iki yıl geçmiş, arkadaşı telefonlarını değiştirmiş. Bir sabah bankadan arayan görevli Feridun Abi'ye borcun artık kendisini ilgilendirdiğini söylemiş.\n\nFeridun Abi telefonu kapatıp eski arkadaşının dükkânına gitmiş. Kepenk kapalıydı; içeride sadece birlikte çektirdikleri fotoğraf duruyordu.\n\n\"Kefillik bazen imza değil, başkasının sözünü kendi cebine yazmaktır\" dedi.",
+      "soru": "Sizce dostlukta kefil olmak güven mi, yoksa başkasının riskini kendi cebine yazmak mı?"
+    },
+    {
+      "id": "ortaklik_kasasi",
+      "sira": 71,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı iki arkadaş birlikte küçük bir dükkân açmıştı. İlk aylar kasa iyi gidiyordu. Sonra biri satışların düştüğünü, diğeri paranın eksildiğini söylemeye başladı.\n\nBir akşam kasa hesabı tutmadı. Biri \"Yanlış saydın\" dedi, diğeri defteri kapattı. Feridun Abi ikisini de susturup tek bir soru sordu: \"Bu paranın sahibi kim?\"\n\nErtesi gün dükkân açılmadı. Eksilen para kadar, birbirlerine duydukları güven de eksilmişti.\n\n\"İki kişi aynı hayale ortak olabilir\" dedi Feridun Abi. \"Ama hesap tutulmuyorsa aynı gerçeğe ortak olamaz.\"",
+      "soru": "Ortaklıkta daha önemli olan dostluk mu, yoksa en baştan açık hesap mı?"
+    },
+    {
+      "id": "bos_daire",
+      "sira": 72,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı bir adam yatırım diye ev almıştı. Emlakçı anahtarı verirken \"Kiracı hazır\" demişti.\n\nAdam daha ilk gün kira hesabını yapmaya başladı. Bir ay, iki ay, sekiz ay geçti; ev hâlâ boştu. Feridun Abi kapıyı açıp içeri girdiğinde içeride sadece yeni perdeler vardı.\n\nKira gelmiyor, aidat ve bakım masrafı geliyordu. Adam sonunda \"Ben ev almadım, boş bir beklenti satın aldım\" dedi.\n\nFeridun Abi başını salladı: \"Bir varlık, cebine para koymuyorsa en azından senden ne götürdüğünü bil.\"",
+      "soru": "Peki, kira geliri beklentisiyle ev almak mı, yoksa boş kalma riskini de hesaba katmak mı daha önemli?"
+    },
+    {
+      "id": "ilk_maas_taksit",
+      "sira": 73,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin yanına yeni işe başlayan bir genç geldi. İlk maaşıyla telefon almış, kalanını da 12 taksite bağlamıştı.\n\n\"Artık ben de hak ettim\" diyordu. Altı ay sonra telefon hâlâ elindeydi ama maaşı yoktu. Feridun Abi'ye bakıp ilk kez gülmüyordu.\n\nİşten çıkarılmış, taksitler ise yerinde duruyordu.\n\n\"İnsan bazen bir eşyayı değil\" dedi Feridun Abi, \"gelecekteki maaşını satın alır.\"",
+      "soru": "Siz ne dersiniz, ilk maaşın ödülü ne olmalı: hemen tüketmek mi, birazını geleceğe bırakmak mı?"
+    },
+    {
+      "id": "veresiye_defteri",
+      "sira": 74,
+      "tema": "genel",
+      "metin": "Feridun Abi'yle mahalle bakkalının veresiye defterine bakıyorduk. En pahalı arabaya binen adamın adı sayfalarca uzuyordu.\n\nYanındaki yaşlı kadınsa her hafta borcunun birazını ödüyordu. Bakkal defterin son sayfasını açınca ikimiz de sustuk.\n\nBakkal, yaşlı kadının borcunu çoktan silmişti. Arabalı adamın sayfasının yanına ise tek kelime yazmıştı: \"Unutuldu.\"\n\n\"Borçta bazen miktar değil, insanın sözünün ağırlığı kalır\" dedi Feridun Abi.",
+      "soru": "Sizce borçta önemli olan miktar mı, geri ödeme niyeti mi?"
+    },
+    {
+      "id": "miras_kardesler",
+      "sira": 75,
+      "tema": "genel",
+      "metin": "Üç kardeşe şehir dışında küçük bir ev miras kalmıştı. Biri satmak, biri kiraya vermek, biri de \"Ben oturacağım\" diyordu.\n\nİlk toplantı sakin geçti. İkinci toplantıda kimse çayını bitirmedi. Feridun Abi tapuyu masaya koyup son soruyu sordu: \"Bu ev sizi zengin mi edecek, yoksa birbirinizden mi edecek?\"\n\nYıllar geçti; ev ne satıldı ne kiraya verildi. Üç kardeşin elinde kalan tek şey, aynı ev yüzünden birbirleriyle konuşmamaktı.\n\nFeridun Abi başını salladı: \"Bazı miraslar para bırakır, bazıları aileden götürür.\"",
+      "soru": "Miras paylaşımında önce para mı, kardeşlik mi korunmalı?"
+    },
+    {
+      "id": "emeklilik_zarfi",
+      "sira": 76,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı emekli olduğu gün aldığı zarfı masaya koydu. Otuz beş yıl çalışmıştı.\n\nEşi zarfı açmadan sordu: \"Bundan kaç ay geçineceğiz?\" Adam ilk kez maaşını değil, kaç yılının kaldığını hesapladı.\n\nZarf birkaç ay içinde bitti. Çalışma yılları yerinde duruyordu ama düzenli gelir bitmişti.\n\n\"Emeklilik yaş gelince değil\" dedi Feridun Abi, \"maaş bitince sınanır.\"",
+      "soru": "Peki, emeklilik için en önemli hazırlık para mı, alışkanlık mı?"
+    },
+    {
+      "id": "sigorta_yok",
+      "sira": 77,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin mahalleden tanıdığı, dükkân sigortasına her yıl para vermeyi gereksiz buluyordu. \"Yıllardır bir şey olmadı\" diyordu.\n\nBir gece su borusu patladı. Sabah kepengi açtığında ilk aradığı kişi Feridun Abi oldu.\n\nYıllarca kurtardığını sandığı prim, tek gecede oluşan zararın yanında küçük kalmıştı.\n\n\"Risk gerçekleşmeden koruma masraf gibi görünür\" dedi Feridun Abi. \"Gerçekleştiğinde ise neden var olduğunu anlarsın.\"",
+      "soru": "Siz ne dersiniz, sigorta gereksiz masraf mı, yoksa beklenmedik günün hazırlığı mı?"
+    },
+    {
+      "id": "issizlik_kumbarasi",
+      "sira": 78,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı maaşı yattığı gün önce kendine küçük bir şey alırdı. \"Hayat kısa\" derdi. Feridun Abi her ay kenara ayırdığı parayı görünce gülmez, sadece deftere yazardı.\n\nBir sabah şirketten çıkış mesajı geldi. Adam ilk kez ne alacağını değil, birikimiyle kaç ay yaşayacağını hesapladı. Sonra telefonu eline alıp Feridun Abi'yi aradı.\n\nBirikimi ona zenginlik değil, yeni iş ararken biraz zaman kazandırmıştı.\n\n\"İnsan işini kaybedince paranın önemini değil\" dedi Feridun Abi, \"paranın satın alabildiği zamanı anlar.\"",
+      "soru": "Sizce birikimin en büyük faydası zengin etmek mi, zor günde zaman kazandırmak mı?"
+    },
+    {
+      "id": "kira_depozito",
+      "sira": 79,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı genç bir çift ev tutarken bütçelerini aşan bir daire seçmişti. \"Manzarası var, bir daha böyle ev bulamayız\" dediler. Depozito, komisyon ve ilk kira bütün birikimlerini götürdü.\n\nİlk ay mutfak su bastı. Ev sahibi \"Siz kullanırken olmuş\" dedi. Çift taşınmak istese depozito, komisyon ve yeni kira yeniden karşılarına çıkacaktı. Feridun Abi'yi aradılar.\n\nFeridun Abi telefonu kapatınca sadece şunu söyledi: \"İnsan bazen ev kiralamıyor, çıkamayacağı bir masrafa taşınıyor.\"",
+      "soru": "Ev seçerken önemli olan manzara mı, yoksa çıkarken de ayakta kalabilmek mi?"
+    },
+    {
+      "id": "sahte_indirim",
+      "sira": 80,
+      "tema": "genel",
+      "metin": "Feridun Abi markette bir adamın arabasını ağzına kadar doldurduğunu gördü. Adam her ürünü sepete atarken \"İndirimde, kaçırılır mı?\" diyordu.\n\nKasada toplamı görünce yüzü değişti. Yanındaki ürünlerin yarısını zaten evde vardı. Feridun Abi fişe baktı, sonra adamın yüzüne baktı.\n\nAdam indirimden 600 lira kazandığını sanıyordu; ihtiyacı olmayan ürünlere 2.000 lira vermişti.\n\n\"İndirim, harcamayı azaltmıyorsa\" dedi Feridun Abi, \"sadece daha ucuza fazla harcamış olursun.\"",
+      "soru": "Peki, indirim gerçekten tasarruf mu, yoksa alışverişe bahane mi?"
+    },
+    {
+      "id": "abonelik_sizintisi",
+      "sira": 81,
+      "tema": "genel",
+      "metin": "Bir arkadaşım Feridun Abi'ye yine \"Maaş yetmiyor\" diye dert yandı. Bu kez Feridun Abi cüzdanına değil, banka uygulamasındaki hareketlere baktı.\n\nKullanmadığı üç dijital üyelik, unuttuğu spor salonu ve her ay yenilenen bir uygulama karşısına çıktı. Feridun Abi toplamı hesapladıktan sonra ekranı ona çevirdi.\n\nArkadaşım her ay fark etmeden küçük küçük para kaybediyordu. Büyük bir harcama yoktu; ama küçük sızıntılar kovayı boşaltıyordu.\n\n\"Para bazen büyük delikten değil\" dedi Feridun Abi, \"kapatmayı unuttuğun küçük musluklardan gider.\"",
+      "soru": "Siz ne dersiniz, bütçeyi en çok büyük harcamalar mı, fark edilmeyen küçük sızıntılar mı bozar?"
+    },
+    {
+      "id": "telefon_kredisi",
+      "sira": 82,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı genç, ilk maaşıyla pahalı bir telefon almıştı. \"Her gün kullanıyorum, kendime yatırım\" diyordu. Üstelik parasını vermek yerine 24 taksite bağlamıştı.\n\nYedinci ayda telefon yere düştü. Ekran paramparça oldu; taksitler ise olduğu gibi duruyordu. Genç tamirciye fiyatı sorunca Feridun Abi'nin yüzüne baktı.\n\nTelefonu artık doğru dürüst kullanamıyordu ama iki yıl daha ödeme yapacaktı.\n\n\"Bir eşyayı taksitle almak kolay\" dedi Feridun Abi. \"Bozulduğunda bile borcu çalışmaya devam ediyor.\"",
+      "soru": "Sizce pahalı bir eşya için taksit kolaylık mı, yoksa geleceği bugünden bağlamak mı?"
+    },
+    {
+      "id": "toplu_para_sonrasi",
+      "sira": 83,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin mahalleden bir tanıdığı eline toplu para geçince herkese yetişmeye çalıştı. Birine borç verdi, birine araba aldı, kendine de gösterişli bir ev tuttu.\n\nİki yıl sonra aynı adam Feridun Abi'den borç istedi. \"Para nereye gitti?\" diye sormadı; sadece eski evin fotoğrafına baktı.\n\nAdam parayı kaybetmemişti; parayı dağıtırken kendisine hiç pay bırakmamıştı.\n\n\"Toplu para insanı zengin etmez\" dedi Feridun Abi. \"Sadece nasıl biri olduğunu daha hızlı gösterir.\"",
+      "soru": "Elinize toplu para geçse önce kendinizi mi, çevrenizi mi düşünürdünüz?"
+    },
+    {
+      "id": "hisse_defteri",
+      "sira": 84,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı genç, bir hisseyi sadece bir arkadaşının mesajıyla almıştı. Telefonunda şirketin ekran görüntüleri vardı ama neden aldığını anlatan tek satır yoktu.\n\nHisse düşünce Feridun Abi ona \"Nerede yanıldın?\" diye sordu. Genç grafiği açtı, haberleri gösterdi, ama sorunun cevabını bulamadı. Feridun Abi cebinden eski bir defter çıkardı.\n\nDefterde her alımın yanında tek bir cümle vardı: \"Bunu neden aldım?\"\n\n\"Fiyatı bilmek başka\" dedi Feridun Abi. \"Elindeki şeyi neden taşıdığını bilmek başka.\"",
+      "soru": "Peki, yatırımda daha önemli olan fırsatı bulmak mı, neden aldığını bilmek mi?"
+    },
+    {
+      "id": "meslek_degisim",
+      "sira": 85,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin aynı iş yerinde çalışan bir arkadaşı yıllarca maaşının artmasını bekledi. Yeni bir beceri öğrenmeyi, kursa gitmeyi hep erteledi. \"Şimdi zamanı değil\" diyordu.\n\nBir gün şirket küçülmeye gitti. Yeni becerisi olanlar başka yerlere geçti; o ise özgeçmişinin başına sadece \"yirmi yıl deneyim\" yazabildi. Feridun Abi'yi aradığında sesi değişmişti.\n\n\"Tecrübe önemli\" dedi Feridun Abi, \"ama yalnızca geçmişte kalıyorsa seni geleceğe taşımaz.\"\n\nArkadaşı ilk kez kendine yaptığı yatırımın maaştan daha acil olduğunu anladı.",
+      "soru": "Siz ne dersiniz, kariyerde güvenli olan aynı yerde kalmak mı, kendini sürekli yenilemek mi?"
+    },
+    {
+      "id": "esnaf_kasa",
+      "sira": 86,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı esnaf, dükkânın kasasındaki parayı evin parasıyla karıştırıyordu. O gün satış iyi olduysa kendini zengin, kötü olduysa batmış hissediyordu.\n\nBir akşam kasa doluydu. \"Bu ay çok kazandım\" diye sevindi. Feridun Abi kira, mal alımı ve ev masrafını tek tek sorunca esnafın yüzündeki gülümseme kayboldu.\n\nKasanın dolu olması kâr ettiği anlamına gelmiyordu; paranın çoğu başkasının ödemesiydi.\n\n\"Para kasada durabilir\" dedi Feridun Abi. \"Ama her duran para senin değildir.\"",
+      "soru": "Sizce bir işte kasanın dolu olması gerçekten kazanç anlamına gelir mi?"
+    },
+    {
+      "id": "ev_esya_borcu",
+      "sira": 87,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı yeni evli bir çift, evin her şeyini ilk ayda tamamlamak istemişti. Koltuk, beyaz eşya, televizyon, yemek takımı... \"Eksik kalmasın\" diye hepsini taksite bağladılar.\n\nDüğün fotoğrafları daha albüme girmeden taksitler başladı. Bir akşam buzdolabı bozuldu; tamir parası için birbirlerine baktılar. Feridun Abi o sessizliği duydu.\n\nEvleri doluydu ama acil durum için ceplerinde para yoktu.\n\n\"Evin içini doldurmak kolay\" dedi Feridun Abi. \"Asıl mesele, hayatın boşalttığı yeri dolduracak payı bırakmak.\"",
+      "soru": "Yeni bir hayata başlarken önce eşyalar mı, yoksa nefes alacak birikim mi kurulmalı?"
+    },
+    {
+      "id": "cocuk_harcligi",
+      "sira": 88,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin torununa her hafta aynı miktarda harçlık verdiğini gördüm. Çocuk parayı alınca hemen oyuncakçıya koşuyordu. Bir gün Feridun Abi harçlığı iki zarfa ayırdı.\n\nÇocuk şaşırıp \"Bu ne?\" diye sordu. Feridun Abi zarflardan birini ona verdi, diğerini masanın üzerine koydu.\n\nÇocuk ilk zarfı harcadı. Masadaki zarf ise aylar sonra bisiklet parasına dönüştü.\n\n\"Çocuğa para vermek kolay\" dedi Feridun Abi. \"Paranın bir kısmını bekletmeyi öğretmek daha zor.\"",
+      "soru": "Peki, çocuklara harçlık verirken harcamayı mı, beklemeyi mi öğretmeli?"
+    },
+    {
+      "id": "kardes_borc",
+      "sira": 89,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin iki kardeşi birbirinden borç almıştı. Biri \"Kardeşiz, aramızda hesap olmaz\" diyordu. Diğeri her ay ne kadar verdiğini küçük bir deftere yazıyordu.\n\nBir süre sonra borç veren kardeş parasını istemeye çekindi. Borç alan ise ne kadar aldığını hatırlamadığını söyledi. İkisi de Feridun Abi'nin dükkânına geldi.\n\nFeridun Abi defteri kapattı: \"Siz parayı değil, konuşmadığınız şeyi büyütmüşsünüz.\"\n\nKardeşler ilk kez rakamı açıkça yazdı. Miktar küçüktü, kırgınlık büyük.",
+      "soru": "Siz ne dersiniz, aile içinde borçta hesap tutmak ayıp mı, yoksa ilişkiyi koruyan bir açıklık mı?"
+    },
+    {
+      "id": "ucuz_kira_pahali_hayat",
+      "sira": 90,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı daha ucuz bir ev bulduğu için şehrin dışına taşındı. \"Kiradan kurtuldum\" diye seviniyordu.\n\nBir ay sonra her gün iki otobüs değiştirmeye, işe gidip gelirken dört saat yolda kalmaya başladı. Ulaşım, dışarıda yemek ve kaybettiği zamanın hesabını yapınca Feridun Abi'ye mesaj attı.\n\nKirası düşmüştü ama hayatının geri kalanının fiyatı artmıştı.\n\n\"Bazı evler ucuz görünür\" dedi Feridun Abi. \"Bedelini kira olarak değil, zaman olarak ödetir.\"",
+      "soru": "Sizce ev seçerken daha önemli olan düşük kira mı, merkeze yakınlık mı?"
+    },
+    {
+      "id": "araba_kasko",
+      "sira": 91,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı arabasını alırken kasko yaptırmayı gereksiz bulmuştu. \"Ben dikkatli kullanırım\" diyordu. Poliçeye vereceği parayla yeni jant almayı tercih etti.\n\nBir gece park hâlindeki arabasına başka bir araç çarptı. Sabah hasarı görünce ilk söylediği şey \"Benim hatam değil\" oldu. Feridun Abi ona baktı.\n\nHatanın ona ait olmaması, masrafın da ortadan kalktığı anlamına gelmiyordu.\n\n\"Dikkatli olmak başka\" dedi Feridun Abi. \"Hayatın tamamını kontrol edebileceğini sanmak başka.\"",
+      "soru": "Sigorta ve kasko gereksiz masraf mı, yoksa kontrol edemediğimiz günün hazırlığı mı?"
+    },
+    {
+      "id": "prim_gunu",
+      "sira": 92,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı yıl sonu primini alınca üç günde bitirdi. Kendine saat, eşine tatil, eve de yeni televizyon aldı. \"Bu para zaten ekstra\" diyordu.\n\nAltı ay sonra şirket primleri kaldırdı. Adam aynı hayat standardını korumaya çalışırken kredi kartına yüklendi. Bir akşam Feridun Abi'ye \"Geçici parayı kalıcı masrafa çevirmişim\" dedi.\n\nFeridun Abi başını salladı: \"Prim geliri sevindirir. Ama hayatını prim varmış gibi kurarsan, bir gün prim seni yönetir.\"",
+      "soru": "Peki, prim gibi ekstra gelir harcanmalı mı, yoksa geleceğe mi ayrılmalı?"
+    },
+    {
+      "id": "tek_gelir",
+      "sira": 93,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı yıllarca evin bütün yükünü tek maaşla taşıdı. \"Ben çalışıyorum ya, bir şey olmaz\" diyordu.\n\nBir sabah hastaneden çıkınca doktor birkaç ay dinlenmesi gerektiğini söyledi. Maaş durdu, faturalar durmadı. Eşi mutfak masasındaki hesapları önüne koyunca adam uzun süre konuşamadı.\n\nAilede herkes tek gelire güvenmiş, hayat ise tek bir maaşa söz vermemişti.\n\n\"Bir gelirin olması güven verir\" dedi Feridun Abi. \"Tek gelire mahkûm olmak güvence değildir.\"",
+      "soru": "Siz ne dersiniz, aile bütçesinde tek gelir yeterli bir güvence mi?"
+    },
+    {
+      "id": "ilk_kayip",
+      "sira": 94,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı genç borsadaki ilk zararını görünce telefonu kapatıp masaya vurdu. \"Bu para geri gelecek\" dedi. Ertesi gün aynı hisseden daha fazla aldı.\n\nHisse biraz daha düşünce bu kez bütün birikimini ortaya koydu. Feridun Abi onu durdurmaya çalıştı ama genç sadece ekrandaki eksi rakama bakıyordu.\n\nBirkaç hafta sonra zarar büyümüştü. Kaybettiği para kadar, ilk kaybın utancı da kararlarını bozmuştu.\n\n\"İlk zarar bazen para kaybettirmez\" dedi Feridun Abi. \"İnsanı kendinden intikam almaya sürükler.\"",
+      "soru": "Sizce ilk kayıptan sonra en zor şey beklemek mi, hatayı kabul etmek mi?"
+    },
+    {
+      "id": "satis_pisman",
+      "sira": 95,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı bir adam yıllarca işlettiği küçük dükkânı borçlarını kapatmak için satmıştı. \"Başka çarem yok\" diyerek anahtarı teslim etti.\n\nYeni sahibi dükkânı büyüttü, sokağın en işlek yerine çevirdi. Eski sahibi her önünden geçtiğinde vitrinde kendini görüyordu. Bir gün Feridun Abi ona \"Pişman mısın?\" diye sordu.\n\nAdam uzun süre sustu: \"Dükkânı değil, çıkış planım olmadan borçlanmayı satmışım.\"\n\nFeridun Abi başını salladı: \"Bazen kaybettiğin şey varlık değil, hazırlıksız verdiğin karardır.\"",
+      "soru": "Zor zamanda bir varlığı satmak yenilgi mi, yoksa bazen ayakta kalma kararı mı?"
+    },
+    {
+      "id": "ucuz_alindi_pahali_oldu",
+      "sira": 96,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin tanıdığı bir adam eski bir ev eşyasını çok ucuza aldığı için sevinmişti. \"Piyasasının yarısına aldım\" diye herkese anlattı.\n\nÜç ay sonra eşya bozuldu. Usta tamir ücretini söyleyince adamın yüzü düştü. Üstelik parça bulunmadığı için yeniden almak zorunda kaldı. Feridun Abi fişe bakıp gülümsedi.\n\nUcuza aldığı şey, iki kez ödeme yapınca pahalıya gelmişti.\n\n\"Fiyatı düşük olan her şey ucuz değildir\" dedi. \"Bazen ucuz alışveriş, pahalı bir dersin ilk taksididir.\"",
+      "soru": "Peki, alışverişte önemli olan satın alma fiyatı mı, toplam maliyet mi?"
+    },
+    {
+      "id": "kumbara_acildi",
+      "sira": 97,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin torunu yıllardır bozuk paralarını aynı kumbarada biriktiriyordu. Evdekiler gülüyor, \"Bunlarla ne alacaksın?\" diye soruyordu.\n\nBir gün çocuk kumbarayı masaya koydu ve kırmak yerine anahtarını çıkardı. İçinden çıkan paranın ne için olduğunu söyleyince odada herkes sustu.\n\nÇocuk o parayla kendine oyuncak değil, annesinin doğum günü için küçük bir hediye almak istiyordu.\n\nFeridun Abi gülümsedi: \"Birikim sadece para büyütmez. İnsan ne için beklediğini de öğretir.\"",
+      "soru": "Siz ne dersiniz, birikimin değeri miktarında mı, ne uğruna yapıldığında mı?"
+    },
+    {
+      "id": "fatura_gunu",
+      "sira": 98,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı maaş günü kendini zengin hissediyor, fatura günü ise her ay şaşırıyordu. \"Daha dün para vardı\" diyordu.\n\nBir ay bütün faturaları erkenden bir kenara ayırdı. Ay sonunda hesabında önceki aylardan daha az para kalmıştı ama ilk kez kimseden borç istemedi. Feridun Abi hesabı görünce ona bir soru sordu.\n\n\"Bu ay daha mı çok kazandın?\" Adam başını salladı.\n\n\"Hayır\" dedi. \"Sadece maaşın tamamını benim sanmayı bıraktım.\"",
+      "soru": "Sizce bütçe yapmak özgürlüğü kısıtlar mı, yoksa ay sonunu rahatlatır mı?"
+    },
+    {
+      "id": "sozlesme_okumadi",
+      "sira": 99,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı bir iş yeri kiralarken sözleşmeyi okumadan imzaladı. Emlakçı \"Herkes böyle yapıyor\" deyince sayfaları çevirmeden anahtarı aldı.\n\nAylar sonra dükkânı kapatmak istedi. Sözleşmedeki erken çıkış maddesini görünce elindeki anahtara baktı. Feridun Abi'yi aradı ama artık mesele sadece kira değildi.\n\nİmza atarken beş dakika kazanmış, çıkarken aylar kaybetmişti.\n\n\"İnsan bazen okumadığı satırın değil\" dedi Feridun Abi, \"acele ettiği kararın bedelini öder.\"",
+      "soru": "Sözleşmede güven mi, yazılı şartlar mı belirleyici olmalı?"
+    },
+    {
+      "id": "borc_silsilesi",
+      "sira": 100,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı her ay bir borcunu başka bir borçla kapatıyordu. Kredi kartından çekiyor, ihtiyaç kredisiyle kartı kapatıyor, sonra yeni taksitle ayı tamamlıyordu.\n\nDışarıdan bakınca bütün ödemeleri zamanındaydı. Bir gece hesap makinesini açıp toplam borcu yazınca elindeki kalem masada kaldı. Feridun Abi o rakamı görünce hiçbir şey söylemedi.\n\nBorçlarını aksatmıyordu ama borçsuz bir güne de yaklaşamıyordu.\n\n\"Borçların yerini değiştirmek\" dedi Feridun Abi, \"onları ortadan kaldırmak değildir.\"",
+      "soru": "Peki, borcu çevirmek çözüm mü, yoksa sorunu biraz daha ileri taşımak mı?"
+    },
+    {
+      "id": "ciragin_anahtari",
+      "sira": 101,
+      "tema": "genel",
+      "metin": "Feridun Abi dükkânı devredeceği gün önünde iki teklif vardı.\n\nBiri dükkân için çok daha fazla para veriyordu. Diğeri ise yıllardır yanında çalışan çırağıydı.\n\nHerkes Feridun Abi'nin parayı seçeceğini düşündü. Feridun Abi anahtarı çırağına uzattı ve sadece bir şey söyledi:\n\n\"Kasayı değil, müşteriyi koru.\"\n\nÇırağı dükkânı satın almadı; yıllarca çalışarak ortak oldu. Yıllar sonra zincir mağaza kapandı, onun dükkânı hâlâ açıktı.\n\nFeridun Abi borsada da şirketin tabelasına değil, işi taşıyan yönetime bakardı.",
+      "soru": "Siz ne dersiniz, bir şirkete ortak olurken fiyat mı, işin başındaki insan mı daha önemlidir?"
+    },
+    {
+      "id": "ilk_maas_aleti",
+      "sira": 102,
+      "tema": "genel",
+      "metin": "Feridun Abi ilk maaşını aldığı gün eve eli boş dönmüş.\n\nAnnesi yeni ayakkabı beklerken Feridun Abi ikinci el bir iş aleti çıkarmış. Alet paslı, çantası yırtık ve maaşının neredeyse tamamına mal olmuş.\n\nAnnesi neden böyle yaptığını sorunca Feridun Abi yalnızca \"Bir daha başkasının aletini beklemeyeceğim\" demiş. Yıllar sonra o aleti eline aldı ve\n\nO paslı alet, Feridun Abi'nin ilk ek işini, ilk müşterisini ve ilk dükkân kirasını çıkarmıştı.\n\nFeridun Abi borsada da kârı nereye harcadığına bakardı. Şirket kazandığını sürekli tüketiyor mu, yoksa işi büyütmek için geri mi koyuyor?\n\nÇünkü bazı şirketler kazandığı parayla vitrinini, bazıları geleceğini büyütür.",
+      "soru": "Sizce bir şirketin kârı dağıtması mı, işine geri yatırması mı daha değerlidir?"
+    },
+    {
+      "id": "kirmizi_defter",
+      "sira": 103,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin eski borç defterinde yüzlerce isim vardı.\n\nBir ismin üstü çizilmişti ama yanına \"unutulmadı\" yazılmıştı. O adam mahallede yıllardır Feridun Abi'den kaçıyordu.\n\nBir gün dükkâna geldi: \"Abi, borcumu kapatmaya geldim.\" Feridun Abi defteri açınca adamın yüzü düştü. Çünkü\n\nFeridun Abi borcu yıllar önce silmişti. Adamın annesi hastanedeyken parasını istememişti.\n\nFeridun Abi borsada da her düşüşte aynı şeyi yapmazdı. Fiyat düşmüş olabilir; asıl mesele şirketin işinin ve kasasının bozulup bozulmadığıydı.\n\n\"Ekrandaki eksi başka\" derdi, \"işin içindeki çöküş başka.\"",
+      "soru": "Yatırımcı önce fiyata mı, şirketin gerçek durumuna mı bakmalı?"
+    },
+    {
+      "id": "ustanin_zarfi",
+      "sira": 104,
+      "tema": "genel",
+      "metin": "Eski ustası ölmeden önce Feridun Abi'ye kapalı bir zarf bırakmış.\n\n\"Bunu ortak seçerken açarsın\" demiş. Feridun Abi yıllarca zarfı çekmecede saklamış. İlk dükkânını büyütmeye karar verince zarfı açtı.\n\nİçinden para değil, tek satırlık bir not çıktı. Feridun Abi notu okuyunca ortağının yüzüne baktı ve\n\n\"İyi günde yanında duran çok olur. Zor günde ne yaptığını görmeden kimseyle ortak olma.\"\n\nFeridun Abi bu cümleyi borsada da unutmadı. Şirketin iyi günlerdeki sunumundan önce, borçlandığında ve daraldığında nasıl davrandığına baktı.\n\nÇünkü ortaklık, alkış gününde değil, sıkışma gününde belli olur.",
+      "soru": "Peki, bir şirketi tanımak için büyüdüğü günlere mi, zorlandığı günlere mi bakmalı?"
+    },
+    {
+      "id": "eski_terazi",
+      "sira": 105,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin dükkânında 30 yıllık bir terazi vardı.\n\nİbresi bazen yarım gram şaşıyor, çalışanlar da \"Abi bunu atalım\" diyordu. Feridun Abi her seferinde teraziyi yerine koyuyordu.\n\nBir gün nedenini sordum. Elini terazinin üzerine koydu ve eski bir müşterinin adını söyledi. Sonra\n\n\"Bu terazi bana bir şeyi öğretti. Ölçü şaşabilir ama insan bile bile yanlış tartmamalı.\"\n\nFeridun Abi borsada da rakamı tek başına kutsamazdı. Kâr büyümüş görünürken borç da büyüyor mu, kasa gerçekten doluyor mu diye bakardı.\n\nÇünkü bazen terazi değil, rakamları gösteren kişi hile yapar.",
+      "soru": "Siz ne dersiniz, bir şirketin açıklanan kârı mı, o kârın kasaya dönüşmesi mi daha güvenilir?"
+    },
+    {
+      "id": "ilk_dukan_kirasi",
+      "sira": 106,
+      "tema": "genel",
+      "metin": "Feridun Abi ilk dükkânının kirasını üç ay ödeyememiş.\n\nEv sahibi kapıya geldiğinde Feridun Abi anahtarı uzatmaya hazırlanmış. Fakat adam anahtarı almamış, önce satış defterini istemiş.\n\nDefteri uzun uzun inceledikten sonra \"Bana bugün ne kadar borcun var diye sormayacağım\" demiş ve Feridun Abi'ye tek bir soru sormuş:\n\n\"Bu dükkânı ayakta tutmak için kaç ay daha lazım?\"\n\nEv sahibi üç ay daha beklemiş. Feridun Abi dükkânı büyüttüğünde ilk yaptığı şey, o binayı satın almak olmuş.\n\nFeridun Abi borsada da yalnızca bugünkü kâra değil, şirketin ayakta kalma gücüne bakardı. Borcu olan her şirket batmaz; ama nakdi olmayan şirket zor günü taşıyamaz.",
+      "soru": "Sizce yatırımda bugünkü kazanç mı, zor günleri taşıyacak nakit gücü mü daha önemlidir?"
+    },
+    {
+      "id": "sokulmayan_tabela",
+      "sira": 107,
+      "tema": "genel",
+      "metin": "Feridun Abi dükkânını büyütmesine rağmen 25 yıllık tabelasını değiştirmedi.\n\nYeni ortakları daha parlak, daha büyük ve daha pahalı bir tabela istedi. Feridun Abi kabul etmedi.\n\nBir gece tabelayı neden koruduğunu anlattı. O tabelanın arkasında, dükkânın ilk gününde kapıyı çalan bir müşterinin adı vardı ve\n\nO müşteri yıllarca herkese \"Oraya gidin, sözünün arkasında durur\" demişti.\n\nFeridun Abi borsada da markayı yalnızca reklamla ölçmezdi. Müşteri geri geliyor mu, şirket verdiği sözü tutuyor mu, bunu izlerdi.\n\nBazı şirketlerin değeri tabelasında değil, müşterisinin onu başkasına tavsiye etmesindedir.",
+      "soru": "Bir şirketin marka değeri reklamdan mı, müşterinin tekrar gelmesinden mi anlaşılır?"
+    },
+    {
+      "id": "durmus_saat",
+      "sira": 108,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin kolundaki saat yıllardır 14.17'de duruyordu.\n\nPili bitmiş değildi; Feridun Abi özellikle değiştirmiyordu. Bir gün merak edip sordum.\n\n\"O saatte hayatımın en pahalı kararını verdim\" dedi. Ne araba almıştı ne de ev satmıştı. Sonra saatin hikâyesini anlattı:\n\nOrtağı ona kısa yoldan para kazanacağı bir iş önermiş, Feridun Abi de sözleşme yok diye reddetmişti. Üç ay sonra ortaklık batmıştı.\n\nFeridun Abi borsada da hızlı kazanç vaadine değil, şirketin kayıtlarına ve yönetime güvenirdi.\n\n\"Zamanı doğru bilmek yetmez\" derdi. \"Yanlış insanla doğru zamanda olmak da kaybettirir.\"",
+      "soru": "Peki, yatırımda doğru zaman mı, doğru şirket mi daha belirleyicidir?"
+    },
+    {
+      "id": "aidat_defteri",
+      "sira": 109,
+      "tema": "genel",
+      "metin": "Apartmanda en pahalı arabaya binen adam yıllardır aidat ödemiyordu.\n\nHerkes onu zengin sanıyor, eski arabası olan komşuyu da cimri buluyordu. Bir gün asansör bozuldu ve yönetici eski defteri açtı.\n\nFeridun Abi sayfaları incelerken bir yerde durdu. En çok borcu olan kişinin karşısında değil, başka bir satırda şaşırtıcı bir not vardı:\n\nPahalı arabaya binen adam, yaşlı komşusunun aidatlarını iki yıldır gizlice ödüyordu.\n\nFeridun Abi borsada da parlak görünen bilançoya hemen inanmazdı. Borcun kime ait olduğuna, paranın nereden geldiğine ve şirketin kimin yükünü taşıdığına bakardı.\n\nDış görünüş bazen fiyat gibidir; gerçeği tek başına anlatmaz.",
+      "soru": "Siz ne dersiniz, bir şirketi değerlendirirken vitrini mi, taşıdığı gerçek yükü mü görmek gerekir?"
+    },
+    {
+      "id": "kahve_hesabi",
+      "sira": 110,
+      "tema": "genel",
+      "metin": "Mahallede herkes bir adamı cimri bilirdi.\n\nKahvede çayını içer, hesabını masaya bırakmadan kalkardı. Bir gün Feridun Abi onun peşinden gitti.\n\nAdam kahveden çıkınca bakkala uğradı, iki poşet erzak aldı ve kimse görmeden karşı apartmanın kapısına bıraktı. Feridun Abi onu yakalayınca adam sadece \"Bunu konuşma\" dedi.\n\nMeğer o adam her hafta aynı ailenin hesabını ödüyormuş.\n\nFeridun Abi borsada da yüksek sesle anlatılan hikâyelerden çok, şirketin sessizce yaptığı işe bakardı. Bazı şirketler çok görünür; bazıları ise müşterisini sessizce büyütür.\n\nYatırımda gürültü her zaman güç anlamına gelmez.",
+      "soru": "Sizce bir şirketi değerlendirirken anlatılan hikâye mi, sessizce ürettiği sonuç mu önemlidir?"
+    },
+    {
+      "id": "taksi_zarfi",
+      "sira": 111,
+      "tema": "genel",
+      "metin": "Taksi şoförü arka koltukta kalın bir zarf buldu.\n\nİçinde yüklü miktarda para vardı. Feridun Abi zarfı sahibine ulaştırmasını söyledi.\n\nŞoför zarfı açınca paranın ameliyat bekleyen küçük bir çocuğun ailesine ait olduğunu anladı. Ödül beklemeden sahibini aramaya başladı. Feridun Abi o gün şoföre dönüp\n\n\"Her para yatırım için beklemez. Bazı para zor gün içindir\" dedi.\n\nFeridun Abi borsada da bütün parasını aynı anda piyasaya sokmazdı. Fırsat geldiğinde kullanacağı nakdi, kötü gün gelmeden ayırırdı.\n\nÇünkü nakdin değeri sakin günlerde değil, herkes satmak zorunda kaldığında anlaşılır.",
+      "soru": "Yatırımcının portföyünde her zaman bir miktar nakit bulunmalı mı?"
+    },
+    {
+      "id": "bedava_tiras",
+      "sira": 112,
+      "tema": "genel",
+      "metin": "Berber her hafta yaşlı bir adamı ücretsiz tıraş ediyordu.\n\nMahalledekiler bunu anlamıyor, berberin para kazanmayı bilmediğini söylüyordu. Feridun Abi bir gün dayanamadı ve nedenini sordu.\n\nBerber aynadaki yaşlı adama baktı, sonra eski dükkânın fotoğrafını gösterdi. Fotoğrafta genç bir berber ve yanında boş bir sandalye vardı. Sonra\n\n\"Dükkânı açtığım gün ilk sandalyeyi o aldı. Parasını değil, cesaretini verdi.\"\n\nFeridun Abi borsada da müşteri sadakati olan şirketleri önemserdi. Çünkü bazı şirketler yeni müşteri bulmak için sürekli para harcar; bazıları yıllardır müşterisini korur.\n\nUzun vadeli ortaklık da biraz böyle kurulur.",
+      "soru": "Peki, bir şirket için yeni müşteri bulmak mı, mevcut müşteriyi korumak mı daha değerlidir?"
+    },
+    {
+      "id": "bakkal_kapanisi",
+      "sira": 113,
+      "tema": "genel",
+      "metin": "Mahallenin bakkalı dükkânı kapatacağını söyleyince herkes veresiye borcunu sildireceğini sandı.\n\nKimi \"Zaten yıllardır ödüyorum\" dedi, kimi defteri görmezden geldi. Kapanıştan hemen önce yaşlı bir müşteri elinde küçük bir zarfla geldi.\n\nBakkal zarfı açmadan adama sarıldı. Feridun Abi deftere bakınca nedenini anladı:\n\nAdam en büyük borçlu görünüyordu ama her ay düzenli ödeme yapmış, sadece son taksiti kalmıştı.\n\nFeridun Abi borsada da tek bir borç rakamına bakmazdı. Borcun vadesi, ödeme düzeni ve şirketin onu nasıl taşıdığı daha önemliydi.\n\nBorç bazen yük değil, yönetilebildiğinde büyümenin aracıdır.",
+      "soru": "Siz ne dersiniz, bir şirketin borçlu olması mı, borcunu yönetememesi mi asıl tehlikedir?"
+    },
+    {
+      "id": "apartman_deposu",
+      "sira": 114,
+      "tema": "genel",
+      "metin": "Apartman sakinleri eski bir dolap yüzünden birbirine girdi.\n\nKimi hurda olduğunu, kimi deponun boşaltılması gerektiğini söylüyordu. Feridun Abi dolabın atılmasına izin vermedi.\n\nKilidi açınca içinden eski faturalar, tapu fotokopileri ve yıllardır aranan bir makbuz çıktı. Apartmanda herkesin sustuğu an, Feridun Abi tek bir sayfayı gösterdi:\n\nDolap aslında değersiz değildi; değeri görünmeyen bir şeyi taşıyordu.\n\nFeridun Abi borsada da şirketin yalnızca görünen mağazasına bakmazdı. Kayıtları, sözleşmeleri ve bilançonun arkasındaki varlıkları okumadan karar vermezdi.\n\nBazen piyasa hurda sandığı şeyi, sabırlı yatırımcı sonradan fark eder.",
+      "soru": "Sizce bir şirkette görünür olan mı, henüz fiyatlanmamış değer mi daha önemlidir?"
+    },
+    {
+      "id": "kapici_zarfi",
+      "sira": 115,
+      "tema": "genel",
+      "metin": "Kapıcının eline bir zarf verildi.\n\nApartmandakiler bunun bahşiş olduğunu düşündü. Feridun Abi zarfın üzerine yazılan kelimeyi görünce kalemi aldı ve üzerini çizdi.\n\n\"Bahşiş değil\" dedi, \"alacak.\" Çünkü kapıcı aylardır fazla mesai yapıyor ama kimse hesabını tutmuyordu. Zarf açılınca içinden\n\nApartmandaki herkesin payına düşen ücret çıktı.\n\nFeridun Abi borsada da çalışanına, tedarikçisine ve küçük ortağına nasıl davrandığına bakardı. Şirket büyürken yükü hep başkasına yüklüyorsa, o büyümenin bir yerinde fatura çıkar.\n\nİyi yönetim sadece kârı değil, sorumluluğu da paylaşır.",
+      "soru": "Bir şirketin yönetim kalitesini kârından mı, insanlara davranışından mı anlamak gerekir?"
+    },
+    {
+      "id": "ogluna_hazir_is",
+      "sira": 116,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin oğlu, babasının yanında çalışmak istedi.\n\nDükkânda herkes onun hemen kasaya geçeceğini sanıyordu. Feridun Abi ise oğlunu ilk gün depoya gönderdi; altı ay boyunca müşteriye görünmesine izin vermedi.\n\nOğlu buna çok kızdı. Bir akşam Feridun Abi ona dükkânın anahtarını verdi ama anahtarla birlikte bir dosya da uzattı. Dosyada\n\nDükkânın borçları, çalışanların maaşları ve yıllardır ödenen faturalar vardı.\n\n\"Hazır koltuğa oturmak kolay\" dedi. \"O koltuğun taşıdığı yükü bilmek zor.\"\n\nFeridun Abi borsada da şirket sahibinin soyadına değil, şirketi nasıl yönettiğine bakardı. Aile şirketi olmak tek başına güvence değildir.\n\nOrtaklıkta önemli olan koltuk değil, sorumluluktur.",
+      "soru": "Peki, aile şirketlerinde yatırımcı önce büyümeye mi, yönetim kalitesine mi bakmalı?"
+    },
+    {
+      "id": "dugun_zarfi",
+      "sira": 117,
+      "tema": "genel",
+      "metin": "Feridun Abi kızının düğününde herkesin beklediği gibi büyük bir altın takmadı.\n\nBunun yerine küçük bir zarf verdi. Ailedekiler mahcup olduğunu düşündü; kızı da zarfı açmadan önce babasına baktı.\n\nZarfın içinden tek bir anahtar ve bir banka kâğıdı çıktı. Feridun Abi kızının şaşkınlığını görünce\n\n\"Bu evin anahtarı değil\" dedi. \"Gelecekteki kararlarını başkasının borcuna bağlamaman için açtığım hesap.\"\n\nFeridun Abi borsada da kısa süreli gösteriş yerine uzun vadeli ortaklığı önemserdi. Birikimin değeri, bir gecede ne aldığıyla değil, yıllarca neye dönüştüğüyle anlaşılır.\n\nBazı hediyeler açıldığı gün değil, yıllar sonra değer kazanır.",
+      "soru": "Siz ne dersiniz, yatırımda bugünkü gösteriş mi, gelecekteki özgürlük mü daha değerlidir?"
+    },
+    {
+      "id": "annenin_sandigi",
+      "sira": 118,
+      "tema": "genel",
+      "metin": "Kardeşler annelerinin eski sandığını satmak istedi.\n\nSandık yıllardır odanın köşesinde duruyor, kimse kapağını açmıyordu. Feridun Abi satıştan önce kilidi kırdı.\n\nİçinden altın çıkmadı. Eski makbuzlar, çocukların okul masrafları ve annelerinin yıllarca biriktirdiği küçük ödemeler çıktı. En altta ise bütün kardeşlerin sustuğu bir not vardı:\n\n\"Çocuklarım parayı değil, birbirini kaybetmesin.\"\n\nFeridun Abi borsada da bir şirketin sadece bugünkü kârını değil, yıllar boyunca ne inşa ettiğini düşünürdü.\n\nPiyasa bazen sandığın dışına bakar; yatırımcı sabırla içini açmadan gerçek değeri göremez.",
+      "soru": "Sizce bir şirkette geçmişte inşa edilen güven mi, bugünkü parlak sonuç mu daha önemlidir?"
+    },
+    {
+      "id": "torun_bisikleti",
+      "sira": 119,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin torunu yeni bisiklet istedi.\n\nEvdekiler hemen alalım dedi ama Feridun Abi depodaki eski bisikleti çıkardı. Zinciri paslı, koltuğu yırtık ve tekeri inmişti.\n\nÇocuk buna kızdı. Feridun Abi bisikleti tamir ederken gidonun altında eski bir isim gördü ve torununa gerçeği anlattı:\n\nO bisikleti, oğlunun ilk temettüsüyle almıştı. Oğlu büyüyünce bisikleti satmak yerine torununa kadar saklamıştı.\n\nFeridun Abi borsada da küçük kazancı hemen harcamak yerine yeniden yatırıma döndürmenin gücünü bilirdi.\n\nBazen büyük sonuç, ilk bakışta küçük görünen kazancı yıllarca korumaktan çıkar.",
+      "soru": "Küçük kazancı harcamak mı, yeniden yatırıma koymak mı daha doğru?"
+    },
+    {
+      "id": "bayram_zarflari",
+      "sira": 120,
+      "tema": "genel",
+      "metin": "Feridun Abi torunlarına bayramda aynı miktarda para vermedi.\n\nBüyük torun zarfını açınca daha az para gördü ve bozuldu. Küçük torun ise zarfını açmadan Feridun Abi'ye sarıldı.\n\nEvdekiler bunun adaletsizlik olduğunu söyledi. Feridun Abi masaya üç zarf koydu ve içlerinden birini açınca\n\nBüyük torunun zarfında para değil, yıllardır biriktirilmiş bir yatırım hesabının dökümü vardı.\n\n\"Herkese aynı şeyi vermek adalet değil\" dedi. \"Kimin neye ihtiyacı olduğunu bilmeden eşitlik sadece görüntüdür.\"\n\nFeridun Abi borsada da her şirkete aynı ölçüyle bakmazdı; risk, borç ve büyüme kalitesini ayrı ayrı değerlendirirdi.",
+      "soru": "Peki, bütün yatırımlara aynı miktarı ayırmak mı, riskine göre seçmek mi daha doğrudur?"
+    },
+    {
+      "id": "kardes_anahtari",
+      "sira": 121,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin kardeşi yıllardır para istiyordu.\n\nBu kez Feridun Abi cebinden para çıkarmadı; eski atölyenin anahtarını masaya koydu. Kardeşi şaşırıp \"Bana para lazım\" dedi.\n\nFeridun Abi anahtarı ona uzatırken bir şart söyledi. Kardeşi kabul ederse para almayacak, atölyeyi işletmeye başlayacaktı. Sonra\n\n\"Sana balık değil, kendi hesabını kurabileceğin yeri veriyorum\" dedi.\n\nFeridun Abi borsada da yalnızca borç kapatan şirketlere değil, para kazandıkça işini büyütebilen şirketlere ortak olmayı severdi.\n\nBorcu kapatmak rahatlatır; üretim gücü ise geleceği değiştirir.",
+      "soru": "Siz ne dersiniz, yatırımda geçici rahatlama mı, kalıcı kazanç üreten yapı mı önemlidir?"
+    },
+    {
+      "id": "tedarikci_nakit",
+      "sira": 122,
+      "tema": "genel",
+      "metin": "Tedarikçi Feridun Abi'ye büyük bir indirim teklif etti.\n\nTek şartı, bütün siparişin parasını peşin vermesiydi. İndirim o kadar büyüktü ki dükkândaki herkes bunun kaçırılmayacak fırsat olduğunu söyledi.\n\nFeridun Abi hesap yaptı, sonra teklifi reddetti. Tedarikçi kızıp gitti. Birkaç ay sonra dükkâna gelen haber herkesi şaşırttı:\n\nTedarikçi iflas etmiş, peşin para verenlerin malları da paraları da içeride kalmıştı.\n\nFeridun Abi borsada da ucuz görünen şirketin nakit durumunu incelerdi. Büyük indirim bazen fırsat değil, karşı tarafın acil çıkış kapısıdır.\n\nFiyat ucuz olabilir; ama şirketin kasası boşsa ucuzluk uzun sürmez.",
+      "soru": "Sizce bir hissede ucuz fiyat mı, şirketin nakit gücü mü daha önemli?"
+    },
+    {
+      "id": "iscinin_ogle_yemegi",
+      "sira": 123,
+      "tema": "genel",
+      "metin": "Feridun Abi yeni işçinin her gün öğle yemeğinde yalnızca ekmek yediğini fark etti.\n\nÇocuk kimseye derdini anlatmıyor, maaş gününü bekliyordu. Feridun Abi maaşını artırmak yerine bir hafta boyunca onu izledi.\n\nCuma günü çocuğun evine gittiğinde mutfakta hasta annesini gördü. Ertesi gün dükkânda bir düzen kurdu ve\n\nİşçinin maaşından kesmeden yemek ve yol parasını şirketin hesabına aldı.\n\nFeridun Abi borsada da çalışanını sürekli tüketen şirketlerden uzak dururdu. Çünkü iyi insanı tutamayan şirket, bugün kâr etse bile yarın aynı işi üretemez.\n\nŞirketin en görünmeyen varlığı bazen çalışanlarıdır.",
+      "soru": "Bir şirketin gerçek gücü makinesinde mi, onu çalıştıran insanlarda mı saklıdır?"
+    },
+    {
+      "id": "sahte_iade",
+      "sira": 124,
+      "tema": "genel",
+      "metin": "Bir müşteri dükkâna aldığı ürünü geri getirdi.\n\nÜrün bozuk değildi ama müşteri ısrarla arızalı olduğunu söylüyordu. Çalışanlar tartışmayı büyütmek istedi.\n\nFeridun Abi ürünü geri aldı, parasını ödedi ve müşterinin adını küçük bir deftere yazdı. Herkes nedenini sorunca\n\n\"Bugün parasını geri verdim\" dedi. \"Ama yarın aynı davranışın bedelini başkasına ödettirmeyeceğim.\"\n\nFeridun Abi borsada da büyüme rakamına tek başına inanmazdı. İade, şikâyet, müşteri kaybı ve şirketin bunları nasıl sakladığına bakardı.\n\nSatış artarken müşteriler kaçıyorsa, vitrindeki büyüme gerçeği anlatmıyor olabilir.",
+      "soru": "Peki, bir şirketi değerlendirirken satış rakamı mı, müşterinin şirkette kalması mı daha önemlidir?"
+    },
+    {
+      "id": "sofor_lastigi",
+      "sira": 125,
+      "tema": "genel",
+      "metin": "Dükkânın şoförü bir gün patronundan lastik parası istedi.\n\nPatron \"Herkes kendi masrafını karşılasın\" diyerek onu geri çevirdi. Şoför akşam yola çıkmak zorunda kaldı; Feridun Abi bunu duyunca sessizce parasını verdi.\n\nŞoför parayı geri ödeyeceğini söyledi ama Feridun Abi kabul etmedi. Sadece\n\n\"Yolda kalan insanı itmek kolay. Bir gün kimin seni yoldan çıkaracağını bilemezsin.\"\n\nYıllar sonra dükkân zor günler geçirirken herkes mal göndermeyi bırakmış, o şoför son sevkiyatı karşılıksız taşımıştı.\n\nFeridun Abi borsada da şirketin ortaklarına ve çalışanlarına zor günde nasıl davrandığını önemserdi.",
+      "soru": "Siz ne dersiniz, bir şirkete güven, iyi günlerdeki büyümesiyle mi, zor günlerdeki davranışıyla mı oluşur?"
+    },
+    {
+      "id": "dukkkan_satis_teklifi",
+      "sira": 126,
+      "tema": "genel",
+      "metin": "Büyük bir şirket Feridun Abi'nin dükkânını satın almak istedi.\n\nTeklif, dükkânın o güne kadar gördüğü en yüksek teklifti. Fakat sözleşmede bir madde vardı: Çalışanların tamamı işten çıkarılacak, müşteriler başka şubeye yönlendirilecekti.\n\nHerkes \"Bu para bir daha gelmez\" derken Feridun Abi sözleşmenin son sayfasını kapattı ve\n\n\"Ben size duvar satmıyorum\" dedi. \"İnsanların güvenerek geldiği işi satıyorum.\"\n\nFeridun Abi borsada da yalnızca şirketin satışına bakmazdı. Şirket büyürken çalışanını, müşterisini ve itibarını nasıl koruyor diye düşünürdü.\n\nBüyüme her zaman değer yaratmaz; bazen değerli olanı tüketerek büyür.",
+      "soru": "Sizce bir şirketin büyümesi mi, büyürken değerini koruması mı daha önemlidir?"
+    },
+    {
+      "id": "cirak_kendi_dukkani",
+      "sira": 127,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin çırağı kendi dükkânını açınca, eski müşterilerinin bir kısmı onun yanına gitti.\n\nMahalledekiler Feridun Abi'nin çırağına kızacağını düşündü. Feridun Abi ise onun dükkânına gidip eline bir kâğıt verdi.\n\nÇırağı kâğıdı açınca üzerinde müşteri isimleri değil, Feridun Abi'nin yıllardır tuttuğu bazı notlar vardı. Okuyunca\n\nFeridun Abi'nin ona müşteri değil, işini ayakta tutacak alışkanlıkları bıraktığını anladı.\n\nFeridun Abi borsada da yalnızca bugünkü satışa bakmazdı. Şirketin kendi başına müşteri, ürün ve nakit üretebilecek bir sistem kurup kurmadığına bakardı.\n\nGerçek büyüme, sahibine bağlı kalmadan devam edebilmektir.",
+      "soru": "Bir şirketin gücü patronunda mı, kurduğu sistemde mi olmalı?"
+    },
+    {
+      "id": "eski_makbuz",
+      "sira": 128,
+      "tema": "genel",
+      "metin": "Bir adam Feridun Abi'nin dükkânına 15 yıl önceki küçük bir makbuzla geldi.\n\nMakbuzda tamir edilmiş bir ürün ve sıfır lira yazıyordu. Adam, Feridun Abi'nin o gün kendisinden neden para almadığını yıllarca merak etmişti.\n\nFeridun Abi makbuza baktı, adamın babasını hatırladı ve\n\n\"O gün paran yoktu ama sözün vardı. Ürünü değil, seni kaybetmek istemedim\" dedi.\n\nAdam 15 yıl boyunca bütün alışverişlerini Feridun Abi'den yapmıştı.\n\nFeridun Abi borsada da şirketin yalnızca bir defalık satışına değil, müşteriyi yıllarca yanında tutup tutamadığına bakardı.\n\nBazı şirketler bir işlem kazanır; bazıları ömür boyu müşteri kazanır.",
+      "soru": "Peki, uzun vadeli yatırımda tek seferlik kâr mı, kalıcı müşteri bağı mı daha değerlidir?"
+    },
+    {
+      "id": "bir_liralik_fark",
+      "sira": 129,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin kasası her akşam bir lira eksik çıkıyordu.\n\nÇalışanlar içeriden birinin para aldığını düşündü. Feridun Abi kimseyi suçlamadı; yalnızca eksilen paranın nereye gittiğini takip etti.\n\nBir hafta sonra kasanın yanına küçük bir kutu koydu. Çalışanlar kutuyu açınca Feridun Abi'nin yıllardır yaptığı şey ortaya çıktı:\n\nMaddi durumu kötü olan müşterilerden her gün bir lira eksik alıyordu.\n\nFeridun Abi borsada da küçük farkları önemserdi. Her gün tekrar eden küçük bir avantaj, yıllar içinde büyük bir sonuca dönüşebilir.\n\nBileşik büyüme bazen büyük bir hamleyle değil, kimsenin önemsemediği küçük tekrarlarla başlar.",
+      "soru": "Siz ne dersiniz, yatırımda büyük fırsat mı, küçük ama sürdürülebilir avantaj mı daha değerlidir?"
+    },
+    {
+      "id": "kayip_cuzdan",
+      "sira": 130,
+      "tema": "genel",
+      "metin": "Feridun Abi çarşıda bir cüzdan buldu.\n\nİçinde çok az para, birkaç kart ve yıllar önce yazılmış bir telefon numarası vardı. Numarayı arayınca cüzdanın sahibinin, Feridun Abi'ye eski bir borcu olan kişi olduğunu öğrendi.\n\nAdam cüzdanını almaya geldiğinde Feridun Abi parayı saymadan teslim etti. Adam şaşırıp \"Abi, içinden borcumu alabilirdin\" deyince\n\n\"Emanet başka, borç başka\" dedi Feridun Abi.\n\nBorsada da iyi şirket ile ucuz şirketi birbirine karıştırmazdı. Fiyatı düşmüş diye her şirket fırsat, fiyatı yükselmiş diye her şirket kaliteli değildi.\n\nHer şeyi aynı hesaba koymak, yatırımda en pahalı karışıklıktır.",
+      "soru": "Sizce bir hissenin ucuz olması onu otomatik olarak iyi bir yatırım yapar mı?"
+    },
+    {
+      "id": "pahali_telefon",
+      "sira": 131,
+      "tema": "genel",
+      "metin": "Mahalledeki genç, krediyle aldığı pahalı telefonla herkese hava atıyordu.\n\nFeridun Abi ona \"Telefonu ne için aldın?\" diye sordu. Genç \"İş için\" dedi ama bütün gün telefonu yalnızca gösteriş için kullanıyordu.\n\nBir ay sonra dükkâna geldi ve telefonu satmak istedi. Feridun Abi nedenini sorunca genç başını eğdi:\n\nMaaşını alamayan iki çalışanına ödeme yapmak için telefonu satacaktı.\n\nFeridun Abi ona kızmadı. Sadece \"Görünen değerle gerçek değer aynı değil\" dedi.\n\nBorsada da parlak sunum, pahalı reklam ve yüksek fiyat şirketin gerçekten güçlü olduğunu kanıtlamaz.\n\nÖnemli olan şirketin dışarıdan nasıl göründüğü değil, içeride ne ürettiğidir.",
+      "soru": "Bir şirkette görüntü mü, gerçek para üretme gücü mü daha önemlidir?"
+    },
+    {
+      "id": "cenaze_zarfi",
+      "sira": 132,
+      "tema": "genel",
+      "metin": "Mahalleden bir esnaf vefat edince herkes cenazeye çelenk gönderdi.\n\nFeridun Abi ise elinde küçük bir zarfla geldi. Zarfı merhumun eşine uzatınca kadın açmak istemedi.\n\nFeridun Abi \"Bu benden değil\" dedi. \"Eşin yıllar önce birine emanet etmişti.\" Zarf açılınca içinden\n\nYıllar önce verilmiş bir borcun son taksiti çıktı. Merhum, borç aldığı adamı bulamadan vefat etmişti; Feridun Abi de parayı ailesine ulaştırmıştı.\n\nFeridun Abi borsada da şirketin yalnızca kazancına değil, verdiği söze ve borcuna bakardı.\n\nİyi ortaklık, kazanç paylaşılırken değil, sorumluluk yerine getirilirken belli olur.",
+      "soru": "Peki, bir şirkete ortak olurken kârı mı, verdiği sözleri tutma biçimini mi daha çok önemsemeli?"
+    },
+    {
+      "id": "garantili_getiri",
+      "sira": 133,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin mahalleden bir tanıdığı gözleri parlayarak geldi: \"Abi, bir yer buldum, ayda garanti yüzde on veriyor. İki aydır ödemeler tıkır tıkır hesabıma giriyor.\"\n\nFeridun Abi tek soru sordu: \"Peki bu para nereden kazanılıyor?\"\nAdam durdu: \"Onu tam bilmiyorum... ama bak, aksatmıyorlar işte.\"\n\nÜçüncü ay ödeme gecikti, dördüncü ay telefonlar kapandı. O aksamayan ödemeler meğer sonradan girenlerin parasıymış; kapı kapanınca içeride kalan da o oldu.\n\nFeridun Abi başını salladı: \"Nereden kazanıldığını bilmediğin getiri, senin paranla ödenir. Garanti edilen tek şey, en son girenin kaybetmesidir.\"",
+      "soru": "Siz ne dersiniz, \"garantili yüksek getiri\" diye bir şey olabilir mi, yoksa kural mı: yüksek getiri hep risk ister?"
+    },
+    {
+      "id": "zam_reel_kayip",
+      "sira": 134,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin genç bir tanıdığı zam haberiyle geldi, sevinçliydi: \"Abi, maaşım yüzde otuz arttı.\"\n\nFeridun Abi tebrik etti, sonra sordu: \"Peki geçen yıl doldurduğun market arabası bu yıl kaça çıktı?\"\nGenç düşündü: \"Neredeyse iki katı.\"\n\nRakam büyümüştü ama sofra küçülmüştü. Maaş otuz artarken hayat çok daha fazla artmıştı.\n\nFeridun Abi çayını karıştırdı: \"Zam, rakamın artması demek. Zenginleşmek, alabildiğinin artması demek. İkisini karıştıran, cebi dolu ama eli boş gezer.\"",
+      "soru": "Sizce bir zam gerçek mi, yoksa enflasyonun altında kaldıysa sadece rakam oyunu mu?"
+    },
+    {
+      "id": "uzuntu_harcama",
+      "sira": 135,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı ne zaman canı sıkılsa alışverişe çıkardı. \"Kendimi iyi hissediyorum\" derdi kart okuturken.\n\nBir akşam yine kolileri taşırken Feridun Abi ona baktı: \"Bugün ne oldu?\" Adam durdu; işte kötü bir gün geçirmişti.\n\nEve gelen kutular birkaç gün sonra bir kenara atılmıştı; ama taksitler haftalarca canını sıktı. Aldığı şey mutluluk değil, mutsuzluğun faturasıydı.\n\nFeridun Abi dedi ki: \"İnsan bazen bir şey almıyor; bir duyguyu bastırmaya çalışıyor. Ama üzüntü geçer, taksit kalır.\"",
+      "soru": "Alışveriş gerçekten moral mi veriyor, yoksa kötü hissi bir sonraki ekstreye mi erteliyor?"
+    },
+    {
+      "id": "feridun_toparlanma",
+      "sira": 136,
+      "tema": "genel",
+      "metin": "Feridun Abi bir gün, gençliğinde VIOP'ta anaparasını nasıl sıfırladığını yine anlattı. Bu kez sonunu da ekledi. \"Peki sonra ne yaptın abi?\" dedim.\n\nGülümsedi: \"İki yol vardı. Ya intikam için daha büyük kumar, ya da baştan, küçük küçük.\"\n\nİntikamı seçmediğini söyledi. Kalan üç kuruşuyla her ay tek bir sağlam hisse aldı, yıllarca kendine sattırmadı. Bugün konuştuğumuz portföy, o yangının külünden kuruldu.\n\n\"Beni batıran para değildi\" dedi, \"acele etmemdi. Toparlayan da yeni bir vurgun değil, sabırla yeniden başlamaktı.\"",
+      "soru": "Peki, büyük bir kayıptan sonra insanı toparlayan ne olur: cesur bir hamle mi, yoksa sıfırdan sabırla başlamak mı?"
+    },
+    {
+      "id": "komsu_arabasi",
+      "sira": 137,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin komşusu kapıya sıfır bir araba çekti. Aynı akşam apartmandan biri Feridun Abi'ye dert yandı: \"Adamın maaşı benimkiyle aynı, o nasıl alıyor ben alamıyorum?\"\n\nFeridun Abi gülümsedi: \"Onun kapıda ne olduğunu görüyorsun. Peki bankada ne olduğunu biliyor musun?\"\n\nBirkaç ay sonra o araba, ödenemeyen taksitler yüzünden satılığa çıktı. Komşunun birikimi değil, gösterecek bir vitrini vardı.\n\nFeridun Abi dedi ki: \"İnsanların vitrinini kendi kasanla kıyaslama. Çoğu parlayan şeyin arkasında bir taksit vardır.\"",
+      "soru": "Başkasının harcamasına bakıp kendinizi kötü hissettiğiniz oldu mu? Görünen zenginlik gerçek mi?"
+    },
+    {
+      "id": "erken_baslayan",
+      "sira": 138,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin iki tanıdığı vardı. Biri 25 yaşında küçük ama düzenli yatırıma başladı; diğeri \"önce kariyerim otursun\" deyip 35'te başladı. İkisi de aynı parayı ayırıyordu.\n\nYıllar sonra hesaplaştılar; aradaki fark ikisini de şaşırttı.\n\nSadece 10 yıl erken başlayan, ötekinin asla yakalayamayacağı bir açık açmıştı. Fark yatırdıkları paradan değil, paranın kazandığı zamandan geliyordu.\n\nFeridun Abi dedi ki: \"Yatırımda en güçlü şey para değil, zaman. En büyük pişmanlık kaybedilen para değil, geç başlanan yıllardır.\"",
+      "soru": "Siz ne dersiniz, yatırıma başlamak için \"doğru zamanı\" beklemek mi, yoksa küçük de olsa bugün başlamak mı daha akıllı?"
+    },
+    {
+      "id": "faizsiz_taksit",
+      "sira": 139,
+      "tema": "genel",
+      "metin": "Feridun Abi'yle mağazadaydık. Genç bir çift \"faizsiz 12 taksit\" yazısını görünce hemen pahalı bir eşyaya yöneldi. \"Faizsiz sonuçta, cebimizden fazla çıkmıyor\" dediler.\n\nFeridun Abi satıcıya döndü: \"Peşin alsam ne kadar?\"\n\nPeşin fiyat, taksitli fiyatın belirgin altındaydı. \"Faizsiz\" denen taksitin faizi, en baştan etikete gömülmüştü.\n\nFeridun Abi dedi ki: \"Bedava faiz diye bir şey yoktur; ya etikete gizlenir, ya vadeye. Görmüyorsan, ödemiyorsun demek değildir.\"",
+      "soru": "Sizce \"faizsiz taksit\" gerçekten faizsiz mi, yoksa peşin fiyatı sormayana kesilen bir bedel mi?"
+    },
+    {
+      "id": "once_kendine",
+      "sira": 140,
+      "tema": "genel",
+      "metin": "Feridun Abi'ye bir genç \"ay sonunda ne kalırsa biriktiriyorum ama hiç kalmıyor\" dedi.\n\nFeridun Abi sıralamayı tersine çevirmesini söyledi: \"Maaş girer girmez, daha hiçbir şey harcamadan bir payı kenara at. Kalanla yaşa.\"\n\nGenç önce \"yetmez\" diye korktu; ama birkaç ay içinde o kalanla yaşamayı öğrendi, ilk kez kenarda para büyümeye başladı.\n\nFeridun Abi dedi ki: \"Çoğu insan harcar, artanı biriktirmeye çalışır; o yüzden hiç biriktiremez. Önce kendine öde, dünyaya sonra.\"",
+      "soru": "Biriktirmek için \"artanı\" mı beklemeli, yoksa maaş girer girmez ilk payı mı ayırmalı?"
+    },
+    {
+      "id": "ucuz_pahali",
+      "sira": 141,
+      "tema": "genel",
+      "metin": "Feridun Abi'yle çarşıdaydık. Bir tezgâhtan ucuz bir ayakkabı aldım, sevindim. Feridun Abi bir şey demedi.\n\nÜç ay sonra ayakkabı dağıldı, yenisini aldım. O yıl üç kez aldım. Feridun Abi hesabı topladı.\n\nÜç ucuz ayakkabının toplamı, en baştan alacağım sağlam bir çiftin fiyatını çoktan geçmişti.\n\nFeridun Abi dedi ki: \"Ucuz her zaman ucuz değildir. Bazı şeyde en pahalı seçenek, sürekli yenilemek zorunda kaldığın ucuz olandır.\"",
+      "soru": "Peki, her zaman ucuzu almak mı tasarruf, yoksa bazen kaliteliye bir kez ödemek mi?"
+    },
+    {
+      "id": "borc_sarmali",
+      "sira": 142,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı kredi kartı borcunu kapatmak için ihtiyaç kredisi çekti. \"Oh, kurtuldum\" dedi.\n\nBirkaç ay sonra bu kez kredi taksitini ödemek için kartı yeniden doldurdu. Feridun Abi ekstreyi eline alıp baktı.\n\nAdam borçtan kurtulmamıştı; borcu bir cepten diğerine taşıyordu, her taşımada biraz daha büyüyordu.\n\nFeridun Abi dedi ki: \"Bir borcu başka borçla kapatmak, çukuru kazarak doldurmaya benzer. Delik kapanmaz, sadece yer değiştirir.\"",
+      "soru": "Siz ne dersiniz, borcu borçla kapatmak çözüm mü, yoksa sarmalın başlangıcı mı?"
+    },
+    {
+      "id": "enflasyon_stok",
+      "sira": 143,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin esnaf tanıdığı deposundaki malı sattı, kasaya bakıp sevindi: \"Bu ay güzel kâr var.\"\n\nFeridun Abi tek soru sordu: \"Aynı malı bugün yeniden almaya kalksan, kaç para?\"\n\nEsnaf hesabı yapınca yüzü düştü; sattığı paraya artık aynı malın yarısını zor alıyordu. Kâr sandığı şey, enflasyonun ödünç verdiği bir yanılsamaydı.\n\nFeridun Abi dedi ki: \"Enflasyonda kâr, malını yerine koyabildiğin kadardır. Koyamıyorsan kâr etmedin; sermayeni yedin.\"",
+      "soru": "Sizce enflasyonda gerçek kâr nedir: kasadaki fazla para mı, yoksa malı yenileyebilmek mi?"
+    },
+    {
+      "id": "hisseye_asik",
+      "sira": 144,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı bir hisseyi yıllar önce almış, epey de kazandırmıştı. Şirket temelden çürüdüğünde bile satamadı: \"Bu bana çok kazandırdı, vefasızlık olur.\"\n\nHisse eridikçe eridi; o hâlâ eski günleri anlatıyordu. Feridun Abi sonunda dayanamadı.\n\n\"Hisse seni tanımıyor\" dedi. \"Ona duyduğun sevgi tek taraflı. Sen ortaklık kurdum sanıyorsun, o sadece bir kâğıt.\"\n\nAdam ilk kez, kazancına değil bağlılığına yandığını anladı.\n\nFeridun Abi ekledi: \"Yatırımda en pahalı duygu, bir kâğıda âşık olmaktır.\"",
+      "soru": "Bir yatırıma duygusal bağlanmak sadakat mi, yoksa zararı büyüten bir tuzak mı?"
+    },
+    {
+      "id": "kayit_disi",
+      "sira": 145,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin genç bir tanıdığı \"elden maaş, hem vergi yok hem eline daha çok geçiyor\" diye sevinirdi. Sigortasız çalışmak umurunda değildi.\n\nYıllar sonra bir kaza geçirdi; ne rapor parası vardı ne emeklilik günü. Feridun Abi hastanede yanına gitti.\n\nEline her ay biraz fazla geçmişti; ama biriken hiçbir güvence yoktu. O fazlalık, kaybettiği güvencenin yanında küçük kaldı.\n\nFeridun Abi dedi ki: \"Kayıt dışı gelir bugünü şişirir, yarını boşaltır. Görünmeyen kesinti, aslında en ucuz sigortandır.\"",
+      "soru": "Peki, elden fazla para mı, yoksa az ama kayıtlı ve güvenceli gelir mi daha değerli?"
+    },
+    {
+      "id": "surekli_erteleme",
+      "sira": 146,
+      "tema": "genel",
+      "metin": "Feridun Abi'ye bir tanıdığı yıllardır aynı şeyi söylüyordu: \"Şu kredi bitsin, şu düğün geçsin, çocuk okula başlasın; sonra yatırıma başlayacağım.\"\n\nHer yıl yeni bir \"önce şu\" çıkıyordu. Bir gün Feridun Abi ona eski bir defter gösterdi.\n\nDefterde adamın on yıl önce söylediği aynı cümleler vardı; sadece bahaneler değişmişti. On yıl geçmiş, birikim hâlâ sıfırdı.\n\nFeridun Abi dedi ki: \"Uygun zaman hiç gelmez. Bugün küçük de olsa başlamazsan, on yıl sonra yine aynı cümleyi kurarsın.\"",
+      "soru": "Siz ne dersiniz, yatırım için \"her şey yoluna girsin\" mi beklemeli, yoksa bugün küçük bir adım mı atmalı?"
+    },
+    {
+      "id": "yastik_alti",
+      "sira": 147,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin bir tanıdığı paraya güvenmezdi; kazandığını bozdurup yastık altında saklardı. \"Bankada eriyor, evde bende duruyor\" derdi.\n\nİki yıl sonra o parayla eskiden aldığı şeyleri almaya kalktı. Feridun Abi yanındaydı.\n\nPara olduğu gibi duruyordu ama aldığı şeyler ikiye katlanmıştı. Sayı değişmemişti; değişen, o sayının satın aldığıydı.\n\nFeridun Abi dedi ki: \"Enflasyonda kıpırdamayan para güvende değil, sessizce eriyor demektir. Duran para, en yavaş kaybeden paradır.\"",
+      "soru": "Sizce enflasyonda parayı hiç değerlendirmeden tutmak güven mi, yoksa görünmez bir kayıp mı?"
+    },
+    {
+      "id": "kira_zam_soku",
+      "sira": 148,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin kiracı bir tanıdığı yıl sonunda ev sahibinden mesaj aldı: kira neredeyse iki katına çıkıyordu. \"Bu ne vicdansızlık\" dedi.\n\nFeridun Abi ev sahibinin de haksız olmadığını söyledi; onun da aynı parayla artık yarısını alabildiğini.\n\nİkisi de aynı yangının içindeydi; biri kirayı ödeyemiyor, öteki kirayla geçinemiyordu. Suçlu ne kiracıydı ne ev sahibi.\n\nFeridun Abi dedi ki: \"Enflasyon iki tarafı da yakar, sonra birbirlerini suçlatır. Asıl mesele kira değil, paranın eridiği zemin.\"",
+      "soru": "Kira kavgasında suçlu kiracı mı, ev sahibi mi, yoksa ikisini de eziyen enflasyon mu?"
+    },
+    {
+      "id": "emekli_maasi_eridi",
+      "sira": 149,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin emekli bir tanıdığı çalışırken \"maaşım rahat yetiyor\" derdi. Emekli olunca aynı maaş vardı ama artık ay ortasında bitiyordu.\n\n\"Ben mi çok harcıyorum?\" diye sordu. Feridun Abi eski bir market fişini çıkardı.\n\nAdam az harcamıyordu; maaş yerinde sayarken hayat her yıl önünden kaçmıştı. Sabit gelir, akıntıda geri giden bir gemi gibiydi.\n\nFeridun Abi dedi ki: \"Sabit gelir enflasyonda her yıl sessizce küçülür. Gençken sadece maaşa değil, maaştan bağımsız bir gelire de yatırım yapacaksın.\"",
+      "soru": "Peki, sadece emekli maaşına güvenmek yeterli mi, yoksa gençken ayrı bir gelir kurmak şart mı?"
+    },
+    {
+      "id": "eskiden_su_kadardi",
+      "sira": 150,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'yle çay içerken hesabı gören genç şaşırdı: \"Bu çay eskiden çok ucuzdu.\"\n\nFeridun Abi gülümsedi: \"Her nesil aynı cümleyi kurar. Benim babam da 'eskiden' derdi.\"\n\nSorun çayın pahalanması değildi; paranın her yıl biraz daha küçülmesiydi. \"Eskiden ucuzdu\" demek, aslında \"param eskisi kadar iş görmüyor\" demekti.\n\nFeridun Abi dedi ki: \"Fiyatlar artmıyor sadece; senin paran küçülüyor. Bunu anlamayan, her yıl aynı şaşkınlığı yaşar.\"",
+      "soru": "Siz ne dersiniz, fiyatlar mı artıyor, yoksa elimizdeki para mı küçülüyor? İkisi aynı şey mi?"
+    },
+    {
+      "id": "paket_kuculdu",
+      "sira": 151,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi markette hep aynı bisküviyi alırdı. Bir gün paketi eline aldı, fiyat aynıydı ama bir tuhaflık vardı.\n\nGenç kasiyere döndü: \"Bu paket küçülmüş mü?\" Kız güldü: \"Fiyatı artırmak yerine gramajı düşürüyorlar amca.\"\n\nEtiket aynı kalmıştı ama içindeki azalmıştı. Zam görünmez olmuş; cebe değil, pakete yansımıştı.\n\nFeridun Abi dedi ki: \"En sinsi zam, fiyatı değiştirmeden içini boşaltandır. Sen aynı parayı verdiğini sanırsın, aslında daha azını alırsın.\"",
+      "soru": "Sizce fiyatı sabit tutup paketi küçültmek dürüst bir yöntem mi, yoksa gizli bir zam mı?"
+    },
+    {
+      "id": "altin_alim_gucu",
+      "sira": 152,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin iki tanıdığı vardı. Biri 10 yıl önce elindeki parayı olduğu gibi tuttu; diğeri o parayla gram altın alıp kenara koydu.\n\nGeçen hafta ikisi de aynı arabayı almaya gitti. Feridun Abi sonucu merak etti.\n\nNakit tutan yarısını zor denkleştirdi; altın alan arabayı alıp üstüne para bıraktı. İkisi de \"beklemişti\"; fark, hangi kapta beklediklerindeydi.\n\nFeridun Abi dedi ki: \"Enflasyonda önemli olan ne kadar biriktirdiğin değil, neyin içinde beklettiğin. Aynı sabır, yanlış kapta erir.\"",
+      "soru": "Uzun vadede alım gücünü korumak için para hangi biçimde beklemeli?"
+    },
+    {
+      "id": "bekleyen_para_eriyor",
+      "sira": 153,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'ye bir genç \"maaşımı ay sonunu bekleyip toplu değerlendireceğim\" dedi. Para bir ay hesapta öylece durdu.\n\nAy sonunda değerlendirmeye kalktığında Feridun Abi ona basit bir hesap yaptırdı.\n\nO bir ay boyunca para çalışmamış, üstelik biraz da erimişti. Beklemek ona bir şey kazandırmamış, sessizce kaybettirmişti.\n\nFeridun Abi dedi ki: \"Enflasyonda boşta bekleyen para tatilde değil, eriyor. Doğru zamanı beklemek çoğu zaman kaybetmenin kibar hâlidir.\"",
+      "soru": "Peki, parayı 'uygun zamanı' bekletmek mi, yoksa girer girmez değerlendirmek mi mantıklı?"
+    },
+    {
+      "id": "zamdan_once_al",
+      "sira": 154,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin komşusu her zam söylentisinde eve stok yığardı: kilolarca deterjan, raf dolusu konserve. \"Zamdan önce aldım, kârdayım\" derdi.\n\nBir gün Feridun Abi kilere baktı; yarısı son kullanma tarihini geçirmişti.\n\nGerçekten ihtiyaç olanı önceden almak akıllıcaydı; ama çürüyene, bozulana yatırılan para zamdan da hızlı erimişti. Stok, ihtiyaç kadar değer; fazlası çöp.\n\nFeridun Abi dedi ki: \"Zamdan kaçayım derken kullanamayacağın kadar almak tasarruf değil; parayı raf ömrüne yatırmaktır.\"",
+      "soru": "Siz ne dersiniz, zamdan önce stok yapmak akıllıca mı, yoksa çoğu zaman israfa mı dönüyor?"
+    },
+    {
+      "id": "torun_nakit_altin",
+      "sira": 155,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin iki komşusu da torunları için para biriktiriyordu. Biri her ay bir kavanoza nakit atıyor, diğeri aynı parayla gram altın alıp kutuya koyuyordu.\n\nOn yıl sonra iki torun da üniversiteye başladı. Feridun Abi ikisinin de birikimini gördü.\n\nKavanozdaki para bir dönem harçlığına zor yetti; altın kutusu ise neredeyse tüm eğitimi karşıladı. İkisi de aynı özveriyi göstermişti; biri yanlış kapta biriktirmişti.\n\nFeridun Abi dedi ki: \"Çocuğa ne bıraktığın kadar, onu neyin içinde biriktirdiğin de önemli. Nakit, sevgiyle biriktirilse bile enflasyonda erir.\"",
+      "soru": "Sizce çocuk için birikim nakit olarak mı, yoksa değerini koruyan bir varlıkta mı tutulmalı?"
+    },
+    {
+      "id": "ev_kacan_hedef",
+      "sira": 156,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin bir tanıdığı ev almak için yıllarca biriktirdi. Hedefe her yaklaştığında bir bakıyordu ki ev fiyatı yine önde.\n\n\"Az kaldı derken hep uzaklaşıyor\" diye dert yandı. Feridun Abi eski bir fiyat listesi çıkardı.\n\nAdam para biriktirmişti ama parası dururken ev koşuyordu. Nakitte beklemek, hedefe yaklaşmak değil, ondan yavaşça uzaklaşmaktı.\n\nFeridun Abi dedi ki: \"Enflasyonda hedefe nakitle koşamazsın; hedefin kendisiyle aynı yarışta olacaksın. Ev için biriktiriyorsan, birikimin de gayrimenkulle aynı hızda büyümeli.\"",
+      "soru": "Bir hedefe biriktirirken parayı nakitte mi tutmalı, yoksa hedefle aynı yönde bir varlıkta mı?"
+    },
+    {
+      "id": "taksit_eridi",
+      "sira": 157,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin komşusu enflasyon yüksekken uzun vadeli sabit taksitle araba aldı. \"Bak taksit eridi, bedavaya geldi\" diye övünüyordu.\n\nFeridun Abi bir şey sormadan önce arabanın bugünkü değerine baktı.\n\nTaksit gerçekten erimişti; ama araba da her yıl değer kaybetmişti. Borç küçülürken varlık da küçülünce, kazanç sandığı şey başa baş çıkmıştı.\n\nFeridun Abi dedi ki: \"Enflasyonda borcu eriten kaldıraç, doğru varlıkla servet olur; eriyen bir malla sadece zararı örter. Mesele borcun değil, borçla ne aldığın.\"",
+      "soru": "Peki, enflasyonda taksitle bir şey almak her zaman kârlı mı, yoksa aldığın şeyin değerini koruması mı şart?"
+    },
+    {
+      "id": "sabit_vs_serbest",
+      "sira": 158,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin iki tanıdığı: biri maaşlı memur, diğeri küçük esnaf. Enflasyon coşunca ikisi de zorlandı ama farklı şekilde.\n\nBir akşam üçü çay içerken dertleştiler.\n\nEsnaf fiyatını her hafta güncelleyip enflasyona kısmen ayak uydurabiliyordu; memur ise zammı yılda bir, hep geriden alıyordu. Aynı fırtınada biri yelken açabiliyor, öteki demirlemiş bekliyordu.\n\nFeridun Abi dedi ki: \"Enflasyonda sabit gelir en savunmasız olandır. Maaşlıysan, maaş dışında fiyatını kendi ayarlayabilen bir varlığa da tutunacaksın.\"",
+      "soru": "Siz ne dersiniz, enflasyonda maaşlı mı yoksa gelirini kendi ayarlayabilen mi daha avantajlı? Maaşlı ne yapmalı?"
+    },
+    {
+      "id": "sattim_alamadim",
+      "sira": 159,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin bir tanıdığı sıkışınca elindeki altınları bozdurdu. \"Nasıl olsa düşünce geri alırım\" dedi.\n\nAylar sonra cebinde aynı para varken kuyumcuya gitti. Feridun Abi de yanındaydı.\n\nAynı parayla eskiden aldığı altının yarısını zor alıyordu. Altın düşmemiş, onun parası küçülmüştü. Bozdururken kolaydı; geri almak imkânsızlaşmıştı.\n\nFeridun Abi dedi ki: \"Değerli bir varlığı nakde çevirmek kolaydır; asıl zor olan, o nakit erimeden geri dönebilmektir. Bozdurmadan önce, geri alabilecek misin diye sor.\"",
+      "soru": "Sizce zor günde değerli varlığı bozdurmak mı, yoksa başka yol aramak mı? Geri alabileceğinizden emin misiniz?"
+    },
+    {
+      "id": "maas_gunu_telasi",
+      "sira": 160,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin genç bir tanıdığı maaş gününü iple çekerdi ama parayı hesapta bekletirdi. \"Aceleye ne gerek, ay içinde harcarım\" derdi.\n\nFeridun Abi ona ay başı ile ay sonu fiyatlarını gösterdi.\n\nAynı ihtiyaç listesi ay sonunda daha pahalıydı; bekleyen maaş, ay içinde sessizce küçülmüştü. Erken davranan alıyor, bekleyen daha azını alıyordu.\n\nFeridun Abi dedi ki: \"Yüksek enflasyonda maaş, yatınca en değerli hâlindedir. Bekletmek değil, hızlıca ihtiyaca ya da değere çevirmek kazandırır.\"",
+      "soru": "Maaşı hemen değerlendirmek mi, ay içine yaymak mı? Enflasyon bekleme sürenizi değiştirir mi?"
+    },
+    {
+      "id": "sirket_kagit_kar",
+      "sira": 161,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin bir tanıdığı bir hisseye \"rekor kâr açıkladılar\" diye coşkuyla girdi. Feridun Abi rakama değil, altına baktı.\n\n\"Peki bu kâr geçen yıla göre enflasyondan hızlı mı büyümüş?\" diye sordu.\n\nHesaplayınca gördüler ki \"rekor\" denen kâr, büyük ölçüde fiyatların artmasıyla şişmişti; şirket gerçekte neredeyse yerinde sayıyordu. Rakam büyük, büyüme yoktu.\n\nFeridun Abi dedi ki: \"Enflasyonda her rakam büyür; marifet, enflasyondan hızlı büyüyeni ayırmaktır. Rekor kâr, çoğu zaman rekor enflasyonun gölgesidir.\"",
+      "soru": "Peki, bir şirketin \"rekor kârı\" gerçek büyüme mi, yoksa enflasyonun şişirdiği bir rakam mı? Nasıl ayırırsınız?"
+    },
+    {
+      "id": "ceyiz_altin",
+      "sira": 162,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin bir akrabası kızının çeyizine yıllar boyunca bilezik biriktirmişti. \"Gösteriş\" diyenler olmuş, o aldırmamış.\n\nYıllar sonra genç çift zor bir döneme girince o bilezikler devreye girdi.\n\nNakit biriktiren komşuların parası erimişti; ama o altınlar değerini korumuş, hatta artırmıştı. Eski bir gelenek, farkında olmadan bir enflasyon siperi olmuştu.\n\nFeridun Abi dedi ki: \"Bazı gelenekler aslında saklı bir finansal akıldır. Altını çeyize koymak, nesillerdir bilinen sessiz bir enflasyon dersidir.\"",
+      "soru": "Siz ne dersiniz, çeyize altın koymak eski bir âdet mi, yoksa hâlâ geçerli bir birikim yöntemi mi?"
+    },
+    {
+      "id": "enflasyon_butce",
+      "sira": 163,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi bütçesini herkesten farklı kurardı. Gelirini bugünkü fiyata göre değil, birkaç ay sonrasını da hesaba katarak planlardı.\n\nBir genç \"abartıyorsun\" dedi. Feridun Abi geçen yılın not defterini açtı.\n\nDefterde her ay öngördüğü zamlar tek tek tutmuştu. O yüzden ay sonunda şaşırmıyor, önceden hazır oluyordu. Enflasyonu yok saymak değil, hesaba katmak onu koruyordu.\n\nFeridun Abi dedi ki: \"Enflasyonda bütçe, bugünün fiyatına göre değil yarının fiyatına göre kurulur. Zammı görmezden gelen her ay açık verir.\"",
+      "soru": "Sizce bütçe yaparken bugünkü fiyatları mı, yoksa geleceğin zamlarını mı esas almalı?"
+    },
+    {
+      "id": "emeklilik_hedef",
+      "sira": 164,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'ye 30'lu yaşlarındaki bir tanıdığı \"bana 5 milyon yeter, emekli olur otururum\" dedi.\n\nFeridun Abi gülümsedi: \"Bugün mü, yoksa emekli olacağın gün mü?\" diye sordu.\n\nHesap yapınca genç durakladı; bugün büyük görünen rakam, yıllar sonra o kadar iş görmeyecekti. Sabit bir hedef koymuş ama hedefin de her yıl büyüdüğünü unutmuştu.\n\nFeridun Abi dedi ki: \"Enflasyonda 'şu kadar yeter' diye sabit bir rakam olmaz; hedefin de her yıl büyür. Emeklilik için para değil, enflasyona ayak uyduran bir gelir kur.\"",
+      "soru": "\"şu kadar biriktirsem yeter\" demek mümkün mü, yoksa hedef enflasyonla sürekli mi büyür?"
+    },
+    {
+      "id": "kira_vs_ev_uzun",
+      "sira": 165,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin iki tanıdığı on yıl önce aynı noktadaydı. Biri borçlanıp ev aldı; diğeri \"kira daha esnek\" deyip kirada kaldı, parasını başka yerde tuttu.\n\nGeçen gün üçü bir araya geldi, on yılın muhasebesini yaptılar.\n\nEv alan, sabit borcunu enflasyonla eritmiş, üstüne evi değerlenmişti. Kirada kalanın kirası her yıl artmış, tuttuğu para aynı hızda büyümemişti. Aynı başlangıç, çok farklı bir varış.\n\nFeridun Abi dedi ki: \"Enflasyonda kira her yıl artar, sabit borç ise erir. Kirada kalmak, birikimini kiradan hızlı büyütebiliyorsan mantıklıdır; büyütemiyorsan geç kalmaktır.\"",
+      "soru": "Peki, uzun vadede enflasyonda ev sahibi olmak mı, kirada kalıp yatırım yapmak mı kazandırır?"
+    },
+    {
+      "id": "etiket_degisimi",
+      "sira": 166,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi markette bir çalışanın elinde etiket tabancası, reyon reyon dolaştığını gördü. Adam yorgundu.\n\n\"Bu kaçıncı?\" diye sordu Feridun Abi. Çalışan güldü: \"Bu hafta üçüncü.\"\n\nFiyatlar o kadar hızlı değişiyordu ki etiketler yetişemiyordu. Rafta duran ürün aynıydı; değişen, onu ölçtüğümüz paraydı.\n\nFeridun Abi dedi ki: \"Etiketin sık değişmesi ürünün değil, paranın istikrarsızlığıdır. Değeri sabit bir şeyle ölçmezsen, her hafta yeniden şaşırırsın.\"",
+      "soru": "Siz ne dersiniz, fiyatların sürekli değişmesi ürünlerin mi, paranın mı sorunu? Servetinizi neyle ölçüyorsunuz?"
+    },
+    {
+      "id": "nakit_akisi",
+      "sira": 167,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin iki tanıdığı aynı parayı biriktirmişti. Biri parayı olduğu gibi hesapta tuttu; diğeri o parayla düzenli kira ya da temettü getiren bir varlık aldı.\n\nBir yıl sonra ikisinin durumuna bakıldı.\n\nHesapta duranın parası erimiş, eline bir şey geçmemişti. Varlığa koyanın ise hem varlığı değer kazanmış hem her ay eline bir gelir damlamıştı. Biri parayı beklemiş, öteki parayı çalıştırmıştı.\n\nFeridun Abi dedi ki: \"Enflasyonda duran para erir; gelir üreten varlık hem seni besler hem değerini korur. Paranın çalışması, senin dinlenmen demektir.\"",
+      "soru": "Sizce enflasyonda parayı hesapta mı tutmalı, yoksa gelir üreten bir varlığa mı çevirmeli?"
+    },
+    {
+      "id": "altin_gunu",
+      "sira": 168,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi'nin eşi yıllardır bir altın gününe katılırdı. \"O parayla ne olacak\" diye takılanlar olurdu.\n\nZor bir yıl geldiğinde o altın günlerinden biriken bilezikler ailenin imdadına yetişti.\n\nHer ay mecburen bir altın alınıyordu; bu zorunlu tasarruf, kimse fark etmeden biriken bir sipere dönüşmüştü. Nakit biriktirmeye çalışanlar harcamıştı; altın günü sayesinde biriktirenler koruyabildi.\n\nFeridun Abi dedi ki: \"İnsanın en zor yaptığı şey düzenli biriktirmektir; altın günü bunu hem zorunlu hem enflasyona dayanıklı kılar. Kimi âdet sanır, aslında disiplindir.\"",
+      "soru": "Altın günü gibi zorunlu tasarruf yöntemleri işe yarar mı, yoksa sadece âdet mi?"
+    },
+    {
+      "id": "enflasyona_alismak",
+      "sira": 169,
+      "tema": "enflasyon",
+      "metin": "Feridun Abi bir zam haberine kızan gence baktı. \"Eskiden herkes böyle kızardı\" dedi, \"şimdi kimse şaşırmıyor bile.\"\n\nGenç \"e alıştık artık\" dedi. Feridun Abi başını salladı.\n\nAsıl tehlike buydu: insanlar zamları normal karşılamaya başlayınca, paralarının eridiğini de fark etmez olmuştu. Alışmak, kaybı görünmez kılıyordu.\n\nFeridun Abi dedi ki: \"Enflasyonun en sinsi yanı, ona alışmandır. Şaşırmayı bıraktığın gün, korunmayı da bırakırsın. Rahatsız olmak seni tetikte tutar.\"",
+      "soru": "Peki, enflasyona alışmak bizi rahatlatıyor mu, yoksa kaybımızı görünmez mi kılıyor?"
+    },
+    {
+      "id": "feridun_ustasi",
+      "sira": 170,
+      "tema": "genel",
+      "metin": "Feridun Abi gençken bir ustanın yanında çalışmış. O usta ona zanaati değil, önce parayı öğretmiş: her akşam kasayı sayar, kazancın bir kısmını ayırmadan kepenk kapatmazmış.\n\n\"Neden hep ayırıyorsun usta?\" diye sormuş genç Feridun Abi.\n\nUsta gülmüş: \"Kazanmak herkesin harcı; asıl marifet, kazandığının bir kısmını kendine ödemek.\" Feridun Abi bugün hâlâ aynı şeyi yapıyor, çırağına da onu öğretiyor.\n\n\"Bana mesleği değil\" der Feridun Abi, \"parayla nasıl vedalaşılmayacağını öğretti o adam.\"",
+      "soru": "Siz ne dersiniz, parayı kazanmak mı zor, kazandığını elde tutmak mı? Size bunu öğreten biri oldu mu?"
+    },
+    {
+      "id": "cirak_ilk_gun",
+      "sira": 171,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin çırağı, yıllar önce dükkâna aç ve işsiz gelmiş. Feridun Abi ona ilk gün tezgâhı değil, süpürgeyi vermiş.\n\nGenç alınmış: \"Ben iş öğrenmeye geldim, temizliğe değil.\"\n\nFeridun Abi demiş ki: \"Dükkânına saygı duymayan, kasasına da duymaz. Önce buranın değerini öğren, para sonra gelir.\" Genç kaldı; yıllar sonra o dükkânın anahtarı ona teslim edildi.\n\n\"Sabreden çırak\" der Feridun Abi, \"bir gün ustanın kendisi olur.\"",
+      "soru": "Sizce bir işe en baştan mı, yoksa en tepeden mi başlamalı? Sabır bir yatırım mıdır?"
+    },
+    {
+      "id": "es_altin_gunu_koken",
+      "sira": 172,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin ilk yılları zordu; dükkân yeni, kasa boştu. O günlerde eşi, ne kadar sıkışsalar da her ay küçük bir altın alıp kenara koyarmış.\n\n\"Bu kadar dar günde altın mı?\" diye çıkışmış genç Feridun Abi.\n\nEşi sakin cevap vermiş: \"Dar gün için biriktiriyorum zaten.\" Yıllar sonra dükkânı ayakta tutan sermaye, o küçük altınlardan çıkmış.\n\n\"Benim en iyi yatırım kararımı ben vermedim\" der Feridun Abi gülümseyerek, \"o altın günlerini başlatan eşimdi.\"",
+      "soru": "En dar günde bile biriktirmek mümkün mü? Ailede parayı kim daha iyi yönetir?"
+    },
+    {
+      "id": "feridun_ilk_temettu",
+      "sira": 173,
+      "tema": "genel",
+      "metin": "Feridun Abi, gençliğinde VIOP'ta yandıktan sonra bir daha hızlı kazanç peşine düşmemiş. Kalanla, temettü ödeyen tek bir şirketten küçük bir pay almış.\n\nİlk yıl eline geçen temettü gülünç denecek kadar azmış; \"buna mı bel bağladım\" demiş.\n\nAma o küçük ödeme her yıl büyümüş, hiç durmamış. Yıllar sonra o \"gülünç\" temettü, dükkân kirasını karşılar olmuş.\n\n\"Beni zengin eden vurgun değildi\" der Feridun Abi, \"her yıl sessizce büyüyen, hiç heyecan yaratmayan o küçük ödemelerdi.\"",
+      "soru": "Peki, yavaş ama her yıl büyüyen bir gelir mi, yoksa bir seferlik büyük vurgun mu? Hangisine sabredebilirsiniz?"
+    },
+    {
+      "id": "suru_psikolojisi",
+      "sira": 174,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı bir hisseyi \"herkes alıyor, kaçıranın vay hâline\" diye almış. Ne yaptığını bilmiyor, sadece kalabalığa uymuştu.\n\nHisse düşünce Feridun Abi'ye koştu: \"Ama herkes almıştı!\"\n\nFeridun Abi sordu: \"Peki şimdi satan kim?\" Kalabalık alırken içeri girmiş, kalabalık kaçarken de en sonda kalmıştı.\n\nFeridun Abi dedi ki: \"Borsada kalabalığın peşine takılan, kalabalığın faturasını öder. Herkesin koştuğu yöne değil, neden koştuğuna bak.\"",
+      "soru": "Siz ne dersiniz, bir yatırımı \"herkes yapıyor\" diye yapmak mantıklı mı, yoksa en tehlikeli sebep mi?"
+    },
+    {
+      "id": "batik_maliyet",
+      "sira": 175,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı zarardaki bir hisseyi bir türlü satamıyordu. \"Bu kadar bekledim, şimdi çıkarsam yandığım kâr olur\" diyordu.\n\nOysa şirket düzelmiyor, para her gün eriyordu. Feridun Abi ona baktı.\n\n\"Beklediğin yıllar geri gelmez\" dedi, \"ama kalan paranı hâlâ kurtarabilirsin. Battığın parayı düşünüp daha çok batmak, zararı ikiye katlamaktır.\"\n\nFeridun Abi ekledi: \"Boş bir kuyuyu ne kadar kazdığın önemli değil; kazmayı bırakmak akıldır.\"",
+      "soru": "Sizce zararda bir yatırımı \"bu kadar bekledim\" diye tutmak mı, yoksa kalanı kurtarmak mı doğru?"
+    },
+    {
+      "id": "piyango_hayali",
+      "sira": 176,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı her hafta bileti alır, \"bir tuttursam kurtulurum\" derdi. Aynı adam ayda birkaç yüz lira biriktirmeyi \"ne olacak ki\" diye reddederdi.\n\nFeridun Abi bir gün ikisini yan yana hesapladı.\n\nYıllardır bilete verdiği para düzenli biriktirilseydi, beklediği \"talih\"in küçük bir kısmını çoktan kendi eliyle kurmuştu. Şansı beklerken disiplini harcıyordu.\n\nFeridun Abi dedi ki: \"Zengin eden talih değil, tekrar eden küçük karardır. Piyango umut satar; birikim ise gerçekten biriktirir.\"",
+      "soru": "Servet şanstan mı gelir, yoksa sıkıcı ama düzenli alışkanlıklardan mı?"
+    },
+    {
+      "id": "piramit_satis",
+      "sira": 177,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı heyecanla geldi: \"Hem ürün satacağım hem altıma ekip kuracağım, ekip büyüdükçe ben kazanacağım.\"\n\nFeridun Abi tek soru sordu: \"Para ürünü satmaktan mı, yeni insan bulmaktan mı geliyor?\"\n\nAdam durdu; asıl kazanç üründen değil, sisteme yeni para sokan insanlardan geliyordu. Kendisi de birinin \"altı\"ydı.\n\nFeridun Abi dedi ki: \"Kazancı ürün değil de yeni katılan besliyorsa, o bir iş değil sıradır; sıranın sonundakiler hep kaybeder.\"",
+      "soru": "Peki, \"ekip kur, kazanç katlansın\" modelleri gerçek iş mi, yoksa kılık değiştirmiş piramit mi?"
+    },
+    {
+      "id": "analiz_felci",
+      "sira": 178,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı yıllardır \"kesin bilgi gelsin, öyle gireceğim\" diyordu. Her rapor okur, her yorumu izler, ama bir türlü adım atmazdı.\n\nFeridun Abi ona eski bir defter gösterdi.\n\nDefterde yıllar önce \"almayı düşündüğü\" ama \"emin olamadığı\" için almadığı isimler vardı; çoğu çoktan katlanmıştı. Kesin bilgiyi beklerken fırsatı kaçırmıştı.\n\nFeridun Abi dedi ki: \"Borsada kesin bilgi yoktur; olsa herkes zengin olurdu. Marifet, belirsizliğe rağmen ölçülü adım atabilmektir.\"",
+      "soru": "Siz ne dersiniz, yatırımda \"kesin olana kadar beklemek\" güvenli mi, yoksa en pahalı erteleme mi?"
+    },
+    {
+      "id": "plansiz_yatirim",
+      "sira": 179,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı bugün altın, yarın hisse, ertesi gün döviz alıyor; her duyduğu tüyoya savruluyordu. \"Çeşitlendiriyorum\" diyordu.\n\nFeridun Abi portföyüne baktı, tek soru sordu: \"Bunu neden aldın?\"\n\nHiçbirine cevap veremedi; ne hedefi vardı ne planı, sadece rüzgârda savruluyordu. Çeşit değil, dağınıklık biriktirmişti.\n\nFeridun Abi dedi ki: \"Nereye gittiğini bilmeyene hiçbir rüzgâr yardım etmez. Yatırım, plan olmadan sadece pahalı bir heyecandır.\"",
+      "soru": "Sizce yatırımda önce hedef mi belirlemeli, yoksa fırsat gördükçe mi girmeli?"
+    },
+    {
+      "id": "asiri_cesit",
+      "sira": 180,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı \"riski dağıtıyorum\" deyip onlarca farklı hisse almıştı. Hangisi ne yapıyor, neden aldı, takip edemiyordu.\n\nBir gün Feridun Abi listeye baktı.\n\nÇok dağıtmak riski azaltmamış, sadece hiçbirini doğru izleyememesine yol açmıştı. Ne kazananı büyütebiliyor ne kaybedeni ayıklayabiliyordu.\n\nFeridun Abi dedi ki: \"Çeşitlendirme riski dağıtır ama takip edemeyeceğin kadarı körlüktür. Bilmediğin on hisse yerine, tanıdığın birkaçı daha güvenlidir.\"",
+      "soru": "Yatırımda çok sayıda mı, yoksa iyi tanıdığın az sayıda varlık mı daha akıllı?"
+    },
+    {
+      "id": "borsa_kumar_sanmak",
+      "sira": 181,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı borsayı adrenalin için kullanıyordu; her gün al-sat yapıyor, kazandığında değil, işlem yaptığında keyif alıyordu.\n\nYıl sonunda hesabı çıkardılar.\n\nHeyecan uğruna yaptığı onlarca işlem hem kazancını komisyona yedirmiş hem sinirlerini bitirmişti. Yatırımdan çok kumar oynamıştı; masaya para değil, huzurunu koymuştu.\n\nFeridun Abi dedi ki: \"Borsayı heyecan için oynayan, eninde sonunda ödeyerek eğlenir. Yatırım sıkıcı olmalı; heyecan istiyorsan başka yerde ara.\"",
+      "soru": "Peki, siz borsaya yatırım için mi, yoksa heyecan için mi bakıyorsunuz? İkisi aynı hesapta olur mu?"
+    },
+    {
+      "id": "erken_gec_kartopu",
+      "sira": 182,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin iki tanıdığı aynı işe girmişti. Biri işe başladığı ay küçük bir tutarı kenara ayırıp yatırmaya başladı; öbürü \"daha gencim, on yıl sonra yaparım\" dedi.\n\nOn yıl sonra ikisi de aynı parayı ayırmaya başladı. Ama aradaki fark bir türlü kapanmadı; erken başlayanın on yıl önce koyduğu tohum, o on yılı sessizce çalışmıştı.\n\nFeridun Abi olayı şöyle bağladı: \"Bu işte kazandıran senin yatırdığın para değil, paranın çalıştığı süre. Geç kalan daha çok yatırsa bile, kaybettiği zamanı bir daha satın alamıyor.\"",
+      "soru": "Daha değerli olan hangisi: elindeki para mı, yoksa onu çalıştırabileceğin zaman mı?"
+    },
+    {
+      "id": "temettu_geri_koy",
+      "sira": 183,
+      "tema": "genel",
+      "metin": "Feridun Abi'ye temettü gelmeye başlayınca oğlu sevindi: \"Artık bu parayla her ay kendimize güzel bir şey alırız.\"\n\nFeridun Abi gülümsedi ama parayı harcatmadı; gelen temettüyle yine aynı hisseden aldı. \"Bir yıl daha sabret\" dedi. Ertesi yıl temettü daha büyük geldi, çünkü hisse adedi artmıştı.\n\n\"Temettüyü harcarsan ağacın meyvesini yersin; doyarsın ama ağaç aynı kalır\" dedi. \"Meyveyi toprağa geri korsan, birkaç yıl sonra tek ağaç bahçe olur. Zenginlik meyveyi yemekte değil, ekmekte.\"",
+      "soru": "Eline geçen getiriyi harcamak mı, yoksa geri koyup büyütmek mi daha zor?"
+    },
+    {
+      "id": "kartopu_yokus",
+      "sira": 184,
+      "tema": "genel",
+      "metin": "Torunu bahçede kar topu yaparken Feridun Abi uzun uzun izledi. Çocuk avucundaki küçücük topu yokuştan bırakınca, top aşağı indikçe kendiliğinden büyüdü.\n\n\"Gördün mü\" dedi torununa, \"sen sadece başlattın, gerisini yokuş yaptı.\"\n\nSonra bana döndü: \"Para da böyle. Küçük diye başlamayan çok. Oysa iş büyük topu bir hamlede yuvarlamak değil; küçüğü bırakıp yokuşun, yani zamanın işini yapmasına izin vermek. Sabırsız olan, topu daha tepedeyken durdurur.\"",
+      "soru": "Küçük bir başlangıcı 'az' diye ertelemek mi, yoksa bırakıp zamana bırakmak mı akıllıca?"
+    },
+    {
+      "id": "zaman_ortak",
+      "sira": 185,
+      "tema": "genel",
+      "metin": "Bir genç Feridun Abi'ye \"ortak arıyorum, sermayem az\" diye dert yandı. \"Yanıma parası olan biri lazım, tek başıma büyüyemiyorum.\"\n\nFeridun Abi çayını karıştırdı: \"Sana hiç para istemeyen, kavga etmeyen, pay da almayan bir ortak söyleyeyim mi? Adı zaman.\"\n\nGenç şaşırdı. \"Bugün ayırdığın azıcık parayı yıllarca dokunmadan tutarsan\" dedi Feridun Abi, \"zaman senin sessiz ortağın olur, sen uyurken bile çalışır. Ama çoğu insan bu ortağı sabırsızlıktan kovuyor.\"",
+      "soru": "En sabırlı ortak zaman mı? Peki insan neden en çok onunla çalışmaya dayanamıyor?"
+    },
+    {
+      "id": "uce_bol",
+      "sira": 186,
+      "tema": "genel",
+      "metin": "\"Maaş elime geçiyor, nereye gittiğini anlamadan bitiyor\" diye yakınan gence Feridun Abi kâğıt uzattı.\n\n\"Para eline geçtiği gün üçe böl\" dedi. \"Biri zorunlu giderlerin: kira, fatura, mutfak. Biri keyfin: harca, hak ettin. Üçüncüsüne hiç dokunmayacaksın; o, gelecekteki sen.\"\n\nGenç \"ama üçüncüsüne hep ihtiyaç oluyor\" dedi. Feridun Abi başını salladı: \"İşte o yüzden ilk gün ayıracaksın. 'Kalanı biriktiririm' diyen hiç biriktiremez; çünkü ay sonunda hep bir şey kalmaz.\"",
+      "soru": "Ay sonunda kalanı biriktirmek mi, yoksa ay başında en baştan ayırmak mı işe yarar?"
+    },
+    {
+      "id": "otomatik_talimat",
+      "sira": 187,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı her ay \"bu ay mutlaka biriktireceğim\" derdi ama hiçbir ay tutmazdı. İrade söz veriyor, cüzdan dinlemiyordu.\n\nFeridun Abi ona tek bir şey yaptırdı: maaş yattığı gün belli bir tutar otomatik olarak ayrı bir hesaba geçsin diye talimat verdirdi. Artık karar her ay yeniden verilmiyordu.\n\n\"İnsan kendine fazla güvenmesin\" dedi sonra. \"İrade yorulur, canı çeker, bahane bulur. Ama kurduğun düzen yorulmaz. Zengin olan daha güçlü iradeli değil; işi iradeye bırakmayacak sistemi kurmuş olan.\"",
+      "soru": "Birikimi ayakta tutan güçlü irade mi, yoksa iradeye hiç sormayan bir düzen mi?"
+    },
+    {
+      "id": "harcama_gunlugu",
+      "sira": 188,
+      "tema": "genel",
+      "metin": "\"Kazancım fena değil ama para nereye gidiyor bilmiyorum\" diyen komşusuna Feridun Abi bir ay boyunca tek bir şey yaptırdı: harcadığı her kuruşu küçük bir deftere yazmak.\n\nAy sonunda komşu deftere baktığında sarardı. Tek tek küçük görünen kahveler, atıştırmalıklar, \"bir şey değil\" dediği ödemeler toplamda koca bir yekûn tutuyordu.\n\n\"Para gizli gitmez\" dedi Feridun Abi, \"sen bakmadığın için gizli sanırsın. Ölçmediğin şeyi yönetemezsin. Çoğu bütçe az kazanmaktan değil, nereye aktığını hiç görmemekten çöker.\"",
+      "soru": "Cüzdanı asıl boşaltan büyük harcamalar mı, yoksa hiç yazılmayan küçükler mi?"
+    },
+    {
+      "id": "yillik_gider_fonu",
+      "sira": 189,
+      "tema": "genel",
+      "metin": "Her kış araba lastiği, her güz okul masrafı, her yıl sigorta derken Feridun Abi'nin tanıdığı sürekli borca giriyordu. \"Hep beklenmedik bir gider çıkıyor\" diyordu.\n\nFeridun Abi güldü: \"Kışın gelmesi beklenmedik mi? Her yıl aynı ay çıkan gidere beklenmedik denmez; sadece hazırlanmamışsın.\"\n\nOna her ay küçük bir tutarı bu 'belli ama uzak' giderler için ayırttı. \"Büyük gider aslında bir günde doğmaz\" dedi, \"her ay azar azar birikip bir günde toplanır. Sen de öyle karşıla: bir gecede değil, on iki ayda.\"",
+      "soru": "Yılda bir gelen büyük gidere borçla mı hazırlanmalı, yoksa aylara bölüp önceden mi biriktirmeli?"
+    },
+    {
+      "id": "sinyal_satan",
+      "sira": 190,
+      "tema": "tuzak",
+      "metin": "Feridun Abi'nin genç bir tanıdığı heyecanla geldi: \"Abi bir gruba üye oldum, adam kesin sinyaller veriyor. Aylık ödüyorum ama değiyor!\"\n\nFeridun Abi tek soru sordu: \"Adam gerçekten o sinyallerle kazanıyorsa, sana neden satsın? Kendi parasını katlar, otururdu.\"\n\nGenç sustu. \"Bak\" dedi Feridun Abi, \"o adamın kesin kazancı senin ödediğin aidat. Piyasadan kazandığı belirsiz, senden kazandığı kesin. Sana tüyo satan, aslında en garanti işini zaten yapıyor: seni satıyor.\"",
+      "soru": "Gerçekten kazandıran bir sinyal olsa, sahibi onu satar mıydı, yoksa sessizce kendi mi kullanırdı?"
+    },
+    {
+      "id": "uc_gunde_kurs",
+      "sira": 191,
+      "tema": "tuzak",
+      "metin": "Bir afiş: \"Üç günde finansal özgürlük, borsayı sıfırdan öğren.\" Feridun Abi'nin tanıdığı gidip yüklü bir para ödemiş, dönüşte pek bir şey anlatamamış.\n\n\"Ne öğrendin?\" diye sordu Feridun Abi. Genç \"motive oldum abi\" dedi. \"Peki ne yapacağını öğrendin mi?\" Sessizlik.\n\nFeridun Abi başını salladı: \"Otuz yılda oturmayan bir işi üç günde satan adam, sana zanaat değil hayal satıyor. Asıl kazandığı, senin üç günde zengin olma acelen. O acele durmadıkça salonu hep dolar.\"",
+      "soru": "Üç günde 'her şeyi öğreten' bir kurs gerçekten bilgi mi satıyor, yoksa acele ve hayal mi?"
+    },
+    {
+      "id": "fenomen_arabasi",
+      "sira": 192,
+      "tema": "tuzak",
+      "metin": "Genç, telefonu Feridun Abi'ye uzattı: ekranda lüks arabasının önünde poz veren bir \"borsa hocası\". \"Bak abi, adam kazanmış; ben de onu takip edeceğim.\"\n\nFeridun Abi fotoğrafa değil, altındaki yazıya baktı: \"kursa katıl, kazanmayı öğren\" diyordu.\n\n\"Sana bir şey sorayım\" dedi. \"Bu araba borsadan mı geldi, yoksa seni o kursa yazdırmaktan mı? Kazandığını söyleyen çok; kazancının makbuzunu gösteren yok. Vitrindeki parlak şey, çoğu zaman senin cebinle alınmıştır.\"",
+      "soru": "O parlak arabayı ekrandaki kişiye alan piyasa mı, yoksa ona 'hoca' diyen takipçiler mi?"
+    },
+    {
+      "id": "pump_grubu",
+      "sira": 193,
+      "tema": "tuzak",
+      "metin": "Bir grup, aynı gün herkese aynı hisseyi fısıldadı: \"Bugün patlayacak, kaçırmayın.\" Feridun Abi'nin tanıdığı da koşup aldı; hisse önce fırladı, sonra çakıldı.\n\nFeridun Abi olayı duyunca kızmadı, açıkladı: \"Sana o hisse söylendiğinde, söyleyen çoktan almıştı. Sen alınca fiyatı onun için yükselttin. Kalabalık girsin diye bağırdılar; sen alırken onlar sattı.\"\n\n\"Herkese aynı anda duyurulan tüyo, tüyo değildir\" dedi. \"Senin alışın, bir başkasının çıkış kapısıdır.\"",
+      "soru": "Herkese birden duyurulan bir 'fırsatta' son alan kim oluyor — kapıdan giren mi, çıkan mı kazanıyor?"
+    },
+    {
+      "id": "dm_portfoy",
+      "sira": 194,
+      "tema": "tuzak",
+      "metin": "Feridun Abi'nin tanıdığı sevinerek anlattı: \"İnternetten bir hesap 'DM at, portföyünü senin yerine yöneteyim, kârı paylaşırız' dedi. Parayı gönderiyorum.\"\n\nFeridun Abi çayını bıraktı: \"Yüzünü görmediğin, adını bilmediğin birine paranı gönderiyorsun. Kâr olursa paylaşacakmış; ya kaybolursa kimi arayacaksın?\"\n\nGenç durdu. \"Parana sahip çıkmayı başkasına devredemezsin\" dedi Feridun Abi. \"Yönetmeyi bilmiyorsan çözüm, tanımadığına teslim etmek değil, azıcık öğrenmek. Dizgini bırakırsan at seni değil, tutan eli dinler.\"",
+      "soru": "Tanımadığın birine paranı yönetmesi için vermek güven mi, yoksa dizgini elden bırakmak mı?"
+    },
+    {
+      "id": "ekran_goruntusu_kar",
+      "sira": 195,
+      "tema": "tuzak",
+      "metin": "Genç, ekranı Feridun Abi'ye gösterdi: bir hesabın paylaştığı kâr ekran görüntüleri, üst üste kazançlar. \"Bu adam hiç kaybetmiyor abi.\"\n\nFeridun Abi gülümsedi: \"Sana kazandığı on işlemi gösterdi. Peki kaybettiği kaç işlemi göstermedi? Kumarhaneden çıkan da yalnız kazandığı eli anlatır, cebindeki boşluğu değil.\"\n\n\"Ekran görüntüsü seçilir\" dedi. \"İnsan kazancını çerçeveletir, zararını siler. Sen bütün filmi göremediğin için, birinin en güzel iki karesine bakıp 'hep böyle' sanıyorsun.\"",
+      "soru": "Bir kişinin sadece kazanç ekranlarına bakıp 'hiç kaybetmiyor' demek doğru mu, yoksa görmediğin kareler mi asıl hikâye?"
+    },
+    {
+      "id": "bedava_sonra_parali",
+      "sira": 196,
+      "tema": "tuzak",
+      "metin": "\"Abi bu hesap bedava tüyo veriyordu, birkaçı da tuttu\" dedi genç. \"Şimdi 'gerçek sinyaller ödemeli grupta' diyor; ben de gireceğim.\"\n\nFeridun Abi \"ilk bedava olanlar tuttu, öyle mi?\" diye sordu. \"Tabii tutacak. Balığı oltaya getirmek için önce yem serpilir. Bedava olan yem; para ödediğin an olta.\"\n\n\"Sana ilk lokmayı bedava veren\" dedi, \"ikincisini satmak içindir. Gerçekten kazandıran biri seni gruba çağırmakla değil, kendi işiyle uğraşırdı.\"",
+      "soru": "İlk birkaç 'bedava tüyo' tutması arkasındaki ödemeli grubu güvenilir yapar mı, yoksa sadece oltaya çeken yem mi?"
+    },
+    {
+      "id": "hoca_kayboldu",
+      "sira": 197,
+      "tema": "tuzak",
+      "metin": "Feridun Abi'nin tanıdığı bir genç, aylarca bir \"hocanın\" dediğini yaptı: al dediğinde aldı, tut dediğinde tuttu. Sonra bir gün hesap kapandı, hoca ortadan kayboldu; geriye zarar ve sessizlik kaldı.\n\n\"Danıştığın adam gidince\" dedi Feridun Abi, \"kararların da gitti; çünkü hiçbiri senin değildi. Sen sadece takip etmiştin.\"\n\n\"Başkasının aklıyla girdiğin yerde, o akıl çekilince tek başına kalırsın\" dedi. \"Kendi kararını veremiyorsan kazanç da senin olmaz zaten; emanet durur, ilk rüzgârda gider.\"",
+      "soru": "Başkasının sözüyle girilen bir yatırımda, o kişi kaybolunca geriye ne kalıyor?"
+    },
+    {
+      "id": "once_kendi_satti",
+      "sira": 198,
+      "tema": "tuzak",
+      "metin": "Bir hesap günlerce bir hisseyi övdü: \"kaçırmayın, uçacak.\" Kalabalık aldıkça fiyat yükseldi. En tepede o hesap sustu. Meğer kendi payını, övenlerin coşkuyla aldığı o günlerde satmış.\n\n\"Sana 'al' derken\" dedi Feridun Abi, \"kendisi çıkışa yürüyordu. Senin alışın onun satışına merdiven oldu. Bağıran çoğu zaman sana değil, kendine yol açıyor.\"\n\n\"Birinin yüksek sesle 'al' dediği yerde önce şunu sor\" diye ekledi: \"bu adam bunu söyleyerek ne kazanıyor? Cevabı 'senin alışın' ise, sen zaten geç kaldın.\"",
+      "soru": "Birisi ısrarla 'al' diye bağırıyorsa önce sorulması gereken ne: 'doğru mu', yoksa 'bunu söyleyerek o ne kazanıyor'?"
+    },
+    {
+      "id": "kendi_ogren",
+      "sira": 199,
+      "tema": "tuzak",
+      "metin": "Bütün bu tüyo, grup, hoca hikâyelerini dinleyen genç sonunda sordu: \"Abi peki ben kime güveneyim?\"\n\nFeridun Abi hiç düşünmedi: \"Kendine. Başkasının tüyosuna verdiğin parayı kendini öğretmeye ver. Bir kitap, sabırla bakılmış birkaç şirket, küçük ama kendi verdiğin kararlar...\"\n\n\"Tüyo bir kez yedirir, sonra aç bırakır\" dedi. \"Öğrenmek ömür boyu doyurur. Balığı hazır isteyen her gün birine muhtaç; tutmayı öğrenen kimseye el açmaz. Bu işte tek güvenilir hoca, kendi tecrüben.\"",
+      "soru": "Uzun vadede daha çok kazandıran hangisi: birinin hazır tüyosu mu, yoksa kendi öğrenmene yapılan yatırım mı?"
+    },
+    {
+      "id": "nakit_avans",
+      "sira": 200,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin genç bir tanıdığı sevinerek anlattı: \"Abi param bitmişti, kart bankamatikten nakit verdi, kurtardı!\"\n\nFeridun Abi gülümsemedi. \"O verdiği para senin değil\" dedi, \"en pahalı borç. Kartın alışverişe tanıdığı süreyi bile tanımaz; faizi ilk günden, hem de en yükseğinden işler.\"\n\n\"Bankamatik sana para vermedi\" diye ekledi, \"seni en tuzlu faturaya sessizce yazdırdı. Kartın nakit verdiği yer, çıkışı en pahalı kapıdır.\"",
+      "soru": "Zor günde kartın nakit avansı kurtarır mı, yoksa çukuru derinleştirir mi?"
+    },
+    {
+      "id": "kart_limiti_gelir",
+      "sira": 201,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin komşusu telefonu salladı: \"Bankam limitimi ikiye katladı, artık rahatım!\"\n\nFeridun Abi \"ne rahatı?\" diye sordu. \"Sana verdikleri senin paran değil, borç izni. Limitin büyümesi cebinin büyümesi değil, girebileceğin çukurun büyümesidir.\"\n\nBirkaç ay sonra komşu yine dardaydı; limit dolmuş, ödeme kabarmıştı. \"Bankanın cömertliği\" dedi Feridun Abi, \"senin zenginliğin değil, onun faiz iştahıdır.\"",
+      "soru": "Kredi kartı limitinin artması bir zenginlik işareti mi, yoksa daha büyük bir borç kapısı mı?"
+    },
+    {
+      "id": "kmh_eksi",
+      "sira": 202,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığının maaşı her ay yattığı gün eksiyi kapatıyor, ay ortasında yeniden eksiye düşüyordu. Banka buna \"ek hesap\" diyordu; o ise farkında bile değildi.\n\n\"Sen aslında hiç sıfıra gelmiyorsun\" dedi Feridun Abi. \"Maaşın gelir gelmez borca gidiyor, kalanla yaşıyorsun, ay bitmeden yine bankanın parasına uzanıyorsun.\"\n\n\"Ek hesap, boğulmadan yaşamayı öğreten bir tasma\" dedi. \"Rahat sanırsın; oysa her ay o tasmaya biraz daha alışırsın.\"",
+      "soru": "Sürekli eksi hesapla yaşamak bir kolaylık mı, yoksa fark edilmeyen bir tasma mı?"
+    },
+    {
+      "id": "taksitli_dugun",
+      "sira": 203,
+      "tema": "genel",
+      "metin": "Mahalleden bir genç, Feridun Abi'ye düğün planını anlattı: salon, orkestra, uçakla balayı... \"Hepsi taksitle, bir kere evleniyoruz.\"\n\nFeridun Abi kırmadı ama sordu: \"Bir gecelik düğünü iki yıl ödeyeceksin. O iki yıl, yeni yuvana koyacağın paranın da üstünden geçecek. Değer mi, iyi düşün.\"\n\nGenç sustu. \"Düğün bir gün sürer\" dedi Feridun Abi, \"ama borçla başlayan bir yuva, o borcu bitirene kadar rahat yüzü görmez.\"",
+      "soru": "Bir günlük tören için yıllarca borç ödemek mi, yoksa bütçeye göre mütevazı başlamak mı?"
+    },
+    {
+      "id": "kredi_notu",
+      "sira": 204,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı yıllarca ödemelerini savsakladı; \"küçük gecikme, ne olacak\" derdi. Sonra bir gün ev kredisi için bankaya gitti, kapıda geri çevrildi.\n\n\"Sicilin bozuk\" dediler. Meğer o küçük gecikmeler bir yere yazılıyormuş; en çok ihtiyacı olduğu gün karşısına çıktı.\n\n\"Güven sessiz birikir, sessiz tükenir\" dedi Feridun Abi. \"Vaktinde ödediğin her borç, ileride sana açılacak bir kapının anahtarını biriktirir. Onu harcayan, en muhtaç olduğu günü kapının önünde geçirir.\"",
+      "soru": "Küçük ödeme gecikmeleri gerçekten önemsiz mi, yoksa sessizce bir kapı mı kapatıyor?"
+    },
+    {
+      "id": "kart_puani",
+      "sira": 205,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin komşusu her alışverişte \"puan biriktiriyorum\" diye övünürdü. Bir gün topladığı puanla küçük bir hediye aldı, çok sevindi.\n\nFeridun Abi hesabı tersinden yaptı: \"Bu küçük hediyeyi kazanmak için ne kadar harcadın?\" Komşu düşününce yüzü asıldı; puan uğruna aylarca ihtiyacından fazlasını almıştı.\n\n\"Sana puan verenler saf değil\" dedi Feridun Abi. \"O ufak hediye, seni daha çok harcatmak için konmuş bir yem. Kazandığını sandığın yerde, çoğu zaman fazladan ödeyen sensin.\"",
+      "soru": "Puan ve mil için fazladan harcamak kazanç mı, yoksa üstü örtülü bir tuzak mı?"
+    },
+    {
+      "id": "erken_kapatma",
+      "sira": 206,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığının eline beklenmedik bir para geçti. Herkes \"kendine güzel bir şey al\" dedi; o ise doğru bankaya gidip en yüksek faizli borcunu kapattı.\n\n\"Yazık ettin, o parayla keyfini sürerdin\" dediler. Adam yalnızca gülümsedi.\n\nFeridun Abi onayladı: \"En garantili getiri, ödemediğin faizdir. Borcunu erken kapatan hiçbir riske girmeden kazanır; çünkü o faizi her ay cebinde bırakır. Bu, çoğu yatırımdan sağlam bir kârdır.\"",
+      "soru": "Eline toplu para geçse önce borcunu mu kapatırdın, yoksa keyfine mi harcardın?"
+    },
+    {
+      "id": "bilezik_iscilik",
+      "sira": 207,
+      "tema": "genel",
+      "metin": "Feridun Abi eşiyle kuyumcudaydı; eşi ince işlemeli bir bilezik beğendi. Feridun Abi fiyatı duyunca gülümsedi, sonra kenara çekip anlattı.\n\n\"Bu bileziğin bir kısmı altın, bir kısmı işçilik\" dedi. \"Alırken tamamına para veriyorsun; ama bir gün bozdurmaya gittiğinde sana yalnız altınının karşılığını verirler, işçilik uçup gider.\"\n\n\"Takı gönlü hoş eder\" dedi, \"ama biriktirmek istiyorsan sade gram altın al. Süse ödediğin fark senin değil, kuyumcunun kârıdır.\"",
+      "soru": "Biriktirmek için işlemeli takı mı, yoksa sade gram altın mı daha akıllıca?"
+    },
+    {
+      "id": "altin_mi_mevduat",
+      "sira": 208,
+      "tema": "genel",
+      "metin": "Feridun Abi'ye bir genç ikilemini açtı: \"Elimdeki parayı altına mı çevirsem, faize mi koysam?\"\n\nFeridun Abi \"ikisi de ayrı işin aleti\" dedi. \"Faiz sana rakamı büyütür ama enflasyon o rakamı içten kemirebilir. Altın çoğu zaman değeri korur ama sana her ay bir şey ödemez, öylece durur.\"\n\n\"Birini seçmeden önce şunu sor\" dedi: \"bu paraya yakında dokunacak mıyım, yoksa yıllarca unutabilir miyim? Cevabın, hangisinin senin işine geldiğini de söyler.\"",
+      "soru": "Sizi enflasyona karşı hangisi daha rahat uyutur: faizdeki mevduat mı, eldeki altın mı?"
+    },
+    {
+      "id": "sahte_ayar",
+      "sira": 209,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı, tanımadığı bir yerden ucuza altın aldı; \"kelepir yakaladım\" diye sevindi. Aylar sonra bozdurmaya gidince yüzü düştü: ayarı düşük çıktı, değeri sandığının altındaydı.\n\n\"Ucuz altının ucuz olmasının bir sebebi vardır\" dedi Feridun Abi. \"Altında pazarlık, güvendiğin kapıda olur; sokakta değil.\"\n\n\"Parayı korusun diye altın alırsın\" diye ekledi, \"ama kimden aldığın belli değilse, koruduğunu sandığın şey en baştan eksiktir.\"",
+      "soru": "Altında birkaç lira ucuzluk için tanımadık kapıya gitmek mi, yoksa güvenilir yerden almak mı?"
+    },
+    {
+      "id": "altin_ne_zaman_boz",
+      "sira": 210,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin komşusu her canı sıkıldığında bir bileziğini bozduruyordu: bir tatil, bir telefon, bir heves derken altınlar erip gitti.\n\n\"Altını zor gün için tutarsın\" dedi Feridun Abi. \"Ama her heves bir zor gün değil. Sen onu güvence diye biriktiriyorsun, sonra keyif için harcıyorsun; iki niyet birbirini yiyor.\"\n\n\"Altının değeri\" dedi, \"ne zaman bozmayacağını bilmekte. Her sıkışmada uzanılan kasa hiçbir zaman dolmaz.\"",
+      "soru": "Altını gerçek bir zorunluluk mu bozdurmalı, yoksa her heves de bir bahane mi oluyor?"
+    },
+    {
+      "id": "kagit_altin_guven",
+      "sira": 211,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin genç bir tanıdığı telefonundan altın alıp satıyordu. \"Bak abi, elime değmeden, tek tuşla\" diyordu.\n\nFeridun Abi \"kolaylık güzel\" dedi, \"ama tek tuşla aldığın şeyin arkasında gerçekten o altın var mı, onu bil. Ekrandaki rakam, avucundaki gram değildir.\"\n\n\"Yatırım için ekrandaki altın işini görür\" dedi, \"ama günün birinde 'elimde dursun' istiyorsan, neyin gerçekten senin olduğunu bileceksin. Güven, tuşta değil, sağlam kapıdadır.\"",
+      "soru": "Ekrandan tek tuşla altın mı, yoksa elinde tuttuğun fiziki altın mı içinizi daha rahat ettirir?"
+    },
+    {
+      "id": "altin_biriktirme_disiplin",
+      "sira": 212,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin eşi yıllardır her ayın sonunda küçük bir çeyrek altın alıp bir kenara koyardı. \"Az\" derdi herkes, \"ne olacak bir çeyrekle.\"\n\nYıllar sonra o küçük kutu şaşırtıcı doldu. Eşi bir kez bile büyük para ayırmamıştı; sadece hiç aksatmamıştı.\n\n\"Bak\" dedi Feridun Abi, \"ne piyasayı bildi ne zamanı kolladı. Sadece her ay aynı şeyi yaptı. Altını büyüten tek seferlik büyük alım değil, hiç bozulmayan küçük bir alışkanlık.\"",
+      "soru": "Altında kazandıran doğru zamanı beklemek mi, yoksa her ay aksatmadan azar azar almak mı?"
+    },
+    {
+      "id": "fon_yonetim_ucreti",
+      "sira": 213,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin bir tanıdığı parasını bir fona koydu, \"benim yerime yönetiyorlar, rahatım\" dedi. Yıl sonu hesabına bakınca getiriyi az buldu ama sebebini anlamadı.\n\nFeridun Abi küçük yazıyı gösterdi: \"Her yıl, sen kazan ya da kaybet, buradan bir pay kesiyorlar. Az görünür ama yıllara vurunca getirinin koca bir dilimini sessizce yer.\"\n\n\"Sana bedava hizmet yok\" dedi. \"Birine paranı yönettiriyorsan ne kadar ödediğini bileceksin. Görmediğin ücret, en pahalı ücrettir.\"",
+      "soru": "Küçük görünen yıllık yönetim ücreti gerçekten önemsiz mi, yoksa getirinizi sessizce mi yiyor?"
+    },
+    {
+      "id": "bedava_uygulama",
+      "sira": 214,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin genç tanıdığı yeni bir uygulama buldu: \"Komisyonsuz al sat, bedava abi!\"\n\nFeridun Abi \"bedava mı?\" diye sordu. \"Peki bu şirket parayı nereden kazanıyor? Kimse sana bedavaya tezgâh kurmaz. Görünen ücreti almıyorsa, görünmeyen bir yerden alıyordur.\"\n\n\"Sana 'bedava' denen yerde\" dedi, \"çoğu zaman ürün sensin. Seni daha sık al-sat yaptırırlar, farkı aradan alırlar. Hesabı sen görmezsin ama yine sen ödersin.\"",
+      "soru": "'Komisyonsuz' denen bir uygulama gerçekten bedava mı, yoksa parayı görmediğin bir yerden mi alıyor?"
+    },
+    {
+      "id": "acil_fon_tampon",
+      "sira": 215,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin iki tanıdığı aynı hafta işini kaybetti. Biri panikledi, elindeki hisseleri en dip günde zararına sattı; öbürü sakin sakin yeni iş aradı.\n\nFark neydi? İkincinin kenarda birkaç aylık gideri duruyordu. \"Param çalışmasın diye mi tutuyorsun?\" diye soranlara hep gülmüştü.\n\n\"İşte o 'çalışmayan' para\" dedi Feridun Abi, \"zor günde onun elini tuttu. Her kuruşu piyasaya gömen, bir aksilikte en kötü günde satmak zorunda kalır. Acil para kazandırmaz ama kaybettirmez.\"",
+      "soru": "Kenarda birkaç aylık gider tutmak 'çalışmayan para' mı, yoksa zor günün sigortası mı?"
+    },
+    {
+      "id": "sigorta_odemedi",
+      "sira": 216,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin esnaf bir tanıdığı yıllarca dükkân sigortasına \"boşa gidiyor\" diye kızardı. \"Her yıl ödüyorum, bir şey de olmuyor.\"\n\nBir gece su baskını dükkânı vurdu; sigortasız komşusu belini doğrultamazken o birkaç haftada toparlandı.\n\n\"Sigorta boşa giden para değil\" dedi Feridun Abi. \"Ödediğin küçük tutar, olmayacak sandığın günün faturasını devretmektir. Ucuz görünür; ta ki o gün gelene kadar. Asıl pahalı olan, hiç ödememektir.\"",
+      "soru": "Hiç olmayınca boşa gibi görünen sigorta bir israf mı, yoksa kötü günü devretmek mi?"
+    },
+    {
+      "id": "hedefsiz_para",
+      "sira": 217,
+      "tema": "genel",
+      "metin": "Feridun Abi'nin genç tanıdığı \"biriktiriyorum ama tutamıyorum\" diye yakındı. Feridun Abi tek soru sordu: \"Ne için?\"\n\nGenç durdu; cevabı yoktu. \"İşte o yüzden tutamıyorsun\" dedi Feridun Abi. \"Adı olmayan paranın sahibi çıkar; canın bir şey çekince ilk o gider. Ama 'bu, iki yıl sonraki evimin kapısı' dersen, ona kolay kolay dokunamazsın.\"\n\n\"Parayı büyüten yalnız kazanç değil\" dedi, \"ona verdiğin isimdir. Hedefi olan para yön bulur; olmayan, ilk hevese savrulur.\"",
+      "soru": "Biriktirdiğiniz paraya bir hedef koymak mı tutmanızı sağlar, yoksa hedefsiz de dayanır mısınız?"
     }
   ]
 }

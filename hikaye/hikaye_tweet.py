@@ -89,6 +89,7 @@ def load_havuz(cfg):
 
 # ---------- Telegram (admin DM, duz metin) ----------
 def tg_send(chat_id, text):
+    text = text.replace(" — ", ", ").replace(" – ", ", ").replace("—", "-").replace("–", "-")  # AI em-dash temizle
     import requests
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -134,9 +135,7 @@ def format_draft(h, gun_no, is_test=False, seri_baslik=SERI_BASLIK_DEFAULT):
         f"{seri_baslik}\n\n"
         f"{h['metin'].strip()}\n\n"
         f"{kapanis}\n"
-        f"{h['soru'].strip()}\n"
-        f"────────────────────\n"
-        f"ℹ️ Sana özel taslak; sen atmadıkça kimse görmez. İsim/rakam/emoji sana ait."
+        f"{h['soru'].strip()}"
     )
 
 
@@ -150,6 +149,76 @@ def format_bitti(seri_baslik):
     )
 
 
+# ---------- Secim: DOKUMA (tuzak haftalik garanti + her 3. gonderi enflasyon) ----------
+# 20 Eyl 2026: duz sirali -> temaya dokunmus secim. UC serit:
+#   1) TUZAK (Tema 5: sinyal/kurs/finfluencer) — her ISO-hafta HAFTANIN ILK
+#      gonderisinde 1 GARANTI, SIRALI (modulosuz), 10'u BITENE KADAR; sonra serit
+#      kendiliginden emekli olur. "one cekme" + "her hafta kesinlikle 1" (kullanici
+#      20 Eyl). tuzak_hafta = son tuzak cikan ISO-hafta anahtari; tuzak_idx imlec.
+#   2) ENFLASYON — tuzak-disi gonderilerin her 3.'u (weave_sayac % 3). Tuzak
+#      weave_sayac'a DOKUNMAZ; enfl cadence bozulmaz (tuzak haftasinda ~4 gonderi
+#      kalir, enfl yine >=1/hafta). genel/enfl modulo ile basa sarar (dongu).
+#   3) GENEL — geri kalan.
+# gun_no = toplam gonderi (sonraki_index); kapanis imzasi rotasyonu buna baglidir.
+def _listeler(hikayeler):
+    tuzak = [h for h in hikayeler if (h.get("tema") or "genel") == "tuzak"]
+    enfl = [h for h in hikayeler if (h.get("tema") or "genel") == "enflasyon"]
+    genel = [h for h in hikayeler
+             if (h.get("tema") or "genel") not in ("tuzak", "enflasyon")]
+    return genel, enfl, tuzak
+
+
+def _hafta_key(now):
+    y, w, _ = now.isocalendar()
+    return f"{y}-W{w:02d}"
+
+
+def _migrate(st, genel, enfl, tuzak):
+    """Eski state'ten dokuma imleclerine tek seferlik gecis (gonderilen_id'ye
+    gore: her seritte kac tanesi zaten gitmis). tuzak_hafta="" -> ilk uygun
+    gonderi bu hafta hemen bir tuzak cikarir (one cekme)."""
+    sent = set(st.get("gonderilen_id", []))
+    if "genel_idx" not in st or "enfl_idx" not in st:
+        st["genel_idx"] = sum(1 for h in genel if h["id"] in sent)
+        st["enfl_idx"] = sum(1 for h in enfl if h["id"] in sent)
+        st.setdefault("weave_sayac", 0)
+    if "tuzak_idx" not in st:
+        st["tuzak_idx"] = sum(1 for h in tuzak if h["id"] in sent)
+        st["tuzak_hafta"] = ""
+
+
+def sec_hikaye(hikayeler, st, now):
+    """(hikaye, tema, gun_no) doner; st imleclerini ilerletir (KAYDETMEZ)."""
+    genel, enfl, tuzak = _listeler(hikayeler)
+    _migrate(st, genel, enfl, tuzak)
+    gun_no = int(st.get("sonraki_index", 0)) + 1
+
+    # 1) TUZAK — haftada 1 GARANTI, haftanin ilk gonderisinde, bitene kadar (SIRALI)
+    hafta = _hafta_key(now)
+    if int(st.get("tuzak_idx", 0)) < len(tuzak) and st.get("tuzak_hafta") != hafta:
+        h = tuzak[int(st["tuzak_idx"])]
+        st["tuzak_idx"] = int(st["tuzak_idx"]) + 1
+        st["tuzak_hafta"] = hafta
+        return h, "tuzak", gun_no
+
+    # 2) ENFLASYON dokumasi — tuzak-disi gonderilerin her 3.'u
+    sayac = int(st.get("weave_sayac", 0)) + 1
+    if (sayac % 3 == 0) and enfl:
+        h = enfl[int(st["enfl_idx"]) % len(enfl)]
+        st["enfl_idx"] = int(st["enfl_idx"]) + 1
+        st["weave_sayac"] = sayac
+        return h, "enflasyon", gun_no
+
+    # 3) GENEL
+    if genel:
+        h = genel[int(st["genel_idx"]) % len(genel)]
+        st["genel_idx"] = int(st["genel_idx"]) + 1
+        st["weave_sayac"] = sayac
+        return h, "genel", gun_no
+
+    return None, None, gun_no
+
+
 # ---------- Main ----------
 def main():
     cfg = load_state()
@@ -159,20 +228,19 @@ def main():
         return
 
     st = cfg["state"]
-    n = len(hikayeler)
-    idx = int(st.get("sonraki_index", 0))
-
-    # PEEK: siradakini ekrana bas, cik
-    if PEEK:
-        if idx >= n:
-            print("Havuz sonunda (index >= havuz boyu).")
-            return
-        print(format_draft(hikayeler[idx], idx + 1,
-                           seri_baslik=cfg.get("seri_baslik", SERI_BASLIK_DEFAULT)))
-        return
-
     tz = ZoneInfo(cfg.get("tz", "Europe/Istanbul"))
     now = datetime.now(tz)
+
+    # PEEK: siradakini goster, state'e DOKUNMA (kopya uzerinde hesapla)
+    if PEEK:
+        st_kopya = json.loads(json.dumps(st))
+        h, tema, gun_no = sec_hikaye(hikayeler, st_kopya, now)
+        if h is None:
+            print("Secilecek hikaye yok.")
+            return
+        print(f"[tema={tema} · gun={gun_no}]")
+        print(format_draft(h, gun_no, seri_baslik=cfg.get("seri_baslik", SERI_BASLIK_DEFAULT)))
+        return
 
     if not TEST and not DRY:
         # baslangic kapisi
@@ -192,26 +260,16 @@ def main():
             except ValueError:
                 pass
 
-    # Havuz sonu kontrolu
-    if idx >= n:
-        if cfg.get("dongu", True):
-            idx = 0
-            st["tur"] = int(st.get("tur", 1)) + 1
-            log.info(f"Havuz basa sardi — tur {st['tur']}.")
-        else:
-            log.info("Havuz bitti (dongu kapali).")
-            if not DRY and not TEST:
-                tg_send(str(cfg["admin_chat_id"]),
-                        format_bitti(cfg.get("seri_baslik", "Para Hikayeleri")))
-                st["last_sent_ts"] = now.isoformat()
-                save_state(cfg)
-            return
+    # TEST/DRY state'i degistirmez (kopya); gercek gonderim st'yi ilerletir.
+    calisma_st = json.loads(json.dumps(st)) if (TEST or DRY) else st
+    h, tema, gun_no = sec_hikaye(hikayeler, calisma_st, now)
+    if h is None:
+        log.info("Secilecek hikaye yok.")
+        return
 
-    h = hikayeler[idx]
-    gun_no = idx + 1
     msg = format_draft(h, gun_no, is_test=TEST,
                        seri_baslik=cfg.get("seri_baslik", SERI_BASLIK_DEFAULT))
-    log.info(f"Secilen: gun {gun_no}/{n} — [{h['id']}] ({h.get('kaynak','')})")
+    log.info(f"Secilen: gun {gun_no} — [{h['id']}] tema={tema}")
 
     if DRY:
         log.info("DRY-RUN — gonderilmedi:\n" + msg)
@@ -224,12 +282,15 @@ def main():
     log.info("Taslak admin DM'ine gonderildi.")
 
     if not TEST:
-        st["sonraki_index"] = idx + 1
+        # sec_hikaye st imleclerini zaten ilerletti; kalan sayaclari yaz.
+        st["sonraki_index"] = int(st.get("sonraki_index", 0)) + 1
         st.setdefault("gonderilen_id", []).append(h["id"])
         st["gonderilen_id"] = st["gonderilen_id"][-200:]
         st["last_sent_ts"] = now.isoformat()
         save_state(cfg)
-        log.info(f"State guncellendi — sonraki_index={st['sonraki_index']}.")
+        log.info(f"State: gun={st['sonraki_index']} genel_idx={st['genel_idx']} "
+                 f"enfl_idx={st['enfl_idx']} tuzak_idx={st.get('tuzak_idx')} "
+                 f"weave={st['weave_sayac']}")
 
 
 if __name__ == "__main__":

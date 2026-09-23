@@ -1,12 +1,14 @@
 [Unit]
-Description=SMR Hikaye timer (Cuma/Cumartesi/Pazar Istanbul 13:00)
+Description=SMR Hikaye timer (her gun; hafta ici 13:30, hafta sonu 14:30 Istanbul)
 
 [Timer]
-# VPS UTC; Istanbul = UTC+3 (kalici, DST yok).
-# 10:00 UTC = 13:00 Istanbul. Gun-adlari UTC'de degerlendirilir; 13:00 gun
-# ortasi oldugu icin UTC gunu = Istanbul gunu (gece yarisi kaymasi yok).
-OnCalendar=Fri,Sat,Sun *-*-* 10:00:00
-# ±5 dk rastgele oynatma (13:00 -> en fazla 13:05)
+# VPS UTC; Istanbul = UTC+3 (kalici, DST yok). Gun-adlari UTC'de degerlendirilir;
+# ogleden sonra oldugu icin UTC gunu = Istanbul gunu (gece yarisi kaymasi yok).
+# Hafta ici (Pzt-Cum) 10:30 UTC = 13:30 Istanbul
+OnCalendar=Mon,Tue,Wed,Thu,Fri *-*-* 10:30:00
+# Hafta sonu (Cmt/Paz) 11:30 UTC = 14:30 Istanbul
+OnCalendar=Sat,Sun *-*-* 11:30:00
+# ±5 dk rastgele oynatma
 RandomizedDelaySec=300
 Persistent=false
 

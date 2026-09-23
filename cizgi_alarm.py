@@ -70,6 +70,7 @@ def _token():
 
 
 def tg_gonder(metin: str) -> bool:
+    metin = metin.replace(" — ", ", ").replace(" – ", ", ").replace("—", "-").replace("–", "-")  # AI em-dash temizle
     if KURU:
         print("--- KURU ÇALIŞMA, gönderilmedi ---")
         print(metin)

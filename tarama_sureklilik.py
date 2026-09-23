@@ -70,6 +70,7 @@ def _token(base: Path) -> str | None:
 
 
 def _send_to_targets(base: Path, targets: Iterable[str], message: str) -> bool:
+    message = message.replace(" — ", ", ").replace(" – ", ", ").replace("—", "-").replace("–", "-")  # AI em-dash temizle
     token = _token(base)
     if not token:
         print("[süreklilik] Telegram bot anahtarı bulunamadı.")
