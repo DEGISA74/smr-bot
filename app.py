@@ -5443,8 +5443,9 @@ def _finalize_infografik_slot():
 
         with _slot.container():
             if _html and not _html.startswith("__ERR__"):
+                # 30 Eyl 2026: 1050→1100 — X düzeni tam genişlikte ~1060px, altta kaydırma çıkıyordu (Codex denetimi)
                 _comp.html(f"<div style='background:#0a1019;border-radius:12px;'>{_html}</div>",
-                           height=1050, scrolling=True)
+                           height=1100, scrolling=True)
             else:
                 st.caption(f"İnfografik şu an üretilemedi. {(_html or '')[7:][:200]}")
     except Exception as _fe:

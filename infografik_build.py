@@ -143,9 +143,13 @@ def _render_batch_once(fig_jsons, scale):
         with open(_script, "w", encoding="utf-8") as _f:
             _f.write(_RENDER_SUBPROCESS_SRC)
         _flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        # 30 Eyl 2026 — Linux'ta alt süreç KENDİ grubunda başlamalı: _kill_tree os.killpg ile
+        # grubu öldürür; ayrı grup yoksa grup = ÇAĞIRANIN grubu → Streamlit/bot kendini
+        # SIGKILL'liyordu (VPS'te GC=F denemesi exit 137). Windows yolu değişmedi.
         _proc = subprocess.Popen(
             [sys.executable, _script, _td, str(scale), str(_KALEIDO_FIG_TIMEOUT)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=_flags,
+            start_new_session=(os.name != "nt"),
         )
         _want = set(fig_jsons)
         _t0 = time.time()
@@ -909,6 +913,27 @@ def _x_is_index(t):
     return t.startswith(("XU", "XB", "XT", "XY", "^")) or t.endswith("=F") or "-USD" in t
 
 
+def _x_sentiment_profile(t):
+    """Sentiment modelinin piyasa profili — app render_synthetic_sentiment_panel'in
+    seçtiği yolun aynısı (Codex denetimi 30 Eyl): BIST hisse/endeks → 'BIST',
+    ABD hissesi → 'US200', emtia/kripto/döviz/yabancı endeks → None (model YOK,
+    app de orada eski sentetik grafiği çizer → biz de build_ivme_fig'e düşeriz)."""
+    u = str(t).strip().upper()
+    base = u.removesuffix('.IS')
+    try:
+        from data_layer import _BIST_TICKER_SET
+        if u.endswith('.IS') or base in _BIST_TICKER_SET:
+            return 'BIST'
+    except Exception:
+        if u.endswith('.IS'):
+            return 'BIST'
+    if base.startswith(('XU', 'XB', 'XT', 'XY')):
+        return 'BIST'
+    if re.fullmatch(r'[A-Z]{1,5}([.-][A-Z]{1,2})?', u) and not u.endswith('-USD'):
+        return 'US200'
+    return None
+
+
 def _x_side(v):
     """CMF → (etiket, renk) — app YÖNÜN ZAMAN HARİTASI ile aynı ±0.05 eşiği."""
     if v is None: return None, MUT
@@ -1089,7 +1114,9 @@ def build_x_html(ticker):
             _n = 0
             while _n < min(10, len(_v) - 1) and _v[len(_v) - 1 - _n] <= 0:
                 _n += 1
-            if _n: adf = adf.iloc[:-_n]
+            if _n:
+                adf = adf.iloc[:-_n].copy()
+                adf.attrs['vol_projected'] = False   # son bar artık bugün değil → tahmin damgası geçersiz
         else:
             adf = None
     except Exception:
@@ -1101,33 +1128,64 @@ def build_x_html(ticker):
         cmf5 = float(compute_cmf(src, period=5)); cmf20 = float(compute_cmf(src, period=20))
     except Exception:
         pass
-    # Hacim / ortalama — app'in Akıllı Para hacim oyuyla AYNI yöntem (app.py ~14415):
-    # payda = bugün HARİÇ son 20 bar ortalaması; seans sürüyorsa seans_profili bu paydayı
-    # günün geçen payına indirger (yarım gün 'düşük hacim' sanılmasın).
+    # Hacim / ortalama — payda = bugün HARİÇ son 20 bar ortalaması (app.py ~14418).
+    # Seans içi yarım bar İKİ yoldan biriyle düzeltilir, İKİSİ BİRDEN ASLA:
+    #  (a) data_layer son barın hacmini zaten tam-gün TAHMİNİNE çevirdiyse
+    #      (is_last_bar_projected) → oran doğrudan; payda küçültülmez.
+    #  (b) tahmin yoksa ve bar yarımsa → seans_profili paydayı geçen paya indirger (YALNIZ BIST;
+    #      emtia/US farklı saatlerde işlem görür → düzeltme yok, 'gün tamamlanmadı' notu).
+    # 30 Eyl 2026: önce ikisi birden uygulanıyordu → XU100 0,77× yerine 2,64× (çifte düzeltme).
     vm_not = ''
     try:
+        from data_layer import is_last_bar_projected
+        _proj, _prog = is_last_bar_projected(src) if adf is not None else (False, 1.0)
         _vv = src['Volume'].astype(float)
         _v20 = float(_vv.iloc[-21:-1].mean()); _vson = float(_vv.iloc[-1])
         _kd = {}
-        try:
-            from seans_profili import rvol_paydasi
-            _pay, _kd = rvol_paydasi(_v20, src.index[-1])
-            if _pay and _pay > 0: _v20 = float(_pay)
-        except Exception:
-            pass
+        _bist = _x_sentiment_profile(ticker) == 'BIST'   # seans profili BIST saatleriyle ölçüldü
+        if not _proj and not _bist:
+            try:
+                import pandas as _pd
+                _bugun = _pd.Timestamp.now(tz='Europe/Istanbul').date()
+                if _pd.Timestamp(src.index[-1]).date() == _bugun:
+                    vm_not = 'gün tamamlanmadı'
+            except Exception:
+                pass
+        if not _proj and _bist:
+            try:
+                from seans_profili import rvol_paydasi
+                _pay, _kd = rvol_paydasi(_v20, src.index[-1])
+                if _pay and _pay > 0: _v20 = float(_pay)
+            except Exception:
+                _kd = {}
         if (_kd or {}).get('kismi') and not (_kd or {}).get('yeterli', True):
             vm = None; vm_not = 'seans yeni başladı'
         else:
             vm = _vson / _v20 if _v20 > 0 and _vson > 0 else None
-            if (_kd or {}).get('kismi'): vm_not = str(_kd.get('rozet') or '')
+            if _proj:
+                _yz = int(round(_prog * 100))
+                try:
+                    from seans_profili import yuzde_eki
+                    _ek = yuzde_eki(_yz)
+                except Exception:
+                    _ek = 'i'
+                vm_not = f"tam gün tahmini · seansın %{_yz}'{_ek}"
+            elif (_kd or {}).get('kismi'):
+                vm_not = str(_kd.get('rozet') or '')
     except Exception:
         pass
+    # Fiyat · değişim · 52H · RSI 1g–5g–14g da AYNI veriden (Codex denetimi 30 Eyl:
+    # kartlar app verisinden, 52H/RSI parquet'ten geliyordu → seans içinde ayrışıyordu).
     hdr = dict(d)
-    try:
-        _c = src['Close'].astype(float)
-        hdr['last'] = float(_c.iloc[-1]); hdr['chg'] = (float(_c.iloc[-1]) / float(_c.iloc[-2]) - 1) * 100
-    except Exception:
-        pass
+    if adf is not None:
+        try:
+            hdr = ig.compute(ticker, src)
+        except Exception:
+            try:
+                _c = src['Close'].astype(float)
+                hdr['last'] = float(_c.iloc[-1]); hdr['chg'] = (float(_c.iloc[-1]) / float(_c.iloc[-2]) - 1) * 100
+            except Exception:
+                pass
     try:
         import terazi_core
         rz = terazi_core.rsi_uc_rozeti(src['Close'], is_index=is_idx)
@@ -1137,12 +1195,16 @@ def build_x_html(ticker):
     # Alt grafik: app'in 'Para Akış İvmesi & Fiyat' + 'Sentiment & Fiyat' panelleriyle AYNI veri
     # (sentiment_chart_core). Model veri veremezse eski İvme/Denge figürüne düşer.
     pair = None
-    try:
-        from sentiment_chart_core import calculate_sentiment_chart
-        _sd = calculate_sentiment_chart(ticker, 'daily', market_profile='BIST')
-        pair = cc.build_sentiment_pair_fig(_sd, tk, is_index=is_idx, width=1060, height=300)
-    except Exception:
-        pair = None
+    _prof = _x_sentiment_profile(ticker)
+    if _prof:
+        try:
+            from sentiment_chart_core import calculate_sentiment_chart
+            _sd = calculate_sentiment_chart(ticker, 'daily', market_profile=_prof)
+            # bar ekseni: app'in endeks kuralı (XU/XB/XT/XY/^) — emtia/kripto DEĞİL
+            _bar_idx = str(ticker).upper().replace('.IS', '').startswith(('XU', 'XB', 'XT', 'XY', '^'))
+            pair = cc.build_sentiment_pair_fig(_sd, tk, is_index=_bar_idx, width=1060, height=300)
+        except Exception:
+            pair = None
     figs = _render_figs_batch({
         'chart': cc.build_fig(ticker, height=440, width=760),
         'ivme':  pair if pair is not None else cc.build_ivme_fig(ticker, width=1060, height=270, big=True),
@@ -1150,10 +1212,11 @@ def build_x_html(ticker):
     b64 = {k: base64.b64encode(v).decode() for k, v in figs.items()}
 
     s5, c5 = _x_side(cmf5)
-    left = [_x_rsi_card(rz, d),
+    left = [_x_rsi_card(rz, hdr),
             "<div style='display:flex;gap:10px;'>"
-            + _x_metric('5 gün para akışı',
-                        f"{cmf5 * 100:+.1f}%".replace('.', ',').replace('-', '−') if cmf5 is not None else '—', c5)
+            # Codex denetimi 30 Eyl: '−%51,8' gerçek para yüzdesi sanılıyordu → CMF kendi ölçeğinde (−1..+1)
+            + _x_metric('5 gün para akışı (CMF)',
+                        f"{cmf5:+.2f}".replace('.', ',').replace('-', '−') if cmf5 is not None else '—', c5)
             + _x_metric('Hacim / ortalama' + (f" · {vm_not}" if vm_not else ''),
                         f"{vm:.2f}×".replace('.', ',') if vm is not None else '—',
                         (UP if vm >= 1.2 else DN if vm < 0.8 else TXT) if vm is not None else TXT)
@@ -1171,7 +1234,7 @@ def build_x_html(ticker):
 
     # Grafik kutusu sol kolonun boyuna UZAR; 52H çubuğu kutunun dibine oturur (delik kalmaz).
     chart_box = (box('Teknik yapı · mumlar + SMA50/EMA144/SMA100/SMA200 + POC + VWAP', b64.get('chart'), grow=True)
-                 + f"<div style='margin-top:auto;'>{_x_52h(d)}</div></div>") if b64.get('chart') else ''
+                 + f"<div style='margin-top:auto;'>{_x_52h(hdr)}</div></div>") if b64.get('chart') else ''
     # Sentiment çifti kendi başlıklarını taşır → dış başlık yalnız eski figürde.
     if b64.get('ivme') and pair is not None:
         ivme_box = (f"<div style='background:{CARD};border:1px solid {LINE};border-radius:10px;padding:10px;'>"

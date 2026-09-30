@@ -58,4 +58,27 @@ Varsayılanlar ESKİ değerler → mevcut çağıranlar (bot, `build_html`) davr
 
 ---
 ## CODEX BULGULARI
-_(buraya ekle)_
+_(Codex kullanıcıya sözlü raporladı; özet aşağıda, Claude aktardı)_
+1. XU100/THYAO üretimi çalışıyor, 120 sn sınırına yaklaşmıyor. ✅
+2. Bot PNG'si eski `build_html` yolunda. ✅
+3. Üst kartlar güvenli veri katmanından, mum/RSI/52H parquet'ten → seans içinde ayrışabilir. → **DÜZELTİLDİ (tur 2)**
+4. "5 gün para akışı −%51,8" yanıltıcı (CMF×100, para yüzdesi değil). → **DÜZELTİLDİ**
+5. BIST dışı sembollerde sentiment modeli `market_profile='BIST'` ile çağrılıyor. → **DÜZELTİLDİ**
+6. 1100 px sabit genişlik + 1050 px iframe → kaydırma/boşluk riski; tarayıcı testi yok. → **iframe 1100'e çıkarıldı**; tarayıcı testi yalnız Edge/Brave.
+7. Codex rapor dosyasını onaysız değiştirmedi. ✅
+
+## TUR 2 — Claude düzeltmeleri (30 Eyl, 11:56–12:10)
+| # | Ne | Nasıl |
+|---|---|---|
+| 5 | Piyasa profili | `_x_sentiment_profile`: BIST hisse/endeks → 'BIST' · ABD hissesi → 'US200' · emtia/kripto/döviz → model YOK, eski `build_ivme_fig` (app'in seçtiği yolun aynısı). Bar ekseni endeks kuralı app'teki gibi yalnız XU/XB/XT/XY/^. |
+| 4 | CMF etiketi | "5 gün para akışı (CMF)" · değer kendi ölçeğinde (−0,35), yüzde değil. |
+| 3 | Tek kaynak | Fiyat · değişim · 52H · RSI 1g–5g–14g artık `ig.compute(ticker, get_safe_historical_data)` → kartlarla aynı veri. Mum grafiği hâlâ parquet (bot da kullanıyor, dokunulmadı). |
+| 6 | iframe | app.py `_comp.html(... height=1100)` (tek satır). |
+
+**Tur 2'de bulunan YENİ hatalar (Codex denetlemeli):**
+- **A · Hacim çifte düzeltme (görselde düzeltildi, APP'TE AÇIK).** `data_layer.apply_volume_projection` seans içi son barı zaten TAM GÜN TAHMİNİNE çeviriyor (`is_last_bar_projected` → True). Görsel ayrıca `seans_profili.rvol_paydasi` ile paydayı küçültüyordu → XU100 0,77× yerine **2,64×**. Görselde: tahmin varsa payda küçültülmez; tahmin yoksa ve BIST ise küçültülür; BIST dışında düzeltme yok ("gün tamamlanmadı" notu). ⚠ **app.py ~14418 (Akıllı Para hacim oyu) AYNI çifte düzeltmeyi yapıyor olabilir** — `_gs_df` `get_safe_historical_data`'dan geliyor (analysis_core ~1800) ve payda `_seans_rvol_paydasi` ile ayrıca küçültülüyor. Seans içinde hacim oyu şişik "evet" verebilir. Düzeltilmedi — kullanıcı onayı gerekli.
+- **B · kaleido alt süreci ana süreci öldürüyordu (Linux).** `_render_batch_once` alt süreci Linux'ta ayrı grup açmadan başlatıyordu; `_kill_tree` → `os.killpg(getpgid(child))` = ÇAĞIRANIN grubu → Streamlit/cron süreci kendini SIGKILL'liyordu (VPS'te GC=F denemesi exit 137). Düzeltme: `start_new_session=(os.name != "nt")`. Windows değişmedi. Bot cron'u (`infografik_telegram.py XU100`, 16:05 UTC) aynı yoldan geçiyor → bu akşamdan itibaren düzeltmeli koşar.
+
+**VPS (tur 2):** yedek `~/smr/_yedek/20260930_115616_xgorsel2` (infografik_build.py + app.py). Gönderilen = VPS dosyası + yalnız tur 2 farkları (app.py'de tek satır). Test (VPS, ayrı süreç): GC=F / XU100 / THYAO / GC=F → hepsi 2 görsel, hata yok. Render süresi VPS'te 7–46 sn oynuyor (2 çekirdek, Chrome soğuk açılış; artık Chrome kalıntısı yok). Restart → health 200, patron-radar / free-showcase / smr-bot active.
+
+**Açık kalanlar:** (A) app hacim oyu çifte düzeltme · Firefox/Safari zoom testi · render süresi VPS'te 60 sn'yi geçerse app'in 120 sn sınırına yaklaşır — izlenmeli.
