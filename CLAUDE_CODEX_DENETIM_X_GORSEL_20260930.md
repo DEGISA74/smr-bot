@@ -81,4 +81,13 @@ _(Codex kullanıcıya sözlü raporladı; özet aşağıda, Claude aktardı)_
 
 **VPS (tur 2):** yedek `~/smr/_yedek/20260930_115616_xgorsel2` (infografik_build.py + app.py). Gönderilen = VPS dosyası + yalnız tur 2 farkları (app.py'de tek satır). Test (VPS, ayrı süreç): GC=F / XU100 / THYAO / GC=F → hepsi 2 görsel, hata yok. Render süresi VPS'te 7–46 sn oynuyor (2 çekirdek, Chrome soğuk açılış; artık Chrome kalıntısı yok). Restart → health 200, patron-radar / free-showcase / smr-bot active.
 
+## TUR 3 — SMART MONEY RADAR ALGORİTMİK OKUMA (30 Eyl, 12:50)
+- Başlık altındaki alt satır (kartları tekrar ediyordu) KALDIRILDI → yerine 3 cümlelik **kural tabanlı özet** kutusu (`_x_ozet`, AI değil; aynı veri → aynı metin): (1) SMA50 konumu + 5g/20g CMF ilişkisi, şiddet kovalı (±0,05 / 0,15 / 0,30); (2) ana yöne ters ("Ama") ya da destekleyen ("Üstelik") gözlemler: app para akış barları (3 gün küçülme/büyüme, işaret dönüşü), RSI uç rozeti, son kapanış yeri (+hacim ≥1,5×), hacim-fiyat uyumu, sentiment-fiyat ayrışması; (3) duruma özel koşul + hisseye özel SMA50 seviyesi.
+- Kutunun sağ üstünde **app Kanıt Terazisi** satırı: görsel `<!--XTERAZI-->` yer tutucu bırakır, app.py `_finalize_infografik_slot` `x_terazi_satir(_ter_ig)` ile doldurur (ekran_v2 enjeksiyon kalıbı).
+- Veri toplama `_x_data`'ya ayrıldı (özet grafik çizmeden üretilebilsin).
+- X düzenine ayrı uyarı kutusu `_x_notice` (2 tam satır, iki yana yaslı, kullanıcı metni). Eski `_notice_badge` bot/eski düzende aynen.
+- app.py iframe 1100 → 1200.
+- VPS: yedek `_yedek/20260930_125021_xgorsel3`; VPS'te `get_narrative_name` YOK → özet adı ticker koduna düşer (XU100 yerine "BIST100" yazmaz) — bekleyen `ticker_short_names` işi gidince düzelir.
+- **Denetlenecek:** özet cümleleri AL/SAT dili içermemeli; "Ama/Üstelik" seçimi yön mantığı; 3 cümlenin hisse evreninde kalıp tekrarına düşüp düşmediği (8 hisse denendi); terazi satırı ile app kartının aynı hükmü göstermesi.
+
 **Açık kalanlar:** (A) app hacim oyu çifte düzeltme · Firefox/Safari zoom testi · render süresi VPS'te 60 sn'yi geçerse app'in 120 sn sınırına yaklaşır — izlenmeli.

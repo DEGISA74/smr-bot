@@ -969,13 +969,8 @@ def _x_header(tk, d, cmf5, rz, above50, rvol):
         title = f"{lead}, ana trend {'yukarı' if above50 else 'aşağı'}"
     else:
         title = lead
-    parts = [{'alıcı': 'Kısa vade alıcıda', 'satıcı': 'Kısa vade satıcıda'}.get(side, 'Kısa vade dengede')]
-    if above50 is not None:
-        parts.append(f"ana trend {'yukarı' if above50 else 'aşağı'}")
-    if rvol is not None:
-        _rv = f"{rvol:.2f}".replace('.', ',')
-        parts.append(f"hacim ortalamanın altında ({_rv}×)" if rvol < 0.8 else
-                     f"hacim ortalamanın üstünde ({_rv}×)" if rvol > 1.2 else f"hacim normal ({_rv}×)")
+    # 30 Eyl 2026 — alt satır ("Kısa vade satıcıda · ana trend aşağı · hacim ...") KALDIRILDI:
+    # kartları tekrar ediyordu (kullanıcı). Yerine başlığın altında ALGORİTMİK OKUMA kutusu (_x_ozet).
     chg_clr = UP if d['chg'] >= 0 else DN; arrow = '▲' if d['chg'] >= 0 else '▼'
     price = _x_tr_num(d['last']); chg = f"{abs(d['chg']):.2f}".replace('.', ',')
     return (
@@ -985,8 +980,7 @@ def _x_header(tk, d, cmf5, rz, above50, rvol):
         f"<div style='font-size:26px;font-weight:700;white-space:nowrap;'>{price} "
         f"<span style='color:{chg_clr};font-size:19px;'>{arrow} %{chg}</span></div></div>"
         f"<div style='flex:1;min-width:0;border-left:5px solid {sclr};padding-left:18px;'>"
-        f"<div style='font-size:29px;font-weight:800;line-height:1.2;'>{title}</div>"
-        f"<div style='font-size:16px;color:{MUT};margin-top:4px;'>{' · '.join(parts)}</div></div>"
+        f"<div style='font-size:29px;font-weight:800;line-height:1.2;'>{title}</div></div>"
         f"<div style='flex:0 0 auto;font-size:15px;font-weight:800;color:{INFO};text-align:right;line-height:1.25;'>"
         f"SMART MONEY<br>RADAR</div></div>")
 
@@ -1095,8 +1089,9 @@ def _x_52h(d):
         return ''
 
 
-def build_x_html(ticker):
-    """X paylaşım düzeni — app içi widget (st.html) için iç div döndürür."""
+def _x_data(ticker):
+    """X düzeninin TÜM rakamları (grafik çizmeden). build_x_html ve özet önizlemesi
+    aynı veriyi kullansın diye ayrı. Döner: dict | None."""
     df = ig.load(ticker)
     if df is None or len(df) < 60: return None
     d = ig.compute(ticker, df)
@@ -1192,17 +1187,297 @@ def build_x_html(ticker):
     except Exception:
         rz = None
     above50, days50 = _x_sma50_run(src)
-    # Alt grafik: app'in 'Para Akış İvmesi & Fiyat' + 'Sentiment & Fiyat' panelleriyle AYNI veri
-    # (sentiment_chart_core). Model veri veremezse eski İvme/Denge figürüne düşer.
-    pair = None
+    # Alt grafik verisi: app'in 'Para Akış İvmesi & Fiyat' + 'Sentiment & Fiyat' panelleriyle
+    # AYNI (sentiment_chart_core). Model yoksa (emtia/kripto) None → eski İvme/Denge figürü.
+    sd = None
     _prof = _x_sentiment_profile(ticker)
     if _prof:
         try:
             from sentiment_chart_core import calculate_sentiment_chart
-            _sd = calculate_sentiment_chart(ticker, 'daily', market_profile=_prof)
+            sd = calculate_sentiment_chart(ticker, 'daily', market_profile=_prof)
+        except Exception:
+            sd = None
+    return dict(ticker=ticker, tk=tk, df=df, src=src, d=d, hdr=hdr, cmf5=cmf5, cmf20=cmf20,
+                vm=vm, vm_not=vm_not, rz=rz, above50=above50, days50=days50, sd=sd,
+                is_idx=is_idx)
+
+
+def _x_tr(x, n=2):
+    return f"{x:.{n}f}".replace('.', ',')
+
+
+def _x_liste(parts):
+    parts = [p for p in parts if p]
+    if len(parts) <= 1: return ''.join(parts)
+    return ', '.join(parts[:-1]) + ' ve ' + parts[-1]
+
+
+def _x_ozet(D):
+    """ALGORİTMİK OKUMA — 3 cümle, KURAL TABANLI (AI değil; aynı veri → aynı metin).
+    1) DURUM: SMA50 konumu + 5g/20g para akışı ilişkisi.
+    2) NE DEĞİŞİYOR: ana yöne TERS işaretler ("Ama ...") yoksa onu güçlendirenler
+       ("Üstelik ..."): akış ivmesi (app barları), RSI, son kapanış yeri, hacim-fiyat
+       uyumu, sentiment-fiyat ayrışması. Hepsi GÖZLEM — tahmin/al-sat yok.
+    3) KOŞUL: teyit/geçersizlik için ne görülmeli.
+    Girdi = _x_data çıktısı (görseldeki kartlarla aynı rakamlar)."""
+    try:   # yerel import: VPS'te ticker_short_names.get_narrative_name henüz yok → ticker koduna düş
+        from ticker_short_names import get_narrative_name as _gnn
+        name = _gnn(D['ticker']) or D['tk']
+    except Exception:
+        name = D['tk']
+    src = D['src']; c = src['Close'].astype(float)
+    s5, _ = _x_side(D['cmf5']); s20, _ = _x_side(D['cmf20'])
+    above, n50, vm = D['above50'], D['days50'], D['vm']
+
+    # 1) DURUM
+    if above is None:
+        konum = f"{name} için ortalama konumu net değil"
+    else:
+        konum = f"{name} {n50} gündür SMA50'nin {'üzerinde' if above else 'altında'}"
+    # Cümle RAKAMDAN kurulur (kalıp tekrarı olmasın — aynı veri → aynı cümle, rastgelelik YOK):
+    # 5g şiddeti |CMF5| ≥0,30 sert · ≥0,15 belirgin · altı hafif; 20g 'denge' ise hangi tarafa
+    # yattığı (±0,02) ayrıca söylenir. "ama" KULLANILMAZ — 2. cümle "Ama ..." ile başlayabilir.
+    c5, c20 = D['cmf5'], D['cmf20']
+    if c5 is None or c20 is None:
+        akis = "para akışı verisi eksik"
+    else:
+        sev = 'sert' if abs(c5) >= 0.30 else 'belirgin' if abs(c5) >= 0.15 else 'hafif'
+        p5 = {'satıcı': f"son 5 günde {sev} bir para çıkışı var (CMF {_x_tr(c5).replace('-', '−')})",
+              'alıcı':  f"son 5 günde {sev} bir para girişi var (CMF +{_x_tr(c5)})",
+              'denge':  "son 5 günde akış dengede"}[s5]
+        if s20 == 'denge':
+            p20 = ("20 günlük akış ise dengede, hafif artıda" if c20 > 0.02 else
+                   "20 günlük akış ise dengede, hafif eksiye kaymış" if c20 < -0.02 else
+                   "20 günlük akış tam dengede")
+        elif s20 == 'alıcı':
+            p20 = "20 günlük birikim sürüyor" if s5 != 'satıcı' else "20 günlük birikim ise sürüyor"
+        else:
+            p20 = "20 günlük akış da satıcıda" if s5 == 'satıcı' else "20 günlük akış ise hâlâ satıcıda"
+        sonuc = {
+            ('satıcı', 'denge'):  {'sert': "yani satış henüz yapıya oturmadı",
+                                   'belirgin': ("birikim tarafı henüz bozulmadı" if c20 > 0.02 else
+                                                "dağıtıma dönüp dönmediği henüz belli değil" if c20 < -0.02 else
+                                                "kalıcı dağıtım işareti yok"),
+                                   'hafif': ''}[sev],
+            ('satıcı', 'satıcı'): "satış yapıya oturmuş görünüyor",
+            ('satıcı', 'alıcı'):  "kısa vadeli kâr satışı görünümünde",
+            ('alıcı', 'alıcı'):   "birikim yapıya oturuyor",
+            ('alıcı', 'satıcı'):  "dönüş henüz teyitsiz",
+            ('denge', 'denge'):   "net bir yön yok",
+        }.get((s5, s20), '')
+        akis = f"{p5}; {p20}" + (f", {sonuc}" if sonuc else '')
+        if s5 == 'denge' and s20 == 'denge':
+            akis = "para akışı 5 ve 20 günde de dengede, net bir yön yok"
+    s1 = f"{konum} ve {akis}."
+    s1 = s1[0].upper() + s1[1:]
+    yon = (1 if above else -1 if above is False else 0) + {'alıcı': 1, 'satıcı': -1}.get(s5, 0)
+    yon = 1 if yon > 0 else -1 if yon < 0 else 0
+
+    # 2) NE DEĞİŞİYOR — (yön, önem, metin)
+    sig = []
+    try:   # akış ivmesi: app'in 'Para Akış İvmesi' barları (yoksa aynı motorun eski serisi)
+        if D['sd'] is not None and 'MF_Smooth' in D['sd'].columns:
+            m = [float(x) for x in D['sd']['MF_Smooth'].dropna().tail(4)]
+        else:
+            from indicators import compute_flow_momentum
+            _mf, _ = compute_flow_momentum(src)
+            m = [float(x) for x in _mf.dropna().tail(4)]
+        if len(m) >= 4:
+            # Barlar (app 'Para Akış İvmesi') ile 5g CMF farklı ölçülerdir; yönleri ÇELİŞİRSE
+            # "alış/satış ivmesi" deme (okuyan 'hangi alış?' der) → barları olduğu gibi tarif et.
+            a = [abs(x) for x in m[-3:]]
+            if all(x < 0 for x in m[-3:]) and a[0] > a[1] > a[2]:
+                sig.append((1, 3, "para akış barları 3 gündür küçülüyor (hâlâ eksi)"
+                            + ("" if s5 == 'alıcı' else ", satış ivmesi azalıyor")))
+            elif all(x < 0 for x in m[-3:]) and a[0] < a[1] < a[2]:
+                sig.append((-1, 3, "para akış barları 3 gündür eksi yönde büyüyor"
+                            + ("" if s5 == 'alıcı' else ", satış ivmesi hızlanıyor")))
+            elif all(x > 0 for x in m[-3:]) and a[0] > a[1] > a[2]:
+                sig.append((-1, 3, "para akış barları 3 gündür küçülüyor (hâlâ artıda)"
+                            + ("" if s5 == 'satıcı' else ", alış ivmesi zayıflıyor")))
+            elif all(x > 0 for x in m[-3:]) and a[0] < a[1] < a[2]:
+                sig.append((1, 3, "para akış barları 3 gündür artı yönde büyüyor"
+                            + ("" if s5 == 'satıcı' else ", alış ivmesi güçleniyor")))
+            elif m[-2] < 0 <= m[-1]:
+                sig.append((1, 4, "para akış ivmesi artıya döndü"))
+            elif m[-2] > 0 >= m[-1]:
+                sig.append((-1, 4, "para akış ivmesi eksiye döndü"))
+    except Exception:
+        pass
+    rz = D['rz']
+    if rz and rz.get('mod') == 'dip':
+        _g = f" ({rz['gun']} gündür)" if rz.get('gun', 0) > 1 else ''
+        sig.append((1, 4, f"RSI {rz['rsi']:.0f} ile uç aşırı satımda{_g}"))
+    elif rz and rz.get('mod') == 'tepe':
+        _g = f" ({rz['gun']} gündür)" if rz.get('gun', 0) > 1 else ''
+        sig.append((-1, 4, f"RSI {rz['rsi']:.0f} ile momentum ucunda{_g}"))
+    else:
+        try:
+            r = float(D['hdr'].get('rsi'))
+            if r <= 30:   sig.append((1, 2, f"RSI {r:.0f} ile aşırı satım bölgesinde"))
+            elif r >= 70: sig.append((-1, 2, f"RSI {r:.0f} ile aşırı alım bölgesinde"))
+        except Exception:
+            pass
+    try:
+        h, l, cl = (float(src[k].iloc[-1]) for k in ('High', 'Low', 'Close'))
+        cp = (cl - l) / (h - l) * 100 if h > l else 50
+        _hv = vm is not None and vm >= 1.5    # hacimli kapanış ayrı (daha güçlü) gözlem
+        if cp >= 70:
+            sig.append((1, 4, f"son seans yüksek hacimle ({_x_tr(vm)}×) alıcı tarafında kapandı") if _hv
+                       else (1, 2, "son seans alıcı tarafında kapandı"))
+        elif cp <= 30:
+            sig.append((-1, 4, f"son seans yüksek hacimle ({_x_tr(vm)}×) satıcı tarafında kapandı") if _hv
+                       else (-1, 2, "son seans satıcı tarafında kapandı"))
+    except Exception:
+        pass
+    try:   # 52H uçları — yön taşımaz, yalnız 2. cümle boş kalırsa bilgi olarak girer
+        p52 = float(D['hdr'].get('pos52'))
+        if p52 <= 15:   sig.append((0, 1, f"fiyat yıllık aralığın dibine yakın (%{p52:.0f})"))
+        elif p52 >= 85: sig.append((0, 1, f"fiyat yıllık zirveye yakın (%{p52:.0f})"))
+    except Exception:
+        pass
+    try:
+        chg5 = (float(c.iloc[-1]) / float(c.iloc[-6]) - 1) * 100
+        if vm is not None:
+            if chg5 < -1 and vm < 0.8:    sig.append((1, 2, f"düşüş hacimsiz ({_x_tr(vm)}×), panik satışı yok"))
+            elif chg5 < -1 and vm >= 1.5: sig.append((-1, 3, f"düşüş hacimli ({_x_tr(vm)}×), satış baskısı gerçek"))
+            elif chg5 > 1 and vm >= 1.3:  sig.append((1, 3, f"yükseliş hacimle destekleniyor ({_x_tr(vm)}×)"))
+            elif chg5 > 1 and vm < 0.8:   sig.append((-1, 2, f"yükseliş hacimsiz ({_x_tr(vm)}×)"))
+    except Exception:
+        pass
+    try:
+        sd = D['sd']
+        if sd is not None and 'Sentiment' in sd.columns and len(sd) >= 6:
+            dS = float(sd['Sentiment'].iloc[-1]) - float(sd['Sentiment'].iloc[-6])
+            dP = (float(sd['Price'].iloc[-1]) / float(sd['Price'].iloc[-6]) - 1) * 100
+            if dP < -1 and dS >= 0.5:  sig.append((1, 3, "fiyat düşerken sentiment puanı toparlanıyor"))
+            elif dP > 1 and dS <= -0.5: sig.append((-1, 3, "fiyat yükselirken sentiment puanı geriliyor"))
+    except Exception:
+        pass
+
+    bilgi = [s for s in sig if s[0] == 0]
+    sig = [s for s in sig if s[0] != 0]
+    if yon:
+        ters = sorted([s for s in sig if s[0] == -yon], key=lambda s: -s[1])
+        ayni = sorted([s for s in sig if s[0] == yon], key=lambda s: -s[1])
+        if ters:
+            s2 = "Ama " + _x_liste([s[2] for s in ters[:3]]) + "."
+        elif ayni:
+            s2 = "Üstelik " + _x_liste([s[2] for s in (ayni + bilgi)[:2]]) + "."
+        elif bilgi:
+            s2 = bilgi[0][2][0].upper() + bilgi[0][2][1:] + "."
+        else:
+            s2 = ''
+    else:   # yön karışık (ör. trend yukarı, kısa vade satıcı) → iki tarafı da say
+        up = sorted([s for s in sig if s[0] > 0], key=lambda s: -s[1])
+        dn = sorted([s for s in sig if s[0] < 0], key=lambda s: -s[1])
+        parts = []
+        if up: parts.append("lehte: " + _x_liste([s[2] for s in up[:2]]))
+        if dn: parts.append("aleyhte: " + _x_liste([s[2] for s in dn[:2]]))
+        if parts:
+            s2 = "Kısa vadede " + "; ".join(parts) + "."
+        elif bilgi:
+            s2 = bilgi[0][2][0].upper() + bilgi[0][2][1:] + "."
+        else:
+            s2 = ''
+        ters = []
+
+    # 3) KOŞUL — duruma özel + hisseye özel SMA50 SEVİYESİ (somut, kalıp tekrarını kırar)
+    try:
+        _s50 = float(c.rolling(50).mean().iloc[-1])
+        _lv = (f"{_s50:,.0f}".replace(',', '.') if _s50 >= 1000 else     # 13.834
+               _x_tr(_s50, 1) if _s50 >= 100 else _x_tr(_s50))           # 302,4 · 45,12
+        m50 = f"SMA50 ({_lv})"
+    except Exception:
+        m50 = "SMA50"
+    if yon < 0:
+        s3 = (f"Teyit için 5 günlük akışın artıya dönmesi ve fiyatın hacimle {m50} seviyesine doğru "
+              "toparlanması gerekiyor; gelmezse tepki sınırlı kalabilir." if ters else
+              f"Akışta hacimli bir dönüş olmadan ve {m50} geri alınmadan baskı sürebilir.")
+    elif yon > 0:
+        s3 = (f"Yükselişin sürmesi için akışın artıda kalması ve {m50} üzerinde tutunması gerekiyor; "
+              "zayıflık sürerse geri çekilme derinleşebilir." if ters else
+              f"{m50} üzerinde tutunduğu ve akış artıda kaldığı sürece yapı olumlu; hacim düşerse yükseliş yorulabilir.")
+    elif above:     # trend yukarı, kısa vade satıcı → geri çekilme
+        s3 = (f"Geri çekilmenin {m50} üzerinde durması ve akışın yeniden artıya dönmesi yapıyı korur; "
+              "bu seviye kırılırsa tablo zayıflar.")
+    elif above is False:   # trend aşağı, kısa vade alıcı → toparlanma denemesi
+        s3 = (f"Toparlanmanın teyidi için {m50} seviyesinin geri alınması ve 20 günlük akışın da dönmesi "
+              "gerekiyor; gelmezse tepki sınırlı kalabilir.")
+    else:
+        s3 = "Yön için 5 günlük akışın bir tarafa net geçmesi ve hacimli bir kapanış bekleniyor."
+    return ' '.join(x for x in (s1, s2, s3) if x)
+
+
+def _x_ozet_kutu(D):
+    """ALGORİTMİK OKUMA kutusu — başlığın altında, tam genişlik. Sağ üstte Kanıt Terazisi
+    satırı için YER TUTUCU: terazi app'in ana thread'inde hesaplanır, görsel arka planda
+    üretilir → app.py _finalize_infografik_slot '<!--XTERAZI-->'yi x_terazi_satir ile doldurur
+    (ekran_v2 enjeksiyonuyla aynı kalıp). Dolmazsa görünmez yorum olarak kalır."""
+    try:
+        metin = _x_ozet(D)
+    except Exception:
+        return ''
+    if not metin:
+        return ''
+    return (f"<div style='background:{CARD};border:1px solid {INFO}55;border-radius:10px;"
+            f"padding:10px 14px;margin-bottom:14px;'>"
+            f"<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:4px;'>"
+            f"<span style='font-size:13px;font-weight:800;color:{INFO};letter-spacing:0.04em;'>"
+            f"SMART MONEY RADAR ALGORİTMİK OKUMA</span><!--XTERAZI--></div>"
+            f"<div style='font-size:16px;line-height:1.5;color:{TXT};'>{metin}</div></div>")
+
+
+def _x_notice():
+    """X düzeni zorunlu uyarı — İKİ TAM SATIR (30 Eyl 2026, kullanıcı metni). Her satır ayrı
+    blok + text-align-last:justify → kutunun genişliğini doldurur. Eski _notice_badge bot/eski
+    düzende AYNEN kalır."""
+    _l = (f"font-size:22px;line-height:1.4;color:{MUT};letter-spacing:0.2px;"
+          f"text-align:justify;text-align-last:justify;white-space:nowrap;")
+    return (f"<div style='background:{CARD2};border:1px solid {GOLD}44;border-radius:10px;"
+            f"padding:10px 16px;flex:1;'>"
+            f"<div style='{_l}'><b style='color:{GOLD};'>DİKKAT.</b> BU GÖRSEL YAPAY ZEKA ÜRETİMİ DEĞİLDİR: "
+            f"60.000 SATIRLIK ALGORİTMAMIN ÇIKTISIDIR.</div>"
+            f"<div style='{_l}'>HER HAKKI MAHFUZDUR. EĞİTİM AMAÇLIDIR, YATIRIM TAVSİYESİ DEĞİLDİR. "
+            f"<b style='color:{INFO};'>#SMARTMONEYRADAR</b></div></div>")
+
+
+def x_terazi_satir(ter):
+    """App'in Kanıt Terazisi hükmü → özet kutusunun sağ üstüne tek satır.
+    ter = terazi_core.build_terazi çıktısı (app _ekran_v2_paketi['terazi'])."""
+    try:
+        ter = ter or {}
+        if ter.get('sistemik'):
+            huk, clr = 'Piyasa şoku · hüküm askıda', '#a78bfa'
+        else:
+            huk = {'yukari': 'Yukarı ağır basıyor', 'asagi': 'Aşağı ağır basıyor'}.get(ter.get('yon'), 'Dengede')
+            clr = {'yukari': UP, 'asagi': DN}.get(ter.get('yon'), MUT)
+            if ter.get('celiski'):
+                huk += ' · çelişkili'
+        vs = ter.get('votes') or []
+        nb = sum(1 for v in vs if v.get('yon') == 'boga'); na = sum(1 for v in vs if v.get('yon') == 'ayi')
+        return (f"<span style='font-size:13px;white-space:nowrap;'>"
+                f"<span style='color:{MUT};'>Kanıt terazisi: </span>"
+                f"<b style='color:{clr};'>{huk}</b>"
+                f"<span style='color:{MUT};'> · </span><b style='color:{UP};'>{nb} ▲</b> "
+                f"<b style='color:{DN};'>{na} ▼</b></span>")
+    except Exception:
+        return ''
+
+
+def build_x_html(ticker):
+    """X paylaşım düzeni — app içi widget (st.html) için iç div döndürür."""
+    D = _x_data(ticker)
+    if D is None: return None
+    tk, src, hdr, rz = D['tk'], D['src'], D['hdr'], D['rz']
+    cmf5, cmf20, vm, vm_not = D['cmf5'], D['cmf20'], D['vm'], D['vm_not']
+    above50, days50 = D['above50'], D['days50']
+    pair = None
+    if D['sd'] is not None:
+        try:
             # bar ekseni: app'in endeks kuralı (XU/XB/XT/XY/^) — emtia/kripto DEĞİL
             _bar_idx = str(ticker).upper().replace('.IS', '').startswith(('XU', 'XB', 'XT', 'XY', '^'))
-            pair = cc.build_sentiment_pair_fig(_sd, tk, is_index=_bar_idx, width=1060, height=300)
+            pair = cc.build_sentiment_pair_fig(D['sd'], tk, is_index=_bar_idx, width=1060, height=300)
         except Exception:
             pair = None
     figs = _render_figs_batch({
@@ -1245,12 +1520,13 @@ def build_x_html(ticker):
     # dar iframe'de grafik küçülüp altında boşluk kalmaz.
     return f"""<div id="smrx" style="width:1100px;box-sizing:border-box;background:{BG};padding:20px;color:{TXT};font-family:'Segoe UI',Arial,sans-serif;border-radius:12px;">
   {_x_header(tk, hdr, cmf5, rz, above50, vm)}
+  {_x_ozet_kutu(D)}
   <div style="display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:stretch;">
     <div style="display:flex;flex-direction:column;justify-content:space-between;gap:10px;">{left_html}</div>
     <div>{chart_box}</div>
   </div>
   <div style="margin-top:14px;">{ivme_box}</div>
-  <div style="margin-top:12px;display:flex;">{_notice_badge(fs=12)}</div>
+  <div style="margin-top:12px;display:flex;">{_x_notice()}</div>
 </div>
 <script>(function(){{var e=document.getElementById('smrx');if(!e)return;
 function f(){{var w=(document.documentElement.clientWidth||window.innerWidth)-4;e.style.zoom=Math.min(1,w/1100);}}

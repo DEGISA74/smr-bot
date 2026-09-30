@@ -5438,14 +5438,18 @@ def _finalize_infografik_slot():
                     # 9 Ağu 2026 — infografik üstündeki "İLK EŞİK/İLK DESTEK" kutusu kaldırıldı.
                     _html = _html.replace('<!--EKRANV2_GECERSIZLIK-->', '')
                     _html = _html.replace('<!--EKRANV2_OYLAR-->', '')  # 31 Tem 2026: chip kutusu kaldırıldı (kullanıcı: sadeleşsin)
+                    # 30 Eyl 2026 — X düzeni ALGORİTMİK OKUMA kutusuna terazi hükmü (tek kaynak: app terazisi)
+                    if '<!--XTERAZI-->' in _html:
+                        import infografik_build as _ibx
+                        _html = _html.replace('<!--XTERAZI-->', _ibx.x_terazi_satir(_ter_ig))
             except Exception:
                 pass  # enjeksiyon başarısızsa infografik yine de basılır (placeholder'lar görünmez yorumdur)
 
         with _slot.container():
             if _html and not _html.startswith("__ERR__"):
-                # 30 Eyl 2026: 1050→1100 — X düzeni tam genişlikte ~1060px, altta kaydırma çıkıyordu (Codex denetimi)
+                # 30 Eyl 2026: 1050→1100 (Codex denetimi) → 1200: ALGORİTMİK OKUMA kutusu görseli ~90px uzattı
                 _comp.html(f"<div style='background:#0a1019;border-radius:12px;'>{_html}</div>",
-                           height=1100, scrolling=True)
+                           height=1200, scrolling=True)
             else:
                 st.caption(f"İnfografik şu an üretilemedi. {(_html or '')[7:][:200]}")
     except Exception as _fe:
