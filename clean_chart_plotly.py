@@ -51,7 +51,7 @@ def _wk_rangebreaks(idx):
     return [dict(bounds=['sat', 'mon'])]
 
 
-def build_fig(ticker, nbar=120, height=300):
+def build_fig(ticker, nbar=120, height=300, width=720):
     # 27 Ağu 2026 — height parametreye çıktı (varsayılan ESKİ değer: hiçbir çağıran etkilenmez).
     # İnfografik ana grafiği "asıl önemli grafik" olduğu için oradan daha büyük geçilir.
     df = load(ticker)
@@ -108,7 +108,7 @@ def build_fig(ticker, nbar=120, height=300):
     fig.update_layout(paper_bgcolor='#0d1623', plot_bgcolor='#0d1623', font=dict(color='#8aa0bb', size=11),
                       xaxis_rangeslider_visible=False, margin=dict(l=8, r=58, t=8, b=22),
                       legend=dict(orientation='h', y=1.03, x=0, font=dict(size=11), bgcolor='rgba(0,0,0,0)'),
-                      width=720, height=height,
+                      width=width, height=height,
                       yaxis2=dict(overlaying='y', side='right', range=[0, _volume_axis_max],
                                   showgrid=False, showticklabels=False, zeroline=False,
                                   fixedrange=True, layer='below traces'))
@@ -117,10 +117,11 @@ def build_fig(ticker, nbar=120, height=300):
     return fig
 
 
-def build_ivme_fig(ticker, nbar=30):
+def build_ivme_fig(ticker, nbar=30, width=720, height=150, big=False):
     """İvme/Denge paneli — app calculate_synthetic_sentiment mantığıyla BİREBİR.
     Sol: Momentum (MF_Smooth barları + fiyat çizgisi). Sağ: Fiyat ↔ Eğilim (STP sarı vs Fiyat mavi + gri bant).
-    AL/SAT dili ÇIKARILDI (uyumluluk)."""
+    AL/SAT dili ÇIKARILDI (uyumluluk).
+    30 Eyl 2026 — width/height/big parametreleri (X görsel düzeni için büyük boy; varsayılan ESKİ)."""
     df = load(ticker)
     if df is None or len(df) < 40: return None
     close = df['Close']
@@ -148,8 +149,12 @@ def build_ivme_fig(ticker, nbar=30):
                              fill='tonexty', fillcolor='rgba(148,163,184,0.13)',
                              showlegend=False, name='Fiyat'), row=1, col=2)
     fig.update_layout(paper_bgcolor='#0d1623', plot_bgcolor='#0d1623', font=dict(color='#8aa0bb', size=10),
-                      margin=dict(l=8, r=8, t=24, b=22), width=720, height=150, bargap=0.25)
-    fig.update_xaxes(gridcolor='#162234', showgrid=False, tickangle=-45, tickfont=dict(size=8), nticks=8)
+                      margin=dict(l=8, r=8, t=24, b=22), width=width, height=height, bargap=0.25)
+    if big:   # telefonda okunsun: az ve düz tarih etiketi
+        fig.update_xaxes(gridcolor='#162234', showgrid=False, tickangle=0, tickfont=dict(size=12), nticks=5)
+        fig.update_layout(font=dict(color='#8aa0bb', size=12), margin=dict(l=8, r=8, t=30, b=26))
+    else:
+        fig.update_xaxes(gridcolor='#162234', showgrid=False, tickangle=-45, tickfont=dict(size=8), nticks=8)
     fig.update_yaxes(gridcolor='#162234', zeroline=True, zerolinecolor='#1e2c40')
     fig.update_yaxes(showticklabels=False, row=1, col=1, secondary_y=False)
     fig.update_yaxes(showticklabels=False, row=1, col=1, secondary_y=True)
@@ -158,7 +163,60 @@ def build_ivme_fig(ticker, nbar=30):
     fig.update_yaxes(range=[-_lim * 1.1, _lim * 1.1], row=1, col=1, secondary_y=False)
     fig.update_yaxes(side='right', tickformat='.0f', row=1, col=2)
     for ann in fig['layout']['annotations']:
-        ann['font'] = dict(color='#38bdf8', size=12)
+        ann['font'] = dict(color='#38bdf8', size=15 if big else 12)
+    return fig
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# İNDİKATÖRLER (22 Haz 2026) — ecur99 RSI+SMA · HARSI (Heikin-Ashi RSI)
+# ════════════════════════════════════════════════════════════════════════════
+def build_sentiment_pair_fig(data, title_name, is_index=False, width=1060, height=300):
+    """30 Eyl 2026 — app'in 'Para Akış İvmesi & Fiyat' + 'Sentiment & Fiyat' altair
+    panellerinin Plotly ikizi (X görseli için). VERİ app ile AYNI: sentiment_chart_core.
+    calculate_sentiment_chart çıktısı (Date_Str, MF_Smooth, Price, STP, Sentiment).
+    Eksen kuralları app.py render_synthetic_sentiment_panel ile birebir:
+    endeks bar ekseni max(20, ⌈maks×1.15/5⌉×5) · hisse max(30, maks×1.05)."""
+    if data is None or len(data) == 0 or 'Sentiment' not in data.columns:
+        return None
+    d = data.copy()
+    xs = d['Date_Str'].astype(str).tolist()
+    mf = pd.to_numeric(d['MF_Smooth'], errors='coerce')
+    mx = float(mf.abs().max() or 0.0)
+    lim = max(20.0, float(np.ceil((mx * 1.15) / 5.0) * 5.0)) if is_index else max(30.0, mx * 1.05)
+    pfmt = ',.0f' if float(d['Price'].max()) >= 1000 else '.2f'
+    fig = make_subplots(rows=1, cols=2, horizontal_spacing=0.09,
+                        specs=[[{'secondary_y': True}, {'secondary_y': True}]],
+                        subplot_titles=(f'Para Akış İvmesi & Fiyat — {title_name}',
+                                        f'Sentiment & Fiyat — {title_name}'))
+    # SOL — sentiment değişim barları (mavi/kırmızı) + fiyat (sağ eksen)
+    fig.add_trace(go.Bar(x=xs, y=mf, marker_color=['#5B84C4' if v > 0 else '#ef4444' for v in mf],
+                         marker_line_width=0, opacity=0.9, showlegend=False),
+                  row=1, col=1, secondary_y=False)
+    fig.add_trace(go.Scatter(x=xs, y=d['Price'], mode='lines', line=dict(color='#bfdbfe', width=2),
+                             showlegend=False), row=1, col=1, secondary_y=True)
+    # SAĞ — STP (sarı) + fiyat (mavi) + arası gri; sentiment 0-10 kesikli beyaz (sol eksen)
+    y0 = min(d['STP'].min(), d['Price'].min()) * 0.999
+    y1 = max(d['STP'].max(), d['Price'].max()) * 1.001
+    fig.add_trace(go.Scatter(x=xs, y=d['STP'], mode='lines', line=dict(color='#fbbf24', width=3),
+                             showlegend=False), row=1, col=2, secondary_y=False)
+    fig.add_trace(go.Scatter(x=xs, y=d['Price'], mode='lines', line=dict(color='#bfdbfe', width=2),
+                             fill='tonexty', fillcolor='rgba(128,128,128,0.15)', showlegend=False),
+                  row=1, col=2, secondary_y=False)
+    fig.add_trace(go.Scatter(x=xs, y=d['Sentiment'], mode='lines',
+                             line=dict(color='rgba(248,250,252,0.88)', width=1.4, dash='dash'),
+                             showlegend=False), row=1, col=2, secondary_y=True)
+    fig.update_layout(paper_bgcolor='#0d1623', plot_bgcolor='#0d1623', font=dict(color='#94a3b8', size=12),
+                      margin=dict(l=40, r=8, t=32, b=26), width=width, height=height, bargap=0.25)
+    fig.update_xaxes(showgrid=False, tickangle=0, tickfont=dict(size=12), nticks=6, type='category')
+    fig.update_yaxes(gridcolor='#162234', zeroline=False)
+    fig.update_yaxes(range=[-lim, lim], side='left', row=1, col=1, secondary_y=False,
+                     zeroline=True, zerolinecolor='#1e2c40')
+    fig.update_yaxes(side='right', tickformat=pfmt, showgrid=False, row=1, col=1, secondary_y=True)
+    fig.update_yaxes(range=[y0, y1], side='right', tickformat=pfmt, row=1, col=2, secondary_y=False)
+    fig.update_yaxes(range=[0, 10], side='left', tickvals=[0, 2, 4, 6, 8, 10], showgrid=False,
+                     row=1, col=2, secondary_y=True)
+    for ann in fig['layout']['annotations']:
+        ann['font'] = dict(color='#38bdf8', size=15)
     return fig
 
 

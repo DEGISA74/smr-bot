@@ -819,6 +819,8 @@ def _fig_svg(fig):
 
 def build_widget_html(ticker):
     """show_widget için: Plotly figürleri inline SVG (base64 PNG değil), sadece iç div."""
+    if X_LAYOUT:
+        return build_x_html(ticker)
     df = ig.load(ticker)
     if df is None or len(df) < 60: return None
     d = ig.compute(ticker, df); g = ig.gorev4(d)
@@ -881,6 +883,315 @@ def build_widget_html(ticker):
   </div>
 
 </div>"""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 30 Eyl 2026 — X (Twitter) PAYLAŞIM DÜZENİ. Kullanıcı kolajından: üstte TEK
+# CÜMLE hüküm, solda büyük rakam kartları (RSI uç rozeti · 5g akış · hacim ·
+# yön haritası · kapanış gücü), sağda app'in mum grafiği + 52H çubuğu, altta
+# app'in Para Akış İvmesi + Sentiment grafikleri BÜYÜK boy. Yeni hesap YOK:
+# rakamlar compass_panel.forces · terazi_core.rsi_uc_rozeti · infographic.compute
+# (ekrandakiyle aynı kaynaklar). Yalnız app içi widget'ı etkiler; bot PNG'si
+# (build_html/render_bytes) eski düzende kalır.
+# GERİ ALMA: X_LAYOUT = False → eski düzen.
+# ═══════════════════════════════════════════════════════════════════════════
+X_LAYOUT = True
+_X_CARD = '#111a28'
+
+
+def _x_tr_num(v):
+    """12290.58 → '12.290,58' (Türkçe binlik/ondalık)."""
+    return f"{float(v):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
+def _x_is_index(t):
+    t = str(t).upper()
+    return t.startswith(("XU", "XB", "XT", "XY", "^")) or t.endswith("=F") or "-USD" in t
+
+
+def _x_side(v):
+    """CMF → (etiket, renk) — app YÖNÜN ZAMAN HARİTASI ile aynı ±0.05 eşiği."""
+    if v is None: return None, MUT
+    if v > 0.05:  return 'alıcı', UP
+    if v < -0.05: return 'satıcı', DN
+    return 'denge', GOLD
+
+
+def _x_sma50_run(df):
+    """SMA50'nin hangi tarafında, kaç gündür. (above|None, gün)"""
+    try:
+        c = df['Close'].astype(float); diff = (c - c.rolling(50).mean()).values
+        if not np.isfinite(diff[-1]): return None, 0
+        above = bool(diff[-1] >= 0); n = 1
+        for i in range(len(diff) - 2, -1, -1):
+            if not np.isfinite(diff[i]) or (diff[i] >= 0) != above: break
+            n += 1
+        return above, n
+    except Exception:
+        return None, 0
+
+
+def _x_header(tk, d, cmf5, rz, above50, rvol):
+    side, sclr = _x_side(cmf5)
+    lead = {'alıcı': 'Alıcı baskın', 'satıcı': 'Satıcı baskın'}.get(side, 'Alıcı-satıcı dengede')
+    if rz and rz['mod'] == 'dip':
+        tail = f"RSI {rz['rsi']:.0f} ile uç aşırı satımda"
+        title = f"{lead}, {'ama ' if side == 'satıcı' else ''}{tail}"
+    elif rz and rz['mod'] == 'tepe':
+        tail = f"RSI {rz['rsi']:.0f} ile momentum ucunda"
+        title = f"{lead}, {'ama ' if side == 'alıcı' else ''}{tail}"
+    elif above50 is not None:
+        title = f"{lead}, ana trend {'yukarı' if above50 else 'aşağı'}"
+    else:
+        title = lead
+    parts = [{'alıcı': 'Kısa vade alıcıda', 'satıcı': 'Kısa vade satıcıda'}.get(side, 'Kısa vade dengede')]
+    if above50 is not None:
+        parts.append(f"ana trend {'yukarı' if above50 else 'aşağı'}")
+    if rvol is not None:
+        _rv = f"{rvol:.2f}".replace('.', ',')
+        parts.append(f"hacim ortalamanın altında ({_rv}×)" if rvol < 0.8 else
+                     f"hacim ortalamanın üstünde ({_rv}×)" if rvol > 1.2 else f"hacim normal ({_rv}×)")
+    chg_clr = UP if d['chg'] >= 0 else DN; arrow = '▲' if d['chg'] >= 0 else '▼'
+    price = _x_tr_num(d['last']); chg = f"{abs(d['chg']):.2f}".replace('.', ',')
+    return (
+        f"<div style='display:flex;align-items:center;gap:20px;margin-bottom:14px;'>"
+        f"<div style='flex:0 0 auto;'>"
+        f"<div style='font-size:34px;font-weight:800;line-height:1.05;white-space:nowrap;'>{tk}</div>"
+        f"<div style='font-size:26px;font-weight:700;white-space:nowrap;'>{price} "
+        f"<span style='color:{chg_clr};font-size:19px;'>{arrow} %{chg}</span></div></div>"
+        f"<div style='flex:1;min-width:0;border-left:5px solid {sclr};padding-left:18px;'>"
+        f"<div style='font-size:29px;font-weight:800;line-height:1.2;'>{title}</div>"
+        f"<div style='font-size:16px;color:{MUT};margin-top:4px;'>{' · '.join(parts)}</div></div>"
+        f"<div style='flex:0 0 auto;font-size:15px;font-weight:800;color:{INFO};text-align:right;line-height:1.25;'>"
+        f"SMART MONEY<br>RADAR</div></div>")
+
+
+def _x_rsi_card(rz, d):
+    """RSI kartı — uç modda turuncu/mor çerçeveli büyük rozet, normalde sade kart.
+    Altında 1g–5g–14g gidişatı (eski ayrı MOMENTUM · RSI bandı buraya gömüldü)."""
+    trk = d.get('rsi_track') or {}
+    try:
+        n, f5, f14 = float(trk['now']), float(trk['five']), float(trk['fourteen'])
+        yon = ('zayıflıyor' if n <= f5 - 1 and f5 <= f14 - 1 else
+               'güçleniyor' if n >= f5 + 1 and f5 >= f14 + 1 else 'karışık')
+        gidis = f"1g–5g–14g: {n:.0f}–{f5:.0f}–{f14:.0f} · RSI {yon}"
+    except Exception:
+        n = None; gidis = ''
+    if rz:
+        clr = rz['renk']; bg = '#2a1a0e' if rz['mod'] == 'dip' else '#1f1830'
+        head = 'RSI · UÇ AŞIRI SATIM' if rz['mod'] == 'dip' else 'RSI · MOMENTUM UCU'
+        karne = str(rz.get('karne') or '').lstrip('◆ ').strip()
+        karne = karne[:1].upper() + karne[1:] if karne else ''
+        val = f"{rz['rsi']:.0f}"
+        return (f"<div style='background:{bg};border:2px solid {clr};border-radius:10px;padding:10px 13px;'>"
+                f"<div style='font-size:14px;font-weight:800;color:{clr};letter-spacing:0.03em;'>{head}</div>"
+                f"<div style='display:flex;align-items:center;gap:12px;margin-top:2px;'>"
+                f"<span style='font-size:52px;font-weight:800;line-height:1;color:{clr};'>{val}</span>"
+                f"<span style='font-size:14px;line-height:1.35;color:#e3d3b8;'>{karne}</span></div>"
+                f"<div style='font-size:12px;color:{MUT};margin-top:6px;'>{gidis}</div></div>")
+    if n is None:
+        return ''
+    return (f"<div style='background:{_X_CARD};border:1px solid {LINE};border-radius:10px;padding:10px 13px;'>"
+            f"<div style='font-size:14px;font-weight:800;color:{MUT};'>RSI (14)</div>"
+            f"<div style='font-size:40px;font-weight:800;line-height:1.1;color:{TXT};'>{n:.0f}</div>"
+            f"<div style='font-size:12px;color:{MUT};margin-top:2px;'>{gidis}</div></div>")
+
+
+def _x_metric(lbl, val, clr):
+    return (f"<div style='flex:1;background:{_X_CARD};border:1px solid {LINE};border-radius:10px;padding:8px 12px;'>"
+            f"<div style='font-size:13px;color:{MUT};'>{lbl}</div>"
+            f"<div style='font-size:30px;font-weight:800;color:{clr};line-height:1.15;'>{val}</div></div>")
+
+
+def _x_timemap(cmf5, cmf20, above50, days50):
+    def side_txt(v):
+        s, c = _x_side(v)
+        return ({'alıcı': 'Alıcı önde', 'satıcı': 'Satıcı önde', 'denge': 'Net yön yok'}.get(s, 'Veri yok'), c)
+    t5, c5 = side_txt(cmf5); t20, c20 = side_txt(cmf20)
+    if above50 is None:
+        tt, ct = 'Veri yok', MUT
+    else:
+        tt = f"{'Yukarı' if above50 else 'Aşağı'} · SMA50 {'üstü' if above50 else 'altı'} {days50} gün"
+        ct = UP if above50 else DN
+
+    def row(l, t, c):
+        return (f"<div style='display:flex;justify-content:space-between;align-items:center;padding:5px 0;"
+                f"border-top:1px solid {LINE};'><span style='font-size:14px;color:{MUT};'>{l}</span>"
+                f"<span style='font-size:15px;font-weight:800;color:{c};'>{t}</span></div>")
+    return (f"<div style='background:{_X_CARD};border:1px solid {LINE};border-radius:10px;padding:8px 12px;'>"
+            f"<div style='font-size:13px;font-weight:800;color:{MUT};margin-bottom:4px;'>YÖNÜN ZAMAN HARİTASI</div>"
+            + row('Son 5 gün', t5, c5) + row('Son 20 gün', t20, c20) + row('Ana trend', tt, ct) + "</div>")
+
+
+def _x_close_strength(df):
+    """Kapanış gücü · 20g — _signal_box'taki şeridin aynısı (CMF günlük / 20g ort hacim)."""
+    try:
+        vv = df['Volume'].fillna(0).astype(float); cc2 = df['Close'].astype(float)
+        hi = df['High'].astype(float); lo = df['Low'].astype(float)
+        oa = float(vv.rolling(20).mean().iloc[-1])
+        if oa <= 0: return ''
+        hl = hi - lo
+        mfm = np.where(hl > 0, ((cc2 - lo) - (hi - cc2)) / hl, 0.0)
+        vals = [float(x) / oa for x in (vv * mfm).tail(20) if x == x]
+        if len(vals) < 5: return ''
+        n = len(vals); W, H = 260, 90; mid = H / 2
+        lim = max(1e-9, max(abs(x) for x in vals) * 1.1); bw = W / n
+        p = [f"<line x1='0' y1='{mid}' x2='{W}' y2='{mid}' stroke='#475569' stroke-width='1' stroke-dasharray='3,3'/>"]
+        for i, x in enumerate(vals):
+            bh = max(abs(x) / lim * (mid - 3), 0.8); clr = '#22d3ee' if x > 0 else '#fb7185'
+            p.append(f"<rect x='{i * bw + bw * 0.15:.1f}' y='{(mid - bh if x > 0 else mid):.1f}' "
+                     f"width='{bw * 0.7:.1f}' height='{bh:.1f}' fill='{clr}' "
+                     f"opacity='{'1' if i == n - 1 else '0.72'}' rx='1'/>")
+        son = ('alıcı baskın', '#22d3ee') if vals[-1] > 0 else ('satıcı baskın', '#fb7185')
+        return (f"<div style='background:{_X_CARD};border:1px solid {LINE};border-radius:10px;padding:8px 12px;'>"
+                f"<div style='display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;'>"
+                f"<span style='font-weight:800;color:{MUT};white-space:nowrap;'>KAPANIŞ GÜCÜ · 20G</span>"
+                f"<span style='font-weight:800;color:{son[1]};white-space:nowrap;'>bugün: {son[0]}</span></div>"
+                f"<svg width='100%' height='{H}' viewBox='0 0 {W} {H}' preserveAspectRatio='none' style='display:block;'>"
+                + "".join(p) + "</svg></div>")
+    except Exception:
+        return ''
+
+
+def _x_52h(d):
+    try:
+        pos = max(1.0, min(99.0, float(d['pos52'])))
+        fmt = _x_tr_num
+        return (f"<div style='margin-top:10px;'>"
+                f"<div style='display:flex;justify-content:space-between;font-size:14px;color:{MUT};'>"
+                f"<span>52H dip {fmt(d['lo52'])}</span>"
+                f"<span style='color:{TXT};font-weight:800;'>Yıllık aralıkta %{float(d['pos52']):.0f}</span>"
+                f"<span>52H tepe {fmt(d['hi52'])}</span></div>"
+                f"<div style='position:relative;height:10px;border-radius:5px;margin-top:6px;"
+                f"background:linear-gradient(90deg,{DN}66,{GOLD}44,{UP}66);'>"
+                f"<div style='position:absolute;left:{pos:.1f}%;top:-5px;width:5px;height:20px;"
+                f"margin-left:-2px;background:#fff;border-radius:2px;'></div></div></div>")
+    except Exception:
+        return ''
+
+
+def build_x_html(ticker):
+    """X paylaşım düzeni — app içi widget (st.html) için iç div döndürür."""
+    df = ig.load(ticker)
+    if df is None or len(df) < 60: return None
+    d = ig.compute(ticker, df)
+    tk = _disp_name(d['ticker'])
+    is_idx = _x_is_index(ticker)
+    # 30 Eyl 2026 — rakamlar APP'İN veri katmanından (get_safe_historical_data):
+    # endekste TL ciro, seans içinde hacim TAM-SEANS TAHMİNİ (app 'tam-seans eşdeğeri' ile
+    # aynı). Sondaki hacimsiz boş barlar atılır (analysis_core RVOL kuralı).
+    adf = None
+    try:
+        from data_layer import get_safe_historical_data
+        adf = get_safe_historical_data(ticker, period='1y')
+        if adf is not None and len(adf) >= 30:
+            _v = adf['Volume'].fillna(0).astype(float).values
+            _n = 0
+            while _n < min(10, len(_v) - 1) and _v[len(_v) - 1 - _n] <= 0:
+                _n += 1
+            if _n: adf = adf.iloc[:-_n]
+        else:
+            adf = None
+    except Exception:
+        adf = None
+    src = adf if adf is not None else df
+    cmf5 = cmf20 = vm = None
+    try:
+        from indicators import compute_cmf
+        cmf5 = float(compute_cmf(src, period=5)); cmf20 = float(compute_cmf(src, period=20))
+    except Exception:
+        pass
+    # Hacim / ortalama — app'in Akıllı Para hacim oyuyla AYNI yöntem (app.py ~14415):
+    # payda = bugün HARİÇ son 20 bar ortalaması; seans sürüyorsa seans_profili bu paydayı
+    # günün geçen payına indirger (yarım gün 'düşük hacim' sanılmasın).
+    vm_not = ''
+    try:
+        _vv = src['Volume'].astype(float)
+        _v20 = float(_vv.iloc[-21:-1].mean()); _vson = float(_vv.iloc[-1])
+        _kd = {}
+        try:
+            from seans_profili import rvol_paydasi
+            _pay, _kd = rvol_paydasi(_v20, src.index[-1])
+            if _pay and _pay > 0: _v20 = float(_pay)
+        except Exception:
+            pass
+        if (_kd or {}).get('kismi') and not (_kd or {}).get('yeterli', True):
+            vm = None; vm_not = 'seans yeni başladı'
+        else:
+            vm = _vson / _v20 if _v20 > 0 and _vson > 0 else None
+            if (_kd or {}).get('kismi'): vm_not = str(_kd.get('rozet') or '')
+    except Exception:
+        pass
+    hdr = dict(d)
+    try:
+        _c = src['Close'].astype(float)
+        hdr['last'] = float(_c.iloc[-1]); hdr['chg'] = (float(_c.iloc[-1]) / float(_c.iloc[-2]) - 1) * 100
+    except Exception:
+        pass
+    try:
+        import terazi_core
+        rz = terazi_core.rsi_uc_rozeti(src['Close'], is_index=is_idx)
+    except Exception:
+        rz = None
+    above50, days50 = _x_sma50_run(src)
+    # Alt grafik: app'in 'Para Akış İvmesi & Fiyat' + 'Sentiment & Fiyat' panelleriyle AYNI veri
+    # (sentiment_chart_core). Model veri veremezse eski İvme/Denge figürüne düşer.
+    pair = None
+    try:
+        from sentiment_chart_core import calculate_sentiment_chart
+        _sd = calculate_sentiment_chart(ticker, 'daily', market_profile='BIST')
+        pair = cc.build_sentiment_pair_fig(_sd, tk, is_index=is_idx, width=1060, height=300)
+    except Exception:
+        pair = None
+    figs = _render_figs_batch({
+        'chart': cc.build_fig(ticker, height=440, width=760),
+        'ivme':  pair if pair is not None else cc.build_ivme_fig(ticker, width=1060, height=270, big=True),
+    })
+    b64 = {k: base64.b64encode(v).decode() for k, v in figs.items()}
+
+    s5, c5 = _x_side(cmf5)
+    left = [_x_rsi_card(rz, d),
+            "<div style='display:flex;gap:10px;'>"
+            + _x_metric('5 gün para akışı',
+                        f"{cmf5 * 100:+.1f}%".replace('.', ',').replace('-', '−') if cmf5 is not None else '—', c5)
+            + _x_metric('Hacim / ortalama' + (f" · {vm_not}" if vm_not else ''),
+                        f"{vm:.2f}×".replace('.', ',') if vm is not None else '—',
+                        (UP if vm >= 1.2 else DN if vm < 0.8 else TXT) if vm is not None else TXT)
+            + "</div>",
+            _x_timemap(cmf5, cmf20, above50, days50),
+            _x_close_strength(src)]
+    left_html = "".join(f"<div>{x}</div>" for x in left if x)
+
+    def box(title, img, grow=False):
+        if not img: return ''
+        _g = "height:100%;box-sizing:border-box;display:flex;flex-direction:column;" if grow else ""
+        return (f"<div style='background:{CARD};border:1px solid {LINE};border-radius:10px;padding:10px;{_g}'>"
+                f"<div style='font-size:14px;font-weight:700;color:{MUT};margin-bottom:6px;'>{title}</div>"
+                f"<img src='data:image/png;base64,{img}' style='width:100%;display:block;border-radius:8px;'/>")
+
+    # Grafik kutusu sol kolonun boyuna UZAR; 52H çubuğu kutunun dibine oturur (delik kalmaz).
+    chart_box = (box('Teknik yapı · mumlar + SMA50/EMA144/SMA100/SMA200 + POC + VWAP', b64.get('chart'), grow=True)
+                 + f"<div style='margin-top:auto;'>{_x_52h(d)}</div></div>") if b64.get('chart') else ''
+    # Sentiment çifti kendi başlıklarını taşır → dış başlık yalnız eski figürde.
+    if b64.get('ivme') and pair is not None:
+        ivme_box = (f"<div style='background:{CARD};border:1px solid {LINE};border-radius:10px;padding:10px;'>"
+                    f"<img src='data:image/png;base64,{b64['ivme']}' style='width:100%;display:block;border-radius:8px;'/></div>")
+    else:
+        ivme_box = (box(f'Para Akış İvmesi & Fiyat Dengesi — {tk}', b64.get('ivme')) + "</div>") if b64.get('ivme') else ''
+    # SABİT 1100px tasarım + ekrana sığdırma (zoom): her ekran genişliğinde AYNI oran →
+    # dar iframe'de grafik küçülüp altında boşluk kalmaz.
+    return f"""<div id="smrx" style="width:1100px;box-sizing:border-box;background:{BG};padding:20px;color:{TXT};font-family:'Segoe UI',Arial,sans-serif;border-radius:12px;">
+  {_x_header(tk, hdr, cmf5, rz, above50, vm)}
+  <div style="display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;justify-content:space-between;gap:10px;">{left_html}</div>
+    <div>{chart_box}</div>
+  </div>
+  <div style="margin-top:14px;">{ivme_box}</div>
+  <div style="margin-top:12px;display:flex;">{_notice_badge(fs=12)}</div>
+</div>
+<script>(function(){{var e=document.getElementById('smrx');if(!e)return;
+function f(){{var w=(document.documentElement.clientWidth||window.innerWidth)-4;e.style.zoom=Math.min(1,w/1100);}}
+f();window.addEventListener('resize',f);}})();</script>"""
 
 
 def render(ticker, out=None):
