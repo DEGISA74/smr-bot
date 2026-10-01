@@ -252,6 +252,51 @@ def analyze_xu100() -> dict:
 # BÖLÜM 4b — XU100 GRAFİK VERİSİ  (app.py calculate_synthetic_sentiment ile özdeş)
 # ==============================================================================
 
+# 1 Eki 2026 — XU100 grafiği UYGULAMANIN KENDİ HESABINDAN: sentiment_chart_core
+# (app.py "Para Akış İvmesi & Fiyat Dengesi" paneliyle aynı fonksiyon). Modül
+# streamlit ister; cron sistem python3'üyle koştuğu için ~/smr/venv python'u alt
+# süreçte çağrılır. Herhangi bir hata → None döner, çağıran eski formüle düşer
+# (site asla boş kalmaz; o durumda "sentiment" alanı olmaz, site sentiment
+# çizgisini çizmez).
+_SMR_HOME = os.environ.get("SMR_HOME", "/home/wm11tr/smr")
+_SMR_PY   = os.path.join(_SMR_HOME, "venv", "bin", "python")
+_SENT_SCRIPT = r"""
+import json, sys, warnings, logging
+warnings.filterwarnings("ignore"); logging.disable(logging.CRITICAL)
+sys.path.insert(0, sys.argv[1])
+from sentiment_chart_core import calculate_sentiment_chart
+d = calculate_sentiment_chart("XU100", "daily", market_profile="BIST")
+n = int(sys.argv[2])
+rows = [{"date": str(r.Date_Str), "mf": round(float(r.MF_Smooth), 4),
+         "stp": round(float(r.STP), 2), "price": round(float(r.Price), 2),
+         "sentiment": round(float(r.Sentiment), 3)} for r in d.tail(n).itertuples()]
+print("@@SENT_JSON@@" + json.dumps(rows))
+"""
+
+
+def _xu100_chart_from_app_model(n_rows: int):
+    import subprocess
+    if not os.path.exists(_SMR_PY):
+        return None
+    try:
+        out = subprocess.run(
+            [_SMR_PY, "-c", _SENT_SCRIPT, _SMR_HOME, str(n_rows)],
+            cwd=_SMR_HOME, capture_output=True, text=True, timeout=180,
+        )
+        for line in out.stdout.splitlines():
+            if line.startswith("@@SENT_JSON@@"):
+                rows = json.loads(line[len("@@SENT_JSON@@"):])
+                if len(rows) >= 5 and all(
+                    all(isinstance(r.get(k), (int, float)) for k in ("mf", "stp", "price", "sentiment"))
+                    for r in rows
+                ):
+                    return rows
+        print(f"[xu100_chart_model] kullanılamadı (rc={out.returncode}): {out.stderr[-300:]}")
+    except Exception as e:
+        print(f"[xu100_chart_model] hata: {e}")
+    return None
+
+
 def generate_xu100_chart_data(n_rows: int = 30) -> list:
     """
     app.py > calculate_synthetic_sentiment() ile birebir aynı formül
@@ -262,6 +307,9 @@ def generate_xu100_chart_data(n_rows: int = 30) -> list:
     Son n_rows satır döner — her öğe: {date, mf, stp, price}
     date formatı: '%d %b'  (ör. "27 Mar", "11 May")
     """
+    _rows = _xu100_chart_from_app_model(n_rows)
+    if _rows:
+        return _rows
     try:
         df = fetch_data("XU100.IS", period="6mo")
         if df is None or len(df) < 30:

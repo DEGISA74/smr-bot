@@ -295,9 +295,8 @@
           </div>
           <div class="blur-block" onclick="openPlansModal()">
             <div class="blur-content">
-              Delta birikim +284M · OBV yükseliş · RVOL 1.42× · Kurumsal ayak
-              izi 5/7 · RS gücü +18.4% · Smart Money bölge tespiti aktif ·
-              Kritik direnç 15,304–15,533 · Realizasyon riski izleniyor...
+              Delta birikim · OBV yönü · RVOL · Kurumsal ayak izi · RS gücü ·
+              Smart Money bölgeleri · Kritik direnç · Realizasyon riski
             </div>
             <div class="blur-overlay">
               <div class="elite-badge">ELITE</div>
@@ -310,6 +309,16 @@
 
       <!-- ── MAIN CONTENT ────────────────────────────────────────────── -->
       <main class="main-content">
+
+        <!-- XU100 PANEL — 1 Eki 2026: en tepeye taşındı (app.py paneli ikizi) -->
+        <div class="panel" id="xu100-panel">
+          <div class="panel-header green">
+            <div class="panel-title">📈 Para Akış İvmesi &amp; Fiyat Dengesi: XU100</div>
+            <div id="xu100-header-price" class="panel-tag">—</div>
+          </div>
+          <div class="panel-body" id="xu100-body"><!-- app.js --></div>
+        </div>
+
 
         <!-- CTA BÖLÜMÜ (üste taşındı) -->
         <div class="cta-section" id="cta-section"><!-- app.js --></div>
@@ -351,14 +360,6 @@
         <div id="top3-sinyaller-panel"></div>
         <div class="mob-tw-strip"><span class="mob-tw-strip-text">Günlük BİST yorumları için</span><a href="https://x.com/SMRadar_2026" target="_blank" class="btn-twitter" style="font-size:11px;padding:5px 12px;border-radius:16px;white-space:nowrap;">𝕏 Takip Et</a></div>
 
-        <!-- XU100 PANEL -->
-        <div class="panel" id="xu100-panel">
-          <div class="panel-header green">
-            <div class="panel-title">📈 Para Akış İvmesi &amp; Fiyat Dengesi: XU100</div>
-            <div id="xu100-header-price" class="panel-tag">—</div>
-          </div>
-          <div class="panel-body" id="xu100-body"><!-- app.js --></div>
-        </div>
 
         <!-- GÜNÜN ÖNE ÇIKANLARI -->
         <div class="panel" id="one-cikanlar-panel"><!-- app.js --></div>
@@ -611,7 +612,7 @@
     </div>
   </footer>
 
-  <script src="app.js?v=47"></script>
+  <script src="app.js?v=49"></script>
 
 <!-- PLANS MODAL -->
 <div id="plans-modal" onclick="if(event.target===this)closePlansModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;overflow-y:auto;padding:20px">

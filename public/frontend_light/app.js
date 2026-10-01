@@ -31,6 +31,8 @@ const TG_PRO_URL      = "#planlar";
 const TG_ELITE_URL    = "#planlar";
 const TWITTER_URL     = "https://x.com/SMRadar_2026";
 const AUTO_REFRESH_MS = 5 * 60 * 1000;   // 5 dakika
+// Kilitli kutularda ASLA örnek/uydurma rakam gösterilmez — sadece bu maske (1 Eki 2026).
+const KILIT_MASK = '<span style="letter-spacing:2px">🔒 ••••</span>';
 
 let _lastDataStamp = null;
 
@@ -506,7 +508,7 @@ function renderHacimPanel(ozet) {
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -523,12 +525,12 @@ function renderHacimPanel(ozet) {
         <div class="ict-cell-sub">SMA200 Üstü Hisse · ${150} tarandı</div>
       </div>
       ${cell('💧 POC Bölgesi','<span style="color:var(--cyan)">14,820–15,140</span>','Hacim yoğunlaşma')}
-      ${cell('⚡ RVOL Oranı','<span style="color:var(--green)">1.42×</span>','Normalin üstünde')}
+      ${cell('⚡ RVOL Oranı','<span style="color:var(--green)">1.42×</span>','Bugünkü hacim / ortalama')}
       ${cell('🔥 Kümülatif Delta','<span style="color:var(--green)">+284M</span>','5 günlük birikimli')}
-      ${cell('📈 OBV Analizi','<span style="color:var(--green)">YÜKSELİŞ</span>','Kurumsal birikim')}
+      ${cell('📈 OBV Analizi','<span style="color:var(--green)">YÜKSELİŞ</span>','Birikim mi dağıtım mı')}
       ${cell('🎯 Hacim Anomalisi','<span style="color:#70a8ff">3 Tespit</span>','Kurumsal ayak izi')}
-      ${cell('💼 VSA Sinyali','<span style="color:var(--orange)">UP-THRUST</span>','Profesyonel baskı')}
-      ${cell('📊 Para Akış Skoru','<span style="color:var(--green)">74/100</span>','Güçlü alım baskısı')}
+      ${cell('💼 VSA Sinyali','<span style="color:var(--orange)">UP-THRUST</span>','Hacim-fiyat uyumu')}
+      ${cell('📊 Para Akış Skoru','<span style="color:var(--green)">74/100</span>','Para giriş-çıkış dengesi')}
     </div>
   `;
 }
@@ -553,7 +555,7 @@ function renderComposite(ozet) {
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -573,7 +575,7 @@ function renderComposite(ozet) {
       ${cell('📊 RSI Momentum','<span style="color:var(--green)">%'+rsi50p+' Güçlü</span>','RSI>50 hisse oranı')}
       ${cell('🔥 Güçlü Sinyal','<span style="color:var(--green)">'+(ozet.guclu_sinyal||0)+' Hisse</span>','3 kriter eşzamanlı')}
       ${cell('📈 Trend Skoru','<span style="color:var(--green)">GÜÇLÜ</span>','Algo trend kalitesi')}
-      ${cell('⚖️ Risk / Ödül','<span style="color:var(--cyan)">1:2.4</span>','Optimal giriş penceresi')}
+      ${cell('⚖️ Risk / Ödül','<span style="color:var(--cyan)">1:2.4</span>','Stop ve hedef oranı')}
       ${cell('💧 SMA50 Üstü','<span style="color:var(--green)">%'+s50pct+'</span>','Kısa vade gücü')}
       ${cell('🎯 Piyasa Fazı','<span style="color:#70a8ff">DAĞILIM</span>','Wyckoff fazı tespiti')}
     </div>
@@ -590,7 +592,7 @@ function renderICT(d, ozet) {
   const sColor  = skor >= 65 ? "var(--green)" : skor >= 40 ? "var(--orange)" : "var(--red)";
 
   const tag = document.getElementById("ict-tag");
-  if (tag) tag.innerHTML = `<span style="color:${sColor}">${skor.toFixed(0)} / 5 · ${sLabel}</span>`;
+  if (tag) tag.innerHTML = `<span style="color:${sColor}">Piyasa skoru ${skor.toFixed(0)} / 100 · ${sLabel}</span>`;
 
   const k = d.kapanis;
 
@@ -598,7 +600,7 @@ function renderICT(d, ozet) {
     <div class="ict-grid">
       <div class="ict-cell">
         <div class="ict-cell-title">📈 Yükseliş Trendi (Bullish Box)</div>
-        <div class="ict-cell-blur"><div class="ict-cell-val" style="color:var(--green)">${fmt(k*1.018)}</div><div class="ict-cell-sub">+1.8% hedef bölge</div></div>
+        <div class="ict-cell-blur"><div class="ict-cell-val">${KILIT_MASK}</div><div class="ict-cell-sub">Hedef bölge</div></div>
         <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div class="elite-badge">ELITE</div><span style="font-size:9.5px;color:var(--text-dim)">Daha fazlası için ELITE</span>
         </div>
@@ -612,21 +614,21 @@ function renderICT(d, ozet) {
       </div>
       <div class="ict-cell">
         <div class="ict-cell-title">🗺️ Fiyat Haritası</div>
-        <div class="ict-cell-blur"><div class="ict-cell-val" style="color:var(--orange)">${fmt(k*1.025)}</div><div class="ict-cell-sub">Hedef bölge</div></div>
+        <div class="ict-cell-blur"><div class="ict-cell-val">${KILIT_MASK}</div><div class="ict-cell-sub">Fiyat haritası</div></div>
         <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div class="elite-badge">ELITE</div><span style="font-size:9.5px;color:var(--text-dim)">Daha fazlası için ELITE</span>
         </div>
       </div>
       <div class="ict-cell">
         <div class="ict-cell-title">📊 Alıcılar Bakışı — OB Detayı</div>
-        <div class="ict-cell-blur"><div class="ict-cell-val" style="color:var(--green)">${fmt(k*0.965)}</div><div class="ict-cell-sub">%3.5 aşağıda OB</div></div>
+        <div class="ict-cell-blur"><div class="ict-cell-val">${KILIT_MASK}</div><div class="ict-cell-sub">Alıcı bölgesi (OB)</div></div>
         <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div class="elite-badge">ELITE</div><span style="font-size:9.5px;color:var(--text-dim)">Daha fazlası için ELITE</span>
         </div>
       </div>
       <div class="ict-cell">
         <div class="ict-cell-title">🎯 Yakın Hedef</div>
-        <div class="ict-cell-blur"><div class="ict-cell-val" style="color:var(--green)">${fmt(k*1.016)}</div><div class="ict-cell-sub">+1.6% hedef</div></div>
+        <div class="ict-cell-blur"><div class="ict-cell-val">${KILIT_MASK}</div><div class="ict-cell-sub">Yakın hedef</div></div>
         <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div class="elite-badge">ELITE</div><span style="font-size:9.5px;color:var(--text-dim)">Daha fazlası için ELITE</span>
         </div>
@@ -676,20 +678,20 @@ function renderSidebarLeft(d, ozet) {
     </div>
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
       <span style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:3px;padding:2px 7px;color:var(--text-dim)">
-        LONG <strong style="color:var(--cyan)">${longSkor}/100</strong>
+        SKOR <strong style="color:var(--cyan)">${longSkor}/100</strong>
       </span>
       <span style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:3px;padding:2px 7px;color:var(--text-dim)">
-        STOP <strong style="color:var(--red)">${fmt(d.sma200)}</strong>
+        SMA200 <strong style="color:var(--red)">${fmt(d.sma200)}</strong>
       </span>
     </div>
     <div style="font-size:10px;color:${metColor};font-weight:700;margin-bottom:4px">${met}/4</div>
     <div style="font-size:10.5px;color:var(--text-dim);line-height:1.6">
-      Hacim ${ok(hacimOk)} · OBV ${ok(obvOk)} · Yapı ${ok(yapiOk)} · RSI ${ok(rsiOk)}
+      Gün ${ok(hacimOk)} · SMA50 ${ok(obvOk)} · SMA200 ${ok(yapiOk)} · RSI ${ok(rsiOk)}
     </div>
     <!-- GENEL ÖZET teaser -->
     <div style="margin-top:8px;border:1px dashed var(--border2);border-radius:4px;padding:6px 8px;background:rgba(10,13,26,0.6)">
       <div style="filter:blur(3.5px);user-select:none;pointer-events:none;font-size:10px;color:var(--text-dim);line-height:1.5">
-        HH+HL Yapısı ✅ · Kümülatif Delta +284M · SFP Yok · LONG Radar 5/7 · Stop ${fmt(d.kapanis*0.973)}
+        HH+HL Yapısı · Kümülatif Delta · SFP · LONG Radar · Stop seviyesi
       </div>
       <div style="text-align:center;margin-top:5px;cursor:pointer" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
         <span style="font-size:9px;color:#70a8ff;font-weight:700">+ daha fazlası için ELITE →</span>
@@ -700,24 +702,18 @@ function renderSidebarLeft(d, ozet) {
   renderGauge("sidebar-gauge", ozet?.genel_skor ?? 0);
 
   // KURUMSAL İLGİ mini (XU100 Özet yerine)
-  const kSkor = 67;
-  const kRenk = "var(--orange)";
   document.getElementById("sidebar-xu100mini").innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-      <span style="font-size:13px;font-weight:800;color:${kRenk}">${kSkor}/100</span>
-      <span style="font-size:9px;color:var(--text-muted);background:var(--bg4);padding:1px 6px;border-radius:3px;border:1px solid var(--border2)">ORTA-YÜKSEK</span>
-    </div>
-    <div class="sidebar-stat-row">
-      <span class="sidebar-stat-label">1. YAPI</span>
-      <span class="sidebar-stat-val o">Kurumsal İlgi Var</span>
+      <span style="font-size:13px;font-weight:800;color:var(--text-dim)">🔒 ••/100</span>
+      <span class="elite-badge" style="font-size:9px;padding:1px 6px">ELITE</span>
     </div>
     <div style="position:relative;overflow:hidden;margin-top:5px;max-height:38px">
       <div style="filter:blur(3.5px);user-select:none;pointer-events:none">
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Trend</span><span class="sidebar-stat-val g">A+ KALİTE</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Momentum</span><span class="sidebar-stat-val c">YÜKSEK</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Hacim Kalitesi</span><span class="sidebar-stat-val g">RVOL 1.42×</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">RS Gücü</span><span class="sidebar-stat-val g">+18.4%</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">SM İzi</span><span class="sidebar-stat-val" style="color:#70a8ff">5/7</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Trend</span><span class="sidebar-stat-val g">••••</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Momentum</span><span class="sidebar-stat-val c">••••</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Hacim Kalitesi</span><span class="sidebar-stat-val g">••••</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">RS Gücü</span><span class="sidebar-stat-val g">••••</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">SM İzi</span><span class="sidebar-stat-val" style="color:#70a8ff">••••</span></div>
       </div>
       <div style="position:absolute;inset:0;background:rgba(10,13,26,0.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer"
            onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -742,10 +738,10 @@ function renderSidebarLeft(d, ozet) {
       </div>
       <div style="position:relative;overflow:hidden;margin-top:6px;max-height:38px">
         <div style="filter:blur(3.5px);user-select:none;pointer-events:none">
-          <div class="signal-row"><div class="signal-dot g"></div><span>ATR Risk Bölgesi: DÜŞÜK</span></div>
-          <div class="signal-row"><div class="signal-dot c"></div><span>Bollinger: Üst banda yakın</span></div>
-          <div class="signal-row"><div class="signal-dot o"></div><span>ADX Güç: 28.4 Gelişiyor</span></div>
-          <div class="signal-row"><div class="signal-dot g"></div><span>Stoch RSI: Güçlü bölge</span></div>
+          <div class="signal-row"><div class="signal-dot g"></div><span>ATR Risk Bölgesi: ••••</span></div>
+          <div class="signal-row"><div class="signal-dot c"></div><span>Bollinger: ••••</span></div>
+          <div class="signal-row"><div class="signal-dot o"></div><span>ADX Güç: ••••</span></div>
+          <div class="signal-row"><div class="signal-dot g"></div><span>Stoch RSI: ••••</span></div>
         </div>
         <div style="position:absolute;inset:0;background:rgba(10,13,26,0.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer"
              onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -801,7 +797,7 @@ function renderSidebarRight(d, ozet) {
   const vsaIcon = (ozet?.genel_skor||0) >= 60 ? "📈" : "📊";
   const ve = document.getElementById("vsa-text");
   const vi = document.getElementById("vsa-icon");
-  if (ve) ve.textContent = `HACİM & VSA: ${vsaText}`;
+  if (ve) ve.textContent = `HACİM & VSA: 🔒 ELITE`;
   if (vi) vi.textContent = vsaIcon;
 
   // ── Price Action + ALTIN + PLATİN SET-UP bölümleri (dinamik) ──────────────
@@ -815,7 +811,7 @@ function renderSidebarRight(d, ozet) {
       <div class="signal-row" style="margin-bottom:6px">
         <div class="signal-dot g"></div>
         <span style="font-size:11px">En güçlü PA sinyali:</span>
-        <span style="font-size:11px;font-weight:700;color:${paColor};margin-left:4px;filter:blur(3px)">${paSinyal}</span>
+        <span style="font-size:11px;font-weight:700;color:var(--text-dim);margin-left:4px">${KILIT_MASK}</span>
       </div>
       <!-- Teaser kilitli blok -->
       <div style="border:1px dashed var(--border2);border-radius:4px;padding:7px 8px;background:rgba(10,13,26,0.5);cursor:pointer;position:relative;overflow:hidden"
@@ -834,7 +830,7 @@ function renderSidebarRight(d, ozet) {
         <div style="border:1px solid rgba(255,215,0,0.2);border-radius:4px;padding:7px 8px;background:rgba(255,215,0,0.04);cursor:pointer;position:relative;overflow:hidden"
              onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div style="filter:blur(3.5px);user-select:none;pointer-events:none;font-size:10px;color:var(--text-dim);line-height:1.5">
-            Trend + Momentum + Hacim üçlü uyumu · En yüksek olasılıklı giriş · Risk/Ödül 1:3+
+            Trend + Momentum + Hacim üçlü uyumu
           </div>
           <div style="margin-top:5px;text-align:center">
             <span style="font-size:9px;font-weight:700;color:var(--gold)">+ daha fazlası için ELITE →</span>
@@ -848,7 +844,7 @@ function renderSidebarRight(d, ozet) {
         <div style="border:1px solid rgba(0,212,255,0.2);border-radius:4px;padding:7px 8px;background:rgba(0,212,255,0.04);cursor:pointer;position:relative;overflow:hidden"
              onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div style="filter:blur(3.5px);user-select:none;pointer-events:none;font-size:10px;color:var(--text-dim);line-height:1.5">
-            ICT + SMC + Kurumsal iz üçlü kesişim · Ayda 2–3 kez tetiklenir · Geçmiş başarı %87
+            ICT + SMC + Kurumsal iz üçlü kesişimi
           </div>
           <div style="margin-top:5px;text-align:center">
             <span style="font-size:9px;font-weight:700;color:var(--cyan)">+ daha fazlası için ELITE →</span>
@@ -1078,14 +1074,12 @@ function renderKurumsalPanel(xu100) {
   const el = document.getElementById("kurumsal-panel");
   if (!el) return;
 
-  const skor = 67;
-  const sc   = "var(--orange)";
 
   const cell = (title, val, sub) => `
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -1097,22 +1091,22 @@ function renderKurumsalPanel(xu100) {
   el.innerHTML = `
     <div class="panel-header orange">
       <div class="panel-title">💼 Kurumsal İlgi Analizi: ${(xu100 && xu100.ticker) || 'XU100'}</div>
-      <div class="panel-tag" style="color:var(--orange)">Skor: ${skor}/100</div>
+      <div class="panel-tag" style="color:var(--orange)">ELITE</div>
     </div>
     <div class="panel-body">
       <div class="ict-grid">
         <div class="ict-cell" style="border-color:var(--orange)">
           <div class="ict-cell-title" style="color:var(--orange)">💼 1. YAPI — Temel</div>
-          <div class="ict-cell-val" style="color:${sc}">${skor}/100</div>
-          <div class="ict-cell-sub">ORTA-YÜKSEK kurumsal ilgi</div>
+          <div class="ict-cell-val">${KILIT_MASK}</div>
+          <div class="ict-cell-sub">Kurumsal ilgi skoru</div>
         </div>
-        ${cell('📈 Trend Kalitesi','<span style="color:var(--green)">A+</span>','Yükseliş kalitesi')}
+        ${cell('📈 Trend Kalitesi','<span style="color:var(--green)">A+</span>','Trend kalitesi')}
         ${cell('⚡ Momentum Gücü','<span style="color:var(--cyan)">YÜKSEK</span>','MACD + RSI uyumu')}
-        ${cell('💧 Hacim Kalitesi','<span style="color:var(--green)">RVOL 1.42×</span>','Kurumsal birikim')}
-        ${cell('🔥 RS Gücü','<span style="color:var(--green)">+18.4%</span>','EM\'ye karşı üstünlük')}
+        ${cell('💧 Hacim Kalitesi','<span style="color:var(--green)">RVOL 1.42×</span>','Birikim mi dağıtım mı')}
+        ${cell('🔥 RS Gücü','<span style="color:var(--green)">+18.4%</span>','Endekse göre güç')}
         ${cell('🎯 Smart Money İzi','<span style="color:#70a8ff">5/7 İz</span>','Kurumsal ayak izi')}
         ${cell('📊 Delta Birikimi','<span style="color:var(--green)">+284M</span>','5 günlük kümülatif')}
-        ${cell('🛡️ OBV Yönü','<span style="color:var(--green)">YUKARI ↑</span>','Güçlü birikim sinyali')}
+        ${cell('🛡️ OBV Yönü','<span style="color:var(--green)">YUKARI ↑</span>','Birikim mi dağıtım mı')}
       </div>
     </div>
   `;
@@ -1124,7 +1118,7 @@ function renderTeknikYolPanel(ozet) {
   const el = document.getElementById("teknik-yol-panel");
   if (!el) return;
 
-  const skor = ozet?.genel_skor ?? 68;
+  const skor = ozet?.genel_skor ?? 0;
   const sc   = skor >= 65 ? "var(--green)" : skor >= 40 ? "var(--orange)" : "var(--red)";
   const lbl  = skor >= 65 ? "YÜKSELİŞ" : skor >= 40 ? "NÖTR" : "DÜŞÜŞ";
 
@@ -1132,7 +1126,7 @@ function renderTeknikYolPanel(ozet) {
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -1154,13 +1148,13 @@ function renderTeknikYolPanel(ozet) {
           <div class="ict-cell-sub">Günlük · Haftalık uyumu</div>
         </div>
         ${cell('📐 Vade Uyumu','<span style="color:var(--green)">3/3 UYUMLU</span>','G · H · A zaman dilimleri')}
-        ${cell('🔷 Fiyat — Formasyon','<span style="color:#70a8ff">BULL FLAG</span>','%78 başarı geçmişi')}
+        ${cell('🔷 Fiyat — Formasyon','<span style="color:#70a8ff">BULL FLAG</span>','Formasyon tespiti')}
         ${cell('📊 Trend Skoru','<span style="color:var(--green)">84/100</span>','Algo trend kalitesi')}
         ${cell('💧 Hacim Algoritması','<span style="color:var(--cyan)">BIRIKIM</span>','Smart Money hacim modeli')}
         ${cell('📋 Teknik Özet','<span style="color:var(--green)">9 ALIM</span>','12 indikatör sonucu')}
         ${cell('🎯 Trade Planı — Giriş','<span style="color:var(--green)">14,820–14,960</span>','Optimal giriş bölgesi')}
         ${cell('⚖️ Risk / Ödül','<span style="color:var(--cyan)">1:2.4</span>','Stop + 2 hedef seviye')}
-        ${cell('🌀 Bollinger Konumu','<span style="color:var(--orange)">Üst banda yakın</span>','Volatilite genişliyor')}
+        ${cell('🌀 Bollinger Konumu','<span style="color:var(--orange)">Üst banda yakın</span>','Bant içindeki konum')}
       </div>
     </div>
   `;
@@ -1176,7 +1170,7 @@ function renderRadarPanel() {
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -1194,14 +1188,13 @@ function renderRadarPanel() {
       <div class="ict-grid">
         <div class="ict-cell" style="border-color:var(--cyan)">
           <div class="ict-cell-title" style="color:var(--cyan)">📡 Radar Özeti</div>
-          <div class="ict-cell-val" style="color:var(--green)">12 Sinyal</div>
+          <div class="ict-cell-val">${KILIT_MASK}</div>
           <div class="ict-cell-sub">R1 + R2 toplamı bugün</div>
         </div>
-        ${cell('📡 Radar 1 — Momentum','<span style="color:var(--green)">7/7 Hisse</span>','THYAO KCHOL EREGL...')}
-        ${cell('🎯 Radar 2 — Trend Lider','<span style="color:var(--cyan)">5/5 Hisse</span>','BIMAS FROTO TCELL...')}
+        ${cell('📡 Radar 1 — Momentum','<span style="color:var(--green)">7/7 Hisse</span>','Hisse listesi')}
+        ${cell('🎯 Radar 2 — Trend Lider','<span style="color:var(--cyan)">5/5 Hisse</span>','Hisse listesi')}
         ${cell('🔥 Ortak Set-Up','<span style="color:var(--orange)">5 Hisse</span>','R1+R2 kesişim')}
         ${cell('🏆 TOP 20 Master','<span style="color:#70a8ff">20 Hisse</span>','Algo sıralama listesi')}
-        ${cell('📊 Başarı Oranı','<span style="color:var(--green)">%71.4</span>','Son 30 günlük backtest')}
         ${cell('⚡ Kırılım Takibi','<span style="color:var(--orange)">3 Kritik</span>','Anlık seviye izleme')}
         ${cell('🌀 Momentum Geçiş','<span style="color:var(--cyan)">5 Hisse</span>','DEMA6 geçiş sinyali')}
       </div>
@@ -1230,26 +1223,25 @@ function renderCanliSinyaller(d, ozet) {
     <!-- 3 görünür sinyal -->
     <div class="signal-row">
       ${dot(stpOk)}
-      <span>STP: ${stpOk?'Yükseliş Trendi':'Düşüş Trendi'} (${150})</span>
+      <span>SMA50: ${stpOk?'Üstünde':'Altında'}</span>
     </div>
     <div class="signal-row">
       ${dot(r1Ok)}
-      <span>Radar 1: Momentum (${d?.rsi?.toFixed(0)||'—'})</span>
+      <span>RSI (14): ${d?.rsi?.toFixed(0)||'—'}</span>
     </div>
     <div class="signal-row">
       ${dot(r2Ok)}
-      <span>Radar 2: Breakout (${ozet?.guclu_sinyal||0}/${150})</span>
+      <span>Güçlü sinyal: ${ozet?.guclu_sinyal||0} / 150 hisse</span>
     </div>
 
     <!-- Kilitli ek sinyaller -->
     <div style="position:relative;overflow:hidden;margin-top:6px;border-radius:4px;max-height:38px">
       <div style="filter:blur(3.5px);user-select:none;pointer-events:none">
-        <div class="signal-row"><div class="signal-dot g"></div><span>Long Sinyali: 7 Hisse (BIST30)</span></div>
-        <div class="signal-row"><div class="signal-dot r"></div><span>Short Sinyali: 2 Hisse</span></div>
-        <div class="signal-row"><div class="signal-dot o"></div><span>Kırılım Alarmı: 3 Kritik</span></div>
-        <div class="signal-row"><div class="signal-dot" style="background:#70a8ff"></div><span>Formasyon: 4 Tespit</span></div>
-        <div class="signal-row"><div class="signal-dot c"></div><span>Momentum Geçiş: 5 Hisse</span></div>
-        <div class="signal-row"><div class="signal-dot g"></div><span>Sinyal Başarısı: %71.4</span></div>
+        <div class="signal-row"><div class="signal-dot g"></div><span>Long Sinyali: ••</span></div>
+        <div class="signal-row"><div class="signal-dot r"></div><span>Short Sinyali: ••</span></div>
+        <div class="signal-row"><div class="signal-dot o"></div><span>Kırılım Alarmı: ••</span></div>
+        <div class="signal-row"><div class="signal-dot" style="background:#70a8ff"></div><span>Formasyon: ••</span></div>
+        <div class="signal-row"><div class="signal-dot c"></div><span>Momentum Geçiş: ••</span></div>
       </div>
       <div style="position:absolute;inset:0;background:rgba(10,13,26,0.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer"
            onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">

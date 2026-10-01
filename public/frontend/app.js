@@ -8,6 +8,8 @@ const TG_PRO_URL      = "#planlar";
 const TG_ELITE_URL    = "#planlar";
 const TWITTER_URL     = "https://x.com/SMRadar_2026";
 const AUTO_REFRESH_MS = 5 * 60 * 1000;   // 5 dakika
+// Kilitli kutularda ASLA örnek/uydurma rakam gösterilmez — sadece bu maske (1 Eki 2026).
+const KILIT_MASK = '<span style="letter-spacing:2px">🔒 ••••</span>';
 
 let _lastDataStamp = null;
 
@@ -134,163 +136,92 @@ function renderUpdateTime(meta) {
 // genHistory artık kullanılmıyor — gerçek veri JSON'dan geliyor
 
 
-// ── SVG: Momentum — gerçek MF_Smooth + Price verisi (scan_core.py ile özdeş) ─
-// grafik: [{date, mf, stp, price}, ...]   ← xu100_grafik JSON alanından
-function makeMomentumSVG(grafik) {
-  const W = 500, H = 210;
-  const pad = { l: 10, r: 52, t: 22, b: 26 };
-  const cW  = W - pad.l - pad.r;
-  const cH  = H - pad.t - pad.b;
-  const n   = grafik.length;
+// ── XU100 akış grafikleri — app.py render_synthetic_sentiment_panel İKİZİ (1 Eki 2026) ─
+// Veri: xu100_grafik [{date, mf, stp, price, sentiment?}] — backend bunu app'in
+// kendi hesabından (sentiment_chart_core.calculate_sentiment_chart) üretir.
+// Çizim kuralları app.py Altair panelinden birebir alındı:
+//   sol: bar = MF_Smooth (endeks ölçeği: max(20, ⌈|max|·1.15 / 5⌉·5), simetrik),
+//        fiyat çizgisi bağımsız eksen (zero=False, sağda)
+//   sağ: STP (sarı, 3px) + Fiyat (açık mavi, 2px) aynı eksen (min·0.999 / max·1.001),
+//        arası gri %15 dolgu; Sentiment 0-10 kesik beyaz çizgi (sol eksen 0,2..10)
+// sentiment alanı yoksa (backend eski formüle düştüyse) sentiment çizgisi çizilmez.
+const _XC = { W: 520, H: 290, l: 40, r: 52, t: 12, b: 58 };
 
-  const prices = grafik.map(r => r.price);
-  const mfVals = grafik.map(r => r.mf);       // MF_Smooth değerleri
-  const dates  = grafik.map(r => r.date);      // "27 Mar" formatı
-
-  // --- Sağ Y-ekseni: Fiyat ---
-  const minP = Math.min(...prices) * 0.999;
-  const maxP = Math.max(...prices) * 1.001;
-  const xS   = i => pad.l + (i / (n - 1)) * cW;
-  const yP   = v => pad.t + cH - ((v - minP) / (maxP - minP)) * cH;
-
-  // --- Sol Y-ekseni: MF_Smooth barları (dual axis, 0 ortada) ---
-  const maxMF   = Math.max(30, ...mfVals.map(Math.abs));  // 10 Tem 2026 — sabit ±30 (=3σ) zemin; aşan bar olursa genişler
-  const midY    = pad.t + cH * 0.62;   // sıfır çizgisi konumu
-  const barMaxH = cH * 0.36;
-  const barW    = Math.max(cW / n * 0.72, 2);
-
-  const bars = mfVals.map((mf, i) => {
-    const bh   = Math.max(Math.abs(mf) / maxMF * barMaxH, 1.5);
-    const bx   = xS(i) - barW / 2;
-    const by   = mf >= 0 ? midY - bh : midY;
-    const fill = mf >= 0 ? "#5B84C4" : "#ef4444";   // app.py renkleriyle birebir
-    return `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${fill}" opacity="0.9"/>`;
+function _niceTicks(lo, hi, k = 5) {
+  const raw = (hi - lo) / k;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const st = [1, 2, 2.5, 5, 10].map(m => m * mag).reduce((a, b) => Math.abs(b - raw) < Math.abs(a - raw) ? b : a);
+  const out = [];
+  for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) out.push(v);
+  return { lo: Math.floor(lo / st) * st, hi: Math.ceil(hi / st) * st, ticks: out };
+}
+function _fmtAx(v) {
+  return v >= 1000 ? v.toLocaleString("tr-TR", { maximumFractionDigits: 0 }) : v.toFixed(2);
+}
+function _xFrame(grafik) {
+  const { W, H, l, r, t, b } = _XC;
+  const pw = W - l - r, ph = H - t - b, n = grafik.length, step = pw / n;
+  const X = i => l + step * (i + 0.5);
+  const xl = grafik.map((g, i) => {
+    const x = X(i).toFixed(1), y = t + ph + 10;
+    return `<text x="${x}" y="${y}" font-size="9" fill="#94a3b8" text-anchor="end" transform="rotate(-45 ${x} ${y})">${g.date}</text>`;
   }).join("");
-
-  // --- Fiyat çizgisi (#bfdbfe — app.py mark_line color ile özdeş) ---
-  const priceLine = prices.map((p, i) =>
-    `${i === 0 ? "M" : "L"} ${xS(i).toFixed(1)} ${yP(p).toFixed(1)}`
-  ).join(" ");
-
-  // --- Sağ Y-eksen etiketleri (fiyat) ---
-  const priceSteps = [0, 0.25, 0.5, 0.75, 1];
-  const rLabels = priceSteps.map(f => {
-    const v = minP + (maxP - minP) * f;
-    const y = yP(v);
-    const lbl = v >= 1000
-      ? v.toLocaleString("tr-TR", { maximumFractionDigits: 0 })
-      : v.toFixed(0);
-    return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W-pad.r}" y2="${y.toFixed(1)}" stroke="#1a2438" stroke-width="0.5"/>
-            <text x="${(W-pad.r+3).toFixed(0)}" y="${(y+3).toFixed(0)}" font-size="9" fill="#4a5570" font-family="Inter">${lbl}</text>`;
-  }).join("");
-
-  // --- X etiketleri: app.py ile aynı '%d %b' formatında JSON'dan geliyor ---
-  // Her ~5. barı etiketle, son bar daima etiketlensin
-  const xLabels = grafik.map((r, i) => {
-    if (i % 5 !== 0 && i !== n - 1) return "";
-    return `<text x="${xS(i).toFixed(1)}" y="${H - 5}" font-size="9" fill="#4a5570" text-anchor="middle" font-family="Inter">${r.date}</text>`;
-  }).join("");
-
-  return `
-<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;background:#0d1220">
-  <rect width="${W}" height="${H}" fill="#0d1220"/>
-  <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H-pad.b}" stroke="#1e2840" stroke-width="0.8"/>
-  <line x1="${W-pad.r}" y1="${pad.t}" x2="${W-pad.r}" y2="${H-pad.b}" stroke="#1e2840" stroke-width="0.8"/>
-  <line x1="${pad.l}" y1="${H-pad.b}" x2="${W-pad.r}" y2="${H-pad.b}" stroke="#1e2840" stroke-width="0.8"/>
-  <line x1="${pad.l}" y1="${midY.toFixed(1)}" x2="${(W-pad.r).toFixed(1)}" y2="${midY.toFixed(1)}" stroke="#253050" stroke-width="0.8" stroke-dasharray="3,2"/>
-  ${rLabels}
-  ${bars}
-  <path d="${priceLine}" fill="none" stroke="#bfdbfe" stroke-width="2"/>
-  <text x="${pad.l+4}" y="${pad.t-6}" font-size="9" fill="#38bdf8" font-family="Inter" font-weight="600">Momentum</text>
-  <text x="${pad.l+4}" y="${pad.t+4}" font-size="9" fill="#4a5570" font-family="Inter">Para Akışı (Güç)</text>
-  <text x="${(W-pad.r+3).toFixed(0)}" y="${pad.t-4}" font-size="9" fill="#64748b" font-family="Inter">Fiyat</text>
-  ${xLabels}
-</svg>`;
+  return { W, H, l, r, t, b, pw, ph, n, step, X, xl };
 }
 
+function makeMomentumSVG(grafik, isIndex = true) {
+  const f = _xFrame(grafik);
+  const mf = grafik.map(g => g.mf), pr = grafik.map(g => g.price);
+  const mx = Math.max(...mf.map(Math.abs));
+  // app.py bar ekseni: endeks → ±max(20, ⌈|max|·1.15/5⌉·5) · hisse → ±max(30, |max|·1.05)
+  const lim = isIndex ? Math.max(20, Math.ceil((mx * 1.15) / 5) * 5) : Math.max(30, mx * 1.05);
+  const Ym = v => f.t + f.ph / 2 - (v / lim) * (f.ph / 2);
+  const P = _niceTicks(Math.min(...pr), Math.max(...pr));
+  const Yp = v => f.t + f.ph - ((v - P.lo) / (P.hi - P.lo)) * f.ph;
+  const stepM = lim <= 40 ? 10 : lim <= 80 ? 20 : 50;
+  let grid = "";
+  for (let v = Math.ceil(-lim / stepM) * stepM; v <= lim + 1e-9; v += stepM) {
+    const y = Ym(v).toFixed(1);
+    grid += `<line x1="${f.l}" x2="${f.l + f.pw}" y1="${y}" y2="${y}" stroke="#1e293b" stroke-width="1"/>` +
+            `<text x="${f.l - 6}" y="${(+y + 3).toFixed(1)}" font-size="10" fill="#94a3b8" text-anchor="end">${v.toFixed(0)}</text>`;
+  }
+  const pl = P.ticks.map(v => `<text x="${f.l + f.pw + 6}" y="${(Yp(v) + 3).toFixed(1)}" font-size="10" fill="#94a3b8">${_fmtAx(v)}</text>`).join("");
+  const bw = Math.min(12, f.step * 0.8);
+  const bars = mf.map((v, i) => {
+    const y0 = Ym(0), y1 = Ym(v);
+    return `<rect x="${(f.X(i) - bw / 2).toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.abs(y1 - y0).toFixed(1)}" fill="${v > 0 ? "#5B84C4" : "#ef4444"}" opacity="0.9"/>`;
+  }).join("");
+  const line = pr.map((v, i) => `${f.X(i).toFixed(1)},${Yp(v).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${f.W} ${f.H}" width="100%" style="display:block" role="img" aria-label="Para Akış İvmesi ve Fiyat">
+${grid}${pl}${bars}<polyline fill="none" stroke="#bfdbfe" stroke-width="2" points="${line}"/>${f.xl}</svg>`;
+}
 
-// ── SVG: Sentiment — gerçek STP (EMA1) + Price verisi (scan_core.py ile özdeş) ─
-// grafik: [{date, mf, stp, price}, ...]
-// STP  = EMA1 (typical_price üzerinden 6-periyot EMA) → sarı çizgi (#fbbf24)
-// Price = Close                                        → mavi çizgi (#bfdbfe)
-// Area  = STP ile Price arasında gri dolgu
 function makeSentimentSVG(grafik) {
-  const W = 500, H = 210;
-  const pad = { l: 10, r: 52, t: 22, b: 26 };
-  const cW  = W - pad.l - pad.r;
-  const cH  = H - pad.t - pad.b;
-  const n   = grafik.length;
-
-  const prices = grafik.map(r => r.price);
-  const stps   = grafik.map(r => r.stp);
-
-  // Eksen: her iki çizgiyi kapsasın
-  const allVals = [...prices, ...stps];
-  const minV = Math.min(...allVals) * 0.999;
-  const maxV = Math.max(...allVals) * 1.001;
-  const xS   = i => pad.l + (i / (n - 1)) * cW;
-  const yS   = v => pad.t + cH - ((v - minV) / (maxV - minV)) * cH;
-
-  // Alan (area) — STP ile Price arasında gri dolgu (app.py mark_area opacity=0.15)
-  const areaPath = (() => {
-    // üst kenar: price, alt kenar: stp (veya tersi)
-    const top = prices.map((p, i) => `${i === 0 ? "M" : "L"} ${xS(i).toFixed(1)} ${yS(p).toFixed(1)}`).join(" ");
-    const bot = stps.slice().reverse().map((s, i) => {
-      const ri = n - 1 - i;
-      return `L ${xS(ri).toFixed(1)} ${yS(s).toFixed(1)}`;
-    }).join(" ");
-    return `${top} ${bot} Z`;
-  })();
-
-  // Çizgiler
-  const stpLine   = stps.map((s, i)   => `${i === 0 ? "M" : "L"} ${xS(i).toFixed(1)} ${yS(s).toFixed(1)}`).join(" ");
-  const priceLine = prices.map((p, i) => `${i === 0 ? "M" : "L"} ${xS(i).toFixed(1)} ${yS(p).toFixed(1)}`).join(" ");
-
-  // Son nokta crosshair (app.py _hover2 / vrule2 mantığı — sabit son bar)
-  const lx = xS(n - 1).toFixed(1);
-  const lyP = yS(prices[n - 1]).toFixed(1);
-  const lyS = yS(stps[n - 1]).toFixed(1);
-
-  // Sağ Y-eksen etiketleri
-  const rLabels = [0, 0.25, 0.5, 0.75, 1].map(f => {
-    const v = minV + (maxV - minV) * f;
-    const y = yS(v);
-    const lbl = v >= 1000
-      ? v.toLocaleString("tr-TR", { maximumFractionDigits: 0 })
-      : v.toFixed(0);
-    return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W-pad.r}" y2="${y.toFixed(1)}" stroke="#1a2438" stroke-width="0.5"/>
-            <text x="${(W-pad.r+3).toFixed(0)}" y="${(y+3).toFixed(0)}" font-size="9" fill="#4a5570" font-family="Inter">${lbl}</text>`;
-  }).join("");
-
-  // X etiketleri — JSON'daki '%d %b' format string'leri kullanılıyor
-  const xLabels = grafik.map((r, i) => {
-    if (i % 5 !== 0 && i !== n - 1) return "";
-    return `<text x="${xS(i).toFixed(1)}" y="${H - 5}" font-size="9" fill="#4a5570" text-anchor="middle" font-family="Inter">${r.date}</text>`;
-  }).join("");
-
-  return `
-<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;background:#0d1220">
-  <rect width="${W}" height="${H}" fill="#0d1220"/>
-  <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H-pad.b}" stroke="#1e2840" stroke-width="0.8"/>
-  <line x1="${W-pad.r}" y1="${pad.t}" x2="${W-pad.r}" y2="${H-pad.b}" stroke="#1e2840" stroke-width="0.8"/>
-  <line x1="${pad.l}" y1="${H-pad.b}" x2="${W-pad.r}" y2="${H-pad.b}" stroke="#1e2840" stroke-width="0.8"/>
-  ${rLabels}
-  <!-- Area: STP-Price arası gri dolgu (app.py mark_area opacity=0.15) -->
-  <path d="${areaPath}" fill="gray" opacity="0.15"/>
-  <!-- STP çizgisi: #fbbf24 / strokeWidth=3 (app.py line_stp rengi) -->
-  <path d="${stpLine}"   fill="none" stroke="#fbbf24" stroke-width="3"/>
-  <!-- Fiyat çizgisi: #bfdbfe / strokeWidth=2 (app.py line_price rengi) -->
-  <path d="${priceLine}" fill="none" stroke="#bfdbfe" stroke-width="2"/>
-  <!-- Son bar crosshair (app.py vrule2 — stroke-dasharray=[4,3]) -->
-  <line x1="${lx}" y1="${pad.t}" x2="${lx}" y2="${H-pad.b}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-  <!-- Son nokta dot'ları -->
-  <circle cx="${lx}" cy="${lyP}" r="3.5" fill="#bfdbfe"/>
-  <circle cx="${lx}" cy="${lyS}" r="4"   fill="#fbbf24"/>
-  <text x="${pad.l+4}" y="${pad.t-6}" font-size="9" fill="#38bdf8" font-family="Inter" font-weight="600">Sentiment Analizi</text>
-  <text x="${pad.l+4}" y="${pad.t+4}" font-size="9" fill="#4a5570" font-family="Inter">Mavi (Fiyat) Sarıyı (STP-DEMA6) Yukarı Keserse AL</text>
-  <text x="${(W-pad.r+3).toFixed(0)}" y="${pad.t-4}" font-size="9" fill="#64748b" font-family="Inter">Fiyat</text>
-  ${xLabels}
-</svg>`;
+  const f = _xFrame(grafik);
+  const pr = grafik.map(g => g.price), st = grafik.map(g => g.stp);
+  const hasSent = grafik.every(g => typeof g.sentiment === "number");
+  const lo = Math.min(...st, ...pr) * 0.999, hi = Math.max(...st, ...pr) * 1.001;
+  const Ys = v => f.t + f.ph - ((v - lo) / (hi - lo)) * f.ph;
+  const Yse = v => f.t + f.ph - (v / 10) * f.ph;
+  let grid = "";
+  if (hasSent) {
+    for (let v = 0; v <= 10; v += 2) {
+      const y = Yse(v).toFixed(1);
+      grid += `<line x1="${f.l}" x2="${f.l + f.pw}" y1="${y}" y2="${y}" stroke="#1e293b" stroke-width="1"/>` +
+              `<text x="${f.l - 6}" y="${(+y + 3).toFixed(1)}" font-size="10" fill="#94a3b8" text-anchor="end">${v}</text>`;
+    }
+  }
+  const pl = _niceTicks(lo, hi).ticks.filter(v => v >= lo && v <= hi)
+    .map(v => `<text x="${f.l + f.pw + 6}" y="${(Ys(v) + 3).toFixed(1)}" font-size="10" fill="#94a3b8">${_fmtAx(v)}</text>`).join("");
+  const ps = st.map((v, i) => `${f.X(i).toFixed(1)},${Ys(v).toFixed(1)}`);
+  const pp = pr.map((v, i) => `${f.X(i).toFixed(1)},${Ys(v).toFixed(1)}`);
+  const sent = hasSent
+    ? `<polyline fill="none" stroke="#f8fafc" stroke-opacity="0.88" stroke-width="1.2" stroke-dasharray="4 3" stroke-linecap="round" points="${grafik.map((g, i) => `${f.X(i).toFixed(1)},${Yse(g.sentiment).toFixed(1)}`).join(" ")}"/>`
+    : "";
+  return `<svg viewBox="0 0 ${f.W} ${f.H}" width="100%" style="display:block" role="img" aria-label="Sentiment ve Fiyat">
+${grid}${pl}<polygon fill="gray" opacity="0.15" points="${ps.concat(pp.slice().reverse()).join(" ")}"/>
+<polyline fill="none" stroke="#fbbf24" stroke-width="3" points="${ps.join(" ")}"/>
+<polyline fill="none" stroke="#bfdbfe" stroke-width="2" points="${pp.join(" ")}"/>${sent}${f.xl}</svg>`;
 }
 
 
@@ -333,16 +264,11 @@ function renderXU100Panel(d, ozet, grafik) {
   const chartHtml = grafik && grafik.length >= 5
     ? `<div class="chart-grid">
         <div class="chart-pane">
-          <div class="chart-pane-label">
-            <span>Momentum</span>
-            <span class="chart-pane-sublabel">Para Akışı (Güç)</span>
-          </div>
+          <div class="chart-pane-label" style="color:#38bdf8;font-weight:700">Para Akış İvmesi &amp; Fiyat — XU100</div>
           ${makeMomentumSVG(grafik)}
         </div>
         <div class="chart-pane">
-          <div class="chart-pane-label" style="font-size:9px">
-            Sentiment Analizi: Mavi (Fiyat) Sarıyı (STP-DEMA6) Yukarı Keserse AL, aşağıya keserse SAT
-          </div>
+          <div class="chart-pane-label" style="color:#38bdf8;font-weight:700">${grafik.every(g => typeof g.sentiment === "number") ? "Sentiment &amp; Fiyat — XU100" : "Fiyat (mavi) ↔ Eğilim (sarı) — XU100"}</div>
           ${makeSentimentSVG(grafik)}
         </div>
       </div>`
@@ -471,7 +397,7 @@ function renderHacimPanel(ozet) {
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -488,12 +414,12 @@ function renderHacimPanel(ozet) {
         <div class="ict-cell-sub">SMA200 Üstü Hisse · ${150} tarandı</div>
       </div>
       ${cell('💧 POC Bölgesi','<span style="color:var(--cyan)">14,820–15,140</span>','Hacim yoğunlaşma')}
-      ${cell('⚡ RVOL Oranı','<span style="color:var(--green)">1.42×</span>','Normalin üstünde')}
+      ${cell('⚡ RVOL Oranı','<span style="color:var(--green)">1.42×</span>','Bugünkü hacim / ortalama')}
       ${cell('🔥 Kümülatif Delta','<span style="color:var(--green)">+284M</span>','5 günlük birikimli')}
-      ${cell('📈 OBV Analizi','<span style="color:var(--green)">YÜKSELİŞ</span>','Kurumsal birikim')}
+      ${cell('📈 OBV Analizi','<span style="color:var(--green)">YÜKSELİŞ</span>','Birikim mi dağıtım mı')}
       ${cell('🎯 Hacim Anomalisi','<span style="color:#70a8ff">3 Tespit</span>','Kurumsal ayak izi')}
-      ${cell('💼 VSA Sinyali','<span style="color:var(--orange)">UP-THRUST</span>','Profesyonel baskı')}
-      ${cell('📊 Para Akış Skoru','<span style="color:var(--green)">74/100</span>','Güçlü alım baskısı')}
+      ${cell('💼 VSA Sinyali','<span style="color:var(--orange)">UP-THRUST</span>','Hacim-fiyat uyumu')}
+      ${cell('📊 Para Akış Skoru','<span style="color:var(--green)">74/100</span>','Para giriş-çıkış dengesi')}
     </div>
   `;
 }
@@ -518,7 +444,7 @@ function renderComposite(ozet) {
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -538,7 +464,7 @@ function renderComposite(ozet) {
       ${cell('📊 RSI Momentum','<span style="color:var(--green)">%'+rsi50p+' Güçlü</span>','RSI>50 hisse oranı')}
       ${cell('🔥 Güçlü Sinyal','<span style="color:var(--green)">'+(ozet.guclu_sinyal||0)+' Hisse</span>','3 kriter eşzamanlı')}
       ${cell('📈 Trend Skoru','<span style="color:var(--green)">GÜÇLÜ</span>','Algo trend kalitesi')}
-      ${cell('⚖️ Risk / Ödül','<span style="color:var(--cyan)">1:2.4</span>','Optimal giriş penceresi')}
+      ${cell('⚖️ Risk / Ödül','<span style="color:var(--cyan)">1:2.4</span>','Stop ve hedef oranı')}
       ${cell('💧 SMA50 Üstü','<span style="color:var(--green)">%'+s50pct+'</span>','Kısa vade gücü')}
       ${cell('🎯 Piyasa Fazı','<span style="color:#70a8ff">DAĞILIM</span>','Wyckoff fazı tespiti')}
     </div>
@@ -555,7 +481,7 @@ function renderICT(d, ozet) {
   const sColor  = skor >= 65 ? "var(--green)" : skor >= 40 ? "var(--orange)" : "var(--red)";
 
   const tag = document.getElementById("ict-tag");
-  if (tag) tag.innerHTML = `<span style="color:${sColor}">${skor.toFixed(0)} / 5 · ${sLabel}</span>`;
+  if (tag) tag.innerHTML = `<span style="color:${sColor}">Piyasa skoru ${skor.toFixed(0)} / 100 · ${sLabel}</span>`;
 
   const k = d.kapanis;
 
@@ -563,7 +489,7 @@ function renderICT(d, ozet) {
     <div class="ict-grid">
       <div class="ict-cell">
         <div class="ict-cell-title">📈 Yükseliş Trendi (Bullish Box)</div>
-        <div class="ict-cell-blur"><div class="ict-cell-val" style="color:var(--green)">${fmt(k*1.018)}</div><div class="ict-cell-sub">+1.8% hedef bölge</div></div>
+        <div class="ict-cell-blur"><div class="ict-cell-val">${KILIT_MASK}</div><div class="ict-cell-sub">Hedef bölge</div></div>
         <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div class="elite-badge">ELITE</div><span style="font-size:9.5px;color:var(--text-dim)">Daha fazlası için ELITE</span>
         </div>
@@ -577,21 +503,21 @@ function renderICT(d, ozet) {
       </div>
       <div class="ict-cell">
         <div class="ict-cell-title">🗺️ Fiyat Haritası</div>
-        <div class="ict-cell-blur"><div class="ict-cell-val" style="color:var(--orange)">${fmt(k*1.025)}</div><div class="ict-cell-sub">Hedef bölge</div></div>
+        <div class="ict-cell-blur"><div class="ict-cell-val">${KILIT_MASK}</div><div class="ict-cell-sub">Fiyat haritası</div></div>
         <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div class="elite-badge">ELITE</div><span style="font-size:9.5px;color:var(--text-dim)">Daha fazlası için ELITE</span>
         </div>
       </div>
       <div class="ict-cell">
         <div class="ict-cell-title">📊 Alıcılar Bakışı — OB Detayı</div>
-        <div class="ict-cell-blur"><div class="ict-cell-val" style="color:var(--green)">${fmt(k*0.965)}</div><div class="ict-cell-sub">%3.5 aşağıda OB</div></div>
+        <div class="ict-cell-blur"><div class="ict-cell-val">${KILIT_MASK}</div><div class="ict-cell-sub">Alıcı bölgesi (OB)</div></div>
         <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div class="elite-badge">ELITE</div><span style="font-size:9.5px;color:var(--text-dim)">Daha fazlası için ELITE</span>
         </div>
       </div>
       <div class="ict-cell">
         <div class="ict-cell-title">🎯 Yakın Hedef</div>
-        <div class="ict-cell-blur"><div class="ict-cell-val" style="color:var(--green)">${fmt(k*1.016)}</div><div class="ict-cell-sub">+1.6% hedef</div></div>
+        <div class="ict-cell-blur"><div class="ict-cell-val">${KILIT_MASK}</div><div class="ict-cell-sub">Yakın hedef</div></div>
         <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div class="elite-badge">ELITE</div><span style="font-size:9.5px;color:var(--text-dim)">Daha fazlası için ELITE</span>
         </div>
@@ -641,20 +567,20 @@ function renderSidebarLeft(d, ozet) {
     </div>
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
       <span style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:3px;padding:2px 7px;color:var(--text-dim)">
-        LONG <strong style="color:var(--cyan)">${longSkor}/100</strong>
+        SKOR <strong style="color:var(--cyan)">${longSkor}/100</strong>
       </span>
       <span style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:3px;padding:2px 7px;color:var(--text-dim)">
-        STOP <strong style="color:var(--red)">${fmt(d.sma200)}</strong>
+        SMA200 <strong style="color:var(--red)">${fmt(d.sma200)}</strong>
       </span>
     </div>
     <div style="font-size:10px;color:${metColor};font-weight:700;margin-bottom:4px">${met}/4</div>
     <div style="font-size:10.5px;color:var(--text-dim);line-height:1.6">
-      Hacim ${ok(hacimOk)} · OBV ${ok(obvOk)} · Yapı ${ok(yapiOk)} · RSI ${ok(rsiOk)}
+      Gün ${ok(hacimOk)} · SMA50 ${ok(obvOk)} · SMA200 ${ok(yapiOk)} · RSI ${ok(rsiOk)}
     </div>
     <!-- GENEL ÖZET teaser -->
     <div style="margin-top:8px;border:1px dashed var(--border2);border-radius:4px;padding:6px 8px;background:rgba(10,13,26,0.6)">
       <div style="filter:blur(3.5px);user-select:none;pointer-events:none;font-size:10px;color:var(--text-dim);line-height:1.5">
-        HH+HL Yapısı ✅ · Kümülatif Delta +284M · SFP Yok · LONG Radar 5/7 · Stop ${fmt(d.kapanis*0.973)}
+        HH+HL Yapısı · Kümülatif Delta · SFP · LONG Radar · Stop seviyesi
       </div>
       <div style="text-align:center;margin-top:5px;cursor:pointer" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
         <span style="font-size:9px;color:#70a8ff;font-weight:700">+ daha fazlası için ELITE →</span>
@@ -665,24 +591,18 @@ function renderSidebarLeft(d, ozet) {
   renderGauge("sidebar-gauge", ozet?.genel_skor ?? 0);
 
   // KURUMSAL İLGİ mini (XU100 Özet yerine)
-  const kSkor = 67;
-  const kRenk = "var(--orange)";
   document.getElementById("sidebar-xu100mini").innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-      <span style="font-size:13px;font-weight:800;color:${kRenk}">${kSkor}/100</span>
-      <span style="font-size:9px;color:var(--text-muted);background:var(--bg4);padding:1px 6px;border-radius:3px;border:1px solid var(--border2)">ORTA-YÜKSEK</span>
-    </div>
-    <div class="sidebar-stat-row">
-      <span class="sidebar-stat-label">1. YAPI</span>
-      <span class="sidebar-stat-val o">Kurumsal İlgi Var</span>
+      <span style="font-size:13px;font-weight:800;color:var(--text-dim)">🔒 ••/100</span>
+      <span class="elite-badge" style="font-size:9px;padding:1px 6px">ELITE</span>
     </div>
     <div style="position:relative;overflow:hidden;margin-top:5px;max-height:38px">
       <div style="filter:blur(3.5px);user-select:none;pointer-events:none">
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Trend</span><span class="sidebar-stat-val g">A+ KALİTE</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Momentum</span><span class="sidebar-stat-val c">YÜKSEK</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Hacim Kalitesi</span><span class="sidebar-stat-val g">RVOL 1.42×</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">RS Gücü</span><span class="sidebar-stat-val g">+18.4%</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">SM İzi</span><span class="sidebar-stat-val" style="color:#70a8ff">5/7</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Trend</span><span class="sidebar-stat-val g">••••</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Momentum</span><span class="sidebar-stat-val c">••••</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Hacim Kalitesi</span><span class="sidebar-stat-val g">••••</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">RS Gücü</span><span class="sidebar-stat-val g">••••</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">SM İzi</span><span class="sidebar-stat-val" style="color:#70a8ff">••••</span></div>
       </div>
       <div style="position:absolute;inset:0;background:rgba(10,13,26,0.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer"
            onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -707,10 +627,10 @@ function renderSidebarLeft(d, ozet) {
       </div>
       <div style="position:relative;overflow:hidden;margin-top:6px;max-height:38px">
         <div style="filter:blur(3.5px);user-select:none;pointer-events:none">
-          <div class="signal-row"><div class="signal-dot g"></div><span>ATR Risk Bölgesi: DÜŞÜK</span></div>
-          <div class="signal-row"><div class="signal-dot c"></div><span>Bollinger: Üst banda yakın</span></div>
-          <div class="signal-row"><div class="signal-dot o"></div><span>ADX Güç: 28.4 Gelişiyor</span></div>
-          <div class="signal-row"><div class="signal-dot g"></div><span>Stoch RSI: Güçlü bölge</span></div>
+          <div class="signal-row"><div class="signal-dot g"></div><span>ATR Risk Bölgesi: ••••</span></div>
+          <div class="signal-row"><div class="signal-dot c"></div><span>Bollinger: ••••</span></div>
+          <div class="signal-row"><div class="signal-dot o"></div><span>ADX Güç: ••••</span></div>
+          <div class="signal-row"><div class="signal-dot g"></div><span>Stoch RSI: ••••</span></div>
         </div>
         <div style="position:absolute;inset:0;background:rgba(10,13,26,0.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer"
              onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -766,7 +686,7 @@ function renderSidebarRight(d, ozet) {
   const vsaIcon = (ozet?.genel_skor||0) >= 60 ? "📈" : "📊";
   const ve = document.getElementById("vsa-text");
   const vi = document.getElementById("vsa-icon");
-  if (ve) ve.textContent = `HACİM & VSA: ${vsaText}`;
+  if (ve) ve.textContent = `HACİM & VSA: 🔒 ELITE`;
   if (vi) vi.textContent = vsaIcon;
 
   // ── Price Action + ALTIN + PLATİN SET-UP bölümleri (dinamik) ──────────────
@@ -780,7 +700,7 @@ function renderSidebarRight(d, ozet) {
       <div class="signal-row" style="margin-bottom:6px">
         <div class="signal-dot g"></div>
         <span style="font-size:11px">En güçlü PA sinyali:</span>
-        <span style="font-size:11px;font-weight:700;color:${paColor};margin-left:4px;filter:blur(3px)">${paSinyal}</span>
+        <span style="font-size:11px;font-weight:700;color:var(--text-dim);margin-left:4px">${KILIT_MASK}</span>
       </div>
       <!-- Teaser kilitli blok -->
       <div style="border:1px dashed var(--border2);border-radius:4px;padding:7px 8px;background:rgba(10,13,26,0.5);cursor:pointer;position:relative;overflow:hidden"
@@ -799,7 +719,7 @@ function renderSidebarRight(d, ozet) {
         <div style="border:1px solid rgba(255,215,0,0.2);border-radius:4px;padding:7px 8px;background:rgba(255,215,0,0.04);cursor:pointer;position:relative;overflow:hidden"
              onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div style="filter:blur(3.5px);user-select:none;pointer-events:none;font-size:10px;color:var(--text-dim);line-height:1.5">
-            Trend + Momentum + Hacim üçlü uyumu · En yüksek olasılıklı giriş · Risk/Ödül 1:3+
+            Trend + Momentum + Hacim üçlü uyumu
           </div>
           <div style="margin-top:5px;text-align:center">
             <span style="font-size:9px;font-weight:700;color:var(--gold)">+ daha fazlası için ELITE →</span>
@@ -813,7 +733,7 @@ function renderSidebarRight(d, ozet) {
         <div style="border:1px solid rgba(0,212,255,0.2);border-radius:4px;padding:7px 8px;background:rgba(0,212,255,0.04);cursor:pointer;position:relative;overflow:hidden"
              onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
           <div style="filter:blur(3.5px);user-select:none;pointer-events:none;font-size:10px;color:var(--text-dim);line-height:1.5">
-            ICT + SMC + Kurumsal iz üçlü kesişim · Ayda 2–3 kez tetiklenir · Geçmiş başarı %87
+            ICT + SMC + Kurumsal iz üçlü kesişimi
           </div>
           <div style="margin-top:5px;text-align:center">
             <span style="font-size:9px;font-weight:700;color:var(--cyan)">+ daha fazlası için ELITE →</span>
@@ -963,7 +883,7 @@ function renderHisseDetayPanel(h) {
   const grafik = h.chart_data || [];
   const hasSVG = grafik.length > 0;
   const svgBok = hasSVG
-    ? `<div style="margin-top:10px">${makeMomentumSVG(grafik)}</div>
+    ? `<div style="margin-top:10px">${makeMomentumSVG(grafik, false)}</div>
        <div style="margin-top:6px">${makeSentimentSVG(grafik)}</div>`
     : `<div style="color:#475569;font-size:11px;margin-top:10px;text-align:center;padding:12px 0">
          Grafik verisi bir sonraki güncellemede hazır olacak (18:45)
@@ -1043,14 +963,12 @@ function renderKurumsalPanel(xu100) {
   const el = document.getElementById("kurumsal-panel");
   if (!el) return;
 
-  const skor = 67;
-  const sc   = "var(--orange)";
 
   const cell = (title, val, sub) => `
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -1062,22 +980,22 @@ function renderKurumsalPanel(xu100) {
   el.innerHTML = `
     <div class="panel-header orange">
       <div class="panel-title">💼 Kurumsal İlgi Analizi: XU100</div>
-      <div class="panel-tag" style="color:var(--orange)">Skor: ${skor}/100</div>
+      <div class="panel-tag" style="color:var(--orange)">ELITE</div>
     </div>
     <div class="panel-body">
       <div class="ict-grid">
         <div class="ict-cell" style="border-color:var(--orange)">
           <div class="ict-cell-title" style="color:var(--orange)">💼 1. YAPI — Temel</div>
-          <div class="ict-cell-val" style="color:${sc}">${skor}/100</div>
-          <div class="ict-cell-sub">ORTA-YÜKSEK kurumsal ilgi</div>
+          <div class="ict-cell-val">${KILIT_MASK}</div>
+          <div class="ict-cell-sub">Kurumsal ilgi skoru</div>
         </div>
-        ${cell('📈 Trend Kalitesi','<span style="color:var(--green)">A+</span>','Yükseliş kalitesi')}
+        ${cell('📈 Trend Kalitesi','<span style="color:var(--green)">A+</span>','Trend kalitesi')}
         ${cell('⚡ Momentum Gücü','<span style="color:var(--cyan)">YÜKSEK</span>','MACD + RSI uyumu')}
-        ${cell('💧 Hacim Kalitesi','<span style="color:var(--green)">RVOL 1.42×</span>','Kurumsal birikim')}
-        ${cell('🔥 RS Gücü','<span style="color:var(--green)">+18.4%</span>','EM\'ye karşı üstünlük')}
+        ${cell('💧 Hacim Kalitesi','<span style="color:var(--green)">RVOL 1.42×</span>','Birikim mi dağıtım mı')}
+        ${cell('🔥 RS Gücü','<span style="color:var(--green)">+18.4%</span>','Endekse göre güç')}
         ${cell('🎯 Smart Money İzi','<span style="color:#70a8ff">5/7 İz</span>','Kurumsal ayak izi')}
         ${cell('📊 Delta Birikimi','<span style="color:var(--green)">+284M</span>','5 günlük kümülatif')}
-        ${cell('🛡️ OBV Yönü','<span style="color:var(--green)">YUKARI ↑</span>','Güçlü birikim sinyali')}
+        ${cell('🛡️ OBV Yönü','<span style="color:var(--green)">YUKARI ↑</span>','Birikim mi dağıtım mı')}
       </div>
     </div>
   `;
@@ -1089,7 +1007,7 @@ function renderTeknikYolPanel(ozet) {
   const el = document.getElementById("teknik-yol-panel");
   if (!el) return;
 
-  const skor = ozet?.genel_skor ?? 68;
+  const skor = ozet?.genel_skor ?? 0;
   const sc   = skor >= 65 ? "var(--green)" : skor >= 40 ? "var(--orange)" : "var(--red)";
   const lbl  = skor >= 65 ? "YÜKSELİŞ" : skor >= 40 ? "NÖTR" : "DÜŞÜŞ";
 
@@ -1097,7 +1015,7 @@ function renderTeknikYolPanel(ozet) {
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -1119,13 +1037,13 @@ function renderTeknikYolPanel(ozet) {
           <div class="ict-cell-sub">Günlük · Haftalık uyumu</div>
         </div>
         ${cell('📐 Vade Uyumu','<span style="color:var(--green)">3/3 UYUMLU</span>','G · H · A zaman dilimleri')}
-        ${cell('🔷 Fiyat — Formasyon','<span style="color:#70a8ff">BULL FLAG</span>','%78 başarı geçmişi')}
+        ${cell('🔷 Fiyat — Formasyon','<span style="color:#70a8ff">BULL FLAG</span>','Formasyon tespiti')}
         ${cell('📊 Trend Skoru','<span style="color:var(--green)">84/100</span>','Algo trend kalitesi')}
         ${cell('💧 Hacim Algoritması','<span style="color:var(--cyan)">BIRIKIM</span>','Smart Money hacim modeli')}
         ${cell('📋 Teknik Özet','<span style="color:var(--green)">9 ALIM</span>','12 indikatör sonucu')}
         ${cell('🎯 Trade Planı — Giriş','<span style="color:var(--green)">14,820–14,960</span>','Optimal giriş bölgesi')}
         ${cell('⚖️ Risk / Ödül','<span style="color:var(--cyan)">1:2.4</span>','Stop + 2 hedef seviye')}
-        ${cell('🌀 Bollinger Konumu','<span style="color:var(--orange)">Üst banda yakın</span>','Volatilite genişliyor')}
+        ${cell('🌀 Bollinger Konumu','<span style="color:var(--orange)">Üst banda yakın</span>','Bant içindeki konum')}
       </div>
     </div>
   `;
@@ -1141,7 +1059,7 @@ function renderRadarPanel() {
     <div class="ict-cell">
       <div class="ict-cell-title">${title}</div>
       <div class="ict-cell-blur">
-        <div class="ict-cell-val">${val}</div>
+        <div class="ict-cell-val">${KILIT_MASK}</div>
         <div class="ict-cell-sub">${sub}</div>
       </div>
       <div class="ict-lock-overlay" class="smr-lock" onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
@@ -1159,14 +1077,13 @@ function renderRadarPanel() {
       <div class="ict-grid">
         <div class="ict-cell" style="border-color:var(--cyan)">
           <div class="ict-cell-title" style="color:var(--cyan)">📡 Radar Özeti</div>
-          <div class="ict-cell-val" style="color:var(--green)">12 Sinyal</div>
+          <div class="ict-cell-val">${KILIT_MASK}</div>
           <div class="ict-cell-sub">R1 + R2 toplamı bugün</div>
         </div>
-        ${cell('📡 Radar 1 — Momentum','<span style="color:var(--green)">7/7 Hisse</span>','THYAO KCHOL EREGL...')}
-        ${cell('🎯 Radar 2 — Trend Lider','<span style="color:var(--cyan)">5/5 Hisse</span>','BIMAS FROTO TCELL...')}
+        ${cell('📡 Radar 1 — Momentum','<span style="color:var(--green)">7/7 Hisse</span>','Hisse listesi')}
+        ${cell('🎯 Radar 2 — Trend Lider','<span style="color:var(--cyan)">5/5 Hisse</span>','Hisse listesi')}
         ${cell('🔥 Ortak Set-Up','<span style="color:var(--orange)">5 Hisse</span>','R1+R2 kesişim')}
         ${cell('🏆 TOP 20 Master','<span style="color:#70a8ff">20 Hisse</span>','Algo sıralama listesi')}
-        ${cell('📊 Başarı Oranı','<span style="color:var(--green)">%71.4</span>','Son 30 günlük backtest')}
         ${cell('⚡ Kırılım Takibi','<span style="color:var(--orange)">3 Kritik</span>','Anlık seviye izleme')}
         ${cell('🌀 Momentum Geçiş','<span style="color:var(--cyan)">5 Hisse</span>','DEMA6 geçiş sinyali')}
       </div>
@@ -1195,26 +1112,25 @@ function renderCanliSinyaller(d, ozet) {
     <!-- 3 görünür sinyal -->
     <div class="signal-row">
       ${dot(stpOk)}
-      <span>STP: ${stpOk?'Yükseliş Trendi':'Düşüş Trendi'} (${150})</span>
+      <span>SMA50: ${stpOk?'Üstünde':'Altında'}</span>
     </div>
     <div class="signal-row">
       ${dot(r1Ok)}
-      <span>Radar 1: Momentum (${d?.rsi?.toFixed(0)||'—'})</span>
+      <span>RSI (14): ${d?.rsi?.toFixed(0)||'—'}</span>
     </div>
     <div class="signal-row">
       ${dot(r2Ok)}
-      <span>Radar 2: Breakout (${ozet?.guclu_sinyal||0}/${150})</span>
+      <span>Güçlü sinyal: ${ozet?.guclu_sinyal||0} / 150 hisse</span>
     </div>
 
     <!-- Kilitli ek sinyaller -->
     <div style="position:relative;overflow:hidden;margin-top:6px;border-radius:4px;max-height:38px">
       <div style="filter:blur(3.5px);user-select:none;pointer-events:none">
-        <div class="signal-row"><div class="signal-dot g"></div><span>Long Sinyali: 7 Hisse (BIST30)</span></div>
-        <div class="signal-row"><div class="signal-dot r"></div><span>Short Sinyali: 2 Hisse</span></div>
-        <div class="signal-row"><div class="signal-dot o"></div><span>Kırılım Alarmı: 3 Kritik</span></div>
-        <div class="signal-row"><div class="signal-dot" style="background:#70a8ff"></div><span>Formasyon: 4 Tespit</span></div>
-        <div class="signal-row"><div class="signal-dot c"></div><span>Momentum Geçiş: 5 Hisse</span></div>
-        <div class="signal-row"><div class="signal-dot g"></div><span>Sinyal Başarısı: %71.4</span></div>
+        <div class="signal-row"><div class="signal-dot g"></div><span>Long Sinyali: ••</span></div>
+        <div class="signal-row"><div class="signal-dot r"></div><span>Short Sinyali: ••</span></div>
+        <div class="signal-row"><div class="signal-dot o"></div><span>Kırılım Alarmı: ••</span></div>
+        <div class="signal-row"><div class="signal-dot" style="background:#70a8ff"></div><span>Formasyon: ••</span></div>
+        <div class="signal-row"><div class="signal-dot c"></div><span>Momentum Geçiş: ••</span></div>
       </div>
       <div style="position:absolute;inset:0;background:rgba(10,13,26,0.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer"
            onclick="document.getElementById('plans-modal').style.display='block';document.body.style.overflow='hidden';">
