@@ -230,8 +230,10 @@
 
       // 1 Eki 2026 — liste VPS üreticisinin _liste.json'undan (tüm BIST); yoksa yukarıdaki 51'lik kalır.
       function loadFullList(){
-        fetch('hisse/_liste.json?t=' + Date.now()).then(function(r){ return r.ok ? r.json() : null; })
-          .then(function(j){
+        // 2 Eki 2026 — tek istek: app.js (nabız + endeksten güçlü) aynı sözü kullanır (listeAl).
+        window._listeT = Date.now();
+        window._listeP = fetch('hisse/_liste.json?t=' + Date.now()).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; });
+        window._listeP.then(function(j){
             if (!j || !j.hisseler || !j.hisseler.length) return;
             STOCKS.length = 0;
             j.hisseler.forEach(function(h){ STOCKS.push(h.t); });
@@ -706,7 +708,7 @@
     </div>
   </footer>
 
-  <script src="app.js?v=71"></script>
+  <script src="app.js?v=73"></script>
 
 <!-- PLANS MODAL -->
 <div id="plans-modal" onclick="if(event.target===this)closePlansModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;overflow-y:auto;padding:20px">

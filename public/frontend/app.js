@@ -18,6 +18,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     await loadData();
     if (window._acilisHisse) hizliAc(window._acilisHisse);
+    onYukle();
   } catch (e) {
     showError("Veri yüklenemedi. Lütfen daha sonra tekrar deneyin.");
     console.error(e);
@@ -89,6 +90,23 @@ async function hakKontrol(t) {
     return j;
   } catch (e) { return { allowed: true }; }
 }
+// Bugün açılmış hisseler tarayıcıda da tutulur → aynı hisse tekrar açılınca sunucu cevabı beklenmez.
+// (Sadece hız içindir; hakkı sunucu sayar, bu liste hak vermez.)
+function hakYerel() {
+  try {
+    const o = JSON.parse(localStorage.getItem("smr_hak") || "{}");
+    return (o.ts && Date.now() - o.ts < 20 * 3600e3 && Array.isArray(o.t)) ? o.t : [];
+  } catch (e) { return []; }
+}
+function hakYerelEkle(t) {
+  try {
+    const o = JSON.parse(localStorage.getItem("smr_hak") || "{}");
+    const taze = o.ts && Date.now() - o.ts < 20 * 3600e3;
+    const l = taze && Array.isArray(o.t) ? o.t : [];
+    if (!l.includes(t)) l.push(t);
+    localStorage.setItem("smr_hak", JSON.stringify({ ts: taze ? o.ts : Date.now(), t: l }));
+  } catch (e) {}
+}
 function adminRozeti() {
   const st = document.getElementById("sel-stock-go");
   if (!st || document.getElementById("admin-rozet")) return;
@@ -156,7 +174,9 @@ function paylasMetni() {
     ilk = `${t} bugün nereye gidiyor? Akıllı para ne diyor? 📊`;
   }
   return `${ilk}
-Algoritmanın gözünden bak 👉 ${link}`;
+
+Algoritmanın gözünden bak
+👉 ${link}`;
 }
 window.paylas = function() {
   const url = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(paylasMetni());
@@ -230,6 +250,25 @@ function renderHizliBar() {
 // hisse/<T>.json — VPS site_hisse_uretici.py seans içi 30 dk'da bir üretir (app.py ile
 // aynı hesap). XU100 seçilince latest.json'daki (15 dk) XU100 görünümüne dönülür.
 window._seciliHisse = null;
+// Hisse dosyası önbelleği: 5 dk içinde tekrar açılırsa ağa gidilmez (dosya 30 dk'da bir yenilenir).
+const _hisseOnbellek = {};
+function hisseAl(t) {
+  const c = _hisseOnbellek[t];
+  if (c && Date.now() - c.ts < 5 * 60 * 1000) return c.p;
+  const p = fetch(`hisse/${encodeURIComponent(t)}.json?t=${Date.now()}`)
+    .then(r => r.ok ? r.json() : null).catch(() => null)
+    .then(j => { if (!j) delete _hisseOnbellek[t]; return j; });
+  _hisseOnbellek[t] = { ts: Date.now(), p };
+  return p;
+}
+// Sayfa açıldıktan sonra boşta: endeksler + takip listesi önceden indirilir (tıklayınca anında açılır).
+// Sadece veri dosyası; günlük hak sayılmaz.
+function onYukle() {
+  const liste = [...ENDEKSLER.filter(x => x !== "XU100"), ...takipOku()].slice(0, 16);
+  const calis = () => liste.forEach((t, i) => setTimeout(() => hisseAl(t), i * 150));
+  const bos = () => ("requestIdleCallback" in window) ? requestIdleCallback(calis, { timeout: 4000 }) : setTimeout(calis, 1500);
+  if (document.readyState === "complete") bos(); else window.addEventListener("load", bos, { once: true });   // açılışı geciktirmesin
+}
 window.loadTicker = async function(t, sessiz) {
   t = (t || "").trim().toUpperCase().replace(/\.IS$/, "");
   if (!t) return false;
@@ -242,16 +281,18 @@ window.loadTicker = async function(t, sessiz) {
     renderHizliBar();
     return true;
   }
+  // Hak kontrolü ile hisse verisi AYNI ANDA istenir (sırayla değil) → bekleme yarıya iner.
+  const veriP = hisseAl(t);
   if (!t.startsWith("X")) {                       // endeksler serbest; hisse → günlük hak
-    const h = await hakKontrol(t);
-    if (!h.allowed) { hakDoldu(t, h); return "kilit"; }
+    if (window._smrAdmin || hakYerel().includes(t)) {
+      hakKontrol(t);                               // bugün zaten açık → bekleme yok, sayım arkada
+    } else {
+      const h = await hakKontrol(t);
+      if (!h.allowed) { hakDoldu(t, h); return "kilit"; }
+      hakYerelEkle(t);
+    }
   }
-  let j;
-  try {
-    const r = await fetch(`hisse/${encodeURIComponent(t)}.json?t=${Date.now()}`);
-    if (!r.ok) return false;
-    j = await r.json();
-  } catch (e) { return false; }
+  const j = await veriP;
   if (!j || !j.hisse) return false;
   window._seciliHisse = t;
   window._seciliJson = j;
@@ -363,6 +404,16 @@ async function renderGucluAkis() {
     <div style="margin-top:4px;font-size:9px;color:var(--text-muted)">İşlem sinyali değildir.</div>`;
 }
 
+// hisse/_liste.json tek sefer çekilir; 60 sn içindeki tüm kullanıcılar aynı cevabı paylaşır
+// (index.html'deki hisse listesi dahil). Otomatik yenilemede taze çekilir.
+function listeAl() {
+  const simdi = Date.now();
+  if (window._listeP && simdi - (window._listeT || 0) < 60000) return window._listeP;
+  window._listeT = simdi;
+  window._listeP = fetch("hisse/_liste.json?t=" + simdi).then(r => r.ok ? r.json() : null).catch(() => null);
+  return window._listeP;
+}
+
 // ── PİYASA NABZI (2 Eki 2026 — sol sütun) ─────────────────────────────────────
 // hisse/_liste.json → piyasa: BIST100 yükselen/düşen, en çok yükselen/düşen 3, genişlik.
 // VPS site_hisse_uretici.py ile aynı turda (seans içi 30 dk). Dosya yoksa latest.json'daki
@@ -372,8 +423,8 @@ async function renderPiyasaNabzi() {
   if (!el) return;
   let p = null, uretim = "";
   try {
-    const r = await fetch("hisse/_liste.json?t=" + Date.now());
-    if (r.ok) { const j = await r.json(); p = j.piyasa; uretim = j.uretim || ""; }
+    const j = await listeAl();
+    if (j) { p = j.piyasa; uretim = j.uretim || ""; }
   } catch (e) { /* yedeğe düş */ }
   const esc = x => String(x ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   const yuz = v => `%${Math.round(v)}`;
@@ -422,7 +473,7 @@ async function renderEndekstenGuclu() {
   const el = document.getElementById("endeksten-guclu");
   if (!el) return;
   let p = null;
-  try { const r = await fetch("hisse/_liste.json?t=" + Date.now()); if (r.ok) p = (await r.json()).piyasa; } catch (e) {}
+  try { const j = await listeAl(); if (j) p = j.piyasa; } catch (e) {}
   const L = p && p.endeksten_guclu;
   if (!L || !L.length) { el.innerHTML = ""; return; }
   const esc = x => String(x ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
