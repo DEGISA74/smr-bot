@@ -196,6 +196,10 @@ def main(argv: list[str]) -> int:
         import site_paylas_kart as _kart
     except Exception:
         _kart = None
+    # Kart çizimi VPS'te ~2 sn/hisse (105 hisse = 3,5 dk) → gün içinde sunucuyu yormasın diye
+    # SADECE akşam (kapanış sonrası, 19:00 TR+) turunda çizilir. Kart dünün/bugünün kapanışını gösterir.
+    if _kart is not None and datetime.now(_TZ_ISTANBUL).hour < 19 and not os.environ.get("SMR_KART_ZORLA"):
+        _kart = None
     ust200 = ust50 = rsi50 = olculen = 0
     gunluk = []          # (ticker, günlük değişim %) — piyasa nabzı (BIST100, endeksler hariç)
     guclu = []           # (ticker, endekse göre 20g güç puanı) — 'Endeksten Güçlü' kutusu
