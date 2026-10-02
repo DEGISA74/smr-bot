@@ -167,9 +167,18 @@ function paylasMetni() {
   const link = `${SITE_ADRES}/p/${t}.html` + (window._davetKod ? `?d=${window._davetKod}` : "");
   let ilk;
   const g = j && j.akilli ? j.akilli.guc20 : null;
-  if (window._seciliHisse && j && g != null && !t.startsWith("X")) {
+  // XU100: bugünkü değişim + SMA200'e uzaklık (latest.json). Diğer endeks/hisse: XU100'e göre 20 gün.
+  const xu = window._sonVeri && window._sonVeri.xu100;
+  let ex;
+  if (window._seciliHisse && j && g != null && t !== "XU100") {
     ilk = g >= 0 ? `${t} son 20 günde XU100’ü ${sayiTR(g)} puan geçti 📈`
                  : `${t} son 20 günde XU100’ün ${sayiTR(g)} puan gerisinde kaldı 📉`;
+  } else if ((ex = t === "XU100" ? xu : (window._seciliHisse && j ? j.hisse : null))
+             && ex.degisim_pct != null && ex.kapanis && ex.sma200) {
+    const d = ex.degisim_pct, u = (ex.kapanis / ex.sma200 - 1) * 100;
+    ilk = `${t} bugün %${Math.abs(d).toFixed(2).replace(".", ",")} ${d >= 0 ? "yükseldi" : "düştü"} ${d >= 0 ? "📈" : "📉"}
+`
+        + `SMA200’ün %${sayiTR(u)} ${u >= 0 ? "üstünde" : "altında"}. Akıllı para ne diyor?`;
   } else {
     ilk = `${t} bugün nereye gidiyor? Akıllı para ne diyor? 📊`;
   }
