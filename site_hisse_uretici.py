@@ -213,6 +213,30 @@ def _bist100_evreni() -> list[str]:
     return endeksler + [u if u.endswith(".IS") else u + ".IS" for u in uyeler]
 
 
+def _takvim_yaz(kok: str) -> None:
+    """2 Eki 2026 — site OTOMATİK YENİLEME takvimi: önümüzdeki ~14 ayın hafta içi KAPALI günleri
+    (resmi + dini bayramlar) ve YARIM günleri. Tek kaynak bist_calendar; app.js buna göre
+    yenilemeyi yalnız işlem günlerinde 10:00-20:00 TR arası yapar."""
+    try:
+        from bist_calendar import is_trading_day, is_half_day, get_session_hours
+        from datetime import timedelta
+        bugun = datetime.now(_TZ_ISTANBUL).date()
+        kapali, yarim = [], {}
+        for i in range(-7, 430):
+            g = bugun + timedelta(days=i)
+            if g.weekday() >= 5:
+                continue
+            if not is_trading_day(g):
+                kapali.append(str(g))
+            elif is_half_day(g):
+                yarim[str(g)] = (get_session_hours(g) or ("", ""))[1]
+        _atomic_json(os.path.join(kok, "takvim.json"),
+                     {"uretim": datetime.now(_TZ_ISTANBUL).strftime("%Y-%m-%d %H:%M"),
+                      "yenileme_saat": [10, 20], "kapali": kapali, "yarim": yarim})
+    except Exception as e:
+        print(f"[site_hisse_uretici] takvim yazılamadı: {e}")
+
+
 def main(argv: list[str]) -> int:
     t0 = time.time()
     if argv:
@@ -312,6 +336,8 @@ def main(argv: list[str]) -> int:
                                           and (x[1]["hacim_kat"] or 0) >= 2.0],
                                          key=lambda x: -x[1]["hacim_kat"])[:6]],
         }
+    if not argv:
+        _takvim_yaz(os.path.dirname(OUT_DIR))
     if not argv:   # deneme çalıştırması listeyi ezmez
         _atomic_json(os.path.join(OUT_DIR, "_liste.json"),
                      {"uretim": uretim, "adet": len(liste), "evren": "BIST100",

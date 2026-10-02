@@ -585,8 +585,28 @@ async function renderEndekstenGuclu() {
     <div style="margin-top:6px;font-size:9px;color:var(--text-muted)">Puan = hisse getirisi − XU100 getirisi. Geçmiş ölçüm, öneri değildir.</div>`;
 }
 
+// 2 Eki 2026 — OTOMATİK YENİLEME TAKVİMİ: yalnız BIST işlem günlerinde 10:00-20:00 TR arası.
+// Hafta sonu, resmi ve dini bayramlar (takvim.json — sunucu bist_calendar'dan yazar) ve 20:00 →
+// ertesi işlem günü 10:00 arası yenileme yok (veri o saatlerde değişmiyor). Yarım günler işlem
+// günüdür (akşam kesinleştirme yine ~19:20'de biter). Sayfayı açan/yenileyen her zaman taze veri alır.
+let _takvim = null;
+async function takvimAl() {
+  if (_takvim) return _takvim;
+  try { const r = await fetch("takvim.json?t=" + Date.now()); if (r.ok) _takvim = await r.json(); } catch (e) {}
+  return _takvim;
+}
+function yenilemeZamaniMi() {
+  const tr = new Date(Date.now() + 3 * 3600e3);              // TR saati (UTC+3, yaz saati yok)
+  const gun = tr.toISOString().slice(0, 10), haftaGunu = tr.getUTCDay(), saat = tr.getUTCHours();
+  if (haftaGunu === 0 || haftaGunu === 6) return false;
+  if (_takvim && Array.isArray(_takvim.kapali) && _takvim.kapali.includes(gun)) return false;
+  const [bas, son] = (_takvim && _takvim.yenileme_saat) || [10, 20];
+  return saat >= bas && saat < son;
+}
 function startAutoRefresh() {
+  takvimAl();
   setInterval(async () => {
+    if (!yenilemeZamaniMi()) return;                          // gece / hafta sonu / bayram: istek yok
     try {
       const res = await fetch(JSON_URL + "?t=" + Date.now());
       if (!res.ok) return;
