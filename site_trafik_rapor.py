@@ -8,6 +8,7 @@ Kaynaklar (salt okur):
     X'in paylaşım kartını okuması, paylaşım linkine tıklama. Bot/test istekleri ayıklanır.
     Site Cloudflare arkasında → IP gerçek değil; "kişi" ≈ farklı tarayıcı imzası (yaklaşık).
   • free_gate_store.json: ücretsiz ziyaretçilerin açtığı hisseler, davet linki / ödül sayıları.
+  • free_gate_sure.json: ziyaret başına ekranda kalınan süre (ortalama kalma süresi).
 Kullanım:  python site_trafik_rapor.py            → gönderir
            python site_trafik_rapor.py --kuru     → sadece ekrana yazar
 """
@@ -23,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 ROOT = os.path.dirname(os.path.abspath(__file__))
 LOGS = ["/var/log/nginx/access.log.1", "/var/log/nginx/access.log"]
 STORE = os.path.join(ROOT, "free_gate_store.json")
+SURE_FILE = os.path.join(ROOT, "free_gate_sure.json")   # sitede kalma süresi (app.js → /api/sure)
 ADMIN_CHAT_ID = "1034525990"
 TR = timezone(timedelta(hours=3))
 
@@ -84,6 +86,24 @@ def _say(satirlar, bas: datetime, son: datetime) -> dict:
     return s
 
 
+def _sure_ortalama(bas_ts: float, son_ts: float):
+    """free_gate_sure.json: ziyaret başına ekranda kalınan saniye. Bu aralıkta başlayan ziyaretler."""
+    try:
+        with open(SURE_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None, 0
+    L = [v[1] for v in d.values() if bas_ts <= v[0] < son_ts and v[1] >= 2]
+    if not L:
+        return None, 0
+    return sum(L) / len(L), len(L)
+
+
+def _sure_yaz(sn: float) -> str:
+    sn = int(round(sn))
+    return f"{sn // 60}m {sn % 60:02d}s" if sn >= 60 else f"{sn}s"
+
+
 def rapor() -> str:
     simdi = datetime.now(TR)
     bugun_bas = simdi.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -94,20 +114,28 @@ def rapor() -> str:
     b = _say(satirlar, bugun_bas, simdi)
     d = _say(satirlar, dun_bas, dun_ayni)
 
-    def fark(x, y):
-        if not y:
-            return ""
-        p = (x / y - 1) * 100
-        return f" ({'▲' if p >= 0 else '▼'} %{abs(p):.0f} dün bu saate göre)"
+    kisi, kisi_dun = len(b["tarayici"]), len(d["tarayici"])
+    kiyas = ""
+    if kisi_dun:
+        oran = kisi / kisi_dun
+        kiyas = (f" (dün bu saatte {kisi_dun} kişi, "
+                 + (f"{oran:.1f} katı".replace(".", ",") if oran >= 1.5 else
+                    "biraz fazla" if oran > 1.05 else "biraz az" if oran < 0.95 else "aynı") + ")")
 
-    satir = [f"📊 SİTE TRAFİĞİ · {simdi:%d.%m} (00:00–{simdi:%H:%M})", ""]
-    satir.append(f"👀 Sayfa açılışı: {b['sayfa']}{fark(b['sayfa'], d['sayfa'])}")
-    satir.append(f"👤 Farklı tarayıcı (≈kişi): {len(b['tarayici'])} · dün bu saate: {len(d['tarayici'])}")
-    if b["kaynak"]:
-        satir.append("🔗 Nereden: " + " · ".join(f"{k} {v}" for k, v in b["kaynak"].most_common(5)))
+    satir = [f"📊 WEB SİTESİ İSTATİSTİKLERİ · {simdi:%d.%m.%Y} saat {simdi:%H:%M} itibariyle", ""]
+    satir.append(f"👥 Yaklaşık {kisi} kişi siteye girdi{kiyas}")
+    satir.append(f"🔁 Site toplam {b['sayfa']} kez açıldı")
+    ort, n = _sure_ortalama(bugun_bas.timestamp(), simdi.timestamp())
+    if ort is not None:
+        satir.append(f"⏱ Ortalama sitede kalma süresi: {_sure_yaz(ort)}")
+    x, g = b["kaynak"].get("X", 0), b["kaynak"].get("Google", 0)
+    parca = [p for p in (f"{x} kez X'teki bir linkten gelindi" if x else "",
+                         f"{g} kez Google'dan" if g else "") if p]
+    if parca:
+        satir.append("📲 " + " · ".join(parca))
     if b["saat"]:
-        h, c = b["saat"].most_common(1)[0]
-        satir.append(f"⏰ En yoğun saat: {h:02d}:00–{h + 1:02d}:00 ({c} açılış)")
+        h, _ = b["saat"].most_common(1)[0]
+        satir.append(f"🕙 En kalabalık saat: {h:02d}:00–{h + 1:02d}:00")
 
     try:
         with open(STORE, encoding="utf-8") as f:
@@ -116,24 +144,21 @@ def rapor() -> str:
         db = {}
     now = time.time()
     hisse = collections.Counter()
-    acan = 0
     for v in (db.get("cookies") or {}).values():
         if now - v.get("ts", 0) < 86400:
-            acan += 1
             for t in (v.get("tickers") or ([v["ticker"]] if v.get("ticker") else [])):
                 hisse[t] += 1
     if hisse:
         satir.append("")
-        satir.append(f"📈 Ücretsiz ziyaretçinin açtığı hisseler ({acan} tarayıcı, son 24s):")
-        satir.append("   " + " · ".join(f"{t} {c}" for t, c in hisse.most_common(8)))
+        satir.append("🔎 En çok incelenen hisseler: "
+                     + ", ".join(f"{t} ({c})" if c > 1 else t for t, c in hisse.most_common(6)))
 
     davetli = sum(1 for v in (db.get("davetli") or {}).values() if now - v.get("ts", 0) < 86400)
-    odul = sum(1 for L in (db.get("bonus") or {}).values() for x in L if now - x.get("ts", 0) < 86400)
-    satir.append("")
-    satir.append(f"𝕏 Paylaşım: X kartı okudu {b['x_kart']} · paylaşım linkine tıklayan {b['p_tik']} · "
-                 f"linkle gelen yeni ziyaretçi {davetli} · verilen +1 hisse ödülü {odul}")
-    satir.append("")
-    satir.append("ℹ️ Kişi sayısı yaklaşık (site Cloudflare arkasında). Kesin tekil sayı: Clarity / GA.")
+    odul = sum(1 for L in (db.get("bonus") or {}).values() for x_ in L if now - x_.get("ts", 0) < 86400)
+    if b["p_tik"] or davetli or odul:
+        satir.append("")
+        satir.append(f"🎁 Paylaşılan linklere {b['p_tik']} kez tıklandı · bunlardan {davetli} kişi siteye ilk kez geldi"
+                     + (f" → paylaşanlara {odul} bedava hisse hakkı verildi" if odul else ""))
     return "\n".join(satir)
 
 

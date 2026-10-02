@@ -135,6 +135,24 @@ function hakDoldu(t, h) {
   st.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
+// ── SİTEDE KALMA SÜRESİ (2 Eki 2026) ─────────────────────────────────────────
+// Sadece sayfanın EKRANDA olduğu süre sayılır; sayfa gizlenince/kapanınca toplam süre
+// tek bir küçük istekle gönderilir (/api/sure). Kişisel bilgi yok: rastgele ziyaret kimliği + saniye.
+(function() {
+  const vid = Math.random().toString(36).slice(2, 12);
+  let toplam = 0, bas = document.visibilityState === "visible" ? Date.now() : null;
+  const gonder = () => {
+    if (bas) { toplam += Date.now() - bas; bas = null; }
+    const sn = Math.round(toplam / 1000);
+    if (sn < 2 || !navigator.sendBeacon) return;
+    try { navigator.sendBeacon(`${SMR_API}/api/sure`, new Blob([`v=${vid}&s=${sn}`], { type: "application/x-www-form-urlencoded" })); } catch (e) {}
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") bas = Date.now(); else gonder();
+  });
+  window.addEventListener("pagehide", gonder);
+})();
+
 // ── PAYLAŞ → +1 HİSSE (2 Eki 2026) ───────────────────────────────────────────
 // Ziyaretçi analizi X'te paylaşır; linkinde kendine özel kısa kod (d=) var. O linkle
 // sitede İLK KEZ görülen biri gelirse (farklı bağlantıdan) paylaşana +1 hisse hakkı

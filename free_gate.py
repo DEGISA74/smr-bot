@@ -20,6 +20,7 @@ import hmac
 import json
 import os
 import secrets
+import threading
 import re
 import time
 import uuid
@@ -32,6 +33,10 @@ WINDOW   = 24 * 3600     # 24 saat
 IP_CAP   = 10            # IP başına 24s'de max ücretsiz analiz (suistimal freni — 21 Haz 30→10)
 SUB_IP_CAP = 5           # IP başına 24s'de max email kaydı (çöp-mail spam freni)
 COOKIE   = "smr_fid"
+# 2 Eki 2026 — SİTEDE KALMA SÜRESİ: sayfa kapanırken tarayıcı "bu ziyarette X sn" gönderir
+# (/api/sure). Ayrı dosya (ana kayıtla yarışmasın); ziyaret kimliği başına en büyük değer, 3 gün tutulur.
+SURE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "free_gate_sure.json")
+_SURE_LOCK = threading.Lock()
 BONUS_CAP = 3            # 2 Eki 2026 — paylaşım ödülü: 24 saatte en fazla +3 hisse
 
 # 2 Eki 2026 — ADMIN: gizli anahtarlı giriş (kullanıcı kararı). Anahtar sunucuda
@@ -156,6 +161,30 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
+        if u.path == "/api/sure":
+            n = min(int(self.headers.get("Content-Length", "0") or 0), 256)
+            q = parse_qs(self.rfile.read(n).decode("utf-8", "ignore"))
+            vid = (q.get("v", [""])[0] or "")[:16]
+            try:
+                sn = int(float(q.get("s", ["0"])[0]))
+            except ValueError:
+                sn = 0
+            if vid.isalnum() and 0 < sn <= 4 * 3600 and not self._is_admin():
+                with _SURE_LOCK:
+                    try:
+                        with open(SURE_FILE, encoding="utf-8") as f:
+                            d = json.load(f)
+                    except (OSError, ValueError):
+                        d = {}
+                    now = time.time()
+                    eski = d.get(vid)
+                    d[vid] = [eski[0] if eski else now, max(sn, eski[1] if eski else 0)]
+                    d = {k: v for k, v in d.items() if now - v[0] < 3 * 86400}
+                    tmp = SURE_FILE + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(d, f)
+                    os.replace(tmp, SURE_FILE)
+            self.send_response(204); self._cors(); self.end_headers(); return
         if u.path != "/api/admin":
             self.send_response(404); self.end_headers(); return
         n = min(int(self.headers.get("Content-Length", "0") or 0), 2048)
