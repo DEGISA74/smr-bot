@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smart Money Radar — BIST Algoritmik Analiz Terminali</title>
-  <meta name="description" content="XU100, BIST hisseleri ve kripto için smart money analizi. Para akışı, ICT seviyeleri, swing sinyalleri ve kurumsal bölgeler — tek ekranda.">
+  <meta name="description" content="XU100, BIST hisseleri ve kripto için smart money analizi. Akıllı para, ICT seviyeleri, swing sinyalleri ve kurumsal bölgeler — tek ekranda.">
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="https://smartmoneyradar.app/">
   <meta property="og:title"       content="Smart Money Radar — BIST Algoritmik Analiz">
-  <meta property="og:description" content="XU100, BIST hisseleri ve kripto için smart money analizi. Para akışı, ICT seviyeleri, swing sinyalleri ve kurumsal bölgeler — tek ekranda.">
+  <meta property="og:description" content="XU100, BIST hisseleri ve kripto için smart money analizi. Akıllı para, ICT seviyeleri, swing sinyalleri ve kurumsal bölgeler — tek ekranda.">
   <meta property="og:image"       content="https://smartmoneyradar.app/assets/ornek_pro.png">
   <meta property="og:locale"      content="tr_TR">
 
@@ -18,7 +18,7 @@
   <meta name="twitter:card"        content="summary_large_image">
   <meta name="twitter:site"        content="@SMRadar_2026">
   <meta name="twitter:title"       content="Smart Money Radar — BIST Algoritmik Analiz">
-  <meta name="twitter:description" content="XU100, BIST hisseleri ve kripto için smart money analizi. Para akışı, ICT seviyeleri, swing sinyalleri ve kurumsal bölgeler — tek ekranda.">
+  <meta name="twitter:description" content="XU100, BIST hisseleri ve kripto için smart money analizi. Akıllı para, ICT seviyeleri, swing sinyalleri ve kurumsal bölgeler — tek ekranda.">
   <meta name="twitter:image"       content="https://smartmoneyradar.app/assets/ornek_pro.png">
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-V55HT7RJ1W"></script>
@@ -39,6 +39,25 @@
         y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
     })(window, document, "clarity", "script", "wqd0ild0wj");
 </script>
+<style id="paylas-stil">
+  /* Üstte DAİMA sabit şerit (alttaki abone çubuğunun ikizi) */
+  #paylas-bar{position:fixed;top:0;left:0;right:0;z-index:998;padding:6px 16px;text-align:center;
+    background:linear-gradient(135deg,rgba(13,24,41,.96),rgba(10,22,40,.96));border-bottom:1px solid #1e3a6e;
+    backdrop-filter:blur(6px)}
+  #paylas-bar:empty{display:none}
+  body{padding-top:52px}
+  #stock-selector-bar{top:52px !important}
+  .paylas-btn{max-width:560px;margin:0 auto;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;min-height:38px;padding:6px 14px;
+    border-radius:10px;text-decoration:none;font-size:13px;color:#e0f2fe;
+    background:linear-gradient(90deg,rgba(29,78,216,.22),rgba(14,165,233,.18));border:1px solid rgba(56,189,248,.35)}
+  .paylas-btn:hover{background:linear-gradient(90deg,rgba(29,78,216,.34),rgba(14,165,233,.28))}
+  .paylas-ayrac{margin:0 8px;opacity:.5}
+  .paylas-odul{color:#7dd3fc;font-weight:700}
+  .bonus-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;max-width:calc(100% - 32px);
+    padding:12px 18px;border-radius:12px;font-size:14px;color:#ecfdf5;background:#065f46;border:1px solid #10b981;
+    box-shadow:0 8px 30px rgba(0,0,0,.45);transition:opacity .6s}
+  @media (max-width:600px){body{padding-top:66px}#stock-selector-bar{top:66px !important}.bonus-toast{bottom:96px}.paylas-btn{font-size:12px}.paylas-ayrac{display:none}.paylas-odul{width:100%;text-align:center}}
+</style>
 </head>
 <body>
 
@@ -166,6 +185,10 @@
       <div id="sel-status" style="font-size:12px;color:#94a3b8;align-self:flex-end;padding-bottom:8px;"></div>
     </div>
 
+    <!-- HIZLI ERİŞİM: endeksler + takip listem (2 Eki 2026) -->
+    <div id="hizli-bar" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-4px 0 12px;font-size:11px"></div>
+    <div id="paylas-bar"></div>
+
     <script>
     (function(){
       // İlk sürüm hisse listesi — sonraki adımda backend'den tam liste gelecek
@@ -186,7 +209,7 @@
         if (!t) return;
         var status = document.getElementById('sel-status');
         if (STOCKS.indexOf(t) === -1){
-          status.textContent = '"'+t+'" listede yok';
+          status.innerHTML = '<span style="color:#f59e0b;">Şimdilik sadece BIST100 hisseleri</span> · liste genişleyecek';
           return;
         }
         window.SELECTED_TICKER = t;
@@ -194,18 +217,31 @@
         status.innerHTML = '<span style="color:#94a3b8;">'+t+' yükleniyor…</span>';
         if (typeof window.loadTicker === 'function'){
           var ok = await window.loadTicker(t);
+          if (ok === 'kilit') return;   // günlük ücretsiz hak doldu — mesajı loadTicker yazdı
           if (ok){
             status.innerHTML = '<span style="color:#1d9e75;font-weight:600;">'+t+'</span> yüklendi';
           } else {
-            status.innerHTML = '<span style="color:#f59e0b;">'+t+' verisi henüz yok</span> · backend adımı';
+            status.innerHTML = '<span style="color:#f59e0b;">'+t+' verisi şu an alınamadı</span>';
           }
         } else {
           status.innerHTML = '<span style="color:#1d9e75;font-weight:600;">'+t+'</span> seçildi';
         }
       }
 
+      // 1 Eki 2026 — liste VPS üreticisinin _liste.json'undan (tüm BIST); yoksa yukarıdaki 51'lik kalır.
+      function loadFullList(){
+        fetch('hisse/_liste.json?t=' + Date.now()).then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(j){
+            if (!j || !j.hisseler || !j.hisseler.length) return;
+            STOCKS.length = 0;
+            j.hisseler.forEach(function(h){ STOCKS.push(h.t); });
+            if (STOCKS.indexOf('XU100') === -1) STOCKS.push('XU100');
+            buildList();
+          }).catch(function(){});
+      }
       function init(){
         buildList();
+        loadFullList();
         var btn = document.getElementById('sel-stock-go');
         var inp = document.getElementById('sel-stock-input');
         if (btn) btn.addEventListener('click', function(){ applyTicker(inp.value); });
@@ -259,6 +295,50 @@
       }
     </style>
 
+    <!-- SİTE TEMİZLİĞİ 2 (1 Eki 2026) — ölçümde zayıf çıkan (ICT, Price Action, Altın/Platin
+         Set-Up) ya da içi tamamen kilitli bölümler + abonelik anlatan kutu (abonelik en sona
+         bırakıldı) gizlendi. Yerlerine site fazının 3-7. maddeleri gelecek.
+         GERİ ALMAK: bu <style> bloğunu sil. -->
+    <style id="site-temizlik-2">
+      .hiw-wrap, #sidebar-genel-extra, #sidebar-kurumsal-section,
+      #canli-sinyaller-panel, #price-action-section, .eski-kilitli { display: none !important; }
+      /* Mobil sıralama (style.css v4) panelleri order:-5…-1 ile diziyor → Terazi şeridi en üstte */
+      /* Tek kilit kutusu düzeni: solda gerçek bilgi, sağda tek ELITE kutusu; telefonda alt alta */
+      .tek-kutu-grid { grid-template-columns: minmax(0,1fr) minmax(0,2fr) !important; }
+      @media (max-width: 600px) { .tek-kutu-grid { grid-template-columns: minmax(0,1fr) !important; } }
+      /* style.css mobilde bu üç paneli "tamamen kilitli" diye gizliyordu; artık gerçek bilgi + tek kutu → görünsün */
+      @media (max-width: 960px) { #hacim-panel, #composite-panel, #ict-panel { display: block !important; } }
+      /* İçi henüz dolmamış kutular yer kaplamasın (mobilde boş kutu flex aralığını ikiye katlıyordu) */
+      #terazi-serit:empty, #guclu-akis-kutu:empty, #piyasa-nabzi:empty, #endeksten-guclu:empty { display: none !important; }
+      @media (max-width: 600px) { #takip-yildiz .takip-yazi { display: none; } }
+      /* Piyasa Nabzı iç boşluğu (başlık kendi stilini taşır; içerik kenara yapışmasın) */
+      #piyasa-nabzi > :not(.sidebar-section-title) { margin-left: 12px !important; margin-right: 12px !important; }
+      #piyasa-nabzi > :last-child { margin-bottom: 10px; }
+      /* TELEFON SIRALAMASI (2 Eki 2026): Genel Özet + Teknik Görünüm SSS'nin altında, sayfanın
+         dibinde kalıyordu. Ana sütun ve sağ sütun "contents" olur → kutular tek tek sıralanır.
+         Sıra: Terazi → Akıllı Para paneli → Genel Özet/Teknik Görünüm → Güçlü Akış → Teknik
+         Seviyeler → diğerleri. Büyük fiyat kartı paneldeki fiyatın tekrarı → telefonda gizli. */
+      @media (max-width: 960px) {
+        .main-content, .sidebar-right { display: contents !important; }
+        #terazi-serit     { order: -10 !important; }
+        #xu100-panel      { order: -9 !important; }
+        .sidebar-left     { order: -8 !important; }
+        #guclu-akis-kutu  { order: -7 !important; }
+        #endeksten-guclu  { order: -7 !important; }
+        #guclu-akis-kutu, #endeksten-guclu { align-self: stretch; width: auto !important; box-sizing: border-box; padding: 10px 12px !important; }
+        #levels-panel     { order: -6 !important; }
+        #price-card-big   { display: none !important; }
+        #piyasa-nabzi     { grid-column: 1 / -1; }   /* sol sütun mobilde 2'li ızgara → nabız tam genişlik */
+      }
+      @media (max-width: 960px) {
+        #terazi-serit { order: -6; }
+        /* style.css mobilde sağ sütunun tüm .rsection'larını gizliyor → Güçlü Akış (doluysa) görünsün */
+        .sidebar-right #guclu-akis-kutu:not(:empty),
+        .sidebar-right #endeksten-guclu:not(:empty) { display: block !important; }
+      }
+    </style>
+
+
     <!-- APP LAYOUT: 3-kolon içerik + sağda TG reklam -->
     <div class="app-layout">
 
@@ -270,7 +350,7 @@
 
         <!-- GENEL ÖZET -->
         <div class="sidebar-section">
-          <div class="sidebar-section-title">⚡ Genel Özet</div>
+          <div class="sidebar-section-title">⚡ Genel Özet · <span id="ozet-ticker">XU100</span></div>
           <div class="rejim-mini" id="sidebar-rejim">
             <!-- app.js -->
           </div>
@@ -283,6 +363,9 @@
             <!-- app.js -->
           </div>
         </div>
+
+        <!-- PİYASA NABZI — BIST100 yükselen/düşen + en çok hareket edenler (2 Eki 2026) -->
+        <div class="sidebar-section" id="piyasa-nabzi"></div>
 
         <!-- Genel Özet ek kilitli -->
         <div class="sidebar-section" id="sidebar-genel-extra"><!-- app.js --></div>
@@ -310,10 +393,15 @@
       <!-- ── MAIN CONTENT ────────────────────────────────────────────── -->
       <main class="main-content">
 
+        <!-- KANIT TERAZİSİ — XU100 günün hükmü (1 Eki 2026, site fazı adım 3) -->
+        <div id="terazi-serit"></div>
+
         <!-- XU100 PANEL — 1 Eki 2026: en tepeye taşındı (app.py paneli ikizi) -->
         <div class="panel" id="xu100-panel">
           <div class="panel-header green">
-            <div class="panel-title">📈 Para Akış İvmesi &amp; Fiyat Dengesi: XU100</div>
+            <div class="panel-title">📈 Akıllı Para İvmesi &amp; Fiyat Dengesi: <span id="panel-ticker">XU100</span></div>
+            <button id="takip-yildiz" type="button" onclick="takipDegistir()" title="Takip listeme ekle / çıkar" aria-label="Takip listeme ekle"
+              style="margin-left:auto;margin-right:8px;background:transparent;border:1px solid var(--border2);border-radius:6px;color:#fbbf24;font-size:13px;padding:2px 9px;cursor:pointer;min-height:28px;white-space:nowrap">☆<span class="takip-yazi"> Takip</span></button>
             <div id="xu100-header-price" class="panel-tag">—</div>
           </div>
           <div class="panel-body" id="xu100-body"><!-- app.js --></div>
@@ -348,7 +436,7 @@
             <div class="hiw-step">
               <div class="hiw-num">4</div>
               <div class="hiw-step-title">Kullanmaya Başla</div>
-              <div class="hiw-step-desc">🌐 Site: <strong>Giriş</strong>'e e-postanı gir. &nbsp;📱 Telegram: @SMRBorsaBot'a START bas. İstediğin hisseyi analiz et.</div>
+              <div class="hiw-step-desc">🌐 Site: <strong>Giriş</strong>'e e-postanı gir. &nbsp;📱 Telegram: Algoritmanın Telegram Botu'na (@SMRBorsaBot) START bas. İstediğin hisseyi analiz et.</div>
             </div>
           </div>
         </div>
@@ -402,7 +490,7 @@
         <!-- SMART MONEY HACİM -->
         <div class="panel" id="hacim-panel">
           <div class="panel-header orange">
-            <div class="panel-title">💧 Smart Money Hacim Analizi</div>
+            <div class="panel-title" id="hacim-baslik">💧 Smart Money Hacim Analizi</div>
             <div id="poc-tag" class="panel-tag">—</div>
           </div>
           <div class="panel-body" id="hacim-body"><!-- app.js --></div>
@@ -448,20 +536,20 @@
           <div style="font-size:12.5px;color:#94a3b8;line-height:1.6;margin-bottom:14px;">
             <strong style="color:#22d3ee;">Tek üyelik (PRO veya ELITE) hem siteyi hem Telegram'ı açar.</strong>
             🌐 <strong>Site:</strong> web aracında 3 sütunlu detaylı analiz — istediğin hisseyi seç, incele.
-            📱 <strong>Telegram:</strong> bot'a hisse kodu yaz, analizi DM al. İkisi de aynı üyeliğe dahildir.
+            📱 <strong>Telegram:</strong> Algoritmanın Telegram Botu'na hisse kodu yaz, analizi DM al. İkisi de aynı üyeliğe dahildir.
           </div>
 
           <details class="faq-item">
             <summary class="faq-q">Üyelik bana ne veriyor?</summary>
-            <div class="faq-a">Tek ödeme ile <strong>iki erişim birden</strong> açılır: <strong>🌐 Site</strong> — web analiz aracına giriş; istediğin hisseyi seçer, fiyat/sinyal/grafik/seviye ve pakete göre derin panelleri ekranda görürsün. <strong>📱 Telegram</strong> — bot'a <code class="hiw-code">#THYAO</code> gibi kod yazınca grafik + analiz DM'ine gelir. İkisi de aynı üyelikte.</div>
+            <div class="faq-a">Tek ödeme ile <strong>iki erişim birden</strong> açılır: <strong>🌐 Site</strong> — web analiz aracına giriş; istediğin hisseyi seçer, fiyat/sinyal/grafik/seviye ve pakete göre derin panelleri ekranda görürsün. <strong>📱 Telegram</strong> — Algoritmanın Telegram Botu'na <code class="hiw-code">#THYAO</code> gibi kod yazınca grafik + analiz DM'ine gelir. İkisi de aynı üyelikte.</div>
           </details>
           <details class="faq-item">
             <summary class="faq-q">Nasıl abone olurum?</summary>
-            <div class="faq-a"><strong>1.</strong> Üstteki <strong>Üye Ol</strong>'a tıkla, <strong>PRO</strong> (349₺/ay) veya <strong>ELITE</strong> (599₺/ay) seç.<br><strong>2.</strong> Shopier'da <strong>e-postanla</strong> öde. Telegram'dan da kullanmak istiyorsan ödeme <strong>"Not"</strong> alanına Telegram kullanıcı adını ekle <em>(örn. @ahmet — opsiyonel)</em>.<br><strong>3.</strong> ~10 dakika içinde aboneliğin otomatik aktifleşir.<br><strong>4.</strong> Site için <strong>Giriş</strong>'e ödeme e-postanı gir; Telegram için @SMRBorsaBot'a START bas.</div>
+            <div class="faq-a"><strong>1.</strong> Üstteki <strong>Üye Ol</strong>'a tıkla, <strong>PRO</strong> (349₺/ay) veya <strong>ELITE</strong> (599₺/ay) seç.<br><strong>2.</strong> Shopier'da <strong>e-postanla</strong> öde. Telegram'dan da kullanmak istiyorsan ödeme <strong>"Not"</strong> alanına Telegram kullanıcı adını ekle <em>(örn. @ahmet — opsiyonel)</em>.<br><strong>3.</strong> ~10 dakika içinde aboneliğin otomatik aktifleşir.<br><strong>4.</strong> Site için <strong>Giriş</strong>'e ödeme e-postanı gir; Telegram için Algoritmanın Telegram Botu'na (@SMRBorsaBot) START bas.</div>
           </details>
           <details class="faq-item">
             <summary class="faq-q">PRO ile ELITE arasındaki fark ne?</summary>
-            <div class="faq-a"><strong>PRO</strong> — günde <strong>3 hisse</strong> (hem sitede hem Telegram'da). Sitede: fiyat kartı, sinyal özeti, genel sağlık, para akışı grafiği, teknik seviyeler. Telegram'da: grafik + teknik analiz özeti + her akşam 19:00 BIST bülteni.<br><br><strong>ELITE</strong> — günde <strong>8 hisse</strong>. PRO'daki her şey + sitede derin paneller (Smart Money Hacim, ICT analizi, Teknik Yol Haritası, Price Action, Kurumsal İlgi, yazılı sonuç yorumu); Telegram'da Uzman AI Raporu + haftalık tarama.</div>
+            <div class="faq-a"><strong>PRO</strong> — günde <strong>2 hisse</strong> (hem sitede hem Telegram'da). Sitede: fiyat kartı, sinyal özeti, genel sağlık, akıllı para grafiği, teknik seviyeler. Telegram'da: grafik + teknik analiz özeti + her akşam 19:00 BIST bülteni.<br><br><strong>ELITE</strong> — günde <strong>4 hisse</strong>. PRO'daki her şey + sitede derin paneller (Smart Money Hacim, ICT analizi, Teknik Yol Haritası, Price Action, Kurumsal İlgi, yazılı sonuç yorumu); Telegram'da Uzman Algoritmik Rapor + haftalık tarama.</div>
           </details>
           <details class="faq-item">
             <summary class="faq-q">Siteye nasıl giriş yaparım?</summary>
@@ -469,7 +557,7 @@
           </details>
           <details class="faq-item">
             <summary class="faq-q">Telegram'ı nasıl kullanırım?</summary>
-            <div class="faq-a">Ödeme "Not" alanına Telegram kullanıcı adını yazdıysan: @SMRBorsaBot'u aç, <strong>START</strong>'a bas. Bot ~5–15 dk içinde davet linkini DM atar. Sonra <code class="hiw-code">#THYAO</code>, <code class="hiw-code">#GARAN</code>, <code class="hiw-code">#BTC</code> gibi bir kod yaz — analiz sana özel DM gelir.</div>
+            <div class="faq-a">Ödeme "Not" alanına Telegram kullanıcı adını yazdıysan: Algoritmanın Telegram Botu'nu (@SMRBorsaBot) aç, <strong>START</strong>'a bas. Algoritmanın Telegram Botu ~5–15 dk içinde davet linkini DM atar. Sonra <code class="hiw-code">#THYAO</code>, <code class="hiw-code">#GARAN</code>, <code class="hiw-code">#BTC</code> gibi bir kod yaz — analiz sana özel DM gelir.</div>
           </details>
           <details class="faq-item">
             <summary class="faq-q">Telegram zorunlu mu? Sadece siteyi kullanabilir miyim?</summary>
@@ -493,7 +581,7 @@
           </details>
           <details class="faq-item">
             <summary class="faq-q">Ödeme güvenli mi?</summary>
-            <div class="faq-a">Ödeme <strong>Shopier</strong> üzerinden işlenir — Türkiye'nin yaygın e-ticaret ödeme altyapısı. Kart bilgilerin bize veya bota iletilmez, doğrudan Shopier'ın güvenli sisteminde işlenir.</div>
+            <div class="faq-a">Ödeme <strong>Shopier</strong> üzerinden işlenir — Türkiye'nin yaygın e-ticaret ödeme altyapısı. Kart bilgilerin bize veya Algoritmanın Telegram Botu'na iletilmez, doğrudan Shopier'ın güvenli sisteminde işlenir.</div>
           </details>
           <details class="faq-item">
             <summary class="faq-q">Analizler yatırım tavsiyesi mi?</summary>
@@ -533,6 +621,12 @@
         <!-- BIG PRICE CARD -->
         <div class="price-card-big" id="price-card-big"><!-- app.js --></div>
 
+        <!-- GÜÇLÜ AKIŞ — Yıldız Pazar akşam listesi özeti (1 Eki 2026, site fazı adım 4) -->
+        <div class="rsection" id="guclu-akis-kutu"></div>
+
+        <!-- ENDEKSTEN GÜÇLÜ — son 20 günde XU100'ü en çok geçen 5 BIST100 hissesi (2 Eki 2026) -->
+        <div class="rsection" id="endeksten-guclu"></div>
+
         <!-- SIGNALS / CANLI SİNYALLER -->
         <div class="rsection" id="canli-sinyaller-panel"><!-- app.js --></div>
 
@@ -540,7 +634,7 @@
         <div class="rsection" id="price-action-section"><!-- app.js --></div>
 
         <!-- ARZ-TALEP -->
-        <div class="rsection">
+        <div class="rsection eski-kilitli">
           <div class="rsection-title">📦 Arz-Talep (S&amp;D) Bölgeleri</div>
           <div class="rsection-locked" onclick="openPlansModal()">
             <div class="elite-badge">ELITE</div>
@@ -549,7 +643,7 @@
         </div>
 
         <!-- FORMASYONLAR -->
-        <div class="rsection">
+        <div class="rsection eski-kilitli">
           <div class="rsection-title purple">🔷 Formasyon &amp; Harmonikler</div>
           <div class="rsection-locked" onclick="openPlansModal()">
             <div class="elite-badge">ELITE</div>
@@ -558,7 +652,7 @@
         </div>
 
         <!-- VWAP -->
-        <div class="rsection">
+        <div class="rsection eski-kilitli">
           <div class="rsection-title cyan">📐 Kurumsal Maliyet (VWAP)</div>
           <div class="rsection-locked" onclick="openPlansModal()">
             <div class="elite-badge">ELITE</div>
@@ -567,7 +661,7 @@
         </div>
 
         <!-- HACİM & VSA -->
-        <div class="rsection">
+        <div class="rsection eski-kilitli">
           <div class="rsection-title green">📊 Hacim &amp; VSA</div>
           <div class="rsection-body">
             <div class="hacim-normal-badge" id="vsa-badge">
@@ -612,7 +706,7 @@
     </div>
   </footer>
 
-  <script src="app.js?v=49"></script>
+  <script src="app.js?v=70"></script>
 
 <!-- PLANS MODAL -->
 <div id="plans-modal" onclick="if(event.target===this)closePlansModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;overflow-y:auto;padding:20px">
@@ -647,12 +741,13 @@
       <div style="background:#0a1628;border:1px solid #7c3aed;border-radius:10px;padding:14px 16px">
         <div style="font-size:9px;font-weight:700;color:#8b5cf6;letter-spacing:1px;text-transform:uppercase">ELİTE</div>
         <div style="font-size:18px;font-weight:900;color:#8b5cf6;margin:2px 0 8px"><span style="font-size:12px;color:#64748b;text-decoration:line-through;font-weight:600">₺749</span> ₺599 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span> <span style="display:inline-block;margin-left:2px;background:rgba(0,200,83,0.15);color:#4ade80;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;vertical-align:middle">AÇILIŞA ÖZEL %20</span></div>
-        <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 8 · Aylık 240 rapor (~2.50₺ / rapor)<br>• Momentum-Para Akışı &amp; Sentiment Grafikleri<br>• <strong style="color:#f1f5f9">Tam sayfa Derinlemesine AI uzman analizi</strong><br>• <strong style="color:#f1f5f9">Kapsamlı SMR yapı-anatomi-kurumsal ayak izi değerlendirmesi</strong><br>• Her işlem günü 19:00 bülteni (XU100)<br>• Hafta sonu özel tarama özetleri<br>• 631 BIST · 84 kripto · 6 emtia</div>
+        <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 4 · Aylık 120 rapor (~4,99₺ / rapor)<br>• Momentum-Akıllı Para &amp; Sentiment Grafikleri<br>• <strong style="color:#f1f5f9">Tam sayfa Derinlemesine ALGORİTMİK uzman analizi</strong><br>• <strong style="color:#f1f5f9">Kapsamlı SMR yapı-anatomi-kurumsal ayak izi değerlendirmesi</strong><br>• Her işlem günü 19:00 bülteni (XU100)<br>• Hafta sonu özel tarama özetleri<br>• 631 BIST · 84 kripto · 6 emtia</div>
         <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-top:8px;background:#7c3aed;border:none;border-radius:6px;padding:8px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div style="display:flex;flex-direction:column;gap:3px;margin:8px 0">
-          <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.2);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#ffd700;font-weight:700">⭐ CONFLUENCE TARAMA</div>
-          <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#8b5cf6;font-weight:700">✦ ELİTE SET-UP'LAR</div>
-          <div style="background:rgba(255,100,50,0.08);border:1px solid rgba(255,100,50,0.2);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#ff8c5a;font-weight:700">🎯 ICT SNIPER TARAMA</div>
+          <div style="font-size:9px;letter-spacing:1px;color:#94a3b8;font-weight:700;margin-bottom:1px">📈 SENTİMENT &amp; MOMENTUM TARAMALARI</div>
+          <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.2);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#ffd700;font-weight:700">🔵 MAVİYE YOLCULUK · dönmeye başlayanlar</div>
+          <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#8b5cf6;font-weight:700">🚀 POTANSİYEL KALKIŞ · satış baskısı azalanlar</div>
+          <div style="background:rgba(255,100,50,0.08);border:1px solid rgba(255,100,50,0.2);border-radius:4px;padding:3px 8px;font-size:9.5px;color:#ff8c5a;font-weight:700">💪 MAVİDE GÜÇLENEN · yükselişi güçlenenler</div>
         </div>
         <div style="display:block;width:100%;margin-top:6px;text-align:center;background:rgba(124,58,237,0.15);border:1px solid #7c3aed;border-radius:7px;padding:9px;color:#a78bfa;font-size:12px;font-weight:800;letter-spacing:0.3px">🕐 Üyelik Çok Yakında</div>
       </div>
@@ -660,7 +755,7 @@
       <div style="background:#0a1628;border:1px solid #2563eb;border-radius:10px;padding:14px 16px">
         <div style="font-size:9px;font-weight:700;color:#3b82f6;letter-spacing:1px;text-transform:uppercase">PRO</div>
         <div style="font-size:18px;font-weight:900;color:#3b82f6;margin:2px 0 8px"><span style="font-size:12px;color:#64748b;text-decoration:line-through;font-weight:600">₺439</span> ₺349 <span style="font-size:12px;color:#64748b;font-weight:400">/ay</span> <span style="display:inline-block;margin-left:2px;background:rgba(0,200,83,0.15);color:#4ade80;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;vertical-align:middle">AÇILIŞA ÖZEL %20</span></div>
-        <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 3 · Aylık 90 rapor (~3.88₺ / rapor)<br>• Momentum-Para Akışı &amp; Sentiment Grafikleri<br>• <strong style="color:#e2e8f0">Algoritmik Teknik Analiz Özeti</strong><br>• <strong style="color:#f1f5f9">Tam sayfa 7 maddelik Detaylı Teknik Analiz (PA + ICT) Kart</strong><br>• Her işlem günü 19:00 bülteni (XU100)<br>• 631 BIST · 84 kripto · 6 emtia</div>
+        <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 2 · Aylık 60 rapor (~5,82₺ / rapor)<br>• Momentum-Akıllı Para &amp; Sentiment Grafikleri<br>• <strong style="color:#e2e8f0">Algoritmik Teknik Analiz Özeti</strong><br>• <strong style="color:#f1f5f9">Tam sayfa 7 maddelik Detaylı Teknik Analiz (PA + ICT) Kart</strong><br>• Her işlem günü 19:00 bülteni (XU100)<br>• 631 BIST · 84 kripto · 6 emtia</div>
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-top:8px;background:#2563eb;border:none;border-radius:6px;padding:8px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div style="display:block;width:100%;margin-top:6px;text-align:center;background:rgba(37,99,235,0.15);border:1px solid #2563eb;border-radius:7px;padding:9px;color:#60a5fa;font-size:12px;font-weight:800;letter-spacing:0.3px">🕐 Üyelik Çok Yakında</div>
       </div>
@@ -668,7 +763,7 @@
       <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:10px;padding:14px 16px">
         <div style="font-size:9px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase">ÜCRETSİZ</div>
         <div style="font-size:18px;font-weight:900;color:#f1f5f9;margin:2px 0 8px">FREE <span style="font-size:12px;color:#64748b;font-weight:400">₺0 /ay</span></div>
-        <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 1 hisse kartı (aylık 30)<br>• Momentum-Para Akışı &amp; Sentiment Grafikleri<br>• <strong style="color:#e2e8f0">Algoritmik Teknik Analiz Özeti</strong></div>
+        <div style="font-size:11px;color:#94a3b8;line-height:1.7">• Günde 1 hisse kartı (aylık 30)<br>• Momentum-Akıllı Para &amp; Sentiment Grafikleri<br>• <strong style="color:#e2e8f0">Algoritmik Teknik Analiz Özeti</strong></div>
         <button onclick="openExampleModal('free')" style="display:block;width:100%;margin-top:8px;background:#00c853;border:none;border-radius:6px;padding:8px;color:#000;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.3px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <button onclick="closePlansModal()" style="display:block;width:100%;margin-top:6px;text-align:center;background:#00c853;border:none;border-radius:7px;padding:9px;color:#000;font-size:12px;font-weight:800;cursor:pointer;letter-spacing:0.3px">Hemen Ücretsiz Dene</button>
       </div>
@@ -704,7 +799,7 @@
       <button onclick="closeExampleModal()" style="background:rgba(100,116,139,0.15);border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:13px;font-weight:700;cursor:pointer;padding:5px 12px;white-space:nowrap">✕ Kapat</button>
       <div>
         <div id="ex-tier-label" style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase"></div>
-        <div style="font-size:12px;color:#64748b">Gerçek bot çıktısı örneği — XU100 analizi</div>
+        <div style="font-size:12px;color:#64748b">Gerçek ALGORİTMA analiz çıktısı örneği · XU100</div>
       </div>
       <div id="ex-tier-badge" style="margin-left:auto;font-size:10px;font-weight:800;padding:3px 8px;border-radius:4px"></div>
     </div>
@@ -725,7 +820,7 @@
       <rect x="30" y="60" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="70" y="52" width="8" height="15" fill="#22c55e" opacity="0.7"/>
       <rect x="150" y="35" width="8" height="18" fill="#ef4444" opacity="0.7"/><rect x="210" y="25" width="8" height="14" fill="#22c55e" opacity="0.7"/>
       <rect x="330" y="32" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="390" y="26" width="8" height="16" fill="#ef4444" opacity="0.7"/>
-      <text x="8" y="82" fill="#334155" font-size="8" font-family="monospace">Para Akisi Grafigi — ornek</text>
+      <text x="8" y="82" fill="#334155" font-size="8" font-family="monospace">Akilli Para Grafigi — ornek</text>
     </svg>
   </div>
   <div style="background:#17212b;padding:14px 16px;font-family:monospace;font-size:12px">
@@ -768,7 +863,7 @@
       <rect x="30" y="60" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="70" y="52" width="8" height="15" fill="#22c55e" opacity="0.7"/>
       <rect x="150" y="35" width="8" height="18" fill="#ef4444" opacity="0.7"/><rect x="210" y="25" width="8" height="14" fill="#22c55e" opacity="0.7"/>
       <rect x="330" y="32" width="8" height="10" fill="#ef4444" opacity="0.7"/><rect x="390" y="26" width="8" height="16" fill="#ef4444" opacity="0.7"/>
-      <text x="8" y="82" fill="#334155" font-size="8" font-family="monospace">Para Akisi Grafigi — ornek</text>
+      <text x="8" y="82" fill="#334155" font-size="8" font-family="monospace">Akilli Para Grafigi — ornek</text>
     </svg>
   </div>
   <div style="background:#17212b;padding:14px 16px;font-family:monospace;font-size:12px">
@@ -801,9 +896,9 @@
     <div style="border-top:1px solid #1e293b;margin:10px 0"></div>
     <div style="font-size:10px;color:#475569">⚠️ <i>Eğitim amaçlıdır, yatırım tavsiyesi değildir.</i></div>
   </div>
-  <!-- AI TEKNİK KART -->
+  <!-- ALGORİTMİK TEKNİK KART -->
   <div style="background:#0f1923;border-top:2px solid #2563eb;padding:14px 16px;font-family:monospace">
-    <div style="font-size:11px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;margin-bottom:12px">🤖 AI TEKNİK KART — #XU100</div>
+    <div style="font-size:11px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;margin-bottom:12px">📐 ALGORİTMİK TEKNİK KART — #XU100</div>
     <div style="font-size:11.5px;color:#cbd5e1;line-height:1.85">
       <div style="margin-bottom:10px">
         <span style="color:#3b82f6;font-weight:700">1️⃣ Genel Sentez</span><br>
@@ -918,7 +1013,7 @@ var EX_META = {
 
   var PRO_KART =
     '<div style="background:#0f1923;border-top:2px solid #2563eb;padding:14px 16px;font-family:monospace">' +
-    '<div style="font-size:11px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;margin-bottom:12px">&#129302; AI TEKNIK KART &#8212; #XU100</div>' +
+    '<div style="font-size:11px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;margin-bottom:12px">&#128208; ALGORİTMİK TEKNİK KART &#8212; #XU100</div>' +
     '<div style="font-size:11.5px;color:#cbd5e1;line-height:1.85">' +
     '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">1&#65039;&#8419; Genel Sentez (Yapi + Bolge Uyumu)</span><br><span style="color:#94a3b8">- Trend Yonu: Dusus kirilimi (BOS &#8212; yapi kirilimi) ile dusus trendi hakim. Son swing tepesi 15.205, en son salinimda dip 14.246,30.<br>- Bolge Uyumu: Fiyat, kurumsal satim bolgesi olan premium (pahali) alanda islem goruyor.</span></div>' +
     '<div style="margin-bottom:10px"><span style="color:#3b82f6;font-weight:700">2&#65039;&#8419; Yapi &amp; Fiyat Davranisi</span><br><span style="color:#94a3b8">- Trend Yapisi: Dusus kirilimi (BOS) sonrasinda yapi dusus trendi yonunde ilerliyor.<br>- Mum &amp; Fitil (Kapanis Konumu): Son 5 gunun mum kapanis seveleri gunluk araligin alt kisminda &#8212; satici baskisi belirginlesiyor. Son mumda alt banda yakin kapanis goruldu.<br>- OB/FVG: 14.991,70&#8211;15.204,90 araliginda arz bolgesi (Order Block &#8212; kurumsal satim bolgesi); 14.538,40&#8211;14.566,20 araliginda fiyat boslugu (FVG) mevcut.<br>- EQL &amp; Sweep: 14.246,30 seviyesinde esit dipler (EQL &#8212; likidite havuzu). Belirgin likidite avi (Sweep) tespit edilmedi.</span></div>' +
