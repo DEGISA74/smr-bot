@@ -311,7 +311,25 @@
       /* style.css mobilde bu üç paneli "tamamen kilitli" diye gizliyordu; artık gerçek bilgi + tek kutu → görünsün */
       @media (max-width: 960px) { #hacim-panel, #composite-panel, #ict-panel { display: block !important; } }
       /* İçi henüz dolmamış kutular yer kaplamasın (mobilde boş kutu flex aralığını ikiye katlıyordu) */
-      #terazi-serit:empty, #guclu-akis-kutu:empty, #piyasa-nabzi:empty, #endeksten-guclu:empty { display: none !important; }
+      #terazi-serit:empty, #guclu-akis-kutu:empty, #piyasa-nabzi:empty, #endeksten-guclu:empty, #bugun-olanlar:empty { display: none !important; }
+      /* BUGÜN OLANLAR kutusu */
+      #bugun-olanlar .bo-ic { padding: 8px 10px 10px; }
+      #bugun-olanlar .bo-sekme { display:flex; gap:3px; background:#0a101d; border:1px solid #1e2742; border-radius:8px; padding:3px; margin-bottom:8px; }
+      #bugun-olanlar .bo-sekme button { flex:1; border:0; background:transparent; color:#64748b; font-size:11px; font-weight:700; padding:7px 0; border-radius:6px; cursor:pointer; min-height:30px; font-family:inherit; }
+      #bugun-olanlar .bo-sekme button.on { background:#1e293b; color:#fff; }
+      #bugun-olanlar .bo-grup { font-size:9.5px; font-weight:800; letter-spacing:.8px; margin:6px 0 2px; }
+      #bugun-olanlar .bo-alt { font-size:10px; color:var(--text-muted); margin:0 0 4px; }
+      #bugun-olanlar .bo-satir { display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:6px; font-size:11.5px; cursor:pointer; }
+      #bugun-olanlar .bo-satir:hover { background:#111b2e; }
+      #bugun-olanlar .bo-satir b { font-family:'JetBrains Mono',monospace; color:#fff; min-width:52px; }
+      #bugun-olanlar .bo-satir .ac { color:#64748b; font-size:10.5px; flex:1; }
+      #bugun-olanlar .bo-satir .d { font-family:'JetBrains Mono',monospace; font-weight:700; font-size:11px; }
+      #bugun-olanlar .bo-bos { font-size:11px; color:#475569; padding:2px 6px; font-style:italic; }
+      #bugun-olanlar .bo-rozet { font-size:9px; font-weight:800; letter-spacing:.5px; padding:1px 6px; border-radius:4px; }
+      @media (min-width: 961px) { #bugun-olanlar .bo-bar { display:none; } #bugun-olanlar .bo-satir { gap:6px; padding:4px 4px; } }
+      #bugun-olanlar .bo-bar { height:4px; background:#1e293b; border-radius:3px; flex:0 0 40px; overflow:hidden; }
+      #bugun-olanlar .bo-bar i { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#ef4444); }
+      #bugun-olanlar .bo-not { font-size:9.5px; color:#475569; margin-top:6px; line-height:1.45; }
       @media (max-width: 600px) { #takip-yildiz .takip-yazi { display: none; } }
       /* Piyasa Nabzı iç boşluğu (başlık kendi stilini taşır; içerik kenara yapışmasın) */
       #piyasa-nabzi > :not(.sidebar-section-title) { margin-left: 12px !important; margin-right: 12px !important; }
@@ -329,6 +347,7 @@
         #endeksten-guclu  { order: -7 !important; }
         #guclu-akis-kutu, #endeksten-guclu { align-self: stretch; width: auto !important; box-sizing: border-box; padding: 10px 12px !important; }
         #levels-panel     { order: -6 !important; }
+        #bugun-olanlar    { order: -9 !important; align-self: stretch; width: auto !important; box-sizing: border-box; background: var(--panel); }
         #price-card-big   { display: none !important; }
         #piyasa-nabzi     { grid-column: 1 / -1; }   /* sol sütun mobilde 2'li ızgara → nabız tam genişlik */
       }
@@ -368,6 +387,10 @@
 
         <!-- PİYASA NABZI — BIST100 yükselen/düşen + en çok hareket edenler (2 Eki 2026) -->
         <div class="sidebar-section" id="piyasa-nabzi"></div>
+
+        <!-- BUGÜN OLANLAR — SMA200 kesişleri / 52H zirveye yakın / hacim (2 Eki 2026). Telefonda
+             app.js ana grafiğin hemen altına taşır (çok aşağıda kalmasın). -->
+        <div class="sidebar-section" id="bugun-olanlar"></div>
 
         <!-- Genel Özet ek kilitli -->
         <div class="sidebar-section" id="sidebar-genel-extra"><!-- app.js --></div>
@@ -708,7 +731,7 @@
     </div>
   </footer>
 
-  <script src="app.js?v=76"></script>
+  <script src="app.js?v=78"></script>
 
 <!-- PLANS MODAL -->
 <div id="plans-modal" onclick="if(event.target===this)closePlansModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;overflow-y:auto;padding:20px">

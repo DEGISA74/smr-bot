@@ -44,6 +44,7 @@ function renderAll(data) {
   renderTerazi();
   renderGucluAkis();
   renderEndekstenGuclu();
+  renderBugunOlanlar();
   renderPiyasaNabzi();
   renderUpdateTime(data.meta);
   renderTop3Sinyaller(data.top3_sinyaller || []);
@@ -473,6 +474,72 @@ async function renderPiyasaNabzi() {
       ${satir("SMA200 üstü", p.sma200_ustu_pct)}${satir("SMA50 üstü", p.sma50_ustu_pct)}${satir("RSI 50 üstü", p.rsi50_ustu_pct)}
     </div>
     <div style="font-size:9px;color:var(--text-muted);margin-top:4px">güncellendi ${esc(uretim.slice(11))} · hisseye tıkla, analizi açılsın</div>`;
+}
+
+// ── BUGÜN OLANLAR (2 Eki 2026 — sol sütun; telefonda ana grafiğin altı) ─────────
+// hisse/_liste.json → piyasa.bugun (site_hisse_uretici): SMA200'ü kesenler, 52H zirveye en
+// yakın 5, ortalamasının 2 katından fazla işlem görenler. Ölçüm, tahmin/öneri değil.
+// Kesiş/zirve gün içinde değişebilir ("ŞU AN"); hacim son tamamlanmış günün ("KESİN").
+window._boSekme = "kesis";
+function bugunYerlestir() {
+  const el = document.getElementById("bugun-olanlar");
+  if (!el) return;
+  const mobil = window.matchMedia("(max-width: 960px)").matches;
+  const hedef = mobil ? document.getElementById("xu100-panel") : document.getElementById("piyasa-nabzi");
+  if (hedef && hedef.nextElementSibling !== el) hedef.insertAdjacentElement("afterend", el);
+}
+try { window.matchMedia("(max-width: 960px)").addEventListener("change", bugunYerlestir); } catch (e) {}
+window.boSekme = function(s) { window._boSekme = s; renderBugunOlanlar(); };
+async function renderBugunOlanlar() {
+  const el = document.getElementById("bugun-olanlar");
+  if (!el) return;
+  bugunYerlestir();
+  let j = null;
+  try { j = await listeAl(); } catch (e) {}
+  const b = j && j.piyasa && j.piyasa.bugun;
+  if (!b) { el.innerHTML = ""; return; }
+  const esc = x => String(x ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const tr = (x, n = 1) => Math.abs(x || 0).toFixed(n).replace(".", ",");
+  const ac = t => `onclick="hizliAc('${esc(t)}')"`;
+  const s = window._boSekme;
+  const saat = (j.uretim || "").slice(11, 16);
+  const hg = (b.hacim_gun || "").slice(5).split("-").reverse().join(".");
+  const rozet = s === "hacim"
+    ? `<span class="bo-rozet" style="background:rgba(148,163,184,.1);color:#94a3b8;border:1px solid #334155">KESİN · ${esc(hg)}</span>`
+    : `<span class="bo-rozet" style="background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.35)">ŞU AN · ${esc(saat)}</span>`;
+  let ic = "";
+  if (s === "kesis") {
+    const yuk = b.yukari || [], dus = b.asagi || [];
+    const sat = (h, yon) => `<div class="bo-satir" ${ac(h.t)}><b>${esc(h.t)}</b><span class="ac">SMA200</span><span class="d" style="color:${yon > 0 ? "#22c55e" : "#f87171"}">${yon > 0 ? "+" : "−"}%${tr(h.uzak)}</span></div>`;
+    ic = `<div class="bo-grup" style="color:#22c55e">▲ SMA200 ÜSTÜNE ÇIKTI · ${yuk.length}</div>
+      ${yuk.length ? yuk.map(h => sat(h, 1)).join("") : `<div class="bo-bos">Bugün çıkan yok</div>`}
+      <div class="bo-grup" style="color:#f87171">▼ SMA200 ALTINA DÜŞTÜ · ${dus.length}</div>
+      ${dus.length ? dus.map(h => sat(h, -1)).join("") : `<div class="bo-bos">Bugün düşen yok</div>`}
+      <div class="bo-not">Gün içinde kesiş geri dönebilir; akşam kesinleşir. Hisseye tıkla → analizi açılır.</div>`;
+  } else if (s === "zirve") {
+    ic = `<div class="bo-alt">52 haftalık zirvesine en yakın 5 hisse (kalan mesafe)</div>
+      ${(b.zirve || []).map(h => `<div class="bo-satir" ${ac(h.t)}><b>${esc(h.t)}</b>
+        <span class="ac" style="${h.yeni ? "color:#fbbf24;font-weight:800" : ""}">${h.yeni ? "🏔 yeni zirve" : "zirveye"}</span>
+        <span class="d" style="color:${h.uzak > -3 ? "#22c55e" : "#fbbf24"}">${h.uzak >= 0 ? "zirvede" : `−%${tr(h.uzak)}`}</span></div>`).join("")}
+      <div class="bo-not">Bugün zirvesini aşan en üstte “yeni zirve” diye çıkar.</div>`;
+  } else {
+    const L = b.hacim || [];
+    const enb = Math.max(...L.map(h => h.kat || 0), 1);
+    ic = `<div class="bo-alt">Ortalamasının 2 katından (2x) fazla işlem görenler</div>
+      ${L.length ? L.map(h => `<div class="bo-satir" ${ac(h.t)}><b>${esc(h.t)}</b>
+        <div class="bo-bar"><i style="width:${Math.round((h.kat || 0) / enb * 100)}%"></i></div>
+        <span class="d" style="color:#38bdf8;flex:1">${tr(h.kat)}x</span>
+        <span class="d" style="color:${h.degisim >= 0 ? "#22c55e" : "#f87171"}">${h.degisim >= 0 ? "+" : "−"}%${tr(h.degisim)}</span></div>`).join("")
+        : `<div class="bo-bos">O gün hacmi patlayan olmadı</div>`}
+      <div class="bo-not">Gün bitmeden hacim yanıltır; bu yüzden son tamamlanan gün gösterilir.</div>`;
+  }
+  const btn = (k, ad) => `<button type="button" class="${s === k ? "on" : ""}" onclick="boSekme('${k}')">${ad}</button>`;
+  el.innerHTML = `<div class="sidebar-section-title" style="color:#fbbf24;border-left-color:#fbbf24">⚡ Bugün Olanlar · BIST100</div>
+    <div class="bo-ic">
+      <div style="display:flex;margin-bottom:6px">${rozet}</div>
+      <div class="bo-sekme">${btn("kesis", "Kesiş")}${btn("zirve", "Zirve")}${btn("hacim", "Hacim")}</div>
+      ${ic}
+    </div>`;
 }
 
 // ── ENDEKSTEN GÜÇLÜ (2 Eki 2026 — sağ sütun) ─────────────────────────────────

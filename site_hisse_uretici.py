@@ -115,6 +115,37 @@ def _akilli_para(ticker: str, df: pd.DataFrame) -> dict | None:
         return None
 
 
+def _olay(ticker: str, df: pd.DataFrame) -> dict | None:
+    """2 Eki 2026 — 'BUGÜN OLANLAR' kutusu için tek hissenin olayları (ölçüm, tahmin değil).
+    SMA200 kesişi: dünkü kapanış ortalamanın bir yanında, son fiyat öbür yanında.
+    Zirve: 1 yıllık pencerenin en yükseğine uzaklık (app 52H şeridiyle aynı pencere).
+    Hacim: seans sürerken yarım gün yanıltır → son TAMAMLANMIŞ gün / önceki 20 gün ortalaması."""
+    if ticker.startswith("X") or len(df) < 201:
+        return None
+    try:
+        c, v = df["Close"].astype(float), df["Volume"].astype(float)
+        s200 = c.rolling(200).mean()
+        k, d, s_bugun, s_dun = c.iloc[-1], c.iloc[-2], s200.iloc[-1], s200.iloc[-2]
+        kesis = None
+        if d <= s_dun and k > s_bugun:
+            kesis = "yukari"
+        elif d >= s_dun and k < s_bugun:
+            kesis = "asagi"
+        onceki_zirve = float(df["High"].iloc[:-1].max())
+        simdi = datetime.now(_TZ_ISTANBUL)
+        seans_suruyor = (df.index[-1].date() == simdi.date() and (simdi.hour, simdi.minute) < (18, 30))
+        i = -2 if seans_suruyor else -1
+        ort = v.iloc[i - 20:i].mean()
+        return {"kesis": kesis, "sma200_uzak": _num((k / s_bugun - 1) * 100, 1),
+                "zirve_uzak": _num((k / max(onceki_zirve, float(df["High"].iloc[-1])) - 1) * 100, 1),
+                "yeni_zirve": bool(float(df["High"].iloc[-1]) > onceki_zirve),
+                "hacim_kat": _num(v.iloc[i] / ort, 1) if ort else None,
+                "hacim_degisim": _num((c.iloc[i] / c.iloc[i - 1] - 1) * 100, 1),
+                "hacim_gun": str(df.index[i].date())}
+    except Exception:
+        return None
+
+
 def hisse_uret(ticker: str) -> dict | None:
     # app.py ile BİREBİR: MA tablosu ve 52H şeridi get_safe_historical_data(period="1y")
     # çıktısından hesaplanır (EMA144 gibi değerler serinin başlangıcına duyarlı).
@@ -157,6 +188,7 @@ def hisse_uret(ticker: str) -> dict | None:
         },
         "grafik": grafik,
         "akilli": _akilli_para(ticker, df),
+        "olay": _olay(ticker, df),
     }
 
 
@@ -203,6 +235,7 @@ def main(argv: list[str]) -> int:
     ust200 = ust50 = rsi50 = olculen = 0
     gunluk = []          # (ticker, günlük değişim %) — piyasa nabzı (BIST100, endeksler hariç)
     guclu = []           # (ticker, endekse göre 20g güç puanı) — 'Endeksten Güçlü' kutusu
+    olaylar = []         # (ticker, olay) — 'Bugün Olanlar' kutusu
     for t in evren:
         try:
             out = hisse_uret(t)
@@ -229,6 +262,8 @@ def main(argv: list[str]) -> int:
                 rsi50 += h["rsi"] is not None and h["rsi"] > 50
             if (out.get("akilli") or {}).get("guc20") is not None:
                 guclu.append((h["ticker"], out["akilli"]["guc20"]))
+            if out.get("olay"):
+                olaylar.append((h["ticker"], out["olay"]))
             if h["degisim_pct"] is not None:
                 gunluk.append((h["ticker"], h["degisim_pct"], out["meta"]["son_bar"]))
 
@@ -259,6 +294,24 @@ def main(argv: list[str]) -> int:
         # 2 Eki 2026 — ENDEKSTEN GÜÇLÜ: son 20 işlem gününde XU100'ü en çok geçen 5 BIST100
         # hissesi (puan = hisse getirisi − XU100 getirisi). Ölçüm, tahmin değil.
         piyasa["endeksten_guclu"] = [{"t": t, "puan": g} for t, g in sorted(guclu, key=lambda x: -x[1])[:5]]
+    if piyasa is not None and olaylar:
+        # 2 Eki 2026 — BUGÜN OLANLAR: SMA200 kesişleri + 52H zirveye en yakın 5 + hacmi 2 katı aşanlar.
+        # Kesiş/zirve gün içinde değişebilir ("şu an"); hacim son tamamlanmış günün (kesin).
+        hg = max((o["hacim_gun"] for _, o in olaylar if o.get("hacim_gun")), default=None)
+        piyasa["bugun"] = {
+            "yukari": sorted([{"t": t, "uzak": o["sma200_uzak"]} for t, o in olaylar if o["kesis"] == "yukari"],
+                             key=lambda x: -(x["uzak"] or 0)),
+            "asagi": sorted([{"t": t, "uzak": o["sma200_uzak"]} for t, o in olaylar if o["kesis"] == "asagi"],
+                            key=lambda x: x["uzak"] or 0),
+            "zirve": [{"t": t, "uzak": o["zirve_uzak"], "yeni": o["yeni_zirve"]}
+                      for t, o in sorted([x for x in olaylar if x[1]["zirve_uzak"] is not None],
+                                         key=lambda x: (not x[1]["yeni_zirve"], -x[1]["zirve_uzak"]))[:5]],
+            "hacim_gun": hg,
+            "hacim": [{"t": t, "kat": o["hacim_kat"], "degisim": o["hacim_degisim"]}
+                      for t, o in sorted([x for x in olaylar if x[1]["hacim_gun"] == hg
+                                          and (x[1]["hacim_kat"] or 0) >= 2.0],
+                                         key=lambda x: -x[1]["hacim_kat"])[:6]],
+        }
     if not argv:   # deneme çalıştırması listeyi ezmez
         _atomic_json(os.path.join(OUT_DIR, "_liste.json"),
                      {"uretim": uretim, "adet": len(liste), "evren": "BIST100",
