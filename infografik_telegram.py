@@ -63,10 +63,40 @@ def tg_send_text(chat_id, text):
         print('telegram hata', e); return False
 
 
+def veri_tarihi(tk):
+    """Depodaki (fetcher'ın onaylı parquet'i) son barın tarihi; okunamazsa None."""
+    import pandas as pd
+    try:
+        df = pd.read_parquet(os.path.join(BASE, 'veriler', f'{tk}.IS_1d.parquet'), columns=['Close'])
+        df = df.dropna(subset=['Close'])
+        return pd.Timestamp(df.index[-1]).date() if len(df) else None
+    except Exception:
+        return None
+
+
+def veri_bugune_ait_mi(tk, bugun=None):
+    """2 Eki 2026 — akşam görseli YALNIZ bugünün kapanışıyla gider (tatil sonrası ilk
+    işlem gününde de). Tam tatilde cron kapısı (islem_gunu_mu.py) zaten başlatmaz."""
+    from datetime import datetime, timedelta
+    bugun = bugun or (datetime.utcnow() + timedelta(hours=3)).date()
+    son = veri_tarihi(tk)
+    return son == bugun, son, bugun
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('-')]
     tk = (args[0] if args else 'XU100').upper()
     out = os.path.join(BASE, f'_ig_{tk}.png')
+    if '--tarih-kontrolsuz' not in sys.argv:
+        ok, son, bugun = veri_bugune_ait_mi(tk)
+        if not ok:
+            msg = (f"⚠️ İnfografik ({tk}) GÖNDERİLMEDİ: görselin dayanacağı son veri "
+                   f"{son.strftime('%d.%m.%Y') if son else 'okunamadı'}, beklenen bugün "
+                   f"{bugun.strftime('%d.%m.%Y')}. Kapanış verisi gelince elle: "
+                   f"python infografik_telegram.py {tk}")
+            print(msg)
+            tg_send_text(ADMIN_ID, msg)
+            return
     if NO_RENDER:
         if not os.path.exists(out):
             print('PNG yok, --no-render iptal'); return
