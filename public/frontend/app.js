@@ -145,7 +145,8 @@ function sayiTR(x) { return Math.abs(x).toFixed(1).replace(".", ","); }
 function paylasMetni() {
   const t = aktifTicker();
   const j = window._seciliJson;
-  const link = `${SITE_ADRES}/?h=${t}` + (window._davetKod ? `&d=${window._davetKod}` : "");
+  // /p/<T>.html: X bu sayfadan grafik kartını (kart/<T>.png) alır, insanı siteye yönlendirir.
+  const link = `${SITE_ADRES}/p/${t}.html` + (window._davetKod ? `?d=${window._davetKod}` : "");
   let ilk;
   const g = j && j.akilli ? j.akilli.guc20 : null;
   if (window._seciliHisse && j && g != null && !t.startsWith("X")) {
