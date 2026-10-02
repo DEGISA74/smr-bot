@@ -51,6 +51,14 @@ FIXED_NATIONAL_HOLIDAYS: dict[tuple[int, int], str] = {
     (10, 29): "Cumhuriyet Bayramı",
 }
 
+# ── Sabit YARIM günler (ay, gün) — her yıl ───────────────────────────────────────
+# 2 Eki 2026: 28 Ekim (Cumhuriyet Bayramı arifesi) eksikti. Kaynak: Borsa İstanbul
+# Pay Piyasası 2026 Yılı Tatil Tablosu (duyuru E-18454353-100.04.02-41625, 04.12.2025):
+# "28 Ekim 2026 Çarşamba yarım gün seans yapılacaktır." Hafta sonuna denk gelirse etkisiz.
+FIXED_HALF_DAYS: dict[tuple[int, int], str] = {
+    (10, 28): "Cumhuriyet Bayramı Arefe",
+}
+
 # ── Dini Bayram + Arefe Takvimi ─────────────────────────────────────────────────
 # "closed" = tam kapalı  |  "half" = arefe günü (10:00–12:30)
 # Kaynak: Diyanet İşleri Başkanlığı resmî açıklamaları
@@ -148,6 +156,8 @@ def get_day_status(dt=None) -> tuple[str, str]:
     key = (d.month, d.day)
     if key in FIXED_NATIONAL_HOLIDAYS:
         return ("closed", FIXED_NATIONAL_HOLIDAYS[key])
+    if key in FIXED_HALF_DAYS:
+        return ("half", FIXED_HALF_DAYS[key])
 
     # 4. Normal işlem günü
     return ("open", "Normal Seans")
