@@ -225,8 +225,17 @@ def _mark_published(path: Path, engine: str, kind: str, key: str) -> str:
 def _previous_run_date(run_date: date, cadence: str) -> date:
     if cadence == "weekly":
         return run_date - timedelta(days=7)
+    # 2 Eki 2026 — önceki İŞLEM günü: hafta sonu + resmî/dini bayram (bist_calendar).
+    # Eskiden yalnız hafta sonu atlanıyordu → bayram sonrası ilk sabah "dünkü tarama
+    # çalışmadı" + "veri alınamadı" mesajları gidiyordu (ör. 30 Eki: beklenen 29 Eki bayram).
+    try:
+        from bist_calendar import is_trading_day
+    except Exception:
+        is_trading_day = lambda d: d.weekday() < 5  # noqa: E731
     previous = run_date - timedelta(days=1)
-    while previous.weekday() >= 5:
+    for _ in range(15):
+        if previous.weekday() < 5 and is_trading_day(previous):
+            break
         previous -= timedelta(days=1)
     return previous
 
