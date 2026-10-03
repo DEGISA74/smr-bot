@@ -43,6 +43,7 @@ function renderAll(data) {
   renderHizliBar();
   renderTerazi();
   renderGucluAkis();
+  renderTaramaOzet();
   renderEndekstenGuclu();
   renderBugunOlanlar();
   renderPiyasaNabzi();
@@ -55,10 +56,9 @@ function renderAll(data) {
     renderTeknikSeviyeler(data.xu100);
   }
   if (!window._seciliHisse) renderHacimPanel(data.piyasa_ozeti);   // seçili hissede Akıllı Para kartı
-  renderComposite(data.piyasa_ozeti);
-  renderICT(data.xu100, data.piyasa_ozeti);
+  if (!window._seciliHisse) { renderComposite(data.piyasa_ozeti); renderICT(data.xu100, data.piyasa_ozeti); }   // seçili hissede loadTicker çizer
   if (!window._seciliHisse) renderSidebarLeft(data.xu100, data.piyasa_ozeti);   // seçili hissede loadTicker çizer
-  renderSidebarRight(data.xu100, data.piyasa_ozeti);
+  if (!window._seciliHisse) renderSidebarRight(data.xu100, data.piyasa_ozeti);
   renderCanliSinyaller(data.xu100, data.piyasa_ozeti);
   renderOneCikanlar(data.piyasa_ozeti);
   renderKurumsalPanel(data.xu100);
@@ -303,9 +303,10 @@ window.loadTicker = async function(t, sessiz) {
   const baslik = document.getElementById("panel-ticker");
   if (t === "XU100") {
     window._seciliHisse = null;
+    document.body.classList.remove("hisse-secili");
     if (baslik) baslik.textContent = "XU100";
     const v = window._sonVeri;
-    if (v) { renderXU100Panel(v.xu100, v.piyasa_ozeti, v.xu100_grafik || []); renderTeknikSeviyeler(v.xu100); renderSidebarLeft(v.xu100, v.piyasa_ozeti); renderHacimPanel(v.piyasa_ozeti); }
+    if (v) { renderXU100Panel(v.xu100, v.piyasa_ozeti, v.xu100_grafik || []); renderTeknikSeviyeler(v.xu100); renderSidebarLeft(v.xu100, v.piyasa_ozeti); renderHacimPanel(v.piyasa_ozeti); renderComposite(v.piyasa_ozeti); renderICT(v.xu100, v.piyasa_ozeti); renderFiyatKarti(v.xu100); }
     renderHizliBar();
     return true;
   }
@@ -324,6 +325,7 @@ window.loadTicker = async function(t, sessiz) {
   if (!j || !j.hisse) return false;
   window._seciliHisse = t;
   window._seciliJson = j;
+  document.body.classList.add("hisse-secili");   // index.html: 3 analiz paneli grafiğin altına
   if (baslik) baslik.textContent = j.hisse.ticker;
   renderXU100Panel(j.hisse, null, j.grafik || [], {
     label: j.hisse.ticker, isIndex: j.hisse.ticker.startsWith("X"),
@@ -336,6 +338,9 @@ window.loadTicker = async function(t, sessiz) {
   renderTeknikSeviyeler(j.hisse, j.hisse.ticker);
   renderSidebarLeft(j.hisse, window._sonVeri?.piyasa_ozeti, { label: j.hisse.ticker });
   if (!renderHisseAkilliPara(j)) renderHacimPanel(window._sonVeri?.piyasa_ozeti);
+  renderHisseYolHaritasi(j.hisse);
+  renderICT(j.hisse, null, j.hisse.ticker);
+  renderFiyatKarti(j.hisse, j.hisse.ticker);
   renderHizliBar();
   if (!sessiz) document.getElementById("xu100-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
   return true;
@@ -405,7 +410,7 @@ async function renderGucluAkis() {
     <div style="background:rgba(56,189,248,0.07);border:1px solid rgba(56,189,248,0.35);border-radius:6px;padding:8px 10px;margin:6px 0 8px">
       <div style="font-size:9px;letter-spacing:1px;color:var(--text-muted)">LİSTENİN 1. HİSSESİ · ${esc(i.grup)}</div>
       <div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">
-        <span style="font-size:17px;font-weight:800;color:var(--text)">${esc(i.t)}</span>
+        <span style="font-size:17px;font-weight:800;color:var(--text);letter-spacing:1px">${esc(i.t)}</span>
         <span style="font-family:'JetBrains Mono',monospace;font-size:12px">${fmt(i.fiyat)}</span>
         <span style="font-size:11px;color:${i.degisim >= 0 ? "#22c55e" : "#f87171"}">${i.degisim >= 0 ? "▲" : "▼"} %${Math.abs(i.degisim).toFixed(1)}</span>
       </div>
@@ -413,14 +418,12 @@ async function renderGucluAkis() {
     </div>` : `<div style="font-size:11px;color:var(--text-dim);margin:6px 0">Bu akşam listede hisse yok.</div>`;
   const gr = y.gruplar.map(g => {
     const kilit = Math.max(0, g.adet - (i && i.grup === g.label ? 1 : 0));
-    const satir = Array.from({ length: Math.min(kilit, 3) }, () =>
-      `<div style="font-size:10.5px;color:var(--text-muted);letter-spacing:2px">🔒 ••••• &nbsp;•••</div>`).join("");
     return `<div style="margin-top:6px">
       <div style="display:flex;justify-content:space-between;font-size:11px">
         <span style="color:var(--text);font-weight:700">${esc(g.label)}</span>
         <span style="color:#38bdf8;font-weight:700">${g.adet}</span></div>
       <div style="font-size:9.5px;color:var(--text-muted);line-height:1.35;margin-bottom:2px">${esc(g.aciklama)}</div>
-      ${satir}${kilit > 3 ? `<div style="font-size:10px;color:var(--text-muted)">+${kilit - 3} hisse daha</div>` : ""}
+      ${kilitler(kilit)}
     </div>`;
   }).join("");
   el.innerHTML = `
@@ -428,7 +431,64 @@ async function renderGucluAkis() {
     <div style="font-size:9.5px;color:var(--text-dim)">${tarih} akşam listesi · ${y.toplam} hisse</div>
     ${ilkHtml}
     ${gr}
-    <div style="margin-top:10px;font-size:10.5px;color:#fbbf24;line-height:1.4">Tam liste her akşam 22:30'da Telegram PRO kanalında.</div>
+    ${davetSatiri("Tam liste her akşam 22:30'da Telegram PRO/ELITE kanallarında.")}
+    <div style="margin-top:4px;font-size:9px;color:var(--text-muted)">İşlem sinyali değildir.</div>`;
+}
+
+// ── "BAL" VİTRİN DİLİ (3 Eki 2026) — Güçlü Akış kalıbı: ilk hisse açık, kalanı kilitli
+// satır + sayı, altta Telegram davet satırı. Piyasa Nabzı / Bugün Olanlar / Endeksten Güçlü ortak.
+const KILIT_SATIR = `<div style="font-size:10.5px;color:var(--text-muted);letter-spacing:2px;line-height:1.65">🔒 ••••• &nbsp;•••</div>`;
+function kilitler(n, max = 3) {
+  if (n <= 0) return "";
+  return KILIT_SATIR.repeat(Math.min(n, max))
+    + (n > max ? `<div style="font-size:10px;color:var(--text-muted)">+${n - max} hisse daha</div>` : "");
+}
+function ilkVeKilit(L, cizici) {     // listeler en fazla 5 → 4 kilidin hepsi görünür
+  L = L || [];
+  return L.length ? cizici(L[0]) + kilitler(L.length - 1, 4) : "";
+}
+function davetSatiri(metin = "Tamamı PRO/ELITE üyelerine açık.") {
+  return `<div style="margin-top:10px;font-size:10.5px;color:#fbbf24;line-height:1.4">${metin}</div>`;
+}
+
+// ── ALGORİTMANIN TARAMALARI (3 Eki 2026) ──────────────────────────────────────
+// tarama_ozet.json: VPS site_tarama_ozet.py — programdaki Tarama Kataloğu ile aynı sayım
+// (her taramada tekil hisse, Yıldız Pazar evreni). Dosyada sadece ad + sayı + 1. hisse var.
+async function renderTaramaOzet() {
+  const el = document.getElementById("tarama-ozet-kutu");
+  if (!el) return;
+  let y = null;
+  try {
+    const r = await fetch("tarama_ozet.json?t=" + Date.now());
+    if (r.ok) y = await r.json();
+  } catch (e) {}
+  if (!y || !Array.isArray(y.taramalar) || !y.taramalar.length) { el.innerHTML = ""; return; }
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const tarih = (y.as_of || "").split("-").reverse().join(".");
+  const i = y.ilk;
+  const ilkHtml = i ? `
+    <div style="background:rgba(167,139,250,0.07);border:1px solid rgba(167,139,250,0.4);border-radius:6px;padding:8px 10px;margin:6px 0 8px">
+      <div style="font-size:9px;letter-spacing:1px;color:var(--text-muted)">LİSTENİN 1. HİSSESİ · ${esc(i.tarama)}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">
+        <span style="font-size:17px;font-weight:800;color:var(--text);letter-spacing:1px">${esc(i.t)}</span>
+        ${i.fiyat != null ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${fmt(i.fiyat)}</span>` : ""}
+        ${i.degisim != null ? `<span style="font-size:11px;color:${i.degisim >= 0 ? "#22c55e" : "#f87171"}">${i.degisim >= 0 ? "▲" : "▼"} %${Math.abs(i.degisim).toFixed(1)}</span>` : ""}
+      </div>
+      ${i.pos52 != null ? `<div style="font-size:10px;color:var(--text-dim)">52 hafta aralığında %${Math.round(i.pos52)} konumda</div>` : ""}
+    </div>` : "";
+  const satirlar = y.taramalar.map((t, k) => {
+    const kilit = Math.max(0, t.adet - (k === 0 && i ? 1 : 0));
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;line-height:1.9">
+      <span style="color:var(--text);font-weight:700;flex:1">${esc(t.ad)}</span>
+      ${kilit ? `<span style="font-size:10px;color:var(--text-muted);letter-spacing:1px">🔒 •••</span>` : ""}
+      <span style="color:#a78bfa;font-weight:800;min-width:22px;text-align:right">${t.adet}</span></div>`;
+  }).join("");
+  el.innerHTML = `
+    <div class="rsection-title" style="color:#a78bfa">🧭 Algoritmanın Taramaları</div>
+    <div style="font-size:9.5px;color:var(--text-dim)">${tarih} akşam taraması · ${esc(y.evren || "")} · sayı = bulunan hisse</div>
+    ${ilkHtml}
+    ${satirlar}
+    ${davetSatiri("Tüm taramaların tam listesi ELITE üyelerine özel.")}
     <div style="margin-top:4px;font-size:9px;color:var(--text-muted)">İşlem sinyali değildir.</div>`;
 }
 
@@ -485,12 +545,13 @@ async function renderPiyasaNabzi() {
     <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin:4px 0 8px;background:#334155">
       <div style="width:${yuzY}%;background:#22c55e"></div><div style="width:${100 - yuzY - yuzD}%;background:#64748b"></div><div style="width:${yuzD}%;background:#f87171"></div></div>
     <div style="font-size:9.5px;color:var(--text-muted);letter-spacing:.5px">EN ÇOK YÜKSELEN</div>
-    ${(p.en_cok_yukselen || []).map(h => hisse(h, 1)).join("")}
+    ${ilkVeKilit(p.en_cok_yukselen, h => hisse(h, 1))}
     <div style="font-size:9.5px;color:var(--text-muted);letter-spacing:.5px;margin-top:6px">EN ÇOK DÜŞEN</div>
-    ${(p.en_cok_dusen || []).map(h => hisse(h, -1)).join("")}
+    ${ilkVeKilit(p.en_cok_dusen, h => hisse(h, -1))}
     <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">
       ${satir("SMA200 üstü", p.sma200_ustu_pct)}${satir("SMA50 üstü", p.sma50_ustu_pct)}${satir("RSI 50 üstü", p.rsi50_ustu_pct)}
     </div>
+    ${davetSatiri()}
     <div style="font-size:9px;color:var(--text-muted);margin-top:4px">güncellendi ${esc(uretim.slice(11))} · hisseye tıkla, analizi açılsın</div>`;
 }
 
@@ -530,24 +591,24 @@ async function renderBugunOlanlar() {
     const yuk = b.yukari || [], dus = b.asagi || [];
     const sat = (h, yon) => `<div class="bo-satir" ${ac(h.t)}><b>${esc(h.t)}</b><span class="ac">SMA200</span><span class="d" style="color:${yon > 0 ? "#22c55e" : "#f87171"}">${yon > 0 ? "+" : "−"}%${tr(h.uzak)}</span></div>`;
     ic = `<div class="bo-grup" style="color:#22c55e">▲ SMA200 ÜSTÜNE ÇIKTI · ${yuk.length}</div>
-      ${yuk.length ? yuk.map(h => sat(h, 1)).join("") : `<div class="bo-bos">Bugün çıkan yok</div>`}
+      ${yuk.length ? ilkVeKilit(yuk, h => sat(h, 1)) : `<div class="bo-bos">Bugün çıkan yok</div>`}
       <div class="bo-grup" style="color:#f87171">▼ SMA200 ALTINA DÜŞTÜ · ${dus.length}</div>
-      ${dus.length ? dus.map(h => sat(h, -1)).join("") : `<div class="bo-bos">Bugün düşen yok</div>`}
+      ${dus.length ? ilkVeKilit(dus, h => sat(h, -1)) : `<div class="bo-bos">Bugün düşen yok</div>`}
       <div class="bo-not">Gün içinde kesiş geri dönebilir; akşam kesinleşir. Hisseye tıkla → analizi açılır.</div>`;
   } else if (s === "zirve") {
     ic = `<div class="bo-alt">52 haftalık zirvesine en yakın 5 hisse (kalan mesafe)</div>
-      ${(b.zirve || []).map(h => `<div class="bo-satir" ${ac(h.t)}><b>${esc(h.t)}</b>
+      ${ilkVeKilit(b.zirve, h => `<div class="bo-satir" ${ac(h.t)}><b>${esc(h.t)}</b>
         <span class="ac" style="${h.yeni ? "color:#fbbf24;font-weight:800" : ""}">${h.yeni ? "🏔 yeni zirve" : "zirveye"}</span>
-        <span class="d" style="color:${h.uzak > -3 ? "#22c55e" : "#fbbf24"}">${h.uzak >= 0 ? "zirvede" : `−%${tr(h.uzak)}`}</span></div>`).join("")}
+        <span class="d" style="color:${h.uzak > -3 ? "#22c55e" : "#fbbf24"}">${h.uzak >= 0 ? "zirvede" : `−%${tr(h.uzak)}`}</span></div>`)}
       <div class="bo-not">Bugün zirvesini aşan en üstte “yeni zirve” diye çıkar.</div>`;
   } else {
     const L = b.hacim || [];
     const enb = Math.max(...L.map(h => h.kat || 0), 1);
     ic = `<div class="bo-alt">Ortalamasının 2 katından (2x) fazla işlem görenler</div>
-      ${L.length ? L.map(h => `<div class="bo-satir" ${ac(h.t)}><b>${esc(h.t)}</b>
+      ${L.length ? `<div class="bo-alt" style="margin-top:-2px">${L.length} hisse</div>` + ilkVeKilit(L, h => `<div class="bo-satir" ${ac(h.t)}><b>${esc(h.t)}</b>
         <div class="bo-bar"><i style="width:${Math.round((h.kat || 0) / enb * 100)}%"></i></div>
         <span class="d" style="color:#38bdf8;flex:1">${tr(h.kat)}x</span>
-        <span class="d" style="color:${h.degisim >= 0 ? "#22c55e" : "#f87171"}">${h.degisim >= 0 ? "+" : "−"}%${tr(h.degisim)}</span></div>`).join("")
+        <span class="d" style="color:${h.degisim >= 0 ? "#22c55e" : "#f87171"}">${h.degisim >= 0 ? "+" : "−"}%${tr(h.degisim)}</span></div>`)
         : `<div class="bo-bos">O gün hacmi patlayan olmadı</div>`}
       <div class="bo-not">Gün bitmeden hacim yanıltır; bu yüzden son tamamlanan gün gösterilir.</div>`;
   }
@@ -557,6 +618,7 @@ async function renderBugunOlanlar() {
       <div style="display:flex;margin-bottom:6px">${rozet}</div>
       <div class="bo-sekme">${btn("kesis", "Kesiş")}${btn("zirve", "Zirve")}${btn("hacim", "Hacim")}</div>
       ${ic}
+      ${davetSatiri()}
     </div>`;
 }
 
@@ -575,14 +637,15 @@ async function renderEndekstenGuclu() {
   el.innerHTML = `
     <div class="rsection-title" style="color:#22c55e">📈 Endeksten Güçlü · BIST100</div>
     <div style="font-size:9.5px;color:var(--text-dim);margin-bottom:6px">Son 20 günde XU100'ü en çok geçenler</div>
-    ${L.map((x, i) => `<div onclick="hizliAc('${esc(x.t)}')" style="cursor:pointer;padding:4px 0">
+    ${ilkVeKilit(L, x => `<div onclick="hizliAc('${esc(x.t)}')" style="cursor:pointer;padding:4px 0">
         <div style="display:flex;justify-content:space-between;font-size:11.5px">
-          <span style="color:var(--text)"><span style="color:var(--text-muted)">${i + 1}.</span> ${esc(x.t)}</span>
+          <span style="color:var(--text)"><span style="color:var(--text-muted)">1.</span> ${esc(x.t)}</span>
           <strong style="color:${x.puan >= 0 ? "#22c55e" : "#f87171"}">${x.puan >= 0 ? "+" : "−"}${Math.abs(x.puan).toFixed(1).replace(".", ",")} puan</strong></div>
         <div style="height:3px;border-radius:2px;background:#1e293b;margin-top:3px">
           <div style="height:3px;border-radius:2px;width:${Math.abs(x.puan) / enb * 100}%;background:#22c55e99"></div></div>
-      </div>`).join("")}
-    <div style="margin-top:6px;font-size:9px;color:var(--text-muted)">Puan = hisse getirisi − XU100 getirisi. Geçmiş ölçüm, öneri değildir.</div>`;
+      </div>`)}
+    ${davetSatiri()}
+    <div style="margin-top:4px;font-size:9px;color:var(--text-muted)">Puan = hisse getirisi − XU100 getirisi. Geçmiş ölçüm, öneri değildir.</div>`;
 }
 
 // 2 Eki 2026 — OTOMATİK YENİLEME TAKVİMİ: yalnız BIST işlem günlerinde 10:00-20:00 TR arası.
@@ -1024,6 +1087,33 @@ function renderHisseAkilliPara(j) {
   return true;
 }
 
+// ── TEKNİK YOL HARİTASI · HİSSE (3 Eki 2026) ─────────────────────────────────
+// Hisse seçilince panel XU100'ün piyasa skorunu göstermesin. Açık kutu: hissenin kendi
+// ortalamalara göre konumu (SMA50/SMA200) + RSI — hisse/<T>.json'daki ölçümler, yeni skor yok.
+function renderHisseYolHaritasi(h) {
+  const body = document.getElementById("composite-body");
+  if (!body || !h) return;
+  const _ct = document.getElementById("composite-ticker");
+  if (_ct) _ct.textContent = h.ticker;
+  const k = h.kapanis;
+  const ust200 = h.sma200 != null && k != null ? k > h.sma200 : null;
+  const ust50 = h.sma50 != null && k != null ? k > h.sma50 : null;
+  const renk = ust200 == null ? "var(--text-dim)" : ust200 ? "var(--green)" : "var(--red)";
+  const tag = document.getElementById("composite-tag");
+  if (tag) tag.textContent = h.rsi != null ? `RSI ${Math.round(h.rsi)}` : "—";
+  const yaz = (u, ad) => u == null ? `${ad} —` : `${ad} ${u ? "üstünde" : "altında"}`;
+  body.innerHTML = `
+    <div class="ict-grid tek-kutu-grid">
+      <div class="ict-cell" style="border-color:${renk}">
+        <div class="ict-cell-title" style="color:var(--cyan)">📐 Ortalamalara Göre</div>
+        <div class="ict-cell-val" style="color:${renk}">${ust200 == null ? "—" : ust200 ? "SMA200 ÜSTÜ" : "SMA200 ALTI"}</div>
+        <div class="ict-cell-sub">${yaz(ust50, "SMA50")}${h.rsi != null ? ` · RSI ${Math.round(h.rsi)}` : ""}</div>
+      </div>
+      ${kilitliTekKutu(["📐 Vade Uyumu", "📊 RSI Momentum", "🔥 Güçlü Sinyal", "📈 Trend Skoru",
+                        "⚖️ Risk / Ödül", "🎯 Piyasa Fazı"])}
+    </div>`;
+}
+
 // ── Composite ─────────────────────────────────────────────────────────────────
 function renderComposite(ozet) {
   if (!ozet) return;
@@ -1035,6 +1125,8 @@ function renderComposite(ozet) {
 
   const tag = document.getElementById("composite-tag");
   if (tag) tag.textContent = `Skor: ${skor.toFixed(0)} / 100`;
+  const _ct = document.getElementById("composite-ticker");
+  if (_ct) _ct.textContent = "XU100";
 
   const sc  = skor >= 65 ? "var(--green)" : skor >= 40 ? "var(--orange)" : "var(--red)";
   const lbl = skor >= 65 ? "YÜKSELİŞ" : skor >= 40 ? "NÖTR" : "DÜŞÜŞ";
@@ -1055,15 +1147,19 @@ function renderComposite(ozet) {
 
 
 // ── ICT Grid ─────────────────────────────────────────────────────────────────
-function renderICT(d, ozet) {
+function renderICT(d, ozet, etiket) {
   if (!d || d.hata) return;
+  const _it = document.getElementById("ict-ticker");
+  if (_it) _it.textContent = etiket || "XU100";
 
   const skor    = ozet?.genel_skor ?? 0;
   const sLabel  = skor >= 65 ? "GÜÇLÜ" : skor >= 40 ? "ORTA" : "ZAYIF";
   const sColor  = skor >= 65 ? "var(--green)" : skor >= 40 ? "var(--orange)" : "var(--red)";
 
   const tag = document.getElementById("ict-tag");
-  if (tag) tag.innerHTML = `<span style="color:${sColor}">Piyasa skoru ${skor.toFixed(0)} / 100 · ${sLabel}</span>`;
+  if (tag) tag.innerHTML = etiket
+    ? (d.pozisyon_pct != null ? `52 hafta aralığında %${Math.round(d.pozisyon_pct)} konumda` : "—")   // hisse: piyasa skoru o hisseye ait değil
+    : `<span style="color:${sColor}">Piyasa skoru ${skor.toFixed(0)} / 100 · ${sLabel}</span>`;
 
   const k = d.kapanis;
 
@@ -1140,7 +1236,9 @@ function renderSidebarLeft(d, ozet, opt = {}) {
     </div>
   `;
 
-  renderGauge("sidebar-gauge", ozet?.genel_skor ?? 0);
+  // 3 Eki 2026 — seçili hissede gösterge piyasa skorunu değil hissenin 52 hafta konumunu gösterir
+  if (opt.label && d.pozisyon_pct != null) renderGauge("sidebar-gauge", d.pozisyon_pct, "52 Hafta Konumu");
+  else renderGauge("sidebar-gauge", ozet?.genel_skor ?? 0);
 
   // KURUMSAL İLGİ mini (XU100 Özet yerine)
   document.getElementById("sidebar-xu100mini").innerHTML = `
@@ -1196,10 +1294,11 @@ function renderSidebarLeft(d, ozet, opt = {}) {
 
 
 // ── Gauge (speedometer) ───────────────────────────────────────────────────────
-function renderGauge(id, skor) {
+function renderGauge(id, skor, altYazi) {
   const el = document.getElementById(id);
   if (!el) return;
-  const color = skor >= 65 ? "#00e676" : skor >= 40 ? "#ffab40" : "#ff3d5a";
+  // 52H konumu iyi/kötü hükmü değil → nötr ibre rengi (piyasa skorunda eski renk kuralı)
+  const color = altYazi ? "#38bdf8" : skor >= 65 ? "#00e676" : skor >= 40 ? "#ffab40" : "#ff3d5a";
   const angle = -150 + (skor / 100) * 300;
   const nx = 70 + 38 * Math.cos((angle - 90) * Math.PI / 180);
   const ny = 72 + 38 * Math.sin((angle - 90) * Math.PI / 180);
@@ -1214,24 +1313,16 @@ function renderGauge(id, skor) {
       <text x="6"  y="86" font-size="9.5" fill="var(--text-muted)" font-family="Inter">0</text>
       <text x="126" y="86" font-size="9.5" fill="var(--text-muted)" font-family="Inter" text-anchor="end">100</text>
     </svg>
-    <div class="gauge-value" style="color:${color}">${skor.toFixed(0)}</div>
-    <div class="gauge-sub">Piyasa Skoru</div>
+    <div class="gauge-value" style="color:${color}">${altYazi ? "%" : ""}${skor.toFixed(0)}</div>
+    <div class="gauge-sub">${altYazi || "Piyasa Skoru"}</div>
   `;
 }
 
 
 // ── Sağ Sidebar ───────────────────────────────────────────────────────────────
-function renderSidebarRight(d, ozet) {
+function renderSidebarRight(d, ozet, etiket) {
   if (!d || d.hata) return;
-  const pos = d.degisim_pct >= 0;
-
-  document.getElementById("price-card-big").innerHTML = `
-    <div class="price-card-label">FİYAT: XU100</div>
-    <div class="price-card-num" style="color:#ffffff">${fmt(d.kapanis)}</div>
-    <div class="price-card-chg ${pos?'pos':'neg'}">${pos?'▲':'▼'} %${Math.abs(d.degisim_pct).toFixed(2)}</div>
-  `;
-  document.getElementById("price-card-big").classList.toggle("neg", !pos);
-
+  renderFiyatKarti(d, etiket);
   // signal-list artık canli-sinyaller-panel içinde (renderCanliSinyaller ile doldurulur)
 
   const vsaText = (ozet?.genel_skor||0) >= 60 ? "Normal-Yüksek" : (ozet?.genel_skor||0) >= 40 ? "Normal" : "Zayif";
@@ -1294,6 +1385,18 @@ function renderSidebarRight(d, ozet) {
       </div>
     `;
   }
+}
+
+// Büyük fiyat kartı (sağ üst) — seçili hissede o hissenin fiyatı (3 Eki 2026)
+function renderFiyatKarti(d, etiket) {
+  if (!d || d.hata || d.kapanis == null) return;
+  const pos = d.degisim_pct >= 0;
+  document.getElementById("price-card-big").innerHTML = `
+    <div class="price-card-label">FİYAT: ${etiket || "XU100"}</div>
+    <div class="price-card-num" style="color:#ffffff">${fmt(d.kapanis)}</div>
+    <div class="price-card-chg ${pos?'pos':'neg'}">${pos?'▲':'▼'} %${Math.abs(d.degisim_pct).toFixed(2)}</div>
+  `;
+  document.getElementById("price-card-big").classList.toggle("neg", !pos);
 }
 
 
@@ -1715,7 +1818,7 @@ function renderTgAdPanel() {
           <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
         </div>
         <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#8b5cf6;margin-bottom:5px">
-          👑 Günde 4 · Aylık 120 rapor (~4,99₺ / rapor)
+          👑 Telegram günde 4 rapor · Web sitesi günde 16 hisse<br>Aylık 600 analiz (~1,00₺ / analiz)
         </div>
         <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
@@ -1752,7 +1855,7 @@ function renderTgAdPanel() {
           <span style="font-size:11px;color:var(--text-muted)">₺349 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 2 · Aylık 60 rapor (~5,82₺ / rapor)
+          📊 Telegram günde 2 rapor · Web sitesi günde 5 hisse<br>Aylık 210 analiz (~1,66₺ / analiz)
         </div>
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
@@ -1831,7 +1934,7 @@ function renderMobilePlans() {
           <span style="font-size:11px;color:var(--text-muted)">₺599 /ay</span>
         </div>
         <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#8b5cf6;margin-bottom:5px">
-          👑 Günde 4 · Aylık 120 rapor (~4,99₺ / rapor)
+          👑 Telegram günde 4 rapor · Web sitesi günde 16 hisse<br>Aylık 600 analiz (~1,00₺ / analiz)
         </div>
         <button onclick="openExampleModal('elite')" style="display:block;width:100%;margin-bottom:7px;background:#7c3aed;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
@@ -1868,7 +1971,7 @@ function renderMobilePlans() {
           <span style="font-size:11px;color:var(--text-muted)">₺349 /ay</span>
         </div>
         <div style="background:rgba(70,130,255,0.1);border:1px solid rgba(70,130,255,0.25);border-radius:3px;padding:3px 7px;font-size:10px;color:#70a8ff;margin-bottom:5px">
-          📊 Günde 2 · Aylık 60 rapor (~5,82₺ / rapor)
+          📊 Telegram günde 2 rapor · Web sitesi günde 5 hisse<br>Aylık 210 analiz (~1,66₺ / analiz)
         </div>
         <button onclick="openExampleModal('pro')" style="display:block;width:100%;margin-bottom:7px;background:#2563eb;border:none;border-radius:4px;padding:6px;color:#fff;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:0.2px">📸 ÖRNEK ÇIKTI İÇİN TIKLAYIN</button>
         <div class="tg-feature-list">
